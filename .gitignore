@@ -1,9 +1,20 @@
 # Dependencias
 node_modules/
+/package-lock.json
+/yarn.lock
 
 # Builds / salidas
 dist/
 out/
+/out-tsc/
+*.tsbuildinfo
+
+# Angular
+/.angular/
+.angular/
+/.ng/
+/coverage/
+/e2e/test-output/
 
 # Variables de entorno (secretos)
 .env
@@ -12,6 +23,9 @@ out/
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Archivos temporales de Office
 ~$*
