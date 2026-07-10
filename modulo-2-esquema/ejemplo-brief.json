@@ -1,0 +1,92 @@
+{
+  "schema_version": "kr.v0.2",
+  "run_id": "9f1c2a34-0000-4000-8000-000000000001",
+  "cliente": "Clínica dental Valencia",
+  "market": { "country": "ES", "language_code": "es", "location_code": 2724 },
+  "generated_at": "2026-07-08T12:00:00Z",
+  "status": "pending_approval",
+  "paginas_propuestas": [
+    {
+      "cluster_id": "c1",
+      "tipo": "landing_local",
+      "page_strategy": "single",
+      "url_slug": "/implantes-dentales-valencia",
+      "keyword_principal": "implantes dentales Valencia",
+      "keywords_secundarias": [
+        "precio implantes Valencia",
+        "implantes all-on-4 Valencia",
+        "clínica implantes Valencia"
+      ],
+      "intencion": "transactional",
+      "local": true,
+      "volumen": 1900,
+      "dificultad": 42,
+      "opportunity_score": 78,
+      "score_confidence": 0.86,
+      "seo": {
+        "meta_title": "Implantes Dentales en Valencia | Clínica Dental Valencia",
+        "meta_description": "Implantes dentales en Valencia con financiación y garantía. Pide tu primera consulta gratuita. All-on-4 y casos complejos.",
+        "schema_type": "LocalBusiness",
+        "canonical": "https://clinica-ejemplo.es/implantes-dentales-valencia"
+      },
+      "content_brief": {
+        "h1": "Implantes dentales en Valencia",
+        "secciones_sugeridas": ["Qué son", "Precios y financiación", "All-on-4", "Proceso paso a paso", "FAQ"],
+        "word_count_objetivo": 1200,
+        "enlazado_interno": ["/ortodoncia-invisible-valencia"],
+        "cta": "Pide tu primera consulta gratuita",
+        "tono": "Cercano y profesional, sin tecnicismos",
+        "claims_permitidos": ["financiación disponible", "garantía sobre el implante"],
+        "claims_prohibidos": ["resultados garantizados de por vida", "sin dolor"],
+        "competidores_serp": ["https://competidor-a.es/implantes-valencia"]
+      },
+      "preguntas_frecuentes": [
+        "¿Cuánto cuesta un implante dental en Valencia?",
+        "¿Cuánto dura un implante dental?"
+      ],
+      "approved": false
+    },
+    {
+      "cluster_id": "c2",
+      "tipo": "blog",
+      "page_strategy": "single",
+      "url_slug": "/blog/cuanto-dura-un-implante-dental",
+      "keyword_principal": "cuánto dura un implante dental",
+      "keywords_secundarias": ["duración implante dental", "vida útil implante dental"],
+      "intencion": "informational",
+      "local": false,
+      "volumen": 3200,
+      "dificultad": 28,
+      "opportunity_score": 71,
+      "score_confidence": 0.79,
+      "seo": {
+        "meta_title": "¿Cuánto dura un implante dental? Vida útil y cuidados",
+        "meta_description": "Descubre cuánto dura un implante dental, qué factores influyen en su vida útil y cómo cuidarlo para que dure décadas.",
+        "schema_type": "Article",
+        "canonical": "https://clinica-ejemplo.es/blog/cuanto-dura-un-implante-dental"
+      },
+      "content_brief": {
+        "h1": "¿Cuánto dura un implante dental?",
+        "secciones_sugeridas": ["Vida útil media", "Factores que influyen", "Cuidados", "Cuándo hay que reemplazarlo"],
+        "word_count_objetivo": 900,
+        "enlazado_interno": ["/implantes-dentales-valencia"],
+        "cta": "¿Dudas sobre tu caso? Consúltanos",
+        "tono": "Divulgativo y riguroso",
+        "claims_permitidos": ["la mayoría de los implantes duran más de 10 años con buenos cuidados"],
+        "claims_prohibidos": ["duran para siempre"],
+        "competidores_serp": []
+      },
+      "preguntas_frecuentes": [],
+      "approved": false
+    }
+  ],
+  "backlog": [
+    { "keyword_principal": "ortodoncia invisible Valencia", "opportunity_score": 63 },
+    { "keyword_principal": "blanqueamiento dental Valencia precio", "opportunity_score": 58 }
+  ],
+  "meta_run": {
+    "keywords_analizadas": 812,
+    "paginas_propuestas": 2,
+    "coste_micros_usd": 340000
+  }
+}

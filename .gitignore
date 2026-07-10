@@ -1,0 +1,21 @@
+# Dependencias
+node_modules/
+
+# Builds / salidas
+dist/
+out/
+
+# Variables de entorno (secretos)
+.env
+.env.local
+*.env
+
+# Logs
+*.log
+
+# Archivos temporales de Office
+~$*
+
+# Sistema
+.DS_Store
+Thumbs.db

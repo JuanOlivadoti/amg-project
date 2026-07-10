@@ -1,0 +1,48 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { config } from "../config.js";
+import { runResearch } from "../pipeline/run.js";
+import { renderReport } from "../pipeline/brief.js";
+import { briefSchema } from "../validation/brief.schema.js";
+
+// Caso por defecto del spike (restaurante italiano en Madrid).
+const DEFAULT_PROMPT =
+  "Restaurante italiano en Madrid centro. Especialidades: pizza napolitana, " +
+  "pasta fresca, menú del día, cenas para grupos y brunch de fin de semana.";
+
+async function main() {
+  const prompt = process.argv.slice(2).join(" ").trim() || DEFAULT_PROMPT;
+
+  console.log("▶ Spike Keyword Research (Fase 0)");
+  if (config.dataforseo.mode === "mock") {
+    console.log("  DataForSEO: MOCK (datos ficticios locales, sin cuenta)");
+  } else {
+    console.log(`  DataForSEO: LIVE ${config.dataforseo.baseUrl}${config.dataforseo.isSandbox ? " (SANDBOX)" : ""}`);
+    console.log(`  Credenciales DFS: ${config.dataforseo.hasCredentials ? "ok" : "FALTAN (.env)"}`);
+  }
+  console.log(`  LLM (generación): ${config.llm.provider}`);
+  console.log(`  Embeddings: ${config.llm.embeddingProvider}`);
+  console.log(`  Prompt: ${prompt}\n`);
+
+  const brief = await runResearch({ prompt });
+
+  // Validación del contrato (Zod) — la "validación" del pipeline.
+  const parsed = briefSchema.safeParse(brief);
+  if (!parsed.success) {
+    console.error("\n❌ El brief NO cumple el esquema v0.2:");
+    console.error(parsed.error.issues.slice(0, 10));
+    process.exitCode = 1;
+  } else {
+    console.log("\n✅ Brief válido contra el esquema v0.2");
+  }
+
+  await mkdir("out", { recursive: true });
+  await writeFile("out/brief.json", JSON.stringify(brief, null, 2), "utf8");
+  await writeFile("out/informe.md", renderReport(brief), "utf8");
+  console.log("\n📄 Escrito: out/brief.json  ·  out/informe.md");
+  console.log(`   Páginas: ${brief.meta_run.paginas_propuestas} · Coste: $${(brief.meta_run.coste_micros_usd / 1_000_000).toFixed(4)}`);
+}
+
+main().catch((e) => {
+  console.error("\n💥 Error en el spike:", e);
+  process.exit(1);
+});
