@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config.js";
-import { costMeter } from "../lib/cost.js";
+import { currentMeter } from "../lib/cost.js";
 import { trackChatUsage } from "./openai.js";
 import { tokenize } from "./mock.js";
 import type { Market, PageType, SearchIntent } from "../types.js";
@@ -120,14 +120,9 @@ class OpenAIContentGen implements ContentGen {
           role: "system",
           content:
             "Sos experto SEO/SEM. Para cada keyword, clasificá la intención de búsqueda dominante " +
-            "en el contexto del negocio. Valores de intent: " +
-            "transactional (listo para contratar/comprar/reservar), " +
-            "commercial (compara opciones antes de decidir: 'mejor', 'opiniones', 'precios'), " +
-            "local (busca un negocio/servicio en una zona geográfica concreta), " +
-            "informational (busca aprender: 'qué', 'cómo', 'guía'), " +
-            "navigational (busca una marca/sitio concreto). " +
-            "is_local = true si la búsqueda tiene intención geográfica real (ciudad, barrio, " +
-            "'cerca de mí', o un servicio que se consume presencialmente en una zona). " +
+            "en el contexto del negocio. " +
+            INTENT_RULE +
+            IS_LOCAL_RULE +
             'Devolvé SOLO JSON: {"items":[{"keyword":string,"intent":string,"is_local":boolean}]}',
         },
         {
@@ -146,7 +141,7 @@ class OpenAIContentGen implements ContentGen {
     for (const it of asArray<{ keyword?: unknown; intent?: unknown; is_local?: unknown }>(parsed.items)) {
       const intent = normalizeIntent(typeof it?.intent === "string" ? it.intent : undefined);
       if (typeof it?.keyword === "string" && intent) {
-        map.set(it.keyword, { intent, is_local: Boolean(it.is_local) });
+        map.set(it.keyword, { intent, is_local: strictBool(it.is_local) });
       }
     }
     return map;
@@ -210,7 +205,7 @@ class AnthropicContentGen implements ContentGen {
       tools: [{ name: toolName, description, input_schema: inputSchema as never }],
       messages: [{ role: "user", content: userContent }],
     });
-    costMeter.addTokens("llm_generation", model, msg.usage?.input_tokens ?? 0, msg.usage?.output_tokens ?? 0);
+    currentMeter().addTokens("llm_generation", model, msg.usage?.input_tokens ?? 0, msg.usage?.output_tokens ?? 0);
 
     const toolUse = msg.content.find((b) => b.type === "tool_use");
     return toolUse && toolUse.type === "tool_use" ? (toolUse.input as Partial<T>) : {};
@@ -278,15 +273,20 @@ class AnthropicContentGen implements ContentGen {
         },
         required: ["items"],
       },
+      // Las MISMAS reglas que OpenAI. Antes acá había una versión abreviada y distinta
+      // ("is_local = true si la búsqueda tiene intención geográfica real"), así que cambiar de
+      // proveedor cambiaba silenciosamente la clasificación: el mismo research daba otro resultado.
       `Negocio: ${businessPrompt}\nMercado: ${market.country} (idioma ${market.language_code})\n` +
-        `is_local = true si la búsqueda tiene intención geográfica real.\nKeywords:\n${keywords.join("\n")}`,
+        INTENT_RULE +
+        IS_LOCAL_RULE +
+        `\nKeywords:\n${keywords.join("\n")}`,
     );
 
     const map = new Map<string, IntentResult>();
     for (const it of asArray<{ keyword?: unknown; intent?: unknown; is_local?: unknown }>(out.items)) {
       const intent = normalizeIntent(typeof it?.intent === "string" ? it.intent : undefined);
       if (typeof it?.keyword === "string" && intent) {
-        map.set(it.keyword, { intent, is_local: Boolean(it.is_local) });
+        map.set(it.keyword, { intent, is_local: strictBool(it.is_local) });
       }
     }
     return map;
@@ -384,6 +384,65 @@ function asArray<T>(v: unknown): T[] {
 
 function clamp01(n: number): number {
   return Math.max(0, Math.min(1, Number.isFinite(n) ? n : 0));
+}
+
+/**
+ * Regla de `is_local`, compartida por todos los proveedores para que no diverjan.
+ *
+ * La versión anterior decía "...o un servicio que se consume presencialmente en una zona", lo que
+ * hacía local a CUALQUIER búsqueda gastronómica: en la corrida real dio `is_local` en 53 de 60
+ * keywords, y casi todas las páginas salieron `landing_local` con JSON-LD `LocalBusiness`. Eso no
+ * es una clasificación interna imperfecta: es una afirmación estructurada FALSA hacia Google.
+ *
+ * El error de fondo era confundir "el NEGOCIO es local" (siempre cierto para un restaurante) con
+ * "esta BÚSQUEDA apunta a un lugar" (que es lo que hay que decidir).
+ *
+ * La señal correcta es el SERP (presencia de map/local pack). Hasta tenerla, el LLM es un proxy y
+ * el prompt tiene que ser explícito sobre la distinción.
+ */
+/**
+ * Regla de intención, compartida por todos los proveedores.
+ *
+ * El problema que corrige: el LLM mandaba a `informational` cualquier keyword sin modificador
+ * geográfico, incluidas las que nombran un SERVICIO QUE EL NEGOCIO VENDE ("cenas para grupos",
+ * "brunch fin de semana"). Quedaba oculto porque `is_local` cortocircuitaba el tipo de página; al
+ * arreglar `is_local`, esas páginas se iban a `blog`/`Article` en vez de a una landing de servicio.
+ *
+ * Quien busca "cenas para grupos en restaurante italiano" NO quiere aprender sobre cenas de grupo:
+ * quiere una. Es demanda comercial, no informativa.
+ */
+const INTENT_RULE =
+  "Valores de intent: " +
+  "transactional (listo para contratar/comprar/reservar: 'reservar', 'pedir', 'a domicilio'), " +
+  "commercial (evalúa un servicio o compara opciones antes de decidir: 'mejor', 'opiniones', " +
+  "'precios', 'barato' — y TAMBIÉN cualquier keyword que nombre un servicio/producto que el " +
+  "negocio ofrece, aunque no lleve esas palabras), " +
+  "local (busca un negocio en una zona geográfica concreta), " +
+  "informational (quiere APRENDER, no contratar: 'qué es', 'cómo se hace', 'guía', 'receta', " +
+  "'diferencia entre', 'historia de'), " +
+  "navigational (busca una marca o sitio concreto). " +
+  "REGLA CLAVE: si la keyword nombra algo que el negocio VENDE, es commercial o transactional, " +
+  "NO informational. 'cenas para grupos' o 'menú del día' son demanda de un servicio (commercial); " +
+  "'cómo hacer pasta fresca' o 'qué es la pizza napolitana' sí son informational. La ausencia de " +
+  "ciudad NO convierte una búsqueda en informativa. ";
+
+const IS_LOCAL_RULE =
+  "is_local = true SOLO si la BÚSQUEDA en sí apunta a un lugar: lleva un modificador geográfico " +
+  "(ciudad, barrio, zona, código postal) o de proximidad ('cerca de mí', 'a domicilio en X'). " +
+  "IMPORTANTE: is_local NO es 'el negocio es local'. Que el negocio se visite físicamente NO " +
+  "hace local a la búsqueda. Ejemplos: 'pizzeria napolitana Madrid' → true (lleva ciudad); " +
+  "'restaurantes cerca de mí' → true (proximidad); 'qué es la pizza napolitana' → false " +
+  "(informativa, sin lugar); 'cómo se hace la pasta fresca' → false; 'menú del día' → false " +
+  "(no menciona ningún lugar). Ante la duda, false. ";
+
+/**
+ * `is_local` debe ser un booleano REAL. Antes se hacía `Boolean(it.is_local)`, que convierte el
+ * string "false" (y cualquier otro valor inesperado) en `true` — la misma clase de coerción
+ * silenciosa que el viejo `volumen ?? 0`. Si el LLM devuelve basura, se trata como dato ausente
+ * (false) en vez de fabricar un `true`.
+ */
+function strictBool(v: unknown): boolean {
+  return v === true;
 }
 
 const VALID_INTENTS: readonly SearchIntent[] = [

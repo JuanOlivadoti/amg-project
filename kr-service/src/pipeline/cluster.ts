@@ -28,7 +28,13 @@ export interface ClusterOptions {
  *
  * Re-calibrar con `out/keywords.json` si cambia el vertical o el modelo de embeddings.
  */
-const DEFAULTS: ClusterOptions = { simThreshold: 0.75, serpOverlapMin: 3, serpValidateTop: 15 };
+export const CLUSTER_SIM_THRESHOLD_DEFAULT = 0.75;
+
+const DEFAULTS: ClusterOptions = {
+  simThreshold: CLUSTER_SIM_THRESHOLD_DEFAULT,
+  serpOverlapMin: 3,
+  serpValidateTop: 15,
+};
 
 /**
  * Clustering híbrido (ver plan §Paso 6):

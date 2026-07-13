@@ -16,27 +16,56 @@ export class BudgetExceededError extends Error {
 }
 
 /**
- * ⚠️ ESTIMACIONES por llamada, en micros de USD. Son APROXIMADAS y sirven solo para el preflight
- * (decidir si arrancar una fase). El costo REAL se mide aparte con el CostMeter.
- * Calibrar con datos de producción; sobrescribibles por entorno.
+ * ESTIMACIONES para el preflight, en micros de USD. Sirven solo para decidir si arrancar una fase;
+ * el costo REAL se mide aparte con el CostMeter.
+ *
+ * Calibradas contra la primera corrida real (2026-07-13, 52 keywords, DataForSEO producción:
+ * $0.2522 en total). Las anteriores estaban ~50× por debajo ($0.005 para enriquecer CUALQUIER
+ * cantidad de keywords), así que el tope no protegía: el preflight siempre daba "entra" y el gasto
+ * real lo desbordaba.
+ *
+ * El costo de enriquecimiento ESCALA CON LA CANTIDAD DE KEYWORDS, así que la estimación también.
+ * Ante la duda se sobreestima: un preflight conservador puede abortar de más (molesto pero
+ * gratis), mientras que uno optimista deja gastar de más (caro e irreversible).
  */
 export interface PhaseEstimates {
+  /** Por llamada de sugerencias (una por seed). */
   dfsSuggestions: number;
-  dfsSearchVolume: number;
-  dfsBulkKd: number;
+  /** Costo fijo de la task de volumen, independiente de las keywords. */
+  dfsSearchVolumeBase: number;
+  /** Costo por keyword en la task de volumen. */
+  dfsSearchVolumePerKeyword: number;
+  /** Costo fijo de la task de KD. */
+  dfsBulkKdBase: number;
+  /** Costo por keyword en la task de KD. */
+  dfsBulkKdPerKeyword: number;
+  /** Por SERP (el endpoint más caro). */
   dfsSerp: number;
+  /** Por llamada de generación del LLM. */
   llmCall: number;
+  /** Por lote de embeddings. */
   llmEmbed: number;
 }
 
 export const DEFAULT_ESTIMATES: PhaseEstimates = {
-  dfsSuggestions: 1_000, // ~$0.001 por llamada
-  dfsSearchVolume: 5_000,
-  dfsBulkKd: 5_000,
-  dfsSerp: 2_000, // el endpoint más caro
-  llmCall: 3_000, // ~$0.003 por llamada de generación
-  llmEmbed: 500,
+  dfsSuggestions: 10_000, // $0.010 por llamada
+  dfsSearchVolumeBase: 50_000, // $0.050 fijo
+  dfsSearchVolumePerKeyword: 1_000, // $0.001 por keyword
+  dfsBulkKdBase: 30_000, // $0.030 fijo
+  dfsBulkKdPerKeyword: 500, // $0.0005 por keyword
+  dfsSerp: 3_000, // $0.003 por SERP
+  llmCall: 5_000, // $0.005 por llamada
+  llmEmbed: 1_000,
 };
+
+/** Estimación de la fase de enriquecimiento para N keywords (volumen + KD). */
+export function estimateEnrichment(e: PhaseEstimates, keywordCount: number): number {
+  return (
+    e.dfsSearchVolumeBase +
+    e.dfsBulkKdBase +
+    keywordCount * (e.dfsSearchVolumePerKeyword + e.dfsBulkKdPerKeyword)
+  );
+}
 
 export class Budget {
   readonly estimates: PhaseEstimates;

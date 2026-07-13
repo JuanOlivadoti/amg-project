@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CostMeter } from "./cost.js";
+import { CostMeter, currentMeter, withCostMeter } from "./cost.js";
 
 // Tarifas fijas para el test (no dependen de los defaults ni del entorno).
 const PRICES = {
@@ -57,4 +57,44 @@ test("CostMeter: reset() limpia importes y modelos sin precio", () => {
   m.reset();
   assert.equal(m.totalMicros, 0);
   assert.deepEqual(m.unpricedModels, []);
+});
+
+// ---------------------------------------------------------------- #3: aislamiento por run
+//
+// Antes el medidor era un singleton de módulo que runResearch() reseteaba al arrancar. Con dos runs
+// concurrentes en el mismo proceso, el reset de uno borraba el gasto del otro y los presupuestos
+// veían consumo ajeno. En un producto cuyo argumento de venta ES el costo por research, eso lo
+// corrompe. Ahora cada run corre con su propio medidor, propagado por AsyncLocalStorage.
+
+test("#3 dos runs concurrentes NO se pisan el costo", async () => {
+  const a = new CostMeter();
+  const b = new CostMeter();
+
+  const run = (usd: number) => async () => {
+    currentMeter().addUsd("dataforseo", usd);
+    await new Promise((r) => setTimeout(r, 5)); // fuerza el entrelazado
+    currentMeter().addUsd("dataforseo", usd);
+    return currentMeter().totalMicros;
+  };
+
+  const [totalA, totalB] = await Promise.all([
+    withCostMeter(a, run(0.1)),
+    withCostMeter(b, run(0.02)),
+  ]);
+
+  assert.equal(totalA, 200_000, "el run A solo debe ver SU gasto");
+  assert.equal(totalB, 40_000, "el run B solo debe ver SU gasto");
+  assert.equal(a.totalMicros, 200_000);
+  assert.equal(b.totalMicros, 40_000);
+});
+
+test("#3 el gasto de un run no se filtra al medidor de otro", async () => {
+  const a = new CostMeter();
+  await withCostMeter(a, async () => {
+    currentMeter().addTokens("llm_generation", "gpt-4o", 1_000_000, 0);
+  });
+
+  const b = new CostMeter();
+  assert.equal(b.totalMicros, 0);
+  assert.equal(a.totalMicros, 2_500_000); // $2.50 por 1M de tokens de entrada
 });

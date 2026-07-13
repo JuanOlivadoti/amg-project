@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 /**
  * Medición de costo del run, en MICROS de USD (millonésimas), para evitar coma flotante (ADR-10).
  *
@@ -123,6 +125,17 @@ export class CostMeter {
     return [...this.unpriced];
   }
 
+  /**
+   * ¿Hay tarifa para este modelo? Se consulta ANTES de gastar.
+   *
+   * Un modelo sin tarifa suma 0 al medidor, así que el presupuesto lo ve como gratis y no bloquea
+   * nunca: el tope queda silenciosamente DESACTIVADO mientras se sigue gastando de verdad. Con un
+   * tope activo eso es inaceptable, y por eso el run aborta de entrada (ver run.ts).
+   */
+  hasPriceFor(model: string): boolean {
+    return this.prices[model] != null;
+  }
+
   reset(): void {
     this.micros = { dataforseo: 0, llm_generation: 0, llm_embeddings: 0 };
     this.unpriced.clear();
@@ -130,11 +143,33 @@ export class CostMeter {
 }
 
 /**
- * Medidor compartido del proceso. El CLI corre un research por proceso, así que un medidor
- * de módulo alcanza; `runResearch()` lo resetea al arrancar.
- * TODO (Inngest): pasar a un medidor por run inyectado, cuando haya runs concurrentes.
+ * Medidor POR RUN, propagado por contexto async (#3 review Codex).
+ *
+ * Antes había un `costMeter` singleton de módulo que `runResearch()` reseteaba al arrancar. Con un
+ * research por proceso funcionaba, pero es un bug latente serio: **dos runs concurrentes en el
+ * mismo proceso** (que es exactamente lo que pasa al exponer esto como servicio, sin esperar a
+ * Inngest) se pisan entre sí: el `reset()` de uno borra el gasto del otro, un presupuesto ve el
+ * consumo ajeno y aborta de más, y los briefs salen con totales cruzados. En un sistema cuyo
+ * argumento de venta es el costo por research, eso es corromper el producto.
+ *
+ * `AsyncLocalStorage` da un medidor por run que se propaga solo a través de toda la cadena async,
+ * sin tener que hilarlo a mano por los constructores de cada proveedor (que se crean en factories:
+ * `getProvider()`, `getContentGen()`, `getEmbedder()`).
  */
-export const costMeter = new CostMeter();
+const costContext = new AsyncLocalStorage<CostMeter>();
+
+/** Medidor de último recurso: solo se usa fuera de un `withCostMeter` (tests, scripts sueltos). */
+const fallbackMeter = new CostMeter();
+
+/** El medidor del run actual. Todos los proveedores registran su gasto acá. */
+export function currentMeter(): CostMeter {
+  return costContext.getStore() ?? fallbackMeter;
+}
+
+/** Corre `fn` con su PROPIO medidor. Todo lo que gaste dentro se acumula ahí y en ningún otro lado. */
+export function withCostMeter<T>(meter: CostMeter, fn: () => Promise<T>): Promise<T> {
+  return costContext.run(meter, fn);
+}
 
 export function usdFromMicros(micros: number): string {
   return (micros / 1_000_000).toFixed(4);

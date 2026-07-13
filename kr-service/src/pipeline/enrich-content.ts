@@ -74,9 +74,16 @@ export async function applyPageContent(
   pages: ProposedPage[],
   businessPrompt: string,
   market: Market,
+  /**
+   * Se invoca ANTES DE CADA página. Permite que el presupuesto corte a mitad del bucle: el
+   * preflight de la fase entera no alcanzaba, porque si la estimación se quedaba corta el bucle
+   * seguía generando (y pagando) el resto de las páginas igual.
+   */
+  beforeEach?: () => void,
 ): Promise<void> {
   const gen = getContentGen();
   for (const page of pages) {
+    beforeEach?.();
     try {
       const c = await gen.pageContent({
         keyword_principal: page.keyword_principal,

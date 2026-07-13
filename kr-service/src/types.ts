@@ -64,6 +64,8 @@ export interface KeywordResearchInput {
   options?: {
     max_pages?: number;
     max_cost_micros?: number;
+    /** Umbral de coseno del clustering. Default 0.75 (calibrado con datos reales, ver cluster.ts). */
+    sim_threshold?: number;
     weights?: ScoringWeights;
   };
 }

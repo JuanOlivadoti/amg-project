@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config.js";
-import { costMeter } from "../lib/cost.js";
+import { currentMeter } from "../lib/cost.js";
 import type { Market, Seed } from "../types.js";
 import type { TextGen } from "./types.js";
 
@@ -49,7 +49,7 @@ export class AnthropicTextGen implements TextGen {
       ],
     });
     // Sin tarifa configurada para el modelo, el costo NO se inventa: queda en unpricedModels.
-    costMeter.addTokens(
+    currentMeter().addTokens(
       "llm_generation",
       config.anthropic.generationModel,
       msg.usage?.input_tokens ?? 0,

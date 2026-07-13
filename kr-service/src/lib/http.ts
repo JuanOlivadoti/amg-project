@@ -20,6 +20,28 @@ export interface RetryOptions {
   maxDelayMs: number;
   /** Se llama antes de cada reintento (para loguear). */
   onRetry?: (attempt: number, delayMs: number, reason: string) => void;
+  /**
+   * Marca la operación como FACTURABLE y no idempotente (#1 review Codex).
+   *
+   * El riesgo: si el proveedor PROCESÓ la petición pero la respuesta se perdió (timeout, corte de
+   * red, 5xx tras ejecutar), reintentar vuelve a ejecutar — y a COBRAR — la misma operación. Peor
+   * aún, el medidor solo contabiliza la respuesta que sí llegó, así que el primer cargo ni siquiera
+   * aparece en `meta_run`: se paga dos veces y el brief informa una.
+   *
+   * La distinción correcta NO es "pago vs. gratis" (no reintentar nada pago dejaría al sistema
+   * indefenso ante los 429, que son constantes y esperables). Es **si el proveedor llegó a
+   * procesar**:
+   *
+   *  - **429** → rechazo por rate limit, ANTES de ejecutar. No se cobró nada. Reintentar es seguro
+   *    y sigue haciéndose siempre.
+   *  - **Timeout / error de red / 5xx** → AMBIGUO. Puede haberse ejecutado. Con `billable: true`
+   *    no se reintenta: se propaga el error y el pipeline degrada (la métrica queda `null`, que ya
+   *    se reporta honestamente como "n/d").
+   *
+   * Un dato faltante cuesta $0 y se ve en el informe. Un cobro duplicado cuesta plata y es
+   * invisible. Ante la duda, se prefiere el dato faltante.
+   */
+  billable?: boolean;
 }
 
 export const DEFAULT_RETRY: RetryOptions = {
@@ -78,8 +100,16 @@ export async function fetchWithRetry(
     try {
       res = await fetch(url, { ...init, signal: AbortSignal.timeout(o.timeoutMs) });
     } catch (e) {
-      // Red caída o timeout: transitorio por naturaleza → reintentar.
       const reason = (e as Error).name === "TimeoutError" ? `timeout (${o.timeoutMs}ms)` : (e as Error).message;
+
+      // AMBIGUO: no sabemos si el proveedor llegó a procesar (y a cobrar). En una operación
+      // facturable, reintentar puede pagar dos veces la misma task. Se propaga el error.
+      if (o.billable) {
+        throw new Error(
+          `Fallo de red en una operación FACTURABLE (${url}): ${reason}. No se reintenta: el ` +
+            `proveedor podría haberla procesado y cobrado, y un reintento la pagaría de nuevo.`,
+        );
+      }
       if (attempt >= o.retries) {
         throw new Error(`Fallo de red tras ${attempt + 1} intento(s) en ${url}: ${reason}`);
       }
@@ -92,7 +122,11 @@ export async function fetchWithRetry(
     if (res.ok) return res;
 
     const body = await res.text();
-    if (!isRetryableStatus(res.status) || attempt >= o.retries) {
+
+    // Un 5xx en una operación facturable también es ambiguo: el servidor pudo ejecutar y fallar al
+    // responder. El 429, en cambio, es un rechazo ANTES de ejecutar → siempre seguro de reintentar.
+    const ambiguoYFacturable = o.billable === true && res.status >= 500;
+    if (!isRetryableStatus(res.status) || ambiguoYFacturable || attempt >= o.retries) {
       throw new HttpError(res.status, body);
     }
 

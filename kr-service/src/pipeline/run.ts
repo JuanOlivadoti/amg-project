@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { config, MARKET_ES } from "../config.js";
 import { canonicalKey, dedupeByCanonical } from "../lib/text.js";
-import { costMeter, usdFromMicros } from "../lib/cost.js";
-import { Budget } from "../lib/budget.js";
+import { CostMeter, currentMeter, usdFromMicros, withCostMeter } from "../lib/cost.js";
+import { Budget, BudgetExceededError, estimateEnrichment } from "../lib/budget.js";
 import { getProvider } from "../dataforseo/index.js";
 import { getEmbedder } from "../llm/index.js";
 import { generateSeeds } from "../llm/seeds.js";
@@ -11,9 +12,11 @@ import type {
   EnrichedKeyword,
   KeywordResearchBrief,
   KeywordResearchInput,
+  Market,
+  ScoringWeights,
 } from "../types.js";
 import { scoreKeywords } from "./scoring.js";
-import { clusterKeywords } from "./cluster.js";
+import { CLUSTER_SIM_THRESHOLD_DEFAULT, clusterKeywords } from "./cluster.js";
 import { mapClustersToPages } from "./cluster-map.js";
 import { applyBusinessRelevance, applyIntents, applyPageContent } from "./enrich-content.js";
 import { assembleBrief } from "./brief.js";
@@ -27,48 +30,118 @@ import { assembleBrief } from "./brief.js";
  * y gratis.
  */
 export interface ResearchDataset {
+  /** Config del run: sin esto el dataset no es reproducible ni comparable entre corridas. */
+  run: {
+    run_id: string;
+    generated_at: string;
+    market: Market;
+    prompt: string;
+    modelo_generacion: string;
+    modelo_embeddings: string;
+    sim_threshold: number;
+    weights: ScoringWeights;
+  };
   keywords: EnrichedKeyword[];
   clusters: Array<{ head: string; members: string[] }>;
 }
 
 /**
+ * Checkpoint durable del dataset. Se ESPERA (async) y se invoca en cuanto los datos pagos existen.
+ *
+ * Antes el dataset solo se entregaba por callback síncrono y el CLI lo escribía DESPUÉS de que
+ * `runResearch()` retornara: si el presupuesto abortaba, los embeddings fallaban o el corte final
+ * saltaba, el proceso rechazaba y los datos por los que ya se le había pagado a DataForSEO
+ * **se perdían enteros**. Ahora se persisten apenas se tienen.
+ */
+export type DatasetCheckpoint = (d: ResearchDataset) => void | Promise<void>;
+
+/**
  * Orquestador secuencial del spike (Fase 0).
+ *
+ * Cada run corre con su PROPIO medidor de costo, aislado por contexto async: dos runs concurrentes
+ * en el mismo proceso ya no se pisan el gasto ni el presupuesto (#3).
+ *
  * TODO: envolver cada paso en un step durable de Inngest (reintentos + waitForEvent
  * para la compuerta humana). Acá corre en línea para validar el flujo end-to-end.
  */
-export async function runResearch(
+export function runResearch(
   input: KeywordResearchInput,
-  onDataset?: (d: ResearchDataset) => void,
+  onDataset?: DatasetCheckpoint,
 ): Promise<KeywordResearchBrief> {
+  return withCostMeter(new CostMeter(), () => runResearchInner(input, onDataset));
+}
+
+async function runResearchInner(
+  input: KeywordResearchInput,
+  onDataset?: DatasetCheckpoint,
+): Promise<KeywordResearchBrief> {
+  const costMeter = currentMeter();
   const market = input.market ?? MARKET_ES;
   const weights = input.options?.weights ?? WEIGHTS_DEFAULT;
   const maxPages = input.options?.max_pages ?? 25;
+  // Configurable (#9): el umbral estaba hardcodeado en cluster.ts, así que todos los verticales e
+  // idiomas quedaban atados al 0.75 calibrado con UN dataset (restaurante en Madrid). Sigue siendo
+  // el default, pero ahora se puede ajustar por run y queda registrado en el dataset.
+  const simThreshold = input.options?.sim_threshold ?? CLUSTER_SIM_THRESHOLD_DEFAULT;
   const dfs = getProvider();
+  const runId = randomUUID();
+  const generatedAt = new Date().toISOString();
 
   const log = (step: string, msg: string) => console.log(`  [${step}] ${msg}`);
 
-  // Costo y presupuesto del run (ADR-10). El medidor acumula TODOS los proveedores
-  // (DataForSEO + LLM); el presupuesto estima cada fase ANTES de ejecutarla y aborta
-  // si no entra en el remanente, en vez de descubrir el exceso cuando ya se gastó.
-  costMeter.reset();
+  // Costo y presupuesto del run (ADR-10). El medidor es EXCLUSIVO de este run (ya no hay reset de
+  // un singleton compartido) y acumula TODOS los proveedores; el presupuesto estima cada fase ANTES
+  // de ejecutarla y aborta si no entra en el remanente, en vez de descubrir el exceso ya gastado.
   const budget = new Budget(input.options?.max_cost_micros ?? null, costMeter);
   const est = budget.estimates;
   if (budget.enabled) {
     log("budget", `tope del run: $${usdFromMicros(input.options!.max_cost_micros!)}`);
+
+    // Un modelo SIN tarifa suma 0 al medidor: el presupuesto lo ve gratis y nunca bloquea, o sea
+    // que el tope queda silenciosamente desactivado mientras se gasta de verdad. Si hay tope, eso
+    // no se tolera: se aborta ANTES de la primera llamada, no a mitad del run.
+    const modelos = [config.openai.generationModel, config.openai.embeddingModel].filter(Boolean);
+    const sinTarifa = modelos.filter((m) => !costMeter.hasPriceFor(m));
+    if (sinTarifa.length) {
+      throw new BudgetExceededError(
+        `Hay un tope de gasto activo pero no hay tarifa configurada para: ${sinTarifa.join(", ")}. ` +
+          `Su costo contaría como 0 y el tope NO protegería nada. Cargá la tarifa en LLM_PRICES ` +
+          `(JSON) o quitá el tope.`,
+      );
+    }
   }
 
   // Paso 2 — Seeds
+  //
+  // El dedupe va ACÁ, antes de cualquier llamada externa: el LLM devuelve seeds equivalentes con
+  // frecuencia ("Pasta fresca Madrid" / "pasta fresca madrid"), y cada una disparaba su PROPIA
+  // llamada de expansión facturada. Deduplicar después de expandir limpiaba el resultado pero la
+  // llamada duplicada ya estaba pagada.
   budget.assertCanSpend(est.llmCall, "seeds");
-  const seeds = await generateSeeds(input.prompt, market);
-  log("seeds", `${seeds.length} keywords semilla`);
+  const seedsRaw = await generateSeeds(input.prompt, market);
+  const seenSeed = new Set<string>();
+  const seeds = seedsRaw.filter((s) => {
+    const k = canonicalKey(s.keyword);
+    if (!k || seenSeed.has(k)) return false;
+    seenSeed.add(k);
+    return true;
+  });
+  const seedDups = seedsRaw.length - seeds.length;
+  log(
+    "seeds",
+    `${seeds.length} keywords semilla` + (seedDups > 0 ? ` (${seedDups} duplicada(s) descartada(s))` : ""),
+  );
 
   // Paso 3 — Expansión (sugerencias) por cada seed.
-  // El dedupe es por clave CANÓNICA: a DataForSEO se le paga por keyword, y los duplicados de
-  // casing ("pasta fresca Madrid" / "pasta fresca madrid") se pagaban dos veces.
+  // El dedupe del universo también es por clave CANÓNICA: a DataForSEO se le paga por keyword.
   const toExpand = seeds.slice(0, 10);
   budget.assertCanSpend(toExpand.length * est.dfsSuggestions, "expansión");
   const raw: string[] = seeds.map((s) => s.keyword);
   for (const s of toExpand) {
+    // Chequeo ANTES DE CADA LLAMADA, no solo antes de la fase: si la estimación de la fase se
+    // quedó corta, el bucle seguía gastando hasta terminar las 10 llamadas. Ahora corta en la
+    // primera que no entre en el remanente.
+    budget.assertCanSpend(est.dfsSuggestions, "expansión");
     try {
       const sugg = await dfs.keywordSuggestions(s.keyword, market, 20);
       raw.push(...sugg);
@@ -83,8 +156,10 @@ export async function runResearch(
     `${keywords.length} keywords tras expansión` + (dups > 0 ? ` (${dups} duplicadas descartadas)` : ""),
   );
 
-  // Paso 4 — Enriquecimiento (volumen + dificultad)
-  budget.assertCanSpend(est.dfsSearchVolume + est.dfsBulkKd, "enriquecimiento");
+  // Paso 4 — Enriquecimiento (volumen + dificultad).
+  // La estimación escala con la cantidad de keywords: el costo de estas tasks depende de cuántas
+  // se mandan, y una estimación fija hacía que el tope no protegiera en runs grandes.
+  budget.assertCanSpend(estimateEnrichment(est, keywords.length), "enriquecimiento");
   const endpointsDegradados: string[] = [];
   const [volRows, kdMap] = await Promise.all([
     dfs.searchVolume(keywords, market).catch((e) => {
@@ -173,6 +248,28 @@ export async function runResearch(
     );
   }
 
+  // CHECKPOINT 1 — los datos caros ya están pagados: se persisten AHORA.
+  //
+  // Todo lo que sigue (intención, relevancia, clustering, contenido) puede fallar o ser abortado
+  // por el presupuesto. Si el dataset se entregara recién al final, un aborto tiraría a la basura
+  // los ~$0.25 de DataForSEO que ya se gastaron. Esto es lo que hace que el tuning posterior sea
+  // gratis incluso cuando el run no llega a terminar.
+  const snapshot = (clusters: Array<{ head: string; members: string[] }> = []): ResearchDataset => ({
+    run: {
+      run_id: runId,
+      generated_at: generatedAt,
+      market,
+      prompt: input.prompt,
+      modelo_generacion: config.openai.generationModel,
+      modelo_embeddings: config.openai.embeddingModel,
+      sim_threshold: simThreshold,
+      weights,
+    },
+    keywords: enriched,
+    clusters,
+  });
+  await onDataset?.(snapshot());
+
   // Paso 4b — Intención de búsqueda (LLM en batch, con fallback heurístico)
   budget.assertCanSpend(est.llmCall, "intención");
   const intentStats = await applyIntents(enriched, input.prompt, market);
@@ -188,26 +285,30 @@ export async function runResearch(
 
   // Paso 6 — Clustering híbrido (embeddings + validación SERP: el endpoint más caro)
   budget.assertCanSpend(est.llmEmbed + CLUSTER_SERP_HEADS * est.dfsSerp, "clustering");
-  const clusters = await clusterKeywords(enriched, getEmbedder(), dfs, market);
+  const clusters = await clusterKeywords(enriched, getEmbedder(), dfs, market, { simThreshold });
   log("cluster", `${clusters.length} clusters`);
 
-  // Se entrega el dataset crudo ANTES de mapear a páginas: son los datos que se pagaron, y sin
-  // esto se pierden al terminar el proceso.
-  onDataset?.({
-    keywords: enriched,
-    clusters: clusters.map((c) => ({
-      head: c.members[0]!.keyword,
-      members: c.members.map((m) => m.keyword),
-    })),
-  });
+  // CHECKPOINT 2 — se actualiza el dataset con el scoring y los clusters ya calculados.
+  await onDataset?.(
+    snapshot(
+      clusters.map((c) => ({
+        head: c.members[0]!.keyword,
+        members: c.members.map((m) => m.keyword),
+      })),
+    ),
+  );
 
   // Paso 9 — Mapeo a páginas — sin costo externo
   const { pages, backlog } = mapClustersToPages(clusters, maxPages);
   log("map", `${pages.length} páginas · ${backlog.length} en backlog`);
 
-  // Paso 10 — Contenido on-page (una llamada LLM por página)
+  // Paso 10 — Contenido on-page (una llamada LLM por página).
+  // El preflight cubre la fase entera, y además se re-chequea antes de CADA página: si la
+  // estimación se queda corta, el bucle corta en vez de seguir pagando el resto.
   budget.assertCanSpend(pages.length * est.llmCall, "contenido on-page");
-  await applyPageContent(pages, input.prompt, market);
+  await applyPageContent(pages, input.prompt, market, () =>
+    budget.assertCanSpend(est.llmCall, "contenido on-page"),
+  );
   log("content", `contenido generado para ${pages.length} páginas`);
 
   // Corte final: si el gasto real superó el tope (la estimación se quedó corta), se avisa acá.
@@ -227,6 +328,8 @@ export async function runResearch(
 
   // Paso 11 — Brief
   return assembleBrief({
+    runId,
+    generatedAt,
     cliente: deriveCliente(input.prompt),
     market,
     pages,

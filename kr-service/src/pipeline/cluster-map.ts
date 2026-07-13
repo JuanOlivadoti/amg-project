@@ -1,6 +1,13 @@
 ﻿import { randomUUID } from "node:crypto";
 import type { Cluster } from "./cluster.js";
-import type { EnrichedKeyword, PageEvidence, PageType, ProposedPage, SearchIntent } from "../types.js";
+import type {
+  EnrichedKeyword,
+  PageEvidence,
+  PageSeo,
+  PageType,
+  ProposedPage,
+  SearchIntent,
+} from "../types.js";
 
 /**
  * ¿Hay ALGUNA evidencia de mercado detrás de este cluster?
@@ -77,7 +84,7 @@ function buildPage(head: EnrichedKeyword, members: EnrichedKeyword[]): ProposedP
     seo: {
       meta_title: capitalize(head.keyword),
       meta_description: `Información sobre ${head.keyword}.`, // TODO: generar con LLM
-      schema_type: tipo === "blog" ? "Article" : tipo === "landing_local" ? "LocalBusiness" : "WebPage",
+      schema_type: schemaTypeFor(tipo, intent),
       canonical: slugify(head.keyword),
     },
     content_brief: {
@@ -91,11 +98,36 @@ function buildPage(head: EnrichedKeyword, members: EnrichedKeyword[]): ProposedP
   };
 }
 
+/**
+ * La intención INFORMATIVA gana sobre la señal local.
+ *
+ * Antes `is_local` cortocircuitaba todo: cualquier keyword marcada local salía `landing_local`,
+ * incluso una claramente informativa ("cómo se hace la pasta fresca"). Una guía no es una landing
+ * de negocio, y como el schema colgaba del tipo de página, terminaba declarándose `LocalBusiness`.
+ */
 function pageTypeFor(intent: SearchIntent, isLocal: boolean): PageType {
+  if (intent === "informational") return "blog";
   if (isLocal) return "landing_local";
   if (intent === "transactional" || intent === "commercial") return "servicio";
-  if (intent === "informational") return "blog";
   return "institucional";
+}
+
+/**
+ * El JSON-LD es una decisión SEPARADA del tipo de página (#5 review Codex).
+ *
+ * `schema_type` es una afirmación estructurada dirigida a Google, no una etiqueta interna:
+ * declarar `LocalBusiness` significa "esta página ES la ficha de un negocio físico". Antes colgaba
+ * directamente del `page_type`, así que la sobre-detección de `is_local` se propagaba hasta el
+ * marcado y publicábamos afirmaciones falsas.
+ *
+ * Regla: `LocalBusiness` solo cuando la página realmente representa al negocio en un lugar —es
+ * decir, una landing local con intención de negocio (no una guía que además menciona la ciudad).
+ */
+function schemaTypeFor(tipo: PageType, intent: SearchIntent): PageSeo["schema_type"] {
+  if (intent === "informational") return "Article"; // una guía nunca es un LocalBusiness
+  if (tipo === "landing_local") return "LocalBusiness";
+  if (tipo === "blog") return "Article";
+  return "WebPage";
 }
 
 function slugify(s: string): string {

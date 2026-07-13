@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { costMeter } from "../lib/cost.js";
+import { currentMeter } from "../lib/cost.js";
 import { fetchWithRetry } from "../lib/http.js";
 
 /**
@@ -37,6 +37,10 @@ export class DataForSeoClient {
       },
       {
         ...config.http,
+        // Cada POST a DataForSEO es una task FACTURABLE. El 429 se sigue reintentando (es un
+        // rechazo previo a ejecutar: no cobró nada), pero los timeouts y 5xx NO: son ambiguos, el
+        // proveedor pudo haber ejecutado y cobrado, y el reintento pagaría la task dos veces.
+        billable: true,
         onRetry: (attempt, delayMs, reason) =>
           console.warn(`  [dataforseo] reintento ${attempt} en ${path} tras ${delayMs}ms (${reason})`),
       },
@@ -51,7 +55,7 @@ export class DataForSeoClient {
     for (const task of json.tasks ?? []) {
       if (typeof task.cost === "number") {
         this.costUsd += task.cost;
-        costMeter.addUsd("dataforseo", task.cost); // alimenta el costo total del run
+        currentMeter().addUsd("dataforseo", task.cost); // alimenta el costo total del run
       }
       // Una respuesta global 20000 puede traer tasks fallidas (status != 20000, result null).
       // Antes se contaban como éxito → keywords sin datos que parecían "sin volumen" (#10).

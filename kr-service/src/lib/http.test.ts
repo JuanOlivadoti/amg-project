@@ -136,3 +136,64 @@ test("#11 fetchWithRetry: onRetry avisa de cada reintento", async () => {
     s.restore();
   }
 });
+
+// ---------------------------------------------------------------- #1: doble cobro
+//
+// Un POST facturable a DataForSEO que hace timeout es AMBIGUO: el proveedor pudo procesarlo (y
+// cobrarlo) aunque la respuesta se perdiera. Reintentar pagaría la misma task dos veces, y el
+// medidor solo vería el segundo cargo. Un dato faltante cuesta $0 y se ve en el informe como
+// "n/d"; un cobro duplicado cuesta plata y es invisible.
+
+test("#1 billable: un timeout NO se reintenta (evita pagar la task dos veces)", async () => {
+  const s = stubFetch([Object.assign(new Error("timed out"), { name: "TimeoutError" })]);
+  try {
+    await assert.rejects(
+      () => fetchWithRetry("https://api.dataforseo.com/x", {}, { billable: true, retries: 3 }),
+      /FACTURABLE/,
+    );
+    assert.equal(s.calls.n, 1, "debe hacer UNA sola llamada, sin reintentos");
+  } finally {
+    s.restore();
+  }
+});
+
+test("#1 billable: un 5xx NO se reintenta (el servidor pudo ejecutar y fallar al responder)", async () => {
+  const s = stubFetch([res(500), res(200)]);
+  try {
+    await assert.rejects(() =>
+      fetchWithRetry("https://api.dataforseo.com/x", {}, { billable: true, retries: 3 }),
+    );
+    assert.equal(s.calls.n, 1);
+  } finally {
+    s.restore();
+  }
+});
+
+test("#1 billable: un 429 SÍ se reintenta (rechazo previo a ejecutar → no cobró nada)", async () => {
+  const s = stubFetch([res(429), res(429), res(200)]);
+  try {
+    const r = await fetchWithRetry(
+      "https://api.dataforseo.com/x",
+      {},
+      { billable: true, retries: 3, baseDelayMs: 1 },
+    );
+    assert.equal(r.status, 200);
+    assert.equal(s.calls.n, 3, "el rate limit debe seguir reintentándose");
+  } finally {
+    s.restore();
+  }
+});
+
+test("#1 no-billable: el timeout se sigue reintentando (lecturas idempotentes)", async () => {
+  const s = stubFetch([
+    Object.assign(new Error("timed out"), { name: "TimeoutError" }),
+    res(200),
+  ]);
+  try {
+    const r = await fetchWithRetry("https://example.com/x", {}, { retries: 3, baseDelayMs: 1 });
+    assert.equal(r.status, 200);
+    assert.equal(s.calls.n, 2);
+  } finally {
+    s.restore();
+  }
+});

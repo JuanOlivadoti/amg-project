@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
-import { costMeter } from "../lib/cost.js";
+import { currentMeter } from "../lib/cost.js";
 import type { Market, Seed } from "../types.js";
 import type { Embedder, TextGen } from "./types.js";
 
@@ -12,7 +12,7 @@ export function trackChatUsage(
   usage: { prompt_tokens?: number; completion_tokens?: number } | undefined,
 ): void {
   if (!usage) return;
-  costMeter.addTokens("llm_generation", model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
+  currentMeter().addTokens("llm_generation", model, usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);
 }
 
 /** Generación con OpenAI (JSON estructurado). */
@@ -55,7 +55,7 @@ export class OpenAIEmbedder implements Embedder {
       input: texts,
     });
     // Los embeddings no tienen tokens de salida: solo se paga la entrada.
-    costMeter.addTokens("llm_embeddings", config.openai.embeddingModel, res.usage?.prompt_tokens ?? 0, 0);
+    currentMeter().addTokens("llm_embeddings", config.openai.embeddingModel, res.usage?.prompt_tokens ?? 0, 0);
     return res.data.map((d) => d.embedding);
   }
 }
