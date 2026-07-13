@@ -3,7 +3,7 @@ import { config, MARKET_ES } from "../config.js";
 import { canonicalKey, dedupeByCanonical } from "../lib/text.js";
 import { CostMeter, currentMeter, usdFromMicros, withCostMeter } from "../lib/cost.js";
 import { Budget, BudgetExceededError, estimateEnrichment } from "../lib/budget.js";
-import { getProvider } from "../dataforseo/index.js";
+import { CachedProvider, getProvider } from "../dataforseo/index.js";
 import { getEmbedder } from "../llm/index.js";
 import { generateSeeds } from "../llm/seeds.js";
 import { WEIGHTS_DEFAULT } from "../types.js";
@@ -313,6 +313,17 @@ async function runResearchInner(
 
   // Corte final: si el gasto real superó el tope (la estimación se quedó corta), se avisa acá.
   budget.assertNotExceeded("fin del run");
+
+  // La cache persiste en cada `setMany`, no acá: si el run se cae a mitad, lo que YA se pagó tiene
+  // que quedar guardado igual. Es la misma lección del checkpoint del dataset.
+  if (dfs instanceof CachedProvider) {
+    const { hits, misses } = dfs.stats;
+    const total = hits + misses;
+    if (total > 0) {
+      const pctHit = Math.round((hits / total) * 100);
+      log("cache", `${hits}/${total} consultas servidas desde cache (${pctHit}%) · ${misses} pagadas`);
+    }
+  }
 
   const breakdown = costMeter.breakdown;
   log(

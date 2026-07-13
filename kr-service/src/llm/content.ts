@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config.js";
 import { currentMeter } from "../lib/cost.js";
-import { trackChatUsage } from "./openai.js";
+import { DETERMINISTIC_SEED, trackChatUsage } from "./openai.js";
 import { tokenize } from "./mock.js";
 import type { Market, PageType, SearchIntent } from "../types.js";
 
@@ -81,6 +81,11 @@ class OpenAIContentGen implements ContentGen {
     const res = await this.client.chat.completions.create({
       model: config.openai.generationModel,
       response_format: { type: "json_object" },
+      // Clasificar NO es escribir: la relevancia de una keyword para un negocio no debería cambiar
+      // entre corridas. Con temperatura 1 la misma keyword pasaba o no pasaba el gate según la
+      // suerte del día. Ver `temperature: 0` en generateSeeds.
+      temperature: 0,
+      seed: DETERMINISTIC_SEED,
       messages: [
         {
           role: "system",
@@ -115,6 +120,11 @@ class OpenAIContentGen implements ContentGen {
     const res = await this.client.chat.completions.create({
       model: config.openai.generationModel,
       response_format: { type: "json_object" },
+      // La intención de una keyword es un HECHO, no una opinión creativa: no puede cambiar entre
+      // corridas. Con temperatura 1, "menú del día" salía informational un día y commercial al
+      // otro — y de eso cuelga el tipo de página y el JSON-LD.
+      temperature: 0,
+      seed: DETERMINISTIC_SEED,
       messages: [
         {
           role: "system",
@@ -151,6 +161,9 @@ class OpenAIContentGen implements ContentGen {
     const res = await this.client.chat.completions.create({
       model: config.openai.generationModel,
       response_format: { type: "json_object" },
+      // SIN `temperature: 0` a propósito: acá sí se escribe. Las otras llamadas (seeds, intención,
+      // relevancia) son clasificación y van deterministas; ésta es redacción, y un texto de venta
+      // idéntico para todos los clientes sería peor, no mejor.
       messages: [
         {
           role: "system",

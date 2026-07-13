@@ -32,6 +32,21 @@ export const config = {
     },
   },
 
+  /**
+   * Cache de las respuestas de DataForSEO (ADR-10).
+   *
+   * Activa por defecto: el 81% del costo de un research es DataForSEO, y sin cache cada corrida
+   * vuelve a pagar por keywords que ya se consultaron. `DFS_CACHE=off` la desactiva (útil para
+   * medir el costo bruto de un research desde cero).
+   *
+   * En producción esto se reemplaza por las tablas `kr_metrics_cache` / `kr_serp_cache`, que además
+   * comparten la cache entre TODOS los clientes de la plataforma.
+   */
+  cache: {
+    enabled: process.env.DFS_CACHE !== "off",
+    path: process.env.DFS_CACHE_PATH ?? ".cache/dataforseo.json",
+  },
+
   llm: {
     // Proveedor de GENERACIÓN (seeds, briefs). Embeddings van aparte (ver abajo).
     provider: llmProvider,
