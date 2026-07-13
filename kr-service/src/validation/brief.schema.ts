@@ -46,6 +46,8 @@ const proposedPage = z.object({
   local: z.boolean(),
   volumen: z.number().int().nonnegative().nullable(),
   dificultad: z.number().min(0).max(100).nullable(),
+  // v0.5: ¿la página está respaldada por datos de mercado o es una apuesta sin validar?
+  evidencia: z.enum(["datos_mercado", "sin_validar"]),
   opportunity_score: z.number().min(0).max(100),
   score_confidence: z.number().min(0).max(1),
   seo: pageSeo,
@@ -68,6 +70,12 @@ export const briefSchema = z.object({
   meta_run: z.object({
     keywords_analizadas: z.number().int().nonnegative(),
     paginas_propuestas: z.number().int().nonnegative(),
+    // v0.5: cobertura real de los datos. Un fallo de DataForSEO deja de ser invisible.
+    calidad_datos: z.object({
+      cobertura_volumen: z.number().min(0).max(1),
+      cobertura_kd: z.number().min(0).max(1),
+      endpoints_degradados: z.array(z.string()),
+    }),
     // v0.3: total de TODOS los proveedores (antes solo DataForSEO) + desglose.
     coste_micros_usd: z.number().int().nonnegative(),
     coste_breakdown: z.object({

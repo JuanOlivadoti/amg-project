@@ -10,7 +10,11 @@ import type { BusinessProfile, KrBrief } from "./types.js";
  * sola fuente de verdad (el M2 ya valida su salida con Zod en kr-service).
  */
 // v0.3 solo cambia `meta_run` (costo total + desglose), que el M1 no consume → compatible.
-export const SUPPORTED_SCHEMA_VERSIONS = ["kr.v0.2", "kr.v0.3", "kr.v0.4"] as const;
+// v0.4: `volumen`/`dificultad` nullable.
+// v0.5: `evidencia` + `score_confidence` por página. Ambos OPCIONALES acá para no romper los
+// briefs viejos, pero el M1 los usa para AVISAR: una página sin evidencia de mercado no puede
+// llegar a publicarse sin que quien aprueba lo sepa.
+export const SUPPORTED_SCHEMA_VERSIONS = ["kr.v0.2", "kr.v0.3", "kr.v0.4", "kr.v0.5"] as const;
 
 const schemaTypeSchema = z.enum(["LocalBusiness", "Article", "FAQPage", "WebPage"]);
 const pageTypeSchema = z.enum(["servicio", "landing_local", "blog", "institucional"]);
@@ -35,6 +39,12 @@ const proposedPageSchema = z.object({
   volumen: z.number().nullable(),
   dificultad: z.number().nullable(),
   opportunity_score: z.number(),
+  // Desde kr.v0.5. Opcionales para no romper briefs anteriores, pero SON la señal de honestidad
+  // del research: sin ellos, quien aprueba la web no puede saber que una página se apoya en cero
+  // datos de mercado. Antes ni siquiera estaban en el esquema, así que Zod los DESCARTABA al
+  // parsear: el M2 los calculaba y el M1 los tiraba a la basura.
+  evidencia: z.enum(["datos_mercado", "sin_validar"]).optional(),
+  score_confidence: z.number().min(0).max(1).optional(),
   seo: z.object({
     meta_title: z.string(),
     meta_description: z.string(),

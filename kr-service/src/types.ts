@@ -5,7 +5,10 @@
 // y se añade `coste_breakdown`. Cambio semántico → bump de versión.
 // v0.4: `volumen` y `dificultad` pasan a ser nullable. Antes un dato faltante se escribía como 0,
 // que el consumidor no podía distinguir de un 0 real. Cambio de contrato → sube la versión.
-export const SCHEMA_VERSION = "kr.v0.4";
+// v0.5: cada página declara su `evidencia` (¿está respaldada por datos de mercado o no?) y el
+// brief reporta la `calidad_datos` del run. Sin esto, una página basada en CERO datos se
+// presentaba junto a una validada, indistinguibles para quien aprueba.
+export const SCHEMA_VERSION = "kr.v0.5";
 
 export interface Market {
   country: string; // ISO-3166-1 alpha-2
@@ -22,6 +25,24 @@ export type SearchIntent =
 
 export type PageType = "servicio" | "landing_local" | "blog" | "institucional";
 export type PageStrategy = "single" | "hub_spoke" | "merge" | "backlog";
+/** Ver `ProposedPage.evidencia`. */
+export type PageEvidence = "datos_mercado" | "sin_validar";
+
+/**
+ * Cobertura real de los datos de mercado del run.
+ *
+ * El pipeline degrada con elegancia ante un fallo de DataForSEO (catch → null y sigue), lo cual
+ * está bien... salvo que el fallo se volvía INVISIBLE: el brief salía igual de confiado, con
+ * páginas basadas en cero datos. Esto lo hace explícito y auditable.
+ */
+export interface DataQuality {
+  /** Fracción de keywords con volumen conocido (0..1). */
+  cobertura_volumen: number;
+  /** Fracción de keywords con dificultad conocida (0..1). */
+  cobertura_kd: number;
+  /** Endpoints de pago que fallaron ENTEROS (no devolvieron nada). */
+  endpoints_degradados: string[];
+}
 
 export interface ScoringWeights {
   volume: number;
@@ -109,6 +130,17 @@ export interface ProposedPage {
   volumen: number | null;
   /** `null` = el proveedor no devolvió el dato (≠ dificultad 0). */
   dificultad: number | null;
+  /**
+   * ¿Esta página está respaldada por datos de mercado, o es una apuesta sin validar?
+   *
+   * - `datos_mercado`: la keyword principal, o alguna del cluster, tiene volumen real.
+   * - `sin_validar`: NINGUNA keyword del cluster tiene volumen. La página puede ser legítima
+   *   (suele ser un servicio que el propio negocio declaró), pero **no hay evidencia de que
+   *   alguien la busque**. No es lo mismo, y quien aprueba tiene que poder distinguirlo.
+   *
+   * Las `sin_validar` NUNCA se ordenan por encima de las que tienen datos.
+   */
+  evidencia: PageEvidence;
   opportunity_score: number;
   score_confidence: number;
   seo: PageSeo;
@@ -129,6 +161,8 @@ export interface KeywordResearchBrief {
   meta_run: {
     keywords_analizadas: number;
     paginas_propuestas: number;
+    /** Cobertura real de los datos de mercado. Un fallo de DataForSEO deja de ser invisible. */
+    calidad_datos: DataQuality;
     /** Costo TOTAL del run (DataForSEO + LLM), en micros de USD. */
     coste_micros_usd: number;
     /** Desglose por proveedor: permite ver dónde se va el gasto. */

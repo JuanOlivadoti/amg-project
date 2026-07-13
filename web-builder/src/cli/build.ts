@@ -64,6 +64,27 @@ async function main() {
   // En vivo: solo las páginas aprobadas. En preview/dry-run: todas (para revisión).
   const pagesToBuild = willPublishLive ? approvedPages : pages;
 
+  // Aviso de evidencia (kr.v0.5). La compuerta de aprobación (ADR-06) existe para que un humano
+  // decida con criterio, pero hasta ahora decidía A CIEGAS: el M2 calculaba `score_confidence` y
+  // `evidencia`, y el esquema del M1 ni siquiera los tenía, así que Zod los descartaba al parsear.
+  // Se podía aprobar y publicar una página basada en CERO datos de mercado sin enterarse.
+  const sinValidar = pagesToBuild.filter((p) => p.evidencia === "sin_validar");
+  if (sinValidar.length) {
+    console.warn(
+      `\n  ⚠️  [evidencia] ${sinValidar.length} de ${pagesToBuild.length} página(s) NO tienen datos de mercado ` +
+        `que las respalden:`,
+    );
+    for (const p of sinValidar) {
+      const conf = p.score_confidence != null ? ` · confianza ${p.score_confidence}` : "";
+      console.warn(`      · ${p.url_slug}  (${p.keyword_principal})${conf}`);
+    }
+    console.warn(
+      `      Ninguna keyword de esos grupos tiene volumen de búsqueda conocido. Pueden ser páginas\n` +
+        `      legítimas (servicios que el negocio ofrece), pero NO se pueden presentar como\n` +
+        `      oportunidad SEO validada. Revisalo antes de mostrárselo al cliente.\n`,
+    );
+  }
+
   // Handoff → prose (LLM) → render → publish
   const stories = briefToStories({ ...brief, paginas_propuestas: pagesToBuild });
   console.log(`  [handoff] ${stories.length} página(s) → stories Storyblok`);

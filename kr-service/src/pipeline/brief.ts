@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { SCHEMA_VERSION } from "../types.js";
 import { usdFromMicros } from "../lib/cost.js";
 import type { CostBreakdown } from "../lib/cost.js";
-import type { KeywordResearchBrief, Market, ProposedPage } from "../types.js";
+import type { DataQuality, KeywordResearchBrief, Market, ProposedPage } from "../types.js";
 
 export function assembleBrief(args: {
   cliente: string;
@@ -10,6 +10,7 @@ export function assembleBrief(args: {
   pages: ProposedPage[];
   backlog: Array<{ keyword_principal: string; opportunity_score: number }>;
   keywordsAnalizadas: number;
+  calidadDatos: DataQuality;
   costeMicros: number;
   costeBreakdown: CostBreakdown;
   modelosSinPrecio: string[];
@@ -26,6 +27,7 @@ export function assembleBrief(args: {
     meta_run: {
       keywords_analizadas: args.keywordsAnalizadas,
       paginas_propuestas: args.pages.length,
+      calidad_datos: args.calidadDatos,
       coste_micros_usd: args.costeMicros,
       coste_breakdown: args.costeBreakdown,
       ...(args.modelosSinPrecio.length ? { modelos_sin_precio: args.modelosSinPrecio } : {}),
@@ -64,19 +66,62 @@ export function renderReport(brief: KeywordResearchBrief): string {
   }
   l.push("");
 
-  l.push(`## Páginas propuestas\n`);
-  l.push(`| # | Tipo | Keyword principal | Vol. | KD | Score | Conf. | Intención |`);
-  l.push(`|---|---|---|---|---|---|---|---|`);
-  brief.paginas_propuestas.forEach((p, i) => {
+  // Calidad de los datos del run. Va ARRIBA de las páginas a propósito: quien aprueba tiene que
+  // saber sobre qué base está aprobando ANTES de mirar la lista.
+  const q = brief.meta_run.calidad_datos;
+  const pct = (n: number) => `${Math.round(n * 100)}%`;
+  l.push(`### Calidad de los datos\n`);
+  l.push(`| Métrica | Cobertura |`);
+  l.push(`|---|---|`);
+  l.push(`| Keywords con **volumen** conocido | **${pct(q.cobertura_volumen)}** |`);
+  l.push(`| Keywords con **dificultad (KD)** conocida | **${pct(q.cobertura_kd)}** |`);
+  if (q.endpoints_degradados.length) {
     l.push(
-      `| ${i + 1} | ${p.tipo} | ${p.keyword_principal} | ${metric(p.volumen)} | ${metric(p.dificultad)} | ` +
-        `${p.opportunity_score} | ${p.score_confidence} | ${p.intencion}${p.local ? " (local)" : ""} |`,
+      `\n> 🔴 **Datos incompletos:** falló el endpoint \`${q.endpoints_degradados.join("`, `")}\`. ` +
+        `Las métricas que faltan **no son ceros**: no se pudieron obtener.`,
     );
-  });
+  }
+  l.push("");
+
+  // Las páginas se separan por EVIDENCIA, no solo por score. Mezclarlas en una sola tabla hacía
+  // indistinguible una página respaldada por 480 búsquedas/mes de una apuesta sin ningún dato.
+  const conDatos = brief.paginas_propuestas.filter((p) => p.evidencia === "datos_mercado");
+  const sinValidar = brief.paginas_propuestas.filter((p) => p.evidencia === "sin_validar");
+
+  const tabla = (pages: ProposedPage[], offset: number) => {
+    l.push(`| # | Tipo | Keyword principal | Vol. | KD | Score | Conf. | Intención |`);
+    l.push(`|---|---|---|---|---|---|---|---|`);
+    pages.forEach((p, i) => {
+      l.push(
+        `| ${offset + i + 1} | ${p.tipo} | ${p.keyword_principal} | ${metric(p.volumen)} | ${metric(p.dificultad)} | ` +
+          `${p.opportunity_score} | ${p.score_confidence} | ${p.intencion}${p.local ? " (local)" : ""} |`,
+      );
+    });
+  };
+
+  l.push(`## Páginas propuestas\n`);
+
+  if (conDatos.length) {
+    l.push(`### ✅ Respaldadas por datos de mercado (${conDatos.length})\n`);
+    l.push(`Hay demanda de búsqueda **demostrable** detrás de estas páginas.\n`);
+    tabla(conDatos, 0);
+    l.push("");
+  }
+
+  if (sinValidar.length) {
+    l.push(`### ⚠️ Sin validar (${sinValidar.length})\n`);
+    l.push(
+      `**Ninguna keyword de estos grupos tiene volumen de búsqueda conocido.** Suelen ser servicios ` +
+        `reales que el negocio ofrece, y por eso la página puede tener sentido igual — pero **no hay ` +
+        `evidencia de que alguien los busque**, así que no se pueden vender como oportunidad SEO.\n`,
+    );
+    tabla(sinValidar, conDatos.length);
+    l.push("");
+  }
 
   if (brief.paginas_propuestas.some((p) => p.volumen === null || p.dificultad === null)) {
     l.push(
-      `\n> **n/d** = el proveedor de datos no devolvió la métrica para esa keyword. ` +
+      `> **n/d** = el proveedor de datos no devolvió la métrica para esa keyword. ` +
         `**No es un 0**: es un dato que no tenemos, y por eso esas páginas van con la confianza baja.`,
     );
   }

@@ -1,19 +1,43 @@
 ﻿import { randomUUID } from "node:crypto";
 import type { Cluster } from "./cluster.js";
-import type { EnrichedKeyword, PageType, ProposedPage, SearchIntent } from "../types.js";
+import type { EnrichedKeyword, PageEvidence, PageType, ProposedPage, SearchIntent } from "../types.js";
+
+/**
+ * ¿Hay ALGUNA evidencia de mercado detrás de este cluster?
+ *
+ * Basta con que una keyword del cluster —no necesariamente la cabeza— tenga volumen conocido:
+ * si el tema tiene demanda demostrable, la página se sostiene aunque la cabeza sea una variante
+ * long-tail sin datos propios.
+ */
+function evidenceOf(members: EnrichedKeyword[]): PageEvidence {
+  return members.some((m) => m.volume != null) ? "datos_mercado" : "sin_validar";
+}
 
 /**
  * Mapeo de clusters (ya armados por cluster.ts) → páginas propuestas.
- * Una página por cluster; se respeta max_pages priorizando por score, el resto
- * va a backlog. La lógica de agrupación real vive en cluster.ts.
+ *
+ * ORDEN: primero por evidencia, después por score. Una página `sin_validar` NUNCA se ordena por
+ * encima de una respaldada por datos de mercado, aunque su `opportunity_score` sea mayor.
+ *
+ * Esto importa porque el score no lo impide solo: el 40% (intención + relevancia) no depende de
+ * ningún dato de mercado, así que una keyword de la que no sabemos NADA arranca en ~50 puntos y
+ * puede superar a una con volumen real pero alta dificultad. `score_confidence` detectaba el caso
+ * (0.3) pero no se usaba para nada. Ahora sí.
+ *
+ * Las `sin_validar` NO se descartan: suelen ser servicios que el propio negocio declaró (un
+ * restaurante quiere su página de "menú del día" tenga o no volumen medible). Se conservan, pero
+ * ETIQUETADAS, y el informe las separa. Presentarlas mezcladas con las validadas era el problema.
  */
 export function mapClustersToPages(clusters: Cluster[], maxPages: number): {
   pages: ProposedPage[];
   backlog: Array<{ keyword_principal: string; opportunity_score: number }>;
 } {
-  const ranked = [...clusters].sort(
-    (a, b) => (b.members[0]!.opportunity_score ?? 0) - (a.members[0]!.opportunity_score ?? 0),
-  );
+  const ranked = [...clusters].sort((a, b) => {
+    const ea = evidenceOf(a.members) === "datos_mercado" ? 1 : 0;
+    const eb = evidenceOf(b.members) === "datos_mercado" ? 1 : 0;
+    if (ea !== eb) return eb - ea; // la evidencia manda sobre el score
+    return (b.members[0]!.opportunity_score ?? 0) - (a.members[0]!.opportunity_score ?? 0);
+  });
 
   const pages: ProposedPage[] = [];
   const backlog: Array<{ keyword_principal: string; opportunity_score: number }> = [];
@@ -47,6 +71,7 @@ function buildPage(head: EnrichedKeyword, members: EnrichedKeyword[]): ProposedP
     // El scoring ya penaliza la falta de dato vía `score_confidence`.
     volumen: head.volume ?? null,
     dificultad: head.difficulty ?? null,
+    evidencia: evidenceOf(members),
     opportunity_score: head.opportunity_score ?? 0,
     score_confidence: head.score_confidence ?? 0,
     seo: {

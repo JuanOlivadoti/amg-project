@@ -18,7 +18,7 @@ export type SearchIntent =
   | "informational"
   | "navigational";
 
-/** Página propuesta tal como la emite el brief del Módulo 2 (kr.v0.2). */
+/** Página propuesta tal como la emite el brief del Módulo 2. */
 export interface KrProposedPage {
   cluster_id: string;
   tipo: PageType;
@@ -31,6 +31,10 @@ export interface KrProposedPage {
   volumen: number | null;
   /** `null` = el research no obtuvo la métrica (≠ 0). Ver kr.v0.4. */
   dificultad: number | null;
+  /** kr.v0.5. `sin_validar` = ninguna keyword del cluster tiene volumen conocido. */
+  evidencia?: "datos_mercado" | "sin_validar";
+  /** kr.v0.5. 0..1 — baja cuando faltan datos. `< 0.5` = la página se apoya en poco o nada. */
+  score_confidence?: number;
   opportunity_score: number;
   seo: {
     meta_title: string;
@@ -121,6 +125,9 @@ export interface PageContent {
     opportunity_score: number;
     volumen: number | null;
     dificultad: number | null;
+    /** kr.v0.5 — ver `KrProposedPage.evidencia`. */
+    evidencia?: "datos_mercado" | "sin_validar";
+    score_confidence?: number;
   };
 }
 

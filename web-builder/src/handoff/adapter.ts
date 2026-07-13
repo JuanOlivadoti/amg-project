@@ -63,6 +63,10 @@ export function pageToStory(page: KrProposedPage, brief: KrBrief): Story {
         opportunity_score: page.opportunity_score,
         volumen: page.volumen,
         dificultad: page.dificultad,
+        // kr.v0.5: la evidencia viaja con la página. Queda en el trace de research de la story,
+        // así que la falta de datos es auditable desde Storyblok y no solo desde la consola.
+        evidencia: page.evidencia,
+        score_confidence: page.score_confidence,
       },
     },
   };

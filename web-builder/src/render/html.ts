@@ -188,6 +188,8 @@ function researchTrace(c: PageContent): string {
     opportunity_score: c.meta.opportunity_score,
     volumen: c.meta.volumen,
     dificultad: c.meta.dificultad,
+    evidencia: c.meta.evidencia,
+    score_confidence: c.meta.score_confidence,
     word_count_objetivo: c.meta.word_count_objetivo,
   };
   return `<script type="application/json" id="research-trace">\n${safeJson(t)}\n</script>`;

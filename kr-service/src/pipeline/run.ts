@@ -1,4 +1,4 @@
-import { MARKET_ES } from "../config.js";
+import { config, MARKET_ES } from "../config.js";
 import { canonicalKey, dedupeByCanonical } from "../lib/text.js";
 import { costMeter, usdFromMicros } from "../lib/cost.js";
 import { Budget } from "../lib/budget.js";
@@ -6,7 +6,12 @@ import { getProvider } from "../dataforseo/index.js";
 import { getEmbedder } from "../llm/index.js";
 import { generateSeeds } from "../llm/seeds.js";
 import { WEIGHTS_DEFAULT } from "../types.js";
-import type { EnrichedKeyword, KeywordResearchBrief, KeywordResearchInput } from "../types.js";
+import type {
+  DataQuality,
+  EnrichedKeyword,
+  KeywordResearchBrief,
+  KeywordResearchInput,
+} from "../types.js";
 import { scoreKeywords } from "./scoring.js";
 import { clusterKeywords } from "./cluster.js";
 import { mapClustersToPages } from "./cluster-map.js";
@@ -80,13 +85,16 @@ export async function runResearch(
 
   // Paso 4 — Enriquecimiento (volumen + dificultad)
   budget.assertCanSpend(est.dfsSearchVolume + est.dfsBulkKd, "enriquecimiento");
+  const endpointsDegradados: string[] = [];
   const [volRows, kdMap] = await Promise.all([
     dfs.searchVolume(keywords, market).catch((e) => {
       log("enrich", `aviso volumen: ${(e as Error).message}`);
+      endpointsDegradados.push("search_volume");
       return [] as Awaited<ReturnType<typeof dfs.searchVolume>>;
     }),
     dfs.bulkKeywordDifficulty(keywords, market).catch((e) => {
       log("enrich", `aviso KD: ${(e as Error).message}`);
+      endpointsDegradados.push("bulk_keyword_difficulty");
       return new Map<string, number | null>();
     }),
   ]);
@@ -117,6 +125,53 @@ export async function runResearch(
     };
   });
   log("enrich", `enriquecidas ${enriched.length} · coste API $${(dfs.costMicros / 1_000_000).toFixed(4)}`);
+
+  // Gate de cobertura — el fallo de DataForSEO deja de ser invisible.
+  //
+  // El pipeline degrada con elegancia (catch → null y sigue), lo cual está bien... salvo que el
+  // fallo era INDISTINGUIBLE del éxito: si el endpoint de volumen se caía entero, el run seguía
+  // gastando en intención, relevancia, clustering y contenido, y escupía un brief igual de
+  // confiado con páginas basadas en CERO datos de mercado. El cliente no tenía cómo notarlo.
+  //
+  // Con cobertura 0 se corta ACÁ, antes de seguir gastando: un research sin un solo dato de
+  // mercado no es un research, es una lista de opiniones del LLM.
+  const calidadDatos: DataQuality = {
+    cobertura_volumen: enriched.length ? enriched.filter((k) => k.volume != null).length / enriched.length : 0,
+    cobertura_kd: enriched.length ? enriched.filter((k) => k.difficulty != null).length / enriched.length : 0,
+    endpoints_degradados: endpointsDegradados,
+  };
+  const pct = (n: number) => `${Math.round(n * 100)}%`;
+  log(
+    "calidad",
+    `cobertura volumen ${pct(calidadDatos.cobertura_volumen)} · KD ${pct(calidadDatos.cobertura_kd)}` +
+      (endpointsDegradados.length ? ` · ⚠️ degradados: ${endpointsDegradados.join(", ")}` : ""),
+  );
+  // El corte duro solo aplica cuando el dinero es REAL. El mock y el sandbox no cobran y no
+  // devuelven volúmenes de verdad (el sandbox da 0% por diseño), así que abortar ahí rompería el
+  // loop de desarrollo gratis —que es una propiedad central del proyecto— sin proteger nada.
+  const gastaDineroReal = config.dataforseo.mode === "live" && !config.dataforseo.isSandbox;
+
+  if (calidadDatos.cobertura_volumen === 0) {
+    const msg =
+      "Cobertura de volumen 0%: ninguna keyword tiene datos de mercado. " +
+      (endpointsDegradados.length
+        ? `Endpoints caídos: ${endpointsDegradados.join(", ")}.`
+        : "El proveedor respondió pero sin volúmenes.");
+
+    if (gastaDineroReal) {
+      throw new Error(
+        `${msg} Se aborta ANTES de gastar en contenido: un brief sin un solo volumen real no es un ` +
+          `research, y presentarlo como tal engañaría al cliente.`,
+      );
+    }
+    log("calidad", `⚠️ ${msg} (esperable fuera de producción: se continúa)`);
+  } else if (calidadDatos.cobertura_volumen < 0.3) {
+    log(
+      "calidad",
+      `⚠️ solo ${pct(calidadDatos.cobertura_volumen)} de las keywords tiene volumen. El brief lo ` +
+        `declara en meta_run.calidad_datos y las páginas afectadas quedan marcadas "sin_validar".`,
+    );
+  }
 
   // Paso 4b — Intención de búsqueda (LLM en batch, con fallback heurístico)
   budget.assertCanSpend(est.llmCall, "intención");
@@ -177,6 +232,7 @@ export async function runResearch(
     pages,
     backlog,
     keywordsAnalizadas: enriched.length,
+    calidadDatos,
     costeMicros: costMeter.totalMicros, // TODOS los proveedores (antes: solo DataForSEO)
     costeBreakdown: breakdown,
     modelosSinPrecio: costMeter.unpricedModels,
