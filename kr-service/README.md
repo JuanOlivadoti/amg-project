@@ -32,7 +32,7 @@ npm run spike                       # usa el caso por defecto (restaurante Madri
 npm run spike "Clínica dental en Valencia. Servicios: implantes, ortodoncia."
 ```
 Salida en `out/`:
-- `brief.json` — el brief estructurado (validado contra el esquema v0.2).
+- `brief.json` — el brief estructurado (validado contra el esquema `kr.v0.3`).
 - `informe.md` — el informe legible (entregable de la compuerta humana).
 
 Verificar tipos: `npm run typecheck`
@@ -52,6 +52,8 @@ Verificar tipos: `npm run typecheck`
 | Contenido on-page por LLM (meta, secciones, FAQs, claims) | ✅ |
 | Ensamblado del brief + informe + validación Zod | ✅ |
 | Clasificación de intención + page_type | ✅ LLM en batch (fallback heurístico) · TODO: señales SERP para is_local |
+| Costo completo del run (DataForSEO + LLM) con desglose | ✅ |
+| Presupuesto preflight (`max_cost_micros` aborta antes de gastar) | ✅ |
 | Compuerta humana / persistencia / Inngest | ⛔ Fase 2-3 |
 
 ### Proveedores (todo mock por default, sin keys)

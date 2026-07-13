@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { SCHEMA_VERSION } from "../types.js";
+import { usdFromMicros } from "../lib/cost.js";
+import type { CostBreakdown } from "../lib/cost.js";
 import type { KeywordResearchBrief, Market, ProposedPage } from "../types.js";
 
 export function assembleBrief(args: {
@@ -9,6 +11,8 @@ export function assembleBrief(args: {
   backlog: Array<{ keyword_principal: string; opportunity_score: number }>;
   keywordsAnalizadas: number;
   costeMicros: number;
+  costeBreakdown: CostBreakdown;
+  modelosSinPrecio: string[];
 }): KeywordResearchBrief {
   return {
     schema_version: SCHEMA_VERSION,
@@ -23,6 +27,8 @@ export function assembleBrief(args: {
       keywords_analizadas: args.keywordsAnalizadas,
       paginas_propuestas: args.pages.length,
       coste_micros_usd: args.costeMicros,
+      coste_breakdown: args.costeBreakdown,
+      ...(args.modelosSinPrecio.length ? { modelos_sin_precio: args.modelosSinPrecio } : {}),
     },
   };
 }
@@ -34,7 +40,21 @@ export function renderReport(brief: KeywordResearchBrief): string {
   l.push(`\n_${brief.market.country} · ${brief.market.language_code} · ${brief.generated_at}_\n`);
   l.push(`- Keywords analizadas: **${brief.meta_run.keywords_analizadas}**`);
   l.push(`- Páginas propuestas: **${brief.meta_run.paginas_propuestas}**`);
-  l.push(`- Coste API: **$${(brief.meta_run.coste_micros_usd / 1_000_000).toFixed(4)}**\n`);
+
+  const c = brief.meta_run.coste_breakdown;
+  l.push(`\n### Coste del research\n`);
+  l.push(`| Proveedor | Coste |`);
+  l.push(`|---|---|`);
+  l.push(`| DataForSEO | $${usdFromMicros(c.dataforseo_micros)} |`);
+  l.push(`| LLM (generación) | $${usdFromMicros(c.llm_generation_micros)} |`);
+  l.push(`| LLM (embeddings) | $${usdFromMicros(c.llm_embeddings_micros)} |`);
+  l.push(`| **TOTAL** | **$${usdFromMicros(brief.meta_run.coste_micros_usd)}** |`);
+  if (brief.meta_run.modelos_sin_precio?.length) {
+    l.push(
+      `\n> ⚠️ Coste **incompleto**: sin tarifa configurada para ${brief.meta_run.modelos_sin_precio.join(", ")}.`,
+    );
+  }
+  l.push("");
 
   l.push(`## Páginas propuestas\n`);
   l.push(`| # | Tipo | Keyword principal | Vol. | KD | Score | Conf. | Intención |`);

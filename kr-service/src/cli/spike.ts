@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { config } from "../config.js";
+import { SCHEMA_VERSION } from "../types.js";
 import { runResearch } from "../pipeline/run.js";
 import { renderReport } from "../pipeline/brief.js";
 import { briefSchema } from "../validation/brief.schema.js";
@@ -28,11 +29,11 @@ async function main() {
   // Validación del contrato (Zod) — la "validación" del pipeline.
   const parsed = briefSchema.safeParse(brief);
   if (!parsed.success) {
-    console.error("\n❌ El brief NO cumple el esquema v0.2:");
+    console.error(`\n❌ El brief NO cumple el esquema ${SCHEMA_VERSION}:`);
     console.error(parsed.error.issues.slice(0, 10));
     process.exitCode = 1;
   } else {
-    console.log("\n✅ Brief válido contra el esquema v0.2");
+    console.log(`\n✅ Brief válido contra el esquema ${SCHEMA_VERSION}`);
   }
 
   await mkdir("out", { recursive: true });

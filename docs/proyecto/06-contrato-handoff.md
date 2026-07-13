@@ -16,11 +16,20 @@ valida en runtime.
 
 ## Versionado
 
-El brief lleva `schema_version`. Hoy: **`kr.v0.2`**.
+El brief lleva `schema_version`. Hoy: **`kr.v0.3`**.
 
 - El Módulo 2 lo emite desde `SCHEMA_VERSION` (`kr-service/src/types.ts`).
 - El Módulo 1 declara qué versiones soporta en `SUPPORTED_SCHEMA_VERSIONS` (`web-builder/src/contract.ts`)
   y **rechaza cualquier otra** con un error claro, en vez de intentar procesarla.
+
+### Historial
+
+| Versión | Cambio |
+|---|---|
+| `kr.v0.2` | Contrato base. |
+| **`kr.v0.3`** | `coste_micros_usd` pasa a incluir **todos los proveedores** (antes: solo DataForSEO) y se añade `coste_breakdown`. Es un **cambio semántico** —el mismo campo significa otra cosa—, por eso se bumpeó la versión aunque la forma sea casi igual. |
+
+El Módulo 1 acepta **ambas** (`kr.v0.2` y `kr.v0.3`): el cambio es en `meta_run`, que no consume.
 
 ```
 ✖ schema_version "kr.v9" no soportada. Soportadas: kr.v0.2. Actualizá el adaptador o migrá el brief.
@@ -72,9 +81,15 @@ El brief lleva `schema_version`. Hoy: **`kr.v0.2`**.
   ],
   "backlog": [{ "keyword_principal": "...", "opportunity_score": 42 }],
   "meta_run": {
-    "keywords_analizadas": 23,
+    "keywords_analizadas": 21,
     "paginas_propuestas": 1,
-    "coste_micros_usd": 0                // solo DataForSEO, NO incluye el LLM
+    "coste_micros_usd": 17761,           // TOTAL: todos los proveedores (v0.3)
+    "coste_breakdown": {
+      "dataforseo_micros": 0,            // 0 en sandbox
+      "llm_generation_micros": 17758,
+      "llm_embeddings_micros": 3
+    },
+    "modelos_sin_precio": []             // si hay alguno, el total está INCOMPLETO
   }
 }
 ```
@@ -121,13 +136,20 @@ Viajan con la página hasta el contenido final. El Módulo 1 se los pasa al LLM 
 y se persisten en Storyblok para quien edite después. Es la salvaguarda del sistema en
 **sectores regulados** (gastronomía, salud): que ningún paso de la cadena prometa lo que no debe.
 
-### `coste_micros_usd`
+### `coste_micros_usd` + `coste_breakdown`
 
 En **micros** (millonésimas de USD) para evitar errores de coma flotante
 ([ADR-10](../decisiones-arquitectura.md)).
 
-> ⚠️ **Solo cuenta DataForSEO.** El coste de OpenAI/Anthropic **no está incluido**. Es una brecha
-> conocida (ver [roadmap](09-estado-y-roadmap.md)).
+Desde **v0.3** el total incluye **todos los proveedores** (DataForSEO + LLM de generación +
+embeddings), con el desglose para ver dónde se va el gasto. Es el número que alimenta la
+propuesta comercial.
+
+- El costo de **DataForSEO es real** (lo reporta la API).
+- El del **LLM se calcula** desde los tokens reales × una **tarifa configurable**.
+
+> ⚠️ Si se usa un modelo **sin tarifa configurada**, el costo **no se inventa**: aparece en
+> `modelos_sin_precio` y el total queda marcado como **incompleto**.
 
 ## Dónde vive el contrato
 

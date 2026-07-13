@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { costMeter } from "../lib/cost.js";
 
 /**
  * Cliente DataForSEO (Basic Auth). Arranca contra sandbox.
@@ -41,7 +42,10 @@ export class DataForSeoClient {
 
     const results: T[] = [];
     for (const task of json.tasks ?? []) {
-      if (typeof task.cost === "number") this.costUsd += task.cost;
+      if (typeof task.cost === "number") {
+        this.costUsd += task.cost;
+        costMeter.addUsd("dataforseo", task.cost); // alimenta el costo total del run
+      }
       // Una respuesta global 20000 puede traer tasks fallidas (status != 20000, result null).
       // Antes se contaban como éxito → keywords sin datos que parecían "sin volumen" (#10).
       // Se avisa explícitamente y se omite su result (parcial visible, no silencioso).

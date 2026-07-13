@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { config } from "../config.js";
+import { trackChatUsage } from "./openai.js";
 import { tokenize } from "./mock.js";
 import type { Market, PageType, SearchIntent } from "../types.js";
 
@@ -87,6 +88,7 @@ class OpenAIContentGen implements ContentGen {
         { role: "user", content: `Negocio: ${businessPrompt}\nKeywords:\n${keywords.join("\n")}` },
       ],
     });
+    trackChatUsage(config.openai.generationModel, res.usage);
     const parsed = JSON.parse(res.choices[0]?.message.content ?? "{}") as {
       scores?: Array<{ keyword: string; relevance: number }>;
     };
@@ -132,6 +134,7 @@ class OpenAIContentGen implements ContentGen {
         },
       ],
     });
+    trackChatUsage(config.openai.generationModel, res.usage);
     const parsed = JSON.parse(res.choices[0]?.message.content ?? "{}") as {
       items?: Array<{ keyword?: string; intent?: string; is_local?: boolean }>;
     };
@@ -170,6 +173,7 @@ class OpenAIContentGen implements ContentGen {
         },
       ],
     });
+    trackChatUsage(config.openai.generationModel, res.usage);
     const p = JSON.parse(res.choices[0]?.message.content ?? "{}") as Partial<PageContentResult>;
     return normalizeContent(p, input);
   }

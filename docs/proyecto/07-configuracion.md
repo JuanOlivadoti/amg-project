@@ -25,6 +25,17 @@ Copiá `.env.example` a `.env` y completá lo que necesites. **Todas las variabl
 | `OPENAI_MODEL` | string | `gpt-4o` | Modelo de generación. |
 | `OPENAI_EMBEDDING_MODEL` | string | `text-embedding-3-small` | Multilingüe (requisito de ADR-08). |
 | `ANTHROPIC_API_KEY` | string | — | Alternativa para generación. |
+| `LLM_PRICES` | JSON | tarifas por defecto | Sobrescribe las tarifas de los modelos (USD por 1M de tokens) usadas para calcular el costo. Ej: `{"gpt-4o":{"input":2.5,"output":10}}` |
+
+> ⚠️ **Las tarifas por defecto son APROXIMADAS.** Confirmalas contra la página de precios del
+> proveedor antes de usar el costo en una propuesta comercial. Si un modelo no tiene tarifa, el
+> costo **no se inventa**: el total se marca como incompleto (`modelos_sin_precio`).
+
+### Presupuesto del run
+
+`options.max_cost_micros` (por corrida, no por env) fija un **tope en micros de USD**. Antes de
+cada fase se estima su costo y, si no entra en el remanente, **se aborta sin gastar**. Sin tope,
+no bloquea nunca.
 
 ### Los tres modos de DataForSEO
 

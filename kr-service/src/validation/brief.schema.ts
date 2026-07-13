@@ -68,6 +68,13 @@ export const briefSchema = z.object({
   meta_run: z.object({
     keywords_analizadas: z.number().int().nonnegative(),
     paginas_propuestas: z.number().int().nonnegative(),
+    // v0.3: total de TODOS los proveedores (antes solo DataForSEO) + desglose.
     coste_micros_usd: z.number().int().nonnegative(),
+    coste_breakdown: z.object({
+      dataforseo_micros: z.number().int().nonnegative(),
+      llm_generation_micros: z.number().int().nonnegative(),
+      llm_embeddings_micros: z.number().int().nonnegative(),
+    }),
+    modelos_sin_precio: z.array(z.string()).optional(),
   }),
 });

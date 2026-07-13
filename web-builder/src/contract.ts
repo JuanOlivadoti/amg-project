@@ -9,7 +9,8 @@ import type { BusinessProfile, KrBrief } from "./types.js";
  * TODO (Fase 2): extraer estos esquemas a un paquete compartido entre M2 y M1 para una
  * sola fuente de verdad (el M2 ya valida su salida con Zod en kr-service).
  */
-export const SUPPORTED_SCHEMA_VERSIONS = ["kr.v0.2"] as const;
+// v0.3 solo cambia `meta_run` (costo total + desglose), que el M1 no consume → compatible.
+export const SUPPORTED_SCHEMA_VERSIONS = ["kr.v0.2", "kr.v0.3"] as const;
 
 const schemaTypeSchema = z.enum(["LocalBusiness", "Article", "FAQPage", "WebPage"]);
 const pageTypeSchema = z.enum(["servicio", "landing_local", "blog", "institucional"]);

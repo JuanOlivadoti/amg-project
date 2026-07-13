@@ -19,8 +19,9 @@ orquestación durable (Inngest) con persistencia, y el frontend.
 | ✅ | Compuerta de aprobación humana (global + por página). |
 | ✅ | Autenticación DataForSEO verificada contra sandbox (`status_code: 20000`). |
 | ✅ | JSON-LD validado en el Rich Results Test de Google (`LocalBusiness` + `FAQPage`, sin errores). |
-| ✅ | 42 tests unitarios en verde + typecheck limpio en ambos módulos. |
-| ✅ | Hallazgos de seguridad y correctitud de la review externa: **corregidos** (Tandas 1 y 2). |
+| ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
+| ✅ | 56 tests unitarios en verde + typecheck limpio en ambos módulos. |
+| ✅ | Hallazgos de seguridad y correctitud de la review externa: **corregidos** (Tandas 1 y 2, + #5 de la Tanda 3). |
 
 ## Lo que hay que entender antes de mostrarlo
 
@@ -52,9 +53,9 @@ son justamente lo que aporta un orquestador durable. Conviene hacerlo como **fas
 
 | # | Pendiente | Detalle |
 |---|---|---|
+| ~~#5~~ | ~~Presupuesto preflight + costo completo~~ | ✅ **Hecho.** El costo ahora suma DataForSEO + LLM (con desglose) y `max_cost_micros` **aborta antes de gastar**. Contrato bumpeado a `kr.v0.3`. **Queda calibrar las tarifas y las estimaciones con datos de producción.** |
 | **#11** | **Timeouts, retries y backoff** | Hoy los `fetch` no tienen `AbortSignal`; un 429 de DataForSEO o Storyblok falla de inmediato. Falta clasificar errores retryables y respetar `Retry-After`. Además, **un solo fallo de SERP aborta toda la corrida** de clustering (a diferencia del enriquecimiento, que degrada parcialmente). |
 | **#12** | **Idempotencia** | Dos ejecuciones concurrentes pueden crear stories duplicadas en Storyblok (se consulta y luego se crea, sin lock). Y los **`_uid` se regeneran en cada update**, destruyendo la identidad estable de los bloks y complicando la edición manual. Necesita un identificador externo estable por página/run. |
-| **#5** | **Presupuesto preflight** | `options.max_cost_micros` **existe en los tipos pero no se aplica**. Debe estimar el costo antes de cada fase y **bloquear** si excede. Además, el costo reportado **solo cuenta DataForSEO**: falta sumar OpenAI/Anthropic. |
 | **#6** | **`AnthropicContentGen`** | Cerrar la fuga de la abstracción (hoy `LLM_PROVIDER=anthropic` degrada a mock en intención/relevancia/contenido). |
 
 ### Fase 2-3 — Plataforma
@@ -80,7 +81,7 @@ son justamente lo que aporta un orquestador durable. Conviene hacerlo como **fas
 | Deuda | Dónde | Impacto |
 |---|---|---|
 | **Esquema Zod duplicado** entre M2 y M1 | `kr-service/src/validation/` y `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. Extraer a paquete compartido. |
-| **Coste del LLM no medido** | `meta_run.coste_micros_usd` | La cifra de costo por research está incompleta → afecta la propuesta comercial. |
+| **Tarifas y estimaciones de costo sin calibrar** | `lib/cost.ts`, `lib/budget.ts` | El *mecanismo* de costo/presupuesto está hecho, pero las **tarifas de los modelos son aproximadas** y las estimaciones por fase son a ojo. **Confirmar precios y calibrar con una corrida real** antes de usar el número en la propuesta. |
 | **Sin tests de integración** | — | El camino live (DataForSEO, OpenAI, Storyblok) no está cubierto. |
 | **Storyblok live sin probar** | `publish/storyblok-publisher.ts` | Código escrito y typechequeado, nunca ejecutado contra un space real. |
 

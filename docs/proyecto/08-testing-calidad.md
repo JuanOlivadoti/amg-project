@@ -11,15 +11,17 @@
 Los tests son **unitarios y deterministas**: no tocan la red, no usan API keys, no dependen del
 reloj. Corren en ~1 segundo.
 
-## Cobertura actual: 42 tests
+## Cobertura actual: 56 tests
 
-### `kr-service` (12 tests)
+### `kr-service` (26 tests)
 
 | Archivo | Qué fija |
 |---|---|
 | `lib/text.test.ts` | `canonicalKey`: casing, espacios múltiples, **normalización Unicode NFD→NFC**. |
 | `pipeline/scoring.test.ts` | El gate de `business_relevance`: evaluada-alta (score alto, confianza plena), evaluada-bajo-gate (**descartada**), **no evaluada (score capeado a 35 + confianza baja)**, y que una no-evaluada **nunca supere** a una evaluada equivalente. |
 | `pipeline/intent.test.ts` | El clasificador heurístico de fallback (transactional / commercial / informational / señal local). |
+| `lib/cost.test.ts` | El total suma **todos los proveedores**; costo del LLM calculado desde tokens; embeddings solo pagan entrada; un **modelo sin tarifa no inventa costo** (queda en `unpricedModels`); `reset()`. |
+| `lib/budget.test.ts` | El **preflight bloquea ANTES de gastar** si la estimación no entra; tiene en cuenta lo ya gastado; sin tope nunca bloquea; corte post-fase si la estimación se quedó corta. |
 
 ### `web-builder` (30 tests)
 
@@ -63,10 +65,16 @@ que no reaparezcan.
 | **#16** | Canonical con **dos fuentes de verdad**: el brief decía una cosa, el render re-derivaba otra del slug. | El canonical del brief manda, resuelto contra la base. |
 | **#13** | El payload de Storyblok **perdía** canonical, OG, claims y traza → el frontend no podía reconstruir la página. | Se añadieron al componente `page` y al shaping. |
 
-### ⏳ Tanda 3 — Pendiente (PROD-readiness)
+### Tanda 3 — En curso (PROD-readiness)
 
-Ver [Estado y roadmap](09-estado-y-roadmap.md). Resumen: timeouts/retries, idempotencia,
-presupuesto preflight, `AnthropicContentGen`.
+| # | Hallazgo | Estado |
+|---|---|---|
+| **#5** | **El presupuesto preflight declarado no estaba implementado**, y el costo reportado **solo contaba DataForSEO** (no el LLM). | ✅ **Corregido.** `CostMeter` mide todos los proveedores con desglose; `Budget` estima cada fase y **aborta antes de gastar**. Contrato bumpeado a `kr.v0.3`. |
+| **#11** | Sin timeouts, retries ni manejo de 429/5xx. | ⏳ Pendiente |
+| **#12** | Idempotencia de Storyblok (carreras) y `_uid` inestables. | ⏳ Pendiente |
+| **#6** | `AnthropicContentGen` (cerrar la fuga de la abstracción). | ⏳ Pendiente |
+
+Ver [Estado y roadmap](09-estado-y-roadmap.md).
 
 ### 🔑 Pendiente de acción humana
 

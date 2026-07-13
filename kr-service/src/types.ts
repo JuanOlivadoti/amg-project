@@ -1,7 +1,9 @@
 // Módulo 2 — Keyword Research · tipos (mirror de docs/modulo-2-esquema/types.ts, v0.2).
 // Fuente de diseño: ../docs/modulo-2-esquema/. Acá viven los tipos de implementación.
 
-export const SCHEMA_VERSION = "kr.v0.2";
+// v0.3: `coste_micros_usd` pasa a incluir TODOS los proveedores (antes: solo DataForSEO)
+// y se añade `coste_breakdown`. Cambio semántico → bump de versión.
+export const SCHEMA_VERSION = "kr.v0.3";
 
 export interface Market {
   country: string; // ISO-3166-1 alpha-2
@@ -123,6 +125,15 @@ export interface KeywordResearchBrief {
   meta_run: {
     keywords_analizadas: number;
     paginas_propuestas: number;
+    /** Costo TOTAL del run (DataForSEO + LLM), en micros de USD. */
     coste_micros_usd: number;
+    /** Desglose por proveedor: permite ver dónde se va el gasto. */
+    coste_breakdown: {
+      dataforseo_micros: number;
+      llm_generation_micros: number;
+      llm_embeddings_micros: number;
+    };
+    /** Modelos usados sin tarifa configurada → el total está INCOMPLETO (no se inventa el costo). */
+    modelos_sin_precio?: string[];
   };
 }

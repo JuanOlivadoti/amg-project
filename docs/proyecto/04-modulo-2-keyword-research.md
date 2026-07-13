@@ -165,14 +165,56 @@ Si no valida, sale con código de error.
 
 ---
 
-## Costos
+## Costos y presupuesto
 
-El `KeywordDataProvider` acumula el coste reportado por DataForSEO en cada llamada
-(`costMicros`, en millonésimas de USD) y viaja en `brief.meta_run.coste_micros_usd`.
+El costo se mide en **micros de USD** (millonésimas) para evitar errores de coma flotante
+([ADR-10](../decisiones-arquitectura.md)).
 
-> ⚠️ **Ese coste NO incluye OpenAI/Anthropic**, solo DataForSEO. Y el **presupuesto preflight**
-> (`options.max_cost_micros`) está **declarado en los tipos pero no implementado**: hoy no bloquea
-> nada. Es una de las tareas pendientes de producción.
+### Medición (`lib/cost.ts`)
+
+El `CostMeter` acumula **todos los proveedores** y devuelve el desglose:
+
+| Fuente | Cómo se obtiene |
+|---|---|
+| **DataForSEO** | **Real**: la API reporta el `cost` de cada task. |
+| **LLM (generación)** | **Calculado**: tokens reales que reporta el proveedor × tarifa configurable. |
+| **LLM (embeddings)** | Ídem (los embeddings solo pagan la entrada). |
+
+Va al brief en `meta_run.coste_micros_usd` (total) + `meta_run.coste_breakdown` (por proveedor),
+y al informe humano como una tabla. En el log del run:
+
+```
+[cost] total $0.0178 · DFS $0.0000 · LLM $0.0178 · emb $0.0000
+```
+
+> ⚠️ **Las tarifas de los modelos son APROXIMADAS** (`DEFAULT_PRICES` en `lib/cost.ts`).
+> **Confirmalas contra la página de precios del proveedor antes de usarlas en una propuesta
+> comercial** — los precios cambian. Se sobrescriben con la variable `LLM_PRICES` (JSON).
+>
+> Si se usa un modelo **sin tarifa configurada**, el costo **no se inventa**: se cuenta 0, el
+> modelo se registra en `modelos_sin_precio` y el total se marca como **incompleto**. Es preferible
+> un total honestamente incompleto a uno inventado.
+
+### Presupuesto preflight (`lib/budget.ts`)
+
+`options.max_cost_micros` **bloquea de verdad**: antes de cada fase se estima su costo y, si no
+entra en el remanente, **se aborta sin haber gastado**.
+
+```
+[budget] tope del run: $0.0010
+✖ Presupuesto insuficiente para la fase "seeds": estimado $0.0030,
+  gastado $0.0000, tope $0.0010. No se ejecutó la fase.
+```
+
+Hay preflight antes de: seeds, expansión, enriquecimiento, intención, relevancia, clustering
+(la fase más cara: incluye SERP) y contenido on-page. Al final hay un **corte post-fase** por si
+la estimación se quedó corta.
+
+Sin `max_cost_micros`, no hay tope y nunca bloquea.
+
+> Las **estimaciones por llamada** (`DEFAULT_ESTIMATES`) también son aproximadas y sirven solo
+> para decidir si arrancar una fase. El costo **real** se mide aparte. **Calibrarlas con datos de
+> producción.**
 
 ## Estado
 
@@ -186,6 +228,8 @@ El `KeywordDataProvider` acumula el coste reportado por DataForSEO en cada llama
 | Scoring con confianza y manejo de nulls | ✅ |
 | Clustering híbrido (embeddings + SERP overlap) | ✅ |
 | Mapeo a páginas + contenido on-page + brief + informe | ✅ |
+| **Costo completo (DataForSEO + LLM) con desglose** | ✅ |
+| **Presupuesto preflight (bloquea antes de gastar)** | ✅ |
 | Señales de SERP para `is_local` | ⛔ Requiere producción |
-| Presupuesto preflight, retries, timeouts | ⛔ Ver [roadmap](09-estado-y-roadmap.md) |
+| Retries, timeouts, idempotencia | ⛔ Ver [roadmap](09-estado-y-roadmap.md) |
 | Persistencia, multi-tenancy, Inngest | ⛔ Fase 2-3 |
