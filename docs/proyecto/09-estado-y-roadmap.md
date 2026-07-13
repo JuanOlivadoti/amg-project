@@ -63,14 +63,14 @@ verdad. Encontrarlos era exactamente el punto de correr en producción. **Los tr
 
 ## Roadmap
 
-### 🔴 Único paso que depende de Juan
+### 🔴 Lo que depende de Juan
 
-**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Queda una sola acción, y no
-es de código ([guía](../acciones/05-unificar-alcance.md)):
+**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Quedan dos:
 
 | Tarea | Por qué | Costo |
 |---|---|---|
-| **Unificar el alcance (OBS-01)** | Evitar presentarle al cliente dos alcances incompatibles. Es una charla con el socio y con Juan. | gratis |
+| **[Unificar el alcance (OBS-01)](../acciones/05-unificar-alcance.md)** | Evitar presentarle al cliente dos alcances incompatibles. Es una charla, no código. | gratis |
+| **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** ⚠️ | **Lo publicado en Storyblok es de ANTES de la tanda 5**: no muestra la evidencia etiquetada y 7 de 8 páginas declaran `LocalBusiness` sin serlo. Hacerlo **antes de ver a Frank**. | ~$0.31 |
 
 ### Tanda 3 — PROD-readiness ✅ COMPLETA
 

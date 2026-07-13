@@ -16,6 +16,7 @@ Una guía por acción, con los pasos exactos, cómo verificar que salió bien y 
 | ⭐ [**03**](03-research-produccion-dataforseo.md) | **Research de prueba en producción** | ~20 min | ~$0.87 gastados | ✅ **Hecha** (2026-07-13) |
 | 🟢 [**04**](04-storyblok-space.md) | **Space de Storyblok** | ~15 min | gratis | ✅ **Hecha** (2026-07-13) |
 | 🔵 [**05**](05-unificar-alcance.md) | **Unificar el alcance (OBS-01)** | una charla | gratis | ⏳ **Pendiente** |
+| 🎬 [**06**](06-corrida-final-demo.md) | **Corrida final + republicar la demo** | ~15 min | ~$0.31 | ⏳ **Pendiente** (antes de ver a Frank) |
 
 ## El número que salió de la 03
 
@@ -33,11 +34,15 @@ Detalle en la [guía 03](03-research-produccion-dataforseo.md).
 ✅ 03  research real corrido → costo por research + 3 bugs que el sandbox ocultaba
 ✅ 04  8 páginas publicadas en vivo en Storyblok, con datos reales
 
-⏳ 05  ← EL ÚNICO QUE QUEDA. No depende de código: es una charla con el socio
-       y con Juan para unificar el alcance antes de la propuesta comercial.
+⏳ 05  No depende de código: es una charla con el socio y con Juan para
+       unificar el alcance antes de la propuesta comercial.
+⏳ 06  Corrida final (~$0.31) + republicar. Lo que está publicado en Storyblok
+       es de ANTES de la tanda 5: no muestra la evidencia etiquetada y varias
+       páginas declaran LocalBusiness sin serlo. Hacerlo ANTES de ver a Frank.
 ```
 
-**Todo lo que dependía de cuentas, saldo y credenciales está hecho.**
+**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** La 06 es opcional pero
+recomendada: la demo actual es enseñable, pero no refleja las mejoras de la tanda 5.
 
 ## Lo que la corrida real destapó (y ya está corregido)
 
@@ -62,6 +67,7 @@ El sandbox ocultaba tres bugs. Encontrarlos era el punto de la acción 03:
 - [x] **03** — Research en producción corrido · costo real: **$0.31** · `.env` revertido a sandbox
 - [x] **04** — Space de Storyblok creado · 8 páginas publicadas en vivo
 - [ ] **05** — Alcance unificado con el socio y con Juan
+- [ ] **06** — Corrida final (kr.v0.5) + republicada la demo · `.env` revertido a sandbox
 
 ## Dos reglas
 
