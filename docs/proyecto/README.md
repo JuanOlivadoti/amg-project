@@ -19,6 +19,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 | 7 | [Configuración y entornos](07-configuracion.md) | Variables de entorno, modos mock/live, manejo de secretos. |
 | 8 | [Testing y calidad](08-testing-calidad.md) | Suite de tests, typecheck, la review externa y qué se corrigió. |
 | 9 | [Estado y roadmap](09-estado-y-roadmap.md) | Qué funciona hoy, qué falta para producción, riesgos abiertos. |
+| 10 | ⚠️ [**Acciones pendientes (lado del usuario)**](10-acciones-pendientes.md) | Lo que **solo Juan puede hacer**: rotar la key, los números de precios, el research de prueba en producción, la cuenta de Storyblok y la decisión de alcance. |
 
 ## Contexto adicional
 
