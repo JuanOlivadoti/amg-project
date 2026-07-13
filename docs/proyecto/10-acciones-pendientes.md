@@ -3,6 +3,10 @@
 Cosas que **solo Juan puede hacer** — requieren cuentas, dinero o decisiones de producto.
 Todo lo demás (código, tests, docs) avanza sin bloquearse en esto.
 
+> 👉 **Para EJECUTARLAS, usá las guías paso a paso: [`docs/acciones/`](../acciones/)**
+> Este documento explica **por qué** importa cada una; las guías explican **cómo** hacerlas,
+> con los pasos exactos, cómo verificar y qué hacer si falla.
+
 Orden sugerido: **A → B → C → D**. A y C son gratis; B cuesta ~50 USD; D es una decisión.
 
 ---

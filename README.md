@@ -63,8 +63,7 @@ Detalle y justificación en [decisiones-arquitectura.md](docs/decisiones-arquite
 ## ▶️ Próximos pasos
 
 **Todo el trabajo de código que no requiere cuentas ni saldo está hecho.** Lo que sigue depende de
-acciones humanas — detalladas con pasos exactos en
-[**docs/proyecto/10-acciones-pendientes.md**](docs/proyecto/10-acciones-pendientes.md):
+acciones humanas — con **guías paso a paso** en [**docs/acciones/**](docs/acciones/):
 
 1. 🔴 **Rotar la API key de OpenAI** (una por módulo, con límite de gasto).
 2. 🟡 **Los números:** confirmar los precios de los modelos + correr **un research de prueba en

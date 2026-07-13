@@ -4,6 +4,12 @@ Toda la documentación de producto, arquitectura y diseño de los módulos.
 El código vive en [`../kr-service/`](../kr-service/) (Módulo 2) y [`../web-builder/`](../web-builder/) (Módulo 1);
 cada uno tiene su propio `README.md`. La portada del repo es [`../README.md`](../README.md).
 
+## ✅ ¿Qué tenés que hacer vos? → [**docs/acciones/**](acciones/)
+
+Guías **paso a paso** de las 5 cosas que solo vos podés hacer (rotar la key de OpenAI, confirmar
+precios, correr el research en producción, crear el space de Storyblok, unificar el alcance).
+**El código está al día: el proyecto está bloqueado en estas acciones.**
+
 ## 📘 Empezá acá: [Documentación técnica del proyecto](proyecto/)
 
 [`proyecto/`](proyecto/) es la **documentación completa y actualizada** del sistema: visión,
