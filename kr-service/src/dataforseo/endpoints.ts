@@ -1,7 +1,7 @@
 import type { Market } from "../types.js";
 import type { DataForSeoClient } from "./client.js";
 
-// Wrappers tipados de los endpoints que usa el Módulo 2 (ver guia-dataforseo.md §4).
+// Wrappers tipados de los endpoints que usa el Módulo 2 (ver docs/guia-dataforseo.md §4).
 // Variante `live` para el spike; en producción se pasa a `task` (cola, más barato).
 
 export interface SearchVolumeRow {

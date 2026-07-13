@@ -13,24 +13,25 @@ producto, arquitectura y el diseño del primer módulo en construcción.
 ### 1. Contexto y producto
 | Documento | Qué es |
 |---|---|
-| [contexto-proyecto-frank.md](contexto-proyecto-frank.md) | Contexto original: cliente, participantes, módulos, criterios comerciales. |
-| [A_PRD_AMG_Madrid_v1_Ilustrado.md](A_PRD_AMG_Madrid_v1_Ilustrado.md) | PRD v1.0 de AMG OS: problema, visión TO-BE, 5 agentes, RBAC, roadmap por fases. |
+| [contexto-proyecto-frank.md](docs/contexto-proyecto-frank.md) | Contexto original: cliente, participantes, módulos, criterios comerciales. |
+| [A_PRD_AMG_Madrid_v1_Ilustrado.md](docs/A_PRD_AMG_Madrid_v1_Ilustrado.md) | PRD v1.0 de AMG OS: problema, visión TO-BE, 5 agentes, RBAC, roadmap por fases. |
 
 ### 2. Decisiones (leer antes de construir)
 | Documento | Qué es |
 |---|---|
-| [decisiones-arquitectura.md](decisiones-arquitectura.md) | **Registro de decisiones (ADR):** stack, orquestación (n8n→Inngest), CMS (Storyblok), motor (DataForSEO), ES-first, etc. — con alternativas descartadas y justificación. |
+| [decisiones-arquitectura.md](docs/decisiones-arquitectura.md) | **Registro de decisiones (ADR):** stack, orquestación (n8n→Inngest), CMS (Storyblok), motor (DataForSEO), ES-first, etc. — con alternativas descartadas y justificación. |
 
-### 3. Módulo 2 — Keyword Research (en construcción)
+### 3. Módulos en construcción (diseño + código)
 | Documento | Qué es |
 |---|---|
-| [modulo-2-keyword-research.md](modulo-2-keyword-research.md) | Alcance del módulo (propósito, flujo, argumento comercial). |
-| [modulo-2-keyword-research-plan.md](modulo-2-keyword-research-plan.md) | **Plan técnico completo:** arquitectura, modelo de datos, pipeline de 13 pasos, scoring, costos, roadmap con esfuerzo. |
-| [modulo-2-esquema/schema.sql](modulo-2-esquema/schema.sql) | Esquema tipo v0 — DDL Postgres/Supabase (ES-first, market-aware). |
-| [modulo-2-esquema/types.ts](modulo-2-esquema/types.ts) | Esquema tipo v0 — tipos TypeScript (input, keyword, cluster, página, brief). |
-| [modulo-2-esquema/ejemplo-brief.json](modulo-2-esquema/ejemplo-brief.json) | Ejemplo lleno del brief de salida (clínica dental, ES). |
-| [guia-dataforseo.md](guia-dataforseo.md) | Instructivo de alta y uso de DataForSEO (sandbox → producción). |
-| [kr-service/](kr-service/) | **Código** del pipeline (spike Fase 0): prompt → brief SEO. Corre por CLI contra sandbox. |
+| [modulo-2-keyword-research.md](docs/modulo-2-keyword-research.md) | Alcance del módulo (propósito, flujo, argumento comercial). |
+| [modulo-2-keyword-research-plan.md](docs/modulo-2-keyword-research-plan.md) | **Plan técnico completo:** arquitectura, modelo de datos, pipeline de 13 pasos, scoring, costos, roadmap con esfuerzo. |
+| [modulo-2-esquema/schema.sql](docs/modulo-2-esquema/schema.sql) | Esquema tipo v0 — DDL Postgres/Supabase (ES-first, market-aware). |
+| [modulo-2-esquema/types.ts](docs/modulo-2-esquema/types.ts) | Esquema tipo v0 — tipos TypeScript (input, keyword, cluster, página, brief). |
+| [modulo-2-esquema/ejemplo-brief.json](docs/modulo-2-esquema/ejemplo-brief.json) | Ejemplo lleno del brief de salida (clínica dental, ES). |
+| [guia-dataforseo.md](docs/guia-dataforseo.md) | Instructivo de alta y uso de DataForSEO (sandbox → producción). |
+| [kr-service/](kr-service/) | **Código** del Módulo 2 (spike Fase 0): prompt → brief SEO. Corre por CLI contra sandbox. |
+| [web-builder/](web-builder/) | **Código** del Módulo 1 (Creador de Webs, PoC): brief SEO → web (stories Storyblok + preview HTML). |
 
 ## 🧭 Decisiones clave (resumen)
 - **Stack:** Next.js + TypeScript + Supabase (Postgres/RLS/Auth/Realtime/Storage/pgvector).
@@ -40,7 +41,7 @@ producto, arquitectura y el diseño del primer módulo en construcción.
 - **Mercado:** ES-first, diseño preparado para multi-idioma sin reescritura.
 - **LLM:** Claude Opus 4.8 (generación) + Haiku 4.5 (clasificación).
 
-Detalle y justificación en [decisiones-arquitectura.md](decisiones-arquitectura.md).
+Detalle y justificación en [decisiones-arquitectura.md](docs/decisiones-arquitectura.md).
 
 ## ▶️ Próximos pasos
 1. **Cargar credenciales DataForSEO** en `kr-service/.env` y correr `npm run spike` contra sandbox → luego producción para medir costo real por research.

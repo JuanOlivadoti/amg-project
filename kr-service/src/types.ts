@@ -1,5 +1,5 @@
-// Módulo 2 — Keyword Research · tipos (mirror de modulo-2-esquema/types.ts, v0.2).
-// Fuente de diseño: ../modulo-2-esquema/. Acá viven los tipos de implementación.
+// Módulo 2 — Keyword Research · tipos (mirror de docs/modulo-2-esquema/types.ts, v0.2).
+// Fuente de diseño: ../docs/modulo-2-esquema/. Acá viven los tipos de implementación.
 
 export const SCHEMA_VERSION = "kr.v0.2";
 

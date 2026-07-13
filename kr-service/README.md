@@ -16,7 +16,7 @@ npm install
 Variables (`.env`, todas opcionales para empezar):
 - `DATAFORSEO_MODE` — **`mock`** (default: datos ficticios locales, sin cuenta) o `live` (API real).
 - `DATAFORSEO_BASE_URL` — solo para `live`: sandbox o `https://api.dataforseo.com`.
-- `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` — solo para `live` (ver `../guia-dataforseo.md`).
+- `DATAFORSEO_LOGIN` / `DATAFORSEO_PASSWORD` — solo para `live` (ver `../docs/guia-dataforseo.md`).
 - `ANTHROPIC_API_KEY` — opcional; sin ella, los seeds usan un fallback heurístico.
 
 ### Modo mock (default) vs live
