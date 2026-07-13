@@ -53,11 +53,18 @@ Pasar a producción es cambiar **una línea**: `DATAFORSEO_BASE_URL=https://api.
 
 > El alta de la cuenta está documentada paso a paso en [`../guia-dataforseo.md`](../guia-dataforseo.md).
 
-### ⚠️ Fuga de abstracción con Anthropic
+### Cambiar de proveedor de LLM
 
-Con `LLM_PROVIDER=anthropic`, **solo los seeds** usan Claude. La interfaz `ContentGen` (intención,
-relevancia de negocio, contenido on-page) **no tiene implementación Anthropic** y cae a mock.
-El código lo avisa con un warning explícito al arrancar, pero **está pendiente implementarlo**.
+Los **tres** proveedores (OpenAI, Anthropic, mock) implementan la **misma interfaz completa**:
+seeds, intención, relevancia de negocio y contenido on-page. Cambiar `LLM_PROVIDER` **no degrada
+capacidades**. Si el proveedor está configurado pero falta la key, se avisa fuerte antes de caer a
+mock — nunca una degradación silenciosa.
+
+> ⚠️ **Si usás Anthropic, cargá `LLM_PRICES` con las tarifas de Claude.** No vienen por defecto,
+> así que el costo del run quedaría marcado como **incompleto** (el sistema no inventa tarifas).
+>
+> Nota: los **embeddings** (necesarios para el clustering) siempre van por OpenAI — Anthropic no
+> tiene API de embeddings propia ([ADR-09](../decisiones-arquitectura.md)).
 
 ---
 

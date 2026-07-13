@@ -11,9 +11,9 @@
 Los tests son **unitarios y deterministas**: no tocan la red, no usan API keys, no dependen del
 reloj. Corren en ~1 segundo.
 
-## Cobertura actual: 56 tests
+## Cobertura actual: 71 tests
 
-### `kr-service` (26 tests)
+### `kr-service` (36 tests)
 
 | Archivo | Qué fija |
 |---|---|
@@ -22,8 +22,9 @@ reloj. Corren en ~1 segundo.
 | `pipeline/intent.test.ts` | El clasificador heurístico de fallback (transactional / commercial / informational / señal local). |
 | `lib/cost.test.ts` | El total suma **todos los proveedores**; costo del LLM calculado desde tokens; embeddings solo pagan entrada; un **modelo sin tarifa no inventa costo** (queda en `unpricedModels`); `reset()`. |
 | `lib/budget.test.ts` | El **preflight bloquea ANTES de gastar** si la estimación no entra; tiene en cuenta lo ya gastado; sin tope nunca bloquea; corte post-fase si la estimación se quedó corta. |
+| `lib/http.test.ts` | Clasificación de errores (429/5xx reintentables, 4xx no); backoff dentro del tope; `Retry-After` en segundos y fecha HTTP; **un 500 se reintenta y termina bien**; **un 400 NO se reintenta**; se propaga `HttpError` con el status al agotar reintentos; fallos de red. *(Con `fetch` stubeado: sin red.)* |
 
-### `web-builder` (30 tests)
+### `web-builder` (35 tests)
 
 | Archivo | Qué fija |
 |---|---|
@@ -32,6 +33,8 @@ reloj. Corren en ~1 segundo.
 | `storyblok/content.test.ts` | `_uid` en el page raíz y en **todos** los bloks; FAQs como bloks **`faq_item`**; preservación de canonical / OG / claims / `source_keyword`; SEO aplanado. |
 | `render/html.test.ts` | **XSS neutralizado** (un título con `</script><script>` no puede cerrar la etiqueta); `<html lang>` desde el brief; ids `contacto`/`faq` **sin duplicar**; canonical resuelto (absoluto con perfil, relativo sin él); JSON-LD `@graph` con `LocalBusiness` + `FAQPage`; `telephone` y `address` en el `LocalBusiness`. |
 | `llm/content.test.ts` | `reconcile` ante respuestas LLM parciales: respuesta completa, **`sections` como string (no-array)**, **elemento sin `heading`**, y que siempre devuelva una entrada por cada sección/pregunta de entrada. |
+| `lib/uid.test.ts` | `stableUid`: determinista, claves distintas dan uids distintos, forma de UUID v5 válida. |
+| (en `storyblok/content.test.ts`) | **Republicar el mismo contenido produce los MISMOS `_uid`**; los `_uid` dependen de la identidad del blok, **no del orden** (agregar una sección no cambia los uids de las existentes). |
 
 `src/fixtures.ts` centraliza los datos de prueba (brief, página y perfil válidos).
 
@@ -50,7 +53,7 @@ que no reaparezcan.
 | **#3** | El M1 no validaba el brief en runtime → crash tardío o stories incorrectas. | `parseBrief()` con Zod + rechazo de `schema_version` no soportada. |
 | **#14** | `loadProfile()` ocultaba corrupción como "sin perfil". | Solo `ENOENT` = ausencia; JSON inválido o tipos malos **lanzan**. |
 | **#8** | Respuestas LLM parciales rompían el `reconcile` que debía protegerlas. | `asArray()` + guardas de tipo; se descartan elementos inválidos uno a uno. |
-| **#6** | `LLM_PROVIDER=anthropic` degradaba a mock **en silencio**. | Warning explícito. *(La implementación completa sigue pendiente.)* |
+| **#6** | `LLM_PROVIDER=anthropic` degradaba a mock **en silencio**. | Warning explícito. *(La implementación completa llegó en la Tanda 3.)* |
 | **#17** | `id="contacto"` duplicado → el CTA aterrizaba en las FAQs. | FAQ pasó a `id="faq"`; ancla del CTA condicional. |
 | **#15** | `<html lang>` hardcodeado a `es`. | Sale de `brief.market.language_code`. |
 | **#18** | Comentario engañoso en el mock publisher. | Aclarado (modelo canónico ≠ payload Storyblok). |
@@ -65,16 +68,17 @@ que no reaparezcan.
 | **#16** | Canonical con **dos fuentes de verdad**: el brief decía una cosa, el render re-derivaba otra del slug. | El canonical del brief manda, resuelto contra la base. |
 | **#13** | El payload de Storyblok **perdía** canonical, OG, claims y traza → el frontend no podía reconstruir la página. | Se añadieron al componente `page` y al shaping. |
 
-### Tanda 3 — En curso (PROD-readiness)
+### Tanda 3 — PROD-readiness ✅
 
-| # | Hallazgo | Estado |
+| # | Hallazgo | Corrección |
 |---|---|---|
-| **#5** | **El presupuesto preflight declarado no estaba implementado**, y el costo reportado **solo contaba DataForSEO** (no el LLM). | ✅ **Corregido.** `CostMeter` mide todos los proveedores con desglose; `Budget` estima cada fase y **aborta antes de gastar**. Contrato bumpeado a `kr.v0.3`. |
-| **#11** | Sin timeouts, retries ni manejo de 429/5xx. | ⏳ Pendiente |
-| **#12** | Idempotencia de Storyblok (carreras) y `_uid` inestables. | ⏳ Pendiente |
-| **#6** | `AnthropicContentGen` (cerrar la fuga de la abstracción). | ⏳ Pendiente |
+| **#5** | **El presupuesto preflight declarado no estaba implementado**, y el costo reportado **solo contaba DataForSEO** (no el LLM). | `CostMeter` mide todos los proveedores con desglose; `Budget` estima cada fase y **aborta antes de gastar**. Contrato bumpeado a `kr.v0.3`. |
+| **#11** | **Sin timeouts ni retries**: un `fetch` colgado colgaba el run; un 429 fallaba de inmediato. Además, **un solo fallo de SERP abortaba toda la corrida** de clustering. | `lib/http.ts`: timeout por intento (`AbortSignal`), reintentos con **backoff exponencial + jitter**, respeto de `Retry-After`, y clasificación (429/5xx se reintentan; el resto de 4xx **no**). Aplicado a DataForSEO y Storyblok. El clustering ahora **degrada parcialmente** ante fallos de SERP. |
+| **#12** | **Idempotencia**: los `_uid` se regeneraban en cada publicación (destruyendo la identidad de los bloks), y dos corridas concurrentes podían **duplicar stories**. | `lib/uid.ts`: `_uid` **deterministas** derivados de la identidad natural del blok (slug + tipo + heading/pregunta). Publicación con **upsert idempotente**: si la creación choca con un slug ya tomado (carrera), re-resuelve y actualiza en vez de duplicar. |
+| **#6** | `LLM_PROVIDER=anthropic` **degradaba a mock** en intención, relevancia y contenido (solo los seeds usaban Claude). | **`AnthropicContentGen`** implementado (tool use para JSON estructurado; Haiku para clasificar, modelo de gama alta para redactar, según ADR-09). Los tres proveedores implementan ahora **la misma interfaz**. |
 
-Ver [Estado y roadmap](09-estado-y-roadmap.md).
+**Los 18 hallazgos de la review están corregidos**, salvo **#2 (secretos)**, que requiere acción
+humana → ver [Acciones pendientes](10-acciones-pendientes.md).
 
 ### 🔑 Pendiente de acción humana
 

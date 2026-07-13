@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config.js";
+import { HttpError, fetchWithRetry } from "../lib/http.js";
 import { toStoryblokContent } from "../storyblok/content.js";
 import type { Story } from "../types.js";
 import type { PublishResult, Publisher } from "./publisher.js";
@@ -20,13 +21,36 @@ export class StoryblokPublisher implements Publisher {
   async publish(stories: Story[], _html: Map<string, string>): Promise<PublishResult[]> {
     const results: PublishResult[] = [];
     for (const story of stories) {
-      const existingId = await this.findStoryId(story.slug);
-      const id = existingId
-        ? await this.updateStory(existingId, story)
-        : await this.createStory(story);
+      const id = await this.upsertStory(story);
       results.push({ slug: story.slug, location: `story:${id}`, mode: "storyblok" });
     }
     return results;
+  }
+
+  /**
+   * Upsert idempotente (#12). El "consultar y después crear" es una carrera: dos corridas
+   * concurrentes (o un reintento del orquestador) pueden ver "no existe" a la vez y crear DOS
+   * stories con el mismo slug. Acá, si la creación choca con un slug ya tomado, se re-resuelve
+   * y se actualiza en vez de duplicar. Publicar dos veces converge al mismo estado.
+   */
+  private async upsertStory(story: Story): Promise<number> {
+    const existingId = await this.findStoryId(story.slug);
+    if (existingId) return this.updateStory(existingId, story);
+
+    try {
+      return await this.createStory(story);
+    } catch (e) {
+      const conflict = e instanceof HttpError && (e.status === 409 || e.status === 422);
+      if (!conflict) throw e;
+
+      // Alguien la creó entre nuestro lookup y nuestro create.
+      const raced = await this.findStoryId(story.slug);
+      if (raced == null) throw e; // el 422 no era por slug duplicado → error real
+      console.warn(
+        `  [storyblok] "${story.slug}" ya existía (carrera) → actualizo en vez de duplicar.`,
+      );
+      return this.updateStory(raced, story);
+    }
   }
 
   private async findStoryId(slug: string): Promise<number | null> {
@@ -52,18 +76,23 @@ export class StoryblokPublisher implements Publisher {
   }
 
   private async req(path: string, method: string, body?: unknown): Promise<Response> {
-    const res = await fetch(`${this.base}${path}`, {
-      method,
-      headers: {
-        Authorization: config.storyblok.managementToken,
-        "Content-Type": "application/json",
+    // Con timeout y reintentos (#11): la Management API de Storyblok tiene rate limit (429).
+    return fetchWithRetry(
+      `${this.base}${path}`,
+      {
+        method,
+        headers: {
+          Authorization: config.storyblok.managementToken,
+          "Content-Type": "application/json",
+        },
+        body: body ? JSON.stringify(body) : undefined,
       },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) {
-      throw new Error(`Storyblok ${method} ${path} → HTTP ${res.status}: ${await res.text()}`);
-    }
-    return res;
+      {
+        ...config.http,
+        onRetry: (attempt, delayMs, reason) =>
+          console.warn(`  [storyblok] reintento ${attempt} en ${method} ${path} tras ${delayMs}ms (${reason})`),
+      },
+    );
   }
 }
 

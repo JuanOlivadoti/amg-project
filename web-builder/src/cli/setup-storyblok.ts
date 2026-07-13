@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config.js";
+import { fetchWithRetry } from "../lib/http.js";
 import { COMPONENT_SCHEMAS } from "../storyblok/components.js";
 
 /**
@@ -51,18 +52,22 @@ async function listComponents(base: string): Promise<Map<string, number>> {
 }
 
 async function req(base: string, path: string, method: string, body?: unknown): Promise<Response> {
-  const res = await fetch(`${base}${path}`, {
-    method,
-    headers: {
-      Authorization: config.storyblok.managementToken,
-      "Content-Type": "application/json",
+  return fetchWithRetry(
+    `${base}${path}`,
+    {
+      method,
+      headers: {
+        Authorization: config.storyblok.managementToken,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
     },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    throw new Error(`Storyblok ${method} ${path} → HTTP ${res.status}: ${await res.text()}`);
-  }
-  return res;
+    {
+      ...config.http,
+      onRetry: (attempt, delayMs, reason) =>
+        console.warn(`  reintento ${attempt} en ${method} ${path} tras ${delayMs}ms (${reason})`),
+    },
+  );
 }
 
 main().catch((e) => {

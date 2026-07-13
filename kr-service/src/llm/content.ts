@@ -1,5 +1,7 @@
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config.js";
+import { costMeter } from "../lib/cost.js";
 import { trackChatUsage } from "./openai.js";
 import { tokenize } from "./mock.js";
 import type { Market, PageType, SearchIntent } from "../types.js";
@@ -49,21 +51,23 @@ export interface ContentGen {
   pageContent(input: PageContentInput): Promise<PageContentResult>;
 }
 
-let warnedDegraded = false;
+let warnedNoKey = false;
 
-/** Elige el generador de contenido: OpenAI si es el proveedor activo; si no, mock. */
+/**
+ * Elige el generador de contenido según el proveedor activo (ADR-09).
+ * Los tres (OpenAI, Anthropic, mock) implementan la MISMA interfaz: cambiar de proveedor no
+ * degrada capacidades. Si el proveedor está configurado pero falta la key, se avisa fuerte
+ * antes de caer a mock — nunca una degradación silenciosa (#6 review Codex).
+ */
 export function getContentGen(): ContentGen {
-  if (config.llm.provider === "openai" && config.openai.hasKey) {
-    return new OpenAIContentGen();
-  }
-  // Fuga de abstracción (#6 review Codex): ContentGen NO tiene implementación Anthropic todavía.
-  // Con LLM_PROVIDER=anthropic, intención/relevancia/contenido caen a MOCK. Avisar fuerte para
-  // que nadie crea que corre con Anthropic. TODO (Fase 2): implementar AnthropicContentGen.
-  if (config.llm.provider === "anthropic" && !warnedDegraded) {
-    warnedDegraded = true;
+  if (config.llm.provider === "openai" && config.openai.hasKey) return new OpenAIContentGen();
+  if (config.llm.provider === "anthropic" && config.anthropic.hasKey) return new AnthropicContentGen();
+
+  if (config.llm.provider !== "mock" && !warnedNoKey) {
+    warnedNoKey = true;
     console.warn(
-      "  [llm] AVISO: LLM_PROVIDER=anthropic no tiene ContentGen propio → intención, " +
-        "business_relevance y contenido on-page usan MOCK (solo los seeds usan Anthropic).",
+      `  [llm] AVISO: LLM_PROVIDER=${config.llm.provider} pero falta la API key → ` +
+        `intención, business_relevance y contenido on-page usan MOCK.`,
     );
   }
   return new MockContentGen();
@@ -176,6 +180,147 @@ class OpenAIContentGen implements ContentGen {
     trackChatUsage(config.openai.generationModel, res.usage);
     const p = JSON.parse(res.choices[0]?.message.content ?? "{}") as Partial<PageContentResult>;
     return normalizeContent(p, input);
+  }
+}
+
+// ---------------------------------------------------------------- Anthropic
+/**
+ * ContentGen con Claude (tool use para JSON estructurado, igual que AnthropicTextGen).
+ * ADR-09: modelo económico (Haiku) para clasificar, modelo de gama alta para redactar.
+ *
+ * ⚠️ Costo: no hay tarifas de Claude en `lib/cost.ts` por defecto. Si usás Anthropic, cargá
+ * `LLM_PRICES` o el total del run quedará marcado como INCOMPLETO (no se inventa el costo).
+ */
+class AnthropicContentGen implements ContentGen {
+  private client = new Anthropic({ apiKey: config.anthropic.apiKey });
+
+  /** Llama a Claude forzando una tool y devuelve su input (el JSON estructurado). */
+  private async callTool<T>(
+    model: string,
+    toolName: string,
+    description: string,
+    inputSchema: Record<string, unknown>,
+    userContent: string,
+    maxTokens = 2000,
+  ): Promise<Partial<T>> {
+    const msg = await this.client.messages.create({
+      model,
+      max_tokens: maxTokens,
+      tool_choice: { type: "tool", name: toolName },
+      tools: [{ name: toolName, description, input_schema: inputSchema as never }],
+      messages: [{ role: "user", content: userContent }],
+    });
+    costMeter.addTokens("llm_generation", model, msg.usage?.input_tokens ?? 0, msg.usage?.output_tokens ?? 0);
+
+    const toolUse = msg.content.find((b) => b.type === "tool_use");
+    return toolUse && toolUse.type === "tool_use" ? (toolUse.input as Partial<T>) : {};
+  }
+
+  async businessRelevance(businessPrompt: string, keywords: string[]): Promise<Map<string, number>> {
+    if (keywords.length === 0) return new Map();
+    const out = await this.callTool<{ scores: Array<{ keyword: string; relevance: number }> }>(
+      config.anthropic.classificationModel,
+      "emit_scores",
+      "Relevancia (0..1) de cada keyword para captar clientes del negocio descrito.",
+      {
+        type: "object",
+        properties: {
+          scores: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { keyword: { type: "string" }, relevance: { type: "number" } },
+              required: ["keyword", "relevance"],
+            },
+          },
+        },
+        required: ["scores"],
+      },
+      `Negocio: ${businessPrompt}\nKeywords:\n${keywords.join("\n")}`,
+    );
+
+    const map = new Map<string, number>();
+    for (const s of asArray<{ keyword?: unknown; relevance?: unknown }>(out.scores)) {
+      if (typeof s?.keyword === "string" && typeof s?.relevance === "number") {
+        map.set(s.keyword, clamp01(s.relevance));
+      }
+    }
+    return map;
+  }
+
+  async classifyIntents(
+    businessPrompt: string,
+    keywords: string[],
+    market: Market,
+  ): Promise<Map<string, IntentResult>> {
+    if (keywords.length === 0) return new Map();
+    const out = await this.callTool<{
+      items: Array<{ keyword: string; intent: string; is_local: boolean }>;
+    }>(
+      config.anthropic.classificationModel,
+      "emit_intents",
+      "Intención de búsqueda dominante y señal local de cada keyword, en el contexto del negocio.",
+      {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                keyword: { type: "string" },
+                intent: { type: "string", enum: VALID_INTENTS as unknown as string[] },
+                is_local: { type: "boolean" },
+              },
+              required: ["keyword", "intent", "is_local"],
+            },
+          },
+        },
+        required: ["items"],
+      },
+      `Negocio: ${businessPrompt}\nMercado: ${market.country} (idioma ${market.language_code})\n` +
+        `is_local = true si la búsqueda tiene intención geográfica real.\nKeywords:\n${keywords.join("\n")}`,
+    );
+
+    const map = new Map<string, IntentResult>();
+    for (const it of asArray<{ keyword?: unknown; intent?: unknown; is_local?: unknown }>(out.items)) {
+      const intent = normalizeIntent(typeof it?.intent === "string" ? it.intent : undefined);
+      if (typeof it?.keyword === "string" && intent) {
+        map.set(it.keyword, { intent, is_local: Boolean(it.is_local) });
+      }
+    }
+    return map;
+  }
+
+  async pageContent(input: PageContentInput): Promise<PageContentResult> {
+    const strList = { type: "array", items: { type: "string" } };
+    const out = await this.callTool<PageContentResult>(
+      config.anthropic.generationModel,
+      "emit_content",
+      "Contenido SEO on-page. NO prometas resultados garantizados ni hagas claims indebidos " +
+        "(sectores regulados: salud, gastronomía).",
+      {
+        type: "object",
+        properties: {
+          meta_title: { type: "string" },
+          meta_description: { type: "string" },
+          h1: { type: "string" },
+          secciones_sugeridas: strList,
+          word_count_objetivo: { type: "number" },
+          faqs: strList,
+          cta: { type: "string" },
+          tono: { type: "string" },
+          claims_permitidos: strList,
+          claims_prohibidos: strList,
+        },
+        required: ["meta_title", "meta_description", "h1", "secciones_sugeridas"],
+      },
+      `Negocio: ${input.businessPrompt}\nIdioma: ${input.market.language_code}\n` +
+        `Tipo de página: ${input.page_type}\nIntención: ${input.intent}${input.is_local ? " (local)" : ""}\n` +
+        `Keyword principal: ${input.keyword_principal}\n` +
+        `Keywords secundarias: ${input.keywords_secundarias.join(", ")}`,
+    );
+    return normalizeContent(out, input);
   }
 }
 

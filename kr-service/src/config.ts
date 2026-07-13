@@ -12,6 +12,12 @@ const llmProvider =
   (hasOpenAI ? "openai" : hasAnthropic ? "anthropic" : "mock");
 
 export const config = {
+  // Resiliencia HTTP (#11): timeout por intento y reintentos con backoff.
+  http: {
+    timeoutMs: Number(process.env.HTTP_TIMEOUT_MS ?? 30_000),
+    retries: Number(process.env.HTTP_RETRIES ?? 3),
+  },
+
   dataforseo: {
     // 'mock' = datos ficticios locales (sin cuenta) · 'live' = API real.
     mode: (process.env.DATAFORSEO_MODE as "mock" | "live") || "mock",

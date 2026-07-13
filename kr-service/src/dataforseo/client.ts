@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { costMeter } from "../lib/cost.js";
+import { fetchWithRetry } from "../lib/http.js";
 
 /**
  * Cliente DataForSEO (Basic Auth). Arranca contra sandbox.
@@ -22,18 +23,24 @@ export class DataForSeoClient {
   /** POST a un endpoint /v3/... y devuelve tasks[].result acumulando costo. */
   async post<T = unknown>(path: string, body: unknown): Promise<T[]> {
     const url = `${config.dataforseo.baseUrl}${path}`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: this.authHeader,
-        "Content-Type": "application/json",
+    // Con timeout y reintentos (#11): DataForSEO tiene rate limits (429) y picos de 5xx.
+    // Un 401/400 NO se reintenta: es un error nuestro, no del servidor.
+    const res = await fetchWithRetry(
+      url,
+      {
+        method: "POST",
+        headers: {
+          Authorization: this.authHeader,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      throw new Error(`DataForSEO HTTP ${res.status} en ${path}: ${await res.text()}`);
-    }
+      {
+        ...config.http,
+        onRetry: (attempt, delayMs, reason) =>
+          console.warn(`  [dataforseo] reintento ${attempt} en ${path} tras ${delayMs}ms (${reason})`),
+      },
+    );
 
     const json = (await res.json()) as DfsResponse<T>;
     if (json.status_code !== 20000) {

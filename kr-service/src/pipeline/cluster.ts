@@ -56,10 +56,25 @@ export async function clusterKeywords(
   }
 
   // 2) Validación SERP: fusiona cabezas cercanas que comparten resultados.
+  // Resiliente (#11): si el SERP de una cabeza falla, se sigue con las demás. Antes, un solo
+  // fallo abortaba TODA la corrida; ahora esa cabeza simplemente no se valida (queda sin fusionar,
+  // que es el comportamiento conservador: no se agrupa lo que no se pudo confirmar).
   const topHeads = clusters.slice(0, o.serpValidateTop);
   const serps = new Map<number, string[]>();
+  let serpFailures = 0;
   for (const c of topHeads) {
-    serps.set(c.head, await provider.serp(ordered[c.head]!.keyword, market));
+    try {
+      serps.set(c.head, await provider.serp(ordered[c.head]!.keyword, market));
+    } catch (e) {
+      serpFailures++;
+      serps.set(c.head, []); // sin URLs → overlap 0 → no fusiona
+      console.warn(`  [cluster] aviso SERP "${ordered[c.head]!.keyword}": ${(e as Error).message}`);
+    }
+  }
+  if (serpFailures > 0) {
+    console.warn(
+      `  [cluster] ${serpFailures}/${topHeads.length} SERP fallaron → esas cabezas no se validaron.`,
+    );
   }
   const merged = new Set<number>();
   for (let a = 0; a < topHeads.length; a++) {

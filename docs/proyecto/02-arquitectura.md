@@ -41,7 +41,7 @@ implementaciones: una `mock` (sin cuenta, sin costo, determinista) y una `live` 
 | `KeywordDataProvider` | `kr-service/src/dataforseo/provider.ts` | `MockProvider` · `LiveProvider` (DataForSEO) |
 | `TextGen` | `kr-service/src/llm/types.ts` | `MockTextGen` · `OpenAITextGen` · `AnthropicTextGen` |
 | `Embedder` | `kr-service/src/llm/types.ts` | `MockEmbedder` (bag-of-words) · `OpenAIEmbedder` |
-| `ContentGen` | `kr-service/src/llm/content.ts` | `MockContentGen` · `OpenAIContentGen` |
+| `ContentGen` | `kr-service/src/llm/content.ts` | `MockContentGen` · `OpenAIContentGen` · `AnthropicContentGen` |
 | `ProseGen` | `web-builder/src/llm/content.ts` | `MockProseGen` · `OpenAIProseGen` |
 | `Publisher` | `web-builder/src/publish/publisher.ts` | `MockPublisher` · `StoryblokPublisher` · `StoryblokDryRunPublisher` |
 
@@ -51,9 +51,12 @@ implementaciones: una `mock` (sin cuenta, sin costo, determinista) y una `live` 
 - Los tests son deterministas y no tocan la red.
 - No quedamos casados con ningún proveedor ([ADR-05](../decisiones-arquitectura.md), [ADR-09](../decisiones-arquitectura.md)).
 
-> ⚠️ **Fuga conocida de esta abstracción:** `ContentGen` **no tiene implementación Anthropic**.
-> Con `LLM_PROVIDER=anthropic`, solo los *seeds* usan Claude; intención, relevancia y contenido
-> caen a mock. El código avisa con un warning explícito, pero está pendiente implementarlo.
+La abstracción es **completa**: los tres proveedores de LLM (OpenAI, Anthropic, mock) implementan
+todas las capacidades, así que cambiar de proveedor no degrada nada. Si falta la key del proveedor
+configurado, se avisa fuerte antes de caer a mock.
+
+> Única asimetría, por limitación del proveedor: los **embeddings** siempre van por OpenAI —
+> Anthropic no tiene API de embeddings propia ([ADR-09](../decisiones-arquitectura.md)).
 
 ## Límites entre módulos
 
@@ -90,6 +93,23 @@ Principio adoptado tras una revisión externa (ver [Testing y calidad](08-testin
   y se omite, en vez de contarla como éxito con datos vacíos (`client.ts`).
 - Si falta el perfil de negocio, se sigue sin él; pero si el perfil **existe y está corrupto**,
   se lanza un error (no se disfraza de "sin perfil").
+- Si falla el SERP de una cabeza de cluster, esa cabeza **no se valida** (queda sin fusionar, que
+  es lo conservador) en vez de abortar toda la corrida.
+
+## Resiliencia e idempotencia
+
+- **HTTP** (`lib/http.ts`): timeout por intento, reintentos con **backoff exponencial + jitter**, y
+  respeto de `Retry-After`. Los 429 y 5xx se reintentan; el resto de los 4xx **no** (reintentar un
+  401 no lo arregla, solo gasta tiempo y dinero).
+- **Publicación idempotente**: los `_uid` de los bloks son **deterministas** (derivados de la
+  identidad natural del blok, no aleatorios), así republicar el mismo contenido converge al mismo
+  estado en vez de recrear todo. Y si dos corridas concurrentes intentan crear la misma página, la
+  segunda **actualiza en vez de duplicar**.
+- **Presupuesto preflight** (`lib/budget.ts`): cada fase se estima **antes** de ejecutarse y se
+  aborta si no entra en el tope, en vez de descubrir el exceso cuando ya se gastó.
+
+Estas tres piezas son, justamente, la base que necesita un orquestador durable (Inngest, ADR-03)
+para poder reintentar pasos sin duplicar trabajo ni gasto.
 
 ## Trazabilidad
 

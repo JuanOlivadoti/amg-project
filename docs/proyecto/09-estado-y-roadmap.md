@@ -20,8 +20,10 @@ orquestación durable (Inngest) con persistencia, y el frontend.
 | ✅ | Autenticación DataForSEO verificada contra sandbox (`status_code: 20000`). |
 | ✅ | JSON-LD validado en el Rich Results Test de Google (`LocalBusiness` + `FAQPage`, sin errores). |
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
-| ✅ | 56 tests unitarios en verde + typecheck limpio en ambos módulos. |
-| ✅ | Hallazgos de seguridad y correctitud de la review externa: **corregidos** (Tandas 1 y 2, + #5 de la Tanda 3). |
+| ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After`; degradación parcial ante fallos de SERP. |
+| ✅ | **Idempotencia**: `_uid` deterministas y publicación sin duplicados ante carreras. |
+| ✅ | 71 tests unitarios en verde + typecheck limpio en ambos módulos. |
+| ✅ | **Los 18 hallazgos de la review externa: corregidos** (salvo #2, secretos → acción humana). |
 
 ## Lo que hay que entender antes de mostrarlo
 
@@ -45,18 +47,21 @@ pasar a producción. Es un cambio de **una variable de entorno** + cargar saldo 
 | **Rotar la API key de OpenAI** y separar por servicio | Hallazgo #2 de la review. | Acción humana en el dashboard. |
 | **Probar Storyblok live** | Demostrar la edición visual — es *el* argumento de venta del CMS headless (ADR-04). | Crear un space gratis + token. |
 
-### Tanda 3 — PROD-readiness
+### Tanda 3 — PROD-readiness ✅ COMPLETA
 
-Los hallazgos de la review externa que quedan. **Encajan naturalmente con envolver el pipeline en
-Inngest** ([ADR-03](../decisiones-arquitectura.md)): retries, timeouts, idempotencia y checkpoints
-son justamente lo que aporta un orquestador durable. Conviene hacerlo como **fase propia**.
-
-| # | Pendiente | Detalle |
+| # | Hecho | Qué cambió |
 |---|---|---|
-| ~~#5~~ | ~~Presupuesto preflight + costo completo~~ | ✅ **Hecho.** El costo ahora suma DataForSEO + LLM (con desglose) y `max_cost_micros` **aborta antes de gastar**. Contrato bumpeado a `kr.v0.3`. **Queda calibrar las tarifas y las estimaciones con datos de producción.** |
-| **#11** | **Timeouts, retries y backoff** | Hoy los `fetch` no tienen `AbortSignal`; un 429 de DataForSEO o Storyblok falla de inmediato. Falta clasificar errores retryables y respetar `Retry-After`. Además, **un solo fallo de SERP aborta toda la corrida** de clustering (a diferencia del enriquecimiento, que degrada parcialmente). |
-| **#12** | **Idempotencia** | Dos ejecuciones concurrentes pueden crear stories duplicadas en Storyblok (se consulta y luego se crea, sin lock). Y los **`_uid` se regeneran en cada update**, destruyendo la identidad estable de los bloks y complicando la edición manual. Necesita un identificador externo estable por página/run. |
-| **#6** | **`AnthropicContentGen`** | Cerrar la fuga de la abstracción (hoy `LLM_PROVIDER=anthropic` degrada a mock en intención/relevancia/contenido). |
+| ✅ **#5** | Costo completo + presupuesto preflight | El costo suma DataForSEO + LLM (con desglose) y `max_cost_micros` **aborta antes de gastar**. Contrato `kr.v0.3`. |
+| ✅ **#11** | Timeouts, retries y backoff | `lib/http.ts`: timeout por intento, backoff exponencial + jitter, `Retry-After`, 429/5xx reintentables y 4xx no. El clustering **ya no aborta** por un fallo de SERP. |
+| ✅ **#12** | Idempotencia | `_uid` **deterministas** (misma página → mismos uids entre corridas) y **upsert** que resuelve la carrera de creación sin duplicar stories. |
+| ✅ **#6** | `AnthropicContentGen` | Los tres proveedores implementan la misma interfaz: cambiar de proveedor ya **no degrada capacidades**. |
+
+**Lo que queda del código está listo para envolverse en Inngest**
+([ADR-03](../decisiones-arquitectura.md)): retries, idempotencia y presupuesto ya existen, que era
+justo lo que un orquestador durable necesita como base.
+
+> ⚠️ **Pendiente de calibración:** las tarifas de los modelos y las estimaciones por fase del
+> presupuesto son **aproximadas**. Ver [Acciones pendientes](10-acciones-pendientes.md).
 
 ### Fase 2-3 — Plataforma
 

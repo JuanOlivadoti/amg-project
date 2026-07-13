@@ -14,6 +14,12 @@ const MAPI_HOST: Record<string, string> = {
 const openaiKey = process.env.OPENAI_API_KEY ?? "";
 
 export const config = {
+  // Resiliencia HTTP (#11): timeout por intento y reintentos con backoff.
+  http: {
+    timeoutMs: Number(process.env.HTTP_TIMEOUT_MS ?? 30_000),
+    retries: Number(process.env.HTTP_RETRIES ?? 3),
+  },
+
   // 'mock' = escribe story + preview en out/ (sin cuenta) · 'storyblok' = publica vía Management API.
   publishMode: (process.env.WEB_PUBLISH_MODE as "mock" | "storyblok") || "mock",
 
