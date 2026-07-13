@@ -96,8 +96,9 @@ function buildUserPrompt(input: ProseInput): string {
  * Garantiza que cada heading/question de entrada tenga texto (usa el del LLM o un fallback).
  * Defensivo (#8 review Codex): el LLM puede devolver JSON válido pero estructuralmente parcial
  * (p.ej. `sections` como string, o items sin `heading`). Se ignoran los elementos inválidos.
+ * Exportada para test.
  */
-function reconcile(parsed: Partial<ProseResult>, input: ProseInput): ProseResult {
+export function reconcile(parsed: Partial<ProseResult>, input: ProseInput): ProseResult {
   const secMap = new Map<string, unknown>();
   for (const s of asArray<{ heading?: unknown; body?: unknown }>(parsed.sections)) {
     if (isStr(s?.heading)) secMap.set(norm(s.heading), s.body);

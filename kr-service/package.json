@@ -6,7 +6,8 @@
   "description": "Módulo 2 — Keyword Research (spike Fase 0). Pipeline prompt → brief SEO.",
   "scripts": {
     "spike": "tsx src/cli/spike.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
