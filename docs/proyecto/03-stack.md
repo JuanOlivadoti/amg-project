@@ -98,17 +98,28 @@ AMG/
 │   └── src/
 │       ├── cli/           # spike.ts (entrada CLI)
 │       ├── dataforseo/    # provider abstracto + cliente HTTP + endpoints
-│       ├── llm/           # TextGen, Embedder, ContentGen (+ mocks)
+│       ├── llm/           # TextGen, Embedder, ContentGen (openai / anthropic / mock)
 │       ├── pipeline/      # run, intent, scoring, cluster, cluster-map, brief
-│       ├── lib/           # vector (coseno), text (canonicalKey)
+│       ├── lib/           # vector (coseno) · text (canonicalKey) · cost · budget · http
 │       └── validation/    # esquema Zod del brief
 └── web-builder/           # Módulo 1 — Creador de Webs
     └── src/
         ├── cli/           # build.ts, setup-storyblok.ts
         ├── handoff/       # adapter: brief → story
         ├── llm/           # ProseGen
+        ├── lib/           # uid (_uid deterministas) · http (retries)
         ├── publish/       # Publisher abstracto (mock / storyblok / dry-run)
         ├── render/        # HTML semántico + JSON-LD
         ├── storyblok/     # esquemas de componentes + shaping nativo
         └── contract.ts    # validación Zod del brief de entrada
 ```
+
+### Módulos de infraestructura compartidos (por módulo)
+
+| Archivo | Qué resuelve |
+|---|---|
+| `lib/http.ts` | Timeout, reintentos con backoff + jitter, `Retry-After`, clasificación de errores. *(Está duplicado en ambos módulos — deuda conocida.)* |
+| `kr-service/lib/cost.ts` | Medición del costo del run (todos los proveedores) en micros de USD. |
+| `kr-service/lib/budget.ts` | Presupuesto preflight: aborta una fase antes de gastar si no entra en el tope. |
+| `kr-service/lib/text.ts` | `canonicalKey`: clave canónica para matchear keywords entre proveedores. |
+| `web-builder/lib/uid.ts` | `_uid` deterministas para los bloks de Storyblok. |

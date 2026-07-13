@@ -206,7 +206,9 @@ Es **idempotente**: si el componente existe, lo actualiza; si no, lo crea.
 | Perfil de negocio → JSON-LD `LocalBusiness` completo | ✅ |
 | Render HTML semántico + JSON-LD `@graph` | ✅ |
 | Publisher mock + dry-run | ✅ |
-| Publisher Storyblok live + provisioning de componentes | ✅ código · ⛔ sin probar contra space real |
+| **`_uid` deterministas** (republicar produce los mismos uids) | ✅ |
+| **Publicación idempotente** (la carrera de creación actualiza en vez de duplicar) | ✅ |
+| **Resiliencia HTTP** (timeout, retries con backoff, `Retry-After`) | ✅ |
+| Publisher Storyblok live + provisioning de componentes | ✅ código · ⛔ **sin probar contra space real** ([acción C](10-acciones-pendientes.md)) |
 | Enlazado interno entre páginas | ⛔ el M2 aún no lo genera |
 | Frontend Next.js que renderice desde Storyblok | ⛔ Fase 2-3 |
-| `_uid` estables entre publicaciones, idempotencia ante concurrencia | ⛔ ver [roadmap](09-estado-y-roadmap.md) |

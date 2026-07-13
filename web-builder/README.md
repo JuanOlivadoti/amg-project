@@ -83,8 +83,11 @@ Story[] (contrato Storyblok: page > hero/section/faq + SEO + schema_type)
 | Publisher mock (out/) | ✅ |
 | Publisher Storyblok live (Management API, env-gated) + dry-run | ✅ código · ⛔ sin probar contra space real |
 | Shaping a formato Storyblok-nativo (`_uid`, `faq_item` bloks) | ✅ |
+| `_uid` **deterministas** + publicación **idempotente** (sin duplicados ante carreras) | ✅ |
+| Resiliencia HTTP (timeout, retries con backoff, `Retry-After`) | ✅ |
 | Provisioning de componentes del space (`setup:storyblok`) | ✅ código · ⛔ sin probar contra space real |
-| Compuerta de aprobación por `status` del brief | ✅ (PoC) |
+| Compuerta de aprobación: `status` del brief **+ `page.approved` por página** | ✅ |
+| Validación del contrato de entrada con Zod (rechaza `schema_version` no soportada) | ✅ |
 | Orquestación Inngest + persistencia | ⛔ Fase 2-3 |
 
 ## Perfil de negocio (NAP)

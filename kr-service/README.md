@@ -54,7 +54,12 @@ Verificar tipos: `npm run typecheck`
 | Clasificación de intención + page_type | ✅ LLM en batch (fallback heurístico) · TODO: señales SERP para is_local |
 | Costo completo del run (DataForSEO + LLM) con desglose | ✅ |
 | Presupuesto preflight (`max_cost_micros` aborta antes de gastar) | ✅ |
-| Compuerta humana / persistencia / Inngest | ⛔ Fase 2-3 |
+| Resiliencia HTTP (timeout, retries con backoff, `Retry-After`) | ✅ |
+| `ContentGen` completo en los 3 proveedores (openai / anthropic / mock) | ✅ |
+| Persistencia / multi-tenancy / Inngest | ⛔ Fase 2-3 |
+
+> La **compuerta de aprobación humana** (ADR-06) la aplica el Módulo 1 (`web-builder`): exige
+> `brief.status === "approved"` **y** `page.approved` por página antes de publicar en vivo.
 
 ### Proveedores (todo mock por default, sin keys)
 | Capa | mock | real |

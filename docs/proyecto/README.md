@@ -4,7 +4,11 @@ Documentación completa del proyecto: qué es, cómo está construido, qué hace
 y en qué estado está. **Refleja el código real** del repositorio, no un diseño aspiracional:
 cuando algo está diseñado pero no implementado, se dice explícitamente.
 
-> Última revisión: 2026-07-13 · Commit de referencia: `0e13c5f`
+> Última revisión: 2026-07-13 · Estado: **PoC completa; los 18 hallazgos de la review externa
+> corregidos salvo el #2 (secretos, requiere acción humana)**. 71 tests en verde.
+>
+> 👉 Si venís a **retomar el proyecto**, leé primero
+> [**Estado y roadmap**](09-estado-y-roadmap.md) y [**Acciones pendientes**](10-acciones-pendientes.md).
 
 ## Orden de lectura
 

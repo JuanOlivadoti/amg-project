@@ -128,7 +128,7 @@ existen en el código**:
 | Pieza | Decisión | Estado |
 |---|---|---|
 | Persistencia + multi-tenancy (RLS) | Supabase (ADR-01) | ⛔ No implementado |
-| Orquestación durable (retries, `waitForEvent` para la compuerta) | Inngest (ADR-03) | ⛔ No implementado — hoy el pipeline corre **secuencial en línea** por CLI |
+| Orquestación durable (**reintentos por paso**, checkpoints, `waitForEvent` para la compuerta) | Inngest (ADR-03) | ⛔ No implementado — hoy el pipeline corre **secuencial en línea** por CLI. *(Los reintentos a nivel HTTP y la idempotencia sí existen: son la base que Inngest necesita.)* |
 | Frontend / portal | Next.js (ADR-02) | ⛔ No implementado |
 | Render de las webs de cliente | Next.js leyendo Storyblok (ADR-04) | ⛔ No implementado — hoy hay un preview HTML autocontenido |
 

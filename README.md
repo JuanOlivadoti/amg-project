@@ -3,10 +3,23 @@
 Plataforma SaaS multi-tenant para agencia de marketing gastronómico (AMG Madrid).
 Convierte el conocimiento operativo de la agencia en software con agentes de IA
 supervisados, RBAC y multi-tenancy. Este repositorio contiene la documentación de
-producto, arquitectura y el diseño del primer módulo en construcción.
+producto y arquitectura, y el código de los dos primeros módulos.
 
 ## 🚦 Estado actual
-**Foco activo:** Módulo 2 — Keyword Research (fase de diseño cerrada, listo para spike de Fase 0).
+
+**PoC funcional de punta a punta:** `prompt de negocio → keyword research → web publicable`.
+
+| Módulo | Estado |
+|---|---|
+| **Módulo 2 — Keyword Research** ([kr-service/](kr-service/)) | ✅ PoC completa |
+| **Módulo 1 — Creador de Webs** ([web-builder/](web-builder/)) | ✅ PoC completa |
+
+- 71 tests en verde · typecheck limpio en ambos módulos.
+- Los 18 hallazgos de una review externa: **corregidos**, salvo el de secretos (acción humana).
+- Todo corre **sin credenciales** en modo mock; pasar a producción es cambiar variables de entorno.
+
+⚠️ **El research corre contra el *sandbox* de DataForSEO** → volúmenes y costo **ficticios**.
+Para una demo con datos reales hay que pasar a producción (~50 USD).
 
 ## 📂 Documentos y orden de lectura
 
@@ -48,7 +61,17 @@ roadmap. **Es el mejor punto de entrada** para entender el sistema.
 Detalle y justificación en [decisiones-arquitectura.md](docs/decisiones-arquitectura.md).
 
 ## ▶️ Próximos pasos
-1. **Cargar credenciales DataForSEO** en `kr-service/.env` y correr `npm run spike` contra sandbox → luego producción para medir costo real por research.
-2. **Fase 1-2 del Módulo 2:** reemplazar los stubs (intención heurística, clustering naive) por la lógica real (Haiku + SERP, embeddings/pgvector), y envolver el pipeline en Inngest.
-3. **Bloqueante abierto:** contrato de bloks del Módulo 1 (Storyblok) para el adaptador de handoff.
-4. **Riesgo de producto** (ver OBS-01): unificar el alcance solapado entre los dos documentos antes de la propuesta comercial.
+
+**Todo el trabajo de código que no requiere cuentas ni saldo está hecho.** Lo que sigue depende de
+acciones humanas — detalladas con pasos exactos en
+[**docs/proyecto/10-acciones-pendientes.md**](docs/proyecto/10-acciones-pendientes.md):
+
+1. 🔴 **Rotar la API key de OpenAI** (una por módulo, con límite de gasto).
+2. 🟡 **Los números:** confirmar los precios de los modelos + correr **un research de prueba en
+   producción** (~50 USD) → da el **costo real por research** para la propuesta comercial.
+3. 🟢 **Crear un space de Storyblok** (gratis) → probar el camino live y demostrar la edición visual.
+4. 🔵 **Unificar el alcance** (OBS-01) antes de consolidar la propuesta comercial.
+
+Después de eso, el siguiente salto de arquitectura es la **orquestación durable con Inngest** +
+persistencia en Supabase (Fase 2-3). El código ya tiene retries, idempotencia y presupuesto, que es
+la base que Inngest necesita.

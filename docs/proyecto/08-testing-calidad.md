@@ -90,6 +90,9 @@ nunca commiteados). **Requiere rotar la key** y separar por servicio. Ver [Confi
 Honestidad sobre los límites de la suite actual:
 
 - **No hay tests de integración**: nada ejercita las llamadas reales a DataForSEO, OpenAI o Storyblok.
+  *(El helper HTTP sí está testeado con `fetch` stubeado, pero no contra los servicios reales.)*
 - **No hay tests del orquestador** (`run.ts` / `build.ts` end-to-end); se verifican corriendo los CLIs a mano.
-- **El camino live de Storyblok nunca se probó** contra un space real (solo dry-run).
-- **No hay tests de concurrencia** (relevante para la idempotencia pendiente — hallazgo #12).
+- **El camino live de Storyblok nunca se probó** contra un space real (solo dry-run) → [acción C](10-acciones-pendientes.md).
+- **No hay tests de concurrencia real**: la idempotencia está implementada y el determinismo de los
+  `_uid` sí está testeado, pero la carrera de creación (dos publicaciones simultáneas) solo se
+  puede ejercitar contra un Storyblok real.

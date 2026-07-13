@@ -39,13 +39,19 @@ pasar a producción. Es un cambio de **una variable de entorno** + cargar saldo 
 
 ## Roadmap
 
-### Paso inmediato (bajo esfuerzo, alto impacto en la demo)
+### 🔴 Paso inmediato: DEPENDE DE JUAN (no de código)
 
-| Tarea | Por qué | Bloqueante |
+**Todo el trabajo de código que se podía hacer sin cuentas ni saldo está hecho.** Lo que sigue
+requiere acción humana. Está detallado con pasos exactos en
+**[Acciones pendientes](10-acciones-pendientes.md)**:
+
+| Tarea | Por qué | Costo |
 |---|---|---|
-| **Pasar DataForSEO a producción** | Volúmenes, KD y clusters reales; medir el **costo real por research** (dato necesario para la propuesta comercial). | Cargar saldo (~50 USD). |
-| **Rotar la API key de OpenAI** y separar por servicio | Hallazgo #2 de la review. | Acción humana en el dashboard. |
-| **Probar Storyblok live** | Demostrar la edición visual — es *el* argumento de venta del CMS headless (ADR-04). | Crear un space gratis + token. |
+| **Rotar la API key de OpenAI** | Hallazgo #2 de la review — el único que sigue abierto. | gratis |
+| **Confirmar los precios de los modelos** | Las tarifas del código son aproximadas → el costo por research todavía no es confiable para una propuesta. | gratis |
+| **Un research de prueba en producción (DataForSEO)** | Volúmenes/KD/clusters reales + el **costo real por research**, y me permite calibrar las estimaciones del presupuesto. | ~50 USD |
+| **Space de Storyblok (gratis)** | Probar el camino live y demostrar la **edición visual** — es *el* argumento de venta del CMS (ADR-04). | gratis |
+| **Unificar el alcance (OBS-01)** | Evitar presentarle al cliente dos alcances incompatibles. | gratis |
 
 ### Tanda 3 — PROD-readiness ✅ COMPLETA
 

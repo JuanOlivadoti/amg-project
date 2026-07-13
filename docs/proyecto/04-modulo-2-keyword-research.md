@@ -230,6 +230,8 @@ Sin `max_cost_micros`, no hay tope y nunca bloquea.
 | Mapeo a páginas + contenido on-page + brief + informe | ✅ |
 | **Costo completo (DataForSEO + LLM) con desglose** | ✅ |
 | **Presupuesto preflight (bloquea antes de gastar)** | ✅ |
+| **Resiliencia HTTP** (timeout, retries con backoff, `Retry-After`) | ✅ |
+| **`ContentGen` completo en los 3 proveedores** (openai / anthropic / mock) | ✅ |
 | Señales de SERP para `is_local` | ⛔ Requiere producción |
-| Retries, timeouts, idempotencia | ⛔ Ver [roadmap](09-estado-y-roadmap.md) |
+| Calibrar tarifas de LLM y estimaciones del presupuesto | ⛔ Requiere una corrida real ([acción B](10-acciones-pendientes.md)) |
 | Persistencia, multi-tenancy, Inngest | ⛔ Fase 2-3 |
