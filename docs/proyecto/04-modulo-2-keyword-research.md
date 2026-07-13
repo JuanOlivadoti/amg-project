@@ -43,8 +43,14 @@ instruye explícitamente **no inventar servicios que el negocio no mencionó**.
 ### 2. Expansión (DataForSEO)
 `KeywordDataProvider.keywordSuggestions()` — endpoint `dataforseo_labs/google/keyword_suggestions/live`
 
-Por cada una de las **primeras 10 seeds**, pide hasta 20 sugerencias. Todo se acumula en un `Set`
-(deduplicado). El límite de 10 seeds es un **control de costo** deliberado.
+Por cada una de las **primeras 10 seeds**, pide hasta 20 sugerencias. El límite de 10 seeds es un
+**control de costo** deliberado.
+
+> **Dedupe canónico** (`dedupeByCanonical`, `lib/text.ts`): un `Set` de strings crudos **no
+> alcanza**. `"pasta fresca Madrid"` y `"pasta fresca madrid"` son la misma keyword para Google,
+> pero el `Set` las guarda como dos — y a DataForSEO **se le paga por keyword**. En la primera
+> corrida real eran 4 de 60 (~7% de sobrecosto), y además ensuciaban los clusters con miembros
+> redundantes.
 
 ### 3. Enriquecimiento (DataForSEO, en paralelo)
 - `searchVolume()` → volumen, CPC, competencia (`keywords_data/google_ads/search_volume/live`)
@@ -116,8 +122,16 @@ para revisión).
 Dos etapas:
 
 1. **Semántico (barato, cubre todo):** se embeben todas las keywords (OpenAI
-   `text-embedding-3-small`, multilingüe) y se agrupan *greedy* por **similitud coseno ≥ 0.55**.
+   `text-embedding-3-small`, multilingüe) y se agrupan *greedy* por **similitud coseno ≥ 0.75**.
    Las de mayor `opportunity_score` quedan como **cabezas** de cluster.
+
+   > **El umbral está calibrado contra datos reales, no elegido a ojo.** El 0.55 original era
+   > demasiado permisivo: las keywords locales cortas comparten todas *"madrid"* + *"italiano"*,
+   > así que el coseno las unía casi todas. En el primer dataset real colapsaba **41 de 45**
+   > keywords vivas en UN cluster, fusionando *pasta fresca*, *pizza napolitana* y *restaurante
+   > italiano centro* —tres páginas comercialmente distintas— en una sola: **3 páginas propuestas
+   > en vez de 8**. Se barrió 0.55→0.85 sobre `out/keywords.json` y 0.75 es donde las cabezas caen
+   > sobre los servicios reales del negocio. Por encima de 0.85 se fragmenta.
 2. **Validación por SERP (caro, solo el top):** para las **15 cabezas** de mayor score se pide el
    SERP orgánico real. Si dos cabezas comparten **≥ 3 URLs**, se **fusionan** (Google las considera
    la misma intención → deben ser una sola página, no dos que compitan entre sí).
@@ -157,11 +171,32 @@ lista viaja con la página para que quien redacte (o el LLM del Módulo 1) la re
 ### 10. Ensamblado y validación
 `pipeline/brief.ts` → `assembleBrief()` + `renderReport()`
 
-Produce el brief (`status: "pending_approval"`, `schema_version: "kr.v0.2"`, `run_id`, `meta_run`
+Produce el brief (`status: "pending_approval"`, `schema_version: "kr.v0.4"`, `run_id`, `meta_run`
 con keywords analizadas / páginas / coste en micros) y el informe Markdown.
 
 El CLI **valida el brief contra el esquema Zod** (`validation/brief.schema.ts`) antes de escribirlo.
 Si no valida, sale con código de error.
+
+> ### ⚠️ `null` no es `0` (contrato `kr.v0.4`)
+>
+> `volumen` y `dificultad` son **nullable**. `null` significa *"el proveedor no devolvió la
+> métrica"*, que **no es lo mismo** que *"esta keyword tiene 0 búsquedas al mes"*.
+>
+> Antes se coaccionaba a `0` (`head.volume ?? 0`) y el informe —el entregable que ve el cliente—
+> afirmaba que una keyword no tenía búsquedas cuando en realidad no teníamos el dato. Con datos
+> reales el problema es masivo: DataForSEO devolvió KD `null` en **41 de 60** keywords.
+>
+> Ahora el informe muestra **`n/d`** y lo explica. Es el mismo principio que el medidor de costo,
+> que se niega a inventar el precio de un modelo sin tarifa: **mejor un dato honestamente ausente
+> que uno inventado.**
+
+### 11. Persistencia del dataset crudo
+`out/keywords.json` — las keywords enriquecidas + los clusters.
+
+El brief solo lleva las **páginas propuestas**. Sin este volcado, los datos por los que se le pagó
+a DataForSEO **se perdían al terminar el proceso**, y cualquier ajuste de scoring o clustering
+obligaba a pagar OTRA corrida. Con el volcado, el tuning es **offline y gratis**: así se calibró
+el umbral de clustering.
 
 ---
 
@@ -184,8 +219,24 @@ Va al brief en `meta_run.coste_micros_usd` (total) + `meta_run.coste_breakdown` 
 y al informe humano como una tabla. En el log del run:
 
 ```
-[cost] total $0.0178 · DFS $0.0000 · LLM $0.0178 · emb $0.0000
+[cost] total $0.3108 · DFS $0.2522 · LLM $0.0586 · emb $0.0000
 ```
+
+### 📊 Costo real medido (producción, 2026-07-13)
+
+> **Un research completo cuesta ~$0.31** — 52 keywords analizadas → 8 páginas con contenido
+> on-page. Estable en tres corridas ($0.2765 / $0.2783 / $0.3108).
+
+| Proveedor | Coste | % |
+|---|---|---|
+| **DataForSEO** | $0.2522 | **81%** |
+| LLM (generación) | $0.0586 | 19% |
+| LLM (embeddings) | $0.0000 | ~0% |
+
+**El 81% del costo es DataForSEO, no la IA.** Es contraintuitivo y tiene una consecuencia directa:
+cambiar a un modelo de LLM más barato mueve poco la aguja (el LLM es el 19%); lo que sí importa es
+**cuántas keywords se le mandan a DataForSEO** — de ahí que el dedupe canónico y el límite de 10
+seeds sean controles de costo reales.
 
 > ✅ **Las tarifas están verificadas** contra las páginas oficiales de OpenAI (2026-07-13):
 > `gpt-4o` $2.50/$10.00 y `text-embedding-3-small` $0.02 por 1M de tokens. Están en
@@ -211,11 +262,17 @@ Hay preflight antes de: seeds, expansión, enriquecimiento, intención, relevanc
 (la fase más cara: incluye SERP) y contenido on-page. Al final hay un **corte post-fase** por si
 la estimación se quedó corta.
 
-Sin `max_cost_micros`, no hay tope y nunca bloquea.
+Desde el CLI se activa con `MAX_COST_USD`:
 
-> Las **estimaciones por llamada** (`DEFAULT_ESTIMATES`) también son aproximadas y sirven solo
-> para decidir si arrancar una fase. El costo **real** se mide aparte. **Calibrarlas con datos de
-> producción.**
+```bash
+MAX_COST_USD=1.00 npm run spike "Restaurante italiano en Madrid centro..."
+```
+
+Sin tope, nunca bloquea.
+
+> Las **estimaciones por llamada** (`DEFAULT_ESTIMATES`) siguen siendo aproximadas y sirven solo
+> para decidir si arrancar una fase; el costo **real** se mide aparte. Ya hay datos de producción
+> para calibrarlas (`out/keywords.json`), pero **todavía no se aplicaron**.
 
 ## Estado
 
@@ -233,6 +290,12 @@ Sin `max_cost_micros`, no hay tope y nunca bloquea.
 | **Presupuesto preflight (bloquea antes de gastar)** | ✅ |
 | **Resiliencia HTTP** (timeout, retries con backoff, `Retry-After`) | ✅ |
 | **`ContentGen` completo en los 3 proveedores** (openai / anthropic / mock) | ✅ |
-| Señales de SERP para `is_local` | ⛔ Requiere producción |
-| Calibrar tarifas de LLM y estimaciones del presupuesto | ⛔ Requiere una corrida real ([acción B](10-acciones-pendientes.md)) |
+| **Corrida real contra DataForSEO producción** (costo medido: **$0.31**) | ✅ |
+| **Dedupe canónico** (deja de pagar keywords duplicadas) | ✅ |
+| **Métricas ausentes como `null`, no como `0`** (`kr.v0.4`) | ✅ |
+| **Clustering calibrado con datos reales** (0.55 → 0.75) | ✅ |
+| **Dataset crudo persistido** (`out/keywords.json` → tuning gratis) | ✅ |
+| Señales de SERP para `is_local` | ⛔ Hoy se dispara de más (53/60) |
+| Usar `score_confidence` para priorizar páginas | ⛔ Se calcula pero no se usa al ordenar |
+| Calibrar las estimaciones del presupuesto | ⛔ Ya hay datos; falta aplicarlo |
 | Persistencia, multi-tenancy, Inngest | ⛔ Fase 2-3 |

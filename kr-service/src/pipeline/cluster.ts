@@ -8,12 +8,27 @@ export interface Cluster {
 }
 
 export interface ClusterOptions {
-  simThreshold: number; // coseno mínimo para unir a un cluster (default 0.55)
+  simThreshold: number; // coseno mínimo para unir a un cluster
   serpOverlapMin: number; // URLs compartidas para fusionar cabezas (default 3)
   serpValidateTop: number; // cuántas cabezas validar por SERP (control de costo)
 }
 
-const DEFAULTS: ClusterOptions = { simThreshold: 0.55, serpOverlapMin: 3, serpValidateTop: 15 };
+/**
+ * simThreshold 0.75 — calibrado contra el primer dataset REAL de DataForSEO (60 keywords,
+ * restaurante italiano en Madrid), barriendo 0.55…0.85 sobre las keywords persistidas.
+ *
+ * El 0.55 original era demasiado permisivo para keywords locales cortas: todas comparten
+ * "madrid" + "italiano", así que el coseno las une casi todas. En el dataset real colapsaba
+ * 41 de 45 keywords vivas en UN cluster, fusionando "pasta fresca", "pizza napolitana" y
+ * "restaurante italiano centro" —tres páginas comercialmente distintas— en una sola. Resultado:
+ * 3 páginas propuestas en vez de 7.
+ *
+ * A 0.75 las cabezas caen sobre las especialidades reales del negocio. Por encima de 0.85 se
+ * fragmenta (separa variantes de la misma keyword).
+ *
+ * Re-calibrar con `out/keywords.json` si cambia el vertical o el modelo de embeddings.
+ */
+const DEFAULTS: ClusterOptions = { simThreshold: 0.75, serpOverlapMin: 3, serpValidateTop: 15 };
 
 /**
  * Clustering híbrido (ver plan §Paso 6):

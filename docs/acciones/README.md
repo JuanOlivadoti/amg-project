@@ -13,36 +13,54 @@ Una guía por acción, con los pasos exactos, cómo verificar que salió bien y 
 |---|---|---|---|---|
 | 🔴 [**01**](01-rotar-key-openai.md) | **Rotar la API key de OpenAI** | ~10 min | gratis | ✅ **Hecha** (2026-07-13) |
 | 🟡 [**02**](02-precios-modelos.md) | **Confirmar los precios de los modelos** | ~5 min | gratis | ✅ **Hecha** (2026-07-13) |
-| ⭐ [**03**](03-research-produccion-dataforseo.md) | **Research de prueba en producción** | ~20 min | ~50 USD | ⏳ Pendiente |
-| 🟢 [**04**](04-storyblok-space.md) | **Crear un space de Storyblok** | ~15 min | gratis | ⏳ Pendiente |
-| 🔵 [**05**](05-unificar-alcance.md) | **Unificar el alcance (OBS-01)** | una charla | gratis | ⏳ Pendiente |
+| ⭐ [**03**](03-research-produccion-dataforseo.md) | **Research de prueba en producción** | ~20 min | ~$0.87 gastados | ✅ **Hecha** (2026-07-13) |
+| 🟢 [**04**](04-storyblok-space.md) | **Space de Storyblok** | ~15 min | gratis | ✅ **Hecha** (2026-07-13) |
+| 🔵 [**05**](05-unificar-alcance.md) | **Unificar el alcance (OBS-01)** | una charla | gratis | ⏳ **Pendiente** |
+
+## El número que salió de la 03
+
+> ### Un research completo cuesta **~$0.31**
+> 52 keywords → 8 páginas con contenido redactado. **El 81% es DataForSEO**, no la IA.
+
+Estable en tres corridas ($0.28 / $0.28 / $0.31). Es el número para presupuestarle a Frank.
+Detalle en la [guía 03](03-research-produccion-dataforseo.md).
 
 ## Qué sigue
 
 ```
-✅ 01 (keys rotadas, verificadas: ambos módulos usan OpenAI real)
-✅ 02 (precios verificados — el costo por research YA es confiable)
+✅ 01  keys rotadas y verificadas (ambos módulos usan OpenAI real)
+✅ 02  precios verificados → el costo por research es confiable
+✅ 03  research real corrido → costo por research + 3 bugs que el sandbox ocultaba
+✅ 04  8 páginas publicadas en vivo en Storyblok, con datos reales
 
-⏳ 03 ⭐  ← EL SIGUIENTE. Es el de mayor valor: te da el costo real por
-          research (para presupuestarle a Frank) y datos reales para la demo.
-⏳ 04     Cierra la demo (editor visual de Storyblok).
-⏳ 05     Va en paralelo: depende de conversaciones, no de código.
+⏳ 05  ← EL ÚNICO QUE QUEDA. No depende de código: es una charla con el socio
+       y con Juan para unificar el alcance antes de la propuesta comercial.
 ```
 
-**Si solo vas a hacer una:** hacé la **03**.
+**Todo lo que dependía de cuentas, saldo y credenciales está hecho.**
 
-## Decisión abierta (surgió de la 02)
+## Lo que la corrida real destapó (y ya está corregido)
 
-`gpt-4o` —el modelo que usa el sistema hoy— quedó **legacy**, y los modelos actuales son
-**2-3× más baratos**. Como el costo por research es el argumento comercial del producto, vale la
-pena evaluar el cambio. Detalle y números en la [guía 02](02-precios-modelos.md).
+El sandbox ocultaba tres bugs. Encontrarlos era el punto de la acción 03:
+
+1. **Decíamos "0 búsquedas/mes" donde no teníamos el dato** → ahora dice `n/d` (esquema `kr.v0.4`).
+2. **Pagábamos keywords duplicadas** (`Madrid` vs `madrid`) → dedupe canónico.
+3. **El clustering colapsaba el sitio en 3 páginas** → umbral recalibrado con datos reales: **8 páginas**.
+
+## Decisiones abiertas
+
+- **`gpt-4o` quedó legacy** y los modelos actuales son 2-3× más baratos ([guía 02](02-precios-modelos.md)).
+  Pero ojo: la 03 mostró que **el LLM es solo el 19% del costo**, así que el ahorro real es chico.
+  Ya no es urgente.
+- **`is_local` se dispara de más** (7 de 8 páginas como `LocalBusiness`) → afecta el JSON-LD.
+- **Costo por space de Storyblok** al escalar la cartera ([guía 04](04-storyblok-space.md)).
 
 ## Checklist
 
 - [x] **01** — Key de OpenAI rotada (dos keys, una por módulo, con límite de gasto)
 - [x] **02** — Precios de `gpt-4o` y `text-embedding-3-small` confirmados
-- [ ] **03** — Research de prueba en producción corrido, informe pasado
-- [ ] **04** — Space de Storyblok creado, token y Space ID en el `.env`
+- [x] **03** — Research en producción corrido · costo real: **$0.31** · `.env` revertido a sandbox
+- [x] **04** — Space de Storyblok creado · 8 páginas publicadas en vivo
 - [ ] **05** — Alcance unificado con el socio y con Juan
 
 ## Dos reglas

@@ -27,8 +27,10 @@ export interface KrProposedPage {
   keywords_secundarias: string[];
   intencion: SearchIntent;
   local: boolean;
-  volumen: number;
-  dificultad: number;
+  /** `null` = el research no obtuvo la métrica (≠ 0). Ver kr.v0.4. */
+  volumen: number | null;
+  /** `null` = el research no obtuvo la métrica (≠ 0). Ver kr.v0.4. */
+  dificultad: number | null;
   opportunity_score: number;
   seo: {
     meta_title: string;
@@ -117,8 +119,8 @@ export interface PageContent {
     claims_permitidos?: string[];
     claims_prohibidos?: string[];
     opportunity_score: number;
-    volumen: number;
-    dificultad: number;
+    volumen: number | null;
+    dificultad: number | null;
   };
 }
 

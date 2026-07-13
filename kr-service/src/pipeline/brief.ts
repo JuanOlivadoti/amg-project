@@ -33,6 +33,14 @@ export function assembleBrief(args: {
   };
 }
 
+/**
+ * Métrica ausente → "n/d", nunca "0". El informe es el entregable que ve el cliente: mostrar 0
+ * donde no hay dato equivale a afirmar que la keyword no tiene búsquedas, que es falso.
+ */
+function metric(v: number | null): string {
+  return v === null ? "n/d" : String(v);
+}
+
 /** Informe legible (Markdown) — el entregable humano de la compuerta (ADR-07). */
 export function renderReport(brief: KeywordResearchBrief): string {
   const l: string[] = [];
@@ -61,10 +69,17 @@ export function renderReport(brief: KeywordResearchBrief): string {
   l.push(`|---|---|---|---|---|---|---|---|`);
   brief.paginas_propuestas.forEach((p, i) => {
     l.push(
-      `| ${i + 1} | ${p.tipo} | ${p.keyword_principal} | ${p.volumen} | ${p.dificultad} | ` +
+      `| ${i + 1} | ${p.tipo} | ${p.keyword_principal} | ${metric(p.volumen)} | ${metric(p.dificultad)} | ` +
         `${p.opportunity_score} | ${p.score_confidence} | ${p.intencion}${p.local ? " (local)" : ""} |`,
     );
   });
+
+  if (brief.paginas_propuestas.some((p) => p.volumen === null || p.dificultad === null)) {
+    l.push(
+      `\n> **n/d** = el proveedor de datos no devolvió la métrica para esa keyword. ` +
+        `**No es un 0**: es un dato que no tenemos, y por eso esas páginas van con la confianza baja.`,
+    );
+  }
 
   l.push(`\n## Detalle por página\n`);
   brief.paginas_propuestas.forEach((p, i) => {
@@ -72,7 +87,9 @@ export function renderReport(brief: KeywordResearchBrief): string {
     l.push(`- **Slug:** \`${p.url_slug}\` · **Tipo:** ${p.tipo} · **Schema:** ${p.seo.schema_type}`);
     l.push(`- **Meta title:** ${p.seo.meta_title}`);
     l.push(`- **Meta description:** ${p.seo.meta_description}`);
-    l.push(`- **Keyword principal:** ${p.keyword_principal} (vol ${p.volumen} · KD ${p.dificultad})`);
+    l.push(
+      `- **Keyword principal:** ${p.keyword_principal} (vol ${metric(p.volumen)} · KD ${metric(p.dificultad)})`,
+    );
     if (p.keywords_secundarias.length) l.push(`- **Secundarias:** ${p.keywords_secundarias.join(", ")}`);
     if (p.content_brief.secciones_sugeridas.length)
       l.push(`- **Secciones:** ${p.content_brief.secciones_sugeridas.join(" · ")}`);

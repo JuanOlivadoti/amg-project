@@ -1,123 +1,107 @@
-# Acción 03 — Research de prueba en PRODUCCIÓN (DataForSEO)
+# Acción 03 — Research de prueba en PRODUCCIÓN (DataForSEO) ✅ HECHA
 
-**Tiempo:** ~20 minutos · **Costo:** ~50 USD de saldo (no se gasta todo) · **Prioridad:** 🟡 alta valor
-
-> ⭐ **Esta es la acción que más valor te da.** Es la que produce el **costo real por research** —
-> el número que necesitás para presupuestarle a Frank— y la que convierte la demo en algo que
-> aguanta preguntas del cliente.
-
-## Por qué
-
-Hoy el research corre contra el **sandbox** de DataForSEO, que devuelve **datos ficticios**.
-Por eso el spike siempre da lo mismo: ~1 cluster, 1 página, y costo $0 de DataForSEO.
-
-Los volúmenes de búsqueda, la dificultad (KD) y los clusters **no son reales**. Todo lo que
-depende de IA (seeds, intención, relevancia, contenido) **sí es real**, pero los números SEO no.
-
-Con una sola corrida en producción conseguimos tres cosas:
-1. El **costo verdadero por research** (DataForSEO + LLM, desglosado).
-2. **Volúmenes, KD y clusters reales** → una demo creíble.
-3. Datos para que yo **calibre las estimaciones** del presupuesto preflight (hoy son a ojo).
+**Estado:** ✅ Completada el 2026-07-13. Tres corridas reales contra `api.dataforseo.com`.
+**Gasto total:** ~**$0.87** del saldo cargado. **El `.env` quedó revertido a sandbox.**
 
 ---
 
-## Paso 1 — Cargar saldo
+## El número que buscábamos
 
-DataForSEO es **prepago**: cargás saldo y se descuenta por consulta.
+> ### Un research completo cuesta **~$0.31**
+> *(52 keywords analizadas → 8 páginas propuestas, con contenido on-page redactado)*
 
-1. Entrá a tu dashboard de **https://dataforseo.com**
-2. Buscá la sección de **saldo / billing / add funds**.
-3. Cargá el mínimo (históricamente ~**50 USD**; confirmá el actual en el dashboard).
+| Proveedor | Coste | % |
+|---|---|---|
+| **DataForSEO** | $0.2522 | **81%** |
+| LLM (generación) | $0.0586 | 19% |
+| LLM (embeddings) | $0.0000 | ~0% |
+| **TOTAL** | **$0.3108** | |
 
-> Un research individual cuesta **centavos**, no decenas de dólares. Los 50 USD son el mínimo de
-> carga, no el costo de la prueba. Te va a quedar saldo de sobra.
+Es **estable**: las tres corridas dieron $0.2765, $0.2783 y $0.3108. La variación viene de cuántas
+keywords sobreviven al gate de relevancia.
 
-## Paso 2 — Cambiar UNA línea
+**Para la propuesta a Frank:** el costo marginal de un research es de **centavos**. Lo que se le
+cobra al cliente no está limitado por el costo de la API — está limitado por el valor del
+entregable. Y el **81% del costo es DataForSEO**, no la IA: bajar el modelo de OpenAI casi no
+mueve la aguja (ver [guía 02](02-precios-modelos.md)).
 
-Abrí **`kr-service/.env`** y cambiá la URL base:
+---
 
-```diff
-- DATAFORSEO_BASE_URL=https://sandbox.dataforseo.com
-+ DATAFORSEO_BASE_URL=https://api.dataforseo.com
-```
+## Lo que la corrida real destapó
 
-Guardá. **Eso es todo** — no hay que tocar nada de código.
+Los datos de verdad rompieron cosas que el sandbox ocultaba. **Ese era el punto de esta acción.**
+Los tres se corrigieron:
 
-> Verificá también que sigas teniendo `DATAFORSEO_MODE=live` (no `mock`).
+### 1. 🔴 Le decíamos al cliente "0 búsquedas/mes" cuando no teníamos el dato
 
-## Paso 3 — (Recomendado) Poner un tope de gasto
+DataForSEO devuelve `null` cuando no tiene la métrica (le pasó con **41 de 60** keywords en KD).
+El código lo convertía a `0` (`head.volume ?? 0`). En el informe, una keyword sin dato aparecía
+como **"0 búsquedas/mes"** — una afirmación falsa, y de las que un cliente detecta.
 
-Por si acaso, podés limitar cuánto puede gastar la corrida. No es obligatorio, pero es red de
-seguridad. Si querés que lo active, avisame y lo configuro — o simplemente corré el paso 4 y
-mirá el costo al final (una corrida normal ronda los centavos).
+**Arreglado:** `null` se propaga como `null` y el informe muestra **`n/d`**. Cambio de contrato →
+esquema **`kr.v0.4`**.
 
-## Paso 4 — Correr UNA research
+### 2. 💸 Pagábamos por keywords duplicadas
 
-Idealmente con un caso **real de la agencia** (un cliente de verdad), que es lo que después le
-mostrás a Frank. Si no, usá el ejemplo:
+`"pasta fresca Madrid"` y `"pasta fresca madrid"` se enviaban como **dos** keywords. A DataForSEO
+se le paga **por keyword**. Eran 4 de 60 (~7% de sobrecosto), y además ensuciaban los clusters.
+
+**Arreglado:** dedupe por clave canónica antes de llamar a la API.
+
+### 3. 🎯 El clustering colapsaba el sitio entero en 3 páginas
+
+Con el umbral original (coseno ≥ 0.55), **41 de 45** keywords caían en UN cluster: *pasta fresca*,
+*pizza napolitana* y *restaurante italiano centro* —tres páginas comercialmente distintas— se
+fusionaban en una. El sandbox no lo mostraba porque sus datos ficticios no se parecen entre sí.
+
+**Arreglado:** umbral recalibrado a **0.75**, barriendo 0.55→0.85 sobre el dataset real.
+**Resultado: 3 páginas → 8 páginas**, y cada cabeza cae sobre un servicio real del negocio.
+
+### 4. 🔧 Y algo que ahora hace gratis el tuning futuro
+
+Las keywords enriquecidas se **tiraban** al terminar el proceso: pagábamos $0.25 por datos que
+no sobrevivían. Ahora se persisten en **`out/keywords.json`**, así que ajustar scoring o
+clustering es **offline y gratis** — no hay que volver a pagar una corrida. Con eso se calibró
+el punto 3.
+
+---
+
+## El plan de sitio que salió (datos reales)
+
+| # | Tipo | Keyword principal | Vol/mes | KD |
+|---|---|---|---|---|
+| 1 | landing_local | restaurante italiano Madrid centro | **480** | 0 |
+| 2 | landing_local | pizza napolitana Madrid | **390** | 15 |
+| 3 | blog | restaurante italiano pasta fresca | **260** | 0 |
+| 4 | landing_local | cenas para grupos en restaurante italiano | n/d | n/d |
+| 5 | landing_local | menú del día italiano Madrid | n/d | n/d |
+| 6 | landing_local | brunch fin de semana restaurante italiano | n/d | n/d |
+| 7 | landing_local | restaurante italiano especializado en pizzas | n/d | n/d |
+| 8 | landing_local | cenas para grupos en Madrid centro | n/d | n/d |
+
+Las 8 se publicaron en Storyblok con contenido redactado por IA ([acción 04](04-storyblok-space.md)).
+
+---
+
+## Lo que queda abierto (calidad, no bugs)
+
+| Qué | Por qué importa |
+|---|---|
+| **`is_local` se dispara de más** (53 de 60 keywords) | Casi todo sale como `landing_local` → JSON-LD `LocalBusiness` en páginas que deberían ser `Article`. Se arregla con señales del SERP (presencia de *map pack*) en vez de inferirlo por LLM. |
+| **5 de 8 páginas no tienen volumen** | El 40% del score (intención + relevancia) no depende de datos de mercado, así que una keyword sin datos arranca en ~50 puntos. El `score_confidence` lo detecta (0.3) pero **no se usa** para ordenar páginas. |
+| **Estimaciones del presupuesto** | Ya se pueden calibrar con estos números; hoy siguen a ojo. |
+
+---
+
+## Si hay que repetirlo
 
 ```bash
+# 1. En kr-service/.env:
+#    DATAFORSEO_BASE_URL=https://api.dataforseo.com
+# 2. Correr con tope de gasto (red de seguridad):
 cd kr-service
-npm run spike "Restaurante italiano en Madrid centro. Especialidades: pizza napolitana, pasta fresca, menú del día, cenas para grupos."
+MAX_COST_USD=1.00 npm run spike "El prompt del cliente"
+# 3. 🔴 VOLVER A SANDBOX en el .env, o cada corrida de desarrollo cobra.
 ```
 
-Vas a ver el pipeline correr. Al final, la línea clave:
-
-```
-[cost] total $0.0XXX · DFS $0.0XXX · LLM $0.0XXX · emb $0.0XXX
-```
-
-Ahora **DFS ya no es $0.0000** — ese es el costo real de DataForSEO.
-
-## Paso 5 — 🔴 VOLVER A SANDBOX (importante)
-
-Apenas termine la corrida, **revertí el cambio** para no gastar en cada prueba de desarrollo:
-
-```diff
-- DATAFORSEO_BASE_URL=https://api.dataforseo.com
-+ DATAFORSEO_BASE_URL=https://sandbox.dataforseo.com
-```
-
-> Si te olvidás de esto, **cada corrida de desarrollo te va a cobrar**. Es el error más fácil de
-> cometer acá.
-
-## Paso 6 — Pasarme el resultado
-
-Mandame **el contenido de `kr-service/out/informe.md`** (es un archivo de texto, podés copiar y
-pegar todo). Ahí está:
-- la tabla de **costo desglosado** por proveedor,
-- las **páginas propuestas** con sus volúmenes y KD reales,
-- los clusters.
-
-Si preferís algo más corto, alcanza con el bloque `meta_run` de `kr-service/out/brief.json`.
-
-**No contiene secretos** — es el entregable del research.
-
----
-
-## Qué hago yo con eso
-
-1. Te digo el **costo real por research**, listo para la propuesta comercial.
-2. **Calibro las estimaciones** del presupuesto preflight con datos verdaderos (hoy son
-   aproximaciones mías).
-3. Generamos la **web con datos reales** (`web-builder`) para la demo.
-
----
-
-## Cómo saber que salió bien
-
-- [ ] Hay saldo cargado en DataForSEO.
-- [ ] La corrida terminó con `✅ Brief válido`.
-- [ ] En el log, `DFS $...` es **mayor a cero**.
-- [ ] Los volúmenes de las páginas propuestas parecen reales (no todos iguales).
-- [ ] **Volviste a sandbox** en el `.env`. ← no te olvides
-- [ ] Me pasaste el `informe.md`.
-
-## Si algo falla
-
-| Síntoma | Causa probable |
-|---|---|
-| `DFS $0.0000` | Seguís apuntando al sandbox. Revisá la URL en el `.env`. |
-| Error 401 / 402 | Credenciales mal, o **sin saldo** cargado. |
-| Error 429 | Rate limit. El sistema **reintenta solo** con backoff; si persiste, esperá un rato. |
-| Muchos avisos `task ... status ...` | Alguna consulta puntual falló; el sistema sigue con las demás y te avisa. Pasame el log igual. |
+`MAX_COST_USD` aborta **antes** de gastar si una fase no entra en el remanente.

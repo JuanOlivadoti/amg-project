@@ -1,5 +1,5 @@
 import { MARKET_ES } from "../config.js";
-import { canonicalKey } from "../lib/text.js";
+import { canonicalKey, dedupeByCanonical } from "../lib/text.js";
 import { costMeter, usdFromMicros } from "../lib/cost.js";
 import { Budget } from "../lib/budget.js";
 import { getProvider } from "../dataforseo/index.js";
@@ -14,11 +14,27 @@ import { applyBusinessRelevance, applyIntents, applyPageContent } from "./enrich
 import { assembleBrief } from "./brief.js";
 
 /**
+ * Dataset crudo del run: todas las keywords enriquecidas y los clusters resultantes.
+ *
+ * Se expone aparte del brief porque el brief solo lleva las páginas propuestas. Sin esto, los
+ * datos por los que se le pagó a DataForSEO se pierden al terminar el proceso, y cualquier ajuste
+ * de scoring o de clustering obliga a pagar OTRA corrida. Con el volcado, el tuning es offline
+ * y gratis.
+ */
+export interface ResearchDataset {
+  keywords: EnrichedKeyword[];
+  clusters: Array<{ head: string; members: string[] }>;
+}
+
+/**
  * Orquestador secuencial del spike (Fase 0).
  * TODO: envolver cada paso en un step durable de Inngest (reintentos + waitForEvent
  * para la compuerta humana). Acá corre en línea para validar el flujo end-to-end.
  */
-export async function runResearch(input: KeywordResearchInput): Promise<KeywordResearchBrief> {
+export async function runResearch(
+  input: KeywordResearchInput,
+  onDataset?: (d: ResearchDataset) => void,
+): Promise<KeywordResearchBrief> {
   const market = input.market ?? MARKET_ES;
   const weights = input.options?.weights ?? WEIGHTS_DEFAULT;
   const maxPages = input.options?.max_pages ?? 25;
@@ -41,20 +57,26 @@ export async function runResearch(input: KeywordResearchInput): Promise<KeywordR
   const seeds = await generateSeeds(input.prompt, market);
   log("seeds", `${seeds.length} keywords semilla`);
 
-  // Paso 3 — Expansión (sugerencias) por cada seed
+  // Paso 3 — Expansión (sugerencias) por cada seed.
+  // El dedupe es por clave CANÓNICA: a DataForSEO se le paga por keyword, y los duplicados de
+  // casing ("pasta fresca Madrid" / "pasta fresca madrid") se pagaban dos veces.
   const toExpand = seeds.slice(0, 10);
   budget.assertCanSpend(toExpand.length * est.dfsSuggestions, "expansión");
-  const universe = new Set(seeds.map((s) => s.keyword));
+  const raw: string[] = seeds.map((s) => s.keyword);
   for (const s of toExpand) {
     try {
       const sugg = await dfs.keywordSuggestions(s.keyword, market, 20);
-      sugg.forEach((k) => universe.add(k));
+      raw.push(...sugg);
     } catch (e) {
       log("expand", `aviso: ${(e as Error).message}`);
     }
   }
-  const keywords = [...universe];
-  log("expand", `${keywords.length} keywords tras expansión`);
+  const keywords = dedupeByCanonical(raw);
+  const dups = raw.length - keywords.length;
+  log(
+    "expand",
+    `${keywords.length} keywords tras expansión` + (dups > 0 ? ` (${dups} duplicadas descartadas)` : ""),
+  );
 
   // Paso 4 — Enriquecimiento (volumen + dificultad)
   budget.assertCanSpend(est.dfsSearchVolume + est.dfsBulkKd, "enriquecimiento");
@@ -113,6 +135,16 @@ export async function runResearch(input: KeywordResearchInput): Promise<KeywordR
   budget.assertCanSpend(est.llmEmbed + CLUSTER_SERP_HEADS * est.dfsSerp, "clustering");
   const clusters = await clusterKeywords(enriched, getEmbedder(), dfs, market);
   log("cluster", `${clusters.length} clusters`);
+
+  // Se entrega el dataset crudo ANTES de mapear a páginas: son los datos que se pagaron, y sin
+  // esto se pierden al terminar el proceso.
+  onDataset?.({
+    keywords: enriched,
+    clusters: clusters.map((c) => ({
+      head: c.members[0]!.keyword,
+      members: c.members.map((m) => m.keyword),
+    })),
+  });
 
   // Paso 9 — Mapeo a páginas — sin costo externo
   const { pages, backlog } = mapClustersToPages(clusters, maxPages);

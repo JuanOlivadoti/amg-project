@@ -42,8 +42,11 @@ function buildPage(head: EnrichedKeyword, members: EnrichedKeyword[]): ProposedP
     keywords_secundarias: members.slice(1, 6).map((m) => m.keyword),
     intencion: intent,
     local: head.is_local,
-    volumen: head.volume ?? 0,
-    dificultad: head.difficulty ?? 0,
+    // `null` = el proveedor NO devolvió el dato. NO se coacciona a 0: "sin dato" y "cero
+    // búsquedas/mes" son cosas distintas, y confundirlas le miente al cliente en el entregable.
+    // El scoring ya penaliza la falta de dato vía `score_confidence`.
+    volumen: head.volume ?? null,
+    dificultad: head.difficulty ?? null,
     opportunity_score: head.opportunity_score ?? 0,
     score_confidence: head.score_confidence ?? 0,
     seo: {

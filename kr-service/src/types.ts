@@ -3,7 +3,9 @@
 
 // v0.3: `coste_micros_usd` pasa a incluir TODOS los proveedores (antes: solo DataForSEO)
 // y se añade `coste_breakdown`. Cambio semántico → bump de versión.
-export const SCHEMA_VERSION = "kr.v0.3";
+// v0.4: `volumen` y `dificultad` pasan a ser nullable. Antes un dato faltante se escribía como 0,
+// que el consumidor no podía distinguir de un 0 real. Cambio de contrato → sube la versión.
+export const SCHEMA_VERSION = "kr.v0.4";
 
 export interface Market {
   country: string; // ISO-3166-1 alpha-2
@@ -103,8 +105,10 @@ export interface ProposedPage {
   keywords_secundarias: string[];
   intencion: SearchIntent;
   local: boolean;
-  volumen: number;
-  dificultad: number;
+  /** `null` = el proveedor no devolvió el dato (≠ 0 búsquedas/mes). */
+  volumen: number | null;
+  /** `null` = el proveedor no devolvió el dato (≠ dificultad 0). */
+  dificultad: number | null;
   opportunity_score: number;
   score_confidence: number;
   seo: PageSeo;

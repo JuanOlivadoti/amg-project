@@ -17,41 +17,60 @@ orquestación durable (Inngest) con persistencia, y el frontend.
 | ✅ | Pipeline M1 completo: brief → stories Storyblok + preview HTML con JSON-LD válido. |
 | ✅ | Providers abstractos: todo corre **sin credenciales** en modo mock. |
 | ✅ | Compuerta de aprobación humana (global + por página). |
-| ✅ | Autenticación DataForSEO verificada contra sandbox (`status_code: 20000`). |
+| ✅ | **Research real contra DataForSEO producción**: 52 keywords → 8 páginas, **$0.31 por research**. |
+| ✅ | **8 páginas publicadas en vivo en Storyblok**, con contenido redactado por IA. |
 | ✅ | JSON-LD validado en el Rich Results Test de Google (`LocalBusiness` + `FAQPage`, sin errores). |
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
-| ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After`; degradación parcial ante fallos de SERP. |
-| ✅ | **Idempotencia**: `_uid` deterministas y publicación sin duplicados ante carreras. |
-| ✅ | 71 tests unitarios en verde + typecheck limpio en ambos módulos. |
-| ✅ | **Los 18 hallazgos de la review externa: corregidos** (salvo #2, secretos → acción humana). |
+| ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
+| ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
+| ✅ | 78 tests unitarios en verde + typecheck limpio en ambos módulos. |
+| ✅ | **Los 18 hallazgos de la review externa: corregidos.** |
 
-## Lo que hay que entender antes de mostrarlo
+## El número para la propuesta comercial
 
-**El research corre contra el *sandbox* de DataForSEO**, que devuelve **datos ficticios**. Por eso
-el spike siempre arroja ~1 cluster / 1 página y coste $0. Los volúmenes y la dificultad **no son
-reales**.
+> ### Un research completo cuesta **~$0.31**
+> 52 keywords analizadas → 8 páginas con contenido on-page. Estable en tres corridas.
 
-Esto no es un bug: es la decisión de validar la integración sin gastar. Pero significa que, para
-una demo que aguante preguntas del cliente (*"¿esta keyword tiene 2.400 búsquedas/mes?"*), hay que
-pasar a producción. Es un cambio de **una variable de entorno** + cargar saldo (~50 USD).
+| Proveedor | Coste | % |
+|---|---|---|
+| **DataForSEO** | $0.2522 | **81%** |
+| LLM (generación) | $0.0586 | 19% |
+| LLM (embeddings) | $0.0000 | ~0% |
+
+El costo marginal de un research es de **centavos**: lo que se le cobre al cliente no está limitado
+por el costo de la API, sino por el valor del entregable.
+
+## Lo que la corrida real destapó
+
+El sandbox devuelve datos ficticios, y eso **ocultaba tres bugs** que solo aparecieron con datos de
+verdad. Encontrarlos era exactamente el punto de correr en producción. **Los tres están corregidos**
+([detalle](../acciones/03-research-produccion-dataforseo.md)):
+
+1. **Se le decía al cliente "0 búsquedas/mes" donde no teníamos el dato.** DataForSEO devuelve
+   `null` (le pasó en 41 de 60 keywords en KD) y el código lo coaccionaba a `0`. Ahora se propaga
+   como `null` y el informe muestra **`n/d`** → esquema **`kr.v0.4`**.
+2. **Se pagaban keywords duplicadas.** `"pasta fresca Madrid"` y `"pasta fresca madrid"` iban como
+   dos, y a DataForSEO se le paga por keyword. Ahora hay dedupe canónico.
+3. **El clustering colapsaba el sitio entero en 3 páginas.** Con coseno ≥ 0.55, 41 de 45 keywords
+   caían en un cluster. Recalibrado a **0.75** con el dataset real: **8 páginas**, cada una sobre un
+   servicio real del negocio.
+
+> El dataset crudo ahora se persiste en `out/keywords.json`. Antes se tiraba: se pagaba por datos
+> que no sobrevivían al proceso, y cualquier ajuste de scoring obligaba a pagar otra corrida.
+> Ahora el tuning es **offline y gratis**.
 
 ---
 
 ## Roadmap
 
-### 🔴 Paso inmediato: DEPENDE DE JUAN (no de código)
+### 🔴 Único paso que depende de Juan
 
-**Todo el trabajo de código que se podía hacer sin cuentas ni saldo está hecho.** Lo que sigue
-requiere acción humana. Está detallado con pasos exactos en
-**[Acciones pendientes](10-acciones-pendientes.md)**:
+**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Queda una sola acción, y no
+es de código ([guía](../acciones/05-unificar-alcance.md)):
 
 | Tarea | Por qué | Costo |
 |---|---|---|
-| **Rotar la API key de OpenAI** | Hallazgo #2 de la review — el único que sigue abierto. | gratis |
-| **Confirmar los precios de los modelos** | Las tarifas del código son aproximadas → el costo por research todavía no es confiable para una propuesta. | gratis |
-| **Un research de prueba en producción (DataForSEO)** | Volúmenes/KD/clusters reales + el **costo real por research**, y me permite calibrar las estimaciones del presupuesto. | ~50 USD |
-| **Space de Storyblok (gratis)** | Probar el camino live y demostrar la **edición visual** — es *el* argumento de venta del CMS (ADR-04). | gratis |
-| **Unificar el alcance (OBS-01)** | Evitar presentarle al cliente dos alcances incompatibles. | gratis |
+| **Unificar el alcance (OBS-01)** | Evitar presentarle al cliente dos alcances incompatibles. Es una charla con el socio y con Juan. | gratis |
 
 ### Tanda 3 — PROD-readiness ✅ COMPLETA
 
@@ -64,10 +83,18 @@ requiere acción humana. Está detallado con pasos exactos en
 
 **Lo que queda del código está listo para envolverse en Inngest**
 ([ADR-03](../decisiones-arquitectura.md)): retries, idempotencia y presupuesto ya existen, que era
-justo lo que un orquestador durable necesita como base.
+justo lo que un orquestador durable necesita como base. Y los tres se ejercitaron contra servicios
+reales, no solo contra tests.
 
-> ⚠️ **Pendiente de calibración:** las tarifas de los modelos y las estimaciones por fase del
-> presupuesto son **aproximadas**. Ver [Acciones pendientes](10-acciones-pendientes.md).
+### Tanda 4 — Corridas reales ✅ COMPLETA
+
+| Hecho | Qué cambió |
+|---|---|
+| **Métricas ausentes ya no mienten** | `volumen`/`dificultad` son nullable; el informe muestra `n/d`. Contrato `kr.v0.4`. |
+| **Dedupe canónico antes de pagar** | Los duplicados de casing ya no se le facturan a DataForSEO. |
+| **Clustering recalibrado (0.55 → 0.75)** | Con datos reales: 3 páginas → **8 páginas**. |
+| **Dataset crudo persistido** | `out/keywords.json` → ajustar scoring/clustering es gratis, sin pagar otra corrida. |
+| **Tope de gasto en el CLI** | `MAX_COST_USD=1.00 npm run spike` aborta antes de gastar. |
 
 ### Fase 2-3 — Plataforma
 
@@ -78,12 +105,15 @@ justo lo que un orquestador durable necesita como base.
 | **Frontend Next.js** | ADR-02, ADR-04 | Portal + render de las webs de cliente desde Storyblok, *AI-search-first*. |
 | **Export estático / offboarding** | ADR-11 | Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
 
-### Mejoras de calidad del research (necesitan datos reales)
+### Mejoras de calidad del research (priorizadas con los datos reales)
 
-- **Señales de SERP para `is_local`** (presencia de *map pack*) en vez de inferirlo por LLM/heurística.
-- **Normalizar el volumen por percentiles del mercado** en vez del máximo del run; winsorizar outliers.
-- **Estrategia hub & spoke** en el mapeo cluster→página (hoy todo es `single`).
-- **Enlazado interno** entre las páginas propuestas (hoy `enlazado_interno` sale vacío).
+| Mejora | Evidencia de la corrida real |
+|---|---|
+| **`is_local` por señales del SERP** (presencia de *map pack*) en vez de inferirlo por LLM | **53 de 60** keywords salieron `is_local` → 7 de 8 páginas como `LocalBusiness`. Algunas deberían ser `Article`. Es el que más ensucia el JSON-LD. |
+| **Usar `score_confidence` al ordenar páginas** | 5 de 8 páginas no tienen volumen. El 40% del score (intención + relevancia) no depende de datos de mercado, así que una keyword de la que no sabemos nada arranca en ~50 puntos. La confianza lo detecta (0.3) pero **no se usa** para priorizar. |
+| **Normalizar el volumen por percentiles del mercado** en vez del máximo del run; winsorizar outliers | Con un solo pico (1300) el resto se aplasta. |
+| **Estrategia hub & spoke** en el mapeo cluster→página | Hoy todo es `single`. |
+| **Enlazado interno** entre las páginas propuestas | Hoy `enlazado_interno` sale vacío. |
 
 ---
 
@@ -92,10 +122,10 @@ justo lo que un orquestador durable necesita como base.
 | Deuda | Dónde | Impacto |
 |---|---|---|
 | **Esquema Zod duplicado** entre M2 y M1 | `kr-service/src/validation/` y `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. Extraer a paquete compartido. |
-| **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos ya están verificadas** ✅, pero las **estimaciones por fase** del preflight siguen siendo a ojo. Se calibran con una corrida real en producción ([acción 03](../acciones/03-research-produccion-dataforseo.md)). |
-| **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son **2-3× más baratos**. Como el costo por research es el argumento comercial, conviene evaluar el cambio con una corrida comparativa. Ver [guía 02](../acciones/02-precios-modelos.md). |
-| **Sin tests de integración** | — | El camino live (DataForSEO, OpenAI, Storyblok) no está cubierto. |
-| **Storyblok live sin probar** | `publish/storyblok-publisher.ts` | Código escrito y typechequeado, nunca ejecutado contra un space real. |
+| **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos están verificadas** ✅ y ahora **hay datos reales** para calibrar las estimaciones por fase, pero todavía **no se aplicaron**: siguen a ojo. Se calibran con `out/keywords.json`, gratis. |
+| **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son 2-3× más baratos. **Pero la corrida real bajó la urgencia**: el LLM es solo el **19%** del costo, así que el ahorro total sería de ~10%. Ver [guía 02](../acciones/02-precios-modelos.md). |
+| **`is_local` se dispara de más** | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo sale `LocalBusiness`. Ensucia el JSON-LD. |
+| **Sin tests de integración** | — | El camino live ya **se ejecutó a mano** contra DataForSEO, OpenAI y Storyblok, pero no está **automatizado**. |
 
 ## Riesgos abiertos
 

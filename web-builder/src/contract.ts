@@ -10,7 +10,7 @@ import type { BusinessProfile, KrBrief } from "./types.js";
  * sola fuente de verdad (el M2 ya valida su salida con Zod en kr-service).
  */
 // v0.3 solo cambia `meta_run` (costo total + desglose), que el M1 no consume → compatible.
-export const SUPPORTED_SCHEMA_VERSIONS = ["kr.v0.2", "kr.v0.3"] as const;
+export const SUPPORTED_SCHEMA_VERSIONS = ["kr.v0.2", "kr.v0.3", "kr.v0.4"] as const;
 
 const schemaTypeSchema = z.enum(["LocalBusiness", "Article", "FAQPage", "WebPage"]);
 const pageTypeSchema = z.enum(["servicio", "landing_local", "blog", "institucional"]);
@@ -30,8 +30,10 @@ const proposedPageSchema = z.object({
   keywords_secundarias: z.array(z.string()),
   intencion: intentSchema,
   local: z.boolean(),
-  volumen: z.number(),
-  dificultad: z.number(),
+  // Nullable desde kr.v0.4: `null` = el proveedor no devolvió la métrica (≠ 0).
+  // Los briefs kr.v0.2/v0.3 traen number y siguen validando.
+  volumen: z.number().nullable(),
+  dificultad: z.number().nullable(),
   opportunity_score: z.number(),
   seo: z.object({
     meta_title: z.string(),
