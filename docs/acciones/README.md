@@ -9,32 +9,38 @@ Una guía por acción, con los pasos exactos, cómo verificar que salió bien y 
 
 ## Las 5 acciones
 
-| # | Acción | Tiempo | Costo | Qué desbloquea |
+| # | Acción | Tiempo | Costo | Estado |
 |---|---|---|---|---|
-| 🔴 [**01**](01-rotar-key-openai.md) | **Rotar la API key de OpenAI** | ~10 min | gratis | Cierra el único hallazgo de seguridad abierto. |
-| 🟡 [**02**](02-precios-modelos.md) | **Confirmar los precios de los modelos** | ~5 min | gratis | Que el costo por research sea **confiable**. |
-| ⭐ [**03**](03-research-produccion-dataforseo.md) | **Research de prueba en producción** | ~20 min | ~50 USD | El **costo real por research** (para presupuestarle a Frank) + datos reales para la demo. |
-| 🟢 [**04**](04-storyblok-space.md) | **Crear un space de Storyblok** | ~15 min | gratis | La demo del **editor visual** — el argumento de venta del CMS. |
-| 🔵 [**05**](05-unificar-alcance.md) | **Unificar el alcance (OBS-01)** | una charla | gratis | Poder presupuestar sin contradicciones. |
+| 🔴 [**01**](01-rotar-key-openai.md) | **Rotar la API key de OpenAI** | ~10 min | gratis | ✅ **Hecha** (2026-07-13) |
+| 🟡 [**02**](02-precios-modelos.md) | **Confirmar los precios de los modelos** | ~5 min | gratis | ✅ **Hecha** (2026-07-13) |
+| ⭐ [**03**](03-research-produccion-dataforseo.md) | **Research de prueba en producción** | ~20 min | ~50 USD | ⏳ Pendiente |
+| 🟢 [**04**](04-storyblok-space.md) | **Crear un space de Storyblok** | ~15 min | gratis | ⏳ Pendiente |
+| 🔵 [**05**](05-unificar-alcance.md) | **Unificar el alcance (OBS-01)** | una charla | gratis | ⏳ Pendiente |
 
-## Orden recomendado
+## Qué sigue
 
 ```
-01 (seguridad, urgente)
- └→ 02 (5 minutos, y desbloquea el 03)
-     └→ 03 ⭐ (el de mayor valor: te da el número para la propuesta)
-         └→ 04 (cierra la demo)
+✅ 01 (keys rotadas, verificadas: ambos módulos usan OpenAI real)
+✅ 02 (precios verificados — el costo por research YA es confiable)
 
-05 va en paralelo — depende de conversaciones, no de código.
+⏳ 03 ⭐  ← EL SIGUIENTE. Es el de mayor valor: te da el costo real por
+          research (para presupuestarle a Frank) y datos reales para la demo.
+⏳ 04     Cierra la demo (editor visual de Storyblok).
+⏳ 05     Va en paralelo: depende de conversaciones, no de código.
 ```
 
-**Si solo vas a hacer una:** hacé la **03**. Es la que convierte el proyecto en algo que le podés
-mostrar y presupuestar a Frank.
+**Si solo vas a hacer una:** hacé la **03**.
+
+## Decisión abierta (surgió de la 02)
+
+`gpt-4o` —el modelo que usa el sistema hoy— quedó **legacy**, y los modelos actuales son
+**2-3× más baratos**. Como el costo por research es el argumento comercial del producto, vale la
+pena evaluar el cambio. Detalle y números en la [guía 02](02-precios-modelos.md).
 
 ## Checklist
 
-- [ ] **01** — Key de OpenAI rotada (dos keys, una por módulo, con límite de gasto)
-- [ ] **02** — Precios de `gpt-4o` y `text-embedding-3-small` confirmados
+- [x] **01** — Key de OpenAI rotada (dos keys, una por módulo, con límite de gasto)
+- [x] **02** — Precios de `gpt-4o` y `text-embedding-3-small` confirmados
 - [ ] **03** — Research de prueba en producción corrido, informe pasado
 - [ ] **04** — Space de Storyblok creado, token y Space ID en el `.env`
 - [ ] **05** — Alcance unificado con el socio y con Juan

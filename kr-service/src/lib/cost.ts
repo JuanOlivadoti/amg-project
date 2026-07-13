@@ -25,18 +25,34 @@ export interface ModelPrice {
 }
 
 /**
- * ⚠️ TARIFAS APROXIMADAS — CONFIRMAR contra la página de precios del proveedor antes de usar
- * estos números en una propuesta comercial. Los precios de los modelos cambian.
+ * Tarifas en USD por 1M de tokens.
+ *
+ * ✅ VERIFICADAS contra las páginas oficiales de OpenAI el 2026-07-13
+ *    (developers.openai.com/api/docs/pricing y las model cards).
+ * ⚠️ Los precios cambian: re-verificar antes de cerrar una propuesta comercial.
  *
  * Se pueden sobrescribir por entorno con LLM_PRICES (JSON), p. ej.:
  *   LLM_PRICES={"gpt-4o":{"input":2.5,"output":10}}
  *
  * Si un modelo NO tiene tarifa, su costo NO se inventa: se cuenta 0 y se registra en
  * `unpricedModels`, para que el total quede marcado como incompleto en vez de mentir.
+ * (No hay tarifas de Anthropic acá: si se usa Claude, cargarlas por LLM_PRICES.)
  */
 const DEFAULT_PRICES: Record<string, ModelPrice> = {
+  // Generación — modelos actuales (nota: los nuevos son MÁS BARATOS que gpt-4o).
+  "gpt-5.6-sol": { input: 5, output: 30 },
+  "gpt-5.6-terra": { input: 2.5, output: 15 },
+  "gpt-5.6-luna": { input: 1, output: 6 },
+  "gpt-5.5": { input: 5, output: 30 },
+  "gpt-5.4": { input: 2.5, output: 15 },
+  "gpt-5.4-mini": { input: 0.75, output: 4.5 },
+  "gpt-5.4-nano": { input: 0.2, output: 1.25 },
+
+  // Generación — legacy (es el default actual del proyecto; ya no figura en la página de precios).
   "gpt-4o": { input: 2.5, output: 10 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
+
+  // Embeddings (solo cobran input).
   "text-embedding-3-small": { input: 0.02, output: 0 },
   "text-embedding-3-large": { input: 0.13, output: 0 },
 };

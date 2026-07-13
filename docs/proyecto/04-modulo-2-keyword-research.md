@@ -187,13 +187,14 @@ y al informe humano como una tabla. En el log del run:
 [cost] total $0.0178 · DFS $0.0000 · LLM $0.0178 · emb $0.0000
 ```
 
-> ⚠️ **Las tarifas de los modelos son APROXIMADAS** (`DEFAULT_PRICES` en `lib/cost.ts`).
-> **Confirmalas contra la página de precios del proveedor antes de usarlas en una propuesta
-> comercial** — los precios cambian. Se sobrescriben con la variable `LLM_PRICES` (JSON).
+> ✅ **Las tarifas están verificadas** contra las páginas oficiales de OpenAI (2026-07-13):
+> `gpt-4o` $2.50/$10.00 y `text-embedding-3-small` $0.02 por 1M de tokens. Están en
+> `DEFAULT_PRICES` (`lib/cost.ts`) y se sobrescriben con la variable `LLM_PRICES` (JSON).
+> Los precios cambian: re-verificar antes de cerrar una propuesta comercial.
 >
 > Si se usa un modelo **sin tarifa configurada**, el costo **no se inventa**: se cuenta 0, el
 > modelo se registra en `modelos_sin_precio` y el total se marca como **incompleto**. Es preferible
-> un total honestamente incompleto a uno inventado.
+> un total honestamente incompleto a uno inventado. *(No hay tarifas de Anthropic cargadas.)*
 
 ### Presupuesto preflight (`lib/budget.ts`)
 

@@ -92,7 +92,8 @@ justo lo que un orquestador durable necesita como base.
 | Deuda | Dónde | Impacto |
 |---|---|---|
 | **Esquema Zod duplicado** entre M2 y M1 | `kr-service/src/validation/` y `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. Extraer a paquete compartido. |
-| **Tarifas y estimaciones de costo sin calibrar** | `lib/cost.ts`, `lib/budget.ts` | El *mecanismo* de costo/presupuesto está hecho, pero las **tarifas de los modelos son aproximadas** y las estimaciones por fase son a ojo. **Confirmar precios y calibrar con una corrida real** antes de usar el número en la propuesta. |
+| **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos ya están verificadas** ✅, pero las **estimaciones por fase** del preflight siguen siendo a ojo. Se calibran con una corrida real en producción ([acción 03](../acciones/03-research-produccion-dataforseo.md)). |
+| **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son **2-3× más baratos**. Como el costo por research es el argumento comercial, conviene evaluar el cambio con una corrida comparativa. Ver [guía 02](../acciones/02-precios-modelos.md). |
 | **Sin tests de integración** | — | El camino live (DataForSEO, OpenAI, Storyblok) no está cubierto. |
 | **Storyblok live sin probar** | `publish/storyblok-publisher.ts` | Código escrito y typechequeado, nunca ejecutado contra un space real. |
 
