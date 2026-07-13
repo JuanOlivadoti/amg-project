@@ -130,8 +130,8 @@ test("store: failRun registra el error en vez de dejarlo colgado en 'running'", 
 test("store: guardar keywords dos veces NO duplica (idempotente ante un reintento)", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
 
-  await store.saveKeywords(ctxA(), runId, [kw()]);
-  await store.saveKeywords(ctxA(), runId, [kw({ volume: 400 })]);
+  await store.saveKeywords(ctxA(), runId, clientA1, [kw()]);
+  await store.saveKeywords(ctxA(), runId, clientA1, [kw({ volume: 400 })]);
 
   const { rows } = await pg.query<{ n: number; volume: number }>(
     "select count(*)::int as n, max(volume)::int as volume from kr_keywords where run_id = $1",
@@ -146,7 +146,7 @@ test("store: se guardan TODAS las keywords, también las descartadas y las sin d
   // corrida para reajustar el scoring.
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
 
-  await store.saveKeywords(ctxA(), runId, [
+  await store.saveKeywords(ctxA(), runId, clientA1, [
     kw(),
     kw({ keyword: "sin datos", canonical_key: "sin datos", volume: null, difficulty: null }),
     kw({ keyword: "descartada", canonical_key: "descartada", discarded: true, discard_reason: "irrelevante" }),
@@ -160,7 +160,7 @@ test("store: se guardan TODAS las keywords, también las descartadas y las sin d
 
 test("store: un volumen ausente se guarda como NULL, no como 0", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
-  await store.saveKeywords(ctxA(), runId, [kw({ volume: null, difficulty: null })]);
+  await store.saveKeywords(ctxA(), runId, clientA1, [kw({ volume: null, difficulty: null })]);
 
   const { rows } = await pg.query<{ volume: number | null }>(
     "select volume from kr_keywords where run_id = $1",
@@ -173,7 +173,7 @@ test("store: un volumen ausente se guarda como NULL, no como 0", async () => {
 
 test("compuerta: las páginas nacen SIEMPRE sin aprobar", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
-  await store.savePages(ctxA(), runId, [page()]);
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
 
   const { rows } = await pg.query<{ approved: boolean }>("select approved from kr_pages where run_id = $1", [
     runId,
@@ -183,14 +183,14 @@ test("compuerta: las páginas nacen SIEMPRE sin aprobar", async () => {
 
 test("compuerta: no se puede aprobar un run si NINGUNA página fue aprobada", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
-  await store.savePages(ctxA(), runId, [page()]);
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
 
   await assert.rejects(() => store.approveRun(ctxA(), runId), /ninguna página aprobada/i);
 });
 
 test("compuerta: aprobar el run NO aprueba sus páginas (la compuerta es doble)", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
-  await store.savePages(ctxA(), runId, [page(), page({ url_slug: "/otra", cluster_id: "22222222-2222-4222-8222-222222222222" })]);
+  await store.savePages(ctxA(), runId, clientA1, [page(), page({ url_slug: "/otra", cluster_id: "22222222-2222-4222-8222-222222222222" })]);
 
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where url_slug = '/pizza-napolitana-madrid'");
   await store.approvePage(ctxA(), rows[0]!.id);
@@ -204,7 +204,7 @@ test("compuerta: aprobar el run NO aprueba sus páginas (la compuerta es doble)"
 
 test("compuerta: con el run SIN aprobar, ninguna página es publicable aunque esté aprobada", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
-  await store.savePages(ctxA(), runId, [page()]);
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
   await store.approvePage(ctxA(), rows[0]!.id);
 
@@ -231,7 +231,7 @@ test("aislamiento: el tenant B NO ve el run del tenant A", async () => {
 
 test("aislamiento: el tenant B no puede aprobar una página del tenant A", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
-  await store.savePages(ctxA(), runId, [page()]);
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
 
   const ok = await store.approvePage(ctxB(), rows[0]!.id);
@@ -285,4 +285,132 @@ test("aislamiento: el contexto NO se filtra a la operación siguiente", async ()
   const { rows } = await pg.query("select id from kr_runs");
   await pg.exec("rollback");
   assert.equal(rows.length, 0, "sin tenant seteado no se ve NADA");
+});
+
+// ================================================================
+// Regresiones de la 3ª review — tres brechas multi-tenant CRÍTICAS
+// ================================================================
+
+/**
+ * La política usaba `app.current_role() is distinct from 'cliente'`.
+ * Con el rol ausente, `current_role()` es NULL, y `NULL IS DISTINCT FROM 'cliente'` es **TRUE**:
+ * un tenant_id válido con el rol vacío obtenía visibilidad de MAESTRO sobre toda la cartera.
+ * La política CONCEDÍA privilegios ante la duda. Ahora hay allowlist positiva.
+ */
+test("🔴 fallar cerrado: con tenant válido y rol NULO no se ve nada", async () => {
+  await store.createRun(ctxA(), nuevoRun(clientA1));
+
+  const sinRol = { tenantId: tenantA, role: null } as unknown as TenantContext;
+  const runs = await store.listRuns(sinRol, clientA1);
+
+  assert.equal(runs.length, 0, "un rol ausente NO puede dar acceso de staff");
+});
+
+test("🔴 fallar cerrado: un rol INVENTADO no ve nada", async () => {
+  await store.createRun(ctxA(), nuevoRun(clientA1));
+
+  const rolFalso = { tenantId: tenantA, role: "superadmin" } as unknown as TenantContext;
+  const runs = await store.listRuns(rolFalso, clientA1);
+
+  assert.equal(runs.length, 0);
+});
+
+test("🔴 fallar cerrado: rol 'cliente' SIN client_id no ve nada (antes veía todo)", async () => {
+  await store.createRun(ctxA(), nuevoRun(clientA1));
+
+  const clienteSinCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: null };
+  const runs = await store.listRuns(clienteSinCliente, clientA1);
+
+  assert.equal(runs.length, 0);
+});
+
+/**
+ * RLS es POR TABLA: la política del padre NO protege al hijo. `kr_runs` filtraba por cliente pero
+ * `kr_keywords` y `kr_pages` solo por tenant, así que el dueño de un restaurante podía hacer
+ * `select * from kr_keywords` y leerse el research, la estrategia y el contenido de TODOS los
+ * negocios de la agencia. El test viejo solo probaba tenant A contra tenant B.
+ */
+test("🔴 el rol 'cliente' NO puede leer keywords de otro cliente del MISMO tenant", async () => {
+  const runOtro = await store.createRun(ctxA(), nuevoRun(clientA2));
+  await store.saveKeywords(ctxA(), runOtro, clientA2, [kw()]);
+
+  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+  const filas = await store.leerKeywordsCrudo(comoCliente);
+
+  assert.equal(filas.length, 0, "el research del vecino NO se ve");
+});
+
+test("🔴 el rol 'cliente' NO puede leer páginas de otro cliente del MISMO tenant", async () => {
+  const runOtro = await store.createRun(ctxA(), nuevoRun(clientA2));
+  await store.savePages(ctxA(), runOtro, clientA2, [page()]);
+
+  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+  const filas = await store.leerPaginasCrudo(comoCliente);
+
+  assert.equal(filas.length, 0, "el contenido y los claims del vecino NO se ven");
+});
+
+/**
+ * `app_user` tenía `insert/update/delete` sobre `memberships`: un usuario con rol 'cliente' podía
+ * insertarse una membresía de 'maestro' y escalar privilegios. Ahora memberships es SOLO LECTURA
+ * desde la app (crear membresías es administración: va por el backend con service-role).
+ */
+test("🔴 escalada de privilegios: un 'cliente' NO puede crearse una membresía de maestro", async () => {
+  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+
+  await assert.rejects(
+    () =>
+      store.sqlCrudo(
+        comoCliente,
+        "insert into memberships (tenant_id, user_id, rol) values ($1, gen_random_uuid(), 'maestro')",
+        [tenantA],
+      ),
+    /permission denied/i,
+  );
+});
+
+test("🔴 el rol 'cliente' es de SOLO LECTURA: no puede crear runs facturables", async () => {
+  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+
+  await assert.rejects(() => store.createRun(comoCliente, nuevoRun(clientA1)));
+});
+
+test("🔴 no se puede crear un run facturable a nombre de OTRO cliente del tenant", async () => {
+  // Con rol 'cliente' atado a clientA1, intentar cargarle un run a clientA2.
+  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+
+  await assert.rejects(() => store.createRun(comoCliente, nuevoRun(clientA2)));
+});
+
+// ---------------------------------------------------------------- #9 aprobación
+
+test("compuerta: un upsert que CAMBIA el contenido REVOCA la aprobación", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.approvePage(ctxA(), rows[0]!.id);
+
+  // El orquestador reescribe la página con contenido distinto (recalibración, reintento tardío).
+  await store.savePages(ctxA(), runId, clientA1, [page({ keyword_principal: "otra keyword" })]);
+
+  const { rows: after } = await pg.query<{ approved: boolean }>(
+    "select approved from kr_pages where run_id = $1",
+    [runId],
+  );
+  assert.equal(after[0]!.approved, false, "el humano aprobó OTRA cosa: hay que volver a revisar");
+});
+
+test("compuerta: un reintento IDÉNTICO conserva la aprobación (no molesta al revisor)", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.approvePage(ctxA(), rows[0]!.id);
+
+  await store.savePages(ctxA(), runId, clientA1, [page()]); // exactamente lo mismo
+
+  const { rows: after } = await pg.query<{ approved: boolean }>(
+    "select approved from kr_pages where run_id = $1",
+    [runId],
+  );
+  assert.equal(after[0]!.approved, true, "nada cambió: la aprobación sigue valiendo");
 });

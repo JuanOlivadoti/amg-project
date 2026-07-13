@@ -19,6 +19,7 @@
 | ADR-10 | Endurecimiento del esquema del Módulo 2 (post-review) | Aceptada |
 | ADR-11 | Política de salida/offboarding de webs de cliente | Aceptada |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | Abierta — riesgo |
+| OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | Abierta — riesgo de seguridad |
 
 ---
 
@@ -114,3 +115,38 @@
 **Observación.** `contexto-proyecto-frank.md` describe "Frank, cliente de la agencia" con 4 módulos; `A_PRD_AMG_Madrid_v1_Ilustrado.md` tiene sponsor "Franco · CEO" con 5 agentes y prioridades distintas. **Frank ≈ Franco es casi con seguridad la misma persona/proyecto**, con framings que no cierran (p. ej. el Creador de Webs es "Módulo 1 avanzado" en un doc y "web-por-prompt diferido a I+D / O10" en el otro).
 **Riesgo.** Presupuestar o presentar dos alcances incompatibles al mismo cliente.
 **Acción pendiente.** Unificar en un **único alcance coherente por fases** antes de consolidar la propuesta comercial. Confirmar con Juan el estado real del Creador de Webs.
+
+## OBS-02 — El rol y el `client_id` los declara el caller, no `memberships` (riesgo abierto)
+
+**Contexto.** Las políticas RLS leen el rol y el cliente del contexto de la petición
+(`app.current_role()`, `app.current_client_id()`), que hoy **pone la aplicación** al abrir la
+transacción (`PgStore.withTenant`). La tabla `memberships` existe y tiene los datos correctos, pero
+**no participa en ninguna decisión de autorización**.
+
+**Por qué es aceptable HOY.** El único caller es backend de confianza (el CLI, y pronto el
+orquestador). No hay ninguna ruta por la que un usuario final influya ese contexto.
+
+**Por qué NO es suficiente.** Es una autoridad declarada, no verificada. Cualquier ruta futura que
+permita influir el contexto —un endpoint HTTP que tome el rol de un header, un job que reciba
+parámetros sin validar— convierte esto en escalada de privilegios directa: basta con declararse
+`maestro`.
+
+**Decisión pendiente (al integrar Supabase Auth).** Derivar rol y cliente **dentro de Postgres**,
+desde `auth.uid()` + una fila real de `memberships`:
+
+```sql
+create or replace function app.current_role() returns text
+language sql stable as $$
+  select m.rol::text from memberships m
+  where m.user_id = auth.uid() and m.tenant_id = app.current_tenant_id()
+$$;
+```
+
+Las **políticas no cambian**: por eso se las hizo pasar por funciones de `app` en vez de leer la
+variable de sesión directamente. Para los jobs del backend (Inngest) se usa el rol `servicio`, con
+una identidad de servicio explícita y separada de la de las personas.
+
+**Mitigación ya aplicada.** Las políticas **fallan cerrado**: una allowlist positiva de roles, así
+que un rol ausente o inventado no ve nada (antes, `NULL IS DISTINCT FROM 'cliente'` era `true` y
+concedía visibilidad de maestro sobre toda la cartera). El rol `cliente` es de **solo lectura** y no
+puede tocar `memberships`.

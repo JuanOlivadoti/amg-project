@@ -28,6 +28,8 @@ export class CachedProvider implements KeywordDataProvider {
   constructor(
     private readonly inner: KeywordDataProvider,
     private readonly cache: KeywordCache,
+    /** Proveedor + entorno (p. ej. `dfs:prod`). Va en TODAS las claves. Ver index.ts. */
+    private readonly ns: string,
   ) {}
 
   get costMicros(): number {
@@ -35,7 +37,7 @@ export class CachedProvider implements KeywordDataProvider {
   }
 
   async keywordSuggestions(keyword: string, market: Market, limit = 30): Promise<string[]> {
-    const key = cacheKeys.suggestions(keyword, market, limit);
+    const key = cacheKeys.suggestions(this.ns, keyword, market, limit);
     const hit = await this.cache.getMany<string[]>([key]);
 
     const cached = hit.get(key);
@@ -52,7 +54,7 @@ export class CachedProvider implements KeywordDataProvider {
   }
 
   async searchVolume(keywords: string[], market: Market): Promise<SearchVolumeRow[]> {
-    const keys = keywords.map((kw) => cacheKeys.searchVolume(kw, market));
+    const keys = keywords.map((kw) => cacheKeys.searchVolume(this.ns, kw, market));
     // `null` cacheado = "el proveedor no tiene dato para esta keyword". Se cachea A PROPÓSITO:
     // sin eso, cada corrida vuelve a pagar por preguntar lo mismo y recibir nada.
     const cached = await this.cache.getMany<SearchVolumeRow | null>(keys);
@@ -75,23 +77,31 @@ export class CachedProvider implements KeywordDataProvider {
 
     if (faltantes.length === 0) return resultados; // ni una llamada: costo cero
 
+    // Si esto lanza (p. ej. una task de DataForSEO falló), la excepción se propaga y NO se cachea
+    // nada: no sabemos qué keywords faltan, y tomarlas por ausentes fosilizaría un fallo transitorio.
     const frescas = await this.inner.searchVolume(faltantes, market);
     const porClave = new Map(frescas.map((r) => [canonicalKey(r.keyword), r]));
 
     const aCachear: Array<[string, SearchVolumeRow | null]> = [];
     for (const kw of faltantes) {
       const row = porClave.get(canonicalKey(kw)) ?? null;
-      aCachear.push([cacheKeys.searchVolume(kw, market), row]);
+      aCachear.push([cacheKeys.searchVolume(this.ns, kw, market), row]);
       if (row) resultados.push(row);
     }
 
-    // Las presencias duran más que las ausencias: una keyword sin datos hoy puede tenerlos pronto.
+    // Se clasifica por si HAY VOLUMEN, no por si hay fila.
+    //
+    // Un `SearchVolumeRow` con `search_volume: null` es un OBJETO no nulo, así que con el filtro
+    // anterior (`v !== null`) caía en el TTL largo: 30 días declarando "sin datos" una keyword que
+    // podría ganar volumen el mes que viene. Justo lo contrario de lo que el diseño dice hacer.
+    const sinVolumen = (v: SearchVolumeRow | null) => v === null || v.search_volume == null;
+
     await this.cache.setMany(
-      aCachear.filter(([, v]) => v !== null),
+      aCachear.filter(([, v]) => !sinVolumen(v)),
       TTL.metrics,
     );
     await this.cache.setMany(
-      aCachear.filter(([, v]) => v === null),
+      aCachear.filter(([, v]) => sinVolumen(v)),
       TTL.negative,
     );
 
@@ -99,7 +109,7 @@ export class CachedProvider implements KeywordDataProvider {
   }
 
   async bulkKeywordDifficulty(keywords: string[], market: Market): Promise<Map<string, number | null>> {
-    const keys = keywords.map((kw) => cacheKeys.keywordDifficulty(kw, market));
+    const keys = keywords.map((kw) => cacheKeys.keywordDifficulty(this.ns, kw, market));
     const cached = await this.cache.getMany<number | null>(keys);
 
     const faltantes: string[] = [];
@@ -126,7 +136,7 @@ export class CachedProvider implements KeywordDataProvider {
     for (const kw of faltantes) {
       const kd = porClave.get(canonicalKey(kw)) ?? null;
       out.set(kw, kd);
-      aCachear.push([cacheKeys.keywordDifficulty(kw, market), kd]);
+      aCachear.push([cacheKeys.keywordDifficulty(this.ns, kw, market), kd]);
     }
 
     await this.cache.setMany(
@@ -142,7 +152,7 @@ export class CachedProvider implements KeywordDataProvider {
   }
 
   async serp(keyword: string, market: Market, depth = 10): Promise<string[]> {
-    const key = cacheKeys.serp(keyword, market, depth);
+    const key = cacheKeys.serp(this.ns, keyword, market, depth);
     const hit = await this.cache.getMany<string[]>([key]);
 
     const cached = hit.get(key);

@@ -19,7 +19,16 @@ import type { SqlExecutor } from "./cache.js";
 
 export interface TenantContext {
   tenantId: string;
-  role: "maestro" | "equipo" | "cliente";
+  /**
+   * `servicio` = los jobs del backend (el orquestador). Escriben resultados del research pero no
+   * son una persona: se separan para no darle privilegios de `maestro` a un proceso.
+   * `cliente` = el dueño del negocio en el portal. Es de SOLO LECTURA y solo ve lo suyo.
+   *
+   * ⚠️ Hoy este contexto lo pone la aplicación. Es aceptable mientras el único caller sea backend de
+   * confianza, pero NO es una autoridad: la fuente de verdad debe ser `memberships`. Al integrar
+   * Supabase Auth hay que derivarlo de `auth.uid()` dentro de las funciones de `app`. Ver OBS-02.
+   */
+  role: "maestro" | "equipo" | "cliente" | "servicio";
   clientId?: string | null;
   userId?: string | null;
 }
@@ -146,16 +155,21 @@ export class PgStore {
    *
    * Idempotente (`on conflict`): un reintento del orquestador no duplica ni falla.
    */
-  async saveKeywords(ctx: TenantContext, runId: string, keywords: KeywordRow[]): Promise<void> {
+  async saveKeywords(
+    ctx: TenantContext,
+    runId: string,
+    clientId: string,
+    keywords: KeywordRow[],
+  ): Promise<void> {
     if (keywords.length === 0) return;
     await this.withTenant(ctx, async () => {
       for (const k of keywords) {
         await this.db.query(
           `insert into kr_keywords
-             (tenant_id, run_id, keyword, canonical_key, source, volume, difficulty, cpc, competition,
+             (tenant_id, run_id, client_id, keyword, canonical_key, source, volume, difficulty, cpc, competition,
               intent, is_local, business_relevance, opportunity_score, score_confidence,
               discarded, discard_reason)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+           values ($1,$2,$17,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
            on conflict (run_id, canonical_key) do update set
              volume = excluded.volume,
              difficulty = excluded.difficulty,
@@ -183,28 +197,68 @@ export class PgStore {
             k.score_confidence,
             k.discarded,
             k.discard_reason ?? null,
+            clientId,
           ],
         );
       }
     });
   }
 
-  /** Páginas propuestas. Nacen SIEMPRE con `approved = false` (ADR-06): la compuerta es humana. */
-  async savePages(ctx: TenantContext, runId: string, pages: PageRow[]): Promise<void> {
+  /**
+   * Páginas propuestas. Nacen SIEMPRE con `approved = false` (ADR-06): la compuerta es humana.
+   *
+   * ## El upsert NO puede conservar una aprobación sobre contenido cambiado
+   *
+   * Antes actualizaba `keyword_principal`, SEO, contenido y evidencia **conservando `approved`**.
+   * Un reintento tardío del orquestador, o una recalibración, podía cambiar materialmente una página
+   * YA APROBADA y dejarla publicable **sin que ningún humano volviera a mirarla** — exactamente lo
+   * que la compuerta existe para impedir. Peor: actualizaba solo algunos campos, así que volumen,
+   * KD, intención y score quedaban de la versión anterior. Una página Frankenstein.
+   *
+   * Ahora se actualizan TODOS los campos derivados y, si el contenido REALMENTE cambió, la
+   * aprobación se revoca. Un reintento idéntico (el caso normal) no toca nada: el `where` compara
+   * los valores, así que la fila ni se escribe y la aprobación sobrevive.
+   */
+  async savePages(ctx: TenantContext, runId: string, clientId: string, pages: PageRow[]): Promise<void> {
     if (pages.length === 0) return;
     await this.withTenant(ctx, async () => {
       for (const p of pages) {
         await this.db.query(
           `insert into kr_pages
-             (tenant_id, run_id, cluster_id, tipo, url_slug, keyword_principal, keywords_secundarias,
-              intencion, local, volumen, dificultad, evidencia, opportunity_score, score_confidence,
-              seo, content_brief, preguntas_frecuentes, approved)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,$17,false)
+             (tenant_id, run_id, client_id, cluster_id, tipo, url_slug, keyword_principal,
+              keywords_secundarias, intencion, local, volumen, dificultad, evidencia,
+              opportunity_score, score_confidence, seo, content_brief, preguntas_frecuentes, approved)
+           values ($1,$2,$18,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,$17,false)
            on conflict (run_id, url_slug) do update set
+             cluster_id = excluded.cluster_id,
+             tipo = excluded.tipo,
              keyword_principal = excluded.keyword_principal,
+             keywords_secundarias = excluded.keywords_secundarias,
+             intencion = excluded.intencion,
+             local = excluded.local,
+             volumen = excluded.volumen,
+             dificultad = excluded.dificultad,
+             evidencia = excluded.evidencia,
+             opportunity_score = excluded.opportunity_score,
+             score_confidence = excluded.score_confidence,
              seo = excluded.seo,
              content_brief = excluded.content_brief,
-             evidencia = excluded.evidencia`,
+             preguntas_frecuentes = excluded.preguntas_frecuentes,
+             -- El contenido cambió → la aprobación anterior ya no vale para ESTA página.
+             approved = false,
+             approved_by = null,
+             approved_at = null
+           where
+             -- Solo se escribe si algo MATERIAL cambió. Un reintento idéntico no revoca nada.
+             kr_pages.keyword_principal is distinct from excluded.keyword_principal
+             or kr_pages.tipo            is distinct from excluded.tipo
+             or kr_pages.intencion       is distinct from excluded.intencion
+             or kr_pages.volumen         is distinct from excluded.volumen
+             or kr_pages.dificultad      is distinct from excluded.dificultad
+             or kr_pages.evidencia       is distinct from excluded.evidencia
+             or kr_pages.seo             is distinct from excluded.seo
+             or kr_pages.content_brief   is distinct from excluded.content_brief
+             or kr_pages.preguntas_frecuentes is distinct from excluded.preguntas_frecuentes`,
           [
             ctx.tenantId,
             runId,
@@ -223,6 +277,7 @@ export class PgStore {
             JSON.stringify(p.seo),
             JSON.stringify(p.content_brief),
             p.preguntas_frecuentes,
+            clientId,
           ],
         );
       }
@@ -318,6 +373,34 @@ export class PgStore {
   }
 
   // -------------------------------------------------------------- lectura
+
+  /**
+   * SQL arbitrario BAJO el contexto RLS del usuario. **Solo para tests.**
+   *
+   * Es el modelo de amenaza realista: alguien que llega a ejecutar SQL con el rol `app_user` y un
+   * contexto de tenant válido. Si RLS lo frena acá, lo frena de verdad; probar el aislamiento solo
+   * a través de los métodos del Store probaría que el Store es correcto, no que la BASE lo es.
+   */
+  async sqlCrudo<T = Record<string, unknown>>(
+    ctx: TenantContext,
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<T[]> {
+    return this.withTenant(ctx, async () => {
+      const { rows } = await this.db.query<T>(sql, params);
+      return rows;
+    });
+  }
+
+  /** Solo tests: lo que un atacante vería con `select * from kr_keywords`. */
+  leerKeywordsCrudo(ctx: TenantContext): Promise<Array<{ id: string }>> {
+    return this.sqlCrudo<{ id: string }>(ctx, "select id from kr_keywords");
+  }
+
+  /** Solo tests: lo que un atacante vería con `select * from kr_pages`. */
+  leerPaginasCrudo(ctx: TenantContext): Promise<Array<{ id: string }>> {
+    return this.sqlCrudo<{ id: string }>(ctx, "select id from kr_pages");
+  }
 
   async getRun(ctx: TenantContext, runId: string): Promise<RunSummary | null> {
     return this.withTenant(ctx, async () => {

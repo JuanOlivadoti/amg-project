@@ -206,14 +206,14 @@ test("caches: la service-role SÍ puede (es la que las usa)", async () => {
 
 test("RLS: las keywords y páginas heredan el aislamiento", async () => {
   await db.asService(
-    `insert into kr_keywords (tenant_id, run_id, keyword, canonical_key, source)
-     values ($1, $2, 'pizza napolitana madrid', 'pizza napolitana madrid', 'seed')`,
-    [s.tenantB, s.runB1],
+    `insert into kr_keywords (tenant_id, run_id, client_id, keyword, canonical_key, source)
+     values ($1, $2, $3, 'pizza napolitana madrid', 'pizza napolitana madrid', 'seed')`,
+    [s.tenantB, s.runB1, s.clientB1],
   );
   await db.asService(
-    `insert into kr_pages (tenant_id, run_id, cluster_id, tipo, url_slug, keyword_principal, intencion, evidencia)
-     values ($1, $2, gen_random_uuid(), 'landing_local', '/pizza', 'pizza napolitana madrid', 'local', 'datos_mercado')`,
-    [s.tenantB, s.runB1],
+    `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug, keyword_principal, intencion, evidencia)
+     values ($1, $2, $3, gen_random_uuid(), 'landing_local', '/pizza', 'pizza napolitana madrid', 'local', 'datos_mercado')`,
+    [s.tenantB, s.runB1, s.clientB1],
   );
 
   const kws = await db.asUser({ tenantId: s.tenantA, role: "maestro" }, "select id from kr_keywords");

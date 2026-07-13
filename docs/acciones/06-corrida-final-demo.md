@@ -21,6 +21,16 @@ no se ve porque el brief publicado es anterior al cambio.
 
 ---
 
+> ### ⚠️ Si intentaste esta guía ANTES del 2026-07-13 (tanda 6), volvé a correrla
+>
+> Había un bug grave que **yo mismo introduje en esta guía**: la cache de DataForSEO no distinguía
+> sandbox de producción. Una corrida de sandbox dejaba entradas con `volume: null`, y al cambiar la
+> URL base a producción **se servían como aciertos**: la corrida "real" salía barata, sin volúmenes,
+> y con un brief basura **que parecía legítimo**.
+>
+> **Corregido:** el sandbox ya no se cachea (es gratis: cachearlo solo podía envenenar producción) y
+> las claves llevan el entorno. Si tenías un `kr-service/.cache/`, borralo: `rm -rf kr-service/.cache`.
+
 ## Pasos
 
 ### 1. Producción

@@ -100,8 +100,12 @@ async function runResearchInner(
     // Un modelo SIN tarifa suma 0 al medidor: el presupuesto lo ve gratis y nunca bloquea, o sea
     // que el tope queda silenciosamente desactivado mientras se gasta de verdad. Si hay tope, eso
     // no se tolera: se aborta ANTES de la primera llamada, no a mitad del run.
-    const modelos = [config.openai.generationModel, config.openai.embeddingModel].filter(Boolean);
-    const sinTarifa = modelos.filter((m) => !costMeter.hasPriceFor(m));
+    //
+    // Se consultan los modelos del proveedor REALMENTE activo. Antes se miraban siempre los de
+    // OpenAI: con LLM_PROVIDER=anthropic, el chequeo pasaba (los modelos de OpenAI sí tienen tarifa)
+    // mientras se gastaba con modelos de Claude que NO la tienen — el tope quedaba desactivado en
+    // silencio, que es exactamente el agujero que este chequeo existe para cerrar.
+    const sinTarifa = modelosFacturables().filter((m) => !costMeter.hasPriceFor(m));
     if (sinTarifa.length) {
       throw new BudgetExceededError(
         `Hay un tope de gasto activo pero no hay tarifa configurada para: ${sinTarifa.join(", ")}. ` +
@@ -358,4 +362,28 @@ const CLUSTER_SERP_HEADS = 15;
 
 function deriveCliente(prompt: string): string {
   return prompt.split(/[.,]/)[0]?.trim().slice(0, 80) ?? "Cliente";
+}
+
+/**
+ * Los modelos que este run va a FACTURAR de verdad, según el proveedor activo (ADR-09).
+ *
+ * El preflight del presupuesto los necesita para negarse a arrancar si alguno no tiene tarifa: un
+ * modelo sin tarifa suma 0 al medidor, así que el tope lo ve gratis y nunca bloquea. Mirar siempre
+ * los de OpenAI hacía que, con Anthropic, el chequeo pasara mientras se gastaba a ciegas.
+ *
+ * Los embeddings son de OpenAI en los dos casos (ADR-09), salvo que no haya key y caiga a mock.
+ */
+function modelosFacturables(): string[] {
+  const modelos: string[] = [];
+
+  if (config.llm.provider === "anthropic" && config.anthropic.hasKey) {
+    modelos.push(config.anthropic.generationModel, config.anthropic.classificationModel);
+  } else if (config.llm.provider === "openai" && config.openai.hasKey) {
+    modelos.push(config.openai.generationModel);
+  }
+  // mock no factura nada.
+
+  if (config.llm.embeddingProvider === "openai") modelos.push(config.openai.embeddingModel);
+
+  return [...new Set(modelos.filter(Boolean))];
 }

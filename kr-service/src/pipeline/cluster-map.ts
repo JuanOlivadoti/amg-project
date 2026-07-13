@@ -17,7 +17,12 @@ import type {
  * long-tail sin datos propios.
  */
 function evidenceOf(members: EnrichedKeyword[]): PageEvidence {
-  return members.some((m) => m.volume != null) ? "datos_mercado" : "sin_validar";
+  // `> 0`, no `!= null`. Un volumen CERO es un dato conocido, pero demuestra lo contrario de lo que
+  // afirmábamos: que NADIE busca eso. Con `!= null`, un cluster cuyo único dato era un 0 salía como
+  // "datos_mercado" y el informe declaraba "hay demanda de búsqueda demostrable" — una afirmación
+  // falsa, de la misma familia que el viejo `volumen ?? 0`. Un cero prueba que el dato existe, no
+  // que haya demanda.
+  return members.some((m) => m.volume != null && m.volume > 0) ? "datos_mercado" : "sin_validar";
 }
 
 /**

@@ -58,7 +58,10 @@ create table tenants (
   created_at  timestamptz not null default now()
 );
 
-create type user_role as enum ('maestro', 'equipo', 'cliente');
+-- `servicio` = identidad de los jobs del backend (el orquestador). Necesita escribir los
+-- resultados del research, pero NO es una persona: se separa para no tener que darle privilegios de
+-- 'maestro' a un proceso automático.
+create type user_role as enum ('maestro', 'equipo', 'cliente', 'servicio');
 
 create table memberships (
   id          uuid primary key default gen_random_uuid(),
@@ -68,7 +71,13 @@ create table memberships (
   -- Si rol = 'cliente', queda atado a UN cliente y no puede ver los demás del tenant.
   client_id   uuid,
   created_at  timestamptz not null default now(),
-  unique (tenant_id, user_id)
+  unique (tenant_id, user_id),
+
+  -- El rol 'cliente' EXIGE un cliente; los demás no deben tener uno. Sin esta constraint, un
+  -- 'cliente' sin client_id quedaba en un limbo (y con la política vieja, veía toda la cartera).
+  constraint cliente_exige_client_id check (
+    (rol = 'cliente' and client_id is not null) or (rol <> 'cliente' and client_id is null)
+  )
 );
 
 -- -----------------------------------------------------------------------------
@@ -92,6 +101,12 @@ create table clients (
 );
 
 create index on clients (tenant_id);
+
+-- La membresía no puede apuntar a un cliente de OTRO tenant. Misma familia que la FK compuesta de
+-- kr_runs: RLS controla qué filas ves, no la integridad de las referencias entre tablas.
+alter table memberships
+  add constraint memberships_client_del_mismo_tenant
+  foreign key (client_id, tenant_id) references clients (id, tenant_id) on delete cascade;
 
 -- -----------------------------------------------------------------------------
 -- Módulo 2 — Keyword Research
@@ -142,8 +157,10 @@ create table kr_runs (
    */
   foreign key (client_id, tenant_id) references clients (id, tenant_id) on delete cascade,
 
-  -- Habilita la misma FK compuesta desde kr_keywords / kr_pages.
-  unique (id, tenant_id)
+  -- Habilitan las FK compuestas de kr_keywords / kr_pages. La segunda incluye `client_id` para que
+  -- los hijos puedan denormalizarlo SIN poder mentir: el trío tiene que existir tal cual en el run.
+  unique (id, tenant_id),
+  unique (id, tenant_id, client_id)
 );
 
 create index on kr_runs (tenant_id, client_id, created_at desc);
@@ -159,6 +176,10 @@ create table kr_keywords (
   id                 uuid primary key default gen_random_uuid(),
   tenant_id          uuid not null references tenants(id) on delete cascade,
   run_id             uuid not null references kr_runs(id) on delete cascade,
+  -- Denormalizado desde el run. Lo necesita la política RLS: el aislamiento NO se hereda del padre,
+  -- y sin esto un usuario con rol 'cliente' podía leer las keywords de TODOS los negocios del
+  -- tenant. La FK compuesta de abajo impide que este valor mienta.
+  client_id          uuid not null,
 
   keyword            text not null,
   -- Clave canónica (NFC + trim + espacios + minúsculas). Es por la que se deduplica y se matchea
@@ -182,16 +203,20 @@ create table kr_keywords (
   discard_reason     text,
 
   unique (run_id, canonical_key),
-  -- Misma razón que en kr_runs: una keyword no puede colgar de un run de otro tenant.
-  foreign key (run_id, tenant_id) references kr_runs (id, tenant_id) on delete cascade
+  -- El trío (run, tenant, cliente) tiene que existir TAL CUAL en kr_runs: ni la keyword cuelga de
+  -- un run ajeno, ni el client_id denormalizado puede apuntar a otro cliente del que dice el run.
+  foreign key (run_id, tenant_id, client_id) references kr_runs (id, tenant_id, client_id) on delete cascade
 );
 
 create index on kr_keywords (tenant_id, run_id);
+create index on kr_keywords (tenant_id, client_id);
 
 create table kr_pages (
   id                 uuid primary key default gen_random_uuid(),
   tenant_id          uuid not null references tenants(id) on delete cascade,
   run_id             uuid not null references kr_runs(id) on delete cascade,
+  -- Igual que en kr_keywords: la política RLS lo necesita porque el aislamiento no se hereda.
+  client_id          uuid not null,
 
   cluster_id         uuid not null,
   tipo               text not null,
@@ -223,11 +248,11 @@ create table kr_pages (
   published_at       timestamptz,
 
   unique (run_id, url_slug),
-  -- Misma razón que en kr_runs: una página no puede colgar de un run de otro tenant.
-  foreign key (run_id, tenant_id) references kr_runs (id, tenant_id) on delete cascade
+  foreign key (run_id, tenant_id, client_id) references kr_runs (id, tenant_id, client_id) on delete cascade
 );
 
 create index on kr_pages (tenant_id, run_id);
+create index on kr_pages (tenant_id, client_id);
 
 -- -----------------------------------------------------------------------------
 -- Caches de proveedor (ADR-10: split, claves completas, expires_at, RLS deny-all)
@@ -327,47 +352,122 @@ alter table kr_keywords      force  row level security;
 alter table kr_pages         enable row level security;
 alter table kr_pages         force  row level security;
 
-grant select, insert, update, delete on tenants, memberships, clients, kr_runs, kr_keywords, kr_pages to app_user;
+/*
+ * ============================ FALLAR CERRADO ============================
+ *
+ * La versión anterior de estas políticas usaba:
+ *
+ *     app.current_role() is distinct from 'cliente'   -- ❌ FALLA ABIERTO
+ *
+ * Con el rol ausente, `current_role()` es NULL, y `NULL IS DISTINCT FROM 'cliente'` es **TRUE**.
+ * O sea: un tenant_id válido con el rol vacío o inválido obtenía visibilidad de MAESTRO sobre toda
+ * la cartera de la agencia. La política concedía privilegios ante la duda.
+ *
+ * Ahora se usa una ALLOWLIST POSITIVA: hay que ser explícitamente uno de los roles conocidos.
+ * Cualquier NULL o valor desconocido da FALSE y no ve nada.
+ *
+ * ⚠️ El rol y el client_id siguen viniendo del contexto que pone la aplicación. Eso es aceptable
+ * mientras el único caller sea backend de confianza, pero NO es una autoridad: la fuente de verdad
+ * debe ser `memberships`. Al integrar Supabase Auth hay que derivarlos de `auth.uid()` + membresía
+ * real dentro de las funciones de `app`, sin tocar ni una política. Ver OBS-02 en los ADR.
+ */
 
--- El tenant solo se ve a sí mismo.
-create policy tenant_isolation on tenants
-  using (id = app.current_tenant_id())
-  with check (id = app.current_tenant_id());
+/** ¿Es staff de la agencia (ve toda la cartera del tenant)? Un rol desconocido NO lo es. */
+create or replace function app.es_staff() returns boolean
+language sql stable as $$
+  select app.current_role() in ('maestro', 'equipo', 'servicio')
+$$;
 
-create policy tenant_isolation on memberships
-  using (tenant_id = app.current_tenant_id())
-  with check (tenant_id = app.current_tenant_id());
+/** ¿Puede escribir? El rol `cliente` (dueño del negocio en el portal) es SOLO LECTURA. */
+create or replace function app.puede_escribir() returns boolean
+language sql stable as $$
+  select app.current_role() in ('maestro', 'equipo', 'servicio')
+$$;
+
+/**
+ * ¿Este `client_id` es visible para quien pregunta?
+ * - staff  → cualquier cliente de su tenant.
+ * - cliente → SOLO el suyo (y tiene que tener uno: sin client_id no ve nada).
+ */
+create or replace function app.ve_cliente(cid uuid) returns boolean
+language sql stable as $$
+  select case
+    when app.es_staff() then true
+    when app.current_role() = 'cliente'
+      then app.current_client_id() is not null and cid = app.current_client_id()
+    else false   -- rol NULL o desconocido: no ve nada
+  end
+$$;
+
+-- --- Grants: NO todos los roles pueden todo -----------------------------------
+--
+-- Antes había `grant select, insert, update, delete` sobre TODO para `app_user`, incluida
+-- `memberships`: un usuario con rol 'cliente' podía insertarse una membresía de 'maestro' y
+-- escalar privilegios. Los grants son la primera línea; las políticas, la segunda.
+grant select on tenants, memberships to app_user;
+grant select, insert, update, delete on clients, kr_runs, kr_keywords, kr_pages to app_user;
+
+-- El tenant solo se ve a sí mismo. Nadie lo modifica desde la app.
+create policy tenant_select on tenants
+  for select using (id = app.current_tenant_id());
+
+-- Membresías: se LEEN (para resolver permisos), no se escriben desde la app. Crear membresías y
+-- cambiar roles va por el backend con service-role: es una operación de administración, no de uso.
+create policy membership_select on memberships
+  for select using (tenant_id = app.current_tenant_id());
 
 /*
- * Clientes: aislamiento por tenant Y, si el rol es 'cliente', solo SU cliente.
- *
- * El rol 'cliente' es un usuario del negocio final (el dueño del restaurante), que entra al portal
- * y no puede ver la cartera del resto de la agencia. Maestro y equipo ven todos los del tenant.
- *
- * El `with check` es tan importante como el `using`: sin él, un tenant podría INSERTAR filas
- * marcadas con el tenant_id de otro.
+ * Clientes: aislamiento por tenant + visibilidad por rol.
+ * Escribir (alta/baja de clientes) es cosa de staff: el dueño de un restaurante no da de alta
+ * clientes en la agencia.
  */
-create policy tenant_isolation on clients
-  using (
-    tenant_id = app.current_tenant_id()
-    and (app.current_role() is distinct from 'cliente' or id = app.current_client_id())
-  )
-  with check (tenant_id = app.current_tenant_id());
+create policy client_select on clients
+  for select using (tenant_id = app.current_tenant_id() and app.ve_cliente(id));
 
-create policy tenant_isolation on kr_runs
-  using (
-    tenant_id = app.current_tenant_id()
-    and (app.current_role() is distinct from 'cliente' or client_id = app.current_client_id())
-  )
-  with check (tenant_id = app.current_tenant_id());
+create policy client_write on clients
+  for all
+  using (tenant_id = app.current_tenant_id() and app.puede_escribir() and app.ve_cliente(id))
+  with check (tenant_id = app.current_tenant_id() and app.puede_escribir());
 
-create policy tenant_isolation on kr_keywords
-  using (tenant_id = app.current_tenant_id())
-  with check (tenant_id = app.current_tenant_id());
+/*
+ * Runs. El `with check` exige TAMBIÉN que el client_id sea visible: sin eso, un usuario podía
+ * crear runs FACTURABLES a nombre de otro cliente del mismo tenant.
+ */
+create policy run_select on kr_runs
+  for select using (tenant_id = app.current_tenant_id() and app.ve_cliente(client_id));
 
-create policy tenant_isolation on kr_pages
-  using (tenant_id = app.current_tenant_id())
-  with check (tenant_id = app.current_tenant_id());
+create policy run_write on kr_runs
+  for all
+  using (tenant_id = app.current_tenant_id() and app.puede_escribir() and app.ve_cliente(client_id))
+  with check (tenant_id = app.current_tenant_id() and app.puede_escribir() and app.ve_cliente(client_id));
+
+/*
+ * Keywords y páginas: EL AISLAMIENTO NO SE HEREDA.
+ *
+ * Antes solo comprobaban `tenant_id`. Como `kr_runs` sí filtraba por cliente pero los hijos no, un
+ * usuario con rol 'cliente' podía hacer `select * from kr_keywords` y ver el research, la
+ * estrategia, los claims y el contenido de TODOS los negocios de la agencia. RLS es POR TABLA: la
+ * política del padre no protege al hijo.
+ *
+ * Se denormaliza `client_id` en los hijos (con FK compuesta que lo ata al run) en vez de un EXISTS
+ * contra kr_runs: la política queda igual de estricta, se lee mejor y no cuesta una subconsulta por
+ * fila.
+ */
+create policy keyword_select on kr_keywords
+  for select using (tenant_id = app.current_tenant_id() and app.ve_cliente(client_id));
+
+create policy keyword_write on kr_keywords
+  for all
+  using (tenant_id = app.current_tenant_id() and app.puede_escribir() and app.ve_cliente(client_id))
+  with check (tenant_id = app.current_tenant_id() and app.puede_escribir() and app.ve_cliente(client_id));
+
+create policy page_select on kr_pages
+  for select using (tenant_id = app.current_tenant_id() and app.ve_cliente(client_id));
+
+create policy page_write on kr_pages
+  for all
+  using (tenant_id = app.current_tenant_id() and app.puede_escribir() and app.ve_cliente(client_id))
+  with check (tenant_id = app.current_tenant_id() and app.puede_escribir() and app.ve_cliente(client_id));
 
 -- --- Caches y tareas del proveedor: DENY-ALL --------------------------------
 -- RLS habilitado SIN NINGUNA POLÍTICA = nadie pasa. Solo la service-role (bypassrls) entra.

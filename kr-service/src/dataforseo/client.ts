@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { currentMeter } from "../lib/cost.js";
-import { fetchWithRetry } from "../lib/http.js";
+import { backoffMs, fetchWithRetry } from "../lib/http.js";
 
 /**
  * Cliente DataForSEO (Basic Auth). Arranca contra sandbox.
@@ -20,8 +20,33 @@ export class DataForSeoClient {
     return Math.round(this.costUsd * 1_000_000);
   }
 
-  /** POST a un endpoint /v3/... y devuelve tasks[].result acumulando costo. */
+  /**
+   * POST a un endpoint /v3/... acumulando costo.
+   *
+   * Reintenta el RATE LIMIT a nivel de task (código 40202 dentro de un HTTP 200): DataForSEO
+   * reporta sus rate limits en el cuerpo JSON, no como HTTP 429, así que `fetchWithRetry` —que sí
+   * maneja el 429— nunca los veía. Es seguro reintentarlo: un rechazo por rate limit significa que
+   * la task no se creó ni se cobró.
+   */
   async post<T = unknown>(path: string, body: unknown): Promise<T[]> {
+    const maxIntentos = 1 + (config.http.retries ?? 3);
+    for (let intento = 1; ; intento++) {
+      try {
+        return await this.postOnce<T>(path, body);
+      } catch (e) {
+        const rateLimit = e instanceof DataForSeoTaskError && e.esRateLimit;
+        if (!rateLimit || intento >= maxIntentos) throw e;
+
+        const delay = backoffMs(intento - 1, { baseDelayMs: 500, maxDelayMs: 8_000 });
+        console.warn(
+          `  [dataforseo] rate limit (40202) en ${path}; reintento ${intento} tras ${delay}ms`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+
+  private async postOnce<T>(path: string, body: unknown): Promise<T[]> {
     const url = `${config.dataforseo.baseUrl}${path}`;
     // Con timeout y reintentos (#11): DataForSEO tiene rate limits (429) y picos de 5xx.
     // Un 401/400 NO se reintenta: es un error nuestro, no del servidor.
@@ -52,23 +77,68 @@ export class DataForSeoClient {
     }
 
     const results: T[] = [];
+    const fallidas: Array<{ code: number; message: string }> = [];
+
     for (const task of json.tasks ?? []) {
       if (typeof task.cost === "number") {
         this.costUsd += task.cost;
         currentMeter().addUsd("dataforseo", task.cost); // alimenta el costo total del run
       }
-      // Una respuesta global 20000 puede traer tasks fallidas (status != 20000, result null).
-      // Antes se contaban como éxito → keywords sin datos que parecían "sin volumen" (#10).
-      // Se avisa explícitamente y se omite su result (parcial visible, no silencioso).
       if (typeof task.status_code === "number" && task.status_code !== 20000) {
-        console.warn(
-          `  [dataforseo] task ${task.id ?? "?"} en ${path} status ${task.status_code}: ${task.status_message ?? "sin detalle"}`,
-        );
+        fallidas.push({ code: task.status_code, message: task.status_message ?? "sin detalle" });
         continue;
       }
       for (const r of task.result ?? []) results.push(r);
     }
+
+    /*
+     * Una task fallida ROMPE la llamada. Antes solo se avisaba por consola y se omitía su
+     * resultado ("parcial visible, no silencioso", decía el comentario).
+     *
+     * Con la cache eso dejó de ser cierto y se volvió peligroso: el pipeline recibe un array más
+     * corto, no puede distinguir "el proveedor no tiene dato para esta keyword" de "la task que
+     * traía esa keyword se cayó", y CACHEA la ausencia. Un fallo transitorio quedaba FOSILIZADO
+     * entre 7 y 30 días, sirviendo `null` como si fuera un hecho del mercado.
+     *
+     * Si algo falló, no sabemos QUÉ falta. Lo honesto es fallar: el pipeline ya degrada bien
+     * (marca el endpoint como degradado, la cobertura baja y el brief lo declara), y nada se
+     * cachea porque la excepción se propaga antes.
+     */
+    if (fallidas.length > 0) {
+      const detalle = fallidas.map((f) => `${f.code} (${f.message})`).join("; ");
+      throw new DataForSeoTaskError(
+        `${fallidas.length} task(s) fallaron en ${path}: ${detalle}. No se puede saber qué keywords ` +
+          `faltan, así que la respuesta se descarta entera en vez de tomar las ausencias por ceros.`,
+        fallidas.map((f) => f.code),
+      );
+    }
+
     return results;
+  }
+}
+
+/**
+ * Una o más tasks de DataForSEO fallaron dentro de una respuesta HTTP 200.
+ *
+ * DataForSEO reporta sus propios errores —incluidos los RATE LIMITS— como códigos dentro del JSON,
+ * no como status HTTP. Un 40202 ("rate limit") llega con HTTP 200, así que la lógica de reintentos
+ * a nivel HTTP (que sí maneja el 429) nunca lo veía.
+ */
+export class DataForSeoTaskError extends Error {
+  constructor(
+    message: string,
+    readonly codes: number[],
+  ) {
+    super(message);
+    this.name = "DataForSeoTaskError";
+  }
+
+  /**
+   * ¿Fue un rechazo por rate limit? Ese código significa que la task NO se creó ni se cobró, así
+   * que reintentar es seguro (misma distinción que el 429 a nivel HTTP: rechazo previo a ejecutar).
+   */
+  get esRateLimit(): boolean {
+    return this.codes.length > 0 && this.codes.every((c) => c === 40202);
   }
 }
 
