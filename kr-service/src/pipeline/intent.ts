@@ -1,9 +1,10 @@
 import type { Market, SearchIntent } from "../types.js";
 
 /**
- * Clasificación de intención — HEURÍSTICA v0 para el spike.
- * TODO (F2): reemplazar por Haiku 4.5 + señales de SERP (ver plan §Paso 7).
- * Devuelve la intención y si es local (intención compuesta).
+ * Clasificación de intención — HEURÍSTICA (fallback).
+ * La vía principal es el LLM (ver ContentGen.classifyIntents / applyIntents); esta
+ * función cubre las keywords que el LLM no resuelve o si la llamada falla.
+ * TODO (F2): incorporar señales de SERP (map pack) para is_local en producción.
  */
 export function classifyIntent(
   keyword: string,

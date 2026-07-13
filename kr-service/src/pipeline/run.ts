@@ -1,14 +1,14 @@
 import { MARKET_ES } from "../config.js";
+import { canonicalKey } from "../lib/text.js";
 import { getProvider } from "../dataforseo/index.js";
 import { getEmbedder } from "../llm/index.js";
 import { generateSeeds } from "../llm/seeds.js";
 import { WEIGHTS_DEFAULT } from "../types.js";
 import type { EnrichedKeyword, KeywordResearchBrief, KeywordResearchInput } from "../types.js";
-import { classifyIntent } from "./intent.js";
 import { scoreKeywords } from "./scoring.js";
 import { clusterKeywords } from "./cluster.js";
 import { mapClustersToPages } from "./cluster-map.js";
-import { applyBusinessRelevance, applyPageContent } from "./enrich-content.js";
+import { applyBusinessRelevance, applyIntents, applyPageContent } from "./enrich-content.js";
 import { assembleBrief } from "./brief.js";
 
 /**
@@ -52,22 +52,26 @@ export async function runResearch(input: KeywordResearchInput): Promise<KeywordR
       return new Map<string, number | null>();
     }),
   ]);
-  const volMap = new Map(volRows.map((r) => [r.keyword, r]));
+  // Se indexa por clave canónica: el proveedor puede devolver la keyword con otro casing/espaciado
+  // o forma Unicode que la enviada (#7). Sin esto, el lookup falla y la métrica se pierde.
+  const volMap = new Map(volRows.map((r) => [canonicalKey(r.keyword), r]));
+  const kdCanon = new Map([...kdMap].map(([k, v]) => [canonicalKey(k), v]));
+  const seedKeys = new Set(seeds.map((s) => canonicalKey(s.keyword)));
 
   const enriched: EnrichedKeyword[] = keywords.map((kw) => {
-    const v = volMap.get(kw);
-    const { intent, is_local } = classifyIntent(kw, market);
+    const key = canonicalKey(kw);
+    const v = volMap.get(key);
     return {
       keyword: kw,
-      source: seeds.some((s) => s.keyword === kw) ? "seed" : "suggestion",
+      source: seedKeys.has(key) ? "seed" : "suggestion",
       volume: v?.search_volume ?? null,
-      difficulty: kdMap.get(kw) ?? null,
+      difficulty: kdCanon.get(key) ?? null,
       cpc: v?.cpc ?? null,
       competition: v?.competition ?? null,
       trend: null,
-      intent,
-      is_local,
-      business_relevance: null, // TODO (F2): scoring de relevancia con LLM
+      intent: null, // se completa en Paso 4b (clasificación por LLM)
+      is_local: false,
+      business_relevance: null, // se completa en Paso 4c
       opportunity_score: null,
       score_confidence: null,
       cluster_id: null,
@@ -76,7 +80,11 @@ export async function runResearch(input: KeywordResearchInput): Promise<KeywordR
   });
   log("enrich", `enriquecidas ${enriched.length} · coste API $${(dfs.costMicros / 1_000_000).toFixed(4)}`);
 
-  // Paso 4b — Relevancia de negocio (LLM) → activa el gate del scoring
+  // Paso 4b — Intención de búsqueda (LLM en batch, con fallback heurístico)
+  const intentStats = await applyIntents(enriched, input.prompt, market);
+  log("intent", `clasificadas ${enriched.length} · LLM ${intentStats.llm} · heurística ${intentStats.heuristic}`);
+
+  // Paso 4c — Relevancia de negocio (LLM) → activa el gate del scoring
   await applyBusinessRelevance(enriched, input.prompt);
 
   // Paso 8 — Scoring (aplica el gate de relevancia)

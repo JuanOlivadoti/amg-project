@@ -42,6 +42,15 @@ export class DataForSeoClient {
     const results: T[] = [];
     for (const task of json.tasks ?? []) {
       if (typeof task.cost === "number") this.costUsd += task.cost;
+      // Una respuesta global 20000 puede traer tasks fallidas (status != 20000, result null).
+      // Antes se contaban como éxito → keywords sin datos que parecían "sin volumen" (#10).
+      // Se avisa explícitamente y se omite su result (parcial visible, no silencioso).
+      if (typeof task.status_code === "number" && task.status_code !== 20000) {
+        console.warn(
+          `  [dataforseo] task ${task.id ?? "?"} en ${path} status ${task.status_code}: ${task.status_message ?? "sin detalle"}`,
+        );
+        continue;
+      }
       for (const r of task.result ?? []) results.push(r);
     }
     return results;
@@ -52,8 +61,10 @@ interface DfsResponse<T> {
   status_code: number;
   status_message: string;
   tasks?: Array<{
+    id?: string;
     cost?: number;
     status_code?: number;
+    status_message?: string;
     result?: T[] | null;
   }>;
 }

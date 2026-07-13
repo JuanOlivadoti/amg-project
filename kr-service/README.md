@@ -51,7 +51,7 @@ Verificar tipos: `npm run typecheck`
 | Mapeo cluster → páginas | ✅ |
 | Contenido on-page por LLM (meta, secciones, FAQs, claims) | ✅ |
 | Ensamblado del brief + informe + validación Zod | ✅ |
-| Clasificación de intención + page_type | ⚠️ heurística v0 (TODO: LLM + señales SERP) |
+| Clasificación de intención + page_type | ✅ LLM en batch (fallback heurístico) · TODO: señales SERP para is_local |
 | Compuerta humana / persistencia / Inngest | ⛔ Fase 2-3 |
 
 ### Proveedores (todo mock por default, sin keys)

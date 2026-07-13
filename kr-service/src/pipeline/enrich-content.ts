@@ -1,5 +1,46 @@
 import { getContentGen } from "../llm/content.js";
+import { canonicalKey } from "../lib/text.js";
+import { classifyIntent } from "./intent.js";
 import type { EnrichedKeyword, Market, ProposedPage } from "../types.js";
+
+/**
+ * Clasifica intención + señal local de cada keyword (LLM en batch).
+ * Resiliente: cualquier keyword que el LLM no devuelva (o si la llamada falla)
+ * cae al clasificador heurístico. Devuelve cuántas resolvió cada vía.
+ */
+export async function applyIntents(
+  keywords: EnrichedKeyword[],
+  businessPrompt: string,
+  market: Market,
+): Promise<{ llm: number; heuristic: number }> {
+  let byLlm = new Map<string, { intent: EnrichedKeyword["intent"]; is_local: boolean }>();
+  try {
+    const raw = await getContentGen().classifyIntents(
+      businessPrompt,
+      keywords.map((k) => k.keyword),
+      market,
+    );
+    // Re-indexar por clave canónica: el LLM puede devolver la keyword con otro casing/espaciado (#7).
+    byLlm = new Map([...raw].map(([k, v]) => [canonicalKey(k), v]));
+  } catch (e) {
+    console.warn(`  [intent] aviso clasificación LLM: ${(e as Error).message}`);
+  }
+
+  let heuristic = 0;
+  for (const k of keywords) {
+    const r = byLlm.get(canonicalKey(k.keyword));
+    if (r && r.intent) {
+      k.intent = r.intent;
+      k.is_local = r.is_local;
+    } else {
+      const h = classifyIntent(k.keyword, market);
+      k.intent = h.intent;
+      k.is_local = h.is_local;
+      heuristic++;
+    }
+  }
+  return { llm: keywords.length - heuristic, heuristic };
+}
 
 /**
  * Puntúa business_relevance de cada keyword (activa el gate del scoring).
@@ -14,8 +55,10 @@ export async function applyBusinessRelevance(
       businessPrompt,
       keywords.map((k) => k.keyword),
     );
+    // Re-indexar por clave canónica para no perder el match por casing/espaciado (#7).
+    const byKey = new Map([...scores].map(([k, v]) => [canonicalKey(k), v]));
     for (const k of keywords) {
-      const r = scores.get(k.keyword);
+      const r = byKey.get(canonicalKey(k.keyword));
       if (r != null) k.business_relevance = r;
     }
   } catch (e) {
