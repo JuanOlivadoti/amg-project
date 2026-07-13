@@ -34,6 +34,25 @@ cada agujero fue atrapado por el test correcto:
 | Quitar el `nullif` → sin tenant, `''::uuid` **revienta la query** en vez de no devolver nada | `SIN tenant no se ve NADA (falla cerrado)` |
 | Rol `cliente` sin filtro por `client_id` → **ve la cartera entera de la agencia** | `el rol 'cliente' solo ve SU cliente` |
 
+### RLS no alcanza: hay un agujero que solo cierra una FK compuesta
+
+Lo encontró un test del `Store` que esperaba un rechazo y no lo obtuvo:
+
+> **Un tenant podía crear un run que apuntara al cliente de OTRO tenant.**
+
+La política de `kr_runs` solo comprueba `tenant_id = mi tenant`. La fila queda marcada como propia
+—así que pasa el `with check` sin problema— pero **referencia datos ajenos**.
+
+**RLS controla quién ve qué fila; no controla la integridad de las referencias entre tablas.** Para
+eso la clave foránea tiene que incluir el tenant:
+
+```sql
+foreign key (client_id, tenant_id) references clients (id, tenant_id)
+```
+
+Así el par `(client_id, tenant_id)` tiene que existir tal cual, y un cliente de otro tenant no
+matchea. Aplicado también a `kr_keywords` y `kr_pages` respecto de su run.
+
 ### Dos cosas que Postgres hace distinto de lo que uno supone
 
 1. **Una variable de sesión ausente es `''`, no `NULL`** — y `''::uuid` **lanza un error**. Sin el
@@ -85,10 +104,47 @@ Aplica a `kr_metrics_cache`, `kr_serp_cache` y `kr_provider_tasks`.
 | `kr_serp_cache` | SERP por keyword+engine+device+tipo+profundidad. | **deny-all** |
 | `kr_provider_tasks` | Idempotencia: `payload_hash` → task ya pagada. | **deny-all** |
 
+## `Store` — la capa de acceso
+
+```ts
+const store = new PgStore(db);
+await store.createRun(ctx, { clientId, prompt, market, schemaVersion });
+await store.saveKeywords(ctx, runId, keywords);  // idempotente
+await store.savePages(ctx, runId, pages);        // nacen con approved = false
+await store.finishRun(ctx, runId, { costeMicros, calidadDatos, ... });
+```
+
+### Escribe BAJO RLS, no con la service-role
+
+Podría usar la service-role (que salta RLS) y "confiar" en que el código pone bien el `tenant_id`.
+Entonces el aislamiento entre clientes dependería de **que yo no me equivoque nunca**. Escribiendo
+como `app_user`, un bug de aplicación **no puede** cruzar tenants: lo frena Postgres.
+
+La service-role queda para lo que RLS no cubre: las caches, que no tienen `tenant_id`.
+
+### `set local`, no `set`
+
+El contexto del tenant se ata a la **transacción**. Con un pool de conexiones, un `set` de sesión
+sobrevive al commit: **la conexión reciclada conserva el tenant del usuario anterior** y el
+siguiente ve datos ajenos. Es el bug clásico de multi-tenancy, y hay un test que lo cubre.
+
+### La compuerta (ADR-06) vive en la base
+
+- Las páginas nacen `approved = false`. **Siempre.**
+- `approveRun()` **se niega** si ninguna página fue aprobada.
+- `getPublishablePages()` exige **las dos** condiciones: run `approved` **y** página `approved`.
+
+Que sea página por página no es burocracia: en la corrida real, **5 de 8 páginas no tenían datos de
+mercado** que las respaldaran. Quien aprueba tiene que poder aceptar unas y rechazar otras.
+
 ## Pendiente
 
-- **Capa de acceso** (`Store`) que use este esquema desde `kr-service` y `web-builder`.
-- **Cachear** de verdad contra `kr_metrics_cache` / `kr_serp_cache` (hoy cada corrida vuelve a pagar).
-- **Idempotencia** usando `kr_provider_tasks` (hoy un timeout en una operación facturable
-  simplemente no se reintenta; con la tabla se podría reintentar **sin volver a pagar**).
+- **Orquestador (Inngest)** que una el pipeline de `kr-service` con este `Store`.
+  `kr-service` **no conoce la base a propósito**: sigue siendo una librería pura que corre sin
+  credenciales. La frontera es explícita, igual que el brief JSON entre M2 y M1.
+- **Enchufar `PgKeywordCache`** en `kr-service` (hoy usa la de archivo). Requiere resolver la deuda
+  del paquete compartido.
+- **Idempotencia** usando `kr_provider_tasks`: hoy un timeout en una operación facturable
+  simplemente **no se reintenta** (para no pagar dos veces). Con la tabla se podría reintentar
+  **sin volver a pagar**.
 - Migraciones versionadas + `supabase migration` cuando exista el proyecto real.

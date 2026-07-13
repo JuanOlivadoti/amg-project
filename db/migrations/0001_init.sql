@@ -84,7 +84,11 @@ create table clients (
   -- ADR-04: un space de Storyblok POR CLIENTE, para un offboarding limpio (ADR-11).
   storyblok_space_id  text,
   created_at          timestamptz not null default now(),
-  archived_at         timestamptz
+  archived_at         timestamptz,
+
+  -- Redundante como clave (id ya es PK), pero habilita la FK COMPUESTA de abajo. Es el mecanismo
+  -- que impide que una fila de un tenant referencie datos de otro. Ver kr_runs.
+  unique (id, tenant_id)
 );
 
 create index on clients (tenant_id);
@@ -120,7 +124,26 @@ create table kr_runs (
 
   error             text,
   created_at        timestamptz not null default now(),
-  finished_at       timestamptz
+  finished_at       timestamptz,
+
+  /*
+   * FK COMPUESTA — cierra un agujero que RLS NO cubre.
+   *
+   * La política de `kr_runs` solo comprueba `tenant_id = mi tenant`. Nada le impedía a un tenant
+   * crear un run marcado como SUYO pero apuntando al `client_id` de OTRO tenant: la fila pasa el
+   * `with check` (el tenant_id es correcto) y queda referenciando datos ajenos.
+   *
+   * RLS controla QUIÉN VE QUÉ FILA; no controla la integridad de las referencias entre tablas. Para
+   * eso hace falta que la FK incluya el tenant: así el par (client_id, tenant_id) tiene que existir
+   * tal cual en `clients`, y un cliente de otro tenant no matchea.
+   *
+   * Lo encontró un test ("crear un run para un cliente de OTRO tenant falla") que esperaba un
+   * rechazo y no lo obtuvo.
+   */
+  foreign key (client_id, tenant_id) references clients (id, tenant_id) on delete cascade,
+
+  -- Habilita la misma FK compuesta desde kr_keywords / kr_pages.
+  unique (id, tenant_id)
 );
 
 create index on kr_runs (tenant_id, client_id, created_at desc);
@@ -158,7 +181,9 @@ create table kr_keywords (
   discarded          boolean not null default false,
   discard_reason     text,
 
-  unique (run_id, canonical_key)
+  unique (run_id, canonical_key),
+  -- Misma razón que en kr_runs: una keyword no puede colgar de un run de otro tenant.
+  foreign key (run_id, tenant_id) references kr_runs (id, tenant_id) on delete cascade
 );
 
 create index on kr_keywords (tenant_id, run_id);
@@ -197,7 +222,9 @@ create table kr_pages (
   storyblok_story_id text,
   published_at       timestamptz,
 
-  unique (run_id, url_slug)
+  unique (run_id, url_slug),
+  -- Misma razón que en kr_runs: una página no puede colgar de un run de otro tenant.
+  foreign key (run_id, tenant_id) references kr_runs (id, tenant_id) on delete cascade
 );
 
 create index on kr_pages (tenant_id, run_id);
