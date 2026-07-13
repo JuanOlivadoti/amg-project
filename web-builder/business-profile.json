@@ -1,0 +1,15 @@
+{
+  "name": "Trattoria Bella Napoli",
+  "telephone": "+34 911 23 45 67",
+  "priceRange": "€€",
+  "url": "https://trattoriabellanapoli.es",
+  "image": "https://trattoriabellanapoli.es/img/fachada.jpg",
+  "address": {
+    "streetAddress": "Calle Mayor 12",
+    "addressLocality": "Madrid",
+    "postalCode": "28013",
+    "addressRegion": "Madrid",
+    "addressCountry": "ES"
+  },
+  "opening_hours": "Lun-Dom 13:00-16:00 y 20:00-23:30"
+}

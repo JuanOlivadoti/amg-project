@@ -1,0 +1,22 @@
+{
+  "name": "web-builder",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Módulo 1 — Creador de Webs (PoC). Handoff brief SEO (M2) → story Storyblok + preview HTML.",
+  "scripts": {
+    "build:web": "tsx src/cli/build.ts",
+    "setup:storyblok": "tsx src/cli/setup-storyblok.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "openai": "^4.104.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
