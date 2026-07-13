@@ -10,6 +10,10 @@ producto, arquitectura y el diseño del primer módulo en construcción.
 
 ## 📂 Documentos y orden de lectura
 
+### 📘 Documentación técnica completa → [docs/proyecto/](docs/proyecto/)
+Arquitectura, stack, los dos módulos en detalle, contrato de handoff, configuración, testing y
+roadmap. **Es el mejor punto de entrada** para entender el sistema.
+
 ### 1. Contexto y producto
 | Documento | Qué es |
 |---|---|

@@ -4,6 +4,12 @@ Toda la documentación de producto, arquitectura y diseño de los módulos.
 El código vive en [`../kr-service/`](../kr-service/) (Módulo 2) y [`../web-builder/`](../web-builder/) (Módulo 1);
 cada uno tiene su propio `README.md`. La portada del repo es [`../README.md`](../README.md).
 
+## 📘 Empezá acá: [Documentación técnica del proyecto](proyecto/)
+
+[`proyecto/`](proyecto/) es la **documentación completa y actualizada** del sistema: visión,
+arquitectura, stack, los dos módulos en detalle, el contrato de handoff, configuración, testing
+y roadmap. Refleja el código real, no un diseño aspiracional.
+
 ## Contexto y producto
 | Documento | Qué es |
 |---|---|
