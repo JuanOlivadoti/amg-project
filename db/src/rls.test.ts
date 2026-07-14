@@ -146,8 +146,8 @@ test("RBAC: el rol 'cliente' solo ve SU cliente, no la cartera del tenant", asyn
 
 test("RBAC: el rol 'cliente' no ve los runs de otro cliente del MISMO tenant", async () => {
   await db.asService(
-    `insert into kr_runs (tenant_id, client_id, schema_version, prompt, market_country, market_language)
-     values ($1, $2, 'kr.v0.5', 'otro negocio', 'ES', 'es')`,
+    `insert into kr_runs (tenant_id, client_id, schema_version, prompt, market_country, market_language, market_location_code)
+     values ($1, $2, 'kr.v0.5', 'otro negocio', 'ES', 'es', 2724)`,
     [s.tenantA, s.clientA2],
   );
 

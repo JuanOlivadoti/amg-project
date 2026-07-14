@@ -124,6 +124,9 @@ create table kr_runs (
   prompt            text not null,
   market_country    text not null,
   market_language   text not null,
+  -- El `location_code` es LA dimensión que define qué mercado se pagó (entra en la clave de cache
+  -- de DataForSEO). Sin él, el run no es reproducible y el brief no cumple el contrato del M1.
+  market_location_code int not null,
 
   -- Costo en MICROS de USD (ADR-10: nunca coma flotante para dinero).
   coste_micros_usd  bigint not null default 0,

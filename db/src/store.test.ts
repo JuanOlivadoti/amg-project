@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PgStore } from "./store.js";
+import { PglitePool } from "./pool.js";
 import type { KeywordRow, PageRow, TenantContext } from "./store.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -58,7 +59,7 @@ const page = (over: Partial<PageRow> = {}): PageRow => ({
 before(async () => {
   pg = new PGlite();
   await pg.exec(await readFile(join(here, "..", "migrations", "0001_init.sql"), "utf8"));
-  store = new PgStore(pg);
+  store = new PgStore(new PglitePool(pg));
 });
 
 after(async () => {
@@ -89,7 +90,7 @@ const nuevoRun = (clientId: string) => ({
   clientId,
   schemaVersion: "kr.v0.5",
   prompt: "Restaurante italiano en Madrid centro",
-  market: { country: "ES", language_code: "es" },
+  market: { country: "ES", language_code: "es", location_code: 2724 },
 });
 
 // ---------------------------------------------------------------- ciclo de vida
@@ -398,6 +399,59 @@ test("compuerta: un upsert que CAMBIA el contenido REVOCA la aprobación", async
     [runId],
   );
   assert.equal(after[0]!.approved, false, "el humano aprobó OTRA cosa: hay que volver a revisar");
+});
+
+// ================================================================
+// #4 (HIGH, 3ª review) — el contexto de tenant y la conexión
+// ================================================================
+
+/**
+ * El escenario que el orquestador CREA por diseño: dos runs de tenants distintos a la vez.
+ *
+ * La versión anterior hacía `begin`, tres `set_config` y el `insert` como cuatro llamadas sueltas a
+ * un `Db` compartido. Con dos operaciones solapadas, el `set_config` de B pisaba el contexto de A
+ * antes de que A insertara: el `with check` de RLS comparaba el `tenant_id` de la fila (A) contra el
+ * contexto vigente (B) y reventaba — o, con otro entrelazado, escribía en el tenant equivocado.
+ * Contra un `pg.Pool` real es peor todavía: el `insert` se va a OTRA conexión, sin transacción,
+ * sin tenant y sin `set local role app_user`, o sea con el rol del pool, que SALTA RLS.
+ *
+ * Con `DbPool.transaction()` cada operación reserva su conexión: no hay contexto que pisar.
+ */
+test("🔴 concurrencia: 20 runs de dos tenants a la vez, cada uno cae donde debe", async () => {
+  const trabajos = Array.from({ length: 20 }, (_, i) =>
+    i % 2 === 0
+      ? store.createRun(ctxA(), nuevoRun(clientA1)).then((id) => ({ id, tenant: tenantA, client: clientA1 }))
+      : store.createRun(ctxB(), nuevoRun(clientB1)).then((id) => ({ id, tenant: tenantB, client: clientB1 })),
+  );
+
+  const creados = await Promise.all(trabajos);
+
+  for (const c of creados) {
+    const { rows } = await pg.query<{ tenant_id: string; client_id: string }>(
+      "select tenant_id, client_id from kr_runs where id = $1",
+      [c.id],
+    );
+    assert.equal(rows[0]?.tenant_id, c.tenant, "el run cayó en el tenant de OTRO");
+    assert.equal(rows[0]?.client_id, c.client);
+  }
+});
+
+/**
+ * El contexto es `set local`: muere con la transacción. Si sobreviviera al commit, la conexión que
+ * vuelve al pool llevaría pegado el tenant del usuario anterior y la petición siguiente —de otro
+ * cliente— leería sus datos.
+ */
+test("🔴 el contexto no sobrevive al commit: la conexión vuelve al pool limpia", async () => {
+  await store.createRun(ctxA(), nuevoRun(clientA1));
+
+  // Misma conexión (PGlite tiene una sola), transacción nueva, sin setear contexto.
+  const huerfano = await pg.transaction(async (tx) => {
+    await tx.exec("set local role app_user");
+    const r = await tx.query<{ id: string }>("select id from kr_runs");
+    return r.rows;
+  });
+
+  assert.equal(huerfano.length, 0, "sin contexto no se ve NADA: el tenant anterior no quedó pegado");
 });
 
 test("compuerta: un reintento IDÉNTICO conserva la aprobación (no molesta al revisor)", async () => {

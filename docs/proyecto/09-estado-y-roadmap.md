@@ -98,12 +98,14 @@ reales, no solo contra tests.
 
 ### Fase 2-3 — Plataforma
 
-| Pieza | ADR | Nota |
+| Pieza | ADR | Estado |
 |---|---|---|
-| **Persistencia + multi-tenancy** (Supabase, RLS por `tenant_id`) | ADR-01, ADR-10 | Incluye tests de RLS **antes** de la Fase 1, cache de métricas/SERP con `expires_at`, y tabla de idempotencia de tareas del proveedor. |
-| **Orquestación con Inngest** | ADR-03 | `waitForEvent` para la compuerta humana; control de concurrencia para los rate limits de DataForSEO. |
-| **Frontend Next.js** | ADR-02, ADR-04 | Portal + render de las webs de cliente desde Storyblok, *AI-search-first*. |
-| **Export estático / offboarding** | ADR-11 | Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
+| **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y 54 tests contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
+| **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
+| **Frontend Next.js** | ADR-02, ADR-04 | ⏳ Pendiente. Portal + render de las webs de cliente desde Storyblok, *AI-search-first*. |
+| **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
+| **Supabase Auth** (resolver OBS-02) | ADR-01 | ⏳ Pendiente. Derivar rol y `client_id` de `auth.uid()` + `memberships` dentro de Postgres. Las políticas **no cambian**: por eso pasan por funciones. |
+| **DataForSEO Standard (`task_post`)** | ADR-10 | ⏳ Pendiente. La tabla `kr_provider_tasks` existe pero no se usa: hoy los endpoints son Live, y una respuesta perdida se paga dos veces. |
 
 ### Mejoras de calidad del research (priorizadas con los datos reales)
 
@@ -126,6 +128,7 @@ reales, no solo contra tests.
 | **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son 2-3× más baratos. **Pero la corrida real bajó la urgencia**: el LLM es solo el **19%** del costo, así que el ahorro total sería de ~10%. Ver [guía 02](../acciones/02-precios-modelos.md). |
 | **`is_local` se dispara de más** | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo sale `LocalBusiness`. Ensucia el JSON-LD. |
 | **Sin tests de integración** | — | El camino live ya **se ejecutó a mano** contra DataForSEO, OpenAI y Storyblok, pero no está **automatizado**. |
+| **Los paquetes se enlazan por ruta relativa** | `orchestrator/src/deps.ts` | No hay workspaces de npm: el orquestador importa `../../db/src/...`. Funciona y mantiene las fronteras (el M1 sigue sin importar del M2), pero al sumar el frontend conviene pasar a workspaces. |
 
 ## Riesgos abiertos
 

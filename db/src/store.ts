@@ -1,9 +1,9 @@
-import type { SqlExecutor } from "./cache.js";
+import type { DbPool, Tx } from "./pool.js";
 
 /**
  * Capa de acceso a datos de un research (`kr_runs` / `kr_keywords` / `kr_pages`).
  *
- * ## Dos decisiones de fondo
+ * ## Tres decisiones de fondo
  *
  * **1. `kr-service` NO conoce esta capa.** El pipeline sigue siendo una librería pura que corre sin
  * credenciales y sin base de datos. Quien une pipeline y persistencia es el orquestador. Es la
@@ -15,6 +15,11 @@ import type { SqlExecutor } from "./cache.js";
  * aislamiento entre clientes dependería de que yo no me equivoque nunca. Escribiendo bajo RLS, un
  * bug de aplicación **no puede** cruzar tenants: lo frena Postgres. La service-role queda reservada
  * para lo que RLS no cubre (las caches, que no tienen `tenant_id`).
+ *
+ * **3. Toda query va por una conexión RESERVADA (`Tx`).** El Store no tiene ningún `query()` suelto
+ * al que llamar: el contexto de tenant se aplica con `set local`, que es local a la transacción, y
+ * una transacción vive en una conexión. Ver `pool.ts` para por qué la versión anterior era una
+ * brecha esperando un pool.
  */
 
 export interface TenantContext {
@@ -33,20 +38,33 @@ export interface TenantContext {
   userId?: string | null;
 }
 
-/** Ejecuta SQL y además permite abrir transacciones (necesario para `set local`). */
-export interface Db extends SqlExecutor {
-  exec(sql: string): Promise<unknown>;
-}
-
 export type RunStatus = "running" | "pending_approval" | "approved" | "rejected" | "failed";
+
+/** El market es parte de la IDENTIDAD del run (ADR-10: 1 run = 1 market), no un adorno. */
+export interface RunMarket {
+  country: string;
+  language_code: string;
+  location_code: number;
+}
 
 export interface NewRun {
   clientId: string;
   schemaVersion: string;
   prompt: string;
-  market: { country: string; language_code: string };
+  market: RunMarket;
   config?: Record<string, unknown>;
   projectRunId?: string;
+  /**
+   * Id del run, generado por el LLAMADOR (no por la base).
+   *
+   * Dos motivos, los dos del orquestador:
+   *  · **Idempotencia real.** Si el mismo evento se reprocesa (reintento, replay, doble entrega), el
+   *    `on conflict do nothing` hace que no nazca un segundo run. Con el id generado por la base,
+   *    cada reintento creaba OTRO run y volvía a pagarle a DataForSEO.
+   *  · **Poder marcarlo `failed`.** El manejador de fallos solo recibe el evento original; si el id
+   *    naciera dentro del step que reventó, no habría forma de saber QUÉ run quedó colgado.
+   */
+  runId?: string;
 }
 
 export interface KeywordRow {
@@ -89,50 +107,61 @@ export interface RunSummary {
   client_id: string;
   status: RunStatus;
   prompt: string;
+  schema_version: string;
+  market_country: string;
+  market_language: string;
+  market_location_code: number;
   coste_micros_usd: number;
   calidad_datos: Record<string, unknown>;
   created_at: string;
   finished_at: string | null;
 }
 
+/** Las columnas de `RunSummary`. Una sola definición: el select no puede quedar desalineado. */
+const RUN_SUMMARY_COLS = `id, client_id, status, prompt, schema_version,
+       market_country, market_language, market_location_code,
+       coste_micros_usd::int as coste_micros_usd, calidad_datos, created_at, finished_at`;
+
 export class PgStore {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly pool: DbPool) {}
 
   /**
-   * Corre `fn` dentro de una transacción con el contexto del usuario aplicado y el rol `app_user`
-   * activo — es decir, CON las políticas RLS en vigor.
+   * Corre `fn` en una conexión reservada, dentro de una transacción, con el contexto del usuario
+   * aplicado y el rol `app_user` activo — es decir, CON las políticas RLS en vigor.
    *
-   * `set local` ata el contexto a la transacción: no se filtra a la petición siguiente, que en un
-   * pool de conexiones compartido sería una fuga de datos entre usuarios (el bug clásico de
-   * multi-tenancy: la conexión reciclada conserva el tenant del anterior).
+   * `set local` ata el contexto a la transacción: no sobrevive al commit, así que la conexión que
+   * vuelve al pool no arrastra el tenant del usuario anterior (el bug clásico de multi-tenancy).
+   * Pero eso solo vale si **la query protegida corre en esa misma conexión** — por eso `fn` recibe
+   * el `tx` y no hay forma de consultar la base sin él.
    */
-  private async withTenant<T>(ctx: TenantContext, fn: () => Promise<T>): Promise<T> {
-    await this.db.exec("begin");
-    try {
-      await this.db.query("select set_config('app.tenant_id', $1, true)", [ctx.tenantId]);
-      await this.db.query("select set_config('app.role', $1, true)", [ctx.role]);
-      await this.db.query("select set_config('app.client_id', $1, true)", [ctx.clientId ?? ""]);
-      await this.db.exec("set local role app_user");
-
-      const out = await fn();
-      await this.db.exec("commit");
-      return out;
-    } catch (e) {
-      await this.db.exec("rollback");
-      throw e;
-    }
+  private withTenant<T>(ctx: TenantContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.pool.transaction(async (tx) => {
+      await tx.query("select set_config('app.tenant_id', $1, true)", [ctx.tenantId]);
+      await tx.query("select set_config('app.role', $1, true)", [ctx.role]);
+      await tx.query("select set_config('app.client_id', $1, true)", [ctx.clientId ?? ""]);
+      await tx.exec("set local role app_user");
+      return fn(tx);
+    });
   }
 
-  /** Abre el run. Nace en `running`: si el proceso muere, queda visible que quedó a medias. */
+  /**
+   * Abre el run. Nace en `running`: si el proceso muere, queda visible que quedó a medias.
+   *
+   * Idempotente cuando el llamador aporta el `runId`: reprocesar el mismo evento no crea un segundo
+   * run ni vuelve a pagarle a DataForSEO.
+   */
   async createRun(ctx: TenantContext, run: NewRun): Promise<string> {
-    return this.withTenant(ctx, async () => {
-      const { rows } = await this.db.query<{ id: string }>(
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
         `insert into kr_runs
-           (tenant_id, client_id, project_run_id, schema_version, status, prompt,
-            market_country, market_language, config)
-         values ($1, $2, coalesce($3::uuid, gen_random_uuid()), $4, 'running', $5, $6, $7, $8::jsonb)
+           (id, tenant_id, client_id, project_run_id, schema_version, status, prompt,
+            market_country, market_language, market_location_code, config)
+         values (coalesce($1::uuid, gen_random_uuid()), $2, $3, coalesce($4::uuid, gen_random_uuid()),
+                 $5, 'running', $6, $7, $8, $9, $10::jsonb)
+         on conflict (id) do nothing
          returning id`,
         [
+          run.runId ?? null,
           ctx.tenantId,
           run.clientId,
           run.projectRunId ?? null,
@@ -140,10 +169,22 @@ export class PgStore {
           run.prompt,
           run.market.country,
           run.market.language_code,
+          run.market.location_code,
           JSON.stringify(run.config ?? {}),
         ],
       );
-      return rows[0]!.id;
+      if (rows[0]) return rows[0].id;
+
+      // Conflicto: el id ya existía. Puede ser un reproceso legítimo del MISMO run… o un id ajeno
+      // que el llamador se inventó. Bajo RLS solo vemos los nuestros: si no lo vemos, no es nuestro.
+      const { rows: propio } = await tx.query<{ id: string }>(
+        "select id from kr_runs where id = $1 and client_id = $2",
+        [run.runId, run.clientId],
+      );
+      if (!propio[0]) {
+        throw new Error(`El run ${run.runId} ya existe y no pertenece a este cliente.`);
+      }
+      return propio[0].id;
     });
   }
 
@@ -162,9 +203,9 @@ export class PgStore {
     keywords: KeywordRow[],
   ): Promise<void> {
     if (keywords.length === 0) return;
-    await this.withTenant(ctx, async () => {
+    await this.withTenant(ctx, async (tx) => {
       for (const k of keywords) {
-        await this.db.query(
+        await tx.query(
           `insert into kr_keywords
              (tenant_id, run_id, client_id, keyword, canonical_key, source, volume, difficulty, cpc, competition,
               intent, is_local, business_relevance, opportunity_score, score_confidence,
@@ -221,9 +262,9 @@ export class PgStore {
    */
   async savePages(ctx: TenantContext, runId: string, clientId: string, pages: PageRow[]): Promise<void> {
     if (pages.length === 0) return;
-    await this.withTenant(ctx, async () => {
+    await this.withTenant(ctx, async (tx) => {
       for (const p of pages) {
-        await this.db.query(
+        await tx.query(
           `insert into kr_pages
              (tenant_id, run_id, client_id, cluster_id, tipo, url_slug, keyword_principal,
               keywords_secundarias, intencion, local, volumen, dificultad, evidencia,
@@ -295,8 +336,8 @@ export class PgStore {
       modelosSinPrecio: string[];
     },
   ): Promise<void> {
-    await this.withTenant(ctx, async () => {
-      await this.db.query(
+    await this.withTenant(ctx, async (tx) => {
+      await tx.query(
         `update kr_runs set
            status = 'pending_approval',
            coste_micros_usd = $2,
@@ -318,8 +359,8 @@ export class PgStore {
 
   /** El run murió. Se registra el error en vez de dejarlo colgado en `running` para siempre. */
   async failRun(ctx: TenantContext, runId: string, error: string): Promise<void> {
-    await this.withTenant(ctx, async () => {
-      await this.db.query(
+    await this.withTenant(ctx, async (tx) => {
+      await tx.query(
         "update kr_runs set status = 'failed', error = $2, finished_at = now() where id = $1",
         [runId, error.slice(0, 2000)],
       );
@@ -335,8 +376,8 @@ export class PgStore {
    * de mercado que las respaldaran. Quien aprueba tiene que poder aceptar unas y rechazar otras.
    */
   async approvePage(ctx: TenantContext, pageId: string): Promise<boolean> {
-    return this.withTenant(ctx, async () => {
-      const { rows } = await this.db.query<{ id: string }>(
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
         "update kr_pages set approved = true, approved_by = $2, approved_at = now() where id = $1 returning id",
         [pageId, ctx.userId ?? null],
       );
@@ -351,8 +392,8 @@ export class PgStore {
    * aceptó nada sería justo el accidente que la compuerta existe para evitar.
    */
   async approveRun(ctx: TenantContext, runId: string): Promise<void> {
-    await this.withTenant(ctx, async () => {
-      const { rows } = await this.db.query<{ n: string }>(
+    await this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ n: string }>(
         "select count(*)::text as n from kr_pages where run_id = $1 and approved",
         [runId],
       );
@@ -362,13 +403,13 @@ export class PgStore {
             `La compuerta es doble (ADR-06): primero se aprueban las páginas, después el run.`,
         );
       }
-      await this.db.query("update kr_runs set status = 'approved' where id = $1", [runId]);
+      await tx.query("update kr_runs set status = 'approved' where id = $1", [runId]);
     });
   }
 
   async rejectRun(ctx: TenantContext, runId: string): Promise<void> {
-    await this.withTenant(ctx, async () => {
-      await this.db.query("update kr_runs set status = 'rejected' where id = $1", [runId]);
+    await this.withTenant(ctx, async (tx) => {
+      await tx.query("update kr_runs set status = 'rejected' where id = $1", [runId]);
     });
   }
 
@@ -386,8 +427,8 @@ export class PgStore {
     sql: string,
     params: unknown[] = [],
   ): Promise<T[]> {
-    return this.withTenant(ctx, async () => {
-      const { rows } = await this.db.query<T>(sql, params);
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<T>(sql, params);
       return rows;
     });
   }
@@ -403,11 +444,9 @@ export class PgStore {
   }
 
   async getRun(ctx: TenantContext, runId: string): Promise<RunSummary | null> {
-    return this.withTenant(ctx, async () => {
-      const { rows } = await this.db.query<RunSummary>(
-        `select id, client_id, status, prompt, coste_micros_usd::int as coste_micros_usd,
-                calidad_datos, created_at, finished_at
-         from kr_runs where id = $1`,
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<RunSummary>(
+        `select ${RUN_SUMMARY_COLS} from kr_runs where id = $1`,
         [runId],
       );
       return rows[0] ?? null;
@@ -415,11 +454,9 @@ export class PgStore {
   }
 
   async listRuns(ctx: TenantContext, clientId: string): Promise<RunSummary[]> {
-    return this.withTenant(ctx, async () => {
-      const { rows } = await this.db.query<RunSummary>(
-        `select id, client_id, status, prompt, coste_micros_usd::int as coste_micros_usd,
-                calidad_datos, created_at, finished_at
-         from kr_runs where client_id = $1 order by created_at desc`,
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<RunSummary>(
+        `select ${RUN_SUMMARY_COLS} from kr_runs where client_id = $1 order by created_at desc`,
         [clientId],
       );
       return rows;
@@ -433,8 +470,8 @@ export class PgStore {
    * una página quedó sin aprobar, esa página no sale de acá.
    */
   async getPublishablePages(ctx: TenantContext, runId: string): Promise<PageRow[]> {
-    return this.withTenant(ctx, async () => {
-      const { rows } = await this.db.query<PageRow>(
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<PageRow>(
         `select p.cluster_id, p.tipo, p.url_slug, p.keyword_principal, p.keywords_secundarias,
                 p.intencion, p.local, p.volumen, p.dificultad, p.evidencia,
                 p.opportunity_score::float8 as opportunity_score,

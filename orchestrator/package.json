@@ -1,0 +1,27 @@
+{
+  "name": "orchestrator",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Orquestador durable (Inngest): une el pipeline M2, la persistencia y la compuerta humana.",
+  "scripts": {
+    "dev": "inngest-cli dev -u http://localhost:3100/api/inngest",
+    "serve": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@types/pg": "^8.20.0",
+    "inngest": "^3.27.0",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

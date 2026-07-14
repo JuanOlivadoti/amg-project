@@ -110,8 +110,8 @@ export async function seed(db: TestDb): Promise<Seed> {
 
   const mkRun = async (tenantId: string, clientId: string) => {
     const [r] = await db.asService<{ id: string }>(
-      `insert into kr_runs (tenant_id, client_id, schema_version, prompt, market_country, market_language)
-       values ($1, $2, 'kr.v0.5', 'prompt de prueba', 'ES', 'es') returning id`,
+      `insert into kr_runs (tenant_id, client_id, schema_version, prompt, market_country, market_language, market_location_code)
+       values ($1, $2, 'kr.v0.5', 'prompt de prueba', 'ES', 'es', 2724) returning id`,
       [tenantId, clientId],
     );
     return r!.id;

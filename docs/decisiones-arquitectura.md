@@ -111,6 +111,63 @@
 
 ---
 
+## ADR-12 — Orquestador durable (Inngest): el evento dispara, la base decide
+
+**Contexto.** ADR-03 eligió orquestación en código. El pipeline del M2 era un script secuencial: si
+moría a mitad, se perdía lo pagado; la compuerta humana (ADR-06) se resolvía a mano editando un JSON;
+y no había forma de esperar días a una aprobación sin un proceso vivo.
+
+**Decisión.** Un paquete `orchestrator/` con Inngest, que es el **composition root**: el único punto
+que conoce a los tres módulos. `kr-service` sigue sin saber que existe una base de datos y
+`web-builder` sigue sin importar nada de `kr-service` — la frontera M2→M1 sigue siendo el brief JSON
+validado con Zod (ADR-06/07), solo que ahora el brief se **reconstruye desde la base** antes de
+publicar, y se vuelve a validar.
+
+**Lo que NO es negociable: el evento es un disparador, nunca una autoridad.**
+`research/aprobado` no aprueba nada. Solo despierta al workflow, que va a la base y pregunta qué
+está realmente aprobado (`getPublishablePages`, que exige las dos condiciones de la compuerta, bajo
+RLS y con el contexto del tenant que **pidió** el research — nunca el del evento de aprobación). Si
+el evento fuera la autoridad, cualquiera capaz de emitirlo publicaría contenido que ningún humano
+miró, y con el `runId` ajeno publicaría contenido de otro tenant. Hay cuatro tests que caen si se
+invierte esa dependencia.
+
+**Consecuencias de diseño, todas con un porqué:**
+
+| Decisión | Por qué |
+|---|---|
+| El `runId` lo genera **quien emite el evento**, no la base | Inngest re-ejecuta todo el código fuera de un step en cada replay. Un `randomUUID()` en el workflow daría un id distinto por replay y los pasos siguientes escribirían en un run inexistente. De paso, hace el run **idempotente**: reprocesar el evento no abre un segundo run ni vuelve a pagar. |
+| Tope de concurrencia **global**, no por tenant | El rate limit de DataForSEO es **por cuenta**, y la cuenta es una para toda la agencia. "2 por tenant" × 10 tenants = 20 corridas contra la misma cuenta → 40202. El segundo límite (1 por tenant) es de **equidad**, no de protección. |
+| `retries: 1`, no el default de 4 | Un step que falla se reintenta **entero**, y el de research paga. Lo de DataForSEO (81% del costo) lo absorbe la cache; lo del LLM **no está cacheado y se re-paga**. Los fallos transitorios ya los reintenta el cliente HTTP de `kr-service`, mucho más barato. |
+| Las keywords se persisten **dentro** del step de research | Checkpoint: si el paso revienta después (clustering, LLM de contenido), lo que ya se le pagó a DataForSEO queda en la base en vez de perderse. |
+| `onFailure` marca el run `failed` | Agotados los reintentos, el run no puede quedarse colgado en `running` para siempre. Solo es posible porque el `runId` viaja en el evento. |
+| Vencido el plazo de aprobación (7d) **no se publica** | El silencio no es un "sí". El run se queda en `pending_approval`, visible, y alguien lo retoma. |
+
+**Rol del orquestador: `servicio`, no `maestro`.** Es un proceso, no una persona: puede escribir los
+resultados del research y nada más.
+
+## ADR-13 — El acceso a la base es SOLO por transacción con conexión reservada
+
+**Contexto.** El `PgStore` aplica el contexto de tenant con `set_config(..., true)` y `set local role
+app_user`. Las dos cosas son **locales a la transacción**, y una transacción vive en **una conexión**.
+La primera versión tenía un `query()` suelto y hacía `begin` / `set_config` / la query / `commit`
+como cuatro llamadas sueltas al mismo objeto.
+
+**El fallo.** Contra PGlite (una sola conexión) eso funciona por accidente. Contra un `pg.Pool`
+real, **cada `query()` toma una conexión cualquiera**: el `begin` iría a la conexión 1, el
+`set_config` a la 2 y el `insert` a la 3 — fuera de la transacción, sin tenant seteado y sin
+`set local role app_user`, es decir **con el rol del pool, que salta RLS**. El aislamiento entre
+clientes no se degradaba: desaparecía. Y bastaba con dos runs concurrentes —lo que el orquestador
+crea **por diseño**— para que el contexto de un tenant pisara el del otro.
+
+**Decisión.** El único acceso es `DbPool.transaction(fn)`, que **reserva una conexión** y se la pasa
+a `fn` como `Tx`. El Store ya no tiene ningún `query()` al que llamar por fuera: no es que haya que
+*acordarse* de usar la transacción, es que **no existe otra forma**. El tipo es lo que impide
+reintroducir el bug. En `NodePgPool`, un `rollback` fallido **destruye** la conexión en vez de
+reciclarla: una conexión que vuelve al pool con una transacción abierta y el tenant del usuario
+anterior pegado es exactamente la fuga que esto viene a impedir.
+
+---
+
 ## OBS-01 — Solapamiento de alcance entre los dos documentos (riesgo, no decisión)
 **Observación.** `contexto-proyecto-frank.md` describe "Frank, cliente de la agencia" con 4 módulos; `A_PRD_AMG_Madrid_v1_Ilustrado.md` tiene sponsor "Franco · CEO" con 5 agentes y prioridades distintas. **Frank ≈ Franco es casi con seguridad la misma persona/proyecto**, con framings que no cierran (p. ej. el Creador de Webs es "Módulo 1 avanzado" en un doc y "web-por-prompt diferido a I+D / O10" en el otro).
 **Riesgo.** Presupuestar o presentar dos alcances incompatibles al mismo cliente.

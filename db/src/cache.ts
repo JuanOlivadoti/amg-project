@@ -11,10 +11,11 @@
  * eso van RLS deny-all: solo se tocan con la service-role. Ver `migrations/0001_init.sql`.
  */
 
-/** Ejecuta SQL parametrizado. Lo cumple PGlite (tests) y cualquier cliente de Postgres (prod). */
-export interface SqlExecutor {
-  query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
-}
+import type { SqlExecutor } from "./pool.js";
+
+// Las caches NO usan `DbPool`: no tienen contexto de tenant que aplicar, así que no necesitan una
+// conexión reservada ni una transacción. Les alcanza con un ejecutor de SQL suelto (service-role).
+export type { SqlExecutor };
 
 export interface KeywordCache {
   getMany<T>(keys: string[]): Promise<Map<string, T>>;
