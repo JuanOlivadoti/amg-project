@@ -1,8 +1,33 @@
 import { config } from "../config.js";
 import { currentMeter } from "../lib/cost.js";
 import { backoffMs, fetchWithRetry } from "../lib/http.js";
-import { NoopTaskLog, payloadHash } from "./task-log.js";
+import { MAX_INTENTOS, NoopTaskLog, payloadHash } from "./task-log.js";
 import type { ProviderTaskLog } from "./task-log.js";
+
+/**
+ * Una petición quedó **ambigua**: se envió y nunca volvió respuesta. Puede haberse cobrado.
+ *
+ * No es un error transitorio y **no se reintenta solo**: reintentar es exactamente lo que puede
+ * cobrar dos veces. Detiene el run y deja el hash para que un humano lo resuelva.
+ */
+export class PeticionAmbiguaError extends Error {
+  constructor(
+    readonly path: string,
+    readonly hash: string,
+    readonly intento: number,
+  ) {
+    super(
+      `[dataforseo] ${path}: una petición anterior se envió y NUNCA devolvió respuesta (intento ` +
+        `${intento}). DataForSEO pudo haberla ejecutado y cobrado, y en los endpoints live-only no ` +
+        `hay forma de comprobarlo desde el código.\n` +
+        `  · payload_hash: ${hash}\n` +
+        `  · El run se DETIENE en vez de reenviar: reenviar puede pagar la misma petición dos veces.\n` +
+        `  · Comprobá en el panel de DataForSEO si se cobró. Si asumís el riesgo, reintentá con ` +
+        `DFS_PERMITIR_REPAGO=1.`,
+    );
+    this.name = "PeticionAmbiguaError";
+  }
+}
 
 /**
  * Cliente DataForSEO (Basic Auth). Arranca contra sandbox.
@@ -70,12 +95,35 @@ export class DataForSeoClient {
       return reserva.result;
     }
 
+    /*
+     * UNA PETICIÓN AMBIGUA NO AUTORIZA GASTAR. Se detiene.
+     *
+     * `huerfana` significa: hubo un envío que nunca devolvió respuesta. DataForSEO **pudo haber
+     * ejecutado y cobrado**, y no hay forma de averiguarlo desde acá — en los endpoints *live-only*
+     * (Labs) no existe una task que consultar.
+     *
+     * Antes esto REENVIABA, hasta 3 veces, imprimiendo "REPAGO" por consola. O sea: el código sabía
+     * que podía estar pagando dos veces, lo decía, y lo hacía igual. Y ADR-14 afirmaba, dos párrafos
+     * más abajo, que "se garantiza que no se pague dos veces por la misma petición". **Era falso, y
+     * el propio código lo desmentía.**
+     *
+     * Ahora falla cerrado. El run se detiene con el hash exacto, y un humano decide: o acepta el
+     * riesgo de repago (`DFS_PERMITIR_REPAGO=1`), o va al panel de DataForSEO y comprueba si esa
+     * petición se cobró. Detener un research es barato; pagarlo dos veces sin enterarse, no.
+     *
+     * Esto es la MITAD del arreglo. La otra mitad es dejar de tener peticiones ambiguas: SERP y
+     * Search Volume (el 46% del gasto) soportan el método Standard, donde la task ya pagada se
+     * recupera GRATIS. Ver ADR-14.
+     */
     if (reserva.estado === "huerfana") {
+      if (!config.dataforseo.permitirRepago) {
+        throw new PeticionAmbiguaError(path, hash, reserva.intento);
+      }
       this.repagos++;
       console.warn(
-        `  ⚠️  [dataforseo] REPAGO en ${path}: un envío anterior nunca devolvió respuesta y pudo ` +
-          `haberse cobrado. Reenviando (intento ${reserva.intento}/3) — es la única forma de obtener ` +
-          `el dato, pero puede estar pagándose dos veces.`,
+        `  ⚠️  [dataforseo] REPAGO AUTORIZADO en ${path} (DFS_PERMITIR_REPAGO=1): un envío anterior ` +
+          `nunca devolvió respuesta y pudo haberse cobrado. Reenviando (intento ${reserva.intento}/${MAX_INTENTOS}). ` +
+          `Esto PUEDE estar pagándose dos veces.`,
       );
     }
 

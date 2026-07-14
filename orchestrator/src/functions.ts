@@ -48,7 +48,18 @@ export function crearFuncionResearch(deps: Deps) {
       id: "research-workflow",
       concurrency: [
         { limit: 3 }, // global: protege la CUENTA de DataForSEO (su rate limit no es por tenant)
-        { key: "event.data.ctx.tenantId", limit: 1 }, // equidad entre tenants
+        /*
+         * `event.data.tenantId`. Decía `event.data.ctx.tenantId`, y ese campo NO EXISTE.
+         *
+         * Es basura de mi propio refactor de ADR-18: cuando saqué el `ctx` del evento —para que el
+         * evento dejara de portar autoridad— dejé la clave apuntando a un camino muerto. La clave
+         * resolvía a `undefined` para TODOS los eventos, así que la equidad entre tenants que este
+         * comentario documentaba simplemente **no existía**: o todos caían en el mismo bucket, o no
+         * se aplicaba límite alguno.
+         *
+         * Ningún test lo agarró porque los tests corren `workflowResearch`, no la función de Inngest.
+         */
+        { key: "event.data.tenantId", limit: 1 }, // equidad entre tenants
       ],
       retries: 1,
       /*

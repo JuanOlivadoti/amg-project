@@ -4,12 +4,12 @@ import { canonicalKey, config as krConfig, runResearch } from "kr-service";
 import {
   applyProse,
   briefToStories,
-  config as webConfig,
   getPublisher,
-  loadProfile,
   parseBrief,
+  parseProfile,
   renderStory,
 } from "web-builder";
+import type { BusinessProfile } from "web-builder";
 import type { Deps, KeywordParaGuardar } from "./workflow.js";
 
 /**
@@ -46,7 +46,29 @@ export interface Conexiones {
 
 export async function crearConexiones(): Promise<Conexiones> {
   const urlOrq = process.env["DATABASE_URL_ORQUESTADOR"] ?? process.env["DATABASE_URL"];
-  const urlCache = process.env["DATABASE_URL_CACHE"] ?? urlOrq;
+  const urlCache = process.env["DATABASE_URL_CACHE"];
+
+  /*
+   * Con Postgres real, `DATABASE_URL_CACHE` es OBLIGATORIA. No tiene fallback, y el fallback que
+   * tenía era imposible de cumplir:
+   *
+   *   `urlCache = DATABASE_URL_CACHE ?? urlOrq`
+   *
+   * O sea que sin esa variable la cache se abría con `amg_orquestador` — un login que, POR DISEÑO,
+   * no tiene permiso sobre las caches ni sobre el registro de tareas (0003_credenciales.sql). El
+   * primer acceso explotaba. Falla cerrado, sí, pero explotaba **en producción, en el primer
+   * research**, con una configuración que parecía válida.
+   *
+   * Mejor abortar al arrancar y decir exactamente qué falta.
+   */
+  if (urlOrq && !urlCache) {
+    throw new Error(
+      "Falta DATABASE_URL_CACHE. Con Postgres real es obligatoria y NO hereda de " +
+        "DATABASE_URL_ORQUESTADOR: el login del orquestador no puede tocar las caches ni el " +
+        "registro de tareas (un proceso, un login, un rol — ADR-17). " +
+        "Ver docs/proyecto/12-credenciales.md.",
+    );
+  }
 
   if (!urlOrq) {
     // Sin credenciales: PGlite en memoria. El sistema entero sigue corriendo sin una sola clave.
@@ -145,19 +167,47 @@ export function crearDeps(cx: Conexiones): Deps {
 
     validarContrato: (raw) => parseBrief(raw),
 
-    publicar: async (briefValidado) => {
+    /*
+     * Publicar es lo ÚNICO que escribe fuera de nuestra base, y por eso es donde el aislamiento
+     * multi-tenant se puede perder sin que RLS se entere.
+     *
+     * El destino (space + perfil) llega del CLIENTE, leído bajo RLS por el workflow. Ya no hay un
+     * `STORYBLOK_SPACE_ID` global ni un `BUSINESS_PROFILE_PATH` global: con ellos, la `/menu` de un
+     * cliente pisaba la del otro y el JSON-LD de todos llevaba los datos del mismo restaurante.
+     *
+     * El publisher se construye POR PUBLICACIÓN, no una vez al arrancar. Un publisher de proceso es
+     * exactamente lo que hacía imposible tener dos destinos.
+     */
+    publicar: async (briefValidado, destino) => {
       const brief = briefValidado as Parameters<typeof briefToStories>[0];
       const stories = briefToStories(brief);
-      const perfil = await loadProfile(webConfig.businessProfilePath);
+
+      // El perfil del CLIENTE. Si no tiene, se sigue sin él (el JSON-LD sale más pobre, pero no
+      // lleva los datos de otro negocio, que es lo que pasaba antes).
+      const perfil = perfilDelCliente(destino.perfil);
+
       await applyProse(stories, brief, perfil);
       const html = new Map(
         stories.map((s) => [s.slug, renderStory(s, perfil, brief.market.language_code)]),
       );
-      return getPublisher().publish(stories, html);
+
+      return getPublisher(destino.storyblokSpaceId).publish(stories, html);
     },
 
     log: (msg) => console.log(msg),
   };
+}
+
+/**
+ * El perfil del negocio, validado.
+ *
+ * Viene de `clients.business_profile` (jsonb), o sea `unknown`. Se valida con el MISMO Zod que usa
+ * el M1 para el perfil de archivo: un perfil corrupto tiene que **fallar ruidosamente**, no
+ * disfrazarse de "este cliente no tiene perfil" y publicar un JSON-LD mutilado.
+ */
+function perfilDelCliente(raw: Record<string, unknown> | null): BusinessProfile | null {
+  if (raw == null) return null;
+  return parseProfile(raw) as BusinessProfile;
 }
 
 // ---------------------------------------------------------------- la cache

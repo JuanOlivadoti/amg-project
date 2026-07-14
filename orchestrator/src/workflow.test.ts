@@ -8,7 +8,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { PgStore, PglitePool, aplicarMigraciones } from "db";
 import type { PageRow, TenantContext } from "db";
 import { workflowResearch } from "./workflow.js";
-import type { BriefDelPipeline, Deps, Pasos } from "./workflow.js";
+import type { BriefDelPipeline, Deps, DestinoPublicacion, Pasos } from "./workflow.js";
 
 /**
  * Tests del orquestador contra Postgres REAL (PGlite) y el `PgStore` REAL — solo se falsean el
@@ -122,6 +122,10 @@ interface Espia {
   publicadas: string[][];
   researchCorrido: number;
   keywordsGuardadas: number;
+  /** A DÓNDE se publicó cada vez. Es lo que prueba que un cliente no escribe en el space de otro. */
+  destinos: DestinoPublicacion[];
+  /** Si es `true`, el publisher devuelve `published: false` (draft): nada quedó publicado de verdad. */
+  simularDraft: boolean;
 }
 
 function depsFalsas(paginas: PageRow[]): Espia {
@@ -129,6 +133,8 @@ function depsFalsas(paginas: PageRow[]): Espia {
     publicadas: [],
     researchCorrido: 0,
     keywordsGuardadas: 0,
+    destinos: [],
+    simularDraft: false,
     deps: undefined as never,
   };
 
@@ -156,11 +162,18 @@ function depsFalsas(paginas: PageRow[]): Espia {
     },
     // No se valida de verdad acá: el contrato ya tiene sus propios tests en web-builder.
     validarContrato: (raw) => raw,
-    publicar: async (brief) => {
+    publicar: async (brief, destino) => {
       const b = brief as { paginas_propuestas: Array<{ url_slug: string }> };
       const slugs = b.paginas_propuestas.map((p) => p.url_slug);
       espia.publicadas.push(slugs);
-      return slugs.map((s) => ({ slug: s, location: `story-${s}` }));
+      espia.destinos.push(destino);
+      return slugs.map((s) => ({
+        slug: s,
+        location: `story-${s}`,
+        // El publisher real puede dejar la story en DRAFT. Si eso pasa, la base NO puede decir
+        // que está publicada.
+        published: !espia.simularDraft,
+      }));
     },
   };
 
@@ -194,6 +207,13 @@ async function crearRunComoHumano(tenantId: string, clientId: string, userId: st
 /** El humano del portal (equipo), no el orquestador. Es quien tiene permiso de aprobar. */
 const humano = (tenantId: string): TenantContext => ({ tenantId, userId: tenantId === tenantA ? equipoA : equipoB });
 
+/** Pasa la compuerta DOBLE (ADR-06): primero las páginas, después el run. */
+async function aprobarTodo(ctx: TenantContext, runId: string): Promise<void> {
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  for (const r of rows) await store.approvePage(ctx, r.id);
+  await store.approveRun(ctx, runId);
+}
+
 // ---------------------------------------------------------------- setup
 
 before(async () => {
@@ -216,15 +236,17 @@ beforeEach(async () => {
   tenantA = t[0]!.id;
   tenantB = t[1]!.id;
 
-  const mk = async (tid: string, n: string) => {
+  // CADA CLIENTE, SU PROPIO SPACE DE STORYBLOK (ADR-04). Es el dato que antes no leía nadie: se
+  // publicaba todo en el space global del proceso y la `/menu` de uno pisaba la del otro.
+  const mk = async (tid: string, n: string, space: string) => {
     const { rows } = await pg.query<{ id: string }>(
-      "insert into clients (tenant_id, nombre) values ($1, $2) returning id",
-      [tid, n],
+      "insert into clients (tenant_id, nombre, storyblok_space_id) values ($1, $2, $3) returning id",
+      [tid, n, space],
     );
     return rows[0]!.id;
   };
-  clientA = await mk(tenantA, "Trattoria");
-  clientB = await mk(tenantB, "Sushi Zen");
+  clientA = await mk(tenantA, "Trattoria", "space-A");
+  clientB = await mk(tenantB, "Sushi Zen", "space-B");
 
   const mkMiembro = async (tid: string) => {
     const { rows } = await pg.query<{ user_id: string }>(
@@ -500,4 +522,156 @@ test("las keywords pagas se persisten aunque el research reviente DESPUÉS", asy
     [runId],
   );
   assert.equal(rows[0]!.n, 1, "lo que costó dinero quedó guardado");
+});
+
+// ================================================================
+// El destino de publicación (review 5, HIGH #1 y #2)
+// ================================================================
+
+/**
+ * EL TEST QUE FALTABA. Es el que cae si alguien vuelve a publicar en un space global.
+ *
+ * `clients.storyblok_space_id` existía desde el día uno y NO LO LEÍA NADIE: todo se publicaba en el
+ * `STORYBLOK_SPACE_ID` del proceso. Y como los slugs de un restaurante son siempre los mismos
+ * (`/menu`, `/contacto`…), la página del cliente A **sobrescribía la del cliente B**.
+ *
+ * El aislamiento entre tenants era impecable DENTRO de Postgres y se perdía al salir por la puerta.
+ */
+test("🔴 cada cliente publica en SU space: dos tenants, el mismo slug, y no se pisan", async () => {
+  const runA = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const runB = await crearRunComoHumano(tenantB, clientB, equipoB);
+
+  // La MISMA página, con el MISMO slug, para los dos clientes. Es el caso real: `/menu` lo tienen
+  // todos los restaurantes.
+  const espiaA = depsFalsas([paginaFalsa({ url_slug: "/menu" })]);
+  const espiaB = depsFalsas([paginaFalsa({ url_slug: "/menu" })]);
+
+  const motorA = await correrHastaLaCompuerta(espiaA, runA, tenantA, clientA);
+  const motorB = await correrHastaLaCompuerta(espiaB, runB, tenantB, clientB);
+
+  await aprobarTodo(humano(tenantA), runA);
+  await aprobarTodo(humano(tenantB), runB);
+
+  motorA.aprobacion = { data: { runId: runA } };
+  await workflowResearch(motorA, entrada(runA, tenantA), espiaA.deps);
+  motorB.aprobacion = { data: { runId: runB } };
+  await workflowResearch(motorB, entrada(runB, tenantB), espiaB.deps);
+
+  assert.equal(espiaA.destinos[0]?.storyblokSpaceId, "space-A");
+  assert.equal(espiaB.destinos[0]?.storyblokSpaceId, "space-B");
+  assert.notEqual(
+    espiaA.destinos[0]?.storyblokSpaceId,
+    espiaB.destinos[0]?.storyblokSpaceId,
+    "dos clientes distintos NO pueden publicar en el mismo space: el segundo pisaría al primero",
+  );
+  assert.equal(espiaA.destinos[0]?.clientId, clientA);
+  assert.equal(espiaB.destinos[0]?.clientId, clientB);
+});
+
+/**
+ * El publisher mandaba las stories como DRAFT (le faltaba `publish: 1`) y la base escribía
+ * `published_at` igual: el run terminaba en `publicado` con NADA publicado.
+ *
+ * La base afirmaba un hecho del mundo exterior que no había ocurrido — la peor clase de mentira,
+ * porque nadie la va a comprobar.
+ */
+test("🔴 si la story queda en DRAFT, la base NO dice que está publicada", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const espia = depsFalsas([paginaFalsa()]);
+  espia.simularDraft = true; // el proveedor NO confirma la publicación
+
+  const motor = await correrHastaLaCompuerta(espia, runId);
+  await aprobarTodo(humano(tenantA), runId);
+
+  const res = await despertar(motor, espia, runId);
+
+  assert.equal(res.paginasPublicadas, 0, "nada quedó publicado: el proveedor no lo confirmó");
+
+  const { rows } = await pg.query<{ n: number }>(
+    "select count(*)::int as n from kr_pages where run_id = $1 and published_at is not null",
+    [runId],
+  );
+  assert.equal(rows[0]!.n, 0, "published_at NO se escribe para una story que quedó en draft");
+});
+
+// ================================================================
+// La compuerta EDITA, no solo aprueba (ADR-06)
+// ================================================================
+
+/**
+ * ADR-06 siempre dijo que el humano "revisa y EDITA". Lo de editar no existía: solo aprobar o
+ * rechazar. Si una página estaba casi bien, la única salida era tirarla y volver a pagar.
+ *
+ * Y editar REVOCA la aprobación: la compuerta certifica que un humano miró ESTO. Si `esto` cambió
+ * después de que lo mirara, la certificación no vale nada.
+ */
+test("🔴 editar una página aprobada REVOCA su aprobación (si no, se publica lo que nadie miró)", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const espia = depsFalsas([paginaFalsa({ url_slug: "/pizza" })]);
+  const motor = await correrHastaLaCompuerta(espia, runId);
+
+  const ctx = humano(tenantA);
+  const { rows } = await pg.query<{ id: string }>(
+    "select id from kr_pages where run_id = $1",
+    [runId],
+  );
+  const pageId = rows[0]!.id;
+
+  await store.approvePage(ctx, pageId);
+  await store.approveRun(ctx, runId);
+
+  // El humano aprueba… y DESPUÉS reescribe la página.
+  const editada = await store.editPage(ctx, pageId, { url_slug: "/pizza-napolitana" });
+  assert.equal(editada, true);
+
+  const publicables = await storeServicio.getPublishablePages({ tenantId: tenantA }, runId);
+  assert.equal(
+    publicables.length,
+    0,
+    "la edición revocó la aprobación: no se publica algo que cambió después de que lo miraran",
+  );
+
+  // Y al publicar de verdad: nada sale.
+  motor.aprobacion = { data: { runId } };
+  const res = await workflowResearch(motor, entrada(runId, tenantA), espia.deps);
+  assert.equal(res.estado, "nada_que_publicar");
+});
+
+test("editar y volver a aprobar sí publica — con el contenido nuevo", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const espia = depsFalsas([paginaFalsa({ url_slug: "/pizza" })]);
+  const motor = await correrHastaLaCompuerta(espia, runId);
+
+  const ctx = humano(tenantA);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  const pageId = rows[0]!.id;
+
+  await store.editPage(ctx, pageId, { url_slug: "/pizza-napolitana" });
+  await store.approvePage(ctx, pageId);
+  await store.approveRun(ctx, runId);
+
+  motor.aprobacion = { data: { runId } };
+  const res = await workflowResearch(motor, entrada(runId, tenantA), espia.deps);
+
+  assert.equal(res.paginasPublicadas, 1);
+  assert.deepEqual(espia.publicadas[0], ["/pizza-napolitana"], "se publicó lo EDITADO");
+});
+
+test("🔴 un tenant NO puede editar la página de otro", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const espia = depsFalsas([paginaFalsa()]);
+  await correrHastaLaCompuerta(espia, runId);
+
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  const pageId = rows[0]!.id;
+
+  // El tenant B intenta editar una página del tenant A. RLS no se la deja ni ver.
+  const editada = await store.editPage(humano(tenantB), pageId, { url_slug: "/hackeada" });
+  assert.equal(editada, false, "RLS no deja tocar la página de otro tenant");
+
+  const { rows: r2 } = await pg.query<{ url_slug: string }>(
+    "select url_slug from kr_pages where id = $1",
+    [pageId],
+  );
+  assert.notEqual(r2[0]!.url_slug, "/hackeada");
 });

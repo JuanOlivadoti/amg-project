@@ -79,7 +79,7 @@ export class CachedProvider implements KeywordDataProvider {
 
     // Si esto lanza (p. ej. una task de DataForSEO falló), la excepción se propaga y NO se cachea
     // nada: no sabemos qué keywords faltan, y tomarlas por ausentes fosilizaría un fallo transitorio.
-    const frescas = await this.inner.searchVolume(faltantes, market);
+    const frescas = await this.inner.searchVolume(loteCanonico(faltantes), market);
     const porClave = new Map(frescas.map((r) => [canonicalKey(r.keyword), r]));
 
     const aCachear: Array<[string, SearchVolumeRow | null]> = [];
@@ -129,7 +129,7 @@ export class CachedProvider implements KeywordDataProvider {
 
     if (faltantes.length === 0) return out;
 
-    const frescas = await this.inner.bulkKeywordDifficulty(faltantes, market);
+    const frescas = await this.inner.bulkKeywordDifficulty(loteCanonico(faltantes), market);
     const porClave = new Map([...frescas].map(([k, v]) => [canonicalKey(k), v]));
 
     const aCachear: Array<[string, number | null]> = [];
@@ -168,4 +168,24 @@ export class CachedProvider implements KeywordDataProvider {
     await this.cache.setMany([[key, fresh]], TTL.serp);
     return fresh;
   }
+}
+
+/**
+ * El lote que se ENVÍA, en forma canónica: deduplicado y ordenado.
+ *
+ * Para DataForSEO, `["pizza","pasta"]` y `["pasta","pizza"]` son **la misma consulta y el mismo
+ * cobro** — el array es un conjunto de keywords, no una secuencia. Pero el `payload_hash` se calcula
+ * sobre el cuerpo, así que dos procesos que pedían lo mismo en distinto orden producían **hashes
+ * distintos**: ninguno veía la reserva del otro y **se pagaba dos veces**.
+ *
+ * Canonizar acá —en el punto donde se forma el lote facturable— arregla el cuerpo Y el hash de una
+ * sola vez. El mapeo de vuelta va por `canonicalKey`, así que reordenar no rompe nada.
+ *
+ * OJO con lo que esto NO arregla: dos procesos con lotes que SE SOLAPAN (`[a,b]` y `[b,c]`) siguen
+ * pagando `b` dos veces, porque cada uno reserva su lote entero. Cerrarlo exige reservar por keyword
+ * y no por lote. Está anotado en ADR-14: hoy la ventana es estrecha (los dos tendrían que perder la
+ * cache a la vez), pero existe.
+ */
+function loteCanonico(keywords: string[]): string[] {
+  return [...new Set(keywords.map((k) => k.trim()))].sort();
 }

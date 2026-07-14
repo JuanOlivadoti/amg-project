@@ -122,6 +122,34 @@ export interface PageRow {
   preguntas_frecuentes: string[];
 }
 
+/**
+ * El cliente, incluido **su destino de publicación**.
+ *
+ * `storyblok_space_id` existía en el esquema desde el día uno y **no lo leía nadie**: se publicaba
+ * todo en el `STORYBLOK_SPACE_ID` del proceso. Con dos clientes, la página `/menu` del segundo
+ * **pisaba** la del primero. El aislamiento entre tenants era impecable dentro de Postgres y se
+ * perdía al salir por la puerta.
+ *
+ * Se lee **bajo RLS**: un tenant no puede ni nombrar el destino de otro.
+ */
+export interface ClientRow {
+  id: string;
+  nombre: string;
+  /** Space de Storyblok de ESTE cliente. **Sin él no se publica** (ADR-04: uno por cliente). */
+  storyblok_space_id: string | null;
+  /** Perfil NAP del negocio → JSON-LD. Antes era un archivo global: el mismo para todos. */
+  business_profile: Record<string, unknown> | null;
+}
+
+/** Lo que un humano puede corregir de una página propuesta antes de aprobarla (ADR-06). */
+export interface CambiosPagina {
+  url_slug?: string;
+  keyword_principal?: string;
+  seo?: Record<string, unknown>;
+  content_brief?: Record<string, unknown>;
+  preguntas_frecuentes?: string[];
+}
+
 export interface RunSummary {
   id: string;
   client_id: string;
@@ -506,6 +534,57 @@ export class PgStore {
   }
 
   /**
+   * Edita una página propuesta **y le quita la aprobación** (ADR-06).
+   *
+   * ADR-06 siempre dijo que el humano *"revisa y **edita**"* el brief antes de crear la web. Lo de
+   * editar **no existía**: solo se podía aprobar o rechazar. Si una página estaba casi bien, la única
+   * salida era tirarla — y volver a pagar un research.
+   *
+   * **Editar REVOCA la aprobación, siempre.** No es una cortesía: la compuerta certifica que un
+   * humano miró *esto*, y si `esto` cambió después de que lo mirara, la certificación ya no vale de
+   * nada. Sin esta línea, alguien aprueba una página inocua, la reescribe entera y se publica sin
+   * que nadie haya visto lo que salió.
+   *
+   * Los campos son una **allowlist**: `approved`, `run_id`, `client_id` y `tenant_id` no se tocan
+   * desde acá ni por accidente. Construir el `update` a partir de las claves que mande el llamador
+   * es cómo un endpoint de edición se convierte en una escalada de privilegios.
+   */
+  async editPage(
+    ctx: TenantContext,
+    pageId: string,
+    cambios: CambiosPagina,
+  ): Promise<boolean> {
+    const COLUMNAS = ["url_slug", "keyword_principal", "seo", "content_brief", "preguntas_frecuentes"] as const;
+
+    const sets: string[] = [];
+    const params: unknown[] = [pageId];
+    for (const col of COLUMNAS) {
+      const v = cambios[col];
+      if (v === undefined) continue;
+      params.push(v);
+      sets.push(`${col} = $${params.length}`);
+    }
+    if (sets.length === 0) return false;
+
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update kr_pages
+            set ${sets.join(", ")},
+                approved = false,          -- editar SIEMPRE revoca: ver arriba
+                approved_by = null,
+                approved_at = null,
+                edited_by = $${params.length + 1},
+                edited_at = now()
+          where id = $1
+            and not retirada
+          returning id`,
+        [...params, ctx.userId ?? null],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
    * Aprueba el run. NO aprueba sus páginas: es la mitad global de la compuerta doble.
    *
    * Se niega a aprobar un run sin ninguna página aprobada — publicar "todo" cuando el revisor no
@@ -542,6 +621,23 @@ export class PgStore {
    * convierte un bug de la API en ejecución de SQL. Existía solo para los tests de RLS — y para eso
    * sigue existiendo, pero fuera del artefacto que se despliega.
    */
+
+  /**
+   * El cliente y **su destino de publicación**, bajo RLS.
+   *
+   * Es lo que impide que el research del tenant A termine escrito en el space de Storyblok del
+   * tenant B. Antes el destino salía de una variable de entorno del proceso —la misma para todos—,
+   * así que el aislamiento multi-tenant se evaporaba justo en el paso que escribe hacia afuera.
+   */
+  async getClient(ctx: TenantContext, clientId: string): Promise<ClientRow | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<ClientRow>(
+        "select id, nombre, storyblok_space_id, business_profile from clients where id = $1",
+        [clientId],
+      );
+      return rows[0] ?? null;
+    });
+  }
 
   async getRun(ctx: TenantContext, runId: string): Promise<RunSummary | null> {
     return this.withTenant(ctx, async (tx) => {

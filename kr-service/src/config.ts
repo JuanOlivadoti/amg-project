@@ -30,6 +30,18 @@ export const config = {
     get hasCredentials() {
       return Boolean(this.login && this.password && this.login !== "tu-login");
     },
+
+    /**
+     * Autoriza REENVIAR una petición que quedó ambigua (se envió, nunca volvió respuesta).
+     *
+     * Apagado por defecto, y ese default es la decisión: una petición ambigua **pudo cobrarse**, y
+     * reenviarla puede pagarla dos veces. Sin esto, el run se detiene y un humano comprueba en el
+     * panel de DataForSEO si se cobró.
+     *
+     * Encenderlo es asumir el riesgo explícitamente. No es un flag de conveniencia: es la diferencia
+     * entre "puede que hayamos pagado dos veces" y "decidimos que podíamos pagar dos veces".
+     */
+    permitirRepago: process.env.DFS_PERMITIR_REPAGO === "1",
   },
 
   /**

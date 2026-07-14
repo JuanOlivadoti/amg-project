@@ -42,8 +42,17 @@ export interface Deps {
     /** Se invoca en cuanto las keywords pagas existen. Es el checkpoint de lo que costó dinero. */
     onKeywords: (keywords: KeywordParaGuardar[]) => Promise<void>;
   }) => Promise<BriefDelPipeline>;
-  /** Publica en el M1. Recibe el brief RECONSTRUIDO DESDE LA BASE, ya validado contra el contrato. */
-  publicar: (brief: unknown) => Promise<Array<{ slug: string; location: string }>>;
+  /**
+   * Publica en el M1. Recibe el brief RECONSTRUIDO DESDE LA BASE, ya validado contra el contrato,
+   * y el **destino del cliente** (su space de Storyblok y su perfil), resuelto bajo RLS.
+   *
+   * Devuelve, por página, si el proveedor **confirma** que quedó publicada. No es lo mismo que
+   * "se la mandamos".
+   */
+  publicar: (
+    brief: unknown,
+    destino: DestinoPublicacion,
+  ) => Promise<Array<{ slug: string; location: string; published: boolean }>>;
   /** Valida el brief contra el contrato del M1 (Zod). Lanza si no cuadra. */
   validarContrato: (raw: unknown) => unknown;
   log?: (msg: string) => void;
@@ -87,6 +96,20 @@ export interface BriefDelPipeline {
 export interface EntradaResearch {
   runId: string;
   tenantId: string;
+}
+
+/**
+ * A dónde se publica. **Sale de la fila del cliente, bajo RLS — nunca de una variable de entorno.**
+ *
+ * Antes el destino era el `STORYBLOK_SPACE_ID` del proceso, el mismo para todos los clientes. Como
+ * los slugs de un restaurante son siempre los mismos (`/menu`, `/contacto`…), publicar el research
+ * del cliente A **sobrescribía las páginas del cliente B**. El aislamiento entre tenants era
+ * impecable dentro de Postgres y se perdía justo en el paso que escribe hacia afuera.
+ */
+export interface DestinoPublicacion {
+  clientId: string;
+  storyblokSpaceId: string | null;
+  perfil: Record<string, unknown> | null;
 }
 
 export interface ResultadoWorkflow {
@@ -224,25 +247,60 @@ export async function workflowResearch(
     const actual = await deps.store.getRun(ctx, runId);
     if (!actual) throw new Error(`El run ${runId} no es visible para este tenant.`);
 
+    /*
+     * EL DESTINO SALE DE LA BASE, BAJO RLS. No de una variable de entorno.
+     *
+     * `clients.storyblok_space_id` existía desde el día uno y no lo leía nadie: se publicaba todo en
+     * el space global del proceso, así que la `/menu` de un cliente PISABA la del otro. Leerlo acá,
+     * bajo el contexto del tenant, es lo que impide que un tenant nombre el destino de otro.
+     */
+    const cliente = await deps.store.getClient(ctx, actual.client_id);
+    if (!cliente) {
+      throw new Error(
+        `El cliente ${actual.client_id} del run ${runId} no es visible para este tenant. No se publica.`,
+      );
+    }
+
     // Reconstruir el brief DESDE LA BASE y volver a validarlo contra el contrato del M1 (ADR-06/07).
     // El M1 no confía en que el M2 le mande algo bien formado, y el orquestador tampoco.
     const briefValidado = deps.validarContrato(briefDesdeLaBase(actual, paginas));
-    const publicadas = await deps.publicar(briefValidado);
+    const resultados = await deps.publicar(briefValidado, {
+      clientId: cliente.id,
+      storyblokSpaceId: cliente.storyblok_space_id,
+      perfil: cliente.business_profile,
+    });
 
     /*
-     * Registrar la publicación es lo que impide que un fallo posterior MIENTA sobre el mundo.
+     * Solo se marca lo que el proveedor CONFIRMA publicado.
      *
-     * Storyblok ya creó las stories: eso es un hecho externo e irreversible. Sin esta marca, un
-     * error en el camino de vuelta hacía que `onFailure` pusiera el run en `failed` con las páginas
-     * publicadas y visibles.
+     * El publisher mandaba las stories como **draft** (le faltaba `publish: 1`) y acá se escribía
+     * `published_at` igual: el run terminaba en `publicado` con **nada publicado**. La base afirmaba
+     * un hecho del mundo exterior que no había ocurrido — que es la peor clase de mentira, porque
+     * nadie la va a comprobar.
+     *
+     * Registrarlo sigue siendo imprescindible al revés: Storyblok ya creó las stories y eso es
+     * irreversible. Sin la marca, un fallo en el camino de vuelta dejaba el run en `failed` con las
+     * páginas publicadas y visibles.
      */
-    await deps.store.marcarPublicadas(
-      ctx,
-      runId,
-      publicadas.map((p) => ({ slug: p.slug, storyId: p.location })),
-    );
+    const publicadas = resultados.filter((p) => p.published);
+    const enDraft = resultados.length - publicadas.length;
 
-    log(`[run ${runId}] publicadas ${publicadas.length} página(s)`);
+    if (publicadas.length > 0) {
+      await deps.store.marcarPublicadas(
+        ctx,
+        runId,
+        publicadas.map((p) => ({ slug: p.slug, storyId: p.location })),
+      );
+    }
+
+    if (enDraft > 0) {
+      log(
+        `[run ${runId}] ⚠️ ${enDraft} página(s) NO quedaron publicadas (draft o dry-run). ` +
+          `No se marcan como publicadas: la base no puede afirmar algo que el proveedor no confirma.`,
+      );
+    }
+
+    log(`[run ${runId}] publicadas ${publicadas.length} de ${resultados.length} página(s)`);
     return { runId, estado: "publicado" as const, paginasPublicadas: publicadas.length };
   });
 }

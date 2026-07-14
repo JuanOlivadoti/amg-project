@@ -27,7 +27,8 @@ export class MockPublisher implements Publisher {
       const previewHtml = join(OUT_DIR, "preview", `${file}.html`);
       await writeFile(previewHtml, html.get(story.slug) ?? "", "utf8");
 
-      results.push({ slug: story.slug, location: previewHtml, mode: "mock" });
+      // El mock SÍ deja la página escrita y visible: para el mock, eso es estar publicada.
+      results.push({ slug: story.slug, location: previewHtml, mode: "mock", published: true });
     }
     return results;
   }

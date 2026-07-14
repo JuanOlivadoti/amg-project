@@ -83,10 +83,24 @@ export function payloadHash(ns: string, endpoint: string, body: unknown): string
   return createHash("sha256").update(`${ns}|${endpoint}|${jsonEstable(body)}`).digest("hex");
 }
 
-/** JSON con las claves ordenadas: `{a:1,b:2}` y `{b:2,a:1}` son la MISMA petición. */
+/**
+ * JSON canónico: **dos peticiones semánticamente iguales tienen que dar el MISMO hash.**
+ *
+ * Ordenaba las claves de los objetos y **NO los arrays** — y el comentario decía, tan campante, "con
+ * las claves ordenadas", que era cierto y engañoso a la vez. Para DataForSEO,
+ * `{keywords: ["pizza","pasta"]}` y `{keywords: ["pasta","pizza"]}` son **la misma consulta y el
+ * mismo cobro**, pero hasheaban distinto: dos procesos concurrentes pedían lo mismo, ninguno veía la
+ * reserva del otro, y **se pagaba dos veces**.
+ *
+ * Los arrays de DataForSEO son **conjuntos** (una lista de keywords a consultar), no secuencias: el
+ * orden no lleva información. Por eso ordenarlos es correcto y no pierde nada.
+ */
 function jsonEstable(v: unknown): string {
   if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
-  if (Array.isArray(v)) return `[${v.map(jsonEstable).join(",")}]`;
+  if (Array.isArray(v)) {
+    // Ordenar por su propia forma canónica: estable, sin depender del tipo de los elementos.
+    return `[${v.map(jsonEstable).sort().join(",")}]`;
+  }
   const claves = Object.keys(v as Record<string, unknown>).sort();
   const pares = claves.map((k) => `${JSON.stringify(k)}:${jsonEstable((v as Record<string, unknown>)[k])}`);
   return `{${pares.join(",")}}`;
