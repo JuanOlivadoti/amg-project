@@ -5,21 +5,31 @@ Convierte el conocimiento operativo de la agencia en software con agentes de IA
 supervisados, RBAC y multi-tenancy. Este repositorio contiene la documentación de
 producto y arquitectura, y el código de los dos primeros módulos.
 
-## 🚦 Estado actual
+## 🚦 Estado actual — Fase 2 en curso
 
-**PoC funcional de punta a punta:** `prompt de negocio → keyword research → web publicable`.
+**La cadena `prompt → research → persistencia → compuerta humana → web publicada` funciona de punta
+a punta**, con orquestación durable y aislamiento multi-tenant real.
 
-| Módulo | Estado |
-|---|---|
-| **Módulo 2 — Keyword Research** ([kr-service/](kr-service/)) | ✅ PoC completa |
-| **Módulo 1 — Creador de Webs** ([web-builder/](web-builder/)) | ✅ PoC completa |
+| Paquete | Qué es | Estado |
+|---|---|---|
+| **[kr-service/](kr-service/)** | Módulo 2 — Keyword Research (`prompt → brief SEO`) | ✅ |
+| **[web-builder/](web-builder/)** | Módulo 1 — Creador de Webs (`brief → Storyblok`) | ✅ |
+| **[db/](db/)** | Esquema, RLS multi-tenant, cache, registro de tareas | ✅ |
+| **[orchestrator/](orchestrator/)** | Inngest: steps durables + compuerta humana | ✅ |
+| `api/` | REST autenticada para el portal | ⏳ siguiente |
+| `portal/` | SPA Angular (donde se aprueba la compuerta) | ⏳ |
 
-- 71 tests en verde · typecheck limpio en ambos módulos.
-- Los 18 hallazgos de una review externa: **corregidos**, salvo el de secretos (acción humana).
-- Todo corre **sin credenciales** en modo mock; pasar a producción es cambiar variables de entorno.
+- **184 tests en verde** · typecheck limpio en los 4 paquetes · `npm test` desde la raíz.
+- Los tests de seguridad corren contra **Postgres real** (PGlite en WASM): sin Docker, sin cuenta.
+- Todo corre **sin una sola credencial**: providers mock + base en memoria.
 
-⚠️ **El research corre contra el *sandbox* de DataForSEO** → volúmenes y costo **ficticios**.
-Para una demo con datos reales hay que pasar a producción (~50 USD).
+> 🧭 **¿Retomás el proyecto?** Empezá por el
+> [**Plan de la Fase 2**](docs/proyecto/11-plan-fase-2.md): de dónde venimos, dónde estamos y qué
+> falta.
+
+⚠️ **El research corre contra el *sandbox* de DataForSEO** → volúmenes y costo **ficticios**. La
+corrida real cuesta **~$0.31** ([guía](docs/acciones/06-corrida-final-demo.md)). **La compuerta de
+aprobación todavía se ejecuta editando un JSON a mano** — eso es lo que resuelve el portal.
 
 ## 📂 Documentos y orden de lectura
 

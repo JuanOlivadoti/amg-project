@@ -4,11 +4,12 @@ Documentación completa del proyecto: qué es, cómo está construido, qué hace
 y en qué estado está. **Refleja el código real** del repositorio, no un diseño aspiracional:
 cuando algo está diseñado pero no implementado, se dice explícitamente.
 
-> Última revisión: 2026-07-13 · Estado: **PoC completa; los 18 hallazgos de la review externa
-> corregidos salvo el #2 (secretos, requiere acción humana)**. 71 tests en verde.
+> Última revisión: 2026-07-14 · Estado: **Fase 2 en curso** — persistencia multi-tenant,
+> orquestador durable e idempotencia del gasto, hechos. Falta la **API + el portal**.
+> **184 tests en verde.**
 >
-> 👉 Si venís a **retomar el proyecto**, leé primero
-> [**Estado y roadmap**](09-estado-y-roadmap.md) y [**Acciones pendientes**](10-acciones-pendientes.md).
+> 👉 Si venís a **retomar el proyecto**, empezá por el
+> [**Plan de la Fase 2**](11-plan-fase-2.md): dice de dónde venimos, dónde estamos y qué falta.
 
 ## Orden de lectura
 
@@ -24,6 +25,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 | 8 | [Testing y calidad](08-testing-calidad.md) | Suite de tests, typecheck, la review externa y qué se corrigió. |
 | 9 | [Estado y roadmap](09-estado-y-roadmap.md) | Qué funciona hoy, qué falta para producción, riesgos abiertos. |
 | 10 | ⚠️ [**Acciones pendientes (lado del usuario)**](10-acciones-pendientes.md) | Lo que **solo Juan puede hacer**: rotar la key, los números de precios, el research de prueba en producción, la cuenta de Storyblok y la decisión de alcance. |
+| 11 | 🧭 [**Plan de la Fase 2**](11-plan-fase-2.md) | **Empezá por acá si retomás.** De dónde venimos, en qué punto exacto estamos, qué falta y en qué orden. |
 
 ## Contexto adicional
 
