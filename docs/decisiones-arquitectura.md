@@ -25,9 +25,11 @@
 | ADR-16 | Portal en **Angular + Tailwind** (reemplaza ADR-02) | Aceptada |
 | ADR-17 | **Un proceso, un login, un rol**: la separación la impone Postgres | Aceptada (corrige ADR-15) |
 | ADR-18 | Un evento no porta autoridad: la API crea el run, el evento lo dispara | Aceptada |
+| ADR-19 | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | Aceptada (cierra OBS-03) |
+| ADR-20 | El portal **también sirve al cliente, en modo lectura** (amplía ADR-16) | Aceptada |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | Abierta — riesgo |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
-| OBS-03 | **Nadie publica la web del cliente**: ADR-16 quitó Next y no puso nada en su lugar | 🔴 **Abierta — bloquea ADR-04 y ADR-11** |
+| OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
 
 ---
 
@@ -75,7 +77,9 @@
 > rebuild**. Es decir: **una edición en el Visual Editor no llega a ninguna página publicada** — y
 > "que un no-técnico edite sin devs" es *la justificación central de este ADR*.
 >
-> **La premisa de ADR-04 no se cumple todavía.** Ver **OBS-03**.
+> **La premisa de ADR-04 volvió a cumplirse con ADR-19**: un renderizador propio en runtime sirve la
+> web en vivo desde Storyblok, con URL de preview y Bridge — que es lo que el Visual Editor necesita
+> para funcionar de verdad. (OBS-03, cerrada.)
 
 ## ADR-05 — Motor de datos del Módulo 2: DataForSEO
 **Contexto.** El doc original del Módulo 2 eligió SEMrush. Se reevaluó por costo y por ser un pipeline programático.
@@ -143,8 +147,12 @@
 > - **"Handoff editable: entregar/hostear el frontend Next.js"** → **no hay frontend que entregar.**
 >   Si el cliente se lleva el space de Storyblok, se lleva el *contenido* y nada que lo renderice.
 >
-> **Qué hay que decidir** (es lo mismo que bloquea OBS-03): quién renderiza y sirve la web del
-> cliente. Hasta que eso se resuelva, **la salida editable no se puede prometer en un contrato.**
+> **Resuelto por ADR-19** (renderizador propio en runtime). Ahora sí hay **qué entregar**: el space
+> de Storyblok **+ el renderizador**. Y el *snapshot* gratis sale de `renderStory()`, que ya existe —
+> falta **verificarlo como entregable**, no construirlo.
+>
+> ⚠️ **Este ADR hay que reescribirlo en esos términos antes de llevarlo a un contrato.** Tal como
+> está redactado arriba, promete un frontend Next.js que no existe.
 
 ---
 
@@ -428,7 +436,13 @@ puede tocar `memberships`.
 
 ---
 
-## OBS-03 — Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar 🔴 ABIERTA
+## OBS-03 — Nadie publica la web del cliente ✅ CERRADA por ADR-19
+
+> **Cerrada el 2026-07-14 con [ADR-19](#adr-19): un renderizador propio en runtime, multi-tenant.**
+> Se conserva el diagnóstico porque explica *por qué* el renderizador existe — y porque es el ejemplo
+> más claro de la clase de error que busco: **una decisión que invalida a otra sin reemplazarla.**
+> ADR-16 quitó Next del stack en una línea, y esa línea dejó un agujero que ningún test podía
+> detectar, porque no era un bug: era una **ausencia**.
 
 **Observación.** ADR-02 asumía que **un frontend Next.js** renderizaría dos cosas: el portal interno
 **y las webs públicas de cliente**. ADR-16 acotó el alcance al portal, eligió Angular y declaró —de
@@ -467,3 +481,99 @@ pasada, en una sola línea— que las webs de cliente *"siguen saliendo como HTM
 
 **Riesgo si no se decide:** es la única pieza del Módulo 1 que separa "generamos una web" de
 "tenés una web". Afecta directamente lo que se le puede prometer a Frank.
+
+---
+
+## ADR-19 — Un renderizador propio en runtime, multi-tenant (cierra OBS-03)
+
+**Contexto.** ADR-16 quitó Next.js del stack y dejó **sin resolver** quién renderiza y sirve las
+webs públicas de cliente (**OBS-03**). Mientras eso estuviera abierto, la premisa de ADR-04 —se
+eligió Storyblok **por su Visual Editor**, para que un no-técnico edite sin devs— **no se cumplía**:
+el HTML se generaba una vez y una edición en el editor no llegaba a ninguna página publicada.
+
+**Decisión (2026-07-14).** **Un único servicio renderizador Node, multi-tenant**, que lee de la
+Content Delivery API de Storyblok y sirve la web **en vivo**.
+
+```
+   Editor toca Storyblok  ──▶  (contenido)
+                                   │
+   navegante  ──▶  RENDERIZADOR (1 servicio, N dominios)  ──▶  HTML + JSON-LD
+                        │  dominio → space del cliente
+                        └─ reutiliza renderStory() de web-builder
+```
+
+**Por qué en runtime y no estático con webhook de rebuild.** Las dos servían, y el estático era más
+barato. Decide el **Visual Editor**: para funcionar necesita una **URL de preview en vivo** con el
+Storyblok Bridge. Con rebuild estático, el editor edita a ciegas y espera un build. Como el Visual
+Editor **es la razón por la que se eligió Storyblok**, pagar por él y dejarlo a medias sería lo peor
+de los dos mundos.
+
+**Qué hay que construir es menos de lo que parece.** El render **ya existe**:
+`web-builder/src/render/html.ts` (`renderStory()`) produce HTML semántico + JSON-LD, validado en el
+Rich Results Test de Google. Lo que falta es el servicio que lo envuelve:
+
+1. Mapear **dominio → space de Storyblok** (ADR-04/ADR-11: **un space por cliente**).
+2. Leer la story por slug (Content Delivery API, **no** la Management API).
+3. `renderStory()` → servir.
+4. **Cache en el borde, invalidada por webhook** de Storyblok. Es lo que hace que "runtime" no
+   signifique "lento ni caro": se renderiza al publicar, no en cada visita.
+5. Exponer la **URL de preview + el Bridge** para el Visual Editor.
+
+**El costo, dicho honestamente.** Es **otro servicio que mantener y desplegar**, y eso roza el
+argumento de "menor mantenimiento" con el que ADR-04 descartó WordPress. **Pero la diferencia se
+sostiene**, y es la que importa: WordPress son **N instalaciones** (updates, plugins, seguridad,
+una por cliente). Esto es **un servicio para N dominios**. El trabajo no crece con la cartera —
+que era exactamente la tesis del PRD (escalar sin crecer el equipo).
+
+**Consecuencias sobre ADR-11 (offboarding), que estaba sin poder firmarse:**
+
+- **Salida gratis (snapshot estático):** ya es posible sin construir nada nuevo — `renderStory()`
+  sobre todas las páginas del cliente produce HTML plano, hosteable en cualquier lado. **Falta
+  verificarlo como entregable**, no construirlo.
+- **Salida editable (de pago):** ahora **sí hay algo que entregar** — el space de Storyblok **más
+  el renderizador**. Dos variantes, como preveía ADR-11: el cliente lo hostea, o AMG lo hostea por
+  una tarifa ("salida gestionada").
+
+**Riesgo aceptado.** El renderizador se convierte en una pieza de **disponibilidad**: si se cae, se
+caen **todas** las webs de cliente a la vez. Un sitio estático no tiene ese modo de fallo. Se mitiga
+con la cache en el borde (que sigue sirviendo aunque el origen esté caído), pero **es un riesgo real
+que un estático no tenía**, y hay que dimensionarlo antes de vender SLA.
+
+**Estado.** Aceptada. **Cierra OBS-03.** No entra en la Fase 2 (API + portal): es su propia tanda.
+
+## ADR-20 — El portal también sirve al cliente, en modo lectura (amplía ADR-16)
+
+**Contexto.** ADR-16 acotó el alcance a "**solo el portal interno**". Pero el esquema tiene un rol
+`cliente` desde `0001_init.sql`, y el PRD habla de un "portal de cliente". Había que decidirlo antes
+de construir el portal, no después.
+
+**Decisión (2026-07-14).** El portal sirve a **dos audiencias**:
+
+| Quién | Qué puede |
+|---|---|
+| **Equipo AMG** (`maestro`, `equipo`) | Todo: lanzar research, ver el brief, **aprobar la compuerta** (ADR-06), publicar. |
+| **Cliente** (`cliente`) | **Solo lectura**, y **solo su propio negocio**: su brief, sus páginas, su web. **No aprueba ni lanza research.** |
+
+**La compuerta de aprobación (ADR-06) sigue siendo del equipo.** No se reparte entre cliente y
+agencia: si los dos pudieran aprobar, habría que decidir quién manda cuando no coinciden, y eso es
+un problema de producto que nadie pidió resolver.
+
+**Lo que cuesta: nada en la base.** El aislamiento **ya está construido y probado**:
+
+- `app.puede_escribir()` → el rol `cliente` es **solo lectura** (`db/migrations/0001_init.sql`).
+- `app.ve_cliente(cid)` → un `cliente` ve **únicamente su cliente**; el staff, toda la cartera del
+  tenant.
+- La constraint `cliente_exige_client_id` impide que un `cliente` quede "sin negocio" — que con la
+  política vieja lo dejaba viendo **toda la cartera** (ese agujero ya se cerró).
+- Las políticas de `memberships` impiden que un `cliente` se auto-asigne una membresía de `maestro`.
+
+**Por eso esta decisión es barata y por eso se toma ahora:** la parte peligrosa —que un cliente vea
+o toque lo ajeno— **la impide Postgres, no la UI**. Lo que falta es UI y rutas de API, y la API no
+necesita lógica de autorización nueva: **le basta con no bloquear al cliente y dejar que RLS decida**
+(ADR-15).
+
+**Justificación comercial.** Que el dueño del restaurante entre y **vea la evidencia** —qué keywords,
+qué volumen, qué se sabe y **qué no se sabe**— es el punto vendible del sistema: *dice lo que no
+sabe*. Enseñarlo es más fuerte que mandarlo en un PDF.
+
+**Estado.** Aceptada. Amplía el alcance de ADR-16 (no lo reemplaza: el portal sigue siendo uno solo).
