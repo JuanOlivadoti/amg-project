@@ -1,8 +1,10 @@
 import { PgStore } from "../../db/src/store.js";
 import { NodePgPool, PglitePool } from "../../db/src/pool.js";
+import { PgTaskLog } from "../../db/src/task-log.js";
 import type { DbPool } from "../../db/src/pool.js";
 import { runResearch } from "../../kr-service/src/pipeline/run.js";
 import { canonicalKey } from "../../kr-service/src/lib/text.js";
+import { config as krConfig } from "../../kr-service/src/config.js";
 import { parseBrief } from "../../web-builder/src/contract.js";
 import { briefToStories } from "../../web-builder/src/handoff/adapter.js";
 import { renderStory } from "../../web-builder/src/render/html.js";
@@ -50,6 +52,15 @@ export async function crearPool(): Promise<{ pool: DbPool; cerrar: () => Promise
 export function crearDeps(pool: DbPool): Deps {
   const store = new PgStore(pool);
 
+  /*
+   * El registro de peticiones facturables.
+   *
+   * El namespace lleva el ENTORNO: sandbox y producción no comparten ni una fila. Es la misma
+   * lección que envenenó la cache — el sandbox devuelve ficción, y una reserva suya no puede hacer
+   * que producción se crea ya pagada.
+   */
+  const taskLog = new PgTaskLog(pool, `dfs:${krConfig.dataforseo.isSandbox ? "sandbox" : "prod"}`);
+
   return {
     store,
 
@@ -69,6 +80,10 @@ export function crearDeps(pool: DbPool): Deps {
         async (dataset) => {
           await onKeywords(dataset.keywords.map(aKeywordDeLaBase));
         },
+        // Registro de idempotencia de las peticiones facturables (ADR-10). Acá es donde más falta
+        // hacía: un reintento de Inngest re-ejecuta el pipeline ENTERO, así que sin esto una
+        // petición que ya se cobró se volvía a pagar.
+        { taskLog },
       );
 
       return {

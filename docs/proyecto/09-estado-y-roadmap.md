@@ -105,7 +105,7 @@ reales, no solo contra tests.
 | **Frontend Next.js** | ADR-02, ADR-04 | ⏳ Pendiente. Portal + render de las webs de cliente desde Storyblok, *AI-search-first*. |
 | **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
 | **Supabase Auth** (resolver OBS-02) | ADR-01 | ⏳ Pendiente. Derivar rol y `client_id` de `auth.uid()` + `memberships` dentro de Postgres. Las políticas **no cambian**: por eso pasan por funciones. |
-| **DataForSEO Standard (`task_post`)** | ADR-10 | ⏳ Pendiente. La tabla `kr_provider_tasks` existe pero no se usa: hoy los endpoints son Live, y una respuesta perdida se paga dos veces. |
+| **Idempotencia de peticiones facturables** | ADR-10, ADR-14 | ✅ **Hecho.** `kr_provider_tasks` + `payload_hash`, escrito ANTES de enviar. Cubre los 4 endpoints. **No** se migró a `task_post`: la API Labs es live-only y es donde está el 54% del gasto. |
 
 ### Mejoras de calidad del research (priorizadas con los datos reales)
 

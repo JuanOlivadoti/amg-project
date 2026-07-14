@@ -168,6 +168,50 @@ anterior pegado es exactamente la fuga que esto viene a impedir.
 
 ---
 
+## ADR-14 — Idempotencia de las peticiones facturables: registro por `payload_hash`, NO método Standard
+
+**Contexto.** Cada POST a DataForSEO cuesta dinero. La review externa (#10) pedía migrar al **método
+Standard** (`task_post` + `task_get`), que permitiría *recuperar* un resultado ya pagado cuya
+respuesta se hubiera perdido.
+
+**Por qué NO se hizo eso.** La **API DataForSEO Labs es live-only**: no existe `task_post` para ella
+([docs](https://dataforseo.com/help-center/live-vs-standard-method)). Y Labs es donde está la mayor
+parte del gasto:
+
+| Endpoint | API | ¿Standard? | Coste (corrida real) |
+|---|---|---|---|
+| `keyword_suggestions` | **Labs** | ❌ live-only | ~$0.08 |
+| `bulk_keyword_difficulty` | **Labs** | ❌ live-only | ~$0.056 |
+| `search_volume` | KeywordsData | ✅ sí | ~$0.102 |
+| `serp/organic` | SERP | ✅ sí | marginal |
+
+Migrar a Standard habría blindado el endpoint **más barato** y dejado fuera **~54% del gasto**, a
+cambio de convertir el pipeline de segundos en minutos (cola + polling). Mala relación.
+
+**Decisión.** Registrar cada petición facturable en `kr_provider_tasks`, indexada por
+`payload_hash` (endpoint + cuerpo + **entorno**), **antes** de enviarla. Cubre el **100%** de la
+superficie facturable, los cuatro endpoints.
+
+**La distinción que lo hace correcto — hay dos formas de fallar, y solo una es recuperable:**
+
+- **Respuesta recibida con la task en error** (p. ej. 40501): el proveedor **no cobró**, y lo sabemos
+  porque nos lo dijo → se marca `failed` → reintentar es seguro.
+- **Sin respuesta** (timeout, 5xx, el proceso muere): **ambiguo**. La petición pudo llegar,
+  ejecutarse y cobrarse. La reserva se deja en `pending` **a propósito** → el siguiente intento sabe
+  que **puede estar repagando**, lo cuenta y lo grita. Marcarla `failed` sería afirmar que no cobró
+  sin tener ni idea.
+
+**Lo que este diseño NO puede hacer, y hay que decirlo:** con un endpoint live, un resultado cuya
+respuesta se perdió **es irrecuperable**. Ese dinero está perdido y no hay diseño que lo rescate. Lo
+que sí se garantiza es que **no se pague dos veces por la misma petición** — que con los reintentos
+de Inngest re-ejecutando el pipeline entero (ADR-12) dejó de ser hipotético. Los reenvíos se cortan
+a los 3 intentos: insistir sin respuesta es vaciar el saldo por nada.
+
+`PgTaskLog.huerfanas()` lista las peticiones que se enviaron y nunca volvieron. Es lo que hay que
+mirar si el saldo de DataForSEO no cuadra.
+
+---
+
 ## OBS-01 — Solapamiento de alcance entre los dos documentos (riesgo, no decisión)
 **Observación.** `contexto-proyecto-frank.md` describe "Frank, cliente de la agencia" con 4 módulos; `A_PRD_AMG_Madrid_v1_Ilustrado.md` tiene sponsor "Franco · CEO" con 5 agentes y prioridades distintas. **Frank ≈ Franco es casi con seguridad la misma persona/proyecto**, con framings que no cierran (p. ej. el Creador de Webs es "Módulo 1 avanzado" en un doc y "web-por-prompt diferido a I+D / O10" en el otro).
 **Riesgo.** Presupuestar o presentar dos alcances incompatibles al mismo cliente.

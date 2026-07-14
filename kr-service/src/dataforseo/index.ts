@@ -4,6 +4,7 @@ import { MockProvider } from "./mock-provider.js";
 import { CachedProvider } from "./cached-provider.js";
 import { FileCache } from "./cache.js";
 import type { KeywordDataProvider } from "./provider.js";
+import type { ProviderTaskLog } from "./task-log.js";
 
 /**
  * Provider según config (mock por default, live si DATAFORSEO_MODE=live), envuelto en la cache.
@@ -11,10 +12,10 @@ import type { KeywordDataProvider } from "./provider.js";
  * La cache SOLO envuelve al provider live: cachear el mock no ahorra nada (es determinista y
  * gratis) y ensuciaría el loop de desarrollo sirviendo datos viejos cuando se toca el propio mock.
  */
-export function getProvider(): KeywordDataProvider {
+export function getProvider(taskLog?: ProviderTaskLog): KeywordDataProvider {
   if (config.dataforseo.mode !== "live") return new MockProvider();
 
-  const live = new LiveProvider();
+  const live = new LiveProvider(taskLog);
   if (!config.cache.enabled) return live;
 
   /*
@@ -49,3 +50,5 @@ function cacheNamespace(): string {
 
 export type { KeywordDataProvider };
 export { CachedProvider } from "./cached-provider.js";
+export { MemTaskLog, NoopTaskLog, payloadHash, MAX_INTENTOS } from "./task-log.js";
+export type { ProviderTaskLog, Reserva } from "./task-log.js";

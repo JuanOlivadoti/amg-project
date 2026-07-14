@@ -8,13 +8,28 @@ import {
   type SearchVolumeRow,
 } from "./endpoints.js";
 import type { KeywordDataProvider } from "./provider.js";
+import type { ProviderTaskLog } from "./task-log.js";
 
 /** Provider real: pega contra la API de DataForSEO (sandbox o producción). */
 export class LiveProvider implements KeywordDataProvider {
-  private client = new DataForSeoClient();
+  private client: DataForSeoClient;
+
+  /**
+   * El registro de tareas se INYECTA. `kr-service` sigue sin saber que existe una base de datos:
+   * conoce la interfaz, no la implementación (igual que con `KeywordCache`). El orquestador le pasa
+   * la que persiste en Postgres; un proceso suelto usa la de memoria o ninguna.
+   */
+  constructor(taskLog?: ProviderTaskLog) {
+    this.client = new DataForSeoClient(taskLog);
+  }
 
   get costMicros(): number {
     return this.client.costMicros;
+  }
+
+  /** Peticiones reenviadas sin saber si la anterior ya se cobró. Cero es lo esperable. */
+  get repagos(): number {
+    return this.client.repagos;
   }
 
   keywordSuggestions(keyword: string, market: Market, limit = 30): Promise<string[]> {

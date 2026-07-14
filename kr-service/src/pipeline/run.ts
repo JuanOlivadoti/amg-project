@@ -4,6 +4,7 @@ import { canonicalKey, dedupeByCanonical } from "../lib/text.js";
 import { CostMeter, currentMeter, usdFromMicros, withCostMeter } from "../lib/cost.js";
 import { Budget, BudgetExceededError, estimateEnrichment } from "../lib/budget.js";
 import { CachedProvider, getProvider } from "../dataforseo/index.js";
+import type { ProviderTaskLog } from "../dataforseo/task-log.js";
 import { getEmbedder } from "../llm/index.js";
 import { generateSeeds } from "../llm/seeds.js";
 import { WEIGHTS_DEFAULT } from "../types.js";
@@ -56,24 +57,36 @@ export interface ResearchDataset {
 export type DatasetCheckpoint = (d: ResearchDataset) => void | Promise<void>;
 
 /**
- * Orquestador secuencial del spike (Fase 0).
+ * Lo que el pipeline necesita de afuera pero no debe CONOCER.
+ *
+ * `kr-service` sigue siendo una librería pura: no sabe que existe una base de datos. Conoce la
+ * interfaz `ProviderTaskLog`, no su implementación — igual que con `KeywordCache`. El orquestador
+ * le inyecta la que persiste en Postgres; un proceso suelto no le inyecta nada.
+ */
+export interface RunDeps {
+  /** Registro de idempotencia de las peticiones FACTURABLES. Ver `dataforseo/task-log.ts`. */
+  taskLog?: ProviderTaskLog;
+}
+
+/**
+ * Pipeline del research. Corre en línea; la durabilidad (steps, reintentos, la compuerta humana)
+ * la aporta el orquestador, que envuelve esta llamada — ver ADR-12.
  *
  * Cada run corre con su PROPIO medidor de costo, aislado por contexto async: dos runs concurrentes
  * en el mismo proceso ya no se pisan el gasto ni el presupuesto (#3).
- *
- * TODO: envolver cada paso en un step durable de Inngest (reintentos + waitForEvent
- * para la compuerta humana). Acá corre en línea para validar el flujo end-to-end.
  */
 export function runResearch(
   input: KeywordResearchInput,
   onDataset?: DatasetCheckpoint,
+  deps: RunDeps = {},
 ): Promise<KeywordResearchBrief> {
-  return withCostMeter(new CostMeter(), () => runResearchInner(input, onDataset));
+  return withCostMeter(new CostMeter(), () => runResearchInner(input, onDataset, deps));
 }
 
 async function runResearchInner(
   input: KeywordResearchInput,
-  onDataset?: DatasetCheckpoint,
+  onDataset: DatasetCheckpoint | undefined,
+  deps: RunDeps,
 ): Promise<KeywordResearchBrief> {
   const costMeter = currentMeter();
   const market = input.market ?? MARKET_ES;
@@ -83,7 +96,7 @@ async function runResearchInner(
   // idiomas quedaban atados al 0.75 calibrado con UN dataset (restaurante en Madrid). Sigue siendo
   // el default, pero ahora se puede ajustar por run y queda registrado en el dataset.
   const simThreshold = input.options?.sim_threshold ?? CLUSTER_SIM_THRESHOLD_DEFAULT;
-  const dfs = getProvider();
+  const dfs = getProvider(deps.taskLog);
   const runId = randomUUID();
   const generatedAt = new Date().toISOString();
 
