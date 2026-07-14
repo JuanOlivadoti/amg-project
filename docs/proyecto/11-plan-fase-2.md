@@ -22,9 +22,15 @@ real y un portal donde el equipo de la agencia trabaje.
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
 | 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ⏳ **ACÁ ESTAMOS** |
+| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ⏳ Después |
 
-Después de la 5 el sistema es usable por una persona que no sea yo. Hoy todavía no lo es: **la
-compuerta de aprobación (ADR-06) se ejecuta editando un JSON a mano.**
+Después de la **5** el sistema es **usable por una persona que no sea yo**. Hoy todavía no lo es:
+**la compuerta de aprobación (ADR-06) se ejecuta editando un JSON a mano.**
+
+Después de la **6** el cliente **tiene una web**, no "una web generada". Hoy el M1 produce el HTML y
+publica el contenido en Storyblok, pero **nada lo sirve en un dominio** — y por lo tanto el Visual
+Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna página publicada
+([ADR-19](../decisiones-arquitectura.md), cierra OBS-03).
 
 ---
 
@@ -93,24 +99,74 @@ resto** (ADR-15).
 
 ### 5.2 — El portal (`portal/`)
 
-Angular + Tailwind, mobile-first (**ADR-16**, reemplaza ADR-02).
+**Stack cerrado en [ADR-21](../decisiones-arquitectura.md)** — las cuatro decisiones, para no
+reabrirlas a mitad de camino:
+
+| Decisión | Elección | Por qué |
+|---|---|---|
+| **Cómo lee los datos** | **Solo por nuestra API.** Nunca PostgREST. | PostgREST hace `SET ROLE` **según los claims del JWT** → el rol volvería a venir declarado de afuera, justo lo que ADR-15 eliminó. Serían **dos modelos de autorización**. |
+| **Progreso del research** | **Polling** a `GET /runs/:id` | Realtime abriría un segundo canal de datos (contra la decisión de arriba). Se revisa cuando midamos cuánto tarda. |
+| **Componentes** | **Tailwind puro** | Son 4 pantallas. Añadir una librería después es fácil; sacarla, no. |
+| **Angular** | **standalone + signals**, sin NgRx | Para este tamaño, signals + servicios alcanzan. |
+
+**Dos audiencias** ([ADR-20](../decisiones-arquitectura.md)):
+
+| Quién | Qué puede |
+|---|---|
+| **Equipo AMG** (`maestro`, `equipo`) | Lanzar research, ver el brief, **aprobar la compuerta**, publicar. |
+| **Cliente** (`cliente`) | **Solo lectura, solo su negocio.** No aprueba ni lanza research. |
+
+> Esto **cuesta cero en la base**: `app.puede_escribir()` ya hace al rol `cliente` solo-lectura y
+> `app.ve_cliente()` ya lo encierra en su propio negocio, ambos **probados**. La parte peligrosa la
+> impide **Postgres, no la UI**.
+
+Las pantallas:
 
 1. Login (Supabase Auth).
-2. Lanzar un research desde un prompt de negocio.
+2. Lanzar un research desde un prompt de negocio *(solo equipo)*.
 3. Ver el brief: páginas propuestas, **separadas por evidencia** — ✅ respaldadas por datos de
-   mercado vs. ⚠️ sin validar. Es el punto vendible del sistema: **dice lo que no sabe.**
-4. **Aprobar página por página**, y después el run. Publicar.
+   mercado vs. ⚠️ sin validar. Es el punto vendible del sistema: **dice lo que no sabe**, y es
+   justamente lo que el cliente entra a ver.
+4. **Aprobar página por página**, y después el run. Publicar *(solo equipo)*.
 
 ### 5.3 — Desplegar
 
-Orquestador + API como **servicio Node de larga duración** (Fly/Render/Railway), portal como
-estático. **No serverless**: el research encadena llamadas live a DataForSEO y generación por LLM,
-y probablemente no entra en el timeout de una función de Vercel (60-300 s).
+Orquestador + API como **servicio Node de larga duración**, portal como estático. **No serverless**:
+el research encadena llamadas live a DataForSEO y generación por LLM, y probablemente no entra en el
+timeout de una función (60-300 s). **Dónde se hostea: sin decidir** — no bloquea nada, el código es
+Node estándar.
 
 > ⚠️ **Dato que no tengo: cuánto tarda un research real.** Tengo el coste ($0.31), nunca medí la
 > duración. Ya no bloquea el diseño (el orquestador es un proceso largo), pero **define la UX del
-> portal**: ¿el usuario espera mirando una barra, o se va y vuelve? Se mide en la primera corrida
-> real.
+> portal**: ¿el usuario espera mirando una barra, o se va y vuelve? **Se mide en la corrida real
+> (acción 06)** — y si el dato contradice la decisión del polling, se revisa.
+
+---
+
+## Etapa 6: el renderizador (`renderer/`)
+
+**El cliente todavía no tiene una web.** Tiene páginas generadas y contenido publicado en Storyblok,
+pero **nada las sirve en un dominio**. [ADR-19](../decisiones-arquitectura.md) resuelve cómo:
+
+**Un único servicio Node, multi-tenant** (1 servicio, N dominios) que lee la Content Delivery API de
+Storyblok y sirve la web **en vivo**.
+
+```
+Editor toca Storyblok ──▶ (contenido)
+                              │
+navegante ──▶ RENDERIZADOR ───┘ ──▶ HTML + JSON-LD
+                 │ dominio → space del cliente
+                 └─ reutiliza renderStory() de web-builder  ← YA EXISTE
+```
+
+Lo que falta construir es **menos de lo que parece**: `renderStory()` ya produce el HTML semántico +
+JSON-LD validado. Falta el servicio que lo envuelve: mapear dominio → space, leer la story, **cache
+en el borde invalidada por webhook** (eso es lo que hace que "runtime" no signifique lento ni caro),
+y exponer la **URL de preview + el Bridge** que el Visual Editor necesita.
+
+> ⚠️ **Riesgo que un sitio estático no tenía:** el renderizador pasa a ser una pieza de
+> **disponibilidad**. Si se cae, **se caen todas las webs de cliente a la vez**. Se mitiga con la
+> cache en el borde, pero hay que dimensionarlo **antes de vender un SLA**.
 
 ---
 
@@ -146,12 +202,15 @@ Todas con su ADR. Las que más condicionan lo que viene:
 
 ## Lo que sigue abierto
 
-### 🔴 Decisiones, no tareas (bloquean lo que se le puede prometer al cliente)
+### 🔴 Decisiones abiertas
 
-| Qué | Dónde | Por qué bloquea |
+| Qué | Dónde | Por qué importa |
 |---|---|---|
-| **OBS-03 — nadie publica la web del cliente** | [decisiones](../decisiones-arquitectura.md) | ADR-16 quitó Next del stack **y no puso nada en su lugar**. Hoy `web-builder` genera el HTML y publica en Storyblok, pero **nada sirve la web en un dominio** y **no hay rebuild**: una edición en el Visual Editor **no llega a ninguna página publicada**. Eso rompe la premisa de ADR-04 (se eligió Storyblok *por* el Visual Editor) y deja **ADR-11 sin poder firmarse** (el "handoff editable" de pago promete un frontend que no existe). |
-| **OBS-01 — unificar el alcance** | [acciones/05](../acciones/05-unificar-alcance.md) | Dos documentos de producto describen alcances incompatibles. Conversación de negocio, no código. **Solo Juan puede.** |
+| **OBS-01 — unificar el alcance** | [acciones/05](../acciones/05-unificar-alcance.md) | Dos documentos de producto describen alcances incompatibles. Conversación de negocio, no código. **Solo Juan puede.** Es la última observación abierta. |
+| **Reescribir ADR-11 (offboarding)** | [decisiones](../decisiones-arquitectura.md) | Está redactado sobre "el frontend Next.js", que no existe. Con ADR-19 ya hay **qué entregar** (space + renderizador), pero **el texto todavía promete otra cosa** y de ahí sale una cláusula de contrato. |
+
+> ✅ **OBS-03 cerrada** por [ADR-19](../decisiones-arquitectura.md) (renderizador propio en runtime).
+> ✅ El stack del portal, cerrado por [ADR-21](../decisiones-arquitectura.md).
 
 ### ⏳ Tareas
 

@@ -81,16 +81,18 @@ promesas.
 |---|---|---|---|---|
 | **Base de datos / Auth** | **Supabase** (Postgres + RLS + Auth + pgvector) | ADR-01 | ✅ **En el código** (Postgres/RLS; falta enchufar el JWT) | Un solo Postgres resuelve multi-tenancy (RLS por `tenant_id`), RBAC y vectores a la vez. Se descartó ensamblar Auth0 + RDS + Pinecone + S3. |
 | **Orquestación** | **Inngest** (flujos como código, durables) | ADR-03, ADR-12 | ✅ **En el código** | Reintentos, idempotencia y `waitForEvent` para la compuerta humana. **Se descartó n8n como backbone** (flujos en JSON no se versionan ni testean bien); queda solo como *glue*. |
-| **Portal** | **Angular + Tailwind**, mobile-first | **ADR-16** (*reemplaza ADR-02*) | ⏳ Siguiente | El portal es un **SPA privado y autenticado**: SSR/RSC/SEO —todo lo que justificaba Next— no aporta nada acá. Y lo mantiene Juan, cuya soltura está en Angular. |
-| **API** | REST sobre Node, login `amg_api` | ADR-15, ADR-17, ADR-18 | ⏳ Siguiente | Verifica el JWT, afirma **quién eres**, y deja que **Postgres decida qué podés**. |
-| **CMS del Módulo 1** | **Storyblok** (headless + Visual Editor) | ADR-04 | ✅ Publica; ⚠️ **nadie sirve la web** (OBS-03) | Creación programática vía Management API + edición visual para no-técnicos. Se descartó WordPress/Elementor (JSON opaco) y Payload (sin edición visual sobre el lienzo). |
+| **Portal** | **Angular + Tailwind**, mobile-first · standalone + signals · **Tailwind puro** (sin librería de componentes) · **polling**, no Realtime | **ADR-16** (*reemplaza ADR-02*), **ADR-20**, **ADR-21** | ⏳ Siguiente | El portal es un **SPA privado y autenticado**: SSR/RSC/SEO —todo lo que justificaba Next— no aporta nada acá. Sirve al **equipo** (aprueba) y al **cliente** (solo lectura). |
+| **API** | REST sobre Node, login `amg_api` | ADR-15, ADR-17, ADR-18, **ADR-21** | ⏳ Siguiente | Verifica el JWT, afirma **quién eres**, y deja que **Postgres decida qué podés**. **El portal habla solo con ella** — nunca con PostgREST. |
+| **CMS del Módulo 1** | **Storyblok** (headless + Visual Editor) | ADR-04 | ✅ Publica el contenido | Creación programática vía Management API + edición visual para no-técnicos. Se descartó WordPress/Elementor (JSON opaco) y Payload (sin edición visual sobre el lienzo). |
+| **Render de las webs de cliente** | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | **ADR-19** (*cierra OBS-03*) | ⛔ No construido — **etapa 6** | Lee la Content Delivery API de Storyblok y sirve la web en vivo. Elegido sobre "estático + rebuild" porque el **Visual Editor necesita una URL de preview en vivo** — y el Visual Editor es *la razón por la que se eligió Storyblok*. |
 | **Motor de keyword research** | **DataForSEO** | ADR-05 | ✅ En el código | Pay-as-you-go barato. Se descartó SEMrush (~450€/mes) y Google Ads API (developer token, volúmenes en rangos). |
 | **LLM** | **Proveedor abstracto** (OpenAI / Anthropic); embeddings con OpenAI | ADR-09 | ✅ En el código | No quedar casados con un proveedor. Embeddings van con OpenAI porque **Anthropic no tiene API de embeddings propia**. |
 
 > ⚠️ **Next.js ya no está en el stack.** ADR-02 lo eligió asumiendo que *un mismo frontend*
 > renderizaría el portal **y las webs públicas de cliente**. Al acotar el alcance al portal interno,
-> esa premisa se cayó (**ADR-16**). Pero la otra mitad —**quién renderiza y publica las webs de
-> cliente**— quedó **sin resolver**: ver **OBS-03** en [arquitectura](02-arquitectura.md).
+> esa premisa se cayó (**ADR-16**) — y las dos mitades se separaron: el portal es **Angular**
+> (ADR-21) y las webs de cliente las sirve un **renderizador propio** (ADR-19). Durante un tiempo
+> esa segunda mitad quedó **sin dueño**, que es lo que registró OBS-03.
 
 ### Nota sobre el LLM
 

@@ -10,14 +10,14 @@
 | ADR-01 | Núcleo de datos + identidad: **Supabase** | Aceptada |
 | ADR-02 | Frontend: **Next.js + TypeScript + Tailwind + shadcn/ui** | ⚠️ Reemplazada por **ADR-16** |
 | ADR-03 | Orquestación: **Inngest** en código, n8n solo como glue | Aceptada |
-| ADR-04 | CMS del Módulo 1 (Creador de Webs): **Storyblok** | Aceptada · ⚠️ el render **ya no es Next** (ADR-16) → **OBS-03** |
+| ADR-04 | CMS del Módulo 1 (Creador de Webs): **Storyblok** | Aceptada · el render ya no es Next (ADR-16); lo sirve **ADR-19** |
 | ADR-05 | Motor de datos del Módulo 2 (Keyword Research): **DataForSEO** | Aceptada |
 | ADR-06 | Compuerta de aprobación humana entre Módulo 2 y Módulo 1 | Aceptada |
 | ADR-07 | Output del Módulo 2: **JSON + informe legible** | Aceptada |
 | ADR-08 | Mercado del Módulo 2: **ES-first, diseño market-aware** | Aceptada |
 | ADR-09 | LLM: **proveedor abstracto** (OpenAI/Anthropic); embeddings OpenAI | Aceptada |
 | ADR-10 | Endurecimiento del esquema del Módulo 2 (post-review) | Aceptada |
-| ADR-11 | Política de salida/offboarding de webs de cliente | ⚠️ **En revisión** — describe un frontend Next que no se va a construir → **OBS-03** |
+| ADR-11 | Política de salida/offboarding de webs de cliente | ⚠️ **Hay que reescribirla** en términos de ADR-19 antes de llevarla a un contrato |
 | ADR-12 | Orquestador durable (Inngest): el evento dispara, la base decide | Aceptada |
 | ADR-13 | El acceso a la base es SOLO por transacción con conexión reservada | Aceptada |
 | ADR-14 | Idempotencia por `payload_hash`, **no** método Standard de DataForSEO | Aceptada |
@@ -27,6 +27,7 @@
 | ADR-18 | Un evento no porta autoridad: la API crea el run, el evento lo dispara | Aceptada |
 | ADR-19 | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | Aceptada (cierra OBS-03) |
 | ADR-20 | El portal **también sirve al cliente, en modo lectura** (amplía ADR-16) | Aceptada |
+| ADR-21 | **El stack del portal, cerrado**: solo habla con nuestra API · polling · Tailwind puro · standalone+signals | Aceptada (completa ADR-16) |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | Abierta — riesgo |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 | OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
@@ -577,3 +578,68 @@ qué volumen, qué se sabe y **qué no se sabe**— es el punto vendible del sis
 sabe*. Enseñarlo es más fuerte que mandarlo en un PDF.
 
 **Estado.** Aceptada. Amplía el alcance de ADR-16 (no lo reemplaza: el portal sigue siendo uno solo).
+
+---
+
+## ADR-21 — El stack del portal, cerrado (completa ADR-16)
+
+ADR-16 eligió **Angular + Tailwind, mobile-first**. Faltaban cuatro decisiones dentro. Se toman
+juntas (2026-07-14) para no reabrirlas a mitad de la construcción.
+
+### 1. El portal habla SOLO con nuestra API. Nunca con Postgres directamente.
+
+Supabase permite que el navegador hable directo con Postgres vía **PostgREST**. **No se usa.**
+
+**El motivo es de seguridad, y es el mismo error de siempre en otra forma.** PostgREST conecta como
+`authenticator` y hace `SET ROLE authenticated` **según los claims del JWT**. Es decir: **el rol
+vuelve a venir declarado desde afuera** — exactamente lo que ADR-15 eliminó al derivarlo de
+`memberships`, y lo que ADR-17 blindó con `NOINHERIT`. Enchufar PostgREST sería mantener **dos
+modelos de autorización a la vez**, y las reglas de RLS tendrían que valer para los dos.
+
+```
+Portal ──JWT──▶ API (login amg_api) ──▶ set app.user_id ──▶ Postgres
+                                         rol ← memberships (ADR-15)
+```
+
+**Un solo camino de autoridad.** Además, `POST /runs` **obliga** a pasar por la API: tiene que crear
+la fila bajo RLS **y después** emitir el evento de Inngest (ADR-18) — un `insert` directo desde el
+navegador no dispararía nada.
+
+*Costo aceptado:* hay que escribir los endpoints de lectura a mano en vez de recibirlos gratis.
+Vale la pena: son pocos, y el modelo de autorización sigue siendo **uno**.
+
+### 2. El progreso del research se ve por **polling**.
+
+`GET /runs/:id` cada pocos segundos. Se descartan Supabase Realtime (acopla el portal a Supabase y
+abriría un **segundo canal de datos**, en contra de la decisión 1) y SSE (más trabajo del que hoy se
+justifica).
+
+> ⚠️ **Esto se decide con un dato que no tenemos: cuánto tarda un research real.** Sabemos el coste
+> ($0.31), nunca medimos la duración. Si resulta que tarda **mucho**, la UX correcta no es una barra
+> de progreso sino "te aviso cuando esté", y el polling igual sirve para eso. **Se mide en la primera
+> corrida real** (acción 06). Si el dato contradice esta decisión, se revisa.
+
+### 3. **Tailwind puro**, sin librería de componentes.
+
+El portal tiene **pocas pantallas**: login, lista de runs, detalle del brief, aprobar. Se descartan
+Angular Material (su theming pelea con Tailwind y todo "se ve a Material"), PrimeNG
+(sobredimensionado para 4 pantallas) y Spartan UI (encajaba bien, pero suma una dependencia joven
+para un problema que no tenemos todavía).
+
+*Si el portal crece hacia los dashboards del PRD, esta decisión se reabre.* Es barata de revertir:
+añadir una librería después es fácil; sacarla, no.
+
+### 4. Angular **moderno**: standalone + signals.
+
+Componentes standalone (sin `NgModules`), **signals** para el estado, control flow nuevo
+(`@if`/`@for`). **Sin NgRx**: para un portal de este tamaño, signals + servicios alcanzan, y NgRx
+traería una ceremonia que no se paga.
+
+No se va a *zoneless* todavía: es lo más nuevo, pero cualquier fricción con una librería que asuma
+`zone.js` sería tiempo perdido en algo que no es el problema.
+
+### Lo que queda fuera del portal, a propósito
+
+**La compuerta de aprobación (ADR-06) es del equipo, no del cliente** (ADR-20). El cliente entra en
+**modo lectura**, y lo que ve —qué keywords, qué volumen, **y qué NO se sabe**— es el argumento de
+venta del sistema: *dice lo que no sabe*.
