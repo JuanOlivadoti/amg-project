@@ -45,7 +45,25 @@ export class DataForSeoClient {
     if (config.dataforseo.isSandbox) return this.postConReintentos<T>(path, body);
 
     const hash = payloadHash(this.ns, path, body);
-    const reserva = await this.taskLog.reservar<T>(path, hash);
+    let reserva = await this.taskLog.reservar<T>(path, hash);
+
+    /*
+     * OTRO PROCESO YA ESTÁ PIDIENDO ESTO. No se paga otra vez: se espera su resultado.
+     *
+     * Antes este caso no existía, y era el doble cobro: la reserva se commiteaba ANTES del POST, así
+     * que un segundo proceso veía `pending`, lo declaraba huérfano al instante y salía a pagar la
+     * misma petición. Medido: de 2 reservas simultáneas, 2 autorizaban el POST.
+     */
+    if (reserva.estado === "en_progreso") {
+      const listo = await this.esperarAOtroProceso<T>(path, hash, reserva.leaseHasta);
+      if (listo) return listo;
+      // El otro murió (su lease venció) o falló: ahora sí nos toca a nosotros.
+      reserva = await this.taskLog.reservar<T>(path, hash);
+      if (reserva.estado === "listo") return reserva.result;
+      if (reserva.estado === "en_progreso") {
+        throw new Error(`${path}: otro proceso sigue pidiéndolo. No se reintenta para no pagar dos veces.`);
+      }
+    }
 
     if (reserva.estado === "listo") {
       // Ya se pagó por esto y el resultado está guardado. Gasto: cero.
@@ -61,31 +79,65 @@ export class DataForSeoClient {
       );
     }
 
+    const attemptId = reserva.attemptId;
     const costeAntes = this.costUsd;
     try {
       const result = await this.postConReintentos<T>(path, body);
-      await this.taskLog.completar(path, hash, {
+      const guardado = await this.taskLog.completar(path, hash, {
         result,
         costMicros: Math.round((this.costUsd - costeAntes) * 1_000_000),
+        attemptId,
       });
+      if (!guardado) {
+        // El lease ya no era nuestro: otro intento tomó el relevo. No pisamos su resultado.
+        console.warn(`  [dataforseo] ${path}: el resultado llegó tarde; otro intento ya tomó el relevo.`);
+      }
       return result;
     } catch (e) {
       /*
-       * La distinción que hace correcto todo esto:
+       * La distinción que hace correcto todo esto — hay tres casos, no dos:
        *
-       *  · `DataForSeoTaskError` = HUBO RESPUESTA y la task falló → el proveedor NO cobró, y lo
-       *    sabemos porque nos lo dijo. Se marca `failed` → el reintento es seguro.
+       *  1. `DataForSeoTaskError` SIN costo cobrado → el proveedor respondió que falló y NO cobró.
+       *     Se marca `failed`: el reintento es seguro.
        *
-       *  · Cualquier otro error (timeout, 5xx, red) = NO HUBO RESPUESTA → **ambiguo**: la petición
-       *    pudo llegar, ejecutarse y cobrarse. La reserva se deja en `pending` A PROPÓSITO, para
-       *    que el próximo intento sepa que puede estar repagando. Marcarla `failed` acá sería
-       *    mentir: estaríamos afirmando que no cobró cuando no tenemos ni idea.
+       *  2. `DataForSeoTaskError` CON costo cobrado (una task del lote salió bien y se pagó, otra
+       *     falló) → **sí cobró**. Marcarlo `failed` sería declarar "no cobró" y el reintento
+       *     pagaría otra vez. Se deja en `pending`: el próximo intento lo verá como repago.
+       *
+       *  3. Cualquier otro error (timeout, 5xx, red) → **ambiguo**: no hubo respuesta, la petición
+       *     pudo llegar, ejecutarse y cobrarse. También queda `pending`.
        */
-      if (e instanceof DataForSeoTaskError) {
-        await this.taskLog.fallar(path, hash, e.message);
+      const cobro = this.costUsd - costeAntes;
+      if (e instanceof DataForSeoTaskError && cobro === 0) {
+        await this.taskLog.fallar(path, hash, e.message, attemptId);
       }
       throw e;
     }
+  }
+
+  /**
+   * Espera a que el proceso que tiene el lease termine. Devuelve su resultado, o `null` si murió.
+   *
+   * Sondea con espera fija: la alternativa —salir a pedirlo también— es pagar la misma petición dos
+   * veces, que es justo lo que este registro existe para impedir.
+   */
+  private async esperarAOtroProceso<T>(
+    path: string,
+    hash: string,
+    leaseHasta: Date,
+  ): Promise<T[] | null> {
+    console.warn(
+      `  [dataforseo] ${path}: otra corrida ya está pidiendo esto. Espero su resultado en vez de ` +
+        `volver a pagarlo.`,
+    );
+    const INTERVALO = 1_000;
+    while (Date.now() < leaseHasta.getTime()) {
+      await new Promise((r) => setTimeout(r, INTERVALO));
+      const estado = await this.taskLog.consultar<T>(path, hash);
+      if (estado?.estado === "listo") return estado.result;
+      if (estado?.estado !== "en_progreso") return null; // murió o falló
+    }
+    return null;
   }
 
   /**
@@ -138,14 +190,56 @@ export class DataForSeoClient {
     );
 
     const json = (await res.json()) as DfsResponse<T>;
+
+    /*
+     * El código de estado SUPERIOR también puede ser un rate limit (40202).
+     *
+     * Antes lanzaba un `Error` genérico, así que: (a) no entraba en el reintento de rate limit, y
+     * (b) la reserva quedaba `pending` como si el resultado fuera AMBIGUO — cuando en realidad un
+     * rate limit es un rechazo PREVIO a ejecutar y sabemos con certeza que no cobró. Se clasificaba
+     * como "puede haber cobrado" algo que seguro no cobró.
+     */
     if (json.status_code !== 20000) {
-      throw new Error(`DataForSEO status ${json.status_code}: ${json.status_message}`);
+      throw new DataForSeoTaskError(
+        `DataForSEO status ${json.status_code}: ${json.status_message}`,
+        [json.status_code],
+      );
+    }
+
+    /*
+     * UNA RESPUESTA SIN `tasks` NO ES UN ÉXITO CON CERO RESULTADOS.
+     *
+     * `json.tasks ?? []` tomaba por bueno un HTTP 200 sin el array de tasks (respuesta truncada,
+     * proxy que devuelve otra cosa, cambio de la API). El resultado quedaba `[]`, la tarea se
+     * marcaba `done`, y el decorador cacheaba `null` para CADA keyword durante 7 días. Un fallo de
+     * transporte se fosilizaba como "el mercado no tiene datos para esto".
+     *
+     * Ausencia de datos y ausencia de respuesta no son lo mismo. Solo se cachea la ausencia después
+     * de una respuesta estructuralmente válida.
+     */
+    if (!Array.isArray(json.tasks)) {
+      throw new Error(
+        `DataForSEO devolvió 200 sin el array 'tasks' en ${path}. La respuesta no es válida: no se ` +
+          `puede tomar por "sin datos" lo que en realidad es "sin respuesta".`,
+      );
+    }
+    if (json.tasks.length === 0) {
+      throw new Error(
+        `DataForSEO devolvió 200 con 'tasks' vacío en ${path}. Se pidió al menos una task y no volvió ` +
+          `ninguna: la respuesta está incompleta.`,
+      );
+    }
+    if (typeof json.tasks_count === "number" && json.tasks_count !== json.tasks.length) {
+      throw new Error(
+        `DataForSEO dice tasks_count=${json.tasks_count} pero devolvió ${json.tasks.length} en ${path}. ` +
+          `La respuesta está truncada y no se sabe qué falta.`,
+      );
     }
 
     const results: T[] = [];
     const fallidas: Array<{ code: number; message: string }> = [];
 
-    for (const task of json.tasks ?? []) {
+    for (const task of json.tasks) {
       if (typeof task.cost === "number") {
         this.costUsd += task.cost;
         currentMeter().addUsd("dataforseo", task.cost); // alimenta el costo total del run
@@ -154,7 +248,14 @@ export class DataForSeoClient {
         fallidas.push({ code: task.status_code, message: task.status_message ?? "sin detalle" });
         continue;
       }
-      for (const r of task.result ?? []) results.push(r);
+      // Una task OK sin `result` es una respuesta incompleta, no un "no hay datos".
+      if (task.result == null) {
+        throw new Error(
+          `DataForSEO devolvió una task OK sin 'result' en ${path}. Incompleta: no se puede tomar por ` +
+            `ausencia de datos.`,
+        );
+      }
+      for (const r of task.result) results.push(r);
     }
 
     /*
@@ -211,6 +312,8 @@ export class DataForSeoTaskError extends Error {
 interface DfsResponse<T> {
   status_code: number;
   status_message: string;
+  /** Cuántas tasks dice haber devuelto. Si no cuadra con `tasks.length`, la respuesta está rota. */
+  tasks_count?: number;
   tasks?: Array<{
     id?: string;
     cost?: number;

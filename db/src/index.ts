@@ -13,7 +13,7 @@ export type {
   RunSummary,
 } from "./store.js";
 
-export { NodePgPool, PglitePool } from "./pool.js";
+export { NodePgPool, PglitePool, ejecutorDe } from "./pool.js";
 export type { DbPool, Tx, SqlExecutor, NodePgPoolLike, NodePgClientLike } from "./pool.js";
 
 export { PgKeywordCache } from "./cache.js";

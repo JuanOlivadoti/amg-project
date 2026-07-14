@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 /**
  * Registro de peticiones FACTURABLES al proveedor (ADR-10: "idempotencia real de tareas del
@@ -32,29 +32,39 @@ import { createHash } from "node:crypto";
  * el pipeline entero dejó de ser hipotético.
  */
 
-/** Lo que el registro sabe de una petición antes de enviarla. */
+/**
+ * Lo que el registro sabe de una petición antes de enviarla.
+ *
+ * Son CUATRO estados, y la versión anterior tenía tres: le faltaba **el que importaba**, distinguir
+ * "el proceso murió" de "otro proceso está pidiendo esto AHORA MISMO". Sin esa distinción, dos
+ * corridas concurrentes con la misma petición **la pagaban las dos**.
+ */
 export type Reserva<T> =
   /** Ya se pagó y tenemos el resultado. Gasto: cero. */
   | { estado: "listo"; result: T[] }
-  /** Nunca se pidió (o la anterior falló con respuesta = no cobró). Adelante. */
-  | { estado: "nueva" }
-  /**
-   * Una petición anterior se envió y NUNCA volvió. Pudo haberse cobrado.
-   * Reenviar es la única forma de obtener el dato, pero se cuenta como repago.
-   */
-  | { estado: "huerfana"; intento: number };
+  /** Nadie la pidió (o la anterior falló CON respuesta = no cobró). Adelante, con este token. */
+  | { estado: "nueva"; attemptId: string }
+  /** Otro proceso la está pidiendo ahora. Se ESPERA su resultado; no se paga otra vez. */
+  | { estado: "en_progreso"; leaseHasta: Date }
+  /** El lease venció sin resultado: el proceso murió y pudo haber cobrado. Reenviar = repago. */
+  | { estado: "huerfana"; intento: number; attemptId: string };
 
 export interface ProviderTaskLog {
   /** Escribe la reserva ANTES del envío. Si el proceso muere después, queda la huella. */
   reservar<T>(endpoint: string, payloadHash: string): Promise<Reserva<T>>;
-  /** Llegó el resultado: se guarda con su costo. */
+  /** Estado actual sin reservar. Lo usa quien espera a que otro proceso termine. */
+  consultar<T>(endpoint: string, payloadHash: string): Promise<Reserva<T> | null>;
+  /**
+   * Llegó el resultado. **CAS por `attemptId`**: devuelve `false` si el lease ya no era nuestro
+   * (una respuesta tardía no puede pisar el resultado de un intento posterior).
+   */
   completar<T>(
     endpoint: string,
     payloadHash: string,
-    datos: { result: T[]; costMicros: number; taskId?: string | undefined },
-  ): Promise<void>;
-  /** Hubo respuesta y la task falló → NO cobró. Se marca para que el reintento sea seguro. */
-  fallar(endpoint: string, payloadHash: string, error: string): Promise<void>;
+    datos: { result: T[]; costMicros: number; attemptId: string; taskId?: string | undefined },
+  ): Promise<boolean>;
+  /** Hubo respuesta y la task falló SIN cobrar. Se marca para que el reintento sea seguro. */
+  fallar(endpoint: string, payloadHash: string, error: string, attemptId: string): Promise<boolean>;
 }
 
 /**
@@ -82,21 +92,44 @@ function jsonEstable(v: unknown): string {
   return `{${pares.join(",")}}`;
 }
 
+/** Cuánto dura el lease. Tiene que cubrir con holgura la petición más lenta + sus reintentos. */
+export const LEASE_MS = 120_000;
+
 /** Sin registro: todo es nuevo. Es lo que corre en sandbox (gratis) y con el provider mock. */
 export class NoopTaskLog implements ProviderTaskLog {
   async reservar<T>(): Promise<Reserva<T>> {
-    return { estado: "nueva" };
+    return { estado: "nueva", attemptId: randomUUID() };
   }
-  async completar(): Promise<void> {}
-  async fallar(): Promise<void> {}
+  async consultar<T>(): Promise<Reserva<T> | null> {
+    return null;
+  }
+  async completar(): Promise<boolean> {
+    return true;
+  }
+  async fallar(): Promise<boolean> {
+    return true;
+  }
 }
 
 /** Registro en memoria. Para tests y para un proceso suelto sin base de datos. */
 export class MemTaskLog implements ProviderTaskLog {
   private readonly filas = new Map<
     string,
-    { estado: "pending" | "done" | "failed"; intento: number; result?: unknown[] }
+    {
+      estado: "pending" | "done" | "failed";
+      intento: number;
+      attemptId: string;
+      leaseHasta: number;
+      result?: unknown[];
+    }
   >();
+
+  /** Los tests necesitan simular "el proceso murió": el lease vence sin que nadie complete. */
+  vencerLeases(): void {
+    for (const [k, f] of this.filas) {
+      if (f.estado === "pending") this.filas.set(k, { ...f, leaseHasta: 0 });
+    }
+  }
 
   async reservar<T>(endpoint: string, hash: string): Promise<Reserva<T>> {
     const k = `${endpoint}|${hash}`;
@@ -104,8 +137,13 @@ export class MemTaskLog implements ProviderTaskLog {
 
     if (f?.estado === "done") return { estado: "listo", result: f.result as T[] };
 
+    if (f?.estado === "pending" && f.leaseHasta > Date.now()) {
+      // Otro proceso la está pidiendo AHORA. No se paga otra vez: se espera.
+      return { estado: "en_progreso", leaseHasta: new Date(f.leaseHasta) };
+    }
+
     if (f?.estado === "pending") {
-      // Se envió y nunca volvió. Pudo cobrar.
+      // Lease vencido: el proceso murió. Pudo cobrar.
       const intento = f.intento + 1;
       if (intento > MAX_INTENTOS) {
         throw new Error(
@@ -113,26 +151,50 @@ export class MemTaskLog implements ProviderTaskLog {
             `más: cada intento puede estar cobrando.`,
         );
       }
-      this.filas.set(k, { estado: "pending", intento });
-      return { estado: "huerfana", intento };
+      const attemptId = randomUUID();
+      this.filas.set(k, { estado: "pending", intento, attemptId, leaseHasta: Date.now() + LEASE_MS });
+      return { estado: "huerfana", intento, attemptId };
     }
 
     // Nueva, o la anterior falló CON respuesta (no cobró) → reintentar es seguro.
-    this.filas.set(k, { estado: "pending", intento: (f?.intento ?? 0) + 1 });
-    return { estado: "nueva" };
+    const attemptId = randomUUID();
+    this.filas.set(k, {
+      estado: "pending",
+      intento: (f?.intento ?? 0) + 1,
+      attemptId,
+      leaseHasta: Date.now() + LEASE_MS,
+    });
+    return { estado: "nueva", attemptId };
+  }
+
+  async consultar<T>(endpoint: string, hash: string): Promise<Reserva<T> | null> {
+    const f = this.filas.get(`${endpoint}|${hash}`);
+    if (!f) return null;
+    if (f.estado === "done") return { estado: "listo", result: f.result as T[] };
+    if (f.estado === "pending" && f.leaseHasta > Date.now()) {
+      return { estado: "en_progreso", leaseHasta: new Date(f.leaseHasta) };
+    }
+    return null;
   }
 
   async completar<T>(
     endpoint: string,
     hash: string,
-    datos: { result: T[]; costMicros: number; taskId?: string | undefined },
-  ): Promise<void> {
+    datos: { result: T[]; costMicros: number; attemptId: string },
+  ): Promise<boolean> {
     const k = `${endpoint}|${hash}`;
-    this.filas.set(k, { estado: "done", intento: this.filas.get(k)?.intento ?? 1, result: datos.result });
+    const f = this.filas.get(k);
+    // CAS: una respuesta tardía del intento anterior no pisa el resultado del actual.
+    if (!f || f.estado !== "pending" || f.attemptId !== datos.attemptId) return false;
+    this.filas.set(k, { ...f, estado: "done", leaseHasta: 0, result: datos.result });
+    return true;
   }
 
-  async fallar(endpoint: string, hash: string, _error: string): Promise<void> {
+  async fallar(endpoint: string, hash: string, _error: string, attemptId: string): Promise<boolean> {
     const k = `${endpoint}|${hash}`;
-    this.filas.set(k, { estado: "failed", intento: this.filas.get(k)?.intento ?? 1 });
+    const f = this.filas.get(k);
+    if (!f || f.estado !== "pending" || f.attemptId !== attemptId) return false;
+    this.filas.set(k, { ...f, estado: "failed", leaseHasta: 0 });
+    return true;
   }
 }

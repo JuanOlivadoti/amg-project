@@ -1,6 +1,4 @@
-import { randomUUID } from "node:crypto";
 import type { PgStore, TenantContext, PageRow, RunSummary } from "db";
-import type { ActorContext } from "./events.js";
 
 /**
  * El workflow del research, de punta a punta: pipeline → persistencia → compuerta humana →
@@ -79,12 +77,16 @@ export interface BriefDelPipeline {
   };
 }
 
+/**
+ * Lo que el evento trae. **Solo coordenadas, cero autoridad.**
+ *
+ * El prompt, el cliente, el mercado y los topes NO viajan acá: salen de la fila del run, que creó la
+ * API bajo RLS con la identidad del humano. Si esto llevara el `clientId`, quien emita el evento
+ * elegiría a nombre de quién se gasta.
+ */
 export interface EntradaResearch {
-  ctx: ActorContext;
-  prompt: string;
-  market?: { country: string; language_code: string; location_code: number } | undefined;
-  maxCostMicros?: number | undefined;
-  maxPages?: number | undefined;
+  runId: string;
+  tenantId: string;
 }
 
 export interface ResultadoWorkflow {
@@ -93,75 +95,93 @@ export interface ResultadoWorkflow {
   paginasPublicadas: number;
 }
 
-const MARKET_POR_DEFECTO = { country: "ES", language_code: "es", location_code: 2724 };
-
 /** Cuánto se espera al humano. Vencido el plazo NO se publica: se deja donde está. */
 export const PLAZO_APROBACION = "7d";
 
 /**
- * El orquestador NO es `maestro`: es un proceso, no una persona.
+ * El workflow, disparado por `research/solicitado`.
  *
- * Su autoridad es una CREDENCIAL DE POSTGRES (se conecta como el rol `app_service`), no un campo en
- * el evento. Fijate en que ya no declara ningún rol — desde `0002_auth.sql` no hay dónde: los roles
- * humanos se derivan de `memberships` y el del servicio, de con qué credencial se conectó.
+ * `entrada` lleva **solo coordenadas**, no autoridad: el run YA EXISTE, creado por la API bajo RLS
+ * con la identidad del humano. Acá se carga de la base y se trabaja con lo que diga la FILA — nunca
+ * con lo que diga el mensaje. Ver `events.ts`.
  */
-function comoServicio(ctx: ActorContext): TenantContext {
-  return { tenantId: ctx.tenantId, servicio: true };
-}
-
 export async function workflowResearch(
   paso: Pasos,
   entrada: EntradaResearch,
   deps: Deps,
-  /** Generado FUERA de los steps: tiene que ser el mismo en cada replay (ver `runId` en NewRun). */
-  runId: string,
 ): Promise<ResultadoWorkflow> {
   const log = deps.log ?? (() => {});
-  const ctx = comoServicio(entrada.ctx);
-  const market = entrada.market ?? MARKET_POR_DEFECTO;
+  const { runId } = entrada;
+  const ctx: TenantContext = { tenantId: entrada.tenantId };
 
-  // ---- 1. Abrir el run ------------------------------------------------------
-  await paso.run("crear-run", async () => {
-    await deps.store.createRun(ctx, {
-      runId,
-      clientId: entrada.ctx.clientId,
-      schemaVersion: "kr.v0.5",
-      prompt: entrada.prompt,
-      market,
-      config: { max_cost_micros: entrada.maxCostMicros ?? null, max_pages: entrada.maxPages ?? null },
+  /*
+   * ---- 1. Cargar el run. NO crearlo. ---------------------------------------
+   *
+   * Este paso es la comprobación de autorización, y es la razón de que gaste cero.
+   *
+   * El evento ya no puede crear un run: si la fila no existe —porque el `runId` es inventado, o
+   * porque el `tenantId` no cuadra y RLS no la deja ver— **abortamos antes de tocar DataForSEO**.
+   * Antes, el evento traía tenant y cliente elegidos por quien lo emitía y el workflow los elevaba a
+   * autoridad de servicio: bastaba conocer dos UUID ajenos para hacer que la agencia pagara el
+   * research de otra.
+   */
+  const run = await paso.run("cargar-run", async () => {
+    const r = await deps.store.getRun(ctx, runId);
+    if (!r) {
+      throw new Error(
+        `El run ${runId} no existe para el tenant ${entrada.tenantId}. El evento NO crea runs: los ` +
+          `crea la API, con la identidad del humano y bajo RLS. No se gasta nada.`,
+      );
+    }
+    return r;
+  });
+
+  /*
+   * ---- 2. El research — solo si el run TODAVÍA no lo hizo -------------------
+   *
+   * La memoización de steps de Inngest cubre los replays de UNA ejecución. No cubre una ejecución
+   * NUEVA: su clave de idempotencia dura 24 h y la compuerta humana espera 7 DÍAS. Pasadas las 24 h,
+   * un evento duplicado arrancaba una ejecución nueva con los steps en blanco → **volvía a pagar el
+   * LLM y reescribía las páginas** sobre un run ya cerrado.
+   *
+   * La fase durable vive en la BASE, no en la memoria de Inngest: si el run ya no está `running`, el
+   * research ya se hizo, y se reanuda desde la compuerta.
+   */
+  if (run.status === "running") {
+    const brief = await paso.run("research", async () => {
+      return deps.research({
+        prompt: run.prompt,
+        market: {
+          country: run.market_country,
+          language_code: run.market_language,
+          location_code: run.market_location_code,
+        },
+        maxCostMicros: numeroDe(run.config?.["max_cost_micros"]),
+        maxPages: numeroDe(run.config?.["max_pages"]),
+        // Checkpoint: las keywords se guardan APENAS existen, dentro del mismo step. Si el paso
+        // revienta después (clustering, LLM de contenido), lo que ya se le pagó a DataForSEO queda
+        // en la base y en la cache — el reintento no lo vuelve a comprar.
+        onKeywords: (keywords) => deps.store.saveKeywords(ctx, runId, run.client_id, keywords),
+      });
     });
-    return runId;
-  });
 
-  // ---- 2. El research (el paso que cuesta dinero) ---------------------------
-  const brief = await paso.run("research", async () => {
-    return deps.research({
-      prompt: entrada.prompt,
-      market,
-      maxCostMicros: entrada.maxCostMicros,
-      maxPages: entrada.maxPages,
-      // Checkpoint: las keywords se guardan APENAS existen, dentro del mismo step. Si el paso
-      // revienta después (clustering, LLM de contenido), lo que ya se le pagó a DataForSEO queda
-      // en la base y en la cache — el reintento no lo vuelve a comprar.
-      onKeywords: (keywords) => deps.store.saveKeywords(ctx, runId, entrada.ctx.clientId, keywords),
+    await paso.run("guardar-paginas", async () => {
+      await deps.store.savePages(ctx, runId, run.client_id, brief.paginas_propuestas);
+      return brief.paginas_propuestas.length;
     });
-  });
 
-  // ---- 3. Persistir las páginas y cerrar el run -----------------------------
-  await paso.run("guardar-paginas", async () => {
-    await deps.store.savePages(ctx, runId, entrada.ctx.clientId, brief.paginas_propuestas);
-    return brief.paginas_propuestas.length;
-  });
-
-  await paso.run("cerrar-run", async () => {
-    await deps.store.finishRun(ctx, runId, {
-      costeMicros: brief.meta_run.coste_micros_usd,
-      costeBreakdown: brief.meta_run.coste_breakdown,
-      calidadDatos: brief.meta_run.calidad_datos,
-      modelosSinPrecio: brief.meta_run.modelos_sin_precio ?? [],
+    await paso.run("cerrar-run", async () => {
+      await deps.store.finishRun(ctx, runId, {
+        costeMicros: brief.meta_run.coste_micros_usd,
+        costeBreakdown: brief.meta_run.coste_breakdown,
+        calidadDatos: brief.meta_run.calidad_datos,
+        modelosSinPrecio: brief.meta_run.modelos_sin_precio ?? [],
+      });
+      return "pending_approval";
     });
-    return "pending_approval";
-  });
+  } else {
+    log(`[run ${runId}] el research ya estaba hecho (${run.status}) → no se vuelve a pagar`);
+  }
 
   log(`[run ${runId}] esperando aprobación humana (hasta ${PLAZO_APROBACION})`);
 
@@ -201,17 +221,35 @@ export async function workflowResearch(
       return { runId, estado: "nada_que_publicar" as const, paginasPublicadas: 0 };
     }
 
-    const run = await deps.store.getRun(ctx, runId);
-    if (!run) throw new Error(`El run ${runId} no es visible para este tenant.`);
+    const actual = await deps.store.getRun(ctx, runId);
+    if (!actual) throw new Error(`El run ${runId} no es visible para este tenant.`);
 
     // Reconstruir el brief DESDE LA BASE y volver a validarlo contra el contrato del M1 (ADR-06/07).
     // El M1 no confía en que el M2 le mande algo bien formado, y el orquestador tampoco.
-    const briefValidado = deps.validarContrato(briefDesdeLaBase(run, paginas));
+    const briefValidado = deps.validarContrato(briefDesdeLaBase(actual, paginas));
     const publicadas = await deps.publicar(briefValidado);
+
+    /*
+     * Registrar la publicación es lo que impide que un fallo posterior MIENTA sobre el mundo.
+     *
+     * Storyblok ya creó las stories: eso es un hecho externo e irreversible. Sin esta marca, un
+     * error en el camino de vuelta hacía que `onFailure` pusiera el run en `failed` con las páginas
+     * publicadas y visibles.
+     */
+    await deps.store.marcarPublicadas(
+      ctx,
+      runId,
+      publicadas.map((p) => ({ slug: p.slug, storyId: p.location })),
+    );
 
     log(`[run ${runId}] publicadas ${publicadas.length} página(s)`);
     return { runId, estado: "publicado" as const, paginasPublicadas: publicadas.length };
   });
+}
+
+/** Lee un número de la config del run (que viene de jsonb, o sea `unknown`). */
+function numeroDe(v: unknown): number | undefined {
+  return typeof v === "number" ? v : undefined;
 }
 
 /**
@@ -252,9 +290,4 @@ function briefDesdeLaBase(run: RunSummary, paginas: PageRow[]): unknown {
     })),
     backlog: [],
   };
-}
-
-/** Id del run: se genera una vez, fuera de los steps, y viaja con el evento. */
-export function nuevoRunId(): string {
-  return randomUUID();
 }

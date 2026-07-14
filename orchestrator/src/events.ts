@@ -1,53 +1,51 @@
 /**
  * Los eventos del orquestador.
  *
- * ## Un evento es un DISPARADOR, nunca una autoridad
+ * ## UN EVENTO NO PORTA AUTORIDAD. NUNCA.
  *
- * `research/aprobado` **no aprueba nada**. Solo despierta al workflow, que va a la base y pregunta
- * qué está realmente aprobado (`getPublishablePages`, que exige las dos condiciones de la compuerta
- * bajo RLS). Si el evento fuera la autoridad, cualquiera que pudiera emitir un evento —un webhook
- * mal protegido, un bug, un job vecino— publicaría contenido que ningún humano miró. Es la misma
- * disciplina que ADR-06: la aprobación vive en la base, no en el mensaje.
+ * La versión anterior de `research/solicitado` llevaba `tenantId` y `clientId` **elegidos por quien
+ * emitía el evento**, y el workflow los convertía en contexto de servicio. La FK garantizaba que el
+ * cliente pertenecía al tenant; **nadie garantizaba que el humano perteneciera al tenant**. El
+ * `userId` que llevaba "para auditoría" no participaba en ninguna decisión.
  *
- * Por eso el contexto de tenant del workflow se toma SIEMPRE del evento original (`research/
- * solicitado`) y nunca del evento de aprobación: un evento de aprobación forjado con el `runId` de
- * otro tenant se encuentra con que el `PgStore` sigue operando con el tenant de origen y RLS no le
- * devuelve nada.
+ * O sea: conocer (o filtrar) un par de UUID ajenos y conseguir que se emitiera el evento bastaba
+ * para que el orquestador **pagara un research de otra agencia con autoridad de servicio**. Cerré
+ * la puerta de los humanos (ADR-15) y dejé abierta la del servicio.
+ *
+ * Ahora:
+ *
+ *  1. La API crea la fila del run **bajo RLS, como `app_user`**, con la identidad del humano. Si no
+ *     tiene membresía en ese tenant, Postgres rechaza el insert. La autorización ocurre **ahí**.
+ *  2. El evento lleva **solo `runId` y `tenantId`** — y el `tenantId` no es una autoridad, es una
+ *     coordenada: si no cuadra con el run, la fila no aparece bajo RLS y el workflow aborta **sin
+ *     gastar un centavo**.
+ *  3. El orquestador lee el prompt, el cliente y el mercado **de la fila**, jamás del mensaje.
+ *
+ * Lo mismo vale para `research/aprobado`: solo DESPIERTA al workflow. Lo que se publica se vuelve a
+ * preguntar a la base (`getPublishablePages`, compuerta doble, bajo RLS). Si el evento fuera la
+ * autoridad, cualquiera capaz de emitirlo publicaría contenido que ningún humano miró.
  */
-
-/** Quién pide el research. `servicio` es el rol del propio orquestador (ver `store.ts`). */
-export interface ActorContext {
-  tenantId: string;
-  clientId: string;
-  /** El humano que disparó el research. Solo para auditoría; NO otorga permisos. */
-  userId?: string | null;
-}
 
 export interface ResearchSolicitado {
   data: {
     /**
-     * El id del run lo genera QUIEN EMITE EL EVENTO (`nuevoRunId()`), no la base ni el workflow.
+     * El run **ya existe** en la base, creado por la API con la identidad del humano bajo RLS.
+     * Este evento no lo crea: lo pone en marcha.
      *
-     * No es un capricho. Inngest re-ejecuta todo el código que está FUERA de un step en cada replay
-     * del workflow (es así como retoma donde iba). Un `randomUUID()` en el cuerpo del workflow
-     * daría un id distinto en cada replay, y los pasos siguientes escribirían en un run que no
-     * existe. Viniendo en el evento, es estable — y de paso hace el run idempotente: reprocesar el
-     * mismo evento no crea un segundo run ni vuelve a pagarle a DataForSEO.
+     * Que el id venga en el evento (y no se genere dentro) también lo hace idempotente: Inngest
+     * re-ejecuta todo lo que está fuera de un step en cada replay, así que un `randomUUID()` en el
+     * workflow daría un id distinto cada vez.
      */
     runId: string;
-    ctx: ActorContext;
-    prompt: string;
-    market?: { country: string; language_code: string; location_code: number };
-    /** Tope duro de gasto del run, en micros de USD. Sin esto, un bug de expansión vacía el saldo. */
-    maxCostMicros?: number;
-    maxPages?: number;
+    /** Coordenada para localizar el run bajo RLS. **No es una autoridad**: ver arriba. */
+    tenantId: string;
   };
 }
 
 export interface ResearchAprobado {
   data: {
     runId: string;
-    /** Solo para trazabilidad. La aprobación REAL está en la base (kr_runs + kr_pages). */
+    /** Solo trazabilidad. La aprobación REAL está en la base (`kr_runs` + `kr_pages`). */
     aprobadoPor?: string;
   };
 }

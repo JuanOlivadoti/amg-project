@@ -24,6 +24,8 @@ const aqui = dirname(fileURLToPath(import.meta.url));
 
 let pg: PGlite;
 let store: PgStore;
+/** El orquestador: rol app_service. En prod es OTRO login (amg_orquestador). */
+let storeServicio: PgStore;
 let tenantA: string;
 let tenantB: string;
 let clientA: string;
@@ -131,7 +133,7 @@ function depsFalsas(paginas: PageRow[]): Espia {
   };
 
   espia.deps = {
-    store,
+    store: storeServicio,
     research: async ({ onKeywords }) => {
       espia.researchCorrido++;
       await onKeywords([
@@ -165,11 +167,29 @@ function depsFalsas(paginas: PageRow[]): Espia {
   return espia;
 }
 
-const entrada = (tenantId: string, clientId: string) => ({
-  ctx: { tenantId, clientId },
-  prompt: "Restaurante italiano en Madrid centro",
-  market: { country: "ES", language_code: "es", location_code: 2724 },
-});
+/** El evento: SOLO coordenadas. Ni prompt, ni cliente, ni topes — eso vive en la fila del run. */
+const entrada = (runId: string, tenantId: string) => ({ runId, tenantId });
+
+/**
+ * Crea el run como lo hará la API: **bajo RLS, con la identidad del humano**.
+ *
+ * Es donde ocurre la autorización. Si esa persona no tiene membresía en el tenant, Postgres rechaza
+ * el insert y no se emite ningún evento — o sea que el orquestador nunca llega a gastar.
+ */
+async function crearRunComoHumano(tenantId: string, clientId: string, userId: string): Promise<string> {
+  const runId = randomUUID();
+  await store.createRun(
+    { tenantId, userId },
+    {
+      runId,
+      clientId,
+      schemaVersion: "kr.v0.5",
+      prompt: "Restaurante italiano en Madrid centro",
+      market: { country: "ES", language_code: "es", location_code: 2724 },
+    },
+  );
+  return runId;
+}
 
 /** El humano del portal (equipo), no el orquestador. Es quien tiene permiso de aprobar. */
 const humano = (tenantId: string): TenantContext => ({ tenantId, userId: tenantId === tenantA ? equipoA : equipoB });
@@ -179,7 +199,9 @@ const humano = (tenantId: string): TenantContext => ({ tenantId, userId: tenantI
 before(async () => {
   pg = new PGlite();
   await aplicarMigraciones(pg);
-  store = new PgStore(new PglitePool(pg));
+  const pool = new PglitePool(pg);
+  store = new PgStore(pool); // los humanos: app_user
+  storeServicio = new PgStore(pool, "app_service"); // el orquestador
 });
 
 after(async () => {
@@ -228,7 +250,7 @@ async function correrHastaLaCompuerta(
 ): Promise<MotorPasos> {
   const motor = new MotorPasos(); // aprobacion = null → se duerme en la compuerta
   await assert.rejects(
-    () => workflowResearch(motor, entrada(tenant, client), espia.deps, runId),
+    () => workflowResearch(motor, entrada(runId, tenant), espia.deps),
     Suspendido,
     "el workflow tiene que dormirse esperando al humano, no seguir de largo",
   );
@@ -238,7 +260,7 @@ async function correrHastaLaCompuerta(
 /** Despierta al workflow con el evento de aprobación. Replay: los steps previos NO se re-ejecutan. */
 function despertar(motor: MotorPasos, espia: Espia, runId: string) {
   motor.aprobacion = { data: { runId } };
-  return workflowResearch(motor, entrada(tenantA, clientA), espia.deps, runId);
+  return workflowResearch(motor, entrada(runId, tenantA), espia.deps);
 }
 
 // ================================================================
@@ -246,7 +268,7 @@ function despertar(motor: MotorPasos, espia: Espia, runId: string) {
 // ================================================================
 
 test("el run queda en pending_approval y NO se publica nada hasta que un humano aprueba", async () => {
-  const runId = randomUUID();
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
 
   await correrHastaLaCompuerta(espia, runId);
@@ -257,7 +279,7 @@ test("el run queda en pending_approval y NO se publica nada hasta que un humano 
 });
 
 test("aprobado en la base + evento → se publica", async () => {
-  const runId = randomUUID();
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
   const motor = await correrHastaLaCompuerta(espia, runId);
 
@@ -275,7 +297,7 @@ test("aprobado en la base + evento → se publica", async () => {
 });
 
 test("solo se publican las páginas que el humano aprobó, no todas las del run", async () => {
-  const runId = randomUUID();
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([
     paginaFalsa(),
     paginaFalsa({ url_slug: "/menu-del-dia", keyword_principal: "menú del día", evidencia: "sin_validar" }),
@@ -306,7 +328,7 @@ test("solo se publican las páginas que el humano aprobó, no todas las del run"
  * Acá el evento solo despierta al workflow; lo que se publica lo decide la base.
  */
 test("🔴 un evento de aprobación NO publica nada si en la base nadie aprobó", async () => {
-  const runId = randomUUID();
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
   const motor = await correrHastaLaCompuerta(espia, runId);
 
@@ -322,7 +344,7 @@ test("🔴 un evento de aprobación NO publica nada si en la base nadie aprobó"
  * Aprobar una página no es aprobar la web.
  */
 test("🔴 con las páginas aprobadas pero el run sin aprobar, no se publica nada", async () => {
-  const runId = randomUUID();
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
   const motor = await correrHastaLaCompuerta(espia, runId);
 
@@ -342,7 +364,7 @@ test("🔴 con las páginas aprobadas pero el run sin aprobar, no se publica nad
  * evento forjado con el runId ajeno se encuentra con que RLS no le devuelve nada.
  */
 test("🔴 el tenant B no puede hacer que se publique el research del tenant A", async () => {
-  const runId = randomUUID();
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
   const motor = await correrHastaLaCompuerta(espia, runId);
 
@@ -365,12 +387,12 @@ test("🔴 el tenant B no puede hacer que se publique el research del tenant A",
 
 /** El silencio no es un "sí". Vencido el plazo, el run se queda esperando, no se auto-publica. */
 test("🔴 si nadie responde en el plazo, NO se publica (el silencio no aprueba)", async () => {
-  const runId = randomUUID();
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
   const motor = await correrHastaLaCompuerta(espia, runId);
 
   motor.aprobacion = "timeout"; // vencieron los 7 días
-  const res = await workflowResearch(motor, entrada(tenantA, clientA), espia.deps, runId);
+  const res = await workflowResearch(motor, entrada(runId, tenantA), espia.deps);
 
   assert.equal(res.estado, "sin_respuesta");
   assert.equal(espia.publicadas.length, 0);
@@ -383,32 +405,63 @@ test("🔴 si nadie responde en el plazo, NO se publica (el silencio no aprueba)
  * NO puede abrir un segundo run ni volver a pagarle a DataForSEO. Por eso el `runId` viaja EN EL
  * EVENTO. Acá el motor es NUEVO a propósito: es el caso feo, el del reproceso desde cero.
  */
-test("🔴 reprocesar el mismo evento no crea un segundo run", async () => {
-  const runId = randomUUID();
-
-  await correrHastaLaCompuerta(depsFalsas([paginaFalsa()]), runId);
-  await correrHastaLaCompuerta(depsFalsas([paginaFalsa()]), runId);
-
-  const { rows } = await pg.query<{ n: number }>("select count(*)::int as n from kr_runs");
-  assert.equal(rows[0]!.n, 1, "un solo run: el segundo evento no abrió otro");
-});
-
-/** Un runId ajeno inventado no puede secuestrar el run de otro cliente. */
-test("🔴 no se puede abrir un run con el id de un run ajeno", async () => {
-  const runId = randomUUID();
-  await correrHastaLaCompuerta(depsFalsas([paginaFalsa()]), runId);
+/**
+ * 🔴 EL EVENTO NO PUEDE HACER GASTAR. Es la crítica #2 de la 4ª review.
+ *
+ * Antes el evento traía `tenantId` y `clientId` elegidos por quien lo emitía, y el workflow los
+ * elevaba a autoridad de servicio: conocer dos UUID ajenos bastaba para que la agencia PAGARA el
+ * research de otra. Ahora el run tiene que existir —creado por un humano autorizado, bajo RLS— o el
+ * workflow aborta sin tocar DataForSEO.
+ */
+test("🔴 un evento con un runId INVENTADO no gasta un centavo", async () => {
+  const espia = depsFalsas([paginaFalsa()]);
 
   await assert.rejects(
-    () =>
-      workflowResearch(
-        new MotorPasos(),
-        entrada(tenantB, clientB),
-        depsFalsas([paginaFalsa()]).deps,
-        runId, // el mismo id que ya usó A
-      ),
-    /no pertenece a este cliente/i,
+    () => workflowResearch(new MotorPasos(), entrada(randomUUID(), tenantA), espia.deps),
+    /no existe para el tenant/i,
   );
+
+  assert.equal(espia.researchCorrido, 0, "el research NO se ejecutó: cero gasto");
 });
+
+/** El tenant del evento no es una autoridad: si no cuadra con el run, RLS no lo deja ver. */
+test("🔴 un evento con el runId de OTRO tenant no gasta un centavo", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const espia = depsFalsas([paginaFalsa()]);
+
+  // El tenant B intenta poner en marcha el run del tenant A.
+  await assert.rejects(
+    () => workflowResearch(new MotorPasos(), entrada(runId, tenantB), espia.deps),
+    /no existe para el tenant/i,
+  );
+
+  assert.equal(espia.researchCorrido, 0);
+});
+
+/**
+ * 🔴 La idempotencia de Inngest dura 24 h; la compuerta espera 7 DÍAS. Pasadas las 24 h, un evento
+ * duplicado arranca una ejecución NUEVA con los steps en blanco. Sin esta comprobación, volvía a
+ * pagar el LLM y reescribía las páginas sobre un run ya cerrado.
+ *
+ * La fase durable vive en la BASE, no en la memoria de Inngest.
+ */
+test("🔴 un evento duplicado (motor NUEVO) no vuelve a hacer el research", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const espia = depsFalsas([paginaFalsa()]);
+
+  await correrHastaLaCompuerta(espia, runId);
+  assert.equal(espia.researchCorrido, 1);
+
+  // 25 h después: Inngest ya no deduplica y llega el mismo evento. Motor NUEVO, steps en blanco.
+  const espia2 = depsFalsas([paginaFalsa()]);
+  const motor2 = new MotorPasos();
+  await assert.rejects(() => workflowResearch(motor2, entrada(runId, tenantA), espia2.deps), Suspendido);
+
+  assert.equal(espia2.researchCorrido, 0, "el run ya no está 'running': NO se vuelve a pagar");
+  const { rows } = await pg.query<{ n: number }>("select count(*)::int as n from kr_runs");
+  assert.equal(rows[0]!.n, 1);
+});
+
 
 /**
  * El checkpoint del dataset: las keywords se guardan DENTRO del step de research, apenas existen.
@@ -416,7 +469,7 @@ test("🔴 no se puede abrir un run con el id de un run ajeno", async () => {
  * queda en la base en vez de perderse.
  */
 test("las keywords pagas se persisten aunque el research reviente DESPUÉS", async () => {
-  const runId = randomUUID();
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
 
   espia.deps.research = async ({ onKeywords }) => {
@@ -439,7 +492,7 @@ test("las keywords pagas se persisten aunque el research reviente DESPUÉS", asy
   };
 
   await assert.rejects(() =>
-    workflowResearch(new MotorPasos(), entrada(tenantA, clientA), espia.deps, runId),
+    workflowResearch(new MotorPasos(), entrada(runId, tenantA), espia.deps),
   );
 
   const { rows } = await pg.query<{ n: number }>(

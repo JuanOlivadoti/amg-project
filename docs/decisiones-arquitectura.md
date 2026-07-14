@@ -23,6 +23,8 @@
 | ADR-14 | Idempotencia por `payload_hash`, **no** método Standard de DataForSEO | Aceptada |
 | ADR-15 | El rol no se declara: se deriva de `memberships` | Aceptada (cierra OBS-02) |
 | ADR-16 | Portal en **Angular + Tailwind** (reemplaza ADR-02) | Aceptada |
+| ADR-17 | **Un proceso, un login, un rol**: la separación la impone Postgres | Aceptada (corrige ADR-15) |
+| ADR-18 | Un evento no porta autoridad: la API crea el run, el evento lo dispara | Aceptada |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | Abierta — riesgo |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 
@@ -284,6 +286,58 @@ endpoint no puede aceptar el rol que le mande el navegador.
 **Sin medir.** No sé **cuánto tarda** un research real: tengo el coste ($0.31), nunca la duración.
 Ya no bloquea el diseño, pero define la UX del portal (¿el usuario espera o se va y vuelve?). Se
 mide en la primera corrida real.
+
+---
+
+## ADR-17 — Un proceso, un login, un rol (corrige una afirmación FALSA de ADR-15)
+
+**Lo que ADR-15 decía, y era mentira.** *"La autoridad del servicio es una CREDENCIAL DE BASE DE
+DATOS; para falsificarla hace falta la contraseña de Postgres."*
+
+**Por qué era falso.** `app_service` es `NOLOGIN`. Había **un solo `DATABASE_URL`**, un solo pool, y
+era el CÓDIGO el que decidía con qué rol vestirse (`set local role app_service`). Postgres autoriza
+`SET ROLE` según el `session_user`, **sin pedir contraseña**: el mismo login podía ponerse
+`app_user` o `app_service` indistintamente, y `RESET ROLE` devolvía sus privilegios originales.
+
+Era una **frontera de código disfrazada de frontera de credenciales** — la misma "autoridad
+declarada" que ADR-15 presumía de haber eliminado. La cerré en la puerta de los humanos y la dejé
+abierta en la del servicio. Con la API compartiendo `DATABASE_URL`, cualquier bug de composición o
+ruta que construyera el store equivocado escalaba a servicio.
+
+**Decisión.** Tres logins (`amg_api`, `amg_orquestador`, `amg_cache`), **`NOINHERIT`**, cada uno
+autorizado a **un solo rol**. El login de la API **no puede** hacer `set role app_service`: lo
+rechaza Postgres. No es que el código no lo intente — es que no puede.
+
+`NOINHERIT` no es opcional: sin él, el login tiene los privilegios de sus roles concedidos sin
+siquiera hacer `SET ROLE`, y `RESET ROLE` se los devuelve.
+
+**El rol de la conexión sale del STORE, no del contexto de la petición.** `TenantContext` ya no
+tiene dónde poner `servicio: true`. Verificado contra `pg_auth_members` —la fuente de verdad, no el
+código— y por mutación: conceder los dos roles al mismo login hace caer el test.
+
+Ver [`docs/proyecto/12-credenciales.md`](proyecto/12-credenciales.md).
+
+## ADR-18 — Un evento no porta autoridad: la API crea el run, el evento lo pone en marcha
+
+**El agujero.** `research/solicitado` llevaba `tenantId` y `clientId` **elegidos por quien emitía el
+evento**, y el workflow los convertía en contexto de servicio. La FK garantizaba que el cliente
+pertenecía al tenant; **nadie garantizaba que el humano perteneciera al tenant**. El `userId` que
+llevaba "para auditoría" no participaba en ninguna decisión.
+
+Conocer (o filtrar) dos UUID ajenos y conseguir que se emitiera el evento bastaba para que el
+orquestador **pagara un research de otra agencia con autoridad de servicio**.
+
+**Decisión.**
+
+1. La API crea la fila del run **bajo RLS, como `app_user`**, con la identidad del humano. Sin
+   membresía en ese tenant, Postgres rechaza el insert. **La autorización ocurre ahí.**
+2. El evento lleva **solo `runId` y `tenantId`** — y el `tenantId` no es autoridad, es una
+   coordenada: si no cuadra con el run, RLS no lo deja ver y el workflow **aborta sin gastar**.
+3. El orquestador lee el prompt, el cliente y el mercado **de la fila**, jamás del mensaje.
+
+Es la misma disciplina que ADR-12 (`research/aprobado` no aprueba: despierta), aplicada al evento
+de entrada. Verificado por mutación: si el workflow vuelve a crear el run desde el evento, caen los
+dos tests de "no gasta un centavo".
 
 ---
 

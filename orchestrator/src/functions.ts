@@ -51,33 +51,34 @@ export function crearFuncionResearch(deps: Deps) {
         { key: "event.data.ctx.tenantId", limit: 1 }, // equidad entre tenants
       ],
       retries: 1,
-      // Reprocesar el mismo run no debe abrir un segundo run ni volver a pagar.
+      /*
+       * Deduplica eventos repetidos… pero SOLO durante 24 h, y la compuerta humana espera 7 DÍAS.
+       *
+       * Por eso la idempotencia REAL no vive acá: vive en la base. El workflow carga el run y, si ya
+       * no está `running`, no vuelve a hacer el research. La ventana de Inngest es una comodidad;
+       * la fase durable es la fila. Ver `workflow.ts`.
+       */
       idempotency: "event.data.runId",
       onFailure: async ({ event, error }) => {
-        // Agotados los reintentos. El run NO puede quedarse colgado en `running` para siempre:
-        // se marca `failed` con el motivo, y por eso el runId viaja en el evento (ver events.ts).
+        /*
+         * Agotados los reintentos. El run no puede quedarse colgado en `running` para siempre.
+         *
+         * Pero `failRun()` solo toca los runs que SIGUEN en `running`: si el fallo ocurrió después
+         * de que un humano aprobara —o después de publicar en Storyblok—, el error se registra y el
+         * estado NO se pisa. Un fallo del workflow no puede deshacer un hecho del mundo.
+         */
         const original = event.data.event.data as Eventos["research/solicitado"]["data"];
-        await deps.store.failRun(
-          { tenantId: original.ctx.tenantId, servicio: true },
-          original.runId,
-          error.message,
-        );
+        await deps.store.failRun({ tenantId: original.tenantId }, original.runId, error.message);
       },
     },
     { event: "research/solicitado" },
     async ({ event, step }) => {
       const d = event.data as Eventos["research/solicitado"]["data"];
+      // El evento solo trae coordenadas. El prompt, el cliente y el mercado salen de la FILA.
       return workflowResearch(
         adaptarPasos(step as StepTools),
-        {
-          ctx: d.ctx,
-          prompt: d.prompt,
-          market: d.market,
-          maxCostMicros: d.maxCostMicros,
-          maxPages: d.maxPages,
-        },
+        { runId: d.runId, tenantId: d.tenantId },
         deps,
-        d.runId,
       );
     },
   );

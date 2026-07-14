@@ -36,9 +36,22 @@ export interface DbPool {
   transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
 }
 
-/** Ejecuta SQL sin contexto de tenant. Es lo que usan las caches (service-role, ver `cache.ts`). */
+/** Ejecuta SQL sin contexto de tenant. Es lo que usan las caches (ver `cache.ts`). */
 export interface SqlExecutor {
   query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<{ rows: T[] }>;
+}
+
+/**
+ * Vista de `SqlExecutor` sobre un pool: cada query en su propia transacción.
+ *
+ * Las caches NO tienen contexto de tenant que aplicar, así que no necesitan una transacción larga —
+ * pero sí una conexión coherente por query, y eso es lo que el pool garantiza. Es la única forma
+ * de llegar a la base: no hay un `query()` suelto por ninguna parte (ADR-13).
+ */
+export function ejecutorDe(pool: DbPool): SqlExecutor {
+  return {
+    query: (sql, params) => pool.transaction((tx) => tx.query(sql, params)),
+  };
 }
 
 // ---------------------------------------------------------------- PGlite (tests)

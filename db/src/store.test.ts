@@ -4,10 +4,14 @@ import { PGlite } from "@electric-sql/pglite";
 import { PgStore } from "./store.js";
 import { PglitePool } from "./pool.js";
 import { aplicarMigraciones } from "./migrate.js";
+import { leerKeywordsCrudo, leerPaginasCrudo, sqlCrudo } from "./testing.js";
 import type { KeywordRow, PageRow, TenantContext } from "./store.js";
 
 let pg: PGlite;
+let pool: PglitePool;
 let store: PgStore;
+/** El orquestador: mismo pool en tests, pero asumiendo el rol app_service. */
+let storeServicio: PgStore;
 
 let tenantA: string;
 let tenantB: string;
@@ -22,7 +26,7 @@ let duenoA1: string;
 const ctxA = (): TenantContext => ({ tenantId: tenantA, userId: equipoA });
 const ctxB = (): TenantContext => ({ tenantId: tenantB, userId: equipoB });
 /** El orquestador. Su autoridad es la credencial de Postgres, no un campo de la petición. */
-const ctxServicio = (): TenantContext => ({ tenantId: tenantA, servicio: true });
+const ctxServicio = (): TenantContext => ({ tenantId: tenantA });
 
 const kw = (over: Partial<KeywordRow> = {}): KeywordRow => ({
   keyword: "pizza napolitana madrid",
@@ -61,7 +65,9 @@ const page = (over: Partial<PageRow> = {}): PageRow => ({
 before(async () => {
   pg = new PGlite();
   await aplicarMigraciones(pg);
-  store = new PgStore(new PglitePool(pg));
+  pool = new PglitePool(pg);
+  store = new PgStore(pool);
+  storeServicio = new PgStore(pool, "app_service");
 });
 
 after(async () => {
@@ -353,12 +359,55 @@ test("🔴 OBS-02: un usuario del tenant A no puede mirar dentro del tenant B", 
   assert.equal(runs.length, 0);
 });
 
-/** El orquestador SÍ puede: su autoridad es la credencial de Postgres, no un campo de la petición. */
+/**
+ * El orquestador SÍ puede escribir los resultados — y su autoridad es la CREDENCIAL con la que se
+ * conecta (`amg_orquestador` → rol `app_service`), no un campo en la petición.
+ *
+ * Fijate en la firma: `new PgStore(pool, "app_service")`. El rol es del STORE, no del contexto.
+ * Antes venía en el `TenantContext` (`servicio: true`) y era una mentira: había un solo login, y el
+ * código elegía con qué rol vestirse. Con `NOINHERIT` y un solo rol concedido por login, el login de
+ * la API **no puede** hacer `set role app_service`: lo rechaza Postgres.
+ */
 test("el servicio (app_service) sí escribe los resultados del research", async () => {
-  const runId = await store.createRun(ctxServicio(), nuevoRun(clientA1));
+  const runId = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA1));
 
   const run = await store.getRun(ctxA(), runId);
   assert.equal(run?.status, "running", "el orquestador abrió el run y el equipo lo ve");
+});
+
+/**
+ * 🔴 LA GARANTÍA, VERIFICADA EN LA BASE.
+ *
+ * ADR-15 afirmaba que la autoridad del servicio era "una credencial de base de datos". Era falso:
+ * `app_service` es NOLOGIN, había UN `DATABASE_URL`, y `SET ROLE` no pide contraseña — Postgres lo
+ * autoriza según el `session_user`. El mismo login podía ponerse `app_user` **o** `app_service`.
+ *
+ * Ahora cada login está autorizado a UN SOLO rol. Este test lo comprueba contra `pg_auth_members`,
+ * que es la fuente de verdad: no basta con que el código no lo intente, tiene que ser IMPOSIBLE.
+ */
+test("🔴 credenciales: el login de la API NO puede asumir el rol del servicio", async () => {
+  const { rows } = await pg.query<{ login: string; rol: string }>(
+    `select l.rolname as login, r.rolname as rol
+     from pg_auth_members m
+     join pg_roles l on l.oid = m.member
+     join pg_roles r on r.oid = m.roleid
+     where l.rolname in ('amg_api', 'amg_orquestador')
+     order by l.rolname`,
+  );
+
+  const concedidos = new Map(rows.map((r) => [r.login, r.rol]));
+  assert.equal(concedidos.get("amg_api"), "app_user", "la API solo puede ser app_user");
+  assert.equal(concedidos.get("amg_orquestador"), "app_service", "el orquestador solo app_service");
+  assert.equal(rows.length, 2, "ningún login tiene MÁS de un rol concedido");
+
+  // Y NOINHERIT: sin él, el login tendría los privilegios sin siquiera hacer `set role`, y
+  // `reset role` se los devolvería.
+  const { rows: inherit } = await pg.query<{ rolname: string; rolinherit: boolean }>(
+    "select rolname, rolinherit from pg_roles where rolname in ('amg_api','amg_orquestador','amg_cache')",
+  );
+  for (const r of inherit) {
+    assert.equal(r.rolinherit, false, `${r.rolname} debe ser NOINHERIT`);
+  }
 });
 
 /**
@@ -372,7 +421,7 @@ test("🔴 el rol 'cliente' NO puede leer keywords de otro cliente del MISMO ten
   await store.saveKeywords(ctxA(), runOtro, clientA2, [kw()]);
 
   const comoCliente: TenantContext = { tenantId: tenantA, userId: duenoA1 };
-  const filas = await store.leerKeywordsCrudo(comoCliente);
+  const filas = await leerKeywordsCrudo(pool, comoCliente);
 
   assert.equal(filas.length, 0, "el research del vecino NO se ve");
 });
@@ -382,7 +431,7 @@ test("🔴 el rol 'cliente' NO puede leer páginas de otro cliente del MISMO ten
   await store.savePages(ctxA(), runOtro, clientA2, [page()]);
 
   const comoCliente: TenantContext = { tenantId: tenantA, userId: duenoA1 };
-  const filas = await store.leerPaginasCrudo(comoCliente);
+  const filas = await leerPaginasCrudo(pool, comoCliente);
 
   assert.equal(filas.length, 0, "el contenido y los claims del vecino NO se ven");
 });
@@ -397,7 +446,8 @@ test("🔴 escalada de privilegios: un 'cliente' NO puede crearse una membresía
 
   await assert.rejects(
     () =>
-      store.sqlCrudo(
+      sqlCrudo(
+        pool,
         comoCliente,
         "insert into memberships (tenant_id, user_id, rol) values ($1, gen_random_uuid(), 'maestro')",
         [tenantA],
@@ -503,4 +553,118 @@ test("compuerta: un reintento IDÉNTICO conserva la aprobación (no molesta al r
     [runId],
   );
   assert.equal(after[0]!.approved, true, "nada cambió: la aprobación sigue valiendo");
+});
+
+// ================================================================
+// Regresiones de la 4ª review
+// ================================================================
+
+/**
+ * 🔴 UNA PÁGINA QUE EL RESEARCH YA NO PROPONE SEGUÍA SIENDO PUBLICABLE.
+ *
+ * `savePages()` solo hacía upsert de las páginas PRESENTES. Si una recalibración del clustering
+ * disolvía una página —o le cambiaba el slug—, la fila vieja se quedaba **con su aprobación
+ * intacta**, y `getPublishablePages()` la devolvía. Se publicaba contenido aprobado para una versión
+ * anterior del brief, que el research actual ya no respalda.
+ */
+test("🔴 una página que desaparece del research deja de ser publicable (se retira)", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [
+    page(),
+    page({ url_slug: "/menu-del-dia", cluster_id: "22222222-2222-4222-8222-222222222222" }),
+  ]);
+
+  // El humano aprueba las dos, y el run.
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  for (const r of rows) await store.approvePage(ctxA(), r.id);
+  await store.approveRun(ctxA(), runId);
+
+  // Recalibración: el research ya NO propone /menu-del-dia.
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+
+  const publicables = await store.getPublishablePages(ctxA(), runId);
+
+  assert.equal(publicables.length, 1, "la página retirada NO sale, aunque estuviera aprobada");
+  assert.equal(publicables[0]!.url_slug, "/pizza-napolitana-madrid");
+});
+
+/** Un research que no propone NADA tiene que retirar todo, no dejar lo viejo publicable. */
+test("🔴 un research sin páginas RETIRA las anteriores (no las deja aprobadas)", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.approvePage(ctxA(), rows[0]!.id);
+  await store.approveRun(ctxA(), runId);
+
+  await store.savePages(ctxA(), runId, clientA1, []); // el research ya no propone nada
+
+  assert.equal((await store.getPublishablePages(ctxA(), runId)).length, 0);
+});
+
+/**
+ * El `where` del upsert comparaba solo 9 campos: faltaban cluster_id, keywords_secundarias, local,
+ * opportunity_score y score_confidence. Un cambio SOLO en esos campos no se persistía (la fila
+ * quedaba vieja) NI revocaba la aprobación.
+ */
+test("🔴 un cambio en el score también revoca la aprobación (el WHERE estaba incompleto)", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.approvePage(ctxA(), rows[0]!.id);
+
+  await store.savePages(ctxA(), runId, clientA1, [page({ opportunity_score: 12 })]);
+
+  const { rows: after } = await pg.query<{ approved: boolean; opportunity_score: string }>(
+    "select approved, opportunity_score from kr_pages where run_id = $1",
+    [runId],
+  );
+  assert.equal(Number(after[0]!.opportunity_score), 12, "el cambio SÍ se persiste");
+  assert.equal(after[0]!.approved, false, "y revoca la aprobación: el humano aprobó otro score");
+});
+
+/**
+ * 🔴 `onFailure` PODÍA MARCAR `failed` UN RUN YA PUBLICADO.
+ *
+ * Escenario real: Storyblok publica, la respuesta se pierde, el step se reintenta y acaba fallando.
+ * `failRun()` ponía el run en `failed`… con las páginas ya visibles en internet. Un fallo del
+ * workflow no puede deshacer un hecho del mundo: solo se pisa el estado si SEGUÍA corriendo.
+ */
+test("🔴 failRun NO pisa un run ya aprobado (el fallo no deshace lo publicado)", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.approvePage(ctxA(), rows[0]!.id);
+  await store.approveRun(ctxA(), runId);
+
+  const cambio = await store.failRun(ctxA(), runId, "Storyblok devolvió 500 al reintentar");
+
+  assert.equal(cambio, false, "no se cambió el estado");
+  const run = await store.getRun(ctxA(), runId);
+  assert.equal(run?.status, "approved", "la aprobación humana sobrevive al fallo del workflow");
+});
+
+test("failRun SÍ marca failed un run que seguía corriendo", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+
+  const cambio = await store.failRun(ctxA(), runId, "Cobertura de volumen 0%");
+
+  assert.equal(cambio, true);
+  assert.equal((await store.getRun(ctxA(), runId))?.status, "failed");
+});
+
+/** Publicar es un hecho externo: queda registrado por página, con su id de story. */
+test("marcarPublicadas registra el hecho externo (story_id + cuándo)", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+
+  await store.marcarPublicadas(ctxA(), runId, [
+    { slug: "/pizza-napolitana-madrid", storyId: "story-123" },
+  ]);
+
+  const { rows } = await pg.query<{ storyblok_story_id: string; published_at: string }>(
+    "select storyblok_story_id, published_at from kr_pages where run_id = $1",
+    [runId],
+  );
+  assert.equal(rows[0]!.storyblok_story_id, "story-123");
+  assert.ok(rows[0]!.published_at, "queda la marca temporal");
 });

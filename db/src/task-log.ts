@@ -1,38 +1,58 @@
 import type { DbPool } from "./pool.js";
 
 /**
- * Registro de peticiones facturables al proveedor, sobre `kr_provider_tasks` (ADR-10).
+ * Registro de peticiones facturables al proveedor, sobre `kr_provider_tasks` (ADR-10 / ADR-14).
  *
- * Es la implementación de producción de la misma interfaz `ProviderTaskLog` que declara
- * `kr-service` — que sigue sin saber que existe una base de datos.
- *
- * ## Por qué NO lleva `tenant_id` (y por qué eso está bien)
+ * ## Por qué NO lleva `tenant_id`
  *
  * Igual que las caches: lo que se registra es una petición al MERCADO (un lote de keywords en un
  * mercado), no un dato de un cliente. El resultado se comparte entre tenants — es justo lo que hace
- * que la segunda corrida salga gratis. Por eso la tabla va **RLS deny-all** y solo la toca la
- * service-role: si estuviera expuesta a `app_user`, un tenant podría leer qué keywords investigó
- * otro. Ver `migrations/0001_init.sql`.
+ * que la segunda corrida salga gratis. Por eso la tabla va **RLS deny-all** para `app_user` y
+ * `app_service`: si estuviera expuesta, un tenant podría leer qué keywords investigó otro. Solo la
+ * toca el rol `amg_cache` (ver `0003_credenciales.sql`).
  *
- * ## El estado `pending` es el que importa
+ * ## Los cuatro estados, y por qué son cuatro
  *
- * Se escribe ANTES de enviar la petición. Si el proceso muere entre el envío y la respuesta, la
- * fila queda en `pending` sin resultado — y eso es exactamente la información que hace falta: **esa
- * petición pudo haberse cobrado sin que tengamos el dato**. El siguiente intento la ve, lo cuenta
- * como repago y lo grita, en vez de volver a pagar en silencio.
+ * La versión anterior tenía tres, y le faltaba **el que importaba**: distinguir "el proceso murió"
+ * de "el proceso está trabajando AHORA MISMO". Al no distinguirlos, dos procesos concurrentes con
+ * la misma petición **la pagaban los dos** — medido: de 2 reservas simultáneas, 2 autorizaban el
+ * POST. El test que tenía comprobaba "solo una es `nueva`", que era cierto e irrelevante: la otra
+ * salía `huerfana`, y `huerfana` también autoriza gastar.
  */
 
-/** Copia local del contrato de `kr-service` (los paquetes no se importan entre sí). */
 export type Reserva<T> =
+  /** Ya se pagó y tenemos el resultado. Gasto: cero. */
   | { estado: "listo"; result: T[] }
-  | { estado: "nueva" }
-  | { estado: "huerfana"; intento: number };
+  /** Nadie la pidió (o la anterior falló CON respuesta = no cobró). Adelante, con este token. */
+  | { estado: "nueva"; attemptId: string }
+  /**
+   * **Otro proceso la está pidiendo ahora mismo.** Su lease sigue vivo. NO se paga otra vez: se
+   * espera su resultado. Este es el estado que faltaba.
+   */
+  | { estado: "en_progreso"; leaseHasta: Date }
+  /**
+   * El lease VENCIÓ sin resultado: el proceso murió entre el envío y la respuesta. La petición pudo
+   * haberse cobrado. Reenviar es la única forma de obtener el dato, pero se cuenta como repago.
+   */
+  | { estado: "huerfana"; intento: number; attemptId: string };
 
 export const MAX_INTENTOS = 3;
+
+/**
+ * Cuánto dura el lease.
+ *
+ * Tiene que cubrir con holgura lo que tarda la petición más lenta (DataForSEO live puede tardar
+ * decenas de segundos) más los reintentos HTTP. Si se queda corto, un proceso VIVO se declara
+ * muerto y se paga dos veces — que es exactamente lo que esto viene a impedir.
+ */
+export const LEASE_MS = 120_000;
 
 interface FilaTarea {
   status: "pending" | "done" | "failed";
   attempt: number;
+  attempt_id: string;
+  lease_vivo: boolean;
+  lease_until: string | null;
   result: { v: unknown[] } | null;
 }
 
@@ -45,39 +65,49 @@ export class PgTaskLog {
   /**
    * Reserva la petición y devuelve qué sabemos de ella ANTES de gastar un centavo.
    *
-   * **Atómico de verdad**, y hace falta: con un `select` y después un `insert`, dos procesos que
-   * reserven la misma petición a la vez pueden creerse ambos los primeros y pagarla los dos. Acá el
-   * `insert ... on conflict do nothing` decide quién la creó, y el `select ... for update` bloquea
-   * la fila para que el segundo espere y vea el estado real.
+   * **Atómico**: el `insert ... on conflict do nothing` decide quién la creó y el
+   * `select ... for update` bloquea la fila, así que dos procesos no pueden creerse ambos los
+   * primeros. Con un `select` y después un `insert`, los dos pagarían.
    */
   async reservar<T>(endpoint: string, payloadHash: string): Promise<Reserva<T>> {
     return this.pool.transaction(async (tx) => {
-      const { rows: creada } = await tx.query<{ id: string }>(
-        `insert into kr_provider_tasks (provider, endpoint, payload_hash, status, attempt)
-         values ($1, $2, $3, 'pending', 1)
+      const { rows: creada } = await tx.query<{ attempt_id: string }>(
+        `insert into kr_provider_tasks
+           (provider, endpoint, payload_hash, status, attempt, lease_until)
+         values ($1, $2, $3, 'pending', 1, now() + ($4 || ' milliseconds')::interval)
          on conflict (provider, endpoint, payload_hash) do nothing
-         returning id`,
-        [this.provider, endpoint, payloadHash],
+         returning attempt_id`,
+        [this.provider, endpoint, payloadHash, String(LEASE_MS)],
       );
-      if (creada[0]) return { estado: "nueva" as const }; // la creé yo: nadie la pidió antes
+      if (creada[0]) return { estado: "nueva" as const, attemptId: creada[0].attempt_id };
 
-      // Ya existía. Se bloquea la fila: si otro proceso está decidiendo sobre ella, esperamos.
       const { rows } = await tx.query<FilaTarea>(
-        `select status, attempt, result from kr_provider_tasks
+        `select status, attempt, attempt_id, result, lease_until,
+                (lease_until is not null and lease_until > now()) as lease_vivo
+         from kr_provider_tasks
          where provider = $1 and endpoint = $2 and payload_hash = $3
          for update`,
         [this.provider, endpoint, payloadHash],
       );
       const f = rows[0];
-      if (!f) return { estado: "nueva" as const }; // carrera con un borrado: tratarla como nueva
+      if (!f) return { estado: "nueva" as const, attemptId: crypto.randomUUID() };
 
-      // Ya se pagó y tenemos el resultado. Gasto: cero.
       if (f.status === "done") {
         return { estado: "listo" as const, result: (f.result?.v ?? []) as T[] };
       }
 
+      if (f.status === "pending" && f.lease_vivo) {
+        /*
+         * OTRO PROCESO LA ESTÁ PIDIENDO AHORA. Su lease sigue vivo.
+         *
+         * Antes esto caía en "huérfana" y el segundo proceso salía a pagar la misma petición. Es el
+         * doble cobro que estaba midiendo mal.
+         */
+        return { estado: "en_progreso" as const, leaseHasta: new Date(f.lease_until!) };
+      }
+
       if (f.status === "pending") {
-        // Se envió y NUNCA volvió. Pudo cobrarse. Reenviar es la única forma de obtener el dato.
+        // El lease VENCIÓ sin resultado: el proceso murió. Pudo cobrarse.
         const intento = f.attempt + 1;
         if (intento > MAX_INTENTOS) {
           throw new Error(
@@ -85,40 +115,79 @@ export class PgTaskLog {
               `más: cada intento puede estar cobrando. Revisá el saldo en DataForSEO.`,
           );
         }
-        await tx.query(
-          `update kr_provider_tasks set attempt = $4
-           where provider = $1 and endpoint = $2 and payload_hash = $3`,
-          [this.provider, endpoint, payloadHash, intento],
+        const { rows: r } = await tx.query<{ attempt_id: string }>(
+          `update kr_provider_tasks set
+             attempt = $4,
+             attempt_id = gen_random_uuid(),
+             lease_until = now() + ($5 || ' milliseconds')::interval
+           where provider = $1 and endpoint = $2 and payload_hash = $3
+           returning attempt_id`,
+          [this.provider, endpoint, payloadHash, intento, String(LEASE_MS)],
         );
-        return { estado: "huerfana" as const, intento };
+        return { estado: "huerfana" as const, intento, attemptId: r[0]!.attempt_id };
       }
 
-      // `failed`: hubo respuesta y el proveedor dijo que la task falló → NO cobró. Reintentar es
-      // seguro, así que vuelve a arrancar como nueva.
-      await tx.query(
-        `update kr_provider_tasks set status = 'pending', attempt = $4, result = null, completed_at = null
-         where provider = $1 and endpoint = $2 and payload_hash = $3`,
-        [this.provider, endpoint, payloadHash, f.attempt + 1],
+      // `failed`: hubo respuesta y el proveedor dijo que la task falló → NO cobró. Arranca limpia.
+      const { rows: r } = await tx.query<{ attempt_id: string }>(
+        `update kr_provider_tasks set
+           status = 'pending',
+           attempt = $4,
+           attempt_id = gen_random_uuid(),
+           lease_until = now() + ($5 || ' milliseconds')::interval,
+           result = null,
+           completed_at = null
+         where provider = $1 and endpoint = $2 and payload_hash = $3
+         returning attempt_id`,
+        [this.provider, endpoint, payloadHash, f.attempt + 1, String(LEASE_MS)],
       );
-      return { estado: "nueva" as const };
+      return { estado: "nueva" as const, attemptId: r[0]!.attempt_id };
     });
   }
 
-  /** Llegó el resultado. Se guarda con su costo: la tabla es también la auditoría del gasto. */
+  /** Lee el estado actual sin reservar nada. Lo usa quien espera a que otro proceso termine. */
+  async consultar<T>(endpoint: string, payloadHash: string): Promise<Reserva<T> | null> {
+    return this.pool.transaction(async (tx) => {
+      const { rows } = await tx.query<FilaTarea>(
+        `select status, attempt, attempt_id, result, lease_until,
+                (lease_until is not null and lease_until > now()) as lease_vivo
+         from kr_provider_tasks
+         where provider = $1 and endpoint = $2 and payload_hash = $3`,
+        [this.provider, endpoint, payloadHash],
+      );
+      const f = rows[0];
+      if (!f) return null;
+      if (f.status === "done") return { estado: "listo", result: (f.result?.v ?? []) as T[] };
+      if (f.status === "pending" && f.lease_vivo) {
+        return { estado: "en_progreso", leaseHasta: new Date(f.lease_until!) };
+      }
+      return null; // failed, o lease vencido: quien espera tiene que volver a reservar
+    });
+  }
+
+  /**
+   * Llegó el resultado. **CAS por `attempt_id`.**
+   *
+   * Sin el CAS, una respuesta TARDÍA del intento 1 (que creíamos muerto) pisaba el resultado del
+   * intento 2. Devuelve `false` si el lease ya no era nuestro: el resultado no se escribe, y el
+   * llamador se entera en vez de creer que guardó algo.
+   */
   async completar<T>(
     endpoint: string,
     payloadHash: string,
-    datos: { result: T[]; costMicros: number; taskId?: string | undefined },
-  ): Promise<void> {
-    await this.pool.transaction(async (tx) => {
-      await tx.query(
+    datos: { result: T[]; costMicros: number; attemptId: string; taskId?: string | undefined },
+  ): Promise<boolean> {
+    return this.pool.transaction(async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
         `update kr_provider_tasks set
            status = 'done',
            result = $4::jsonb,
-           cost_micros_usd = $5,
+           cost_micros_usd = cost_micros_usd + $5,
            provider_task_id = $6,
+           lease_until = null,
            completed_at = now()
-         where provider = $1 and endpoint = $2 and payload_hash = $3`,
+         where provider = $1 and endpoint = $2 and payload_hash = $3
+           and attempt_id = $7 and status = 'pending'
+         returning id`,
         [
           this.provider,
           endpoint,
@@ -127,37 +196,50 @@ export class PgTaskLog {
           JSON.stringify({ v: datos.result }),
           datos.costMicros,
           datos.taskId ?? null,
+          datos.attemptId,
         ],
       );
+      return rows.length > 0;
     });
   }
 
   /**
-   * Hubo respuesta y la task falló → el proveedor NO cobró, y lo sabemos porque nos lo dijo.
-   * Se marca `failed` para que el próximo intento arranque limpio (reintentar es seguro).
+   * Hubo respuesta y la task falló SIN cobrar. Se marca `failed` → el próximo intento arranca
+   * limpio.
    *
    * Un timeout NO llega acá **a propósito**: sin respuesta no sabemos si cobró, así que la fila se
-   * queda en `pending`. Marcarla `failed` sería afirmar que no cobró sin tener ni idea.
+   * queda en `pending` con su lease. Marcarla `failed` sería afirmar que no cobró sin tener ni idea.
    */
-  async fallar(endpoint: string, payloadHash: string, _error: string): Promise<void> {
-    await this.pool.transaction(async (tx) => {
-      await tx.query(
-        `update kr_provider_tasks set status = 'failed', result = null, completed_at = now()
-         where provider = $1 and endpoint = $2 and payload_hash = $3`,
-        [this.provider, endpoint, payloadHash],
+  async fallar(
+    endpoint: string,
+    payloadHash: string,
+    _error: string,
+    attemptId: string,
+  ): Promise<boolean> {
+    return this.pool.transaction(async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update kr_provider_tasks set
+           status = 'failed', result = null, lease_until = null, completed_at = now()
+         where provider = $1 and endpoint = $2 and payload_hash = $3
+           and attempt_id = $4 and status = 'pending'
+         returning id`,
+        [this.provider, endpoint, payloadHash, attemptId],
       );
+      return rows.length > 0;
     });
   }
 
   /**
-   * Peticiones que se enviaron y NUNCA volvieron: dinero que puede haberse gastado sin obtener el
-   * dato. Es la lista que hay que mirar si el saldo de DataForSEO no cuadra.
+   * Peticiones que se enviaron y cuyo lease venció sin resultado: **dinero que puede haberse gastado
+   * sin obtener el dato**. Es la lista que hay que mirar si el saldo de DataForSEO no cuadra.
    */
   async huerfanas(): Promise<Array<{ endpoint: string; attempt: number; created_at: string }>> {
     return this.pool.transaction(async (tx) => {
       const { rows } = await tx.query<{ endpoint: string; attempt: number; created_at: string }>(
         `select endpoint, attempt, created_at from kr_provider_tasks
-         where provider = $1 and status = 'pending' order by created_at desc`,
+         where provider = $1 and status = 'pending'
+           and (lease_until is null or lease_until <= now())
+         order by created_at desc`,
         [this.provider],
       );
       return rows;

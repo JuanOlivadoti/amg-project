@@ -45,8 +45,13 @@ test("la misma petición no se paga dos veces", async () => {
   const log = new MemTaskLog();
   const h = payloadHash("dfs:prod", EP, { keywords: ["pizza"] });
 
-  assert.deepEqual(await log.reservar(EP, h), { estado: "nueva" });
-  await log.completar(EP, h, { result: [{ kd: 15 }], costMicros: 56_000 });
+  const r0 = await log.reservar(EP, h);
+  assert.equal(r0.estado, "nueva");
+  await log.completar(EP, h, {
+    result: [{ kd: 15 }],
+    costMicros: 56_000,
+    attemptId: r0.estado === "nueva" ? r0.attemptId : "",
+  });
 
   const r = await log.reservar<{ kd: number }>(EP, h);
   assert.equal(r.estado, "listo", "la segunda vez sale del registro, no de la API");
@@ -61,10 +66,10 @@ test("🔴 un fallo CON respuesta se reintenta limpio (el proveedor no cobró)",
   const log = new MemTaskLog();
   const h = payloadHash("dfs:prod", EP, { keywords: ["pizza"] });
 
-  await log.reservar(EP, h);
-  await log.fallar(EP, h, "40501 internal error");
+  const r0 = await log.reservar(EP, h);
+  await log.fallar(EP, h, "40501 internal error", r0.estado === "nueva" ? r0.attemptId : "");
 
-  assert.deepEqual(await log.reservar(EP, h), { estado: "nueva" }, "no es repago: no cobró");
+  assert.equal((await log.reservar(EP, h)).estado, "nueva", "no es repago: no cobró");
 });
 
 /**
@@ -72,15 +77,30 @@ test("🔴 un fallo CON respuesta se reintenta limpio (el proveedor no cobró)",
  * ejecutarse y cobrarse, y no hay forma de saberlo desde acá. La reserva queda en `pending` y el
  * siguiente intento TIENE que enterarse — antes volvía a pagar en silencio.
  */
-test("🔴 una petición SIN respuesta queda huérfana: el reintento sabe que puede estar repagando", async () => {
+test("🔴 el proceso murió (lease vencido) → huérfana: el reintento sabe que puede estar repagando", async () => {
   const log = new MemTaskLog();
   const h = payloadHash("dfs:prod", EP, { keywords: ["pizza"] });
 
   await log.reservar(EP, h); // …y el proceso muere. Ni completar() ni fallar().
+  log.vencerLeases();
 
   const r = await log.reservar(EP, h);
   assert.equal(r.estado, "huerfana");
   assert.equal(r.estado === "huerfana" ? r.intento : 0, 2);
+});
+
+/**
+ * 🔴 Mientras el otro proceso SIGUE VIVO, no se paga otra vez: se espera. Este estado no existía, y
+ * su ausencia era el doble cobro — la segunda reserva salía "huerfana", que autoriza gastar.
+ */
+test("🔴 si otro proceso la está pidiendo AHORA, no se paga otra vez: se espera", async () => {
+  const log = new MemTaskLog();
+  const h = payloadHash("dfs:prod", EP, { keywords: ["pizza"] });
+
+  await log.reservar(EP, h);          // proceso A: lease VIVO
+  const b = await log.reservar(EP, h); // proceso B, concurrente
+
+  assert.equal(b.estado, "en_progreso", "B espera a A; si saliera huerfana, pagaría de nuevo");
 });
 
 test("🔴 no se reenvía para siempre: cada intento sin respuesta puede estar cobrando", async () => {
@@ -88,7 +108,11 @@ test("🔴 no se reenvía para siempre: cada intento sin respuesta puede estar c
   const h = payloadHash("dfs:prod", EP, { keywords: ["pizza"] });
 
   await log.reservar(EP, h);
-  for (let i = 2; i <= MAX_INTENTOS; i++) await log.reservar(EP, h);
+  for (let i = 2; i <= MAX_INTENTOS; i++) {
+    log.vencerLeases();
+    await log.reservar(EP, h);
+  }
 
+  log.vencerLeases();
   await assert.rejects(() => log.reservar(EP, h), /puede estar cobrando/i);
 });

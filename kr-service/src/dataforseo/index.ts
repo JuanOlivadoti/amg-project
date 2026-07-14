@@ -3,6 +3,7 @@ import { LiveProvider } from "./live-provider.js";
 import { MockProvider } from "./mock-provider.js";
 import { CachedProvider } from "./cached-provider.js";
 import { FileCache } from "./cache.js";
+import type { KeywordCache } from "./cache.js";
 import type { KeywordDataProvider } from "./provider.js";
 import type { ProviderTaskLog } from "./task-log.js";
 
@@ -12,7 +13,16 @@ import type { ProviderTaskLog } from "./task-log.js";
  * La cache SOLO envuelve al provider live: cachear el mock no ahorra nada (es determinista y
  * gratis) y ensuciaría el loop de desarrollo sirviendo datos viejos cuando se toca el propio mock.
  */
-export function getProvider(taskLog?: ProviderTaskLog): KeywordDataProvider {
+/**
+ * @param cache  La cache a usar. Si no se inyecta, cae en `FileCache` (un archivo JSON local).
+ *
+ * Inyectarla NO es un lujo: `PgKeywordCache` existía, tenía tests, y **no la usaba nadie** — el
+ * pipeline seguía clavado a `FileCache`. En un despliegue con varias instancias eso significa que
+ * cada proceso paga sus propios misses (la cache no se comparte) y que dos procesos escribiendo el
+ * mismo archivo se pisan las entradas. La cache de Postgres es lo que hace que la 2ª corrida de
+ * CUALQUIER cliente del mismo vertical salga gratis; en un archivo local, ese ahorro no existe.
+ */
+export function getProvider(taskLog?: ProviderTaskLog, cache?: KeywordCache): KeywordDataProvider {
   if (config.dataforseo.mode !== "live") return new MockProvider();
 
   const live = new LiveProvider(taskLog);
@@ -34,7 +44,7 @@ export function getProvider(taskLog?: ProviderTaskLog): KeywordDataProvider {
 
   // Defensa en profundidad: aunque acá ya no se cachea el sandbox, las claves llevan el entorno
   // igual. Si alguien reactiva la cache del sandbox, los datos no se van a mezclar.
-  return new CachedProvider(live, new FileCache(config.cache.path), cacheNamespace());
+  return new CachedProvider(live, cache ?? new FileCache(config.cache.path), cacheNamespace());
 }
 
 /**

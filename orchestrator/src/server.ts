@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { serve } from "inngest/node";
-import { crearDeps, crearPool } from "./deps.js";
+import { crearDeps, crearConexiones } from "./deps.js";
 import { crearFuncionResearch, inngest } from "./functions.js";
 
 /**
@@ -13,8 +13,8 @@ import { crearFuncionResearch, inngest } from "./functions.js";
  */
 const PUERTO = Number(process.env["PORT"] ?? 3100);
 
-const { pool, cerrar } = await crearPool();
-const deps = crearDeps(pool);
+const cx = await crearConexiones();
+const deps = crearDeps(cx);
 const funciones = [crearFuncionResearch(deps)];
 
 const handler = serve({ client: inngest, functions: funciones });
@@ -34,7 +34,7 @@ server.listen(PUERTO, () => {
 
 const apagar = async () => {
   server.close();
-  await cerrar();
+  await cx.cerrar();
   process.exit(0);
 };
 process.on("SIGINT", apagar);

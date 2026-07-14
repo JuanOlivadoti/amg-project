@@ -5,6 +5,7 @@ import { CostMeter, currentMeter, usdFromMicros, withCostMeter } from "../lib/co
 import { Budget, BudgetExceededError, estimateEnrichment } from "../lib/budget.js";
 import { CachedProvider, getProvider } from "../dataforseo/index.js";
 import type { ProviderTaskLog } from "../dataforseo/task-log.js";
+import type { KeywordCache } from "../dataforseo/cache.js";
 import { getEmbedder } from "../llm/index.js";
 import { generateSeeds } from "../llm/seeds.js";
 import { WEIGHTS_DEFAULT } from "../types.js";
@@ -66,6 +67,12 @@ export type DatasetCheckpoint = (d: ResearchDataset) => void | Promise<void>;
 export interface RunDeps {
   /** Registro de idempotencia de las peticiones FACTURABLES. Ver `dataforseo/task-log.ts`. */
   taskLog?: ProviderTaskLog;
+  /**
+   * La cache de respuestas del proveedor. Sin inyectar, cae en un archivo JSON local — que en un
+   * despliegue con varias instancias no se comparte y se corrompe por escrituras concurrentes.
+   * El orquestador inyecta la de Postgres, que SÍ se comparte entre todos los clientes.
+   */
+  cache?: KeywordCache;
 }
 
 /**
@@ -96,7 +103,7 @@ async function runResearchInner(
   // idiomas quedaban atados al 0.75 calibrado con UN dataset (restaurante en Madrid). Sigue siendo
   // el default, pero ahora se puede ajustar por run y queda registrado en el dataset.
   const simThreshold = input.options?.sim_threshold ?? CLUSTER_SIM_THRESHOLD_DEFAULT;
-  const dfs = getProvider(deps.taskLog);
+  const dfs = getProvider(deps.taskLog, deps.cache);
   const runId = randomUUID();
   const generatedAt = new Date().toISOString();
 
