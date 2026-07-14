@@ -1,7 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { aplicarMigraciones } from "./migrate.js";
 
 /**
  * Postgres REAL para los tests, sin Docker ni cuenta: PGlite es Postgres compilado a WASM y corre
@@ -13,14 +11,18 @@ import { PGlite } from "@electric-sql/pglite";
  * Postgres—, y exigir Docker rompería el principio de que todo el proyecto corre sin instalar nada.
  */
 
-const here = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS = join(here, "..", "migrations");
-
-/** Identidad de la petición. Es lo que las políticas RLS leen (vía las funciones de `app`). */
+/**
+ * Identidad de la petición. Lo que las políticas leen (vía las funciones de `app`).
+ *
+ * **No hay rol acá.** Desde `0002_auth.sql`, el rol se DERIVA de `memberships`: quien llama dice
+ * quién es, no qué puede hacer. Que este tipo ya no tenga dónde poner un rol no es cosmética — es
+ * la garantía, en el tipo, de que ningún test (ni ningún caller) pueda declararse `maestro`.
+ */
 export interface RequestContext {
   tenantId?: string | null;
-  role?: "maestro" | "equipo" | "cliente" | null;
-  clientId?: string | null;
+  userId?: string | null;
+  /** El proceso del backend: se conecta como `app_service`, no suplanta a nadie. */
+  servicio?: boolean;
 }
 
 export class TestDb {
@@ -28,8 +30,7 @@ export class TestDb {
 
   static async create(): Promise<TestDb> {
     const pg = new PGlite();
-    const sql = await readFile(join(MIGRATIONS, "0001_init.sql"), "utf8");
-    await pg.exec(sql);
+    await aplicarMigraciones(pg);
     return new TestDb(pg);
   }
 
@@ -48,9 +49,8 @@ export class TestDb {
     await this.pg.exec("begin");
     try {
       await this.pg.query("select set_config('app.tenant_id', $1, true)", [ctx.tenantId ?? ""]);
-      await this.pg.query("select set_config('app.role', $1, true)", [ctx.role ?? ""]);
-      await this.pg.query("select set_config('app.client_id', $1, true)", [ctx.clientId ?? ""]);
-      await this.pg.exec("set local role app_user");
+      await this.pg.query("select set_config('app.user_id', $1, true)", [ctx.userId ?? ""]);
+      await this.pg.exec(ctx.servicio ? "set local role app_service" : "set local role app_user");
 
       const res = await this.pg.query<T>(sql, params);
       await this.pg.exec("rollback"); // los tests no se ensucian entre sí
@@ -61,7 +61,12 @@ export class TestDb {
     }
   }
 
-  /** Query como service-role (salta RLS). Es como el backend siembra datos y toca las caches. */
+  /**
+   * Query como service-role de INFRAESTRUCTURA (superusuario: salta RLS).
+   *
+   * Ojo con no confundirla con `app_service`: esta es la que corre migraciones y siembra datos.
+   * `app_service` (el orquestador) SÍ está sujeto a RLS.
+   */
   async asService<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
     const res = await this.pg.query<T>(sql, params);
     return res.rows;
@@ -69,6 +74,18 @@ export class TestDb {
 
   async exec(sql: string): Promise<void> {
     await this.pg.exec(sql);
+  }
+
+  /**
+   * Query cruda en la conexión actual, respetando el estado que haya (transacción abierta, `set
+   * local role`, GUCs seteados a mano).
+   *
+   * Existe para UN caso: montar a mano el contexto exacto del ataque —incluido setear `app.role`,
+   * el GUC que ya nadie lee— y comprobar que no sirve de nada.
+   */
+  async queryEnTx<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+    const res = await this.pg.query<T>(sql, params);
+    return res.rows;
   }
 
   async close(): Promise<void> {
@@ -85,6 +102,13 @@ export interface Seed {
   clientB1: string;
   runA1: string;
   runB1: string;
+  /** Usuarios CON membresía. El rol sale de acá, no de lo que diga el que llama. */
+  equipoA: string;
+  equipoB: string;
+  /** Dueño del negocio A1: rol `cliente`, atado a SU cliente. */
+  duenoA1: string;
+  /** Un usuario sin ninguna membresía: no debe ver absolutamente nada. */
+  intruso: string;
 }
 
 export async function seed(db: TestDb): Promise<Seed> {
@@ -108,9 +132,26 @@ export async function seed(db: TestDb): Promise<Seed> {
   const clientA2 = await mkClient(tenantA, "Bar Pepe");
   const clientB1 = await mkClient(tenantB, "Sushi Zen");
 
+  const mkMembresia = async (tenantId: string, rol: string, clientId: string | null) => {
+    const [m] = await db.asService<{ user_id: string }>(
+      `insert into memberships (tenant_id, user_id, rol, client_id)
+       values ($1, gen_random_uuid(), $2::user_role, $3) returning user_id`,
+      [tenantId, rol, clientId],
+    );
+    return m!.user_id;
+  };
+
+  const equipoA = await mkMembresia(tenantA, "equipo", null);
+  const equipoB = await mkMembresia(tenantB, "equipo", null);
+  const duenoA1 = await mkMembresia(tenantA, "cliente", clientA1);
+
+  const [i] = await db.asService<{ id: string }>("select gen_random_uuid() as id");
+  const intruso = i!.id; // existe como uuid, pero NO tiene membresía en ningún lado
+
   const mkRun = async (tenantId: string, clientId: string) => {
     const [r] = await db.asService<{ id: string }>(
-      `insert into kr_runs (tenant_id, client_id, schema_version, prompt, market_country, market_language, market_location_code)
+      `insert into kr_runs (tenant_id, client_id, schema_version, prompt, market_country,
+                            market_language, market_location_code)
        values ($1, $2, 'kr.v0.5', 'prompt de prueba', 'ES', 'es', 2724) returning id`,
       [tenantId, clientId],
     );
@@ -120,5 +161,17 @@ export async function seed(db: TestDb): Promise<Seed> {
   const runA1 = await mkRun(tenantA, clientA1);
   const runB1 = await mkRun(tenantB, clientB1);
 
-  return { tenantA, tenantB, clientA1, clientA2, clientB1, runA1, runB1 };
+  return {
+    tenantA,
+    tenantB,
+    clientA1,
+    clientA2,
+    clientB1,
+    runA1,
+    runB1,
+    equipoA,
+    equipoB,
+    duenoA1,
+    intruso,
+  };
 }

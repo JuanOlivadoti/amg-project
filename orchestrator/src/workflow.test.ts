@@ -5,8 +5,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { PgStore } from "db";
-import { PglitePool } from "db";
+import { PgStore, PglitePool, aplicarMigraciones } from "db";
 import type { PageRow, TenantContext } from "db";
 import { workflowResearch } from "./workflow.js";
 import type { BriefDelPipeline, Deps, Pasos } from "./workflow.js";
@@ -29,6 +28,9 @@ let tenantA: string;
 let tenantB: string;
 let clientA: string;
 let clientB: string;
+/** Humanos con membresía REAL: su rol lo deriva Postgres, ya no se declara (0002_auth.sql). */
+let equipoA: string;
+let equipoB: string;
 
 // ---------------------------------------------------------------- dobles
 
@@ -170,13 +172,13 @@ const entrada = (tenantId: string, clientId: string) => ({
 });
 
 /** El humano del portal (equipo), no el orquestador. Es quien tiene permiso de aprobar. */
-const humano = (tenantId: string): TenantContext => ({ tenantId, role: "equipo" });
+const humano = (tenantId: string): TenantContext => ({ tenantId, userId: tenantId === tenantA ? equipoA : equipoB });
 
 // ---------------------------------------------------------------- setup
 
 before(async () => {
   pg = new PGlite();
-  await pg.exec(await readFile(join(aqui, "..", "..", "db", "migrations", "0001_init.sql"), "utf8"));
+  await aplicarMigraciones(pg);
   store = new PgStore(new PglitePool(pg));
 });
 
@@ -185,7 +187,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await pg.exec("delete from kr_runs; delete from clients; delete from tenants;");
+  await pg.exec("delete from kr_runs; delete from memberships; delete from clients; delete from tenants;");
   const { rows: t } = await pg.query<{ id: string }>(
     "insert into tenants (nombre, slug) values ('A', 'a'), ('B', 'b') returning id",
   );
@@ -201,6 +203,17 @@ beforeEach(async () => {
   };
   clientA = await mk(tenantA, "Trattoria");
   clientB = await mk(tenantB, "Sushi Zen");
+
+  const mkMiembro = async (tid: string) => {
+    const { rows } = await pg.query<{ user_id: string }>(
+      `insert into memberships (tenant_id, user_id, rol) values ($1, gen_random_uuid(), 'equipo')
+       returning user_id`,
+      [tid],
+    );
+    return rows[0]!.user_id;
+  };
+  equipoA = await mkMiembro(tenantA);
+  equipoB = await mkMiembro(tenantB);
 });
 
 /**

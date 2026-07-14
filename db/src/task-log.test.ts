@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { aplicarMigraciones } from "./migrate.js";
 import { PglitePool } from "./pool.js";
 import { PgTaskLog, MAX_INTENTOS } from "./task-log.js";
 
@@ -25,7 +26,7 @@ const HASH = "a".repeat(64);
 
 before(async () => {
   pg = new PGlite();
-  await pg.exec(await readFile(join(aqui, "..", "migrations", "0001_init.sql"), "utf8"));
+  await aplicarMigraciones(pg);
   log = new PgTaskLog(new PglitePool(pg));
 });
 

@@ -8,7 +8,7 @@
 | # | Decisión | Estado |
 |---|---|---|
 | ADR-01 | Núcleo de datos + identidad: **Supabase** | Aceptada |
-| ADR-02 | Frontend: **Next.js + TypeScript + Tailwind + shadcn/ui** | Aceptada |
+| ADR-02 | Frontend: **Next.js + TypeScript + Tailwind + shadcn/ui** | ⚠️ Reemplazada por **ADR-16** |
 | ADR-03 | Orquestación: **Inngest** en código, n8n solo como glue | Aceptada |
 | ADR-04 | CMS del Módulo 1 (Creador de Webs): **Storyblok** | Aceptada (a confirmar por flujo de edición) |
 | ADR-05 | Motor de datos del Módulo 2 (Keyword Research): **DataForSEO** | Aceptada |
@@ -18,8 +18,13 @@
 | ADR-09 | LLM: **proveedor abstracto** (OpenAI/Anthropic); embeddings OpenAI | Aceptada |
 | ADR-10 | Endurecimiento del esquema del Módulo 2 (post-review) | Aceptada |
 | ADR-11 | Política de salida/offboarding de webs de cliente | Aceptada |
+| ADR-12 | Orquestador durable (Inngest): el evento dispara, la base decide | Aceptada |
+| ADR-13 | El acceso a la base es SOLO por transacción con conexión reservada | Aceptada |
+| ADR-14 | Idempotencia por `payload_hash`, **no** método Standard de DataForSEO | Aceptada |
+| ADR-15 | El rol no se declara: se deriva de `memberships` | Aceptada (cierra OBS-02) |
+| ADR-16 | Portal en **Angular + Tailwind** (reemplaza ADR-02) | Aceptada |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | Abierta — riesgo |
-| OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | Abierta — riesgo de seguridad |
+| OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 
 ---
 
@@ -29,10 +34,11 @@
 **Alternativas descartadas.** Ensamblar servicios separados (Auth0 + RDS + Pinecone + S3 + Pusher): más piezas, más costo, más integración.
 **Justificación.** Un solo Postgres resuelve 5 requisitos a la vez → menor costo de desarrollo y presupuesto por fases defendible frente al cliente. Aislamiento vía RLS por `tenant_id`.
 
-## ADR-02 — Frontend: Next.js + TypeScript + Tailwind + shadcn/ui
+## ADR-02 — Frontend: Next.js + TypeScript + Tailwind + shadcn/ui ⚠️ REEMPLAZADA POR ADR-16
 **Contexto.** El PRD pide SPA responsive, portal de cliente, tablero tipo Trello, mensajería y dashboards.
 **Decisión.** Next.js (App Router) + TypeScript + Tailwind + shadcn/ui; `@supabase/ssr` para sesión y RLS desde el cliente.
 **Justificación.** SSR/RSC donde importa SEO (portal), componentes rápidos sin licencias de UI, un solo lenguaje de punta a punta.
+**Por qué se reemplazó.** La premisa era que *un mismo frontend* renderizara el portal **y las webs públicas de cliente**. Al acotar el alcance al **portal interno** (privado, autenticado, sin SEO), todas las ventajas de Next en este proyecto se quedaron del lado de las webs de cliente — que hoy salen como HTML estático + Storyblok, mejor para SEO que cualquier framework. Ver **ADR-16**.
 
 ## ADR-03 — Orquestación en código (Inngest/Trigger.dev); n8n solo como glue
 **Contexto.** El PRD proponía **n8n como "motor de automatización" de todo**. Al revisarlo: el proyecto tiene multi-tenancy, compuerta de aprobación humana (pausar→esperar→reanudar), orquestación de agentes con RAG y exigencia de trazabilidad de IA.
@@ -212,12 +218,81 @@ mirar si el saldo de DataForSEO no cuadra.
 
 ---
 
+## ADR-15 — El rol no se declara: se deriva de `memberships` (cierra OBS-02)
+
+**Contexto.** Las políticas RLS leían el rol y el `client_id` del contexto que ponía la aplicación.
+Era aceptable mientras el único caller fuese backend de confianza (el CLI, el orquestador): ningún
+usuario final podía influirlo. **El portal rompe esa premisa.** En cuanto hay un endpoint HTTP con
+una persona del otro lado, un rol declarado por quien llama es una escalada de privilegios servida
+en bandeja: basta con mandar `role: "maestro"`. La tabla `memberships` existía con los datos
+correctos y **no participaba en ninguna decisión de autorización**.
+
+**Decisión.** `app.current_role()` y `app.current_client_id()` **derivan de una membresía real**
+dentro de Postgres. El GUC `app.role` ya no lo lee nadie. La petición solo dice **quién eres**
+(`app.user_id`, que la API pone tras verificar el JWT); **qué puedes hacer** lo decide la base.
+
+**El rédito cobrado: NO se tocó ni una política.** Siempre llamaron a estas funciones en vez de leer
+la variable de sesión, precisamente para que este cambio fuera posible sin reescribirlas.
+
+**Consecuencias:**
+
+- Reclamar un `tenant_id` ajeno **no sirve de nada**: no hay membresía allí → no hay rol → no hay
+  acceso. La comprobación de pertenencia sale gratis, de la misma consulta.
+- El `TenantContext` de TypeScript **ya no tiene dónde poner un rol**. No es cosmética: es la
+  garantía, en el tipo, de que ningún caller futuro pueda declararse `maestro`.
+- **El orquestador no usa membresías.** Es un proceso, no una persona: se conecta como el rol de
+  Postgres `app_service`. Su autoridad es una **credencial de base de datos**, no un campo en una
+  petición — y eso sí es una autoridad: para falsificarla hace falta la contraseña de Postgres, y
+  quien la tiene ya ganó. No hay nadie a quien suplantar, así que no hace falta provisionar nada.
+- Lo que la API **sí** afirma es la identidad (`app.user_id`), y es legítimo porque acaba de validar
+  el token contra la clave pública del emisor. Lo que ya **no** puede afirmar es qué puede hacer esa
+  identidad.
+
+Verificado por mutación: si la función vuelve a aceptar el rol declarado (aunque sea como respaldo),
+un usuario **sin ninguna membresía** que se declara `maestro` entra — y solo ese test cae.
+
+---
+
+## ADR-16 — Portal en Angular + Tailwind (reemplaza ADR-02)
+
+**Contexto.** ADR-02 eligió Next.js asumiendo que el mismo frontend renderizaría el portal **y las
+webs públicas de cliente**. El alcance se acotó: lo que se construye es **solo el portal interno** —
+donde el equipo lanza research, revisa el brief y **aprueba la compuerta** (ADR-06), que hoy se hace
+editando un JSON a mano.
+
+**Decisión.** **Angular + Tailwind, mobile-first.** Las webs de cliente siguen saliendo como HTML
+estático + Storyblok (ADR-04), que para SEO es mejor que cualquier framework de aplicación.
+
+**Justificación.**
+- El portal es un **SPA autenticado y privado**: SSR, RSC y SEO —todo lo que justificaba Next— no
+  aportan nada acá.
+- **Quien lo mantiene es Juan, y su soltura está en Angular.** En una decisión sin ventaja técnica
+  clara, la fluidez de quien mantiene el código es el factor decisivo, no la moda del framework.
+- Lo único que se pierde es **shadcn/ui** (es React). Hay puerto para Angular (*Spartan UI*), y
+  Angular Material / PrimeNG hacen el trabajo. Nada arquitectónico.
+
+**Consecuencia que resuelve un problema, no que lo crea.** Angular no puede servir las funciones de
+Inngest desde una API route, así que el orquestador **tiene que ser un servicio Node propio y de
+larga duración**. Eso es justo lo que hacía falta: el research encadena llamadas live a DataForSEO y
+generación por LLM (minutos), y **no habría entrado en el timeout de una función serverless de
+Vercel** (60-300 s). Elegir Angular elimina el riesgo en vez de administrarlo.
+
+**Pieza nueva.** Un SPA necesita una **API HTTP** (hoy el único caller es el CLI). Es exactamente la
+ruta que hacía real el riesgo de OBS-02 — por eso se cerró **antes** de construirla (ADR-15): ese
+endpoint no puede aceptar el rol que le mande el navegador.
+
+**Sin medir.** No sé **cuánto tarda** un research real: tengo el coste ($0.31), nunca la duración.
+Ya no bloquea el diseño, pero define la UX del portal (¿el usuario espera o se va y vuelve?). Se
+mide en la primera corrida real.
+
+---
+
 ## OBS-01 — Solapamiento de alcance entre los dos documentos (riesgo, no decisión)
 **Observación.** `contexto-proyecto-frank.md` describe "Frank, cliente de la agencia" con 4 módulos; `A_PRD_AMG_Madrid_v1_Ilustrado.md` tiene sponsor "Franco · CEO" con 5 agentes y prioridades distintas. **Frank ≈ Franco es casi con seguridad la misma persona/proyecto**, con framings que no cierran (p. ej. el Creador de Webs es "Módulo 1 avanzado" en un doc y "web-por-prompt diferido a I+D / O10" en el otro).
 **Riesgo.** Presupuestar o presentar dos alcances incompatibles al mismo cliente.
 **Acción pendiente.** Unificar en un **único alcance coherente por fases** antes de consolidar la propuesta comercial. Confirmar con Juan el estado real del Creador de Webs.
 
-## OBS-02 — El rol y el `client_id` los declara el caller, no `memberships` (riesgo abierto)
+## OBS-02 — El rol y el `client_id` los declara el caller ✅ RESUELTA (ver ADR-15)
 
 **Contexto.** Las políticas RLS leen el rol y el cliente del contexto de la petición
 (`app.current_role()`, `app.current_client_id()`), que hoy **pone la aplicación** al abrir la

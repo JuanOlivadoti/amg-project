@@ -22,21 +22,35 @@ import type { DbPool, Tx } from "./pool.js";
  * brecha esperando un pool.
  */
 
-export interface TenantContext {
-  tenantId: string;
-  /**
-   * `servicio` = los jobs del backend (el orquestador). Escriben resultados del research pero no
-   * son una persona: se separan para no darle privilegios de `maestro` a un proceso.
-   * `cliente` = el dueño del negocio en el portal. Es de SOLO LECTURA y solo ve lo suyo.
-   *
-   * ⚠️ Hoy este contexto lo pone la aplicación. Es aceptable mientras el único caller sea backend de
-   * confianza, pero NO es una autoridad: la fuente de verdad debe ser `memberships`. Al integrar
-   * Supabase Auth hay que derivarlo de `auth.uid()` dentro de las funciones de `app`. Ver OBS-02.
-   */
-  role: "maestro" | "equipo" | "cliente" | "servicio";
-  clientId?: string | null;
-  userId?: string | null;
-}
+/**
+ * Quién hace la petición. **Nada más que eso.**
+ *
+ * Fijate en lo que NO hay acá: un rol. Antes el llamador declaraba `role: "maestro"` y la base le
+ * creía. Con un portal HTTP del otro lado, eso es una escalada de privilegios servida en bandeja.
+ *
+ * Ahora el contexto solo dice **quién eres**; **qué podés hacer** lo decide Postgres, derivándolo de
+ * `memberships` (ver `migrations/0002_auth.sql`). Declararse maestro no tiene ningún efecto porque
+ * ya no hay dónde declararlo.
+ */
+export type TenantContext =
+  | {
+      tenantId: string;
+      /** Usuario autenticado (el `sub` del JWT ya verificado). Su rol se DERIVA, no se declara. */
+      userId: string;
+      servicio?: false;
+    }
+  | {
+      tenantId: string;
+      /**
+       * El proceso del backend (el orquestador). Se conecta como el rol de Postgres `app_service`.
+       *
+       * Su autoridad es una CREDENCIAL DE BASE DE DATOS, no un campo en una petición — y eso sí es
+       * una autoridad: para falsificarla hace falta la contraseña de Postgres, y quien la tiene ya
+       * ganó. No suplanta a ninguna persona, así que no necesita membresía.
+       */
+      servicio: true;
+      userId?: undefined;
+    };
 
 export type RunStatus = "running" | "pending_approval" | "approved" | "rejected" | "failed";
 
@@ -137,9 +151,10 @@ export class PgStore {
   private withTenant<T>(ctx: TenantContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
     return this.pool.transaction(async (tx) => {
       await tx.query("select set_config('app.tenant_id', $1, true)", [ctx.tenantId]);
-      await tx.query("select set_config('app.role', $1, true)", [ctx.role]);
-      await tx.query("select set_config('app.client_id', $1, true)", [ctx.clientId ?? ""]);
-      await tx.exec("set local role app_user");
+      // Solo la IDENTIDAD. El rol y el client_id ya no se mandan: los deriva Postgres de
+      // `memberships`. Mandar `app.role` no haría nada — la función ya no lo lee.
+      await tx.query("select set_config('app.user_id', $1, true)", [ctx.userId ?? ""]);
+      await tx.exec(ctx.servicio ? "set local role app_service" : "set local role app_user");
       return fn(tx);
     });
   }

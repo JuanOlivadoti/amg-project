@@ -1,6 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
+import { aplicarMigraciones } from "./migrate.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -30,7 +31,7 @@ const meta = (key: string): CacheMeta => ({
 
 before(async () => {
   pg = new PGlite();
-  await pg.exec(await readFile(join(here, "..", "migrations", "0001_init.sql"), "utf8"));
+  await aplicarMigraciones(pg);
   metrics = new PgKeywordCache(pg, "kr_metrics_cache", meta);
   serp = new PgKeywordCache(pg, "kr_serp_cache", meta);
 });

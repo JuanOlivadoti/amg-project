@@ -1,4 +1,4 @@
-import { NodePgPool, PglitePool, PgStore, PgTaskLog } from "db";
+import { NodePgPool, PglitePool, PgStore, PgTaskLog, aplicarMigraciones } from "db";
 import type { DbPool } from "db";
 import { canonicalKey, config as krConfig, runResearch } from "kr-service";
 import {
@@ -32,13 +32,8 @@ export async function crearPool(): Promise<{ pool: DbPool; cerrar: () => Promise
 
   if (!url) {
     const { PGlite } = await import("@electric-sql/pglite");
-    const { readFile } = await import("node:fs/promises");
-    const { fileURLToPath } = await import("node:url");
-    const { dirname, join } = await import("node:path");
-
-    const aqui = dirname(fileURLToPath(import.meta.url));
     const pg = new PGlite();
-    await pg.exec(await readFile(join(aqui, "..", "..", "db", "migrations", "0001_init.sql"), "utf8"));
+    await aplicarMigraciones(pg);
     console.warn("  [db] sin DATABASE_URL → PGlite EN MEMORIA (los datos se pierden al salir).");
     return { pool: new PglitePool(pg), cerrar: () => pg.close() };
   }

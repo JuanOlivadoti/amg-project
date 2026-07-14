@@ -1,14 +1,10 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { readFile } from "node:fs/promises";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { PgStore } from "./store.js";
 import { PglitePool } from "./pool.js";
+import { aplicarMigraciones } from "./migrate.js";
 import type { KeywordRow, PageRow, TenantContext } from "./store.js";
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 let pg: PGlite;
 let store: PgStore;
@@ -18,9 +14,15 @@ let tenantB: string;
 let clientA1: string;
 let clientA2: string;
 let clientB1: string;
+/** Usuarios con membresía REAL. El rol sale de ahí, no de lo que declare el que llama. */
+let equipoA: string;
+let equipoB: string;
+let duenoA1: string;
 
-const ctxA = (): TenantContext => ({ tenantId: tenantA, role: "equipo", userId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
-const ctxB = (): TenantContext => ({ tenantId: tenantB, role: "equipo", userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
+const ctxA = (): TenantContext => ({ tenantId: tenantA, userId: equipoA });
+const ctxB = (): TenantContext => ({ tenantId: tenantB, userId: equipoB });
+/** El orquestador. Su autoridad es la credencial de Postgres, no un campo de la petición. */
+const ctxServicio = (): TenantContext => ({ tenantId: tenantA, servicio: true });
 
 const kw = (over: Partial<KeywordRow> = {}): KeywordRow => ({
   keyword: "pizza napolitana madrid",
@@ -58,7 +60,7 @@ const page = (over: Partial<PageRow> = {}): PageRow => ({
 
 before(async () => {
   pg = new PGlite();
-  await pg.exec(await readFile(join(here, "..", "migrations", "0001_init.sql"), "utf8"));
+  await aplicarMigraciones(pg);
   store = new PgStore(new PglitePool(pg));
 });
 
@@ -67,7 +69,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await pg.exec("delete from kr_runs; delete from clients; delete from tenants;");
+  await pg.exec("delete from kr_runs; delete from memberships; delete from clients; delete from tenants;");
   const { rows: t } = await pg.query<{ id: string }>(
     "insert into tenants (nombre, slug) values ('A', 'a'), ('B', 'b') returning id",
   );
@@ -84,6 +86,19 @@ beforeEach(async () => {
   clientA1 = await mk(tenantA, "Trattoria");
   clientA2 = await mk(tenantA, "Bar Pepe");
   clientB1 = await mk(tenantB, "Sushi Zen");
+
+  // Los usuarios y su ROL viven en `memberships`. Ya no se declaran en la petición (0002_auth.sql).
+  const mkMiembro = async (tid: string, rol: string, cid: string | null) => {
+    const { rows } = await pg.query<{ user_id: string }>(
+      `insert into memberships (tenant_id, user_id, rol, client_id)
+       values ($1, gen_random_uuid(), $2::user_role, $3) returning user_id`,
+      [tid, rol, cid],
+    );
+    return rows[0]!.user_id;
+  };
+  equipoA = await mkMiembro(tenantA, "equipo", null);
+  equipoB = await mkMiembro(tenantB, "equipo", null);
+  duenoA1 = await mkMiembro(tenantA, "cliente", clientA1);
 });
 
 const nuevoRun = (clientId: string) => ({
@@ -261,7 +276,7 @@ test("RBAC: el rol 'cliente' no ve los runs de otro cliente del mismo tenant", a
   const runA1 = await store.createRun(ctxA(), nuevoRun(clientA1));
   await store.createRun(ctxA(), nuevoRun(clientA2));
 
-  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+  const comoCliente: TenantContext = { tenantId: tenantA, userId: duenoA1 };
   const visible = await store.getRun(comoCliente, runA1);
   const runs = await store.listRuns(comoCliente, clientA2);
 
@@ -293,36 +308,57 @@ test("aislamiento: el contexto NO se filtra a la operación siguiente", async ()
 // ================================================================
 
 /**
- * La política usaba `app.current_role() is distinct from 'cliente'`.
- * Con el rol ausente, `current_role()` es NULL, y `NULL IS DISTINCT FROM 'cliente'` es **TRUE**:
- * un tenant_id válido con el rol vacío obtenía visibilidad de MAESTRO sobre toda la cartera.
- * La política CONCEDÍA privilegios ante la duda. Ahora hay allowlist positiva.
+ * OBS-02, cerrado (migración 0002).
+ *
+ * Antes, el rol venía en el contexto de la petición y la base le creía. Estos tres tests probaban
+ * que un rol *ausente* o *inventado* no diera acceso — una allowlist positiva. Estaba bien, pero
+ * seguía aceptando que un rol VÁLIDO se declarara: con un portal HTTP del otro lado, mandar
+ * `role: "maestro"` era escalada de privilegios directa.
+ *
+ * Ahora el rol se DERIVA de `memberships` y el GUC `app.role` no lo lee nadie. Estos tests prueban
+ * lo más fuerte: **declarar un rol ya no sirve absolutamente para nada.**
  */
-test("🔴 fallar cerrado: con tenant válido y rol NULO no se ve nada", async () => {
+test("🔴 OBS-02: un usuario SIN membresía no ve nada, aunque el tenant sea válido", async () => {
   await store.createRun(ctxA(), nuevoRun(clientA1));
 
-  const sinRol = { tenantId: tenantA, role: null } as unknown as TenantContext;
-  const runs = await store.listRuns(sinRol, clientA1);
+  const intruso: TenantContext = { tenantId: tenantA, userId: "99999999-9999-4999-8999-999999999999" };
+  const runs = await store.listRuns(intruso, clientA1);
 
-  assert.equal(runs.length, 0, "un rol ausente NO puede dar acceso de staff");
+  assert.equal(runs.length, 0, "sin membresía no hay rol, y sin rol no hay acceso");
 });
 
-test("🔴 fallar cerrado: un rol INVENTADO no ve nada", async () => {
+test("🔴 OBS-02: declararse 'maestro' en la petición NO tiene ningún efecto", async () => {
   await store.createRun(ctxA(), nuevoRun(clientA1));
 
-  const rolFalso = { tenantId: tenantA, role: "superadmin" } as unknown as TenantContext;
-  const runs = await store.listRuns(rolFalso, clientA1);
+  // El ataque exacto que antes funcionaba: el llamador se inventa el rol.
+  const seDeclaraMaestro = {
+    tenantId: tenantA,
+    userId: "99999999-9999-4999-8999-999999999999",
+    role: "maestro",
+    clientId: null,
+  } as unknown as TenantContext;
+
+  const runs = await store.listRuns(seDeclaraMaestro, clientA1);
+
+  assert.equal(runs.length, 0, "el rol declarado se IGNORA: la base ya no lo lee");
+});
+
+test("🔴 OBS-02: un usuario del tenant A no puede mirar dentro del tenant B", async () => {
+  await store.createRun(ctxB(), nuevoRun(clientB1));
+
+  // Identidad real y válida… pero de otra agencia. No hay membresía en B.
+  const cruzado: TenantContext = { tenantId: tenantB, userId: equipoA };
+  const runs = await store.listRuns(cruzado, clientB1);
 
   assert.equal(runs.length, 0);
 });
 
-test("🔴 fallar cerrado: rol 'cliente' SIN client_id no ve nada (antes veía todo)", async () => {
-  await store.createRun(ctxA(), nuevoRun(clientA1));
+/** El orquestador SÍ puede: su autoridad es la credencial de Postgres, no un campo de la petición. */
+test("el servicio (app_service) sí escribe los resultados del research", async () => {
+  const runId = await store.createRun(ctxServicio(), nuevoRun(clientA1));
 
-  const clienteSinCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: null };
-  const runs = await store.listRuns(clienteSinCliente, clientA1);
-
-  assert.equal(runs.length, 0);
+  const run = await store.getRun(ctxA(), runId);
+  assert.equal(run?.status, "running", "el orquestador abrió el run y el equipo lo ve");
 });
 
 /**
@@ -335,7 +371,7 @@ test("🔴 el rol 'cliente' NO puede leer keywords de otro cliente del MISMO ten
   const runOtro = await store.createRun(ctxA(), nuevoRun(clientA2));
   await store.saveKeywords(ctxA(), runOtro, clientA2, [kw()]);
 
-  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+  const comoCliente: TenantContext = { tenantId: tenantA, userId: duenoA1 };
   const filas = await store.leerKeywordsCrudo(comoCliente);
 
   assert.equal(filas.length, 0, "el research del vecino NO se ve");
@@ -345,7 +381,7 @@ test("🔴 el rol 'cliente' NO puede leer páginas de otro cliente del MISMO ten
   const runOtro = await store.createRun(ctxA(), nuevoRun(clientA2));
   await store.savePages(ctxA(), runOtro, clientA2, [page()]);
 
-  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+  const comoCliente: TenantContext = { tenantId: tenantA, userId: duenoA1 };
   const filas = await store.leerPaginasCrudo(comoCliente);
 
   assert.equal(filas.length, 0, "el contenido y los claims del vecino NO se ven");
@@ -357,7 +393,7 @@ test("🔴 el rol 'cliente' NO puede leer páginas de otro cliente del MISMO ten
  * desde la app (crear membresías es administración: va por el backend con service-role).
  */
 test("🔴 escalada de privilegios: un 'cliente' NO puede crearse una membresía de maestro", async () => {
-  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+  const comoCliente: TenantContext = { tenantId: tenantA, userId: duenoA1 };
 
   await assert.rejects(
     () =>
@@ -371,14 +407,14 @@ test("🔴 escalada de privilegios: un 'cliente' NO puede crearse una membresía
 });
 
 test("🔴 el rol 'cliente' es de SOLO LECTURA: no puede crear runs facturables", async () => {
-  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+  const comoCliente: TenantContext = { tenantId: tenantA, userId: duenoA1 };
 
   await assert.rejects(() => store.createRun(comoCliente, nuevoRun(clientA1)));
 });
 
 test("🔴 no se puede crear un run facturable a nombre de OTRO cliente del tenant", async () => {
   // Con rol 'cliente' atado a clientA1, intentar cargarle un run a clientA2.
-  const comoCliente: TenantContext = { tenantId: tenantA, role: "cliente", clientId: clientA1 };
+  const comoCliente: TenantContext = { tenantId: tenantA, userId: duenoA1 };
 
   await assert.rejects(() => store.createRun(comoCliente, nuevoRun(clientA2)));
 });

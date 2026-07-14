@@ -21,3 +21,5 @@ export type { KeywordCache, CacheMeta } from "./cache.js";
 
 export { PgTaskLog, MAX_INTENTOS } from "./task-log.js";
 export type { Reserva } from "./task-log.js";
+
+export { aplicarMigraciones, MIGRATIONS_DIR } from "./migrate.js";

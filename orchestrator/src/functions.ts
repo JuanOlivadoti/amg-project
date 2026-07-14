@@ -58,11 +58,7 @@ export function crearFuncionResearch(deps: Deps) {
         // se marca `failed` con el motivo, y por eso el runId viaja en el evento (ver events.ts).
         const original = event.data.event.data as Eventos["research/solicitado"]["data"];
         await deps.store.failRun(
-          {
-            tenantId: original.ctx.tenantId,
-            role: "servicio",
-            clientId: original.ctx.clientId,
-          },
+          { tenantId: original.ctx.tenantId, servicio: true },
           original.runId,
           error.message,
         );

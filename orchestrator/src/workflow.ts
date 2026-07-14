@@ -99,11 +99,14 @@ const MARKET_POR_DEFECTO = { country: "ES", language_code: "es", location_code: 
 export const PLAZO_APROBACION = "7d";
 
 /**
- * El rol del orquestador. NO es `maestro`: es un proceso, no una persona. Puede escribir los
- * resultados del research, y nada más (ver `memberships` / RLS en `0001_init.sql`).
+ * El orquestador NO es `maestro`: es un proceso, no una persona.
+ *
+ * Su autoridad es una CREDENCIAL DE POSTGRES (se conecta como el rol `app_service`), no un campo en
+ * el evento. Fijate en que ya no declara ningún rol — desde `0002_auth.sql` no hay dónde: los roles
+ * humanos se derivan de `memberships` y el del servicio, de con qué credencial se conectó.
  */
 function comoServicio(ctx: ActorContext): TenantContext {
-  return { tenantId: ctx.tenantId, role: "servicio", clientId: ctx.clientId, userId: ctx.userId ?? null };
+  return { tenantId: ctx.tenantId, servicio: true };
 }
 
 export async function workflowResearch(
