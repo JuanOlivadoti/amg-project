@@ -6,8 +6,9 @@
 depende de IA es real (seeds, intención, relevancia, clustering semántico, contenido on-page,
 prose final). La arquitectura está preparada para producción, no es un prototipo desechable.
 
-**No está en producción todavía.** Faltan tres cosas grandes: datos reales de DataForSEO,
-orquestación durable (Inngest) con persistencia, y el frontend.
+**Persistencia multi-tenant, orquestación durable e idempotencia del gasto: hechas.** Lo que falta
+para que lo use alguien que no sea yo es la **API + el portal**: hoy la compuerta de aprobación
+(ADR-06) **se ejecuta editando un JSON a mano**. Ver el [Plan de la Fase 2](11-plan-fase-2.md).
 
 ## Qué funciona hoy
 
@@ -23,8 +24,8 @@ orquestación durable (Inngest) con persistencia, y el frontend.
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | 78 tests unitarios en verde + typecheck limpio en ambos módulos. |
-| ✅ | **Los 18 hallazgos de la review externa: corregidos.** |
+| ✅ | **194 tests en verde** + typecheck limpio en los 4 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **Cuatro reviews externas (Codex): todos los hallazgos, corregidos.** Tres de las cuatro brechas críticas eran suposiciones MÍAS que Postgres no cumplía. Ver [ADR-13, 15, 17, 18](../decisiones-arquitectura.md). |
 
 ## El número para la propuesta comercial
 
@@ -102,9 +103,10 @@ reales, no solo contra tests.
 |---|---|---|
 | **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y 54 tests contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
-| **Frontend Next.js** | ADR-02, ADR-04 | ⏳ Pendiente. Portal + render de las webs de cliente desde Storyblok, *AI-search-first*. |
+| **API REST autenticada** | ADR-15, ADR-17, ADR-18 | ⏳ **Siguiente.** Crea el run bajo RLS (ahí se autoriza) y emite el evento. Login `amg_api`, que no puede asumir el rol del servicio. |
+| **Portal Angular** | ADR-16 | ⏳ Pendiente. Donde el equipo aprueba la compuerta. Reemplaza el plan de Next (ADR-02). |
 | **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
-| **Supabase Auth** (resolver OBS-02) | ADR-01 | ⏳ Pendiente. Derivar rol y `client_id` de `auth.uid()` + `memberships` dentro de Postgres. Las políticas **no cambian**: por eso pasan por funciones. |
+| **Autorización derivada** (OBS-02) | ADR-15, ADR-17 | ✅ **Hecho.** El rol se deriva de `memberships` dentro de Postgres; el GUC `app.role` ya no lo lee nadie. Un login por proceso, `NOINHERIT`, un rol cada uno. Falta solo enchufar el JWT de Supabase (la función ya está aislada). |
 | **Idempotencia de peticiones facturables** | ADR-10, ADR-14 | ✅ **Hecho.** `kr_provider_tasks` + `payload_hash`, escrito ANTES de enviar. Cubre los 4 endpoints. **No** se migró a `task_post`: la API Labs es live-only y es donde está el 54% del gasto. |
 
 ### Mejoras de calidad del research (priorizadas con los datos reales)

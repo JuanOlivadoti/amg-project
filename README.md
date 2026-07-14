@@ -19,7 +19,7 @@ a punta**, con orquestación durable y aislamiento multi-tenant real.
 | `api/` | REST autenticada para el portal | ⏳ siguiente |
 | `portal/` | SPA Angular (donde se aprueba la compuerta) | ⏳ |
 
-- **184 tests en verde** · typecheck limpio en los 4 paquetes · `npm test` desde la raíz.
+- **194 tests en verde** · typecheck limpio en los 4 paquetes · `npm test` desde la raíz.
 - Los tests de seguridad corren contra **Postgres real** (PGlite en WASM): sin Docker, sin cuenta.
 - Todo corre **sin una sola credencial**: providers mock + base en memoria.
 
@@ -61,26 +61,28 @@ roadmap. **Es el mejor punto de entrada** para entender el sistema.
 | [web-builder/](web-builder/) | **Código** del Módulo 1 (Creador de Webs, PoC): brief SEO → web (stories Storyblok + preview HTML). |
 
 ## 🧭 Decisiones clave (resumen)
-- **Stack:** Next.js + TypeScript + Supabase (Postgres/RLS/Auth/Realtime/Storage/pgvector).
-- **Orquestación:** Inngest/Trigger.dev en código; n8n solo como glue de integraciones.
-- **Creador de Webs (Módulo 1):** Storyblok (headless + Visual Editor).
-- **Keyword Research (Módulo 2):** DataForSEO, con compuerta de aprobación humana y output JSON + informe.
-- **Mercado:** ES-first, diseño preparado para multi-idioma sin reescritura.
-- **LLM:** Claude Opus 4.8 (generación) + Haiku 4.5 (clasificación).
+- **Datos:** Postgres/Supabase con **RLS forzado**. El rol **no se declara**: se deriva de
+  `memberships` dentro de la base (ADR-15). Un proceso, un login, un rol (ADR-17).
+- **Orquestación:** **Inngest** en código (ADR-03/12); n8n solo como glue. **Un evento no porta
+  autoridad**: la API crea el run bajo RLS, el evento solo lo dispara (ADR-18).
+- **Portal:** **Angular + Tailwind**, mobile-first (ADR-16, reemplaza ADR-02/Next).
+- **Creador de Webs (M1):** Storyblok (headless + Visual Editor).
+- **Keyword Research (M2):** DataForSEO, con **compuerta de aprobación humana** y output JSON + informe.
+- **LLM:** proveedor abstracto (OpenAI / Anthropic). Todo corre en mock sin credenciales.
 
-Detalle y justificación en [decisiones-arquitectura.md](docs/decisiones-arquitectura.md).
+Detalle y justificación —**incluidas las decisiones que tuve que corregir**— en
+[decisiones-arquitectura.md](docs/decisiones-arquitectura.md).
 
 ## ▶️ Próximos pasos
 
-**Todo el trabajo de código que no requiere cuentas ni saldo está hecho.** Lo que sigue depende de
-acciones humanas — con **guías paso a paso** en [**docs/acciones/**](docs/acciones/):
+Ver el [**Plan de la Fase 2**](docs/proyecto/11-plan-fase-2.md). En corto:
 
-1. 🔴 **Rotar la API key de OpenAI** (una por módulo, con límite de gasto).
-2. 🟡 **Los números:** confirmar los precios de los modelos + correr **un research de prueba en
-   producción** (~50 USD) → da el **costo real por research** para la propuesta comercial.
-3. 🟢 **Crear un space de Storyblok** (gratis) → probar el camino live y demostrar la edición visual.
-4. 🔵 **Unificar el alcance** (OBS-01) antes de consolidar la propuesta comercial.
+1. **La API REST** (autenticada, Supabase Auth) → siguiente.
+2. **El portal Angular**: donde el equipo aprueba la compuerta. Hoy eso se hace **editando un JSON a
+   mano**, y es lo que impide que use el sistema alguien que no sea yo.
+3. **Desplegar** (orquestador + API como servicio Node de larga duración; el research tarda minutos
+   y no entra en una función serverless).
 
-Después de eso, el siguiente salto de arquitectura es la **orquestación durable con Inngest** +
-persistencia en Supabase (Fase 2-3). El código ya tiene retries, idempotencia y presupuesto, que es
-la base que Inngest necesita.
+**Acciones que solo Juan puede hacer** — guías paso a paso en [**docs/acciones/**](docs/acciones/):
+la **corrida final en producción** (~$0.31) y **unificar el alcance** (OBS-01) antes de consolidar la
+propuesta comercial.

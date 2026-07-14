@@ -242,16 +242,32 @@ la variable de sesión, precisamente para que este cambio fuera posible sin rees
   acceso. La comprobación de pertenencia sale gratis, de la misma consulta.
 - El `TenantContext` de TypeScript **ya no tiene dónde poner un rol**. No es cosmética: es la
   garantía, en el tipo, de que ningún caller futuro pueda declararse `maestro`.
-- **El orquestador no usa membresías.** Es un proceso, no una persona: se conecta como el rol de
-  Postgres `app_service`. Su autoridad es una **credencial de base de datos**, no un campo en una
-  petición — y eso sí es una autoridad: para falsificarla hace falta la contraseña de Postgres, y
-  quien la tiene ya ganó. No hay nadie a quien suplantar, así que no hace falta provisionar nada.
+- **El orquestador no usa membresías.** Es un proceso, no una persona: asume el rol de Postgres
+  `app_service`. No hay nadie a quien suplantar, así que no hace falta provisionar nada.
 - Lo que la API **sí** afirma es la identidad (`app.user_id`), y es legítimo porque acaba de validar
   el token contra la clave pública del emisor. Lo que ya **no** puede afirmar es qué puede hacer esa
   identidad.
 
 Verificado por mutación: si la función vuelve a aceptar el rol declarado (aunque sea como respaldo),
 un usuario **sin ninguna membresía** que se declara `maestro` entra — y solo ese test cae.
+
+> ### ⚠️ CORRECCIÓN — este ADR contenía una afirmación FALSA
+>
+> Este documento decía: *"la autoridad del orquestador es una **credencial de base de datos**; para
+> falsificarla hace falta la contraseña de Postgres"*. **No era verdad**, y el código no la
+> respaldaba: `app_service` era `NOLOGIN`, había **un solo `DATABASE_URL`**, y era el CÓDIGO el que
+> elegía con qué rol vestirse. `SET ROLE` **no pide contraseña** — Postgres lo autoriza según el
+> `session_user`, así que el mismo login podía ponerse `app_user` **o** `app_service`.
+>
+> Era una frontera de **código** disfrazada de frontera de **credenciales**: la misma "autoridad
+> declarada" que este ADR presume de haber eliminado, cerrada en la puerta de los humanos y dejada
+> abierta en la del servicio.
+>
+> **Corregido en [ADR-17](#adr-17--un-proceso-un-login-un-rol-corrige-una-afirmación-falsa-de-adr-15).**
+> Ahora sí es una credencial: tres logins `NOINHERIT`, cada uno autorizado a un solo rol.
+>
+> Se deja escrito en vez de borrarlo. Una documentación que afirma una propiedad de seguridad que el
+> código no tiene es más peligrosa que no tener documentación: el que la lee deja de comprobarlo.
 
 ---
 

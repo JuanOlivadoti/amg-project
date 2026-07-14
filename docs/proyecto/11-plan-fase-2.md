@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-14** · Commit: `a0d6b95` · **184 tests en verde**
+> Última actualización: **2026-07-14** · Commit: `7fcdbff` · **194 tests en verde**
 
 ---
 
@@ -50,7 +50,7 @@ compuerta de aprobación (ADR-06) se ejecuta editando un JSON a mano.**
 ```
 
 - **4 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`.
-- **184 tests**, todos contra Postgres real (PGlite en WASM, sin Docker ni cuenta).
+- **194 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -74,15 +74,22 @@ resto** (ADR-15).
 
 | Endpoint | Qué hace |
 |---|---|
-| `POST /runs` | Lanza un research (emite `research/solicitado` a Inngest). |
+| `POST /runs` | **Crea la fila del run bajo RLS** (aquí se autoriza) y *después* emite `research/solicitado`. Ver `orchestrator/src/solicitar.ts`. |
 | `GET /runs` | Los runs del cliente. |
 | `GET /runs/:id` | El brief: páginas, evidencia, coste, calidad de los datos. |
 | `POST /pages/:id/approve` | Aprueba **una** página (mitad de la compuerta). |
 | `POST /runs/:id/approve` | Aprueba el run (la otra mitad) → despierta al workflow → publica. |
 
-**La regla que no se rompe:** la API **no** decide quién puede qué. Solo afirma **quién eres**
-—legítimo, porque acaba de validar el token contra la clave pública del emisor— y RLS hace el resto.
-Un endpoint que acepte `role` del body es una escalada de privilegios.
+**Las tres reglas que no se rompen** (las tres nacieron de un agujero real, no de la teoría):
+
+1. **La API no decide quién puede qué.** Solo afirma **quién eres** —legítimo, porque acaba de
+   validar el token contra la clave pública del emisor— y RLS hace el resto (**ADR-15**). Un endpoint
+   que acepte `role` del body es una escalada de privilegios.
+2. **La API se conecta con `amg_api`**, que **no puede** asumir el rol del servicio: lo impide
+   Postgres, no el código (**ADR-17**).
+3. **`POST /runs` crea la fila ANTES de emitir el evento.** Ahí es donde se autoriza. El evento
+   lleva solo el `runId`; si llevara el `clientId`, quien lo emita elegiría **a nombre de quién se
+   gasta** (**ADR-18**).
 
 ### 5.2 — El portal (`portal/`)
 
@@ -124,6 +131,16 @@ Todas con su ADR. Las que más condicionan lo que viene:
   seguro construir la API.
 - **ADR-16 — Portal en Angular.** Reemplaza ADR-02 (Next), cuya premisa —un frontend que renderice
   también las webs públicas— se cayó al acotar el alcance al portal interno.
+- **ADR-17 — Un proceso, un login, un rol.** Corrige una afirmación **falsa** de ADR-15: la autoridad
+  del servicio *no* era una credencial, era el código eligiendo con qué rol vestirse. Ahora la
+  separación la impone Postgres (`NOINHERIT`, un rol por login).
+- **ADR-18 — Un evento no porta autoridad.** El evento traía `tenantId`/`clientId` elegidos por quien
+  lo emitía: conocer dos UUID ajenos bastaba para que la agencia pagara el research de otra. Ahora la
+  API crea el run bajo RLS y el evento solo lo pone en marcha.
+
+> Las cuatro últimas nacieron de reviews externas, y **tres de ellas corrigen algo que yo había dado
+> por bueno**. Es el motivo por el que las reviews están en el proceso: lo que se documenta como
+> seguro, y no lo es, es peor que no documentarlo.
 
 ---
 

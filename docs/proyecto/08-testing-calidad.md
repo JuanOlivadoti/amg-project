@@ -8,12 +8,32 @@
 | **Tests** | `npm test` → `node --import tsx --test "src/**/*.test.ts"` |
 | **Runner** | `node:test` + `node:assert/strict` — **nativo de Node, cero dependencias nuevas**. |
 
-Los tests son **unitarios y deterministas**: no tocan la red, no usan API keys, no dependen del
-reloj. Corren en ~1 segundo.
+Los tests son **deterministas**: no tocan la red, no usan API keys, no dependen del reloj.
 
-## Cobertura actual: 71 tests
+**Los de seguridad corren contra Postgres REAL** (PGlite: Postgres 18 compilado a WASM, en proceso),
+no contra un mock. No es un capricho: el aislamiento entre tenants depende de la semántica exacta de
+Postgres (`FORCE` vs `ENABLE`, `USING` vs `WITH CHECK`, el cast de un GUC vacío, `SET ROLE`), y un
+mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de las cuatro brechas
+críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
+sin cuenta.
 
-### `kr-service` (36 tests)
+## Cobertura actual: 194 tests
+
+| Paquete | Tests | Qué cubre |
+|---|---|---|
+| `db` | **76** | RLS, aislamiento multi-tenant, compuerta de aprobación, credenciales, idempotencia del gasto. |
+| `kr-service` | **72** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas. |
+| `web-builder` | **35** | Contrato, handoff, render, XSS, idempotencia de publicación. |
+| `orchestrator` | **11** | Workflow durable, compuerta humana, autorización del evento. |
+
+### La disciplina que más ha valido: **mutation testing**
+
+Cada fix de seguridad se verifica **reintroduciendo el bug** y comprobando que el test cae. Sin eso,
+un test de seguridad que siempre pasa es peor que no tenerlo — y me pasó: el test del doble cobro
+comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la otra salía
+`huerfana`, que también autoriza gastar). Pasaba con el bug dentro.
+
+### `kr-service` (72 tests)
 
 | Archivo | Qué fija |
 |---|---|
