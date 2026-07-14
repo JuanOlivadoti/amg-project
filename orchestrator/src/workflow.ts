@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { PgStore, TenantContext, PageRow, RunSummary } from "../../db/src/store.js";
+import type { PgStore, TenantContext, PageRow, RunSummary } from "db";
 import type { ActorContext } from "./events.js";
 
 /**

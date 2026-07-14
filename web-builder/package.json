@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Módulo 1 — Creador de Webs (PoC). Handoff brief SEO (M2) → story Storyblok + preview HTML.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build:web": "tsx src/cli/build.ts",
     "setup:storyblok": "tsx src/cli/setup-storyblok.ts",

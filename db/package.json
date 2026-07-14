@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Esquema, RLS y capa de acceso a datos de AMG OS (ADR-01, ADR-10).",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\""

@@ -1,7 +1,9 @@
 # Dependencias
 node_modules/
-/package-lock.json
 /yarn.lock
+# El package-lock.json de la RAÍZ sí va al repo: con workspaces es el único lockfile y es lo que
+# hace reproducible la instalación. Los de los paquetes no deben existir.
+*/package-lock.json
 
 # Builds / salidas
 dist/

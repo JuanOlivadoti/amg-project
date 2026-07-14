@@ -1,0 +1,20 @@
+{
+  "name": "amg-os",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "AMG OS — plataforma multi-tenant para la agencia de marketing gastronómico.",
+  "workspaces": [
+    "db",
+    "kr-service",
+    "web-builder",
+    "orchestrator"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

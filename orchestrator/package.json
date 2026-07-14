@@ -12,8 +12,11 @@
   },
   "dependencies": {
     "@types/pg": "^8.20.0",
+    "db": "*",
     "inngest": "^3.27.0",
-    "pg": "^8.22.0"
+    "kr-service": "*",
+    "pg": "^8.22.0",
+    "web-builder": "*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",

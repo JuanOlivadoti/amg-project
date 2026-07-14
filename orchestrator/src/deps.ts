@@ -1,16 +1,15 @@
-import { PgStore } from "../../db/src/store.js";
-import { NodePgPool, PglitePool } from "../../db/src/pool.js";
-import { PgTaskLog } from "../../db/src/task-log.js";
-import type { DbPool } from "../../db/src/pool.js";
-import { runResearch } from "../../kr-service/src/pipeline/run.js";
-import { canonicalKey } from "../../kr-service/src/lib/text.js";
-import { config as krConfig } from "../../kr-service/src/config.js";
-import { parseBrief } from "../../web-builder/src/contract.js";
-import { briefToStories } from "../../web-builder/src/handoff/adapter.js";
-import { renderStory } from "../../web-builder/src/render/html.js";
-import { getPublisher } from "../../web-builder/src/publish/publisher.js";
-import { applyProse, loadProfile } from "../../web-builder/src/enrich.js";
-import { config as webConfig } from "../../web-builder/src/config.js";
+import { NodePgPool, PglitePool, PgStore, PgTaskLog } from "db";
+import type { DbPool } from "db";
+import { canonicalKey, config as krConfig, runResearch } from "kr-service";
+import {
+  applyProse,
+  briefToStories,
+  config as webConfig,
+  getPublisher,
+  loadProfile,
+  parseBrief,
+  renderStory,
+} from "web-builder";
 import type { Deps, KeywordParaGuardar } from "./workflow.js";
 
 /**

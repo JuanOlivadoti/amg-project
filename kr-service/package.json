@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Módulo 2 — Keyword Research (spike Fase 0). Pipeline prompt → brief SEO.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "spike": "tsx src/cli/spike.ts",
     "typecheck": "tsc --noEmit",

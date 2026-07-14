@@ -5,9 +5,9 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { PgStore } from "../../db/src/store.js";
-import { PglitePool } from "../../db/src/pool.js";
-import type { PageRow, TenantContext } from "../../db/src/store.js";
+import { PgStore } from "db";
+import { PglitePool } from "db";
+import type { PageRow, TenantContext } from "db";
 import { workflowResearch } from "./workflow.js";
 import type { BriefDelPipeline, Deps, Pasos } from "./workflow.js";
 
