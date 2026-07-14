@@ -386,25 +386,56 @@ test("el servicio (app_service) sí escribe los resultados del research", async 
  * que es la fuente de verdad: no basta con que el código no lo intente, tiene que ser IMPOSIBLE.
  */
 test("🔴 credenciales: el login de la API NO puede asumir el rol del servicio", async () => {
-  const { rows } = await pg.query<{ login: string; rol: string }>(
-    `select l.rolname as login, r.rolname as rol
-     from pg_auth_members m
-     join pg_roles l on l.oid = m.member
-     join pg_roles r on r.oid = m.roleid
-     where l.rolname in ('amg_api', 'amg_orquestador')
-     order by l.rolname`,
+  /*
+   * Se le pregunta a POSTGRES si puede, en vez de deducirlo yo de `pg_auth_members`.
+   *
+   * La versión anterior de este test leía `pg_auth_members` y comprobaba que cada login tuviera
+   * exactamente un rol DIRECTO. Era insuficiente, y la mutación que lo demuestra es de una línea:
+   *
+   *     grant app_service to app_user;
+   *
+   * `pg_auth_members` seguiría diciendo exactamente lo mismo —`amg_api → app_user`,
+   * `amg_orquestador → app_service`— y el test pasaría. Pero `amg_api` tendría un camino
+   * TRANSITIVO hasta `app_service`.
+   *
+   * `pg_has_role(..., 'SET')` responde la pregunta que de verdad importa —*¿puede este login
+   * asumir ese rol?*— e incluye los caminos transitivos. Es la diferencia entre comprobar mi modelo
+   * del grafo de roles y comprobar **el grafo**.
+   */
+  const { rows: capacidad } = await pg.query<{
+    api_a_servicio: boolean;
+    orq_a_usuario: boolean;
+    api_a_usuario: boolean;
+    orq_a_servicio: boolean;
+    cache_a_usuario: boolean;
+    cache_a_servicio: boolean;
+  }>(
+    `select
+       pg_has_role('amg_api',         'app_service', 'SET') as api_a_servicio,
+       pg_has_role('amg_orquestador', 'app_user',    'SET') as orq_a_usuario,
+       pg_has_role('amg_api',         'app_user',    'SET') as api_a_usuario,
+       pg_has_role('amg_orquestador', 'app_service', 'SET') as orq_a_servicio,
+       pg_has_role('amg_cache',       'app_user',    'SET') as cache_a_usuario,
+       pg_has_role('amg_cache',       'app_service', 'SET') as cache_a_servicio`,
   );
+  const c = capacidad[0]!;
 
-  const concedidos = new Map(rows.map((r) => [r.login, r.rol]));
-  assert.equal(concedidos.get("amg_api"), "app_user", "la API solo puede ser app_user");
-  assert.equal(concedidos.get("amg_orquestador"), "app_service", "el orquestador solo app_service");
-  assert.equal(rows.length, 2, "ningún login tiene MÁS de un rol concedido");
+  // Lo que TIENE que ser imposible — por cualquier camino, directo o transitivo.
+  assert.equal(c.api_a_servicio, false, "🔴 la API NO puede asumir el rol del servicio");
+  assert.equal(c.orq_a_usuario, false, "🔴 el orquestador NO puede asumir el rol del humano");
+  assert.equal(c.cache_a_usuario, false, "🔴 el login de la cache no toca datos de tenant");
+  assert.equal(c.cache_a_servicio, false, "🔴 el login de la cache no toca datos de tenant");
 
-  // Y NOINHERIT: sin él, el login tendría los privilegios sin siquiera hacer `set role`, y
+  // Y lo que tiene que SÍ funcionar: si no, la separación sería inútil (nadie podría trabajar).
+  assert.equal(c.api_a_usuario, true, "la API sí puede ser app_user");
+  assert.equal(c.orq_a_servicio, true, "el orquestador sí puede ser app_service");
+
+  // NOINHERIT: sin él, el login tendría los privilegios sin siquiera hacer `set role`, y
   // `reset role` se los devolvería.
   const { rows: inherit } = await pg.query<{ rolname: string; rolinherit: boolean }>(
     "select rolname, rolinherit from pg_roles where rolname in ('amg_api','amg_orquestador','amg_cache')",
   );
+  assert.equal(inherit.length, 3, "los tres logins existen");
   for (const r of inherit) {
     assert.equal(r.rolinherit, false, `${r.rolname} debe ser NOINHERIT`);
   }

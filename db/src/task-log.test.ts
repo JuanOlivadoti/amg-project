@@ -158,8 +158,24 @@ test("las huérfanas quedan listadas: es la lista a mirar si el saldo no cuadra"
  * simultáneas, 2 autorizaban gastar. El test pasaba con el doble cobro dentro.
  *
  * Lo que hay que medir no es el ESTADO, es cuántas AUTORIZAN GASTAR. Tiene que ser exactamente una.
+ *
+ * ## ⚠️ LO QUE ESTE TEST *NO* PRUEBA — y hay que decirlo, porque yo lo presentaba como si sí
+ *
+ * **PGlite tiene UNA sola conexión y serializa las transacciones.** `Promise.all` acá no crea dos
+ * procesos concurrentes: crea dos llamadas que Postgres ejecuta **una detrás de la otra**. O sea que
+ * esto verifica la LÓGICA del `on conflict do nothing` (que ya es algo: es lo que decide quién crea
+ * la fila), pero **no reproduce la carrera** entre dos conexiones reales.
+ *
+ * La consecuencia concreta: quitar el `for update` de `PgTaskLog.reservar()` probablemente **no
+ * haría caer este test**, porque sin dos conexiones no hay dos transacciones compitiendo por la
+ * fila. En un Postgres de verdad, dos procesos rescatando el mismo lease vencido podrían leerlo a la
+ * vez y **ambos** salir a pagar.
+ *
+ * Cerrar eso exige un Postgres con dos conexiones (Docker, o un Postgres de CI). No está hecho.
+ * Queda anotado en ADR-14 como lo que es: **una garantía que el código intenta dar y los tests no
+ * verifican.** Preferible tenerlo escrito que creerme cubierto.
  */
-test("🔴 concurrencia: de dos reservas simultáneas, solo UNA autoriza gastar", async () => {
+test("concurrencia (lógica, NO carrera real — ver el comentario): solo UNA reserva autoriza gastar", async () => {
   const [a, b] = await Promise.all([log.reservar(EP, HASH), log.reservar(EP, HASH)]);
 
   const autorizaGasto = (r: { estado: string }) => r.estado === "nueva" || r.estado === "huerfana";
