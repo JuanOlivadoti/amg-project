@@ -171,13 +171,13 @@ lista viaja con la página para que quien redacte (o el LLM del Módulo 1) la re
 ### 10. Ensamblado y validación
 `pipeline/brief.ts` → `assembleBrief()` + `renderReport()`
 
-Produce el brief (`status: "pending_approval"`, `schema_version: "kr.v0.4"`, `run_id`, `meta_run`
+Produce el brief (`status: "pending_approval"`, `schema_version: "kr.v0.5"`, `run_id`, `meta_run`
 con keywords analizadas / páginas / coste en micros) y el informe Markdown.
 
 El CLI **valida el brief contra el esquema Zod** (`validation/brief.schema.ts`) antes de escribirlo.
 Si no valida, sale con código de error.
 
-> ### ⚠️ `null` no es `0` (contrato `kr.v0.4`)
+> ### ⚠️ `null` no es `0` (contrato `kr.v0.4`, hoy `kr.v0.5`)
 >
 > `volumen` y `dificultad` son **nullable**. `null` significa *"el proveedor no devolvió la
 > métrica"*, que **no es lo mismo** que *"esta keyword tiene 0 búsquedas al mes"*.
@@ -298,4 +298,4 @@ Sin tope, nunca bloquea.
 | Señales de SERP para `is_local` | ⛔ Hoy se dispara de más (53/60) |
 | Usar `score_confidence` para priorizar páginas | ⛔ Se calcula pero no se usa al ordenar |
 | Calibrar las estimaciones del presupuesto | ⛔ Ya hay datos; falta aplicarlo |
-| Persistencia, multi-tenancy, Inngest | ⛔ Fase 2-3 |
+| Persistencia, multi-tenancy, Inngest | ✅ **Hechos** — ver `db/` y `orchestrator/` |

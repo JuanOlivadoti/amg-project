@@ -2,33 +2,43 @@
 
 ## Vista general
 
-Dos módulos independientes, conectados por **un contrato de datos** (el brief JSON), no por
-código compartido. Cada uno es un paquete Node/TypeScript autónomo con su propio `package.json`.
+**Cuatro paquetes** en un monorepo de workspaces npm. Dos son los módulos de negocio
+(`kr-service` = M2, `web-builder` = M1), conectados por **un contrato de datos** (el brief JSON) y
+no por código compartido. Los otros dos son la plataforma: `db` (Postgres + RLS) y `orchestrator`
+(Inngest), que es el **composition root** — el único punto que conoce a los tres a la vez.
 
 ```
-                    ┌──────────────────────── kr-service (Módulo 2) ────────────────────────┐
-  prompt de   →     │  seeds → expansión → enriquecimiento → intención → relevancia →       │
-  negocio           │  scoring → clustering → mapeo a páginas → contenido on-page           │
-                    └───────────────────────────────┬──────────────────────────────────────┘
-                                                    │
-                                          out/brief.json  (contrato kr.v0.2)
-                                          out/informe.md  (entregable humano)
-                                                    │
-                                    ⛔ COMPUERTA DE APROBACIÓN HUMANA (ADR-06)
-                                       status: pending_approval → approved
-                                       + aprobación por página (page.approved)
-                                                    │
-                    ┌──────────────────────── web-builder (Módulo 1) ───────────────────────┐
-                    │  validación del contrato (Zod) → handoff adapter → prose (LLM) →      │
-                    │  perfil de negocio → render HTML+JSON-LD → publicación                │
-                    └───────────────────────────────┬──────────────────────────────────────┘
-                                                    │
-                            ┌───────────────────────┴────────────────────────┐
-                            ▼                                                ▼
-                   out/preview/*.html                          Storyblok (Management API)
-                   (preview + base del                         → editable en Visual Editor
-                    snapshot estático)                         → renderizado por Next.js (PROD)
+   LA API (falta) ──crea la fila del run BAJO RLS, con la identidad del humano──▶ kr_runs
+        │            aquí ocurre la autorización: sin membresía, Postgres rechaza el insert
+        │
+        └──emite research/solicitado { runId, tenantId } ──▶  ORCHESTRATOR (Inngest, ADR-12)
+                                                                   │  steps durables
+   ┌───────────────────────────────────────────────────────────────┘
+   │
+   ├─▶ kr-service (M2) ──── seeds → expansión → enriquecimiento → intención → relevancia →
+   │                        scoring → clustering → mapeo a páginas → contenido on-page
+   │                              │
+   │                              └──▶  brief JSON  (contrato kr.v0.5)  +  informe.md
+   │
+   ├─▶ db ─────────────── persiste runs, keywords y páginas bajo RLS multi-tenant
+   │                      + cache de métricas/SERP + registro de tareas facturables
+   │
+   ⏸  COMPUERTA DE APROBACIÓN HUMANA (ADR-06) — waitForEvent, hasta 7 días, sin proceso vivo
+   │      status: pending_approval → approved, + aprobación por página
+   │      al despertar, RELEE DE LA BASE: el evento no aprueba nada (ADR-12)
+   │
+   └─▶ web-builder (M1) ── validación Zod del contrato → handoff adapter → prose (LLM) →
+                           perfil de negocio → render HTML+JSON-LD → publicación
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+           out/preview/*.html            Storyblok (Management API)
+           (HTML autocontenido,          → editable en Visual Editor
+            base del snapshot)           → ⚠️ ver OBS-03: nadie lo publica todavía
 ```
+
+> ⚠️ **La API todavía no existe.** Hoy el único caller es el CLI. Es lo que se construye ahora
+> ([Plan de la Fase 2](11-plan-fase-2.md)).
 
 ## El patrón que sostiene todo: proveedores abstractos
 
@@ -57,6 +67,52 @@ configurado, se avisa fuerte antes de caer a mock.
 
 > Única asimetría, por limitación del proveedor: los **embeddings** siempre van por OpenAI —
 > Anthropic no tiene API de embeddings propia ([ADR-09](../decisiones-arquitectura.md)).
+
+## La plataforma: quién decide qué
+
+Esta parte no existía cuando el proyecto era un script. Es la que hace que el sistema aguante
+tener **más de un cliente** — y es donde están las decisiones que más caro salió corregir.
+
+### La regla que ordena todo: la autoridad vive en Postgres, no en el código
+
+Ningún proceso *declara* quién es ni qué puede. Lo **demuestra**, y Postgres decide.
+
+| Pieza | Cómo funciona | ADR |
+|---|---|---|
+| **RLS forzado** | `FORCE ROW LEVEL SECURITY`, no solo `ENABLE`: ni el dueño de la tabla se la salta. Políticas de allowlist positiva. | ADR-10 |
+| **El rol no se declara** | Se **deriva de `memberships`** dentro de la base (`app.current_role()`). Antes lo ponía el caller — es decir, se lo creíamos. | ADR-15 |
+| **Un proceso, un login, un rol** | `amg_api` → `app_user`. `amg_orquestador` → `app_service`. Son `NOINHERIT` y **ninguno puede asumir el del otro**: lo impide Postgres. | ADR-17 |
+| **Un evento no porta autoridad** | El evento lleva solo `{runId, tenantId}` — *coordenadas*, no permisos. Quien autoriza es el `insert` que hizo la API bajo RLS **antes** de emitirlo. | ADR-18 |
+| **Solo se toca la base por transacción** | El contexto de tenant (`set local`) vive en **una** conexión reservada. Con un pool, las queries se repartían y el `insert` caía **fuera de RLS**. | ADR-13 |
+
+> Las cuatro últimas nacieron de **agujeros reales encontrados en reviews externas**, no de la
+> teoría. Tres corrigen algo que yo había dado por bueno. El detalle —incluida una afirmación de
+> seguridad que documenté y era **falsa**— está en [decisiones](../decisiones-arquitectura.md) y en
+> [Credenciales](12-credenciales.md).
+
+### Orquestación durable (`orchestrator`)
+
+Inngest, con los pasos como fronteras del gasto ([ADR-12](../decisiones-arquitectura.md)):
+
+- **`waitForEvent`** resuelve la compuerta humana: el workflow se suspende **hasta 7 días sin
+  proceso vivo**. Es lo que un script secuencial no podía hacer.
+- **El evento despierta; la base decide.** Al reanudarse, el workflow relee qué está realmente
+  aprobado (`getPublishablePages`, bajo RLS). Si alguien "simplifica" esto publicando el brief
+  directamente, **caen cuatro tests**. Están puestos para eso.
+- **Concurrencia global de 3** — el rate limit de DataForSEO es por **cuenta**, no por tenant — y
+  **1 por tenant**.
+- **El research no se vuelve a pagar**: la clave de idempotencia de Inngest dura 24 h y la compuerta
+  espera 7 días, así que el workflow comprueba el estado del run antes de gastar.
+
+### Idempotencia del gasto (`db` + `kr-service`)
+
+Una petición facturable se registra en `kr_provider_tasks` con un **`payload_hash`**, **antes** de
+enviarse ([ADR-14](../decisiones-arquitectura.md)). Un reintento encuentra el resultado en vez de
+volver a pagarlo. Cubre **el 100% de la superficie facturable** — incluida la API Labs de
+DataForSEO, que es *live-only* y donde está el **54% del gasto**.
+
+Hay *lease* con expiración y contador de intentos: un proceso muerto a mitad de camino libera la
+reserva en vez de bloquearla para siempre.
 
 ## Límites entre módulos
 
@@ -108,8 +164,9 @@ Principio adoptado tras una revisión externa (ver [Testing y calidad](08-testin
 - **Presupuesto preflight** (`lib/budget.ts`): cada fase se estima **antes** de ejecutarse y se
   aborta si no entra en el tope, en vez de descubrir el exceso cuando ya se gastó.
 
-Estas tres piezas son, justamente, la base que necesita un orquestador durable (Inngest, ADR-03)
-para poder reintentar pasos sin duplicar trabajo ni gasto.
+Estas tres piezas fueron la base sobre la que se construyó el orquestador durable
+([ADR-03](../decisiones-arquitectura.md), ya implementado): reintentar un paso sin duplicar trabajo
+ni gasto exige exactamente esto.
 
 ## Trazabilidad
 
@@ -122,15 +179,27 @@ Esto permite responder, ante cualquier página publicada: *¿por qué existe est
 
 ## Lo que está decidido pero NO construido
 
-La arquitectura objetivo ([ADRs](../decisiones-arquitectura.md)) incluye piezas que **todavía no
-existen en el código**:
-
 | Pieza | Decisión | Estado |
 |---|---|---|
-| Persistencia + multi-tenancy (RLS) | Supabase (ADR-01) | ⛔ No implementado |
-| Orquestación durable (**reintentos por paso**, checkpoints, `waitForEvent` para la compuerta) | Inngest (ADR-03) | ⛔ No implementado — hoy el pipeline corre **secuencial en línea** por CLI. *(Los reintentos a nivel HTTP y la idempotencia sí existen: son la base que Inngest necesita.)* |
-| Frontend / portal | Next.js (ADR-02) | ⛔ No implementado |
-| Render de las webs de cliente | Next.js leyendo Storyblok (ADR-04) | ⛔ No implementado — hoy hay un preview HTML autocontenido |
+| Persistencia + multi-tenancy (RLS) | Supabase / Postgres (ADR-01, ADR-10, ADR-13, ADR-15) | ✅ **Construido** — `db/`, 5 migraciones, 76 tests contra Postgres real |
+| Orquestación durable (`waitForEvent`, reintentos por paso) | Inngest (ADR-03, ADR-12) | ✅ **Construido** — `orchestrator/` |
+| Idempotencia del gasto | `payload_hash` (ADR-14) | ✅ **Construido** |
+| **API REST autenticada** | ADR-15, ADR-17, ADR-18 | ⏳ **Siguiente.** Sin ella, el único caller es el CLI |
+| **Portal** | **Angular + Tailwind** (ADR-16, *reemplaza* ADR-02/Next) | ⛔ No implementado — es lo que hace usable el sistema |
+| **Despliegue** | Servicio Node de larga duración | ⛔ Nada corre en ningún servidor |
+| **Publicación de las webs de cliente** | Storyblok + HTML estático (ADR-04, ADR-16) | ⚠️ **Decisión a medio tomar → OBS-03** |
 
-El preview HTML del `web-builder` **refleja el mismo contrato de bloks** que renderizará Next.js,
-así que lo que se ve en la demo coincide con lo que se verá en producción.
+### ⚠️ OBS-03 — nadie publica la web del cliente
+
+ADR-02 asumía que **un frontend Next.js** renderizaría las webs públicas leyendo Storyblok. ADR-16
+acotó el alcance al portal interno y resolvió que las webs *"siguen saliendo como HTML estático +
+Storyblok"*. **Pero esa mitad de la decisión no se terminó**, y hoy no cierra:
+
+- `web-builder` **genera** el HTML (`render/html.ts`) y **publica** el contenido en Storyblok.
+- **No hay nada que sirva ese HTML en un dominio**, ni ningún webhook/rebuild en el repositorio.
+- Por lo tanto, **una edición en el Visual Editor de Storyblok no llega a ninguna página publicada** —
+  y "que un no-técnico edite sin devs" era **la justificación entera de ADR-04**.
+
+No es un problema de documentación: es una **decisión pendiente** de la que además cuelga ADR-11
+(el *offboarding*, que es una **promesa comercial**: snapshot gratis, handoff editable de pago).
+Registrada en [decisiones](../decisiones-arquitectura.md).

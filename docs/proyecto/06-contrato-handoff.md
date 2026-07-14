@@ -16,7 +16,7 @@ valida en runtime.
 
 ## Versionado
 
-El brief lleva `schema_version`. Hoy: **`kr.v0.3`**.
+El brief lleva `schema_version`. Hoy: **`kr.v0.5`**.
 
 - El Módulo 2 lo emite desde `SCHEMA_VERSION` (`kr-service/src/types.ts`).
 - El Módulo 1 declara qué versiones soporta en `SUPPORTED_SCHEMA_VERSIONS` (`web-builder/src/contract.ts`)

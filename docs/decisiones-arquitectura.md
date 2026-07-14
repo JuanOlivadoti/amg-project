@@ -10,14 +10,14 @@
 | ADR-01 | Núcleo de datos + identidad: **Supabase** | Aceptada |
 | ADR-02 | Frontend: **Next.js + TypeScript + Tailwind + shadcn/ui** | ⚠️ Reemplazada por **ADR-16** |
 | ADR-03 | Orquestación: **Inngest** en código, n8n solo como glue | Aceptada |
-| ADR-04 | CMS del Módulo 1 (Creador de Webs): **Storyblok** | Aceptada (a confirmar por flujo de edición) |
+| ADR-04 | CMS del Módulo 1 (Creador de Webs): **Storyblok** | Aceptada · ⚠️ el render **ya no es Next** (ADR-16) → **OBS-03** |
 | ADR-05 | Motor de datos del Módulo 2 (Keyword Research): **DataForSEO** | Aceptada |
 | ADR-06 | Compuerta de aprobación humana entre Módulo 2 y Módulo 1 | Aceptada |
 | ADR-07 | Output del Módulo 2: **JSON + informe legible** | Aceptada |
 | ADR-08 | Mercado del Módulo 2: **ES-first, diseño market-aware** | Aceptada |
 | ADR-09 | LLM: **proveedor abstracto** (OpenAI/Anthropic); embeddings OpenAI | Aceptada |
 | ADR-10 | Endurecimiento del esquema del Módulo 2 (post-review) | Aceptada |
-| ADR-11 | Política de salida/offboarding de webs de cliente | Aceptada |
+| ADR-11 | Política de salida/offboarding de webs de cliente | ⚠️ **En revisión** — describe un frontend Next que no se va a construir → **OBS-03** |
 | ADR-12 | Orquestador durable (Inngest): el evento dispara, la base decide | Aceptada |
 | ADR-13 | El acceso a la base es SOLO por transacción con conexión reservada | Aceptada |
 | ADR-14 | Idempotencia por `payload_hash`, **no** método Standard de DataForSEO | Aceptada |
@@ -27,6 +27,7 @@
 | ADR-18 | Un evento no porta autoridad: la API crea el run, el evento lo dispara | Aceptada |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | Abierta — riesgo |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
+| OBS-03 | **Nadie publica la web del cliente**: ADR-16 quitó Next y no puso nada en su lugar | 🔴 **Abierta — bloquea ADR-04 y ADR-11** |
 
 ---
 
@@ -62,6 +63,19 @@
 **Implicancia de diseño (frontend).** El frontend Next.js debe construirse *AI-search-first*: JSON-LD por tipo de página, sitemaps, HTML semántico, `llms.txt`, entidades limpias.
 **Costo/atención.** Precio por space/seat crece con la cartera → contemplar en la propuesta a Frank (lo absorbe la agencia o se traslada al cliente). El lock-in de headless (frontend separado del contenido) se gestiona con la política de salida → ver **ADR-11**.
 **Estado.** Confirmada. Descartado reabrir WordPress.
+
+> ### ⚠️ Actualización (2026-07-14) — el "renderizados con Next.js" de arriba ya no aplica
+>
+> **ADR-16 quitó Next del stack** y resolvió que las webs de cliente salen como *HTML estático +
+> Storyblok*. Lo escrito arriba se conserva como registro de por qué se eligió Storyblok —**esa
+> parte sigue en pie**— pero el render **ya no es Next.js**.
+>
+> El problema es que ADR-16 **quitó Next sin poner nada en su lugar**: hoy `web-builder` genera el
+> HTML y publica el contenido en Storyblok, pero **nada sirve esa web en un dominio** y **no hay
+> rebuild**. Es decir: **una edición en el Visual Editor no llega a ninguna página publicada** — y
+> "que un no-técnico edite sin devs" es *la justificación central de este ADR*.
+>
+> **La premisa de ADR-04 no se cumple todavía.** Ver **OBS-03**.
 
 ## ADR-05 — Motor de datos del Módulo 2: DataForSEO
 **Contexto.** El doc original del Módulo 2 eligió SEMrush. Se reevaluó por costo y por ser un pipeline programático.
@@ -116,6 +130,21 @@
 **Justificación.** La clientela (restaurantes, no técnica) mayoritariamente quiere que su web no se caiga, no seguir maquetando. El snapshot cubre eso con coste casi nulo; el handoff editable se cobra y protege la relación.
 **Implicancia de diseño (día 1).** (1) **Un space de Storyblok por cliente** (no compartido) → transferencia limpia. (2) **Frontend por-tenant exportable** (config/tema por tenant, no hardcodeado) → snapshot estático de un solo cliente trivial. (3) Capacidad de **export estático** en el frontend.
 **Pendiente comercial.** Reflejar en el contrato: la web es servicio recurrente; snapshot incluido, handoff editable con tarifa.
+
+> ### ⚠️ Actualización (2026-07-14) — este ADR está EN REVISIÓN
+>
+> Todo lo de arriba está redactado sobre **"el frontend Next.js"**, que **ADR-16 eliminó**. Como
+> este ADR define una **promesa comercial** (snapshot gratis, handoff editable de pago), no puede
+> quedar apoyado en una pieza que no se va a construir:
+>
+> - **"Snapshot estático (Next.js SSG export)"** → hoy el HTML lo genera `web-builder`
+>   (`render/html.ts`), autocontenido y sin dependencias. **Probablemente ya está hecho** — pero
+>   nadie lo ha usado como entregable de salida ni lo ha verificado como tal.
+> - **"Handoff editable: entregar/hostear el frontend Next.js"** → **no hay frontend que entregar.**
+>   Si el cliente se lleva el space de Storyblok, se lleva el *contenido* y nada que lo renderice.
+>
+> **Qué hay que decidir** (es lo mismo que bloquea OBS-03): quién renderiza y sirve la web del
+> cliente. Hasta que eso se resuelva, **la salida editable no se puede prometer en un contrato.**
 
 ---
 
@@ -396,3 +425,45 @@ una identidad de servicio explícita y separada de la de las personas.
 que un rol ausente o inventado no ve nada (antes, `NULL IS DISTINCT FROM 'cliente'` era `true` y
 concedía visibilidad de maestro sobre toda la cartera). El rol `cliente` es de **solo lectura** y no
 puede tocar `memberships`.
+
+---
+
+## OBS-03 — Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar 🔴 ABIERTA
+
+**Observación.** ADR-02 asumía que **un frontend Next.js** renderizaría dos cosas: el portal interno
+**y las webs públicas de cliente**. ADR-16 acotó el alcance al portal, eligió Angular y declaró —de
+pasada, en una sola línea— que las webs de cliente *"siguen saliendo como HTML estático + Storyblok"*.
+
+**Esa línea nunca se convirtió en un diseño.** El estado real del código, verificado:
+
+| Pieza | Estado |
+|---|---|
+| Generar el HTML de la página | ✅ `web-builder/src/render/html.ts` — autocontenido, JSON-LD, validado en el Rich Results Test |
+| Publicar el contenido en Storyblok | ✅ `StoryblokPublisher`, idempotente |
+| **Servir esa web en un dominio** | ⛔ **No existe** |
+| **Rebuild al editar en Storyblok** | ⛔ **No existe** — no hay un solo webhook en el repositorio |
+
+**Por qué importa, y no es un detalle de infraestructura:**
+
+1. **Rompe la premisa de ADR-04.** Se eligió Storyblok —contra WordPress y contra Payload—
+   **porque tiene Visual Editor**, para que community managers editen sin devs. Pero si la web
+   publicada es HTML generado una vez, **una edición en el Visual Editor no llega a ninguna parte**.
+   Se está pagando el CMS por una capacidad que hoy no está conectada.
+2. **Rompe una promesa comercial (ADR-11).** El *offboarding* vende "handoff editable" como servicio
+   pago = space de Storyblok **+ el frontend**. **No hay frontend.** Eso no se puede firmar.
+3. **El propio código todavía cree lo contrario.** El comentario de `render/html.ts` dice: *"para
+   previsualizar sin frontend Next.js. En PROD, el render real lo hace Next.js"*. El código arrastra
+   una suposición que ADR-16 invalidó.
+
+**Lo que hay que decidir** (no lo resuelvo por mi cuenta: tiene consecuencias de costo y de venta):
+
+- **(a) Sitio estático regenerado.** Un webhook de Storyblok dispara un rebuild del `web-builder` y
+  redespliega a un host estático. Barato, SEO impecable, y **el snapshot de ADR-11 sale gratis**.
+  El coste: la edición no es instantánea (hay un build de por medio).
+- **(b) Un renderizador propio en runtime** que lea Storyblok y sirva la web. Edición instantánea,
+  pero es **otro servicio** que mantener, y contradice el argumento de "menor mantenimiento" de ADR-04.
+- **(c) Aceptar que la web es un entregable congelado** y que el Visual Editor **no se usa**. Es
+  coherente y barato, **pero entonces Storyblok está de más** y hay que revisar ADR-04 entero.
+
+**Riesgo si no se decide:** es la única pieza del Módulo 1 que separa "generamos una web" de
+"tenés una web". Afecta directamente lo que se le puede prometer a Frank.

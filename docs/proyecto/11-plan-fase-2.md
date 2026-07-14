@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-14** · Commit: `7fcdbff` · **194 tests en verde**
+> Última actualización: **2026-07-14** · **194 tests en verde**
 
 ---
 
@@ -146,10 +146,21 @@ Todas con su ADR. Las que más condicionan lo que viene:
 
 ## Lo que sigue abierto
 
+### 🔴 Decisiones, no tareas (bloquean lo que se le puede prometer al cliente)
+
+| Qué | Dónde | Por qué bloquea |
+|---|---|---|
+| **OBS-03 — nadie publica la web del cliente** | [decisiones](../decisiones-arquitectura.md) | ADR-16 quitó Next del stack **y no puso nada en su lugar**. Hoy `web-builder` genera el HTML y publica en Storyblok, pero **nada sirve la web en un dominio** y **no hay rebuild**: una edición en el Visual Editor **no llega a ninguna página publicada**. Eso rompe la premisa de ADR-04 (se eligió Storyblok *por* el Visual Editor) y deja **ADR-11 sin poder firmarse** (el "handoff editable" de pago promete un frontend que no existe). |
+| **OBS-01 — unificar el alcance** | [acciones/05](../acciones/05-unificar-alcance.md) | Dos documentos de producto describen alcances incompatibles. Conversación de negocio, no código. **Solo Juan puede.** |
+
+### ⏳ Tareas
+
 | Qué | Dónde | Nota |
 |---|---|---|
-| **Acción 05 — unificar alcance** | [acciones/05](../acciones/05-unificar-alcance.md) | OBS-01. Conversación de negocio, no código. **Solo Juan puede.** |
 | **Acción 06 — corrida final** | [acciones/06](../acciones/06-corrida-final-demo.md) | ~$0.31. La demo publicada es anterior a kr.v0.5. |
+| **Migrar SERP + Search Volume a DataForSEO Standard** | `kr-service/src/dataforseo/` | ADR-14 cubre el 100% del gasto con `payload_hash`, pero **el 46%** (SERP + volumen) *sí* soporta el método Standard, cuyos resultados se recuperan **gratis** durante 30 días. Tanda propia. |
+| **Cuánto tarda un research real** | — | **Nunca se midió.** Tengo el coste ($0.31), no la duración. Define la UX del portal. |
 | Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
 | `is_local` se dispara de más | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo `LocalBusiness`. Ensucia el JSON-LD. |
+| `endpoints_degradados` incompleto | `meta_run` | Omite los fallos de suggestion/SERP. |
 | Sin tests de integración automatizados | — | El camino live se ejecutó **a mano** contra DataForSEO, OpenAI y Storyblok. |

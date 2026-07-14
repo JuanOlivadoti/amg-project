@@ -123,9 +123,9 @@ uno** y esos quedan con texto de fallback. Nunca crashea ni deja la página vac�
 ### 6. Render: HTML semántico + JSON-LD
 `render/html.ts` → `renderStory()`
 
-Genera una página **autocontenida** (CSS inline, sin dependencias) que refleja el **mismo
-contrato de bloks** que renderizará Next.js en producción — lo que ve el cliente en la demo es lo
-que verá en real.
+Genera una página **autocontenida** (CSS inline, sin dependencias). ⚠️ **Quién sirve esto en
+producción está sin decidir** (OBS-03): ADR-16 quitó Next.js del stack, así que este render dejó de
+ser "un preview de lo que hará Next" y es, de hecho, **el único renderizador que existe**.
 
 **AI-search-first** ([ADR-04](../decisiones-arquitectura.md)):
 - HTML semántico (`<main>`, `<header>`, `<section>`, `<h1>/<h2>`, `<details>` para FAQs).
@@ -211,4 +211,4 @@ Es **idempotente**: si el componente existe, lo actualiza; si no, lo crea.
 | **Resiliencia HTTP** (timeout, retries con backoff, `Retry-After`) | ✅ |
 | Publisher Storyblok live + provisioning de componentes | ✅ código · ⛔ **sin probar contra space real** ([acción C](10-acciones-pendientes.md)) |
 | Enlazado interno entre páginas | ⛔ el M2 aún no lo genera |
-| Frontend Next.js que renderice desde Storyblok | ⛔ Fase 2-3 |
+| **Servir la web del cliente en un dominio + rebuild al editar** | 🔴 **Sin decidir → OBS-03.** Next.js ya no está en el stack (ADR-16) y no se puso nada en su lugar. |

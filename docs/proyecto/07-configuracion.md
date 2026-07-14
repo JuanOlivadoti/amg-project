@@ -2,11 +2,30 @@
 
 ## Principio: todo funciona sin credenciales
 
-Ambos módulos corren **de punta a punta en modo mock**, sin una sola API key. Los mocks son
-**deterministas y realistas** (no random), así que sirven para desarrollar, testear y demostrar
-el flujo completo.
+**Los cuatro paquetes** corren de punta a punta **sin una sola API key ni contraseña**: providers
+mock + **PGlite en memoria** (Postgres real, en WASM). Los mocks son **deterministas y realistas**
+(no random), así que sirven para desarrollar, testear y demostrar el flujo completo.
 
-Las credenciales solo hacen falta para obtener **datos reales**.
+Las credenciales solo hacen falta para obtener **datos reales** y para persistir en un Postgres de
+verdad.
+
+---
+
+## `db` y `orchestrator` (la plataforma)
+
+| Variable | Default | Para qué |
+|---|---|---|
+| `DATABASE_URL_ORQUESTADOR` | *(PGlite en memoria)* | Postgres del orquestador. Login `amg_orquestador` → rol `app_service`. |
+| `DATABASE_URL_CACHE` | *(hereda la del orquestador)* | Caches y registro de tareas. Login `amg_cache`: **sin acceso a ninguna tabla de tenant**. |
+| `DATABASE_URL` | — | *Fallback* de la primera. Cómodo en dev, **no usar en producción**. |
+| `PORT` | `3100` | Puerto del servidor de Inngest (`/api/inngest`). |
+
+> 🔐 **Un proceso, un login, un rol** ([ADR-17](../decisiones-arquitectura.md)). Las tres
+> credenciales, los `GRANT` y qué puede cada una están en **[12. Credenciales](12-credenciales.md)**.
+> No es una convención del código: **la frontera la impone Postgres**.
+
+**Sin ninguna de estas variables el sistema arranca igual**, con PGlite en memoria. Es deliberado y
+es lo que permite que los 194 tests corran en CI sin Docker, sin cuenta y sin red.
 
 ---
 
@@ -31,11 +50,21 @@ Copiá `.env.example` a `.env` y completá lo que necesites. **Todas las variabl
 > proveedor antes de usar el costo en una propuesta comercial. Si un modelo no tiene tarifa, el
 > costo **no se inventa**: el total se marca como incompleto (`modelos_sin_precio`).
 
+### Comunes a ambos módulos
+
+| Variable | Default | Para qué |
+|---|---|---|
+| `HTTP_TIMEOUT_MS` | `30000` | Timeout **por intento** (no por operación). |
+| `HTTP_RETRIES` | `3` | Reintentos con backoff exponencial + jitter. Los 429/5xx se reintentan; los demás 4xx **no**. |
+| `DFS_CACHE` | *(activa)* | `off` desactiva la cache en disco de DataForSEO. |
+| `DFS_CACHE_PATH` | `.cache/dataforseo.json` | Dónde vive esa cache. |
+| `MAX_COST_USD` | *(sin tope)* | **Tope de gasto del CLI**: `MAX_COST_USD=1.00 npm run spike "..."` aborta **antes** de gastar. |
+
 ### Presupuesto del run
 
-`options.max_cost_micros` (por corrida, no por env) fija un **tope en micros de USD**. Antes de
-cada fase se estima su costo y, si no entra en el remanente, **se aborta sin gastar**. Sin tope,
-no bloquea nunca.
+`options.max_cost_micros` (por corrida; `MAX_COST_USD` es el atajo desde el CLI) fija un **tope en
+micros de USD**. Antes de cada fase se estima su costo y, si no entra en el remanente, **se aborta
+sin gastar**. Sin tope, no bloquea nunca.
 
 ### Los tres modos de DataForSEO
 
@@ -99,21 +128,22 @@ habría enviado. Sirve para inspeccionar el formato Storyblok-nativo sin tener c
   con placeholders.
 - Antes de cada commit se comprueba explícitamente que no se cuele ningún secreto.
 
-### ⚠️ Deuda abierta (acción pendiente)
+### ✅ La key de OpenAI, rotada (2026-07-13)
 
-Una revisión externa señaló que **la misma API key de OpenAI está duplicada** en
-`kr-service/.env` y `web-builder/.env`. Aunque están gitignoreados, eso significa que:
+Una revisión externa señaló que **la misma API key de OpenAI estaba duplicada** en
+`kr-service/.env` y `web-builder/.env`: una sola filtración comprometía **ambos** módulos y no se
+podía revocar ni atribuir costos por servicio. **Rotada**
+([acción 01](../acciones/01-rotar-key-openai.md)).
 
-- Una sola filtración compromete **ambos** módulos.
-- No se puede revocar ni atribuir costos por servicio.
+### ⏳ Lo que sigue pendiente
 
-**Acciones recomendadas (pendientes):**
-1. **Rotar la key** en el dashboard de OpenAI (invalida la actual).
-2. Usar **una key por servicio y entorno**, con límite de gasto por proyecto.
-3. En producción, leerlas de un **secret manager**, no de archivos.
-4. Añadir *secret scanning* / pre-commit hook.
+1. Usar **una key por servicio y entorno**, con límite de gasto por proyecto.
+2. En producción, leer los secretos de un **secret manager**, no de archivos `.env`.
+3. Añadir *secret scanning* / pre-commit hook (hoy la verificación es **manual antes de cada commit**).
 
 ### Reglas para el futuro
 - **Nunca** pegar credenciales en el chat, en commits, ni en la documentación.
 - Mantener únicamente `.env.example` versionado, con placeholders.
 - Al terminar un spike con credenciales temporales, **rotarlas**.
+- **Después de correr DataForSEO en producción, volver a sandbox** — si no, cada corrida de
+  desarrollo cobra.

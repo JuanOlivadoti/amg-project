@@ -83,6 +83,15 @@ Ver el [**Plan de la Fase 2**](docs/proyecto/11-plan-fase-2.md). En corto:
 3. **Desplegar** (orquestador + API como servicio Node de larga duración; el research tarda minutos
    y no entra en una función serverless).
 
+### 🔴 Decisiones abiertas (no son tareas: condicionan qué se le puede prometer al cliente)
+
+- **OBS-03 — nadie publica la web del cliente.** ADR-16 quitó Next del stack **y no puso nada en su
+  lugar**: hoy se genera el HTML y se publica el contenido en Storyblok, pero **nada sirve la web en
+  un dominio** y **no hay rebuild**, así que una edición en el Visual Editor no llega a ninguna
+  página publicada. Rompe la premisa de ADR-04 y deja ADR-11 (el *offboarding* de pago) sin poder
+  firmarse.
+- **OBS-01 — unificar el alcance.** Dos documentos de producto describen alcances incompatibles.
+
 **Acciones que solo Juan puede hacer** — guías paso a paso en [**docs/acciones/**](docs/acciones/):
 la **corrida final en producción** (~$0.31) y **unificar el alcance** (OBS-01) antes de consolidar la
 propuesta comercial.

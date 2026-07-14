@@ -10,9 +10,12 @@ import type {
 
 /**
  * Render AI-search-first (ADR-04): HTML semántico + JSON-LD por tipo de página.
- * Página autocontenida (CSS inline) para previsualizar sin frontend Next.js.
- * En PROD, el render real lo hace Next.js leyendo la story de Storyblok; este preview
- * refleja el MISMO contrato de bloks, así lo que ve el cliente coincide.
+ * Página autocontenida (CSS inline, sin dependencias externas).
+ *
+ * OJO — quién sirve esto en producción está SIN DECIDIR (OBS-03). ADR-16 quitó Next del
+ * stack, así que este render dejó de ser "un preview de lo que hará Next" y es, de hecho,
+ * el único renderizador que existe. Falta el paso que lo publique en un dominio y lo
+ * regenere cuando alguien edite en Storyblok.
  *
  * `profile` (opcional): datos NAP del negocio → enriquecen JSON-LD y agregan contacto.
  */

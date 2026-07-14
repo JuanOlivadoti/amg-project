@@ -41,18 +41,24 @@ Hay un test que lo comprueba contra `pg_auth_members` (la fuente de verdad, no e
 ## Variables de entorno
 
 ```bash
-# La API (portal). Rol app_user: RLS + rol derivado de memberships.
-DATABASE_URL_API=postgres://amg_api:...@host/db
-
-# El orquestador. Rol app_service.
+# El orquestador. Rol app_service.          ← LA LEE EL CÓDIGO HOY
 DATABASE_URL_ORQUESTADOR=postgres://amg_orquestador:...@host/db
 
 # Caches y registro de tareas. Sin acceso a NINGUNA tabla de tenant.
-DATABASE_URL_CACHE=postgres://amg_cache:...@host/db
+DATABASE_URL_CACHE=postgres://amg_cache:...@host/db     # ← LA LEE EL CÓDIGO HOY
+
+# La API (portal). Rol app_user: RLS + rol derivado de memberships.
+DATABASE_URL_API=postgres://amg_api:...@host/db         # ⏳ TODAVÍA NADIE LA LEE
 ```
 
+> ⚠️ **`DATABASE_URL_API` está aquí por adelantado.** El rol `amg_api` **ya existe** en la migración
+> `0003_credenciales.sql` y **ya hay un test** que verifica contra `pg_auth_members` que no puede
+> asumir el rol del servicio. Pero **la API no está construida**, así que ninguna línea de código lee
+> esa variable todavía. Se documenta para que el contrato esté fijado *antes* de escribirla — no
+> porque funcione.
+
 > **Sin ninguna de las tres**, el sistema arranca igual con **PGlite en memoria**. Es deliberado:
-> todo el proyecto corre sin una sola credencial. Ver ADR-09.
+> todo el proyecto corre sin una sola credencial.
 
 **Las contraseñas no van en el repositorio, ni en las migraciones, ni en un mensaje.** Se ponen al
 desplegar:

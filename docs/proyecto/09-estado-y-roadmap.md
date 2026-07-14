@@ -130,7 +130,6 @@ reales, no solo contra tests.
 | **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son 2-3× más baratos. **Pero la corrida real bajó la urgencia**: el LLM es solo el **19%** del costo, así que el ahorro total sería de ~10%. Ver [guía 02](../acciones/02-precios-modelos.md). |
 | **`is_local` se dispara de más** | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo sale `LocalBusiness`. Ensucia el JSON-LD. |
 | **Sin tests de integración** | — | El camino live ya **se ejecutó a mano** contra DataForSEO, OpenAI y Storyblok, pero no está **automatizado**. |
-| **Los paquetes se enlazan por ruta relativa** | `orchestrator/src/deps.ts` | No hay workspaces de npm: el orquestador importa `../../db/src/...`. Funciona y mantiene las fronteras (el M1 sigue sin importar del M2), pero al sumar el frontend conviene pasar a workspaces. |
 
 ## Riesgos abiertos
 

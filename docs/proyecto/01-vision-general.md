@@ -62,9 +62,11 @@ en JSON-LD válido. Es una cadena diseñada de punta a punta con ese fin
 end-to-end, con IA real en todos los pasos que la requieren, y con una arquitectura preparada
 para producción (no un prototipo desechable).
 
-**Qué NO es todavía:** un producto en producción. Falta multi-tenancy, persistencia,
-orquestación durable, y el research corre contra el *sandbox* de DataForSEO (datos ficticios).
-El detalle honesto está en [Estado y roadmap](09-estado-y-roadmap.md).
+**Qué NO es todavía:** un producto **usable por alguien que no sea Juan**. La persistencia
+multi-tenant y la orquestación durable **ya están hechas**, pero falta la **API y el portal**: hoy la
+compuerta de aprobación se ejecuta **editando un JSON a mano**. Y el research corre contra el
+*sandbox* de DataForSEO (datos ficticios). El detalle honesto está en
+[Estado y roadmap](09-estado-y-roadmap.md) y el rumbo en el [Plan de la Fase 2](11-plan-fase-2.md).
 
 ## Riesgo de producto abierto
 

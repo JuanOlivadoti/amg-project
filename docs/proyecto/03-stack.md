@@ -16,23 +16,27 @@ que van separados.
 | **Node.js** | ≥ 20 (probado con 24) | Se usa `fetch` nativo — no hay axios ni node-fetch. |
 | **TypeScript** | ^5.6 | ESM puro (`"type": "module"`), `strict: true`, `noUncheckedIndexedAccess: true`. |
 | **tsx** | ^4.19 | Ejecuta TypeScript directo, sin paso de build. Los CLIs corren con `tsx`. |
+| **npm workspaces** | — | **4 paquetes, un solo `npm install`.** Se importan **por nombre** (`import { PgStore } from "db"`), no por ruta relativa. |
 
-### Dependencias de runtime (deliberadamente pocas)
+### Los cuatro paquetes
 
-**`kr-service`** (Módulo 2):
+| Paquete | Qué es | Dependencias de runtime |
+|---|---|---|
+| **`db`** | Esquema, RLS, cache, registro de tareas | `@electric-sql/pglite` |
+| **`kr-service`** (M2) | `prompt → brief SEO` | `openai`, `@anthropic-ai/sdk`, `zod`, `dotenv` |
+| **`web-builder`** (M1) | `brief → Storyblok` | `openai`, `zod`, `dotenv` |
+| **`orchestrator`** | Inngest: steps durables + compuerta humana | `inngest`, `pg`, y los otros **tres paquetes** |
+
+Para qué sirve cada una:
+
 | Paquete | Para qué |
 |---|---|
-| `openai` | Generación (seeds, intención, relevancia, contenido on-page) + **embeddings** (clustering). |
-| `@anthropic-ai/sdk` | Generación de seeds con Claude (alternativa a OpenAI). |
-| `zod` | Validación del brief de salida contra el esquema `kr.v0.2`. |
-| `dotenv` | Carga de `.env`. |
-
-**`web-builder`** (Módulo 1):
-| Paquete | Para qué |
-|---|---|
-| `openai` | Prose final (secciones + respuestas de FAQ). |
-| `zod` | Validación en runtime del brief de entrada y del perfil de negocio. |
-| `dotenv` | Carga de `.env`. |
+| `openai` | Generación (seeds, intención, relevancia, contenido on-page, prose) + **embeddings** (clustering). |
+| `@anthropic-ai/sdk` | Generación con Claude (alternativa a OpenAI). |
+| `zod` | Validación del brief contra el esquema **`kr.v0.5`**, en ambos lados de la frontera. |
+| `inngest` | Orquestación durable: steps, reintentos, `waitForEvent` para la compuerta humana. |
+| `pg` | Cliente Postgres **con pool** — cada transacción reserva su conexión (ADR-13). |
+| `@electric-sql/pglite` | **Postgres 18 compilado a WASM, en proceso.** Ver abajo. |
 
 **Storyblok se llama con `fetch` nativo** — no se usó su SDK, para no sumar una dependencia
 por unas pocas llamadas HTTP a la Management API.
@@ -41,10 +45,18 @@ por unas pocas llamadas HTTP a la Management API.
 | Tecnología | Notas |
 |---|---|
 | **`node:test` + `node:assert`** | Test runner **nativo de Node**. Cero dependencias nuevas. |
+| **PGlite** | **Postgres de verdad** (en WASM, en memoria) para los tests de RLS. |
 | **tsx** | Se corre con `node --import tsx --test "src/**/*.test.ts"`. |
 
-Decisión: se descartaron Jest y Vitest. Para tests unitarios de funciones puras (que es todo lo
-que hay), el runner nativo alcanza y evita arrastrar decenas de paquetes transitivos.
+Se descartaron Jest y Vitest: para funciones puras el runner nativo alcanza y evita decenas de
+paquetes transitivos.
+
+**PGlite es la decisión de testing que más rindió.** Las políticas RLS son la frontera de
+seguridad del producto, y un *mock* de Postgres no puede probarlas: lo que hay que verificar es
+que **Postgres las hace cumplir**. Con PGlite, los 76 tests de `db/` corren las migraciones
+reales contra un Postgres real —**sin Docker, sin cuenta, sin red**— y se ejecutan en CI como
+cualquier test unitario. Sin esto, los agujeros multi-tenant que encontraron las reviews externas
+no se habrían podido cerrar con una prueba, solo con un argumento.
 
 ### Servicios externos
 | Servicio | Para qué | Autenticación |
@@ -59,19 +71,26 @@ que hay), el runner nativo alcanza y evita arrastrar decenas de paquetes transit
 
 ---
 
-## B. Lo decidido para producción (aún NO construido)
+## B. Lo decidido para producción
 
-Estas elecciones están razonadas en las [decisiones de arquitectura](../decisiones-arquitectura.md),
-con las alternativas que se descartaron y por qué.
+Razonado en las [decisiones de arquitectura](../decisiones-arquitectura.md), con las alternativas
+descartadas y por qué. **La columna de estado es la que importa:** varias de estas ya no son
+promesas.
 
-| Pieza | Elección | ADR | Motivo resumido |
-|---|---|---|---|
-| **Base de datos / Auth / Storage / RAG** | **Supabase** (Postgres + RLS + Auth + Realtime + pgvector + Storage) | ADR-01 | Un solo Postgres resuelve multi-tenancy (RLS por `tenant_id`), RBAC, alertas y vectores a la vez. Se descartó ensamblar Auth0 + RDS + Pinecone + S3. |
-| **Frontend** | **Next.js** (App Router) + TypeScript + Tailwind + shadcn/ui | ADR-02 | SSR donde importa el SEO; un solo lenguaje de punta a punta. |
-| **Orquestación** | **Inngest** (flujos como código, durables) | ADR-03 | Reintentos, idempotencia y `waitForEvent` para la compuerta humana. **Se descartó n8n como backbone** (flujos en JSON no se versionan ni testean bien); n8n queda solo como *glue* de integraciones. |
-| **CMS del Módulo 1** | **Storyblok** (headless + Visual Editor) | ADR-04 | Creación programática vía Management API + edición visual para no-técnicos. **Se descartó WordPress/Elementor** (JSON opaco, mantenimiento por sitio) y **Payload CMS** (self-host, pero sin edición visual sobre el lienzo). |
-| **Motor de keyword research** | **DataForSEO** | ADR-05 | Pay-as-you-go barato por consulta. Se descartó SEMrush (~450€/mes) y Google Ads API (fricción de developer token, volúmenes en rangos). |
-| **LLM** | **Proveedor abstracto** (OpenAI / Anthropic); embeddings con OpenAI | ADR-09 | No quedar casados con un proveedor. Embeddings van con OpenAI porque **Anthropic no tiene API de embeddings propia**. |
+| Pieza | Elección | ADR | Estado | Motivo resumido |
+|---|---|---|---|---|
+| **Base de datos / Auth** | **Supabase** (Postgres + RLS + Auth + pgvector) | ADR-01 | ✅ **En el código** (Postgres/RLS; falta enchufar el JWT) | Un solo Postgres resuelve multi-tenancy (RLS por `tenant_id`), RBAC y vectores a la vez. Se descartó ensamblar Auth0 + RDS + Pinecone + S3. |
+| **Orquestación** | **Inngest** (flujos como código, durables) | ADR-03, ADR-12 | ✅ **En el código** | Reintentos, idempotencia y `waitForEvent` para la compuerta humana. **Se descartó n8n como backbone** (flujos en JSON no se versionan ni testean bien); queda solo como *glue*. |
+| **Portal** | **Angular + Tailwind**, mobile-first | **ADR-16** (*reemplaza ADR-02*) | ⏳ Siguiente | El portal es un **SPA privado y autenticado**: SSR/RSC/SEO —todo lo que justificaba Next— no aporta nada acá. Y lo mantiene Juan, cuya soltura está en Angular. |
+| **API** | REST sobre Node, login `amg_api` | ADR-15, ADR-17, ADR-18 | ⏳ Siguiente | Verifica el JWT, afirma **quién eres**, y deja que **Postgres decida qué podés**. |
+| **CMS del Módulo 1** | **Storyblok** (headless + Visual Editor) | ADR-04 | ✅ Publica; ⚠️ **nadie sirve la web** (OBS-03) | Creación programática vía Management API + edición visual para no-técnicos. Se descartó WordPress/Elementor (JSON opaco) y Payload (sin edición visual sobre el lienzo). |
+| **Motor de keyword research** | **DataForSEO** | ADR-05 | ✅ En el código | Pay-as-you-go barato. Se descartó SEMrush (~450€/mes) y Google Ads API (developer token, volúmenes en rangos). |
+| **LLM** | **Proveedor abstracto** (OpenAI / Anthropic); embeddings con OpenAI | ADR-09 | ✅ En el código | No quedar casados con un proveedor. Embeddings van con OpenAI porque **Anthropic no tiene API de embeddings propia**. |
+
+> ⚠️ **Next.js ya no está en el stack.** ADR-02 lo eligió asumiendo que *un mismo frontend*
+> renderizaría el portal **y las webs públicas de cliente**. Al acotar el alcance al portal interno,
+> esa premisa se cayó (**ADR-16**). Pero la otra mitad —**quién renderiza y publica las webs de
+> cliente**— quedó **sin resolver**: ver **OBS-03** en [arquitectura](02-arquitectura.md).
 
 ### Nota sobre el LLM
 
@@ -88,21 +107,43 @@ embeddings del clustering lo requieren y tener un solo proveedor simplifica.
 
 ```
 AMG/
+├── package.json           # workspaces: db, kr-service, web-builder, orchestrator
 ├── README.md              # portada del repo
 ├── docs/                  # toda la documentación
 │   ├── proyecto/          # ← esta documentación técnica
-│   ├── decisiones-arquitectura.md
-│   ├── guia-dataforseo.md
-│   └── modulo-2-esquema/  # esquema de diseño v0.2 (SQL + tipos + ejemplo)
-├── kr-service/            # Módulo 2 — Keyword Research
+│   ├── acciones/          # lo que solo Juan puede hacer (cuentas, saldo, decisiones)
+│   ├── decisiones-arquitectura.md    # ADR-01..18 + OBS-01/02/03
+│   └── modulo-2-esquema/  # esquema de diseño v0 (SQL + tipos + ejemplo)
+│
+├── db/                    # LA PLATAFORMA — esquema, RLS, cache, tareas
+│   ├── migrations/        # 0001_init · 0002_auth · 0003_credenciales
+│   │                      # 0004_paginas · 0005_lease_tareas
+│   └── src/
+│       ├── pool.ts        # DbPool/Tx: acceso SOLO por transacción reservada (ADR-13)
+│       ├── store.ts       # PgStore: runs, keywords, páginas — todo bajo RLS
+│       ├── task-log.ts    # idempotencia del gasto por payload_hash (ADR-14)
+│       ├── cache.ts       # cache de métricas y SERP con expiración
+│       ├── migrate.ts     # aplica las migraciones en orden
+│       └── testing.ts     # SQL crudo: solo para tests, NO se exporta
+│
+├── orchestrator/          # EL COMPOSITION ROOT — conoce a los tres a la vez
+│   └── src/
+│       ├── solicitar.ts   # la costura de la API: crea el run BAJO RLS, luego emite (ADR-18)
+│       ├── workflow.ts    # los steps durables + la compuerta humana
+│       ├── functions.ts   # Inngest: concurrencia, retries, idempotencia, onFailure
+│       ├── deps.ts        # conexiones y providers (PGlite en memoria si no hay credenciales)
+│       └── events.ts      # el evento lleva coordenadas, NO autoridad
+│
+├── kr-service/            # MÓDULO 2 — Keyword Research
 │   └── src/
 │       ├── cli/           # spike.ts (entrada CLI)
-│       ├── dataforseo/    # provider abstracto + cliente HTTP + endpoints
+│       ├── dataforseo/    # provider abstracto + cliente HTTP + endpoints + task-log
 │       ├── llm/           # TextGen, Embedder, ContentGen (openai / anthropic / mock)
 │       ├── pipeline/      # run, intent, scoring, cluster, cluster-map, brief
 │       ├── lib/           # vector (coseno) · text (canonicalKey) · cost · budget · http
-│       └── validation/    # esquema Zod del brief
-└── web-builder/           # Módulo 1 — Creador de Webs
+│       └── validation/    # esquema Zod del brief (kr.v0.5)
+│
+└── web-builder/           # MÓDULO 1 — Creador de Webs
     └── src/
         ├── cli/           # build.ts, setup-storyblok.ts
         ├── handoff/       # adapter: brief → story
@@ -113,6 +154,9 @@ AMG/
         ├── storyblok/     # esquemas de componentes + shaping nativo
         └── contract.ts    # validación Zod del brief de entrada
 ```
+
+**El grafo de dependencias es deliberado:** `orchestrator` importa a los tres; `web-builder` **no
+importa nada de** `kr-service` (habla con él solo por el brief JSON); y `db` no importa a nadie.
 
 ### Módulos de infraestructura compartidos (por módulo)
 

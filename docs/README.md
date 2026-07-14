@@ -39,6 +39,6 @@ y roadmap. Refleja el código real, no un diseño aspiracional.
 | [guia-dataforseo.md](guia-dataforseo.md) | Instructivo de alta y uso de DataForSEO (sandbox → producción). |
 
 ## Módulo 1 — Creador de Webs
-El diseño está en la [ADR-04](decisiones-arquitectura.md) (Storyblok headless + Next.js AI-search-first)
+El diseño está en la [ADR-04](decisiones-arquitectura.md) (Storyblok headless, AI-search-first)
 y la [ADR-11](decisiones-arquitectura.md) (offboarding). El detalle de implementación de la PoC
 (handoff, prose, Storyblok) vive en el README del módulo: [`../web-builder/README.md`](../web-builder/README.md).
