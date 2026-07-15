@@ -16,8 +16,12 @@ export class LiveProvider implements KeywordDataProvider {
 
   /**
    * El registro de tareas se INYECTA. `kr-service` sigue sin saber que existe una base de datos:
-   * conoce la interfaz, no la implementación (igual que con `KeywordCache`). El orquestador le pasa
-   * la que persiste en Postgres; un proceso suelto usa la de memoria o ninguna.
+   * conoce la interfaz, no la implementación (igual que con `KeywordCache`). El orquestador y el CLI
+   * le pasan la que persiste en Postgres (`PgTaskLog`).
+   *
+   * En **producción** ese registro durable es OBLIGATORIO: `getProvider` rechaza `Noop`/`Mem`/nada
+   * antes de tocar la red (ADR-14), porque sin persistencia un crash + re-run vuelve a pagar. En
+   * sandbox (gratis) o mock, no hace falta y `taskLog` puede venir vacío.
    */
   constructor(taskLog?: ProviderTaskLog) {
     this.client = new DataForSeoClient(taskLog);
