@@ -28,6 +28,7 @@
 | ADR-19 | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | Aceptada (cierra OBS-03) |
 | ADR-20 | El portal **también sirve al cliente, en modo lectura** (amplía ADR-16) | Aceptada |
 | ADR-21 | **El stack del portal, cerrado**: solo habla con nuestra API · polling · Tailwind puro · standalone+signals | Aceptada (completa ADR-16) |
+| ADR-22 | **La API en Hono**: comandos compuestos (fila bajo RLS → después el evento), auth = JWT + RLS | Aceptada (implementa 5.1) |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | Abierta — riesgo |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 | OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
@@ -796,3 +797,65 @@ No se va a *zoneless* todavía: es lo más nuevo, pero cualquier fricción con u
 **La compuerta de aprobación (ADR-06) es del equipo, no del cliente** (ADR-20). El cliente entra en
 **modo lectura**, y lo que ve —qué keywords, qué volumen, **y qué NO se sabe**— es el argumento de
 venta del sistema: *dice lo que no sabe*.
+
+---
+
+## ADR-22 — La API REST (`api/`): Hono, y la seguridad vive en Postgres
+
+**Estado:** Aceptada · implementa la etapa 5.1 · 2026-07-15
+
+**Contexto.** El único caller del sistema era el CLI. El portal (ADR-16/21) necesita una superficie
+HTTP, y esa superficie es donde un usuario final toca el sistema por primera vez — o sea, donde una
+autorización mal puesta se convierte en escalada de privilegios.
+
+### Framework: **Hono**
+
+Frente a Express (más viejo, callback, `@types` aparte) y a `http` de Node (routing y parseo a
+mano), se eligió **Hono**: mínimo, TS nativo, y —lo que decidió— se **testea con `app.request(new
+Request(...))` sin abrir un socket**. Es el mismo espíritu que PGlite le dio a los tests de RLS:
+Postgres real sin Docker, ahora HTTP real sin red. La suite corre la API entera —auth, rutas,
+errores— contra PGlite, un emisor de mentira y un verificador falso, sin una sola credencial.
+
+### Las tres reglas que NO se rompen (y cada una nació de un agujero real)
+
+**1. La API afirma quién sos; qué podés hacer lo decide Postgres (ADR-15).** El middleware verifica
+el JWT (firma + expiración) y pone `app.user_id`. El rol NO viaja: lo deriva RLS de `memberships`.
+Un endpoint que aceptara `role` del body sería escalada servida en bandeja.
+
+**2. El `tenant` es una coordenada, no una autoridad.** Viaja en un header sin firmar `x-amg-tenant`,
+y está bien que así sea: reclamar un tenant ajeno no sirve de nada — no hay membresía allí, RLS no
+deriva rol, no se ve ni se escribe nada. Autorizar es trabajo de la base, no del header.
+
+**3. Los comandos compuestos escriben bajo RLS y SOLO DESPUÉS emiten (ADR-18).**
+- `POST /runs`: `createRun` bajo RLS (ahí se autoriza) → recién si no lanzó, emite `research/solicitado`.
+- `POST /runs/:id/approve`: `approveRun` bajo RLS → recién si de verdad actualizó, emite `research/aprobado`.
+
+Al revés —emitir y después escribir— el orquestador podría arrancar (o publicar) a nombre de algo
+que la base nunca autorizó. **Probado por mutación:** invertir el orden hace caer los tests de "un
+comando rechazado no emite".
+
+### La conexión: `amg_api` → `app_user`, y nada más (ADR-17)
+
+La API se conecta con el login `amg_api`, autorizado a **un solo rol**. Si intentara asumir
+`app_service`, Postgres rechaza el `set role`: la frontera es una credencial, no un `if`.
+
+### Un lector-no-escritor no puede colarse por la puerta del 200
+
+`approveRun` devuelve un booleano de filas afectadas. Sin él, el rol `cliente` —que RLS deja VER el
+run pero no actualizarlo— pasaba el conteo de páginas, el `update` afectaba **0 filas en silencio**,
+y la API devolvía 200 y **despertaba al workflow** por algo que la base no cambió. Ahora, si el
+update no tocó ninguna fila, la API responde 403 y no emite. Probado (y mutation-tested).
+
+### Endpoints
+
+| Endpoint | Qué hace |
+|---|---|
+| `POST /runs` | Crea la fila bajo RLS y emite `research/solicitado`. |
+| `GET /runs` (`?clientId=`) | Los runs visibles; RLS decide el conjunto según el rol. |
+| `GET /runs/:id` | El brief: el run + sus páginas propuestas (evidencia + estado de aprobación). |
+| `POST /pages/:id/approve` | Aprueba una página (media compuerta, ADR-06). |
+| `PATCH /pages/:id` | Corrige una página; editar **revoca** la aprobación (ADR-06). |
+| `POST /runs/:id/approve` | Aprueba el run bajo RLS y emite `research/aprobado`. |
+
+**Lo que queda fuera a propósito:** el rechazo del run (el workflow aún no escucha `research/rechazado`;
+hoy la compuerta vence por timeout) y un `/health` (se agrega al definir el deploy, etapa 5.3).

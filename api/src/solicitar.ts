@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import type { PgStore, TenantContext } from "db";
 
 /**
- * Pedir un research. **Es la puerta por la que la API entra al sistema.**
+ * Pedir un research. **Es la puerta por la que la API entra al sistema** — por eso vive acá y no en
+ * el orquestador.
  *
  * ## Dónde ocurre la autorización, y por qué acá y no en el orquestador
  *
@@ -17,6 +18,12 @@ import type { PgStore, TenantContext } from "db";
  * Antes era al revés: el evento traía `tenantId` y `clientId` elegidos por quien lo emitía, y el
  * workflow los elevaba a autoridad de servicio. Conocer dos UUID ajenos bastaba para que la agencia
  * pagara el research de otra.
+ *
+ * ## El ORDEN es la seguridad (ADR-18)
+ *
+ * Primero el `insert` bajo RLS (autoriza o lanza), y **solo si no lanzó** se emite el evento. Al
+ * revés —emitir y después escribir— el orquestador podría arrancar a nombre de un run que la base
+ * nunca autorizó.
  */
 
 export interface PeticionResearch {

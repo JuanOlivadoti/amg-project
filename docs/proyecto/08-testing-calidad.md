@@ -17,7 +17,7 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 227 tests
+## Cobertura actual: 247 tests
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
@@ -25,6 +25,7 @@ sin cuenta.
 | `kr-service` | **88** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). |
 | `web-builder` | **41** | Contrato, handoff, render, XSS, idempotencia de publicación. |
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
+| `api` | **20** | Auth (JWT + tenant), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06). Contra PGlite, sin red ni Supabase. |
 
 ### La disciplina que más ha valido: **mutation testing**
 
@@ -174,6 +175,30 @@ exactamente los tres tests del rechazo.
 > La lección, otra vez la misma y por eso la anoto: las piezas estaban todas probadas, pero **el
 > composition root real (el CLI) no lo probaba nadie**. El test de la tanda 12 instanciaba
 > `MemTaskLog` a mano — nunca pasaba por `getProvider()`/`runResearch()` como lo hace producción.
+
+### Tanda 14 — la API (etapa 5.1), y esta vez la revisión la hice yo ✅
+
+Se construyó la API REST (`api/`, Hono, ADR-22). El foco de los 20 tests es el **contrato de
+seguridad**, no la mecánica de Hono:
+
+- **El comando compuesto**: un `POST /runs` que RLS rechaza (un intruso, o el rol `cliente`) devuelve
+  403 **y NO emite ningún evento**. Mutación: invertir el orden (emitir antes de crear) tumba
+  exactamente esos tests.
+- **Las dos audiencias (ADR-20)**, impuestas por la base, no por la UI: el equipo escribe; el
+  `cliente` lee su brief pero no lanza research ni aprueba.
+- **El lector-no-escritor que se colaba por el 200**: autorevisión encontró que `approveRun` no
+  miraba las filas afectadas, así que un `cliente` (que RLS deja VER el run) recibía 200 y
+  **despertaba al workflow** con un update de 0 filas. Ahora devuelve un booleano y la API solo emite
+  si de verdad aprobó. Mutación: forzar `return true` tumba el test del cliente.
+- **Aislamiento**: el equipo de un tenant no ve —ni por id ni en la lista— los runs de otro.
+
+Todo contra **PGlite** (Postgres real) con un emisor y un verificador de mentira: la API entera se
+ejercita sin red y sin Supabase, igual que RLS se prueba sin Docker.
+
+> Esta ronda **no fue a review externa** (decisión de Juan: "basta de reviews, revisalo vos"). La
+> autorevisión encontró dos cosas reales antes del commit —el 500 tosco por uuid malformado y el
+> `approveRun` sin booleano— y las dos quedaron con test + mutación. El registro queda acá para que
+> la próxima review (externa o no) tenga dónde empezar a dudar.
 
 ### 🔑 Pendiente de acción humana
 

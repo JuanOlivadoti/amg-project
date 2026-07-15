@@ -10,6 +10,9 @@ export type {
   RunStatus,
   KeywordRow,
   PageRow,
+  PaginaPropuesta,
+  ClientRow,
+  CambiosPagina,
   RunSummary,
 } from "./store.js";
 

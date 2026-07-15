@@ -123,6 +123,17 @@ export interface PageRow {
 }
 
 /**
+ * Una página tal como la ve el revisor en el portal: los datos de `PageRow` **más** su `id` (para
+ * aprobarla o editarla) y su `approved` (para pintar el estado de la compuerta). `getPublishablePages`
+ * devuelve `PageRow` a secas porque publicar no necesita el id ni preguntar si está aprobada — ya
+ * filtró por eso.
+ */
+export interface PaginaPropuesta extends PageRow {
+  id: string;
+  approved: boolean;
+}
+
+/**
  * El cliente, incluido **su destino de publicación**.
  *
  * `storyblok_space_id` existía en el esquema desde el día uno y **no lo leía nadie**: se publicaba
@@ -589,9 +600,14 @@ export class PgStore {
    *
    * Se niega a aprobar un run sin ninguna página aprobada — publicar "todo" cuando el revisor no
    * aceptó nada sería justo el accidente que la compuerta existe para evitar.
+   *
+   * Devuelve `false` si el `update` no tocó ninguna fila. **Esto importa para un lector-no-escritor**
+   * (el rol `cliente`): RLS lo deja VER el run —así que pasa el conteo de páginas— pero no
+   * ACTUALIZARLO, con lo que el update afecta 0 filas **en silencio**. Sin este booleano, la API
+   * creería que aprobó, devolvería 200 y **despertaría al workflow** por algo que la base no cambió.
    */
-  async approveRun(ctx: TenantContext, runId: string): Promise<void> {
-    await this.withTenant(ctx, async (tx) => {
+  async approveRun(ctx: TenantContext, runId: string): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
       const { rows } = await tx.query<{ n: string }>(
         "select count(*)::text as n from kr_pages where run_id = $1 and approved and not retirada",
         [runId],
@@ -602,7 +618,11 @@ export class PgStore {
             `La compuerta es doble (ADR-06): primero se aprueban las páginas, después el run.`,
         );
       }
-      await tx.query("update kr_runs set status = 'approved' where id = $1", [runId]);
+      const { rows: upd } = await tx.query<{ id: string }>(
+        "update kr_runs set status = 'approved' where id = $1 returning id",
+        [runId],
+      );
+      return upd.length > 0;
     });
   }
 
@@ -654,6 +674,45 @@ export class PgStore {
       const { rows } = await tx.query<RunSummary>(
         `select ${RUN_SUMMARY_COLS} from kr_runs where client_id = $1 order by created_at desc`,
         [clientId],
+      );
+      return rows;
+    });
+  }
+
+  /**
+   * Todos los runs que el usuario PUEDE ver, sin filtrar por cliente. Lo usa `GET /runs`.
+   *
+   * No hace falta un `where` por rol: RLS ya lo aplica. Un `maestro`/`equipo` ve los de su tenant;
+   * un `cliente` ve solo los de SU negocio. La misma query devuelve conjuntos distintos según quién
+   * pregunte — y esa diferencia la impone Postgres, no un `if` de la API.
+   */
+  async listAllRuns(ctx: TenantContext): Promise<RunSummary[]> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<RunSummary>(
+        `select ${RUN_SUMMARY_COLS} from kr_runs order by created_at desc`,
+      );
+      return rows;
+    });
+  }
+
+  /**
+   * Las páginas PROPUESTAS de un run (para mostrar el brief y manejar la compuerta), con su `id` y su
+   * estado de aprobación. Distinto de `getPublishablePages`: aquí NO se exige `approved` ni que el run
+   * esté aprobado — es lo que el revisor mira ANTES de decidir. Las retiradas no se muestran.
+   */
+  async getRunPages(ctx: TenantContext, runId: string): Promise<PaginaPropuesta[]> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<PaginaPropuesta>(
+        `select p.id, p.approved, p.cluster_id, p.tipo, p.page_strategy, p.url_slug,
+                p.keyword_principal, p.keywords_secundarias, p.intencion, p.local, p.volumen,
+                p.dificultad, p.evidencia,
+                p.opportunity_score::float8 as opportunity_score,
+                p.score_confidence::float8 as score_confidence,
+                p.seo, p.content_brief, p.preguntas_frecuentes
+         from kr_pages p
+         where p.run_id = $1 and not p.retirada
+         order by p.opportunity_score desc`,
+        [runId],
       );
       return rows;
     });

@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-15** · **227 tests en verde**
+> Última actualización: **2026-07-15** · **247 tests en verde**
 
 ---
 
@@ -21,7 +21,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | 2 | **Orquestador durable** — Inngest: steps, reintentos, compuerta humana con `waitForEvent` | ✅ Hecha |
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
-| 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ⏳ **ACÁ ESTAMOS** |
+| 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ⏳ **5.1 (API) HECHA · portal (5.2) siguiente** |
 | 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ⏳ Después |
 
 Después de la **5** el sistema es **usable por una persona que no sea yo**. Hoy todavía no lo es:
@@ -40,9 +40,9 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
 
 ```
 ┌───────────────┐   evento   ┌──────────────────┐
-│  (falta: API) │ ─────────▶ │  orchestrator/   │  Inngest: steps durables,
-└───────────────┘            │                  │  reintentos, compuerta humana
-                             └────────┬─────────┘
+│  api/  (5.1)✅ │ ─────────▶ │  orchestrator/   │  Inngest: steps durables,
+│  Hono + RLS   │            │                  │  reintentos, compuerta humana
+└───────────────┘            └────────┬─────────┘
                                       │
               ┌───────────────────────┼───────────────────────┐
               ▼                       ▼                       ▼
@@ -55,17 +55,20 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
        └─────────────┘         └────────────┘          └──────────────┘
 ```
 
-- **4 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`.
-- **227 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **5 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`.
+- **247 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
 
 ### Lo que NO existe todavía
 
-- **Una API HTTP.** El único caller es el CLI. El portal no tiene con qué hablar.
-- **El portal.** Nadie que no sea yo puede aprobar un brief.
+- **El portal.** La API ya está (5.1), pero nadie que no sea yo puede aprobar un brief desde una UI.
 - **Un despliegue.** Nada corre en ningún servidor.
+
+> ✅ **La API HTTP ya existe** (`api/`, Hono, ADR-22): endpoints autenticados con la compuerta y los
+> comandos compuestos. El portal (5.2) es lo único que falta para que el flujo sea usable sin tocar
+> la base a mano.
 
 ---
 
@@ -73,17 +76,18 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
 
 El orden **no es negociable**, y el motivo es de seguridad:
 
-### 5.1 — La API (`api/`) ⏳ SIGUIENTE
+### 5.1 — La API (`api/`) ✅ HECHA
 
-REST autenticada. Verifica el JWT de Supabase, pone `app.user_id` y deja que **Postgres decida el
-resto** (ADR-15).
+REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.user_id` y deja que
+**Postgres decida el resto** (ADR-15). 20 tests contra PGlite, sin red ni Supabase.
 
 | Endpoint | Qué hace |
 |---|---|
-| `POST /runs` | **Crea la fila del run bajo RLS** (aquí se autoriza) y *después* emite `research/solicitado`. Ver `orchestrator/src/solicitar.ts`. |
+| `POST /runs` | **Crea la fila del run bajo RLS** (aquí se autoriza) y *después* emite `research/solicitado`. Ver `api/src/solicitar.ts`. |
 | `GET /runs` | Los runs del cliente. |
 | `GET /runs/:id` | El brief: páginas, evidencia, coste, calidad de los datos. |
 | `POST /pages/:id/approve` | Aprueba **una** página (mitad de la compuerta). |
+| `PATCH /pages/:id` | Corrige una página; **editar revoca la aprobación** (ADR-06). |
 | `POST /runs/:id/approve` | Aprueba el run (la otra mitad) → despierta al workflow → publica. |
 
 **Las tres reglas que no se rompen** (las tres nacieron de un agujero real, no de la teoría):
@@ -180,8 +184,10 @@ Todas con su ADR. Las que más condicionan lo que viene:
 - **ADR-13 — Solo se toca la base por transacción con conexión reservada.** El `set local` del
   contexto de tenant vive en *una* conexión; con un pool, las queries se repartían entre conexiones
   distintas y el `insert` caía **fuera de RLS**.
-- **ADR-14 — Idempotencia por `payload_hash` (100%) + método Standard donde se puede.** El registro
-  cubre los cuatro endpoints. Además, SERP y Search Volume (46%) usan `task_post`/`task_get`: la tarea
+- **ADR-14 — Idempotencia por `payload_hash` (con registro durable OBLIGATORIO en prod) + método
+  Standard donde se puede.** El registro cubre los cuatro endpoints — y `getProvider` **falla
+  cerrado** si en producción no se le inyecta un registro durable (tanda 13: el CLI corría con
+  `NoopTaskLog` y pagaba dos veces). Además, SERP y Search Volume (46%) usan `task_post`/`task_get`: la tarea
   pagada se **recupera gratis**, así que una respuesta perdida no es dinero perdido. La API Labs (54%)
   es *live-only*: ahí una petición ambigua **detiene el run**.
 - **ADR-15 — El rol se deriva de `memberships`, no se declara.** Cierra OBS-02. Es lo que hace
