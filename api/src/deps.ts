@@ -15,6 +15,8 @@ export interface ConfigApi {
   jwtSecret: string;
   /** Id de la app Inngest emisora. La API es una app distinta del orquestador: solo envía eventos. */
   inngestId?: string;
+  /** Orígenes CORS permitidos (coma-separados en `CORS_ORIGINS`). Sin esto: `*` (ver `app.ts`). */
+  corsOrigins?: string[];
 }
 
 /** Lee la config del entorno y **falla cerrado** si falta algo: una API a medio configurar no arranca. */
@@ -28,7 +30,12 @@ export function leerConfig(): ConfigApi {
   if (faltan.length > 0) {
     throw new Error(`Faltan variables de entorno de la API:\n  - ${faltan.join("\n  - ")}`);
   }
-  return { databaseUrl: databaseUrl as string, jwtSecret: jwtSecret as string };
+  const corsRaw = process.env["CORS_ORIGINS"]?.trim();
+  return {
+    databaseUrl: databaseUrl as string,
+    jwtSecret: jwtSecret as string,
+    ...(corsRaw ? { corsOrigins: corsRaw.split(",").map((s) => s.trim()) } : {}),
+  };
 }
 
 /** Construye las dependencias reales. Devuelve también `cerrar` para soltar el pool al apagar. */
@@ -51,5 +58,8 @@ export async function crearDeps(
 
   const verificar: VerificadorToken = verificadorSupabase(config.jwtSecret);
 
-  return { deps: { store, emisor, verificar }, cerrar: () => pool.end() };
+  return {
+    deps: { store, emisor, verificar, ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}) },
+    cerrar: () => pool.end(),
+  };
 }

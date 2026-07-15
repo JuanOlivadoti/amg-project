@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import type { PgStore, CambiosPagina } from "db";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
@@ -13,10 +14,28 @@ export interface ApiDeps {
   store: PgStore;
   emisor: EmisorEventos;
   verificar: VerificadorToken;
+  /**
+   * Orígenes permitidos para CORS. El portal corre en otro origen (localhost:4200, o su dominio),
+   * así que sin esto el navegador bloquea cada llamada. Default `*`: es seguro porque la API
+   * autentica por **header `Authorization`**, no por cookies —no hay credenciales que un origen
+   * ajeno pueda robar—; el token igual hay que tenerlo. En producción se acota a los dominios reales.
+   */
+  corsOrigins?: string | string[];
 }
 
 export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
   const app = new Hono<{ Variables: Variables }>();
+
+  // CORS primero: el preflight (OPTIONS) tiene que responder ANTES de exigir token, o el navegador
+  // ni siquiera llega a mandar el request real.
+  app.use(
+    "*",
+    cors({
+      origin: deps.corsOrigins ?? "*",
+      allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
+      allowHeaders: ["authorization", "content-type", "x-amg-tenant"],
+    }),
+  );
 
   // Toda la superficie exige token. No hay ruta pública: seguro por defecto.
   app.use("*", autenticar(deps.verificar));

@@ -1,0 +1,14 @@
+<div class="min-h-screen bg-gray-50">
+  @if (auth.autenticado()) {
+    <header class="bg-white border-b border-gray-200">
+      <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+        <a routerLink="/runs" class="text-sm font-semibold text-gray-900">AMG OS</a>
+        <div class="flex items-center gap-3 text-sm text-gray-500">
+          <span>{{ auth.email() }}</span>
+          <button (click)="salir()" class="text-gray-500 hover:text-gray-900">Salir</button>
+        </div>
+      </div>
+    </header>
+  }
+  <router-outlet />
+</div>

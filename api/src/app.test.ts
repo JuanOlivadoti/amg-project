@@ -158,6 +158,21 @@ test("tenant que no es un uuid → 400 (y no llega a la base)", async () => {
   assert.equal(res.status, 400);
 });
 
+test("CORS: el preflight (OPTIONS) responde con allow-origin y SIN exigir token", async () => {
+  // El navegador manda el preflight antes del request real. Si auth corriera primero, lo bloquearía
+  // y el portal nunca podría llamar a la API.
+  const res = await app.request("/runs", {
+    method: "OPTIONS",
+    headers: {
+      origin: "http://localhost:4200",
+      "access-control-request-method": "GET",
+      "access-control-request-headers": "authorization,x-amg-tenant",
+    },
+  });
+  assert.ok(res.status === 204 || res.status === 200);
+  assert.ok(res.headers.get("access-control-allow-origin"));
+});
+
 // ---------------------------------------------------------------- POST /runs (comando compuesto)
 
 test("POST /runs: el equipo crea la fila y SE EMITE el evento, en ese orden", async () => {

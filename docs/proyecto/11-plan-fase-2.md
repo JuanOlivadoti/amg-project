@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-15** · **247 tests en verde**
+> Última actualización: **2026-07-15** · **248 tests en verde**
 
 ---
 
@@ -21,7 +21,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | 2 | **Orquestador durable** — Inngest: steps, reintentos, compuerta humana con `waitForEvent` | ✅ Hecha |
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
-| 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ⏳ **5.1 (API) HECHA · portal (5.2) siguiente** |
+| 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ⏳ **5.1 (API) HECHA · 5.2 (portal) EN CURSO** |
 | 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ⏳ Después |
 
 Después de la **5** el sistema es **usable por una persona que no sea yo**. Hoy todavía no lo es:
@@ -56,7 +56,7 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
 ```
 
 - **5 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`.
-- **247 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **248 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -101,7 +101,13 @@ REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.us
    lleva solo el `runId`; si llevara el `clientId`, quien lo emita elegiría **a nombre de quién se
    gasta** (**ADR-18**).
 
-### 5.2 — El portal (`portal/`)
+### 5.2 — El portal (`portal/`) ⏳ EN CURSO
+
+> **Ya construido:** login (Supabase), lista de research (RLS decide qué ve cada quien) con lanzar
+> *(solo equipo)*, el brief **separado por evidencia** (✅/⚠️), y la **compuerta doble** (aprobar
+> página, editar —revoca—, aprobar run). Angular 20 standalone + signals + Tailwind; la lógica (HTTP,
+> login, evidencia) en TS puro con **16 tests `node:test`**, sin navegador. **Falta:** refresh del
+> token y pulido. La API ganó **CORS** para que el navegador pueda llamarla.
 
 **Stack cerrado en [ADR-21](../decisiones-arquitectura.md)** — las cuatro decisiones, para no
 reabrirlas a mitad de camino:

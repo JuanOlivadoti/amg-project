@@ -24,7 +24,7 @@ para que lo use alguien que no sea yo es la **API + el portal**: hoy la compuert
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **247 tests en verde** + typecheck limpio en los 5 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **248 tests en verde** + typecheck limpio en los 5 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Cinco reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía (o afirmaciones de seguridad **falsas** que documenté y el código desmentía). Ver [ADR-13..21 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## El número para la propuesta comercial
@@ -103,8 +103,8 @@ reales, no solo contra tests.
 |---|---|---|
 | **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y 54 tests contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
-| **API REST autenticada** | ADR-15, ADR-17, ADR-18 | ⏳ **Siguiente.** Crea el run bajo RLS (ahí se autoriza) y emite el evento. Login `amg_api`, que no puede asumir el rol del servicio. |
-| **Portal Angular** | ADR-16 | ⏳ Pendiente. Donde el equipo aprueba la compuerta. Reemplaza el plan de Next (ADR-02). |
+| **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`. 21 tests contra PGlite. |
+| **Portal Angular** | ADR-16, ADR-21 | ⏳ **En curso.** Login + lista + brief con evidencia + compuerta doble, construidos. Falta: refresh del token, pulido. 16 tests de núcleo (node:test). |
 | **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
 | **Autorización derivada** (OBS-02) | ADR-15, ADR-17 | ✅ **Hecho.** El rol se deriva de `memberships` dentro de Postgres; el GUC `app.role` ya no lo lee nadie. Un login por proceso, `NOINHERIT`, un rol cada uno. Falta solo enchufar el JWT de Supabase (la función ya está aislada). |
 | **Idempotencia de peticiones facturables** | ADR-10, ADR-14 | ✅ **Hecho.** `kr_provider_tasks` + `payload_hash`, escrito ANTES de enviar: cubre el **100%** del gasto. **Además**, SERP y Search Volume (46%) usan el **método Standard** (`task_post`/`task_get`): la tarea pagada se **recupera gratis**, así que una respuesta perdida no es dinero perdido. Labs (54%) es live-only → ahí una petición ambigua detiene el run. |

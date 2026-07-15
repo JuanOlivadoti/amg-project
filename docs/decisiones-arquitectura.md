@@ -839,6 +839,13 @@ comando rechazado no emite".
 La API se conecta con el login `amg_api`, autorizado a **un solo rol**. Si intentara asumir
 `app_service`, Postgres rechaza el `set role`: la frontera es una credencial, no un `if`.
 
+### CORS: el navegador del portal llama desde otro origen
+
+El portal (5.2) corre en otro origen, así que la API lleva CORS (`CORS_ORIGINS`, default `*`). Es
+seguro con `*` porque la API autentica por **header `Authorization`**, no por cookies: no hay
+credenciales de sesión que un origen ajeno pueda robar, y el token igual hay que tenerlo. El
+preflight (OPTIONS) corre **antes** que el middleware de auth —si no, lo bloquearía—. Probado.
+
 ### Un lector-no-escritor no puede colarse por la puerta del 200
 
 `approveRun` devuelve un booleano de filas afectadas. Sin él, el rol `cliente` —que RLS deja VER el

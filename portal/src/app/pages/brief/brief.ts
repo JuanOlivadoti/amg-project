@@ -1,0 +1,211 @@
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { NgTemplateOutlet } from '@angular/common';
+import { RouterLink, ActivatedRoute } from '@angular/router';
+import { ApiService } from '../../services/api';
+import { AuthService } from '../../services/auth';
+import type { Brief, PaginaPropuesta } from '../../core/models';
+import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
+
+@Component({
+  selector: 'app-brief',
+  imports: [FormsModule, RouterLink, NgTemplateOutlet],
+  template: `
+    <div class="max-w-3xl mx-auto px-4 py-8 space-y-6">
+      <a routerLink="/runs" class="text-sm text-gray-500 hover:text-gray-900">← Volver</a>
+
+      @if (cargando()) {
+        <p class="text-sm text-gray-500">Cargando…</p>
+      } @else if (error()) {
+        <p class="text-sm text-red-600">{{ error() }}</p>
+      } @else if (brief(); as b) {
+        <header class="bg-white rounded-xl border border-gray-200 p-6">
+          <h1 class="text-lg font-semibold text-gray-900">{{ b.run.prompt }}</h1>
+          <p class="mt-1 text-xs text-gray-500">
+            Estado: {{ b.run.status }} · Coste: \${{ usd(b.run.coste_micros_usd) }}
+          </p>
+          @if (auth.esEquipo()) {
+            <button
+              (click)="aprobarRun()"
+              [disabled]="!puedeAprobar() || trabajando()"
+              class="mt-4 rounded-md bg-green-700 text-white px-4 py-2 text-sm font-medium hover:bg-green-800 disabled:opacity-40"
+            >
+              Aprobar el run y publicar
+            </button>
+            @if (!puedeAprobar()) {
+              <p class="mt-2 text-xs text-gray-500">Aprobá al menos una página antes de aprobar el run.</p>
+            }
+          }
+        </header>
+
+        <!-- ✅ RESPALDADAS por datos de mercado -->
+        <section>
+          <h2 class="text-sm font-semibold mb-2" style="color:#15803d">
+            ✅ Respaldadas por datos ({{ respaldadas().length }})
+          </h2>
+          @if (respaldadas().length === 0) {
+            <p class="text-sm text-gray-400">Ninguna página tiene datos de mercado que la respalden.</p>
+          }
+          @for (p of respaldadas(); track p.id) {
+            <ng-container [ngTemplateOutlet]="tarjeta" [ngTemplateOutletContext]="{ $implicit: p }" />
+          }
+        </section>
+
+        <!-- ⚠️ SIN VALIDAR: se muestran igual. Ocultarlas sería mentir. -->
+        <section>
+          <h2 class="text-sm font-semibold mb-2" style="color:#b45309">
+            ⚠️ Sin validar ({{ sinValidar().length }})
+          </h2>
+          <p class="text-xs text-gray-500 mb-2">
+            No hay datos de mercado que las respalden. Se proponen, pero el sistema lo dice.
+          </p>
+          @for (p of sinValidar(); track p.id) {
+            <ng-container [ngTemplateOutlet]="tarjeta" [ngTemplateOutletContext]="{ $implicit: p }" />
+          }
+        </section>
+      }
+    </div>
+
+    <!-- Tarjeta de página, reutilizada por los dos grupos -->
+    <ng-template #tarjeta let-p>
+      <div class="bg-white rounded-lg border border-gray-200 p-4 mb-2">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-900">{{ p.keyword_principal }}</p>
+            <p class="text-xs text-gray-500 truncate">{{ p.url_slug }}</p>
+            <p class="mt-1 text-xs text-gray-500">
+              Vol: {{ p.volumen ?? 'n/d' }} · KD: {{ p.dificultad ?? 'n/d' }} · Score:
+              {{ p.opportunity_score }}
+            </p>
+          </div>
+          <span
+            class="text-xs shrink-0 rounded-full px-2 py-0.5"
+            [class]="p.approved ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'"
+          >
+            {{ p.approved ? 'Aprobada' : 'Pendiente' }}
+          </span>
+        </div>
+
+        @if (auth.esEquipo()) {
+          @if (editando() === p.id) {
+            <div class="mt-3 space-y-2 border-t border-gray-100 pt-3">
+              <input
+                [ngModel]="edKeyword()"
+                (ngModelChange)="edKeyword.set($event)"
+                placeholder="Keyword principal"
+                class="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+              />
+              <input
+                [ngModel]="edSlug()"
+                (ngModelChange)="edSlug.set($event)"
+                placeholder="/url-slug"
+                class="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+              />
+              <p class="text-xs text-amber-700">Editar quita la aprobación: alguien tendrá que volver a mirarla.</p>
+              <div class="flex gap-2">
+                <button
+                  (click)="guardar(p)"
+                  [disabled]="trabajando()"
+                  class="rounded-md bg-gray-900 text-white px-3 py-1 text-sm hover:bg-gray-800 disabled:opacity-40"
+                >
+                  Guardar
+                </button>
+                <button (click)="editando.set(null)" class="rounded-md border px-3 py-1 text-sm">Cancelar</button>
+              </div>
+            </div>
+          } @else {
+            <div class="mt-3 flex gap-2">
+              @if (!p.approved) {
+                <button
+                  (click)="aprobarPagina(p)"
+                  [disabled]="trabajando()"
+                  class="rounded-md bg-green-700 text-white px-3 py-1 text-sm hover:bg-green-800 disabled:opacity-40"
+                >
+                  Aprobar
+                </button>
+              }
+              <button (click)="empezarEdicion(p)" class="rounded-md border px-3 py-1 text-sm">Editar</button>
+            </div>
+          }
+        }
+      </div>
+    </ng-template>
+  `,
+})
+export class BriefPage implements OnInit {
+  private readonly api = inject(ApiService);
+  readonly auth = inject(AuthService);
+  private readonly route = inject(ActivatedRoute);
+
+  private runId = '';
+  readonly brief = signal<Brief | null>(null);
+  readonly cargando = signal(true);
+  readonly error = signal('');
+  readonly trabajando = signal(false);
+
+  readonly editando = signal<string | null>(null);
+  readonly edKeyword = signal('');
+  readonly edSlug = signal('');
+
+  readonly respaldadas = computed(() =>
+    this.brief() ? separarPorEvidencia(this.brief()!.pages).respaldadas : [],
+  );
+  readonly sinValidar = computed(() =>
+    this.brief() ? separarPorEvidencia(this.brief()!.pages).sinValidar : [],
+  );
+  readonly puedeAprobar = computed(() => (this.brief() ? puedeAprobarseRun(this.brief()!.pages) : false));
+
+  async ngOnInit(): Promise<void> {
+    this.runId = this.route.snapshot.paramMap.get('id') ?? '';
+    await this.cargar();
+  }
+
+  async cargar(): Promise<void> {
+    this.cargando.set(true);
+    this.error.set('');
+    try {
+      this.brief.set(await this.api.verBrief(this.runId));
+    } catch (e) {
+      this.error.set((e as Error).message);
+    } finally {
+      this.cargando.set(false);
+    }
+  }
+
+  empezarEdicion(p: PaginaPropuesta): void {
+    this.edKeyword.set(p.keyword_principal);
+    this.edSlug.set(p.url_slug);
+    this.editando.set(p.id);
+  }
+
+  private async conTrabajo(fn: () => Promise<void>): Promise<void> {
+    this.trabajando.set(true);
+    this.error.set('');
+    try {
+      await fn();
+      await this.cargar();
+    } catch (e) {
+      this.error.set((e as Error).message);
+    } finally {
+      this.trabajando.set(false);
+    }
+  }
+
+  aprobarPagina(p: PaginaPropuesta): Promise<void> {
+    return this.conTrabajo(() => this.api.aprobarPagina(p.id));
+  }
+
+  guardar(p: PaginaPropuesta): Promise<void> {
+    const cambios = { keyword_principal: this.edKeyword(), url_slug: this.edSlug() };
+    this.editando.set(null);
+    return this.conTrabajo(() => this.api.editarPagina(p.id, cambios));
+  }
+
+  aprobarRun(): Promise<void> {
+    return this.conTrabajo(() => this.api.aprobarRun(this.runId));
+  }
+
+  usd(micros: number): string {
+    return (micros / 1_000_000).toFixed(2);
+  }
+}
