@@ -264,8 +264,9 @@ create index on kr_pages (tenant_id, client_id);
 -- del MERCADO, no de un cliente. Compartirlo entre tenants es correcto y es lo que hace que la
 -- segunda corrida de una keyword ya buscada salga gratis.
 --
--- Pero justamente por no tener tenant_id, no pueden quedar expuestos a la política de tenant: van
--- con RLS DENY-ALL y solo se acceden con la service-role (que salta RLS). Ningún usuario final
+-- Pero justamente por no tener tenant_id, no pueden quedar expuestos a la política de tenant: para
+-- `app_user` y `app_service` van con RLS DENY-ALL. Las toca UN login dedicado, `amg_cache`, con su
+-- propio grant + política (ver 0003_credenciales.sql). NADIE usa BYPASSRLS. Ningún usuario final
 -- llega nunca a estas tablas.
 -- -----------------------------------------------------------------------------
 create table kr_metrics_cache (
@@ -330,8 +331,9 @@ create table kr_provider_tasks (
 -- políticas. Es exactamente el agujero que ADR-10 marca ("no solo enable").
 -- =============================================================================
 
--- Rol de aplicación: es el que usan las peticiones de usuario. La service-role de Supabase
--- (bypassrls) es la única que puede tocar las caches.
+-- Rol de aplicación: es el que usan las peticiones de usuario. Las caches NO las toca este rol ni
+-- una service-role con bypassrls (no se usa bypassrls en ningún lado): las toca el login `amg_cache`,
+-- con grant + política propios (0003_credenciales.sql).
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'app_user') then
     create role app_user nologin;
@@ -472,8 +474,9 @@ create policy page_write on kr_pages
   using (tenant_id = app.current_tenant_id() and app.puede_escribir() and app.ve_cliente(client_id))
   with check (tenant_id = app.current_tenant_id() and app.puede_escribir() and app.ve_cliente(client_id));
 
--- --- Caches y tareas del proveedor: DENY-ALL --------------------------------
--- RLS habilitado SIN NINGUNA POLÍTICA = nadie pasa. Solo la service-role (bypassrls) entra.
+-- --- Caches y tareas del proveedor: DENY-ALL para app_user/app_service -------
+-- RLS habilitado SIN NINGUNA POLÍTICA acá = ni app_user ni app_service pasan. El acceso lo da un
+-- login dedicado, `amg_cache`, con grant + política explícitos en 0003_credenciales.sql (no bypassrls).
 -- No se otorga ningún grant a app_user: defensa en profundidad (grant + RLS).
 alter table kr_metrics_cache  enable row level security;
 alter table kr_metrics_cache  force  row level security;

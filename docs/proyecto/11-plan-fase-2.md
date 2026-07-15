@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-14** · **210 tests en verde**
+> Última actualización: **2026-07-15** · **223 tests en verde**
 
 ---
 
@@ -56,7 +56,7 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
 ```
 
 - **4 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`.
-- **210 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **223 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -180,9 +180,10 @@ Todas con su ADR. Las que más condicionan lo que viene:
 - **ADR-13 — Solo se toca la base por transacción con conexión reservada.** El `set local` del
   contexto de tenant vive en *una* conexión; con un pool, las queries se repartían entre conexiones
   distintas y el `insert` caía **fuera de RLS**.
-- **ADR-14 — Idempotencia por `payload_hash`, no método Standard.** La API Labs de DataForSEO es
-  *live-only* y es donde está el 54% del gasto: migrar a `task_post` habría blindado el endpoint más
-  barato.
+- **ADR-14 — Idempotencia por `payload_hash` (100%) + método Standard donde se puede.** El registro
+  cubre los cuatro endpoints. Además, SERP y Search Volume (46%) usan `task_post`/`task_get`: la tarea
+  pagada se **recupera gratis**, así que una respuesta perdida no es dinero perdido. La API Labs (54%)
+  es *live-only*: ahí una petición ambigua **detiene el run**.
 - **ADR-15 — El rol se deriva de `memberships`, no se declara.** Cierra OBS-02. Es lo que hace
   seguro construir la API.
 - **ADR-16 — Portal en Angular.** Reemplaza ADR-02 (Next), cuya premisa —un frontend que renderice
@@ -217,7 +218,7 @@ Todas con su ADR. Las que más condicionan lo que viene:
 | Qué | Dónde | Nota |
 |---|---|---|
 | **Acción 06 — corrida final** | [acciones/06](../acciones/06-corrida-final-demo.md) | ~$0.31. La demo publicada es anterior a kr.v0.5. |
-| **Migrar SERP + Search Volume a DataForSEO Standard** | `kr-service/src/dataforseo/` | ADR-14 cubre el 100% del gasto con `payload_hash`, pero **el 46%** (SERP + volumen) *sí* soporta el método Standard, cuyos resultados se recuperan **gratis** durante 30 días. Tanda propia. |
+| ~~Migrar SERP + Search Volume a Standard~~ | `kr-service/src/dataforseo/` | ✅ **Hecho** (tandas 11-12): `task_post`/`task_get` con doble capa de recuperación. La 6ª review encontró 4 bugs en la primera versión; corregidos y mutation-tested. |
 | **Cuánto tarda un research real** | — | **Nunca se midió.** Tengo el coste ($0.31), no la duración. Define la UX del portal. |
 | Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
 | `is_local` se dispara de más | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo `LocalBusiness`. Ensucia el JSON-LD. |

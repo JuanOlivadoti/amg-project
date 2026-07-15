@@ -321,6 +321,20 @@ respuesta se perdió **es irrecuperable**. Ese dinero está perdido y no hay dis
 > Mutation-tested: quitar la recuperación (ignorar el `task_id`) o no anotarlo hace caer los tests de
 > `client.test.ts`.
 
+> ### ⚠️ La 6ª review encontró 4 bugs en la primera versión del método Standard (tandas 11→12)
+>
+> El recuadro de arriba describe el diseño; la **primera implementación no lo cumplía**, y Codex lo
+> cazó. Corregido y mutation-tested en la tanda 12:
+>
+> - **Search Volume estaba roto en producción:** `task_get` iba siempre a `/advanced`, pero SV usa la
+>   variante *regular* (`/task_get/{id}`). Ahora el modo es por endpoint (SV regular, SERP advanced).
+> - **El coste desaparecía del ledger** tras una recuperación (`completar(0)` sin persistir el coste
+>   del `task_post`). Ahora `anotarTareaRemota` guarda id **y coste**.
+> - **El id hallado por `tasks_ready` no se persistía** antes del `task_get` → una segunda caída lo
+>   perdía. Ahora se persiste apenas se halla.
+> - **Consultar una huérfana consumía intentos** aunque no se enviara nada. Ahora el tope cuenta
+>   **envíos** (`contarEnvio`), no reservas.
+
 ### Lo que sigue sin estar cubierto por un test
 
 - **Lotes que se solapan.** Dos procesos con `[a,b]` y `[b,c]` reservan **lotes enteros**: ambos ven
@@ -329,6 +343,10 @@ respuesta se perdió **es irrecuperable**. Ese dinero está perdido y no hay dis
 - **La carrera real entre dos conexiones.** El `for update` de `reservar()` **no está verificado**:
   PGlite tiene una sola conexión y serializa las transacciones, así que el test de concurrencia
   prueba la lógica, **no la carrera**. Verificarlo exige un Postgres con dos conexiones.
+- **La ventana `task_post`→persistir del coste (capa 2).** Si el proceso muere entre postear y anotar,
+  el id se rescata por `tasks_ready`, pero el **coste** de esa tarea no (el `task_get` lo reporta como
+  0). El ledger de esa fila queda subestimado. Es la ventana de milisegundos que `tasks_ready` cubre
+  para el *dato* pero no para el *coste*.
 
 `PgTaskLog.huerfanas()` lista las peticiones que se enviaron y nunca volvieron. Es lo que hay que
 mirar si el saldo de DataForSEO no cuadra.

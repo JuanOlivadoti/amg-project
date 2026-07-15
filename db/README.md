@@ -156,12 +156,12 @@ mercado** que las respaldaran. Quien aprueba tiene que poder aceptar unas y rech
 
 ## Pendiente
 
-- **Orquestador (Inngest)** que una el pipeline de `kr-service` con este `Store`.
-  `kr-service` **no conoce la base a propósito**: sigue siendo una librería pura que corre sin
-  credenciales. La frontera es explícita, igual que el brief JSON entre M2 y M1.
-- **Enchufar `PgKeywordCache`** en `kr-service` (hoy usa la de archivo). Requiere resolver la deuda
-  del paquete compartido.
-- **Idempotencia** usando `kr_provider_tasks`: hoy un timeout en una operación facturable
-  simplemente **no se reintenta** (para no pagar dos veces). Con la tabla se podría reintentar
-  **sin volver a pagar**.
+- ✅ **Orquestador (Inngest)** — hecho (`orchestrator/`). Une el pipeline de `kr-service` con este
+  `Store`; `kr-service` **sigue sin conocer la base**, es una librería pura. La frontera es el brief
+  JSON, igual que entre M2 y M1.
+- ✅ **Cache de Postgres** (`PgKeywordCache` vía `CacheRouter`) — el orquestador la usa. *(El CLI de
+  `kr-service`, monoproceso, sigue con la de archivo: no comparte cache entre instancias, y no lo
+  necesita.)*
+- ✅ **Idempotencia del gasto** (`kr_provider_tasks`, ADR-14) — hecho. La reserva se escribe **antes**
+  de enviar; en SERP y Search Volume, además, la tarea pagada se **recupera** con `task_get`.
 - Migraciones versionadas + `supabase migration` cuando exista el proyecto real.

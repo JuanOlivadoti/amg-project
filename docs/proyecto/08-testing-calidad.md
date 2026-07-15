@@ -17,14 +17,14 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 210 tests
+## Cobertura actual: 223 tests
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
-| `db` | **78** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
-| `kr-service` | **82** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **y la costura: que el POST facturable pase por el registro** (`client.test.ts`). |
-| `web-builder` | **35** | Contrato, handoff, render, XSS, idempotencia de publicación. |
-| `orchestrator` | **16** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
+| `db` | **80** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
+| `kr-service` | **84** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **y la costura: que el POST facturable pase por el registro** (`client.test.ts`). |
+| `web-builder` | **41** | Contrato, handoff, render, XSS, idempotencia de publicación. |
+| `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 
 ### La disciplina que más ha valido: **mutation testing**
 
@@ -33,7 +33,7 @@ un test de seguridad que siempre pasa es peor que no tenerlo — y me pasó: el 
 comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la otra salía
 `huerfana`, que también autoriza gastar). Pasaba con el bug dentro.
 
-### `kr-service` (82 tests)
+### `kr-service` (84 tests)
 
 | Archivo | Qué fija |
 |---|---|
@@ -44,7 +44,7 @@ comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la
 | `lib/budget.test.ts` | El **preflight bloquea ANTES de gastar** si la estimación no entra; tiene en cuenta lo ya gastado; sin tope nunca bloquea; corte post-fase si la estimación se quedó corta. |
 | `lib/http.test.ts` | Clasificación de errores (429/5xx reintentables, 4xx no); backoff dentro del tope; `Retry-After` en segundos y fecha HTTP; **un 500 se reintenta y termina bien**; **un 400 NO se reintenta**; se propaga `HttpError` con el status al agotar reintentos; fallos de red. *(Con `fetch` stubeado: sin red.)* |
 
-### `web-builder` (35 tests)
+### `web-builder` (41 tests)
 
 | Archivo | Qué fija |
 |---|---|
@@ -127,6 +127,30 @@ que le corresponde.
 > claim del JWT va firmado); y la "equidad entre tenants" de Inngest no existía porque la clave
 > apuntaba a un campo inexistente. El patrón, dicho sin adornos: **cuando un argumento me conviene,
 > lo escribo y no lo verifico.** Por eso las reviews externas están en el proceso.
+
+### Tanda 12 — 6ª review: "verificá el arreglo, no la re-explicación" ✅
+
+Se le pidió a Codex que **verificara** las tandas 10-11 (no que buscara de cero). No dio OK: encontró
+que el cruce de Storyblok **no** estaba cerrado y que el método Standard —escrito rápido en la tanda
+11— tenía **cuatro bugs**. Y, de nuevo, varios tests pasaban por **reproducir la implementación** en
+vez del contrato.
+
+| # | Hallazgo | Corrección |
+|---|---|---|
+| **#1** HIGH | El cruce de Storyblok seguía vivo: `getPublisher` hacía `spaceId ?? global`, y el workflow pasa `null` cuando el cliente no tiene space → caía al space de otro. | `null` (cliente sin destino) va a dry-run; solo `undefined` (CLI) usa el global. **Ahora hay test del publisher real.** |
+| **#2** HIGH | **Search Volume roto en producción:** `task_get` iba siempre a `/advanced`, pero SV usa la variante regular. | Modo por endpoint. Test de **URL exacta**. |
+| **#3** HIGH | El coste pagado desaparecía del ledger tras una recuperación. | `anotarTareaRemota` persiste id **y coste**; la recuperación lo contabiliza. |
+| **#4** HIGH | El id de `tasks_ready` no se persistía antes del `task_get` → una 2ª caída lo perdía. | Se persiste apenas se halla. Test de doble caída. |
+| **#5** HIGH | Consultar una huérfana consumía intentos sin enviar nada. | El tope cuenta **envíos** (`contarEnvio`), no reservas. |
+
+**Todo mutation-tested**, y los tests que Codex marcó como "verdes por reproducir la implementación"
+ahora verifican el contrato: el publisher real (`publish:1` + space exacto), la URL de `task_get`, el
+ledger de coste, el lote canónico **inspeccionado** (no solo contado), la clave de Inngest y el guard
+de `DATABASE_URL_CACHE`.
+
+> La lección de esta ronda: la tanda 11 (el método Standard) la escribí **rápido y con tests que
+> reproducían mis propias suposiciones** — el mismo error que vengo señalando. Que una review externa
+> lo cazara **después** de que yo declarara "hecho" es exactamente para lo que está.
 
 ### 🔑 Pendiente de acción humana
 

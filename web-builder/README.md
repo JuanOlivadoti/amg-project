@@ -69,7 +69,8 @@ Story[] (contrato Storyblok: page > hero/section/faq + SEO + schema_type)
 - **Compuerta de aprobación (ADR-06):** el CLI no publica en Storyblok un brief `pending_approval`
   o `rejected`. En PROD esto es un `waitForEvent` de Inngest; acá, un check del `status` del brief.
 - **ADR-04 (AI-search-first):** cada página emite JSON-LD por `schema_type` (LocalBusiness/Article/
-  WebPage) + `FAQPage` cuando hay FAQs. El preview refleja el mismo contrato que renderizará Next.js.
+  WebPage) + `FAQPage` cuando hay FAQs. Este `renderStory()` **es** el renderizador (ADR-16 quitó
+  Next); lo servirá en un dominio un servicio propio en runtime (ADR-19, etapa 6, aún no construido).
 - **ADR-11 (offboarding):** un space por cliente; el preview HTML es la base del snapshot estático.
 
 ## Qué está implementado vs pendiente
