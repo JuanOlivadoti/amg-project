@@ -57,7 +57,15 @@ export type Reserva<T> =
    * anotar el `taskId` antes de morir, ese id es el rescate: `task_get(taskId)` recupera el resultado
    * ya pagado **gratis**, y no hay repago. Por eso `taskId` viaja acá.
    */
-  | { estado: "huerfana"; intento: number; attemptId: string; taskId?: string | undefined };
+  | {
+      estado: "huerfana";
+      intento: number;
+      attemptId: string;
+      taskId?: string | undefined;
+      /** Coste ya pagado por el `task_post` (Standard). Se persiste al anotar, y NO se pierde con el
+       *  proceso que murió: es lo que evita que el ledger quede en cero tras una recuperación. */
+      costMicros?: number | undefined;
+    };
 
 export interface ProviderTaskLog {
   /** Escribe la reserva ANTES del envío. Si el proceso muere después, queda la huella. */
@@ -65,15 +73,28 @@ export interface ProviderTaskLog {
   /** Estado actual sin reservar. Lo usa quien espera a que otro proceso termine. */
   consultar<T>(endpoint: string, payloadHash: string): Promise<Reserva<T> | null>;
   /**
-   * Método Standard: tras un `task_post` exitoso, guarda el `task_id` remoto **antes** de tener el
-   * resultado. Es lo que hace recuperable una respuesta perdida. CAS por `attemptId`.
+   * Método Standard: tras un `task_post` exitoso, guarda el `task_id` **y el coste ya pagado**,
+   * **antes** de tener el resultado. Dos cosas a la vez, y las dos importan: el id hace recuperable
+   * la respuesta perdida; el coste evita que el ledger quede en cero si el proceso muere antes de
+   * completar. CAS por `attemptId`.
    */
   anotarTareaRemota?(
     endpoint: string,
     payloadHash: string,
     taskId: string,
+    costMicros: number,
     attemptId: string,
   ): Promise<boolean>;
+  /**
+   * Cuenta un ENVÍO facturable (un `task_post`/POST de repago) y aplica el tope `MAX_INTENTOS`.
+   * Devuelve `ok: false` si ya se alcanzó el tope. Reservar o recuperar NO cuentan como envío: por
+   * eso el conteo vive acá y no en `reservar`.
+   */
+  contarEnvio?(
+    endpoint: string,
+    payloadHash: string,
+    attemptId: string,
+  ): Promise<{ ok: boolean; intento: number }>;
   /**
    * Llegó el resultado. **CAS por `attemptId`**: devuelve `false` si el lease ya no era nuestro
    * (una respuesta tardía no puede pisar el resultado de un intento posterior).
@@ -151,12 +172,15 @@ export class MemTaskLog implements ProviderTaskLog {
     string,
     {
       estado: "pending" | "done" | "failed";
+      /** ENVÍOS facturables hechos (no reservas). Una consulta o recuperación NO lo sube. */
       intento: number;
       attemptId: string;
       leaseHasta: number;
       result?: unknown[];
       /** El `task_id` del proveedor (método Standard). Presente = la respuesta perdida se recupera. */
       taskId?: string;
+      /** Coste ya pagado por el `task_post`. Persistido para que no se pierda con el proceso. */
+      costMicros?: number;
     }
   >();
 
@@ -179,19 +203,15 @@ export class MemTaskLog implements ProviderTaskLog {
     }
 
     if (f?.estado === "pending") {
-      // Lease vencido: el proceso murió. Pudo cobrar.
-      const intento = f.intento + 1;
-      if (intento > MAX_INTENTOS) {
-        throw new Error(
-          `La petición a ${endpoint} ya se envió ${f.intento} vez/veces sin respuesta. No se reenvía ` +
-            `más: cada intento puede estar cobrando.`,
-        );
-      }
+      /*
+       * Lease vencido: el proceso murió, pudo cobrar. Se renueva el lease (para exclusión) pero
+       * **NO se incrementa `intento`**: reservar no es enviar. Consultar una huérfana o recuperar por
+       * `task_get` no cuesta un envío — antes sí lo contaba, y agotaba MAX_INTENTOS con consultas que
+       * nunca postearon nada (6ª review). El envío se cuenta en `contarEnvio`, al repostear.
+       */
       const attemptId = randomUUID();
-      // El `taskId` se CONSERVA: si el intento anterior alcanzó a anotarlo, este intento lo usa para
-      // recuperar el resultado con `task_get` (gratis) en vez de repostear.
-      this.filas.set(k, { estado: "pending", intento, attemptId, leaseHasta: Date.now() + LEASE_MS, taskId: f.taskId });
-      return { estado: "huerfana", intento, attemptId, taskId: f.taskId };
+      this.filas.set(k, { ...f, attemptId, leaseHasta: Date.now() + LEASE_MS });
+      return { estado: "huerfana", intento: f.intento, attemptId, taskId: f.taskId, costMicros: f.costMicros };
     }
 
     // Nueva, o la anterior falló CON respuesta (no cobró) → reintentar es seguro.
@@ -219,14 +239,25 @@ export class MemTaskLog implements ProviderTaskLog {
     endpoint: string,
     hash: string,
     taskId: string,
+    costMicros: number,
     attemptId: string,
   ): Promise<boolean> {
     const k = `${endpoint}|${hash}`;
     const f = this.filas.get(k);
-    // CAS: solo el intento que tiene el lease anota su task_id.
+    // CAS: solo el intento que tiene el lease anota. Guarda id Y coste: el coste sobrevive al proceso.
     if (!f || f.estado !== "pending" || f.attemptId !== attemptId) return false;
-    this.filas.set(k, { ...f, taskId });
+    this.filas.set(k, { ...f, taskId, costMicros });
     return true;
+  }
+
+  async contarEnvio(endpoint: string, hash: string, attemptId: string): Promise<{ ok: boolean; intento: number }> {
+    const k = `${endpoint}|${hash}`;
+    const f = this.filas.get(k);
+    if (!f || f.estado !== "pending" || f.attemptId !== attemptId) return { ok: false, intento: 0 };
+    const intento = f.intento + 1;
+    if (intento > MAX_INTENTOS) return { ok: false, intento: f.intento };
+    this.filas.set(k, { ...f, intento, leaseHasta: Date.now() + LEASE_MS });
+    return { ok: true, intento };
   }
 
   async completar<T>(

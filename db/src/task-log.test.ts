@@ -110,24 +110,36 @@ test("🔴 el proceso murió (lease vencido) → huérfana: pudo haberse cobrado
   const r = await log.reservar(EP, HASH);
 
   assert.equal(r.estado, "huerfana", "hay que saber que esa petición pudo cobrarse");
-  assert.equal(r.estado === "huerfana" ? r.intento : 0, 2);
+  // `intento` = ENVÍOS facturables hechos, no reservas. Hubo UN envío (el que murió).
+  assert.equal(r.estado === "huerfana" ? r.intento : 0, 1);
 });
 
-test("🔴 Standard: la huérfana CONSERVA el task_id → se recupera lo pagado, no se repaga", async () => {
-  // task_post pagó y anotó el id, y el proceso muere antes del task_get.
+test("🔴 Standard: la huérfana CONSERVA el task_id Y el coste → se recupera sin repagar ni perder el ledger", async () => {
+  // task_post pagó (7500 micros) y anotó id+coste, y el proceso muere antes del task_get.
   const r0 = await log.reservar(EP, HASH);
-  const anotado = await log.anotarTareaRemota(EP, HASH, "task-abc", tokenDe(r0));
+  const anotado = await log.anotarTareaRemota(EP, HASH, "task-abc", 7500, tokenDe(r0));
   assert.equal(anotado, true);
 
   await vencerLease(); // el proceso murió
 
   const r = await log.reservar(EP, HASH);
   assert.equal(r.estado, "huerfana");
+  assert.equal(r.estado === "huerfana" ? r.taskId : undefined, "task-abc", "el task_id sobrevive");
   assert.equal(
-    r.estado === "huerfana" ? r.taskId : undefined,
-    "task-abc",
-    "el task_id sobrevive: es lo que hace recuperable la respuesta perdida (task_get gratis)",
+    r.estado === "huerfana" ? r.costMicros : undefined,
+    7500,
+    "🔴 el COSTE sobrevive: sin esto el ledger quedaría en cero para una tarea ya pagada",
   );
+});
+
+test("🔴 el ledger (cost_micros_usd) refleja el coste anotado, no cero", async () => {
+  const r0 = await log.reservar(EP, HASH);
+  await log.anotarTareaRemota(EP, HASH, "task-x", 7500, tokenDe(r0));
+  const { rows } = await pg.query<{ c: number }>(
+    "select cost_micros_usd::int as c from kr_provider_tasks where payload_hash = $1",
+    [HASH],
+  );
+  assert.equal(rows[0]!.c, 7500, "el coste del task_post queda persistido en la fila");
 });
 
 test("anotarTareaRemota es CAS: un intento viejo no puede anotar sobre el actual", async () => {
@@ -136,20 +148,42 @@ test("anotarTareaRemota es CAS: un intento viejo no puede anotar sobre el actual
   await vencerLease();
   await log.reservar(EP, HASH); // intento 2 toma el lease
 
-  const anotado = await log.anotarTareaRemota(EP, HASH, "task-tarde", tokenViejo);
+  const anotado = await log.anotarTareaRemota(EP, HASH, "task-tarde", 100, tokenViejo);
   assert.equal(anotado, false, "el intento viejo ya no tiene el lease: no anota");
 });
 
-test("🔴 no se reenvía para siempre: al 3er intento sin respuesta, se planta", async () => {
-  // Cada reenvío puede estar cobrando. Insistir infinitamente es vaciar el saldo por nada.
+test("🔴 consultar/recuperar una huérfana NO consume envíos: el tope cuenta task_posts, no reservas", async () => {
+  // Un envío inicial (nueva). El proceso muere y nadie completa.
   await log.reservar(EP, HASH);
-  for (let i = 2; i <= MAX_INTENTOS; i++) {
+  // Muchas reservas de huérfana (como haría un workflow que reintenta y recupera): NO deben agotar el tope.
+  for (let i = 0; i < 10; i++) {
     await vencerLease();
-    await log.reservar(EP, HASH);
+    const r = await log.reservar(EP, HASH);
+    assert.equal(r.estado, "huerfana", `reserva ${i}: sigue siendo huérfana, no se planta`);
+    assert.equal(r.estado === "huerfana" ? r.intento : -1, 1, "el contador de ENVÍOS sigue en 1");
+  }
+});
+
+test("🔴 no se reenvía para siempre: contarEnvio se planta al superar MAX_INTENTOS", async () => {
+  // Cada ENVÍO puede estar cobrando. Insistir infinitamente es vaciar el saldo por nada.
+  // El primer envío ya lo cuenta `reservar` (nueva → attempt=1). Los repagos usan contarEnvio.
+  const r0 = await log.reservar(EP, HASH);
+  let token = tokenDe(r0);
+
+  // Envíos 2 y 3: contarEnvio los autoriza.
+  for (let n = 2; n <= MAX_INTENTOS; n++) {
+    await vencerLease();
+    const r = await log.reservar(EP, HASH); // huérfana (no incrementa)
+    token = tokenDe(r);
+    const c = await log.contarEnvio(EP, HASH, token);
+    assert.deepEqual(c, { ok: true, intento: n }, `envío ${n} autorizado`);
   }
 
+  // El 4º envío: contarEnvio lo RECHAZA (ya se enviaron MAX_INTENTOS).
   await vencerLease();
-  await assert.rejects(() => log.reservar(EP, HASH), /puede estar cobrando/i);
+  const r = await log.reservar(EP, HASH);
+  const c = await log.contarEnvio(EP, HASH, tokenDe(r));
+  assert.equal(c.ok, false, "superado el tope de envíos: no se autoriza otro task_post");
 });
 
 test("las huérfanas quedan listadas: es la lista a mirar si el saldo no cuadra", async () => {

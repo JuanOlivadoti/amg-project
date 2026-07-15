@@ -33,7 +33,16 @@ export interface Publisher {
 export function getPublisher(spaceId?: string | null): Publisher {
   if (config.publishMode !== "storyblok") return new MockPublisher();
 
-  const space = spaceId ?? config.storyblok.spaceId;
+  /*
+   * `null` y `undefined` NO son lo mismo, y confundirlos era un cruce multi-tenant (6ª review):
+   *
+   *  · `undefined` → nadie preguntó por un cliente. Es el CLI, monocliente: usa el space global.
+   *  · `null`      → el orquestador SÍ preguntó y el cliente **no tiene** space. Caer al global
+   *                  significa publicar en el space de OTRO cliente. Jamás: se va a dry-run.
+   *
+   * El `spaceId ?? config…` de antes trataba `null` como "no me pasaron nada" y caía al global.
+   */
+  const space = spaceId === undefined ? config.storyblok.spaceId : spaceId;
 
   // Dry-run si se pide explícito, si falta el token o si NO SABEMOS DÓNDE publicar.
   if (config.storyblok.dryRun || !config.storyblok.managementToken || !space) {

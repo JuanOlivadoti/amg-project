@@ -34,10 +34,11 @@ export async function searchVolume(
   keywords: string[],
   market: Market,
 ): Promise<SearchVolumeRow[]> {
-  // STANDARD: task_post/task_get. La tarea pagada se recupera gratis si se pierde la respuesta.
+  // STANDARD: task_post/task_get. Search Volume usa el task_get REGULAR (sin /advanced).
   const res = await client.postStandard<{ items?: SearchVolumeRow[] } | SearchVolumeRow>(
     "/v3/keywords_data/google_ads/search_volume",
     [{ keywords, ...loc(market) }],
+    { modoGet: "regular" },
   );
   // El shape varía; normalizamos a filas.
   return res.flatMap((r) => ("items" in r && r.items ? r.items : [r as SearchVolumeRow]));
@@ -69,10 +70,11 @@ export async function serpOrganic(
   market: Market,
   depth = 10,
 ): Promise<string[]> {
-  // STANDARD: task_post/task_get. `postStandard` usa `.../task_get/advanced/{id}` para el resultado.
+  // STANDARD: task_post/task_get. SERP usa el task_get ADVANCED (`.../task_get/advanced/{id}`).
   const res = await client.postStandard<{ items?: Array<{ type?: string; url?: string }> }>(
     "/v3/serp/google/organic",
     [{ keyword, ...loc(market), depth }],
+    { modoGet: "advanced" },
   );
   const urls: string[] = [];
   for (const block of res) {

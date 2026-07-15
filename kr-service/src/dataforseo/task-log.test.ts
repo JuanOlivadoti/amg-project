@@ -86,7 +86,8 @@ test("🔴 el proceso murió (lease vencido) → huérfana: el reintento sabe qu
 
   const r = await log.reservar(EP, h);
   assert.equal(r.estado, "huerfana");
-  assert.equal(r.estado === "huerfana" ? r.intento : 0, 2);
+  // `intento` = ENVÍOS facturables (uno: el que murió). Reservar de nuevo NO lo sube.
+  assert.equal(r.estado === "huerfana" ? r.intento : 0, 1);
 });
 
 /**
@@ -103,16 +104,22 @@ test("🔴 si otro proceso la está pidiendo AHORA, no se paga otra vez: se espe
   assert.equal(b.estado, "en_progreso", "B espera a A; si saliera huerfana, pagaría de nuevo");
 });
 
-test("🔴 no se reenvía para siempre: cada intento sin respuesta puede estar cobrando", async () => {
+test("🔴 no se reenvía para siempre: contarEnvio se planta al superar MAX_INTENTOS", async () => {
   const log = new MemTaskLog();
   const h = payloadHash("dfs:prod", EP, { keywords: ["pizza"] });
 
-  await log.reservar(EP, h);
-  for (let i = 2; i <= MAX_INTENTOS; i++) {
-    log.vencerLeases();
-    await log.reservar(EP, h);
-  }
+  const r0 = await log.reservar(EP, h); // envío 1 (nueva)
+  await log.contarEnvio(EP, h, tokenDe(r0)); // el propio cliente contaría el envío inicial también
 
-  log.vencerLeases();
-  await assert.rejects(() => log.reservar(EP, h), /puede estar cobrando/i);
+  // Envíos siguientes: contarEnvio los autoriza hasta el tope, después no.
+  let ok = true;
+  for (let n = 0; n < 5 && ok; n++) {
+    log.vencerLeases();
+    const r = await log.reservar(EP, h);
+    ok = (await log.contarEnvio(EP, h, tokenDe(r))).ok;
+  }
+  assert.equal(ok, false, "en algún punto contarEnvio deja de autorizar: no se reenvía sin fin");
 });
+
+const tokenDe = (r: { estado: string } & Record<string, unknown>): string =>
+  typeof r["attemptId"] === "string" ? r["attemptId"] : "";

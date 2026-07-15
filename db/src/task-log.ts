@@ -38,7 +38,14 @@ export type Reserva<T> =
    * recupera el resultado ya pagado con `task_get` (gratis) — no hay repago. En un endpoint **live**,
    * `taskId` es `undefined` y reenviar es repago (o se detiene).
    */
-  | { estado: "huerfana"; intento: number; attemptId: string; taskId?: string | undefined };
+  | {
+      estado: "huerfana";
+      intento: number;
+      attemptId: string;
+      taskId?: string | undefined;
+      /** Coste ya pagado por el `task_post` (Standard). Persistido: no se pierde con el proceso. */
+      costMicros?: number | undefined;
+    };
 
 export const MAX_INTENTOS = 3;
 
@@ -59,6 +66,7 @@ interface FilaTarea {
   lease_until: string | null;
   result: { v: unknown[] } | null;
   provider_task_id: string | null;
+  cost_micros_usd: number;
 }
 
 export class PgTaskLog {
@@ -87,7 +95,7 @@ export class PgTaskLog {
       if (creada[0]) return { estado: "nueva" as const, attemptId: creada[0].attempt_id };
 
       const { rows } = await tx.query<FilaTarea>(
-        `select status, attempt, attempt_id, result, lease_until, provider_task_id,
+        `select status, attempt, attempt_id, result, lease_until, provider_task_id, cost_micros_usd,
                 (lease_until is not null and lease_until > now()) as lease_vivo
          from kr_provider_tasks
          where provider = $1 and endpoint = $2 and payload_hash = $3
@@ -112,30 +120,29 @@ export class PgTaskLog {
       }
 
       if (f.status === "pending") {
-        // El lease VENCIÓ sin resultado: el proceso murió. Pudo cobrarse.
-        const intento = f.attempt + 1;
-        if (intento > MAX_INTENTOS) {
-          throw new Error(
-            `La petición a ${endpoint} ya se envió ${f.attempt} veces sin respuesta. No se reenvía ` +
-              `más: cada intento puede estar cobrando. Revisá el saldo en DataForSEO.`,
-          );
-        }
+        /*
+         * El lease VENCIÓ sin resultado: el proceso murió, pudo cobrar. Se renueva el lease (para
+         * exclusión) pero **NO se incrementa `attempt`**: reservar no es enviar. El tope de envíos se
+         * aplica en `contarEnvio`, al repostear — así consultar una huérfana o recuperar por
+         * `task_get` no consume intentos (6ª review).
+         *
+         * `provider_task_id` y `cost_micros_usd` NO se tocan: si el intento anterior los anotó, este
+         * los hereda para recuperar el resultado ya pagado con `task_get` (gratis).
+         */
         const { rows: r } = await tx.query<{ attempt_id: string }>(
           `update kr_provider_tasks set
-             attempt = $4,
              attempt_id = gen_random_uuid(),
-             lease_until = now() + ($5 || ' milliseconds')::interval
+             lease_until = now() + ($4 || ' milliseconds')::interval
            where provider = $1 and endpoint = $2 and payload_hash = $3
            returning attempt_id`,
-          [this.provider, endpoint, payloadHash, intento, String(LEASE_MS)],
+          [this.provider, endpoint, payloadHash, String(LEASE_MS)],
         );
-        // El `provider_task_id` NO se toca: si el intento anterior lo anotó, este lo hereda para
-        // recuperar el resultado con `task_get` (gratis) en vez de repostear (Standard).
         return {
           estado: "huerfana" as const,
-          intento,
+          intento: f.attempt,
           attemptId: r[0]!.attempt_id,
           taskId: f.provider_task_id ?? undefined,
+          costMicros: f.cost_micros_usd ?? undefined,
         };
       }
 
@@ -187,17 +194,48 @@ export class PgTaskLog {
     endpoint: string,
     payloadHash: string,
     taskId: string,
+    costMicros: number,
     attemptId: string,
   ): Promise<boolean> {
     return this.pool.transaction(async (tx) => {
+      // `cost_micros_usd = $5` (SET, no +=): es el coste del `task_post`, que se conoce una vez.
+      // Persistirlo acá es lo que evita que el ledger quede en cero si el proceso muere antes de
+      // `completar`. Por eso `completar`, en Standard, pasa `costMicros: 0` (ya está puesto).
       const { rows } = await tx.query<{ id: string }>(
-        `update kr_provider_tasks set provider_task_id = $4
+        `update kr_provider_tasks set provider_task_id = $4, cost_micros_usd = $5
          where provider = $1 and endpoint = $2 and payload_hash = $3
-           and attempt_id = $5 and status = 'pending'
+           and attempt_id = $6 and status = 'pending'
          returning id`,
-        [this.provider, endpoint, payloadHash, taskId, attemptId],
+        [this.provider, endpoint, payloadHash, taskId, costMicros, attemptId],
       );
       return rows.length > 0;
+    });
+  }
+
+  /**
+   * Cuenta un ENVÍO facturable y aplica `MAX_INTENTOS`. Devuelve `ok: false` si ya se alcanzó el
+   * tope. **CAS por `attempt_id`.** Reservar y recuperar NO llaman acá: por eso una consulta no
+   * consume intentos.
+   */
+  async contarEnvio(
+    endpoint: string,
+    payloadHash: string,
+    attemptId: string,
+  ): Promise<{ ok: boolean; intento: number }> {
+    return this.pool.transaction(async (tx) => {
+      const { rows } = await tx.query<{ attempt: number }>(
+        `update kr_provider_tasks set
+           attempt = attempt + 1,
+           lease_until = now() + ($5 || ' milliseconds')::interval
+         where provider = $1 and endpoint = $2 and payload_hash = $3
+           and attempt_id = $4 and status = 'pending'
+           and attempt < $6
+         returning attempt`,
+        [this.provider, endpoint, payloadHash, attemptId, String(LEASE_MS), MAX_INTENTOS],
+      );
+      if (rows[0]) return { ok: true, intento: rows[0].attempt };
+      // No actualizó: o perdimos el lease (otro attemptId), o ya se alcanzó el tope de envíos.
+      return { ok: false, intento: MAX_INTENTOS };
     });
   }
 

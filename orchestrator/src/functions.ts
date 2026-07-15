@@ -42,25 +42,24 @@ function adaptarPasos(step: StepTools): Pasos {
  * persistente del LLM podría multiplicar por cinco esa parte del gasto, así que se baja a 1: los
  * fallos transitorios de red ya los reintenta el cliente HTTP de `kr-service`, mucho más barato.
  */
+/**
+ * La concurrencia, **extraída para poder testearla**. Antes vivía inline y un typo silencioso
+ * (`event.data.ctx.tenantId`, un campo inexistente) desactivó la equidad entre tenants sin que
+ * ningún test lo notara — los tests corren `workflowResearch`, no la función de Inngest.
+ *
+ * `CLAVE_TENANT` tiene que apuntar a un campo que el evento **realmente lleva** (`events.ts`).
+ */
+export const CLAVE_TENANT = "event.data.tenantId";
+export const CONCURRENCIA = [
+  { limit: 3 }, // global: protege la CUENTA de DataForSEO (su rate limit no es por tenant)
+  { key: CLAVE_TENANT, limit: 1 }, // equidad entre tenants
+] as const;
+
 export function crearFuncionResearch(deps: Deps) {
   return inngest.createFunction(
     {
       id: "research-workflow",
-      concurrency: [
-        { limit: 3 }, // global: protege la CUENTA de DataForSEO (su rate limit no es por tenant)
-        /*
-         * `event.data.tenantId`. Decía `event.data.ctx.tenantId`, y ese campo NO EXISTE.
-         *
-         * Es basura de mi propio refactor de ADR-18: cuando saqué el `ctx` del evento —para que el
-         * evento dejara de portar autoridad— dejé la clave apuntando a un camino muerto. La clave
-         * resolvía a `undefined` para TODOS los eventos, así que la equidad entre tenants que este
-         * comentario documentaba simplemente **no existía**: o todos caían en el mismo bucket, o no
-         * se aplicaba límite alguno.
-         *
-         * Ningún test lo agarró porque los tests corren `workflowResearch`, no la función de Inngest.
-         */
-        { key: "event.data.tenantId", limit: 1 }, // equidad entre tenants
-      ],
+      concurrency: [...CONCURRENCIA],
       retries: 1,
       /*
        * Deduplica eventos repetidos… pero SOLO durante 24 h, y la compuerta humana espera 7 DÍAS.
