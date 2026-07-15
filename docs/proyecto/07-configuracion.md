@@ -16,16 +16,22 @@ verdad.
 | Variable | Default | Para qué |
 |---|---|---|
 | `DATABASE_URL_ORQUESTADOR` | *(PGlite en memoria)* | Postgres del orquestador. Login `amg_orquestador` → rol `app_service`. |
-| `DATABASE_URL_CACHE` | *(hereda la del orquestador)* | Caches y registro de tareas. Login `amg_cache`: **sin acceso a ninguna tabla de tenant**. |
-| `DATABASE_URL` | — | *Fallback* de la primera. Cómodo en dev, **no usar en producción**. |
+| `DATABASE_URL_CACHE` | **obligatoria con Postgres real** | Caches y registro de tareas. Login `amg_cache`: **sin acceso a ninguna tabla de tenant**. |
+| `DATABASE_URL` | — | *Fallback* de `DATABASE_URL_ORQUESTADOR`. Cómodo en dev, **no usar en producción**. |
 | `PORT` | `3100` | Puerto del servidor de Inngest (`/api/inngest`). |
+
+> ⚠️ **`DATABASE_URL_CACHE` NO hereda de la del orquestador.** Antes lo hacía, y era un bug (5ª
+> review, #9): el login `amg_orquestador` **no puede tocar las caches** por diseño, así que heredar
+> esa credencial hacía explotar el primer research en producción con una config aparentemente válida.
+> Ahora, si hay Postgres real y falta esta variable, el sistema **aborta al arrancar** con un mensaje
+> claro. Sin ninguna de las dos, arranca en PGlite (donde no hay credenciales que separar).
 
 > 🔐 **Un proceso, un login, un rol** ([ADR-17](../decisiones-arquitectura.md)). Las tres
 > credenciales, los `GRANT` y qué puede cada una están en **[12. Credenciales](12-credenciales.md)**.
 > No es una convención del código: **la frontera la impone Postgres**.
 
 **Sin ninguna de estas variables el sistema arranca igual**, con PGlite en memoria. Es deliberado y
-es lo que permite que los 194 tests corran en CI sin Docker, sin cuenta y sin red.
+es lo que permite que los 204 tests corran en CI sin Docker, sin cuenta y sin red.
 
 ---
 

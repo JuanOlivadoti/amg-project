@@ -34,7 +34,7 @@ no por código compartido. Los otros dos son la plataforma: `db` (Postgres + RLS
                     ▼                               ▼
            out/preview/*.html            Storyblok (Management API)
            (HTML autocontenido,          → editable en Visual Editor
-            base del snapshot)           → ⚠️ ver OBS-03: nadie lo publica todavía
+            base del snapshot)           → ⚠️ el RENDERIZADOR (ADR-19) aún no existe
 ```
 
 > ⚠️ **La API todavía no existe.** Hoy el único caller es el CLI. Es lo que se construye ahora
@@ -187,19 +187,23 @@ Esto permite responder, ante cualquier página publicada: *¿por qué existe est
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18 | ⏳ **Siguiente.** Sin ella, el único caller es el CLI |
 | **Portal** | **Angular + Tailwind** (ADR-16, *reemplaza* ADR-02/Next) | ⛔ No implementado — es lo que hace usable el sistema |
 | **Despliegue** | Servicio Node de larga duración | ⛔ Nada corre en ningún servidor |
-| **Publicación de las webs de cliente** | Storyblok + HTML estático (ADR-04, ADR-16) | ⚠️ **Decisión a medio tomar → OBS-03** |
+| **El renderizador** — servir la web del cliente en un dominio | **Servicio propio en runtime**, multi-tenant (ADR-19, *cierra OBS-03*) | ⛔ Decidido, **no construido** — es la etapa 6 |
 
-### ⚠️ OBS-03 — nadie publica la web del cliente
+### El renderizador: decidido (ADR-19), todavía no construido
 
 ADR-02 asumía que **un frontend Next.js** renderizaría las webs públicas leyendo Storyblok. ADR-16
-acotó el alcance al portal interno y resolvió que las webs *"siguen saliendo como HTML estático +
-Storyblok"*. **Pero esa mitad de la decisión no se terminó**, y hoy no cierra:
+quitó Next del stack… **y no puso nada en su lugar**. Eso dejó un agujero que ningún test podía
+detectar, porque no era un bug: era una **ausencia** (OBS-03).
 
-- `web-builder` **genera** el HTML (`render/html.ts`) y **publica** el contenido en Storyblok.
-- **No hay nada que sirva ese HTML en un dominio**, ni ningún webhook/rebuild en el repositorio.
-- Por lo tanto, **una edición en el Visual Editor de Storyblok no llega a ninguna página publicada** —
-  y "que un no-técnico edite sin devs" era **la justificación entera de ADR-04**.
+Hoy `web-builder` **genera** el HTML (`render/html.ts`) y **publica** el contenido en Storyblok, pero
+**nada sirve esa web en un dominio** y **no hay rebuild**. Por lo tanto **una edición en el Visual
+Editor no llega a ninguna página publicada** — y eso era *la justificación entera de ADR-04*.
 
-No es un problema de documentación: es una **decisión pendiente** de la que además cuelga ADR-11
-(el *offboarding*, que es una **promesa comercial**: snapshot gratis, handoff editable de pago).
-Registrada en [decisiones](../decisiones-arquitectura.md).
+**[ADR-19](../decisiones-arquitectura.md) lo resuelve:** un **único servicio Node, multi-tenant**
+(1 servicio, N dominios) que lee la Content Delivery API de Storyblok y sirve la web **en vivo**,
+reutilizando `renderStory()`, con cache en el borde invalidada por webhook y la URL de preview que el
+Visual Editor necesita.
+
+> ⚠️ **Riesgo que un estático no tenía:** el renderizador pasa a ser una pieza de **disponibilidad**.
+> Si se cae, **se caen todas las webs de cliente a la vez**. Hay que dimensionarlo antes de vender un
+> SLA.

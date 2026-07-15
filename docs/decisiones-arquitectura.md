@@ -40,6 +40,18 @@
 **Alternativas descartadas.** Ensamblar servicios separados (Auth0 + RDS + Pinecone + S3 + Pusher): más piezas, más costo, más integración.
 **Justificación.** Un solo Postgres resuelve 5 requisitos a la vez → menor costo de desarrollo y presupuesto por fases defendible frente al cliente. Aislamiento vía RLS por `tenant_id`.
 
+> ### ⚠️ Actualización (2026-07-14) — dos piezas de esta decisión ya no valen
+>
+> **Vigente:** Postgres, RLS, Auth (como **identidad**), pgvector y Storage.
+>
+> | Lo que decía | Lo que vale hoy |
+> |---|---|
+> | *"Auth **(RBAC)**"* | Supabase Auth aporta **autenticación e identidad**. El **RBAC lo resuelven Postgres y `memberships`** (**ADR-15**): el rol no viene del token, se **deriva** en la base. Decir "el RBAC lo hace Supabase Auth" es justo la confusión que me llevó a escribir un argumento falso en ADR-21. |
+> | *"Realtime **(alertas)**"* | **Reemplazado por polling** en **ADR-21** para el portal: Realtime abriría un **segundo canal de datos** en contra de la decisión de que el portal hable solo con nuestra API. *(Sigue disponible si algún día hace falta para otra cosa; simplemente no se usa.)* |
+>
+> Lo registro porque es **la misma clase de agujero que OBS-03**: una decisión posterior anula una
+> pieza de otra y nadie lo anota. La diferencia entre un ADR y un post-it es exactamente esto.
+
 ## ADR-02 — Frontend: Next.js + TypeScript + Tailwind + shadcn/ui ⚠️ REEMPLAZADA POR ADR-16
 **Contexto.** El PRD pide SPA responsive, portal de cliente, tablero tipo Trello, mensajería y dashboards.
 **Decisión.** Next.js (App Router) + TypeScript + Tailwind + shadcn/ui; `@supabase/ssr` para sesión y RLS desde el cliente.
@@ -92,6 +104,27 @@
 **Contexto.** ¿El pipeline research→web corre 100% automático o con revisión humana?
 **Decisión.** **Compuerta de aprobación humana**: el research genera el brief, un humano lo revisa/edita y recién ahí se dispara la creación de webs.
 **Justificación.** Coherente con la "compuerta humana" del PRD; ninguna acción irreversible (publicar) sin confirmación; menor riesgo de publicar research equivocado.
+
+> ### Actualización (2026-07-14) — el "**edita**" por fin existe
+>
+> Este ADR siempre dijo *"un humano lo revisa/**edita**"*. **Lo de editar no existía**: solo había
+> `approvePage`, `approveRun` y `rejectRun`. Si una página estaba **casi** bien, la única salida era
+> tirarla — y volver a pagar un research entero por un slug mal puesto. Una promesa del ADR llevaba
+> meses sin dueño y nadie lo había notado (lo encontró la 5ª review, cruzando ADRs).
+>
+> **Ahora:** `PgStore.editPage()` permite corregir `url_slug`, `keyword_principal`, `seo`,
+> `content_brief` y `preguntas_frecuentes`. Los campos son una **allowlist**: `approved`, `run_id` y
+> `tenant_id` no se tocan desde ahí ni por accidente — construir el `update` con las claves que mande
+> el llamador es cómo un endpoint de edición se convierte en una escalada de privilegios.
+>
+> **Y editar REVOCA la aprobación. Siempre.** No es una cortesía: la compuerta certifica que un
+> humano miró **esto**. Si `esto` cambió después de que lo mirara, la certificación **ya no vale
+> nada**. Sin esa regla, alguien aprueba una página inocua, la reescribe entera, y se publica algo
+> que **nadie vio**. Hay un test que lo comprueba, y una mutación que quita la revocación lo tumba.
+>
+> La compuerta sigue siendo **del equipo, no del cliente** (ADR-20): repartir la aprobación entre
+> agencia y cliente obligaría a decidir quién manda cuando no coinciden, y eso es un problema de
+> producto que nadie pidió resolver.
 
 ## ADR-07 — Output del Módulo 2: JSON + informe legible
 **Decisión.** Doble entregable: **JSON estructurado** (alimenta al Módulo 1) + **informe legible** (Markdown→PDF) para revisión humana.
@@ -248,10 +281,42 @@ superficie facturable, los cuatro endpoints.
   sin tener ni idea.
 
 **Lo que este diseño NO puede hacer, y hay que decirlo:** con un endpoint live, un resultado cuya
-respuesta se perdió **es irrecuperable**. Ese dinero está perdido y no hay diseño que lo rescate. Lo
-que sí se garantiza es que **no se pague dos veces por la misma petición** — que con los reintentos
-de Inngest re-ejecutando el pipeline entero (ADR-12) dejó de ser hipotético. Los reenvíos se cortan
-a los 3 intentos: insistir sin respuesta es vaciar el saldo por nada.
+respuesta se perdió **es irrecuperable**. Ese dinero está perdido y no hay diseño que lo rescate.
+
+> ### ⚠️ Corrección (2026-07-14) — acá había una afirmación FALSA, y el propio código la desmentía
+>
+> Este ADR decía: *"lo que sí se garantiza es que **no se pague dos veces por la misma petición**"*.
+>
+> **Era falso.** Dos párrafos más arriba, este mismo ADR explicaba que una petición sin respuesta
+> queda `pending` y que el siguiente intento **la reenvía sabiendo que puede estar repagando**. Y el
+> código lo hacía —hasta 3 veces— imprimiendo `⚠️ REPAGO` por consola. O sea: **el código sabía que
+> podía estar pagando dos veces, lo decía en voz alta, y lo hacía igual**, mientras el documento
+> proclamaba una garantía de *exactly-once* que nadie estaba dando.
+>
+> El *lease* da **exclusión mutua mientras está vivo**. Eso no es *exactly-once*, y llamarlo así fue
+> exactamente la clase de error que este registro existe para no repetir.
+>
+> **Lo que se hace ahora** (decisión de Juan, 2026-07-14):
+>
+> 1. **Una petición ambigua NO se reenvía sola.** El run **se detiene** con el `payload_hash` exacto,
+>    y un humano decide: comprobar en el panel de DataForSEO si se cobró, o asumir el riesgo con
+>    `DFS_PERMITIR_REPAGO=1`. **Detener un research es barato; pagarlo dos veces sin enterarse, no.**
+> 2. **Se elimina la ambigüedad en el 46% del gasto.** SERP y Search Volume **sí** soportan el método
+>    Standard (`task_post`/`task_get`), donde la task ya pagada **se recupera gratis** durante 30
+>    días. Ahí la respuesta perdida deja de ser irrecuperable. Es la única mitad que se puede cerrar
+>    de verdad; la API Labs (54%) es *live-only* y no tiene arreglo posible.
+>
+> **Garantía real, dicha sin adornos:** *nunca se paga dos veces **sin que alguien lo haya
+> decidido**.* No es lo mismo que "nunca se paga dos veces", y la diferencia importa.
+
+### Lo que sigue sin estar cubierto por un test
+
+- **Lotes que se solapan.** Dos procesos con `[a,b]` y `[b,c]` reservan **lotes enteros**: ambos ven
+  `b` ausente y ambos la pagan. Cerrarlo exige reservar **por keyword**, no por lote. La ventana es
+  estrecha (los dos tendrían que perder la cache a la vez), pero existe.
+- **La carrera real entre dos conexiones.** El `for update` de `reservar()` **no está verificado**:
+  PGlite tiene una sola conexión y serializa las transacciones, así que el test de concurrencia
+  prueba la lógica, **no la carrera**. Verificarlo exige un Postgres con dos conexiones.
 
 `PgTaskLog.huerfanas()` lista las peticiones que se enviaron y nunca volvieron. Es lo que hay que
 mirar si el saldo de DataForSEO no cuadra.
@@ -590,23 +655,49 @@ juntas (2026-07-14) para no reabrirlas a mitad de la construcción.
 
 Supabase permite que el navegador hable directo con Postgres vía **PostgREST**. **No se usa.**
 
-**El motivo es de seguridad, y es el mismo error de siempre en otra forma.** PostgREST conecta como
-`authenticator` y hace `SET ROLE authenticated` **según los claims del JWT**. Es decir: **el rol
-vuelve a venir declarado desde afuera** — exactamente lo que ADR-15 eliminó al derivarlo de
-`memberships`, y lo que ADR-17 blindó con `NOINHERIT`. Enchufar PostgREST sería mantener **dos
-modelos de autorización a la vez**, y las reglas de RLS tendrían que valer para los dos.
+> ### ⚠️ La primera versión de este ADR justificaba esto con un argumento FALSO
+>
+> Escribí que PostgREST *"hace `SET ROLE` según los claims del JWT, o sea que el rol vuelve a venir
+> declarado desde afuera — lo que ADR-15 eliminó"*. **Es falso, y lo señaló la review externa.**
+>
+> - El claim `role` va **dentro de un JWT firmado**. El navegador **no puede cambiarlo** sin
+>   invalidar la firma. No es un valor que declare el cliente: es uno que **verifica** PostgREST.
+> - `authenticated` es un rol **técnico** ("hay un usuario logueado"), no un rol de negocio. La
+>   autoridad podría seguir derivándose **íntegramente de `memberships` vía `auth.uid()`** —
+>   exactamente el modelo de ADR-15. Es, de hecho, lo que Supabase recomienda.
+> - ADR-17 tampoco queda contradicho: `authenticator → authenticated` es una transición que controla
+>   la infraestructura **después** de verificar la firma.
+>
+> Confundí *"el rol viaja en el JWT"* con *"el rol lo declara el cliente"*. **No es lo mismo, y la
+> diferencia era toda la cuestión.**
+>
+> Lo dejo escrito por dos motivos. Primero, porque es la **cuarta** vez que documento como cierta una
+> propiedad de seguridad que no lo era (van: la "credencial" de ADR-15, la idempotencia de ADR-14, la
+> concurrencia por tenant, y esto). El patrón ya no es mala suerte: **cuando un argumento me
+> conviene, lo escribo y no lo verifico.** Segundo, porque acá llegué a la decisión **correcta por el
+> camino equivocado** — y eso es peor que equivocarse del todo, porque una decisión "bien
+> fundamentada" **nadie la vuelve a revisar**.
+
+**La decisión se mantiene. Estas son las razones reales:**
+
+1. **`POST /runs` es un comando compuesto, no un `insert`.** Tiene que crear la fila **bajo RLS** y
+   **después** emitir el evento de Inngest (ADR-18). Un `insert` directo desde el navegador crearía
+   el run y **no dispararía nada**.
+2. **Una sola superficie que auditar.** Dos caminos de acceso son dos juegos de *grants*, dos
+   contratos y dos cosas que probar. La complejidad de mantener ambos coherentes es el riesgo real —
+   no una escalada de privilegios teórica.
+3. **No se expone el esquema.** PostgREST publica las tablas; una API publica **operaciones**. El
+   esquema puede cambiar sin romperle nada al portal.
+4. **Es donde viven la validación de contratos, el rate limiting y la auditoría.** Todo eso hay que
+   escribirlo igual; tenerlo en un solo sitio es más barato.
 
 ```
 Portal ──JWT──▶ API (login amg_api) ──▶ set app.user_id ──▶ Postgres
                                          rol ← memberships (ADR-15)
 ```
 
-**Un solo camino de autoridad.** Además, `POST /runs` **obliga** a pasar por la API: tiene que crear
-la fila bajo RLS **y después** emitir el evento de Inngest (ADR-18) — un `insert` directo desde el
-navegador no dispararía nada.
-
 *Costo aceptado:* hay que escribir los endpoints de lectura a mano en vez de recibirlos gratis.
-Vale la pena: son pocos, y el modelo de autorización sigue siendo **uno**.
+Son pocos, y a cambio hay **una sola superficie**.
 
 ### 2. El progreso del research se ve por **polling**.
 

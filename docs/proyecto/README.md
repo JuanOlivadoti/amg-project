@@ -6,7 +6,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 
 > Última revisión: 2026-07-14 · Estado: **Fase 2 en curso** — persistencia multi-tenant,
 > orquestador durable e idempotencia del gasto, hechos. Falta la **API + el portal**.
-> **194 tests en verde.**
+> **204 tests en verde.**
 >
 > 👉 Si venís a **retomar el proyecto**, empezá por el
 > [**Plan de la Fase 2**](11-plan-fase-2.md): dice de dónde venimos, dónde estamos y qué falta.

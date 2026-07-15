@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-14** · **194 tests en verde**
+> Última actualización: **2026-07-14** · **204 tests en verde**
 
 ---
 
@@ -56,7 +56,7 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
 ```
 
 - **4 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`.
-- **194 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **204 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -88,9 +88,9 @@ resto** (ADR-15).
 
 **Las tres reglas que no se rompen** (las tres nacieron de un agujero real, no de la teoría):
 
-1. **La API no decide quién puede qué.** Solo afirma **quién eres** —legítimo, porque acaba de
-   validar el token contra la clave pública del emisor— y RLS hace el resto (**ADR-15**). Un endpoint
-   que acepte `role` del body es una escalada de privilegios.
+1. **La API no decide quién puede qué.** Solo afirma **quién eres** —pone `app.user_id` tras validar
+   el JWT— y **RLS deriva el rol de `memberships`** y hace el resto (**ADR-15**). Un endpoint que
+   acepte `role` del body es una escalada de privilegios.
 2. **La API se conecta con `amg_api`**, que **no puede** asumir el rol del servicio: lo impide
    Postgres, no el código (**ADR-17**).
 3. **`POST /runs` crea la fila ANTES de emitir el evento.** Ahí es donde se autoriza. El evento
@@ -104,7 +104,7 @@ reabrirlas a mitad de camino:
 
 | Decisión | Elección | Por qué |
 |---|---|---|
-| **Cómo lee los datos** | **Solo por nuestra API.** Nunca PostgREST. | PostgREST hace `SET ROLE` **según los claims del JWT** → el rol volvería a venir declarado de afuera, justo lo que ADR-15 eliminó. Serían **dos modelos de autorización**. |
+| **Cómo lee los datos** | **Solo por nuestra API.** Nunca PostgREST. | `POST /runs` es un **comando compuesto**: crea la fila bajo RLS **y después** emite el evento de Inngest (ADR-18) — un `insert` directo desde el navegador no dispararía nada. Y una sola superficie = un solo juego de *grants*, contratos y cosas que auditar. *(La primera versión de ADR-21 justificaba esto con un argumento de seguridad **falso**; ver el recuadro en ADR-21.)* |
 | **Progreso del research** | **Polling** a `GET /runs/:id` | Realtime abriría un segundo canal de datos (contra la decisión de arriba). Se revisa cuando midamos cuánto tarda. |
 | **Componentes** | **Tailwind puro** | Son 4 pantallas. Añadir una librería después es fácil; sacarla, no. |
 | **Angular** | **standalone + signals**, sin NgRx | Para este tamaño, signals + servicios alcanzan. |

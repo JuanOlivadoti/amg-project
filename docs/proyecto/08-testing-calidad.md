@@ -17,14 +17,14 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 194 tests
+## Cobertura actual: 204 tests
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
-| `db` | **76** | RLS, aislamiento multi-tenant, compuerta de aprobación, credenciales, idempotencia del gasto. |
-| `kr-service` | **72** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas. |
+| `db` | **76** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
+| `kr-service` | **77** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **y la costura: que el POST facturable pase por el registro** (`client.test.ts`). |
 | `web-builder` | **35** | Contrato, handoff, render, XSS, idempotencia de publicación. |
-| `orchestrator` | **11** | Workflow durable, compuerta humana, autorización del evento. |
+| `orchestrator` | **16** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 
 ### La disciplina que más ha valido: **mutation testing**
 
@@ -33,7 +33,7 @@ un test de seguridad que siempre pasa es peor que no tenerlo — y me pasó: el 
 comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la otra salía
 `huerfana`, que también autoriza gastar). Pasaba con el bug dentro.
 
-### `kr-service` (72 tests)
+### `kr-service` (77 tests)
 
 | Archivo | Qué fija |
 |---|---|
@@ -99,6 +99,33 @@ que no reaparezcan.
 
 **Los 18 hallazgos de la review están corregidos**, salvo **#2 (secretos)**, que requiere acción
 humana → ver [Acciones pendientes](10-acciones-pendientes.md).
+
+### Tanda 10 — 5ª review: el aislamiento se perdía AL SALIR, y los tests probaban lo fácil ✅
+
+La quinta review no encontró CRITICAL ni una fuga de RLS. Encontró que **el aislamiento multi-tenant
+—impecable dentro de Postgres— se evaporaba en los pasos que escriben hacia afuera**, y que los
+tests estaban mirando para otro lado.
+
+| # | Hallazgo | Corrección |
+|---|---|---|
+| **#1** HIGH | **La publicación cruzaba clientes.** `clients.storyblok_space_id` existía y **no lo leía nadie**: se publicaba todo en el space global, así que la `/menu` de un cliente **pisaba** la del otro. | El destino (space + perfil) sale de la fila del cliente **bajo RLS**; el publisher se construye **por publicación**. Sin space, no se publica. |
+| **#2** HIGH | **El publisher guardaba drafts** (faltaba `publish: 1`) y la base escribía `published_at` igual: el run decía `publicado` con **nada publicado**. | Se manda `publish: 1` y **solo se marca lo que el proveedor confirma**. |
+| **#3/#4** HIGH | **Doble cobro a DataForSEO**: el hash no ordenaba arrays (mismo lote, distinto orden → dos cobros), y una petición ambigua **se reenviaba** sabiendo que podía repagar. | Lote canónico (dedupe + orden) antes de hash; la petición ambigua **detiene el run** salvo `DFS_PERMITIR_REPAGO=1`. |
+| **#5** MEDIUM | **Ningún test instanciaba `DataForSeoClient`**: la mutación "saltarse el registro" sobrevivía a los 199 tests → todos los POST de prod sin idempotencia. | `client.test.ts` con `fetch` stubeado: cuenta **POST facturables a la red**. Esa mutación ahora tumba 4 tests. |
+| **#6** MEDIUM | El test de roles leía membresías **directas**: un `grant` transitivo pasaba. | `pg_has_role(...,'SET')`, que incluye caminos transitivos. |
+| **#7** MEDIUM | El test de concurrencia **no probaba concurrencia** (PGlite serializa) y yo lo presentaba como si sí. | Renombrado a lo que prueba; el hueco (carrera real entre 2 conexiones) queda **anotado en ADR-14**, no disfrazado. |
+| **#9/#11** | `DATABASE_URL_CACHE` heredaba una credencial imposible; la clave de concurrencia apuntaba a un campo inexistente. | Aborta al arrancar si falta; clave corregida a `event.data.tenantId`. |
+
+**Cada fix, mutado uno por uno** (space global, marcar sin confirmar, editar sin revocar, saltarse
+el registro, no ordenar el hash, grant transitivo): cada mutación hace caer **exactamente** el test
+que le corresponde.
+
+> Tres afirmaciones **mías** que la review encontró falsas —y que dejo registradas en sus ADR en vez
+> de borrar—: ADR-14 proclamaba una idempotencia estricta que el propio código desmentía imprimiendo
+> `REPAGO`; ADR-21 justificaba "portal → API" con un argumento sobre PostgREST **incorrecto** (el
+> claim del JWT va firmado); y la "equidad entre tenants" de Inngest no existía porque la clave
+> apuntaba a un campo inexistente. El patrón, dicho sin adornos: **cuando un argumento me conviene,
+> lo escribo y no lo verifico.** Por eso las reviews externas están en el proceso.
 
 ### 🔑 Pendiente de acción humana
 

@@ -5,7 +5,7 @@ Base de datos de AMG OS. Implementa **ADR-01** (Supabase/Postgres + RLS) y **ADR
 
 ```bash
 npm install
-npm test        # 18 tests de RLS contra Postgres 18 REAL
+npm test        # 76 tests de RLS contra Postgres 18 REAL
 npm run typecheck
 ```
 
@@ -85,8 +85,10 @@ Compartirlo entre tenants es correcto, y es lo que hace que la segunda corrida d
 consultada **salga gratis**.
 
 Pero justamente por no tener `tenant_id`, no pueden quedar colgadas de la política de tenant: van
-con **RLS deny-all** (RLS habilitado, cero políticas) y **sin ningún `grant`** a `app_user`. Solo
-la *service-role* (que salta RLS) las toca. Defensa en profundidad: `grant` **y** RLS.
+con **RLS deny-all** para `app_user` y `app_service` (aislamiento: cero políticas, sin acceso).
+El pipeline las escribe usando un rol mínimo, `amg_cache`, que tiene `grant` directo (select/insert/update/delete)
+y políticas explícitas `using(true) with check(true)`. No se usa BYPASSRLS.
+Defensa en profundidad: `grant` estructurado + RLS en pie.
 
 Aplica a `kr_metrics_cache`, `kr_serp_cache` y `kr_provider_tasks`.
 
@@ -100,27 +102,42 @@ Aplica a `kr_metrics_cache`, `kr_serp_cache` y `kr_provider_tasks`.
 | `kr_runs` | Un run = un market (ADR-10). Costo en **micros**, `calidad_datos`, config reproducible. | aislamiento |
 | `kr_keywords` | **Todas** las keywords enriquecidas, no solo las que llegaron a página: son los datos que se le pagaron a DataForSEO. | aislamiento |
 | `kr_pages` | Páginas propuestas + `evidencia` + la compuerta `approved` (ADR-06). | aislamiento |
-| `kr_metrics_cache` | Volumen/KD por keyword+mercado, con `expires_at`. | **deny-all** |
-| `kr_serp_cache` | SERP por keyword+engine+device+tipo+profundidad. | **deny-all** |
-| `kr_provider_tasks` | Idempotencia: `payload_hash` → task ya pagada. | **deny-all** |
+| `kr_metrics_cache` | Volumen/KD por keyword+mercado, con `expires_at`. | solo `amg_cache` |
+| `kr_serp_cache` | SERP por keyword+engine+device+tipo+profundidad. | solo `amg_cache` |
+| `kr_provider_tasks` | Idempotencia: `payload_hash` → task ya pagada. | solo `amg_cache` |
+
+> Las tres tablas de arriba son **inaccesibles para `app_user` y `app_service`** (no tienen ni
+> `grant` ni política). Solo las toca el login `amg_cache`, que a su vez **no puede ver ninguna tabla
+> de tenant**. Tres logins, tres alcances disjuntos (ADR-17).
 
 ## `Store` — la capa de acceso
 
 ```ts
-const store = new PgStore(db);
+const store = new PgStore(db, "app_user");       // la API
+const store = new PgStore(db, "app_service");    // el orquestador
 await store.createRun(ctx, { clientId, prompt, market, schemaVersion });
 await store.saveKeywords(ctx, runId, keywords);  // idempotente
 await store.savePages(ctx, runId, pages);        // nacen con approved = false
 await store.finishRun(ctx, runId, { costeMicros, calidadDatos, ... });
 ```
 
-### Escribe BAJO RLS, no con la service-role
+El rol se ata al **login de proceso** (`amg_api` o `amg_orquestador`), y el Store lo recibe en el
+constructor. Postgres rechaza un `set role` que el login no tenga concedido: la frontera es real.
 
-Podría usar la service-role (que salta RLS) y "confiar" en que el código pone bien el `tenant_id`.
-Entonces el aislamiento entre clientes dependería de **que yo no me equivoque nunca**. Escribiendo
-como `app_user`, un bug de aplicación **no puede** cruzar tenants: lo frena Postgres.
+### Escribe BAJO RLS. **Nadie salta RLS — ni siquiera el servicio.**
 
-La service-role queda para lo que RLS no cubre: las caches, que no tienen `tenant_id`.
+La alternativa fácil habría sido una *service-role* con `BYPASSRLS` que "confía" en que el código
+pone bien el `tenant_id`. Entonces el aislamiento entre clientes dependería de **que yo no me
+equivoque nunca** — y este proyecto ya lleva unas cuantas reviews demostrando que sí me equivoco.
+Escribiendo bajo RLS, un bug de aplicación **no puede** cruzar tenants: lo frena Postgres.
+
+**No se usa `BYPASSRLS` en ningún lado.** `app_service` no es un pase libre: es otro rol que pasa por
+las mismas políticas, con otro alcance. Y las caches —que no tienen `tenant_id` y por eso no pueden
+colgar de la política de tenant— tampoco se resuelven saltando RLS: tienen **su propio login**
+(`amg_cache`), con `grant` explícito y políticas propias, y **sin acceso a ninguna tabla de tenant**.
+
+Un proceso, un login, un rol (ADR-17). Verificado contra `pg_has_role`, no contra lo que dice el
+código: `store.test.ts` → *"el login de la API NO puede asumir el rol del servicio"*.
 
 ### `set local`, no `set`
 
