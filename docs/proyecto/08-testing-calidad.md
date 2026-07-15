@@ -17,12 +17,12 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 204 tests
+## Cobertura actual: 210 tests
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
-| `db` | **76** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
-| `kr-service` | **77** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **y la costura: que el POST facturable pase por el registro** (`client.test.ts`). |
+| `db` | **78** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
+| `kr-service` | **82** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **y la costura: que el POST facturable pase por el registro** (`client.test.ts`). |
 | `web-builder` | **35** | Contrato, handoff, render, XSS, idempotencia de publicación. |
 | `orchestrator` | **16** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 
@@ -33,7 +33,7 @@ un test de seguridad que siempre pasa es peor que no tenerlo — y me pasó: el 
 comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la otra salía
 `huerfana`, que también autoriza gastar). Pasaba con el bug dentro.
 
-### `kr-service` (77 tests)
+### `kr-service` (82 tests)
 
 | Archivo | Qué fija |
 |---|---|
@@ -115,6 +115,7 @@ tests estaban mirando para otro lado.
 | **#6** MEDIUM | El test de roles leía membresías **directas**: un `grant` transitivo pasaba. | `pg_has_role(...,'SET')`, que incluye caminos transitivos. |
 | **#7** MEDIUM | El test de concurrencia **no probaba concurrencia** (PGlite serializa) y yo lo presentaba como si sí. | Renombrado a lo que prueba; el hueco (carrera real entre 2 conexiones) queda **anotado en ADR-14**, no disfrazado. |
 | **#9/#11** | `DATABASE_URL_CACHE` heredaba una credencial imposible; la clave de concurrencia apuntaba a un campo inexistente. | Aborta al arrancar si falta; clave corregida a `event.data.tenantId`. |
+| **#3b** | El 46% del gasto (SERP + Search Volume) seguía en modo live: una respuesta perdida era **dinero perdido**. | **Método Standard** (`postStandard`): `task_post` cobra + guarda el `task_id`; `task_get` recupera **gratis**. Dos capas (id persistido + `tasks_ready` por tag). Mutar la recuperación tumba `client.test.ts`. |
 
 **Cada fix, mutado uno por uno** (space global, marcar sin confirmar, editar sin revocar, saltarse
 el registro, no ordenar el hash, grant transitivo): cada mutación hace caer **exactamente** el test

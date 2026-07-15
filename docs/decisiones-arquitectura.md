@@ -20,7 +20,7 @@
 | ADR-11 | Política de salida/offboarding de webs de cliente | ⚠️ **Hay que reescribirla** en términos de ADR-19 antes de llevarla a un contrato |
 | ADR-12 | Orquestador durable (Inngest): el evento dispara, la base decide | Aceptada |
 | ADR-13 | El acceso a la base es SOLO por transacción con conexión reservada | Aceptada |
-| ADR-14 | Idempotencia por `payload_hash`, **no** método Standard de DataForSEO | Aceptada |
+| ADR-14 | Idempotencia por `payload_hash` (100%) + método Standard donde se puede (SERP/SV) | Aceptada · ampliada 2026-07-15 |
 | ADR-15 | El rol no se declara: se deriva de `memberships` | Aceptada (cierra OBS-02) |
 | ADR-16 | Portal en **Angular + Tailwind** (reemplaza ADR-02) | Aceptada |
 | ADR-17 | **Un proceso, un login, un rol**: la separación la impone Postgres | Aceptada (corrige ADR-15) |
@@ -247,7 +247,7 @@ anterior pegado es exactamente la fuga que esto viene a impedir.
 
 ---
 
-## ADR-14 — Idempotencia de las peticiones facturables: registro por `payload_hash`, NO método Standard
+## ADR-14 — Idempotencia de las peticiones facturables: `payload_hash` + método Standard donde se puede
 
 **Contexto.** Cada POST a DataForSEO cuesta dinero. La review externa (#10) pedía migrar al **método
 Standard** (`task_post` + `task_get`), que permitiría *recuperar* un resultado ya pagado cuya
@@ -296,18 +296,30 @@ respuesta se perdió **es irrecuperable**. Ese dinero está perdido y no hay dis
 > El *lease* da **exclusión mutua mientras está vivo**. Eso no es *exactly-once*, y llamarlo así fue
 > exactamente la clase de error que este registro existe para no repetir.
 >
-> **Lo que se hace ahora** (decisión de Juan, 2026-07-14):
+> **Lo que se hace ahora** (decisión de Juan, 2026-07-14; implementado 2026-07-15):
 >
-> 1. **Una petición ambigua NO se reenvía sola.** El run **se detiene** con el `payload_hash` exacto,
->    y un humano decide: comprobar en el panel de DataForSEO si se cobró, o asumir el riesgo con
->    `DFS_PERMITIR_REPAGO=1`. **Detener un research es barato; pagarlo dos veces sin enterarse, no.**
-> 2. **Se elimina la ambigüedad en el 46% del gasto.** SERP y Search Volume **sí** soportan el método
->    Standard (`task_post`/`task_get`), donde la task ya pagada **se recupera gratis** durante 30
->    días. Ahí la respuesta perdida deja de ser irrecuperable. Es la única mitad que se puede cerrar
->    de verdad; la API Labs (54%) es *live-only* y no tiene arreglo posible.
+> 1. **Una petición ambigua NO se reenvía sola.** En los endpoints **live** (Labs), el run **se
+>    detiene** con el `payload_hash` exacto, y un humano decide: comprobar en el panel de DataForSEO
+>    si se cobró, o asumir el riesgo con `DFS_PERMITIR_REPAGO=1`. **Detener un research es barato;
+>    pagarlo dos veces sin enterarse, no.**
+> 2. **El 46% del gasto ya NO tiene ambigüedad.** SERP y Search Volume usan el **método Standard**
+>    (`postStandard`: `task_post` cobra y devuelve un `task_id`; `task_get` recupera **gratis** 30
+>    días). Persistimos el `task_id` **antes** de tener el resultado, con **dos capas de
+>    recuperación**:
+>    - *Capa 1* — si morimos tras postear, el siguiente intento hace `task_get` con el id anotado.
+>    - *Capa 2* — si morimos **entre** postear y anotar, lo hallamos por `tag = payload_hash` en
+>      `tasks_ready`.
 >
-> **Garantía real, dicha sin adornos:** *nunca se paga dos veces **sin que alguien lo haya
-> decidido**.* No es lo mismo que "nunca se paga dos veces", y la diferencia importa.
+>    En ambas, el rescate cuesta **cero**. Ahí la respuesta perdida **deja de ser dinero perdido**.
+>    La API Labs (54%) es *live-only* y no tiene `task_post`: se queda con la garantía del punto 1.
+>
+> **Garantía real, dicha sin adornos:**
+> - **SERP + Search Volume:** una respuesta perdida **se recupera** (la tarea pagada se rescata).
+> - **Labs:** *nunca se paga dos veces **sin que alguien lo haya decidido***, pero un cobro cuya
+>   respuesta se perdió es irrecuperable.
+>
+> Mutation-tested: quitar la recuperación (ignorar el `task_id`) o no anotarlo hace caer los tests de
+> `client.test.ts`.
 
 ### Lo que sigue sin estar cubierto por un test
 

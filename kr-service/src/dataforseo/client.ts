@@ -111,9 +111,9 @@ export class DataForSeoClient {
      * riesgo de repago (`DFS_PERMITIR_REPAGO=1`), o va al panel de DataForSEO y comprueba si esa
      * petición se cobró. Detener un research es barato; pagarlo dos veces sin enterarse, no.
      *
-     * Esto es la MITAD del arreglo. La otra mitad es dejar de tener peticiones ambiguas: SERP y
-     * Search Volume (el 46% del gasto) soportan el método Standard, donde la task ya pagada se
-     * recupera GRATIS. Ver ADR-14.
+     * Este `post()` es el camino **live** (Labs: suggestions + KD), donde la ambigüedad **no se puede
+     * recuperar** — no existe una task que consultar. SERP y Search Volume ya NO pasan por acá: usan
+     * `postStandard()`, donde una respuesta perdida se rescata con `task_get` (gratis). Ver ADR-14.
      */
     if (reserva.estado === "huerfana") {
       if (!config.dataforseo.permitirRepago) {
@@ -161,6 +161,211 @@ export class DataForSeoClient {
       }
       throw e;
     }
+  }
+
+  /**
+   * POST facturable por el **método Standard** (`task_post` + `task_get`).
+   *
+   * La diferencia con `post()` no es cosmética: **una respuesta perdida deja de ser dinero perdido.**
+   * El `task_post` cobra y devuelve un `task_id`; lo persistimos **antes** de tener el resultado, y
+   * el `task_get` lo recupera **gratis** (30 días). Si el proceso muere tras pagar, el siguiente
+   * intento hace `task_get` con ese id — cero repago. Solo es posible en SERP y Search Volume; Labs
+   * es live-only y se queda con `post()`.
+   *
+   * `basePath` es la raíz del endpoint (p. ej. `/v3/serp/google/organic`), sin `/live` ni `/task_*`.
+   */
+  async postStandard<T = unknown>(basePath: string, body: unknown[]): Promise<T[]> {
+    // El sandbox no se registra (es gratis) y no vale la pena su cola: va por la variante /live.
+    if (config.dataforseo.isSandbox) return this.postConReintentos<T>(`${basePath}/live`, body);
+
+    const hash = payloadHash(this.ns, basePath, body);
+    let reserva = await this.taskLog.reservar<T>(basePath, hash);
+
+    if (reserva.estado === "en_progreso") {
+      const listo = await this.esperarAOtroProceso<T>(basePath, hash, reserva.leaseHasta);
+      if (listo) return listo;
+      reserva = await this.taskLog.reservar<T>(basePath, hash);
+      if (reserva.estado === "en_progreso") {
+        throw new Error(`${basePath}: otro proceso sigue pidiéndolo. No se reintenta para no pagar dos veces.`);
+      }
+    }
+    if (reserva.estado === "listo") return reserva.result;
+
+    const attemptId = reserva.attemptId;
+
+    /*
+     * RECUPERACIÓN — la razón de ser del método Standard.
+     *
+     * Si la reserva es `huerfana`, un envío anterior pudo haberse cobrado. Pero acá, a diferencia de
+     * `post()`, **puede recuperarse**: si tenemos el `task_id` (lo anotamos antes de morir, o lo
+     * hallamos por `tag` en `tasks_ready`), `task_get` trae el resultado ya pagado GRATIS.
+     */
+    if (reserva.estado === "huerfana") {
+      const taskId = reserva.taskId ?? (await this.buscarEnTasksReady(basePath, hash)) ?? undefined;
+      if (taskId) {
+        const result = await this.pollTaskGet<T>(basePath, taskId);
+        await this.taskLog.completar(basePath, hash, { result, costMicros: 0, attemptId, taskId });
+        console.warn(
+          `  [dataforseo] ${basePath}: tarea ya pagada RECUPERADA (task_id ${taskId}); costo 0. ` +
+            `Esto es lo que el método Standard permite y el live no.`,
+        );
+        return result;
+      }
+      // No hay id que recuperar (morimos en la ventana entre postear y anotar, y tampoco aparece en
+      // tasks_ready). Como en live: no se repostea sin permiso explícito.
+      if (!config.dataforseo.permitirRepago) {
+        throw new PeticionAmbiguaError(basePath, hash, reserva.intento);
+      }
+      this.repagos++;
+      console.warn(`  ⚠️  [dataforseo] REPAGO AUTORIZADO en ${basePath}: sin task_id que recuperar.`);
+    }
+
+    // `nueva` (o `huerfana` con repago autorizado): el `task_post` COBRA.
+    const costeAntes = this.costUsd;
+    try {
+      const taskId = await this.taskPost(basePath, body, hash);
+      // Anotar el id ANTES del get: es lo que hace recuperable el siguiente intento.
+      await this.taskLog.anotarTareaRemota?.(basePath, hash, taskId, attemptId);
+      const result = await this.pollTaskGet<T>(basePath, taskId);
+      const guardado = await this.taskLog.completar(basePath, hash, {
+        result,
+        costMicros: Math.round((this.costUsd - costeAntes) * 1_000_000),
+        attemptId,
+        taskId,
+      });
+      if (!guardado) {
+        console.warn(`  [dataforseo] ${basePath}: el resultado llegó tarde; otro intento tomó el relevo.`);
+      }
+      return result;
+    } catch (e) {
+      // Un `task_post` que el proveedor rechazó SIN cobrar (rate limit, validación) se marca `failed`:
+      // reintentar es seguro. Un fallo tras cobrar queda `pending` (con el task_id ya anotado, será
+      // recuperable). Un fallo del `task_get` también queda `pending`: el dato está pago y esperando.
+      const cobro = this.costUsd - costeAntes;
+      if (e instanceof DataForSeoTaskError && cobro === 0) {
+        await this.taskLog.fallar(basePath, hash, e.message, attemptId);
+      }
+      throw e;
+    }
+  }
+
+  /** `task_post`: crea la tarea (COBRA) y devuelve su `task_id`. El `tag` permite hallarla luego. */
+  private async taskPost(basePath: string, body: unknown[], tag: string): Promise<string> {
+    const conTag = body.map((b) => ({ ...(b as Record<string, unknown>), tag }));
+    const json = await this.fetchDfs<{ id?: string; cost?: number; status_code?: number; status_message?: string }>(
+      "POST",
+      `${basePath}/task_post`,
+      conTag,
+    );
+    const task = json.tasks?.[0];
+    // 20100 = "Task Created". El cost se cobra ACÁ, en el post.
+    if (!task || typeof task.id !== "string") {
+      throw new Error(`DataForSEO task_post en ${basePath} no devolvió un task_id.`);
+    }
+    if (typeof task.status_code === "number" && task.status_code !== 20100 && task.status_code !== 20000) {
+      throw new DataForSeoTaskError(
+        `task_post ${basePath}: ${task.status_code} ${task.status_message ?? ""}`,
+        [task.status_code],
+      );
+    }
+    if (typeof task.cost === "number") {
+      this.costUsd += task.cost;
+      currentMeter().addUsd("dataforseo", task.cost);
+    }
+    return task.id;
+  }
+
+  /**
+   * `task_get`: recupera el resultado. **GRATIS y reintentable.** Sondea mientras la tarea siga en
+   * cola (`40602`/`40601`), hasta un tope: una tarea que no aparece nunca no puede colgar el run.
+   */
+  private async pollTaskGet<T>(basePath: string, taskId: string): Promise<T[]> {
+    const MAX_SONDEOS = 60;
+    const INTERVALO = 2_000;
+    for (let i = 0; i < MAX_SONDEOS; i++) {
+      const json = await this.fetchDfs<{ status_code?: number; status_message?: string; result?: T[] | null }>(
+        "GET",
+        `${basePath}/task_get/advanced/${encodeURIComponent(taskId)}`,
+      );
+      const task = json.tasks?.[0];
+      if (!task) throw new Error(`task_get ${basePath}/${taskId}: respuesta sin tasks.`);
+
+      if (task.status_code === 20000) {
+        if (task.result == null) {
+          throw new Error(`task_get ${basePath}/${taskId}: OK sin 'result'. Respuesta incompleta.`);
+        }
+        return task.result;
+      }
+      // En cola / todavía no lista: esperar y volver a sondear. No cobra.
+      if (task.status_code === 40601 || task.status_code === 40602) {
+        await new Promise((r) => setTimeout(r, INTERVALO));
+        continue;
+      }
+      throw new DataForSeoTaskError(
+        `task_get ${basePath}/${taskId}: ${task.status_code} ${task.status_message ?? ""}`,
+        [task.status_code ?? 0],
+      );
+    }
+    throw new Error(
+      `task_get ${basePath}/${taskId}: la tarea no estuvo lista tras ${MAX_SONDEOS} sondeos. ` +
+        `El dato está pago y quedó registrado (task_id ${taskId}): se recupera en el próximo intento.`,
+    );
+  }
+
+  /**
+   * Busca en `tasks_ready` una tarea con nuestro `tag` (= payload_hash). **GRATIS.**
+   *
+   * Cubre la ventana en la que morimos entre el `task_post` (que cobró) y anotar el id: sin esto, ese
+   * cobro sería irrecuperable. `tasks_ready` lista lo pendiente de recoger, con su tag.
+   */
+  private async buscarEnTasksReady(basePath: string, tag: string): Promise<string | null> {
+    try {
+      const json = await this.fetchDfs<{ result?: Array<{ id?: string; tag?: string }> | null }>(
+        "GET",
+        `${basePath}/tasks_ready`,
+      );
+      for (const task of json.tasks ?? []) {
+        for (const item of task.result ?? []) {
+          if (item.tag === tag && typeof item.id === "string") return item.id;
+        }
+      }
+    } catch {
+      // tasks_ready es best-effort: si falla, no lo tomamos por "no existe". El llamador decide.
+      return null;
+    }
+    return null;
+  }
+
+  /**
+   * Un request a DataForSEO que valida el envelope SUPERIOR (rate limit / error global) y devuelve el
+   * JSON con `tasks`. Los GET (`task_get`, `tasks_ready`) son gratis e idempotentes → se reintentan
+   * libremente. El POST (`task_post`) es facturable → los timeouts NO se reintentan.
+   */
+  private async fetchDfs<TTask>(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+  ): Promise<{ status_code: number; status_message: string; tasks?: TTask[] }> {
+    const res = await fetchWithRetry(
+      `${config.dataforseo.baseUrl}${path}`,
+      {
+        method,
+        headers: { Authorization: this.authHeader, "Content-Type": "application/json" },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      },
+      {
+        ...config.http,
+        billable: method === "POST", // el task_post cobra; los GET no
+        onRetry: (attempt, delayMs, reason) =>
+          console.warn(`  [dataforseo] reintento ${attempt} en ${method} ${path} tras ${delayMs}ms (${reason})`),
+      },
+    );
+    const json = (await res.json()) as { status_code: number; status_message: string; tasks?: TTask[] };
+    if (json.status_code !== 20000) {
+      // Incluye 40202 (rate limit) → DataForSeoTaskError, que sí se reintenta arriba.
+      throw new DataForSeoTaskError(`DataForSEO status ${json.status_code}: ${json.status_message}`, [json.status_code]);
+    }
+    return json;
   }
 
   /**

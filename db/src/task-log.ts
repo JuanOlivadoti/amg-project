@@ -32,9 +32,13 @@ export type Reserva<T> =
   | { estado: "en_progreso"; leaseHasta: Date }
   /**
    * El lease VENCIÓ sin resultado: el proceso murió entre el envío y la respuesta. La petición pudo
-   * haberse cobrado. Reenviar es la única forma de obtener el dato, pero se cuenta como repago.
+   * haberse cobrado.
+   *
+   * Si es un endpoint **Standard** y el intento anterior alcanzó a anotar el `taskId`, ese id
+   * recupera el resultado ya pagado con `task_get` (gratis) — no hay repago. En un endpoint **live**,
+   * `taskId` es `undefined` y reenviar es repago (o se detiene).
    */
-  | { estado: "huerfana"; intento: number; attemptId: string };
+  | { estado: "huerfana"; intento: number; attemptId: string; taskId?: string | undefined };
 
 export const MAX_INTENTOS = 3;
 
@@ -54,6 +58,7 @@ interface FilaTarea {
   lease_vivo: boolean;
   lease_until: string | null;
   result: { v: unknown[] } | null;
+  provider_task_id: string | null;
 }
 
 export class PgTaskLog {
@@ -82,7 +87,7 @@ export class PgTaskLog {
       if (creada[0]) return { estado: "nueva" as const, attemptId: creada[0].attempt_id };
 
       const { rows } = await tx.query<FilaTarea>(
-        `select status, attempt, attempt_id, result, lease_until,
+        `select status, attempt, attempt_id, result, lease_until, provider_task_id,
                 (lease_until is not null and lease_until > now()) as lease_vivo
          from kr_provider_tasks
          where provider = $1 and endpoint = $2 and payload_hash = $3
@@ -124,10 +129,18 @@ export class PgTaskLog {
            returning attempt_id`,
           [this.provider, endpoint, payloadHash, intento, String(LEASE_MS)],
         );
-        return { estado: "huerfana" as const, intento, attemptId: r[0]!.attempt_id };
+        // El `provider_task_id` NO se toca: si el intento anterior lo anotó, este lo hereda para
+        // recuperar el resultado con `task_get` (gratis) en vez de repostear (Standard).
+        return {
+          estado: "huerfana" as const,
+          intento,
+          attemptId: r[0]!.attempt_id,
+          taskId: f.provider_task_id ?? undefined,
+        };
       }
 
-      // `failed`: hubo respuesta y el proveedor dijo que la task falló → NO cobró. Arranca limpia.
+      // `failed`: hubo respuesta y el proveedor dijo que la task falló → NO cobró. Arranca limpia:
+      // se borra también el `provider_task_id`, porque la próxima es un `task_post` nuevo.
       const { rows: r } = await tx.query<{ attempt_id: string }>(
         `update kr_provider_tasks set
            status = 'pending',
@@ -135,6 +148,7 @@ export class PgTaskLog {
            attempt_id = gen_random_uuid(),
            lease_until = now() + ($5 || ' milliseconds')::interval,
            result = null,
+           provider_task_id = null,
            completed_at = null
          where provider = $1 and endpoint = $2 and payload_hash = $3
          returning attempt_id`,
@@ -161,6 +175,29 @@ export class PgTaskLog {
         return { estado: "en_progreso", leaseHasta: new Date(f.lease_until!) };
       }
       return null; // failed, o lease vencido: quien espera tiene que volver a reservar
+    });
+  }
+
+  /**
+   * Método Standard: guarda el `task_id` remoto tras un `task_post` exitoso, **antes** de tener el
+   * resultado. Es lo que hace recuperable una respuesta perdida — sin este id, morir después del
+   * `task_post` sería dinero perdido. **CAS por `attempt_id`**: solo el intento con el lease anota.
+   */
+  async anotarTareaRemota(
+    endpoint: string,
+    payloadHash: string,
+    taskId: string,
+    attemptId: string,
+  ): Promise<boolean> {
+    return this.pool.transaction(async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update kr_provider_tasks set provider_task_id = $4
+         where provider = $1 and endpoint = $2 and payload_hash = $3
+           and attempt_id = $5 and status = 'pending'
+         returning id`,
+        [this.provider, endpoint, payloadHash, taskId, attemptId],
+      );
+      return rows.length > 0;
     });
   }
 

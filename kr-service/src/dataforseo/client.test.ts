@@ -193,3 +193,167 @@ test("el lote que sale a la red va deduplicado", async () => {
 
   assert.equal(postsALaRed.length, 1, "el orden de las CLAVES tampoco cambia la petición");
 });
+
+// ================================================================
+// Método Standard (task_post / task_get) — SERP y Search Volume (#3b)
+// ================================================================
+
+const SV_BASE = "/v3/keywords_data/google_ads/search_volume";
+
+/** Respuesta de task_post: cobra y devuelve el task_id (status 20100 = Task Created). */
+function respTaskPost(id: string, cost = 0.0075) {
+  return new Response(
+    JSON.stringify({
+      status_code: 20000,
+      status_message: "Ok.",
+      tasks: [{ id, status_code: 20100, status_message: "Task Created.", cost }],
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
+/** Respuesta de task_get: GRATIS (cost 0). `enCola` simula la tarea todavía no lista (40602). */
+function respTaskGet(id: string, enCola = false) {
+  const task = enCola
+    ? { id, status_code: 40602, status_message: "Task In Queue." }
+    : {
+        id,
+        status_code: 20000,
+        status_message: "Ok.",
+        result: [{ items: [{ keyword: "pizza", search_volume: 390 }] }],
+      };
+  return new Response(JSON.stringify({ status_code: 20000, status_message: "Ok.", tasks: [task] }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/** tasks_ready: lista lo pendiente de recoger, con su tag. */
+function respTasksReady(entries: Array<{ id: string; tag: string }>) {
+  return new Response(
+    JSON.stringify({
+      status_code: 20000,
+      status_message: "Ok.",
+      tasks: [{ status_code: 20000, result: entries }],
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
+/** Enruta por sufijo de path: task_post / task_get / tasks_ready. */
+function responderStandard(taskId: string) {
+  return (req: { url: string }) => {
+    if (req.url.includes("/task_post")) return respTaskPost(taskId);
+    if (req.url.includes("/task_get")) return respTaskGet(taskId);
+    if (req.url.includes("/tasks_ready")) return respTasksReady([{ id: taskId, tag: "x" }]);
+    throw new Error(`ruta inesperada: ${req.url}`);
+  };
+}
+
+test("Standard: task_post cobra, task_get recupera gratis; el total es solo el post", async () => {
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    postsALaRed.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+    return responderStandard("task-1")({ url: String(url) });
+  }) as typeof globalThis.fetch;
+
+  const c = new DataForSeoClient(new MemTaskLog());
+  const res = await c.postStandard(SV_BASE, [{ keywords: ["pizza"], location_code: 2724 }]);
+
+  assert.ok(res.length > 0, "devuelve el resultado del task_get");
+  assert.equal(c.costUsd, 0.0075, "solo el task_post cobró; el task_get fue gratis");
+  const posts = postsALaRed.filter((p) => p.url.includes("/task_post"));
+  assert.equal(posts.length, 1, "un solo task_post");
+});
+
+/**
+ * 🔴 LA GARANTÍA QUE JUSTIFICA TODA LA TANDA.
+ *
+ * El proceso paga el task_post, anota el task_id, y MUERE antes de recuperar el resultado. El
+ * siguiente intento NO debe repagar: hace task_get con el id anotado y recupera lo ya pagado.
+ *
+ * En el camino live (Labs) esto lanzaría PeticionAmbiguaError. Acá, con Standard, cuesta CERO.
+ */
+test("🔴 Standard: una respuesta perdida se RECUPERA gratis, no se vuelve a pagar", async () => {
+  const log = new MemTaskLog();
+
+  // Intento 1: el task_post cobra y anota el id, pero el task_get se cae (proceso muere).
+  let caerEnGet = true;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    postsALaRed.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+    const u = String(url);
+    if (u.includes("/task_post")) return respTaskPost("task-42");
+    if (u.includes("/task_get")) {
+      if (caerEnGet) throw new Error("ECONNRESET durante el task_get");
+      return respTaskGet("task-42");
+    }
+    throw new Error(`ruta inesperada: ${u}`);
+  }) as typeof globalThis.fetch;
+
+  const c1 = new DataForSeoClient(log);
+  await assert.rejects(() => c1.postStandard(SV_BASE, [{ keywords: ["pizza"] }]));
+  const postsIntento1 = postsALaRed.filter((p) => p.url.includes("/task_post")).length;
+  assert.equal(postsIntento1, 1, "el task_post se hizo (y cobró)");
+
+  log.vencerLeases(); // el proceso murió: el lease vence
+  caerEnGet = false; // ahora el task_get funciona
+
+  const c2 = new DataForSeoClient(log);
+  const res = await c2.postStandard(SV_BASE, [{ keywords: ["pizza"] }]);
+
+  assert.ok(res.length > 0, "el segundo intento RECUPERA el resultado");
+  assert.equal(c2.costUsd, 0, "🔴 costo del rescate: CERO — no se repagó");
+  const totalPosts = postsALaRed.filter((p) => p.url.includes("/task_post")).length;
+  assert.equal(totalPosts, 1, "🔴 NUNCA se hizo un segundo task_post");
+});
+
+/**
+ * La ventana residual: el proceso muere ENTRE el task_post y anotar el id. El id no está en el
+ * registro, pero sí en tasks_ready (por el tag = payload_hash). Se recupera igual, sin repagar.
+ */
+test("🔴 Standard: si el id no se anotó, se recupera por tag en tasks_ready", async () => {
+  const log = new MemTaskLog();
+  const hash = (await import("./task-log.js")).payloadHash("dfs:prod", SV_BASE, [{ keywords: ["pizza"] }]);
+
+  // Simulamos una huérfana SIN task_id anotado: reservamos y vencemos el lease sin anotar nada.
+  await log.reservar(SV_BASE, hash);
+  log.vencerLeases();
+
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const u = String(url);
+    postsALaRed.push({ url: u, body: null });
+    if (u.includes("/tasks_ready")) return respTasksReady([{ id: "task-99", tag: hash }]);
+    if (u.includes("/task_get")) return respTaskGet("task-99");
+    if (u.includes("/task_post")) throw new Error("NO debería postear: la tarea ya está pagada");
+    throw new Error(`ruta inesperada: ${u}`);
+  }) as typeof globalThis.fetch;
+
+  const c = new DataForSeoClient(log);
+  const res = await c.postStandard(SV_BASE, [{ keywords: ["pizza"] }]);
+
+  assert.ok(res.length > 0, "recuperado por tasks_ready");
+  assert.equal(c.costUsd, 0, "🔴 costo cero: era una tarea ya pagada");
+  assert.equal(
+    postsALaRed.filter((p) => p.url.includes("/task_post")).length,
+    0,
+    "🔴 no se posteó nada nuevo",
+  );
+});
+
+test("Standard: sondea mientras la tarea está en cola (40602) y luego recupera", async () => {
+  let getsPedidos = 0;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    postsALaRed.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+    const u = String(url);
+    if (u.includes("/task_post")) return respTaskPost("task-7");
+    if (u.includes("/task_get")) {
+      getsPedidos++;
+      return respTaskGet("task-7", getsPedidos < 2); // en cola la 1ª vez, lista la 2ª
+    }
+    throw new Error(`ruta inesperada: ${u}`);
+  }) as typeof globalThis.fetch;
+
+  const c = new DataForSeoClient(new MemTaskLog());
+  const res = await c.postStandard(SV_BASE, [{ keywords: ["pizza"] }]);
+  assert.ok(res.length > 0);
+  assert.ok(getsPedidos >= 2, "sondeó hasta que la tarea estuvo lista");
+});

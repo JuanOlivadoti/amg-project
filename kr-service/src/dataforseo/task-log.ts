@@ -17,19 +17,23 @@ import { createHash, randomUUID } from "node:crypto";
  * `pending`, sin resultado. El siguiente intento la ve, sabe que puede haber pagado ya, lo cuenta
  * como **repago** y lo grita — en vez de volver a pagar en silencio, que es lo que pasaba antes.
  *
- * ## Por qué esto NO es "migrar al método Standard"
+ * ## Dos garantías distintas, según el endpoint
  *
- * La review externa pedía `task_post` + `task_get`, que permitiría RECUPERAR el resultado ya pagado.
- * Pero **la API DataForSEO Labs es live-only**: no existe `task_post` para ella. Y Labs
- * (`keyword_suggestions` + `bulk_keyword_difficulty`) es donde está la MAYORÍA del gasto (~$0.136
- * de los $0.2522 de una corrida real). Migrar a Standard blindaría el endpoint más barato y dejaría
- * fuera el grueso.
+ * La review externa pedía `task_post` + `task_get`, que permite **RECUPERAR** el resultado ya
+ * pagado. No se puede en todos lados, así que el sistema da la garantía más fuerte donde puede:
  *
- * Este registro, en cambio, cubre el **100%** de la superficie facturable: los cuatro endpoints.
- * Lo que no puede hacer —y ningún diseño puede, con un endpoint live— es rescatar el resultado de
- * una respuesta que se perdió. Ese dinero está perdido. Lo que sí garantiza es que **no se pague
- * dos veces por la misma petición** en un reintento, que con los reintentos de Inngest re-ejecutando
- * el pipeline entero dejó de ser hipotético.
+ *  · **SERP y Search Volume (46% del gasto) → método Standard.** El `task_post` cobra y devuelve un
+ *    `task_id`; el `task_get` recupera el resultado **gratis** durante 30 días. Persistimos ese
+ *    `task_id`, así que una respuesta perdida **deja de ser dinero perdido**: el siguiente intento
+ *    hace `task_get` y recupera lo pagado. Ver `DataForSeoClient.postStandard`.
+ *  · **Labs — `keyword_suggestions` + `bulk_keyword_difficulty` (54%) → live-only.** No existe
+ *    `task_post` para Labs. Ahí la garantía es más débil y honesta: una respuesta perdida **detiene
+ *    el run** en vez de arriesgar un doble cobro (`PeticionAmbiguaError`). El dinero de esa petición,
+ *    si se cobró, está perdido — y ningún diseño puede rescatarlo con un endpoint live.
+ *
+ * En los dos casos, el registro cubre el **100%** de la superficie facturable: **nunca se paga dos
+ * veces por la misma petición sin que un humano lo decida** (`DFS_PERMITIR_REPAGO`). Lo que cambia
+ * es si, además, el resultado se puede rescatar (Standard sí; live no).
  */
 
 /**
@@ -46,14 +50,30 @@ export type Reserva<T> =
   | { estado: "nueva"; attemptId: string }
   /** Otro proceso la está pidiendo ahora. Se ESPERA su resultado; no se paga otra vez. */
   | { estado: "en_progreso"; leaseHasta: Date }
-  /** El lease venció sin resultado: el proceso murió y pudo haber cobrado. Reenviar = repago. */
-  | { estado: "huerfana"; intento: number; attemptId: string };
+  /**
+   * El lease venció sin resultado: el proceso murió y pudo haber cobrado.
+   *
+   * En un endpoint **live**, reenviar es repago (o se detiene). Pero si es **Standard** y alcanzó a
+   * anotar el `taskId` antes de morir, ese id es el rescate: `task_get(taskId)` recupera el resultado
+   * ya pagado **gratis**, y no hay repago. Por eso `taskId` viaja acá.
+   */
+  | { estado: "huerfana"; intento: number; attemptId: string; taskId?: string | undefined };
 
 export interface ProviderTaskLog {
   /** Escribe la reserva ANTES del envío. Si el proceso muere después, queda la huella. */
   reservar<T>(endpoint: string, payloadHash: string): Promise<Reserva<T>>;
   /** Estado actual sin reservar. Lo usa quien espera a que otro proceso termine. */
   consultar<T>(endpoint: string, payloadHash: string): Promise<Reserva<T> | null>;
+  /**
+   * Método Standard: tras un `task_post` exitoso, guarda el `task_id` remoto **antes** de tener el
+   * resultado. Es lo que hace recuperable una respuesta perdida. CAS por `attemptId`.
+   */
+  anotarTareaRemota?(
+    endpoint: string,
+    payloadHash: string,
+    taskId: string,
+    attemptId: string,
+  ): Promise<boolean>;
   /**
    * Llegó el resultado. **CAS por `attemptId`**: devuelve `false` si el lease ya no era nuestro
    * (una respuesta tardía no puede pisar el resultado de un intento posterior).
@@ -135,6 +155,8 @@ export class MemTaskLog implements ProviderTaskLog {
       attemptId: string;
       leaseHasta: number;
       result?: unknown[];
+      /** El `task_id` del proveedor (método Standard). Presente = la respuesta perdida se recupera. */
+      taskId?: string;
     }
   >();
 
@@ -166,8 +188,10 @@ export class MemTaskLog implements ProviderTaskLog {
         );
       }
       const attemptId = randomUUID();
-      this.filas.set(k, { estado: "pending", intento, attemptId, leaseHasta: Date.now() + LEASE_MS });
-      return { estado: "huerfana", intento, attemptId };
+      // El `taskId` se CONSERVA: si el intento anterior alcanzó a anotarlo, este intento lo usa para
+      // recuperar el resultado con `task_get` (gratis) en vez de repostear.
+      this.filas.set(k, { estado: "pending", intento, attemptId, leaseHasta: Date.now() + LEASE_MS, taskId: f.taskId });
+      return { estado: "huerfana", intento, attemptId, taskId: f.taskId };
     }
 
     // Nueva, o la anterior falló CON respuesta (no cobró) → reintentar es seguro.
@@ -191,16 +215,30 @@ export class MemTaskLog implements ProviderTaskLog {
     return null;
   }
 
+  async anotarTareaRemota(
+    endpoint: string,
+    hash: string,
+    taskId: string,
+    attemptId: string,
+  ): Promise<boolean> {
+    const k = `${endpoint}|${hash}`;
+    const f = this.filas.get(k);
+    // CAS: solo el intento que tiene el lease anota su task_id.
+    if (!f || f.estado !== "pending" || f.attemptId !== attemptId) return false;
+    this.filas.set(k, { ...f, taskId });
+    return true;
+  }
+
   async completar<T>(
     endpoint: string,
     hash: string,
-    datos: { result: T[]; costMicros: number; attemptId: string },
+    datos: { result: T[]; costMicros: number; attemptId: string; taskId?: string | undefined },
   ): Promise<boolean> {
     const k = `${endpoint}|${hash}`;
     const f = this.filas.get(k);
     // CAS: una respuesta tardía del intento anterior no pisa el resultado del actual.
     if (!f || f.estado !== "pending" || f.attemptId !== datos.attemptId) return false;
-    this.filas.set(k, { ...f, estado: "done", leaseHasta: 0, result: datos.result });
+    this.filas.set(k, { ...f, estado: "done", leaseHasta: 0, result: datos.result, taskId: datos.taskId ?? f.taskId });
     return true;
   }
 

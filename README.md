@@ -19,7 +19,7 @@ a punta**, con orquestación durable y aislamiento multi-tenant real.
 | `api/` | REST autenticada para el portal | ⏳ siguiente |
 | `portal/` | SPA Angular (donde se aprueba la compuerta) | ⏳ |
 
-- **204 tests en verde** · typecheck limpio en los 4 paquetes · `npm test` desde la raíz.
+- **210 tests en verde** · typecheck limpio en los 4 paquetes · `npm test` desde la raíz.
 - Los tests de seguridad corren contra **Postgres real** (PGlite en WASM): sin Docker, sin cuenta.
 - Todo corre **sin una sola credencial**: providers mock + base en memoria.
 

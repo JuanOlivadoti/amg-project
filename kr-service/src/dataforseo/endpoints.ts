@@ -2,7 +2,12 @@ import type { Market } from "../types.js";
 import type { DataForSeoClient } from "./client.js";
 
 // Wrappers tipados de los endpoints que usa el Módulo 2 (ver docs/guia-dataforseo.md §4).
-// Variante `live` para el spike; en producción se pasa a `task` (cola, más barato).
+//
+// DOS caminos, según lo que soporta cada endpoint (ADR-14):
+//  · SERP y Search Volume → método STANDARD (`postStandard`): task_post/task_get, la tarea pagada
+//    se recupera gratis. Una respuesta perdida NO es dinero perdido.
+//  · Suggestions y KD (Labs) → LIVE (`post`): no existe task_post para Labs. Ahí una respuesta
+//    perdida detiene el run en vez de arriesgar un doble cobro.
 
 export interface SearchVolumeRow {
   keyword: string;
@@ -29,8 +34,9 @@ export async function searchVolume(
   keywords: string[],
   market: Market,
 ): Promise<SearchVolumeRow[]> {
-  const res = await client.post<{ items?: SearchVolumeRow[] } | SearchVolumeRow>(
-    "/v3/keywords_data/google_ads/search_volume/live",
+  // STANDARD: task_post/task_get. La tarea pagada se recupera gratis si se pierde la respuesta.
+  const res = await client.postStandard<{ items?: SearchVolumeRow[] } | SearchVolumeRow>(
+    "/v3/keywords_data/google_ads/search_volume",
     [{ keywords, ...loc(market) }],
   );
   // El shape varía; normalizamos a filas.
@@ -63,8 +69,9 @@ export async function serpOrganic(
   market: Market,
   depth = 10,
 ): Promise<string[]> {
-  const res = await client.post<{ items?: Array<{ type?: string; url?: string }> }>(
-    "/v3/serp/google/organic/live/advanced",
+  // STANDARD: task_post/task_get. `postStandard` usa `.../task_get/advanced/{id}` para el resultado.
+  const res = await client.postStandard<{ items?: Array<{ type?: string; url?: string }> }>(
+    "/v3/serp/google/organic",
     [{ keyword, ...loc(market), depth }],
   );
   const urls: string[] = [];

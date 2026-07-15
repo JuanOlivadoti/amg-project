@@ -24,7 +24,7 @@ para que lo use alguien que no sea yo es la **API + el portal**: hoy la compuert
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **204 tests en verde** + typecheck limpio en los 4 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **210 tests en verde** + typecheck limpio en los 4 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Cinco reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía (o afirmaciones de seguridad **falsas** que documenté y el código desmentía). Ver [ADR-13..21 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## El número para la propuesta comercial
@@ -107,7 +107,7 @@ reales, no solo contra tests.
 | **Portal Angular** | ADR-16 | ⏳ Pendiente. Donde el equipo aprueba la compuerta. Reemplaza el plan de Next (ADR-02). |
 | **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
 | **Autorización derivada** (OBS-02) | ADR-15, ADR-17 | ✅ **Hecho.** El rol se deriva de `memberships` dentro de Postgres; el GUC `app.role` ya no lo lee nadie. Un login por proceso, `NOINHERIT`, un rol cada uno. Falta solo enchufar el JWT de Supabase (la función ya está aislada). |
-| **Idempotencia de peticiones facturables** | ADR-10, ADR-14 | ✅ **Hecho.** `kr_provider_tasks` + `payload_hash`, escrito ANTES de enviar. Cubre los 4 endpoints. **No** se migró a `task_post`: la API Labs es live-only y es donde está el 54% del gasto. |
+| **Idempotencia de peticiones facturables** | ADR-10, ADR-14 | ✅ **Hecho.** `kr_provider_tasks` + `payload_hash`, escrito ANTES de enviar: cubre el **100%** del gasto. **Además**, SERP y Search Volume (46%) usan el **método Standard** (`task_post`/`task_get`): la tarea pagada se **recupera gratis**, así que una respuesta perdida no es dinero perdido. Labs (54%) es live-only → ahí una petición ambigua detiene el run. |
 
 ### Mejoras de calidad del research (priorizadas con los datos reales)
 

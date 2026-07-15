@@ -113,6 +113,33 @@ test("🔴 el proceso murió (lease vencido) → huérfana: pudo haberse cobrado
   assert.equal(r.estado === "huerfana" ? r.intento : 0, 2);
 });
 
+test("🔴 Standard: la huérfana CONSERVA el task_id → se recupera lo pagado, no se repaga", async () => {
+  // task_post pagó y anotó el id, y el proceso muere antes del task_get.
+  const r0 = await log.reservar(EP, HASH);
+  const anotado = await log.anotarTareaRemota(EP, HASH, "task-abc", tokenDe(r0));
+  assert.equal(anotado, true);
+
+  await vencerLease(); // el proceso murió
+
+  const r = await log.reservar(EP, HASH);
+  assert.equal(r.estado, "huerfana");
+  assert.equal(
+    r.estado === "huerfana" ? r.taskId : undefined,
+    "task-abc",
+    "el task_id sobrevive: es lo que hace recuperable la respuesta perdida (task_get gratis)",
+  );
+});
+
+test("anotarTareaRemota es CAS: un intento viejo no puede anotar sobre el actual", async () => {
+  const r0 = await log.reservar(EP, HASH);
+  const tokenViejo = tokenDe(r0);
+  await vencerLease();
+  await log.reservar(EP, HASH); // intento 2 toma el lease
+
+  const anotado = await log.anotarTareaRemota(EP, HASH, "task-tarde", tokenViejo);
+  assert.equal(anotado, false, "el intento viejo ya no tiene el lease: no anota");
+});
+
 test("🔴 no se reenvía para siempre: al 3er intento sin respuesta, se planta", async () => {
   // Cada reenvío puede estar cobrando. Insistir infinitamente es vaciar el saldo por nada.
   await log.reservar(EP, HASH);

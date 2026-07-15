@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-14** · **204 tests en verde**
+> Última actualización: **2026-07-14** · **210 tests en verde**
 
 ---
 
@@ -56,7 +56,7 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
 ```
 
 - **4 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`.
-- **204 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **210 tests**. Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
