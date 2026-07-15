@@ -17,12 +17,12 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 223 tests
+## Cobertura actual: 227 tests
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
 | `db` | **80** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
-| `kr-service` | **84** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **y la costura: que el POST facturable pase por el registro** (`client.test.ts`). |
+| `kr-service` | **88** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). |
 | `web-builder` | **41** | Contrato, handoff, render, XSS, idempotencia de publicación. |
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 
@@ -33,7 +33,7 @@ un test de seguridad que siempre pasa es peor que no tenerlo — y me pasó: el 
 comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la otra salía
 `huerfana`, que también autoriza gastar). Pasaba con el bug dentro.
 
-### `kr-service` (84 tests)
+### `kr-service` (88 tests)
 
 | Archivo | Qué fija |
 |---|---|
@@ -151,6 +151,29 @@ de `DATABASE_URL_CACHE`.
 > La lección de esta ronda: la tanda 11 (el método Standard) la escribí **rápido y con tests que
 > reproducían mis propias suposiciones** — el mismo error que vengo señalando. Que una review externa
 > lo cazara **después** de que yo declarara "hecho" es exactamente para lo que está.
+
+### Tanda 13 — 7ª review: el agujero de raíz que las 5 correcciones dejaban intacto ✅
+
+Codex verificó las 5 correcciones de la tanda 12: **cerradas, todas caen por mutación, ninguna es
+falso-verde.** Pero encontró lo que ninguna tanda anterior había tocado: **el CLI de producción no
+registraba nada.** `npm run spike` (acción 03) llama `runResearch()` sin `deps.taskLog` → el cliente
+usa `NoopTaskLog` → **toda petición es nueva**. Toda la idempotencia de ADR-14 estaba puesta y el
+camino de producción documentado la salteaba entera. Reproducido: dos `postStandard` idénticos, dos
+cobros; y el caso caro de verdad, un **crash + re-run**, repaga los ~$0.25.
+
+| Corrección | Cómo |
+|---|---|
+| `durable` pasa a ser **contrato** de `ProviderTaskLog` | `false` en `Noop`/`Mem`, `true` solo en `PgTaskLog`. |
+| `getProvider` **falla cerrado** en live+prod sin registro durable | Lanza **antes de tocar la red** — para cualquier llamador, no solo el CLI. |
+| El CLI **cablea `PgTaskLog`** | Vía `DATABASE_URL_CACHE`, mismo namespace que el orquestador (comparten ledger). Sin esa var, la corrida de producción aborta. |
+
+`getprovider-guard.test.ts` (4 tests): sin registro / con `Noop` / con `Mem` en live+prod → lanza sin
+tocar la red; con un registro durable → no lanza. **Mutación:** neutralizar el guard hace caer
+exactamente los tres tests del rechazo.
+
+> La lección, otra vez la misma y por eso la anoto: las piezas estaban todas probadas, pero **el
+> composition root real (el CLI) no lo probaba nadie**. El test de la tanda 12 instanciaba
+> `MemTaskLog` a mano — nunca pasaba por `getProvider()`/`runResearch()` como lo hace producción.
 
 ### 🔑 Pendiente de acción humana
 

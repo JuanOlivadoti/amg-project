@@ -2,7 +2,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { config } from "../config.js";
 import { SCHEMA_VERSION } from "../types.js";
 import { runResearch } from "../pipeline/run.js";
-import type { ResearchDataset } from "../pipeline/run.js";
+import type { RunDeps, ResearchDataset } from "../pipeline/run.js";
+import type { ProviderTaskLog } from "../dataforseo/task-log.js";
 import { renderReport } from "../pipeline/brief.js";
 import { briefSchema } from "../validation/brief.schema.js";
 
@@ -25,6 +26,40 @@ function maxCostMicrosFromEnv(): number | undefined {
     return undefined;
   }
   return Math.round(usd * 1_000_000);
+}
+
+/**
+ * El registro de idempotencia DURABLE para una corrida contra PRODUCCIÓN.
+ *
+ * `getProvider` lo exige en live+prod (ADR-14): sin él, DataForSEO cobra como "nueva" cada petición y
+ * un crash + re-run vuelve a pagar los ~$0.25. El CLI es un composition root —igual que
+ * `orchestrator/deps.ts`—, así que ACÁ sí conoce la implementación (`PgTaskLog` de `db`), aunque la
+ * LIBRERÍA de kr-service siga sin saber que existe una base de datos.
+ *
+ * Usa `DATABASE_URL_CACHE` (login `amg_cache`) y el MISMO namespace que el orquestador, para que
+ * ambos compartan el ledger: una petición que pagó uno, el otro la ve pagada. Sin esa variable, en
+ * producción se ABORTA — no se gasta dinero real sin dónde anotarlo. En sandbox (gratis) y mock no
+ * hace falta registro.
+ */
+async function registroDurable(): Promise<{ taskLog?: ProviderTaskLog; cerrar: () => Promise<void> }> {
+  const sinRegistro = { cerrar: async () => {} };
+  if (config.dataforseo.mode !== "live" || config.dataforseo.isSandbox) return sinRegistro;
+
+  const url = process.env["DATABASE_URL_CACHE"];
+  if (!url) {
+    throw new Error(
+      "Corrida de PRODUCCIÓN sin DATABASE_URL_CACHE: DataForSEO cobra de verdad y no hay registro de " +
+        "idempotencia durable donde anotarlo (un crash + re-run pagaría dos veces). Configurá " +
+        "DATABASE_URL_CACHE (login amg_cache) o corré contra sandbox. Ver ADR-14 y docs/proyecto/12-credenciales.md.",
+    );
+  }
+
+  const { NodePgPool, PgTaskLog } = await import("db");
+  const { Pool } = await import("pg");
+  const pool = new Pool({ connectionString: url });
+  const ns = `dfs:${config.dataforseo.isSandbox ? "sandbox" : "prod"}`;
+  const taskLog = new PgTaskLog(new NodePgPool(pool), ns);
+  return { taskLog, cerrar: () => pool.end() };
 }
 
 async function main() {
@@ -53,12 +88,23 @@ async function main() {
     await writeFile("out/keywords.json", JSON.stringify(d, null, 2), "utf8");
   };
 
-  const brief = await runResearch(
-    maxCostMicros === undefined
-      ? { prompt }
-      : { prompt, options: { max_cost_micros: maxCostMicros } },
-    saveDataset,
-  );
+  // El registro durable se abre ANTES de gastar y se cierra pase lo que pase (el pool deja el
+  // proceso colgado si no). En prod es obligatorio; en sandbox/mock, `taskLog` viene undefined.
+  const { taskLog, cerrar } = await registroDurable();
+  const deps: RunDeps = taskLog ? { taskLog } : {};
+
+  let brief;
+  try {
+    brief = await runResearch(
+      maxCostMicros === undefined
+        ? { prompt }
+        : { prompt, options: { max_cost_micros: maxCostMicros } },
+      saveDataset,
+      deps,
+    );
+  } finally {
+    await cerrar();
+  }
 
   // Validación del contrato (Zod) — la "validación" del pipeline.
   const parsed = briefSchema.safeParse(brief);

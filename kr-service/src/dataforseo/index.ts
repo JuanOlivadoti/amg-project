@@ -25,6 +25,28 @@ import type { ProviderTaskLog } from "./task-log.js";
 export function getProvider(taskLog?: ProviderTaskLog, cache?: KeywordCache): KeywordDataProvider {
   if (config.dataforseo.mode !== "live") return new MockProvider();
 
+  /*
+   * PRODUCCIÓN sin registro de idempotencia DURABLE = doble pago silencioso.
+   *
+   * Era el agujero real: `runResearch()` sin `deps.taskLog` —como lo llama el CLI (`spike.ts`)—
+   * dejaba al cliente con `NoopTaskLog`, donde TODA reserva es "nueva". El `payload_hash` se calcula
+   * y no se compara con nada; un crash + re-run vuelve a pagar los ~$0.25. Toda la maquinaria de
+   * ADR-14 estaba puesta y el camino de producción documentado la salteaba entera.
+   *
+   * En sandbox (gratis) no hay nada que proteger. En live+prod el registro es OBLIGATORIO y tiene
+   * que ser durable: `Noop`/`Mem` mueren con el proceso y no cubren el caso que cuesta dinero (el
+   * re-run). Se rechaza ACÁ, en el composition root, ANTES de construir el cliente y tocar la red.
+   * Quien tiene un registro durable lo inyecta: el orquestador pasa `PgTaskLog`; el CLI lo cablea
+   * en `spike.ts`.
+   */
+  if (!config.dataforseo.isSandbox && !taskLog?.durable) {
+    throw new Error(
+      "DataForSEO en PRODUCCIÓN sin registro de idempotencia durable: cada petición se pagaría como " +
+        "nueva y un re-run volvería a cobrar. Inyectá un ProviderTaskLog persistente (PgTaskLog). " +
+        "El orquestador ya lo hace; el CLI lo cablea en spike.ts. Ver ADR-14.",
+    );
+  }
+
   const live = new LiveProvider(taskLog);
   if (!config.cache.enabled) return live;
 

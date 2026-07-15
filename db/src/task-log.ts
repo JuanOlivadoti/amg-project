@@ -70,6 +70,10 @@ interface FilaTarea {
 }
 
 export class PgTaskLog {
+  /** El único registro que sobrevive a la muerte del proceso: por eso es el que vale en producción.
+   *  `getProvider` lo exige en live+prod (ADR-14). Ver `ProviderTaskLog.durable` en kr-service. */
+  readonly durable = true;
+
   constructor(
     private readonly pool: DbPool,
     private readonly provider = "dataforseo",

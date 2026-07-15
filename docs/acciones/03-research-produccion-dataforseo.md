@@ -98,6 +98,7 @@ Las 8 se publicaron en Storyblok con contenido redactado por IA ([acción 04](04
 ```bash
 # 1. En kr-service/.env:
 #    DATAFORSEO_BASE_URL=https://api.dataforseo.com
+#    DATABASE_URL_CACHE=postgres://amg_cache:...@host/db   ← OBLIGATORIA en producción (ver abajo)
 # 2. Correr con tope de gasto (red de seguridad):
 cd kr-service
 MAX_COST_USD=1.00 npm run spike "El prompt del cliente"
@@ -105,3 +106,10 @@ MAX_COST_USD=1.00 npm run spike "El prompt del cliente"
 ```
 
 `MAX_COST_USD` aborta **antes** de gastar si una fase no entra en el remanente.
+
+> **🔴 `DATABASE_URL_CACHE` es obligatoria contra producción (ADR-14, tanda 13).** Sin ella, el CLI
+> no tendría registro de idempotencia durable y un **crash + re-run pagaría dos veces** — así que el
+> spike **aborta antes de tocar la red**. Es el mismo login `amg_cache` y el mismo namespace que usa
+> el orquestador, para que ambos compartan el ledger. Las tres corridas originales (2026-07-13) se
+> hicieron **antes** de ese blindaje, con `NoopTaskLog`: si alguna se hubiera reintentado, habría
+> repagado en silencio.

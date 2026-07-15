@@ -20,7 +20,7 @@
 | ADR-11 | Política de salida/offboarding de webs de cliente | ⚠️ **Hay que reescribirla** en términos de ADR-19 antes de llevarla a un contrato |
 | ADR-12 | Orquestador durable (Inngest): el evento dispara, la base decide | Aceptada |
 | ADR-13 | El acceso a la base es SOLO por transacción con conexión reservada | Aceptada |
-| ADR-14 | Idempotencia por `payload_hash` (100%) + método Standard donde se puede (SERP/SV) | Aceptada · ampliada 2026-07-15 |
+| ADR-14 | Idempotencia por `payload_hash` (con registro durable OBLIGATORIO en prod) + método Standard donde se puede (SERP/SV) | Aceptada · ampliada 2026-07-15 |
 | ADR-15 | El rol no se declara: se deriva de `memberships` | Aceptada (cierra OBS-02) |
 | ADR-16 | Portal en **Angular + Tailwind** (reemplaza ADR-02) | Aceptada |
 | ADR-17 | **Un proceso, un login, un rol**: la separación la impone Postgres | Aceptada (corrige ADR-15) |
@@ -268,8 +268,12 @@ Migrar a Standard habría blindado el endpoint **más barato** y dejado fuera **
 cambio de convertir el pipeline de segundos en minutos (cola + polling). Mala relación.
 
 **Decisión.** Registrar cada petición facturable en `kr_provider_tasks`, indexada por
-`payload_hash` (endpoint + cuerpo + **entorno**), **antes** de enviarla. Cubre el **100%** de la
-superficie facturable, los cuatro endpoints.
+`payload_hash` (endpoint + cuerpo + **entorno**), **antes** de enviarla. El registro alcanza a los
+cuatro endpoints — **pero solo protege si de verdad se le inyecta un registro durable**. Un cliente
+que corra con `NoopTaskLog` (o sin registro) no compara nada: toda petición sale como nueva. Por eso
+`getProvider` **exige** un registro durable en live+producción y **falla cerrado** si no lo tiene
+(ver el recuadro del CLI, abajo). Con esa condición cumplida, cubre el 100% de la superficie
+facturable.
 
 **La distinción que lo hace correcto — hay dos formas de fallar, y solo una es recuperable:**
 
@@ -334,6 +338,34 @@ respuesta se perdió **es irrecuperable**. Ese dinero está perdido y no hay dis
 >   perdía. Ahora se persiste apenas se halla.
 > - **Consultar una huérfana consumía intentos** aunque no se enviara nada. Ahora el tope cuenta
 >   **envíos** (`contarEnvio`), no reservas.
+
+> ### ⚠️ La 7ª review encontró el agujero de raíz: el CLI de producción no registraba NADA (tanda 13)
+>
+> Todo lo de arriba blindaba el registro… **que el camino de producción documentado no usaba.** El
+> CLI (`npm run spike`, acción 03) llama `runResearch()` **sin `deps.taskLog`**, y el cliente caía en
+> `NoopTaskLog`: para él **toda petición es nueva**. El `payload_hash` se calculaba y no se comparaba
+> con nada. Reproducido por Codex: dos `postStandard` idénticos → **dos cobros**. Y el caso que de
+> verdad cuesta dinero es peor: un **crash + re-run** (aborta el presupuesto, se corta la red) vuelve a
+> pagar los ~$0.25 enteros, porque en memoria no quedó ni rastro de lo ya enviado.
+>
+> **La lección, otra vez la misma:** las piezas estaban probadas por separado y **nadie probaba la
+> costura del composition root real**. El test de la tanda 12 instanciaba `MemTaskLog` a mano; ninguno
+> pasaba por `getProvider()`/`runResearch()` como el CLI.
+>
+> **Lo que se hace ahora (tanda 13):**
+>
+> 1. **`durable` es ahora un contrato**, no un detalle. `ProviderTaskLog.durable`: `false` en
+>    `Noop`/`Mem` (mueren con el proceso), `true` solo en `PgTaskLog`.
+> 2. **`getProvider` falla cerrado**: en live+producción, sin un registro durable **lanza antes de
+>    tocar la red**. El doble pago silencioso pasó a ser un rechazo ruidoso — para *cualquier*
+>    llamador, no solo el CLI.
+> 3. **El CLI cablea `PgTaskLog`** (desde `db`, vía `DATABASE_URL_CACHE`, mismo namespace que el
+>    orquestador → comparten ledger). El CLI es un composition root, como `orchestrator/deps.ts`: la
+>    LIBRERÍA de kr-service sigue sin conocer la base. Sin `DATABASE_URL_CACHE`, una corrida de
+>    producción **aborta** — no se gasta dinero real sin dónde anotarlo.
+>
+> Mutation-tested: neutralizar el guard (`!taskLog?.durable` → `false`) hace caer exactamente los tres
+> tests de `getprovider-guard.test.ts` que exigen el rechazo.
 
 ### Lo que sigue sin estar cubierto por un test
 

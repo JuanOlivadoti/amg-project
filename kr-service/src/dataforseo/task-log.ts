@@ -68,6 +68,15 @@ export type Reserva<T> =
     };
 
 export interface ProviderTaskLog {
+  /**
+   * ¿Sobrevive el registro a la muerte del proceso? Solo `PgTaskLog` (Postgres) es `true`.
+   *
+   * No es cosmético: en PRODUCCIÓN, un registro NO durable no protege del caso que de verdad cuesta
+   * dinero — un crash + re-run vuelve a pagar los ~$0.25, porque toda reserva vuelve a ser "nueva".
+   * `getProvider` EXIGE `durable` en live+prod y falla cerrado si no lo tiene (ADR-14). En sandbox
+   * (gratis) no hace falta, y `Noop`/`Mem` bastan para tests y desarrollo.
+   */
+  readonly durable: boolean;
   /** Escribe la reserva ANTES del envío. Si el proceso muere después, queda la huella. */
   reservar<T>(endpoint: string, payloadHash: string): Promise<Reserva<T>>;
   /** Estado actual sin reservar. Lo usa quien espera a que otro proceso termine. */
@@ -152,6 +161,7 @@ export const LEASE_MS = 120_000;
 
 /** Sin registro: todo es nuevo. Es lo que corre en sandbox (gratis) y con el provider mock. */
 export class NoopTaskLog implements ProviderTaskLog {
+  readonly durable = false;
   async reservar<T>(): Promise<Reserva<T>> {
     return { estado: "nueva", attemptId: randomUUID() };
   }
@@ -166,8 +176,10 @@ export class NoopTaskLog implements ProviderTaskLog {
   }
 }
 
-/** Registro en memoria. Para tests y para un proceso suelto sin base de datos. */
+/** Registro en memoria. Para tests y desarrollo. NO durable: muere con el proceso, así que en
+ *  producción no protege del re-pago tras un crash — para eso está `PgTaskLog`. */
 export class MemTaskLog implements ProviderTaskLog {
+  readonly durable = false;
   private readonly filas = new Map<
     string,
     {
