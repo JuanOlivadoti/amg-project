@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink, ActivatedRoute } from '@angular/router';
@@ -38,6 +38,12 @@ import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
           }
         </header>
 
+        @if (b.run.status === 'running') {
+          <div class="bg-white rounded-xl border border-gray-200 p-6 text-sm text-gray-600">
+            <span class="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse mr-2"></span>
+            El research está corriendo. Esta pantalla se actualiza sola.
+          </div>
+        } @else {
         <!-- ✅ RESPALDADAS por datos de mercado -->
         <section>
           <h2 class="text-sm font-semibold mb-2" style="color:#15803d">
@@ -63,6 +69,7 @@ import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
             <ng-container [ngTemplateOutlet]="tarjeta" [ngTemplateOutletContext]="{ $implicit: p }" />
           }
         </section>
+        }
       }
     </div>
 
@@ -132,10 +139,14 @@ import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
     </ng-template>
   `,
 })
-export class BriefPage implements OnInit {
+export class BriefPage implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
+
+  /** Cada cuánto se repregunta por un research que sigue corriendo (ADR-21: polling, no realtime). */
+  private static readonly POLL_MS = 4000;
+  private timer: ReturnType<typeof setInterval> | null = null;
 
   private runId = '';
   readonly brief = signal<Brief | null>(null);
@@ -160,15 +171,49 @@ export class BriefPage implements OnInit {
     await this.cargar();
   }
 
+  ngOnDestroy(): void {
+    this.pararPolling();
+  }
+
   async cargar(): Promise<void> {
     this.cargando.set(true);
     this.error.set('');
     try {
       this.brief.set(await this.api.verBrief(this.runId));
+      this.ajustarPolling();
     } catch (e) {
       this.error.set((e as Error).message);
     } finally {
       this.cargando.set(false);
+    }
+  }
+
+  /**
+   * Mientras el research corre, se repregunta cada POLL_MS hasta que cambia de estado. El re-fetch
+   * NO toca `cargando` (no queremos el spinner cada 4 s pisando la pantalla) ni `error` transitorio.
+   */
+  private ajustarPolling(): void {
+    const corriendo = this.brief()?.run.status === 'running';
+    if (corriendo && !this.timer) {
+      this.timer = setInterval(() => void this.refetch(), BriefPage.POLL_MS);
+    } else if (!corriendo) {
+      this.pararPolling();
+    }
+  }
+
+  private pararPolling(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  private async refetch(): Promise<void> {
+    try {
+      this.brief.set(await this.api.verBrief(this.runId));
+      this.ajustarPolling();
+    } catch {
+      /* un fallo transitorio no rompe el polling; el próximo tick reintenta */
     }
   }
 
@@ -183,7 +228,7 @@ export class BriefPage implements OnInit {
     this.error.set('');
     try {
       await fn();
-      await this.cargar();
+      await this.refetch(); // recarga SIN el spinner de página (la acción ya terminó)
     } catch (e) {
       this.error.set((e as Error).message);
     } finally {

@@ -12,6 +12,10 @@ standalone + signals, Tailwind puro, **habla solo con nuestra API** (nunca con P
   vs ⚠️ sin validar. *Es el argumento de venta: el sistema dice lo que no sabe.*
 - **La compuerta doble (ADR-06)** — aprobar página por página, **editar** (revoca la aprobación) y
   después aprobar el run → despierta al workflow → publica.
+- **Refresh del token** — un 401 refresca la sesión y reintenta **una** vez; si el refresh falla, se
+  cierra sesión y al login. La política vive en `api-core` (probada); el mecanismo, en `AuthService`.
+- **Polling** — mientras un research corre, el brief se repregunta cada 4 s hasta que termina
+  (ADR-21: polling, no realtime).
 
 ## La decisión de fondo: la lógica es TypeScript puro, testeable sin navegador
 
@@ -35,9 +39,8 @@ impone la API/RLS (ADR-20).
 
 ## Lo que queda abierto (a propósito, y dicho)
 
-- **Refresh del token no está cableado.** `refrescarSesion` existe y está testeada, pero la UI todavía
-  no la llama: al vencer el token (~1 h) hay que volver a entrar. Es lo próximo del portal.
-- **Sin tests de componente** (karma). El núcleo cubre la lógica; los componentes se verifican
-  corriendo la app. `npm run test:karma` queda disponible.
-- **La UX de "cuánto tarda un research"** (barra de progreso vs. volver después) se define cuando se
-  mida la duración real de una corrida (acción 06). Hoy: polling manual al recargar.
+- **Sin tests de componente** (karma). El núcleo cubre la lógica (19 tests); los componentes se
+  verifican compilando (AOT valida los templates) y corriendo la app. `npm run test:karma` disponible.
+- **El intervalo de polling (4 s) es a ojo.** Se calibra cuando se mida la duración real de una
+  corrida (acción 06): si un research tarda minutos, quizás convenga espaciarlo o avisar distinto.
+- **La lista de runs no hace polling** (sí el brief). Un run que termina se ve al recargar la lista.

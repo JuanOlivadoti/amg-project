@@ -17,7 +17,7 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 248 tests (monorepo) + 16 (portal)
+## Cobertura actual: 248 tests (monorepo) + 19 (portal)
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
@@ -26,7 +26,7 @@ sin cuenta.
 | `web-builder` | **41** | Contrato, handoff, render, XSS, idempotencia de publicación. |
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **21** | Auth (JWT + tenant), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
-| `portal` | **16** | *(fuera del monorepo)* El núcleo puro: cliente HTTP (headers, errores tipados), login de Supabase, y **la separación por evidencia** (✅/⚠️). Con `node:test` y `fetch` de mentira — sin navegador. |
+| `portal` | **19** | *(fuera del monorepo)* El núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, y **la separación por evidencia** (✅/⚠️). Con `node:test` y `fetch` de mentira — sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
 

@@ -12,6 +12,13 @@ export interface ApiOpts {
   getToken: () => string | null;
   /** El tenant activo (coordenada, no autoridad — RLS decide). */
   getTenant: () => string | null;
+  /**
+   * Renueva la sesión cuando la API responde 401. Devuelve `true` si consiguió un token nuevo (y
+   * entonces el request se reintenta UNA vez) o `false` si no (y el 401 se propaga). El mecanismo se
+   * inyecta —el core no sabe de Supabase—, pero la POLÍTICA (refrescar y reintentar una sola vez)
+   * vive acá, probada. Sin este hook, un 401 se propaga tal cual.
+   */
+  refrescar?: () => Promise<boolean>;
   /** Inyectable para testear sin red. Por defecto, el `fetch` global. */
   fetchFn?: typeof fetch;
 }
@@ -33,7 +40,7 @@ export interface ClienteApi {
 export function crearApi(opts: ApiOpts): ClienteApi {
   const fetchFn = opts.fetchFn ?? fetch;
 
-  async function pedir<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function pedir<T>(method: string, path: string, body?: unknown, yaReintento = false): Promise<T> {
     const headers: Record<string, string> = {};
     const token = opts.getToken();
     const tenant = opts.getTenant();
@@ -46,6 +53,12 @@ export function crearApi(opts: ApiOpts): ClienteApi {
       headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
+
+    // Token vencido: refrescar UNA vez y reintentar. `getToken` se relee, así que el retry ya lleva
+    // el token nuevo. Una sola vez: si el refresh no alcanza, el 401 se propaga (no un bucle).
+    if (res.status === 401 && opts.refrescar && !yaReintento) {
+      if (await opts.refrescar()) return pedir<T>(method, path, body, true);
+    }
 
     if (!res.ok) {
       let mensaje = `${res.status} ${res.statusText}`;

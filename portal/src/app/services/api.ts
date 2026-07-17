@@ -16,6 +16,9 @@ export class ApiService {
     baseUrl: environment.apiBaseUrl,
     getToken: this.auth.getToken,
     getTenant: this.auth.getTenant,
+    // 401 → refrescar y reintentar (la política vive en api-core, probada). Si el refresh falla, el
+    // AuthService cierra la sesión y el shell redirige al login.
+    refrescar: () => this.auth.refrescar(),
   });
 
   readonly listarRuns = this.cliente.listarRuns;

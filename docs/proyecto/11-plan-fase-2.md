@@ -104,10 +104,12 @@ REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.us
 ### 5.2 — El portal (`portal/`) ⏳ EN CURSO
 
 > **Ya construido:** login (Supabase), lista de research (RLS decide qué ve cada quien) con lanzar
-> *(solo equipo)*, el brief **separado por evidencia** (✅/⚠️), y la **compuerta doble** (aprobar
-> página, editar —revoca—, aprobar run). Angular 20 standalone + signals + Tailwind; la lógica (HTTP,
-> login, evidencia) en TS puro con **16 tests `node:test`**, sin navegador. **Falta:** refresh del
-> token y pulido. La API ganó **CORS** para que el navegador pueda llamarla.
+> *(solo equipo)*, el brief **separado por evidencia** (✅/⚠️), la **compuerta doble** (aprobar
+> página, editar —revoca—, aprobar run), **refresh del token** (401 → refresca y reintenta una vez;
+> si falla, al login) y **polling** del research en curso (ADR-21). Angular 20 standalone + signals +
+> Tailwind; la lógica (HTTP, login, evidencia) en TS puro con **19 tests `node:test`**, sin navegador.
+> **Falta:** tests de componente (karma) y calibrar el intervalo de polling con la duración real. La
+> API ganó **CORS** para que el navegador pueda llamarla.
 
 **Stack cerrado en [ADR-21](../decisiones-arquitectura.md)** — las cuatro decisiones, para no
 reabrirlas a mitad de camino:

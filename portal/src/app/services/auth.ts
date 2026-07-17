@@ -1,5 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { loginConPassword } from '../core/auth-core';
+import { loginConPassword, refrescarSesion } from '../core/auth-core';
 import type { Sesion } from '../core/models';
 import { environment } from '../../environments/environment';
 
@@ -46,6 +46,47 @@ export class AuthService {
       localStorage.removeItem(CLAVE);
     } catch {
       /* idem */
+    }
+  }
+
+  /**
+   * Renueva el access token con el refresh token. La llama el cliente HTTP cuando la API responde
+   * 401. Si el refresh falla (token revocado o vencido del todo), **cierra la sesión** y devuelve
+   * `false`: el guard mandará al login en la próxima navegación. En vuelo puede haber varias
+   * llamadas a la vez; se comparte una sola promesa para no disparar N refrescos.
+   */
+  private refrescoEnVuelo: Promise<boolean> | null = null;
+
+  refrescar(): Promise<boolean> {
+    if (this.refrescoEnVuelo) return this.refrescoEnVuelo;
+    this.refrescoEnVuelo = this.hacerRefresh().finally(() => {
+      this.refrescoEnVuelo = null;
+    });
+    return this.refrescoEnVuelo;
+  }
+
+  private async hacerRefresh(): Promise<boolean> {
+    const actual = this._sesion();
+    if (!actual) return false;
+    try {
+      const sesion = await refrescarSesion(this.authOpts, actual.refreshToken);
+      // El refresh de Supabase no repite app_metadata: conservamos tenant/rol/email de la sesión viva.
+      const fusion: Sesion = {
+        ...sesion,
+        tenantId: sesion.tenantId || actual.tenantId,
+        rol: sesion.rol || actual.rol,
+        email: sesion.email || actual.email,
+      };
+      this._sesion.set(fusion);
+      try {
+        localStorage.setItem(CLAVE, JSON.stringify(fusion));
+      } catch {
+        /* modo privado */
+      }
+      return true;
+    } catch {
+      this.logout();
+      return false;
     }
   }
 

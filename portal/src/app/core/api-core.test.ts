@@ -96,3 +96,66 @@ test('sin token no se manda el header Authorization (la API responderá 401)', a
   await crearApi({ baseUrl: 'http://api.test', getToken: () => null, getTenant: () => 't', fetchFn: fn }).listarRuns();
   assert.equal(capturado.headers!['authorization'], undefined);
 });
+
+/** fetch que devuelve una secuencia de respuestas, una por llamada. */
+function fakeSecuencia(respuestas: Array<{ status: number; body?: unknown }>) {
+  let i = 0;
+  const fn = (async () => {
+    const r = respuestas[Math.min(i, respuestas.length - 1)];
+    i++;
+    return new Response(r.body === undefined ? null : JSON.stringify(r.body), {
+      status: r.status,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as unknown as typeof fetch;
+  return { fn, llamadas: () => i };
+}
+
+test('un 401 refresca y reintenta UNA vez; el retry sale bien', async () => {
+  const { fn, llamadas } = fakeSecuencia([{ status: 401 }, { status: 200, body: { runs: [] } }]);
+  let refrescos = 0;
+  const api = crearApi({
+    baseUrl: 'http://api.test',
+    getToken: () => 'tok',
+    getTenant: () => 't',
+    fetchFn: fn,
+    refrescar: async () => {
+      refrescos++;
+      return true;
+    },
+  });
+  await api.listarRuns();
+  assert.equal(refrescos, 1, 'refrescó una vez');
+  assert.equal(llamadas(), 2, 'reintentó el request');
+});
+
+test('si tras refrescar sigue 401, se propaga y NO se refresca en bucle', async () => {
+  const { fn, llamadas } = fakeSecuencia([{ status: 401 }, { status: 401, body: { error: 'sigue mal' } }]);
+  let refrescos = 0;
+  const api = crearApi({
+    baseUrl: 'http://api.test',
+    getToken: () => 'tok',
+    getTenant: () => 't',
+    fetchFn: fn,
+    refrescar: async () => {
+      refrescos++;
+      return true;
+    },
+  });
+  await assert.rejects(() => api.listarRuns(), (e: ApiError) => e.status === 401);
+  assert.equal(refrescos, 1, 'refrescó una sola vez');
+  assert.equal(llamadas(), 2, 'reintentó una sola vez');
+});
+
+test('si el refresh falla (false), el 401 se propaga sin reintentar', async () => {
+  const { fn, llamadas } = fakeSecuencia([{ status: 401, body: { error: 'no autorizado' } }]);
+  const api = crearApi({
+    baseUrl: 'http://api.test',
+    getToken: () => 'tok',
+    getTenant: () => 't',
+    fetchFn: fn,
+    refrescar: async () => false,
+  });
+  await assert.rejects(() => api.listarRuns(), (e: ApiError) => e.status === 401);
+  assert.equal(llamadas(), 1, 'no reintentó');
+});
