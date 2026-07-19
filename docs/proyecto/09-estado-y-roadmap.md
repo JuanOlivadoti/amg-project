@@ -2,13 +2,32 @@
 
 ## Resumen ejecutivo
 
-**La cadena completa `prompt → research → web publicable` funciona end-to-end.** Todo lo que
-depende de IA es real (seeds, intención, relevancia, clustering semántico, contenido on-page,
-prose final). La arquitectura está preparada para producción, no es un prototipo desechable.
+*(Actualizado 2026-07-19, al cerrar la etapa 6.)*
 
-**Persistencia multi-tenant, orquestación durable e idempotencia del gasto: hechas.** Lo que falta
-para que lo use alguien que no sea yo es la **API + el portal**: hoy la compuerta de aprobación
-(ADR-06) **se ejecuta editando un JSON a mano**. Ver el [Plan de la Fase 2](11-plan-fase-2.md).
+**La cadena completa está construida, de punta a punta y sin huecos:**
+
+```
+  prompt  →  research (M2)  →  persistencia bajo RLS  →  COMPUERTA HUMANA  →
+          →  contenido (M1)  →  publicación en Storyblok  →  web servida en vivo
+```
+
+Todo lo que depende de IA es real (seeds, intención, relevancia, clustering semántico, contenido
+on-page, prose final). Todo lo que depende de aislamiento entre clientes lo impone **Postgres**, no
+el código de la aplicación. Y las tres interfaces por las que pasa un humano —la API, el portal y la
+web pública del cliente— **existen y se manejaron en un navegador real**.
+
+**Lo que separa esto de estar en producción ya no es código de producto: es despliegue.** Nada corre
+en ningún servidor. El hosting sigue sin decidirse (etapa 5.3). Hasta que eso ocurra, el sistema
+funciona entero pero en `localhost`.
+
+| | |
+|---|---|
+| **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
+| **Tests** | **333** en el monorepo + **29** en el portal. Los de seguridad, contra Postgres real |
+| **Migraciones** | 7 (`0001`..`0007`) |
+| **ADRs** | 22, más 3 observaciones (2 cerradas) |
+| **Reviews externas** | 9 rondas (Codex), 16 tandas de correcciones |
+| **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
 
 ## Qué funciona hoy
 
@@ -17,14 +36,17 @@ para que lo use alguien que no sea yo es la **API + el portal**: hoy la compuert
 | ✅ | Pipeline M2 completo: prompt → brief SEO validado + informe legible. |
 | ✅ | Pipeline M1 completo: brief → stories Storyblok + preview HTML con JSON-LD válido. |
 | ✅ | Providers abstractos: todo corre **sin credenciales** en modo mock. |
-| ✅ | Compuerta de aprobación humana (global + por página). |
+| ✅ | Compuerta de aprobación humana (global + por página), **operable desde el portal** — ya no se edita un JSON a mano. |
+| ✅ | **API REST autenticada** (Hono): JWT verificado, RLS decide, comandos compuestos (fila primero, evento después). |
+| ✅ | **Portal Angular**: login, lista de research, brief **separado por evidencia**, compuerta doble, refresh de token. |
+| ✅ | **La web del cliente se sirve en vivo** (`renderer/`): 1 servicio, N dominios, con preview firmado para el Visual Editor. |
 | ✅ | **Research real contra DataForSEO producción**: 52 keywords → 8 páginas, **$0.31 por research**. |
 | ✅ | **8 páginas publicadas en vivo en Storyblok**, con contenido redactado por IA. |
 | ✅ | JSON-LD validado en el Rich Results Test de Google (`LocalBusiness` + `FAQPage`, sin errores). |
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **324 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **333 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Nueve reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las tres últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, y carreras asincrónicas en el portal. Ver [ADR-13..22 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## El número para la propuesta comercial
@@ -59,6 +81,69 @@ verdad. Encontrarlos era exactamente el punto de correr en producción. **Los tr
 > El dataset crudo ahora se persiste en `out/keywords.json`. Antes se tiraba: se pagaba por datos
 > que no sobrevivían al proceso, y cualquier ajuste de scoring obligaba a pagar otra corrida.
 > Ahora el tuning es **offline y gratis**.
+
+---
+
+## Lo que queda por delante
+
+*Ordenado por lo que realmente bloquea. Lo de arriba impide vender; lo de abajo, no.*
+
+### 🔴 1. El despliegue (etapa 5.3) — **es lo único que bloquea de verdad**
+
+Nada corre en ningún servidor. Son **tres procesos** de larga duración más una SPA estática:
+
+| Qué | Puerto dev | Necesita |
+|---|---|---|
+| `api/` | 3000 | `DATABASE_URL_API`, `SUPABASE_JWT_SECRET`, `SUPABASE_JWT_ISS` |
+| `orchestrator/` | — | `DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, Inngest |
+| `renderer/` | 8080 | `DATABASE_URL_RENDER`, `STORYBLOK_WEBHOOK_SECRET`, `PREVIEW_SECRET` |
+| `portal/` | 4200 | estático, se compila con AOT |
+
+**La decisión de hosting sigue abierta.** Y hay una restricción que la condiciona y conviene decidir
+antes: el renderizador necesita **DNS por cliente apuntando al mismo servicio** (es un `Host` →
+dominio → space), más certificados TLS por dominio. Eso descarta cualquier hosting que no permita
+dominios personalizados arbitrarios, y hace que "una CDN delante" deje de ser opcional (ver §3).
+
+### 🟡 2. La demo, antes de ver a Frank
+
+- **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** (~$0.31) — lo publicado en
+  Storyblok es **anterior a `kr.v0.5`**: no muestra la evidencia etiquetada, que es *el argumento de
+  venta*. Acción humana.
+- **[Unificar el alcance (OBS-01)](../acciones/05-unificar-alcance.md)** — una charla, no código. Es
+  la única observación abierta del proyecto.
+
+### 🟡 3. Lo que ADR-19 dejó a medias y hay que cerrar antes de un SLA
+
+- **Una CDN delante del renderizador.** ADR-19 dice "cache en el borde"; lo construido es una cache
+  **en proceso**. El borde es una decisión de despliegue.
+- **Más de una instancia rompe la invalidación.** El webhook llega a UNA sola; las demás sirven
+  contenido viejo hasta que venza el TTL. Con una instancia no pasa. Antes de escalar: cache
+  compartida, o bajar el TTL a sabiendas.
+- **Es un punto único de disponibilidad.** Si el renderizador se cae, **se caen todas las webs de
+  cliente a la vez**. Ya está mitigado (health check que no toca dependencias, timeout de 5 s, 503
+  que no se cachea), pero el modo de fallo existe y un sitio estático no lo tenía.
+
+### 🟢 4. Deuda conocida, ninguna bloqueante
+
+- **Tests de componente del portal** (karma). El núcleo está cubierto (29 tests) y los componentes se
+  verifican compilando con AOT y a mano. Es evidencia de que funciona hoy, **no una red contra
+  regresiones**.
+- **El polling del brief (4 s) es a ojo**, y la lista de runs no pollea. Se calibra con la duración
+  real de una corrida.
+- **ADR-11 (offboarding) sigue sin poder firmarse.** Ahora *hay* qué entregar (el space + el
+  renderizador), pero falta **verificar el snapshot estático como entregable** y ponerle precio a la
+  "salida gestionada". Es redacción comercial, no código.
+- **Esquema Zod duplicado** entre M2 y M1: dos fuentes de verdad del contrato.
+- **Sin tests de integración**: el camino live se ejecutó a mano contra DataForSEO, OpenAI y
+  Storyblok, pero no está automatizado.
+- **Calidad del research**: `is_local` se dispara de más (53 de 60 keywords) y `score_confidence` se
+  calcula pero **no se usa** para priorizar. Detalle en la tabla de mejoras, más abajo.
+
+### ⚪ 5. Lo que ni siquiera empezó
+
+El PRD describe cuatro módulos. **Están hechos el 1 y el 2** (Creador de Webs y Keyword Research).
+Los otros —tablero tipo Trello, mensajería, dashboards, los agentes de contenido social— no tienen
+ni una línea, y eso es correcto: son Fase 3, y su alcance depende de OBS-01.
 
 ---
 
@@ -101,13 +186,13 @@ reales, no solo contra tests.
 
 | Pieza | ADR | Estado |
 |---|---|---|
-| **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y 54 tests contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
+| **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **93 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **33 tests** contra PGlite. |
 | **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **29 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
 | **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`: 7 columnas de 1 tabla, sin escritura). **60 tests**; verificado en un navegador real. **Falta:** desplegarlo en un dominio (5.3) y una CDN delante. |
 | **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
-| **Autorización derivada** (OBS-02) | ADR-15, ADR-17 | ✅ **Hecho.** El rol se deriva de `memberships` dentro de Postgres; el GUC `app.role` ya no lo lee nadie. Un login por proceso, `NOINHERIT`, un rol cada uno. Falta solo enchufar el JWT de Supabase (la función ya está aislada). |
+| **Autorización derivada** (OBS-02) | ADR-15, ADR-17 | ✅ **Hecho.** El rol se deriva de `memberships` dentro de Postgres; el GUC `app.role` ya no lo lee nadie. Un login por proceso, `NOINHERIT`, un rol cada uno — ahora **cuatro**: `amg_api`, `amg_orquestador`, `amg_cache` y `amg_render`. El JWT de Supabase **ya está enchufado y probado** (12 tests con tokens firmados de verdad). |
 | **Idempotencia de peticiones facturables** | ADR-10, ADR-14 | ✅ **Hecho.** `kr_provider_tasks` + `payload_hash`, escrito ANTES de enviar: cubre el **100%** del gasto. **Además**, SERP y Search Volume (46%) usan el **método Standard** (`task_post`/`task_get`): la tarea pagada se **recupera gratis**, así que una respuesta perdida no es dinero perdido. Labs (54%) es live-only → ahí una petición ambigua detiene el run. |
 
 ### Mejoras de calidad del research (priorizadas con los datos reales)

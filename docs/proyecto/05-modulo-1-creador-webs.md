@@ -125,9 +125,10 @@ uno** y esos quedan con texto de fallback. Nunca crashea ni deja la página vac�
 
 Genera una página **autocontenida** (CSS inline, sin dependencias). Es **el único renderizador que
 existe**: ADR-16 quitó Next.js del stack, así que este `renderStory()` dejó de ser "un preview de lo
-que hará Next" y pasó a ser el render de verdad. Quién lo **sirve en un dominio** está decidido
-—**un servicio propio en runtime** ([ADR-19](../decisiones-arquitectura.md), cierra OBS-03)— pero
-todavía **no construido** (etapa 6): hoy `renderStory()` produce el HTML y nada lo publica en la web.
+que hará Next" y pasó a ser el render de verdad. Quién lo **sirve en un dominio** ya existe: **un servicio propio en runtime**
+([ADR-19](../decisiones-arquitectura.md), cierra OBS-03), construido en `renderer/` (etapa 6). O sea
+que esta misma función corre **dos veces**: acá para generar el preview, y en el renderizador para
+servir cada visita. Es la razón por la que la etapa 6 fue más chica de lo que parecía.
 
 **AI-search-first** ([ADR-04](../decisiones-arquitectura.md)):
 - HTML semántico (`<main>`, `<header>`, `<section>`, `<h1>/<h2>`, `<details>` para FAQs).
@@ -213,4 +214,4 @@ Es **idempotente**: si el componente existe, lo actualiza; si no, lo crea.
 | **Resiliencia HTTP** (timeout, retries con backoff, `Retry-After`) | ✅ |
 | Publisher Storyblok live + provisioning de componentes | ✅ código · ⛔ **sin probar contra space real** ([acción C](10-acciones-pendientes.md)) |
 | Enlazado interno entre páginas | ⛔ el M2 aún no lo genera |
-| **Servir la web del cliente en un dominio** | ⛔ **Decidido (ADR-19: renderizador propio en runtime), no construido** — etapa 6. Hoy se genera el HTML y se publica el contenido en Storyblok, pero nada lo sirve en un dominio. |
+| **Servir la web del cliente en un dominio** | ✅ **Construido** — `renderer/` (ADR-19), que reutiliza este mismo `renderStory()`. **Falta desplegarlo**: hoy corre en `localhost`. |

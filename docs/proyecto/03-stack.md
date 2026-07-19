@@ -16,16 +16,27 @@ que van separados.
 | **Node.js** | ≥ 20 (probado con 24) | Se usa `fetch` nativo — no hay axios ni node-fetch. |
 | **TypeScript** | ^5.6 | ESM puro (`"type": "module"`), `strict: true`, `noUncheckedIndexedAccess: true`. |
 | **tsx** | ^4.19 | Ejecuta TypeScript directo, sin paso de build. Los CLIs corren con `tsx`. |
-| **npm workspaces** | — | **4 paquetes, un solo `npm install`.** Se importan **por nombre** (`import { PgStore } from "db"`), no por ruta relativa. |
+| **npm workspaces** | — | **6 paquetes, un solo `npm install`.** Se importan **por nombre** (`import { PgStore } from "db"`), no por ruta relativa. |
 
-### Los cuatro paquetes
+### Los seis paquetes
 
 | Paquete | Qué es | Dependencias de runtime |
 |---|---|---|
 | **`db`** | Esquema, RLS, cache, registro de tareas | `@electric-sql/pglite` |
 | **`kr-service`** (M2) | `prompt → brief SEO` | `openai`, `@anthropic-ai/sdk`, `zod`, `dotenv` |
 | **`web-builder`** (M1) | `brief → Storyblok` | `openai`, `zod`, `dotenv` |
-| **`orchestrator`** | Inngest: steps durables + compuerta humana | `inngest`, `pg`, y los otros **tres paquetes** |
+| **`orchestrator`** | Inngest: steps durables + compuerta humana | `inngest`, `pg`, y `db` + los dos módulos |
+| **`api`** | REST autenticada: JWT → RLS decide (ADR-22) | `hono`, `jose`, `pg`, `inngest`, `db` |
+| **`renderer`** | Sirve las webs de cliente: 1 servicio, N dominios (ADR-19) | `hono`, `pg`, `db`, `web-builder` |
+
+> **`portal/` (Angular) NO es un workspace, a propósito.** Tiene su propio `package.json` y su propio
+> `node_modules`: el toolchain de Angular (AOT, `ng build`) y el del backend no se llevan bien en el
+> mismo árbol de dependencias, y mezclarlos haría que un `npm install` del backend pudiera romper la
+> compilación de la SPA. Ver [ADR-21](../decisiones-arquitectura.md).
+
+> **`renderer` importa `web-builder`, y solo eso.** No conoce `kr-service` ni `api`. La frontera es
+> estrecha porque es el proceso más expuesto del sistema: **todo lo que pueda importar es todo lo que
+> puede filtrar.**
 
 Para qué sirve cada una:
 
@@ -53,7 +64,7 @@ paquetes transitivos.
 
 **PGlite es la decisión de testing que más rindió.** Las políticas RLS son la frontera de
 seguridad del producto, y un *mock* de Postgres no puede probarlas: lo que hay que verificar es
-que **Postgres las hace cumplir**. Con PGlite, los 76 tests de `db/` corren las migraciones
+que **Postgres las hace cumplir**. Con PGlite, los 93 tests de `db/` corren las migraciones
 reales contra un Postgres real —**sin Docker, sin cuenta, sin red**— y se ejecutan en CI como
 cualquier test unitario. Sin esto, los agujeros multi-tenant que encontraron las reviews externas
 no se habrían podido cerrar con una prueba, solo con un argumento.
@@ -79,12 +90,12 @@ promesas.
 
 | Pieza | Elección | ADR | Estado | Motivo resumido |
 |---|---|---|---|---|
-| **Base de datos / Auth** | **Supabase** (Postgres + RLS + Auth + pgvector) | ADR-01 | ✅ **En el código** (Postgres/RLS; falta enchufar el JWT) | Un solo Postgres resuelve multi-tenancy (RLS por `tenant_id`), RBAC y vectores a la vez. Se descartó ensamblar Auth0 + RDS + Pinecone + S3. |
+| **Base de datos / Auth** | **Supabase** (Postgres + RLS + Auth + pgvector) | ADR-01 | ✅ **En el código** (Postgres/RLS **y el JWT, verificado y probado**) | Un solo Postgres resuelve multi-tenancy (RLS por `tenant_id`), RBAC y vectores a la vez. Se descartó ensamblar Auth0 + RDS + Pinecone + S3. |
 | **Orquestación** | **Inngest** (flujos como código, durables) | ADR-03, ADR-12 | ✅ **En el código** | Reintentos, idempotencia y `waitForEvent` para la compuerta humana. **Se descartó n8n como backbone** (flujos en JSON no se versionan ni testean bien); queda solo como *glue*. |
-| **Portal** | **Angular + Tailwind**, mobile-first · standalone + signals · **Tailwind puro** (sin librería de componentes) · **polling**, no Realtime | **ADR-16** (*reemplaza ADR-02*), **ADR-20**, **ADR-21** | ⏳ Siguiente | El portal es un **SPA privado y autenticado**: SSR/RSC/SEO —todo lo que justificaba Next— no aporta nada acá. Sirve al **equipo** (aprueba) y al **cliente** (solo lectura). |
-| **API** | REST sobre Node, login `amg_api` | ADR-15, ADR-17, ADR-18, **ADR-21** | ⏳ Siguiente | Verifica el JWT, afirma **quién eres**, y deja que **Postgres decida qué podés**. **El portal habla solo con ella** — nunca con PostgREST. |
+| **Portal** | **Angular + Tailwind**, mobile-first · standalone + signals · **Tailwind puro** (sin librería de componentes) · **polling**, no Realtime | **ADR-16** (*reemplaza ADR-02*), **ADR-20**, **ADR-21** | ✅ **Construido** (`portal/`, 29 tests) | El portal es un **SPA privado y autenticado**: SSR/RSC/SEO —todo lo que justificaba Next— no aporta nada acá. Sirve al **equipo** (aprueba) y al **cliente** (solo lectura). |
+| **API** | REST sobre Node (**Hono**), login `amg_api` | ADR-15, ADR-17, ADR-18, **ADR-22** | ✅ **Construida** (`api/`, 33 tests) | Verifica el JWT, afirma **quién eres**, y deja que **Postgres decida qué podés**. **El portal habla solo con ella** — nunca con PostgREST. |
 | **CMS del Módulo 1** | **Storyblok** (headless + Visual Editor) | ADR-04 | ✅ Publica el contenido | Creación programática vía Management API + edición visual para no-técnicos. Se descartó WordPress/Elementor (JSON opaco) y Payload (sin edición visual sobre el lienzo). |
-| **Render de las webs de cliente** | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | **ADR-19** (*cierra OBS-03*) | ⛔ No construido — **etapa 6** | Lee la Content Delivery API de Storyblok y sirve la web en vivo. Elegido sobre "estático + rebuild" porque el **Visual Editor necesita una URL de preview en vivo** — y el Visual Editor es *la razón por la que se eligió Storyblok*. |
+| **Render de las webs de cliente** | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | **ADR-19** (*cierra OBS-03*) | ✅ **Construido** (`renderer/`, 60 tests) — falta desplegar | Lee la Content Delivery API de Storyblok y sirve la web en vivo. Elegido sobre "estático + rebuild" porque el **Visual Editor necesita una URL de preview en vivo** — y el Visual Editor es *la razón por la que se eligió Storyblok*. |
 | **Motor de keyword research** | **DataForSEO** | ADR-05 | ✅ En el código | Pay-as-you-go barato. Se descartó SEMrush (~450€/mes) y Google Ads API (developer token, volúmenes en rangos). |
 | **LLM** | **Proveedor abstracto** (OpenAI / Anthropic); embeddings con OpenAI | ADR-09 | ✅ En el código | No quedar casados con un proveedor. Embeddings van con OpenAI porque **Anthropic no tiene API de embeddings propia**. |
 
@@ -109,17 +120,19 @@ embeddings del clustering lo requieren y tener un solo proveedor simplifica.
 
 ```
 AMG/
-├── package.json           # workspaces: db, kr-service, web-builder, orchestrator
+├── package.json           # workspaces: db, kr-service, web-builder,
+│                          #             orchestrator, api, renderer
 ├── README.md              # portada del repo
 ├── docs/                  # toda la documentación
 │   ├── proyecto/          # ← esta documentación técnica
 │   ├── acciones/          # lo que solo Juan puede hacer (cuentas, saldo, decisiones)
-│   ├── decisiones-arquitectura.md    # ADR-01..18 + OBS-01/02/03
+│   ├── decisiones-arquitectura.md    # ADR-01..22 + OBS-01/02/03
 │   └── modulo-2-esquema/  # esquema de diseño v0 (SQL + tipos + ejemplo)
 │
 ├── db/                    # LA PLATAFORMA — esquema, RLS, cache, tareas
 │   ├── migrations/        # 0001_init · 0002_auth · 0003_credenciales
 │   │                      # 0004_paginas · 0005_lease_tareas
+│   │                      # 0006_cliente_publicacion · 0007_render_publico
 │   └── src/
 │       ├── pool.ts        # DbPool/Tx: acceso SOLO por transacción reservada (ADR-13)
 │       ├── store.ts       # PgStore: runs, keywords, páginas — todo bajo RLS
@@ -145,20 +158,44 @@ AMG/
 │       ├── lib/           # vector (coseno) · text (canonicalKey) · cost · budget · http
 │       └── validation/    # esquema Zod del brief (kr.v0.5)
 │
-└── web-builder/           # MÓDULO 1 — Creador de Webs
-    └── src/
-        ├── cli/           # build.ts, setup-storyblok.ts
-        ├── handoff/       # adapter: brief → story
-        ├── llm/           # ProseGen
-        ├── lib/           # uid (_uid deterministas) · http (retries)
-        ├── publish/       # Publisher abstracto (mock / storyblok / dry-run)
-        ├── render/        # HTML semántico + JSON-LD
-        ├── storyblok/     # esquemas de componentes + shaping nativo
-        └── contract.ts    # validación Zod del brief de entrada
+├── web-builder/           # MÓDULO 1 — Creador de Webs
+│   └── src/
+│       ├── cli/           # build.ts, setup-storyblok.ts
+│       ├── handoff/       # adapter: brief → story
+│       ├── llm/           # ProseGen
+│       ├── lib/           # uid (_uid deterministas) · http (retries)
+│       ├── publish/       # Publisher abstracto (mock / storyblok / dry-run)
+│       ├── render/        # HTML semántico + JSON-LD  ← lo reutiliza el renderer
+│       ├── storyblok/     # esquemas de componentes + shaping nativo
+│       └── contract.ts    # validación Zod del brief de entrada
+│
+├── api/                   # LA API REST (Hono) — etapa 5.1, ADR-22
+│   └── src/
+│       ├── app.ts         # rutas; recibe TODO inyectado (por eso se testea sin red)
+│       ├── auth.ts        # verifica el JWT: exp/sub/aud/iss y alg fijado a HS256
+│       ├── solicitar.ts   # comando compuesto: la fila bajo RLS, y RECIÉN ahí el evento
+│       ├── deps.ts        # composition root: el único que toca credenciales
+│       └── dev-server.ts  # la API real sobre PGlite, sin credenciales (nunca en prod)
+│
+├── renderer/              # LAS WEBS DE CLIENTE — etapa 6, ADR-19
+│   └── src/
+│       ├── app.ts         # Host → dominio → sitio → cache → CDA → renderStory()
+│       ├── dominio.ts     # el `Host` como dato HOSTIL: normaliza, valida, sin fallback
+│       ├── cda.ts         # Content DELIVERY API (jamás la Management)
+│       ├── cache.ts       # TTL + LRU + invalidación por space
+│       ├── webhook.ts     # HMAC en tiempo constante: sin firma no se vacía nada
+│       ├── preview.ts     # enlace firmado atado al dominio + Storyblok Bridge
+│       └── perfil.ts      # un NAP mal cargado degrada la página, no tira la web
+│
+└── portal/                # LA SPA ANGULAR — NO es un workspace (toolchain aparte)
+    └── src/app/
+        ├── core/          # la lógica pura, sin Angular ni DOM: se testea con node:test
+        └── pages/         # componentes: cáscaras finas sobre core/
 ```
 
-**El grafo de dependencias es deliberado:** `orchestrator` importa a los tres; `web-builder` **no
-importa nada de** `kr-service` (habla con él solo por el brief JSON); y `db` no importa a nadie.
+**El grafo de dependencias es deliberado:** `orchestrator` importa a `db` y a los dos módulos;
+`web-builder` **no importa nada de** `kr-service` (habla con él solo por el brief JSON); `renderer`
+importa **solo** `db` y `web-builder`; y `db` no importa a nadie.
 
 ### Módulos de infraestructura compartidos (por módulo)
 

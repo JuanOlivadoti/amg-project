@@ -70,7 +70,7 @@ Story[] (contrato Storyblok: page > hero/section/faq + SEO + schema_type)
   o `rejected`. En PROD esto es un `waitForEvent` de Inngest; acá, un check del `status` del brief.
 - **ADR-04 (AI-search-first):** cada página emite JSON-LD por `schema_type` (LocalBusiness/Article/
   WebPage) + `FAQPage` cuando hay FAQs. Este `renderStory()` **es** el renderizador (ADR-16 quitó
-  Next); lo servirá en un dominio un servicio propio en runtime (ADR-19, etapa 6, aún no construido).
+  Next), y lo reutiliza tal cual el servicio que sirve las webs en un dominio (`renderer/`, ADR-19).
 - **ADR-11 (offboarding):** un space por cliente; el preview HTML es la base del snapshot estático.
 
 ## Qué está implementado vs pendiente

@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-15** · **260 tests en verde**
+> Última actualización: **2026-07-19** · **333 tests en verde**
 
 ---
 
@@ -13,7 +13,7 @@ Convertir la PoC (`prompt → research → web`, que corría como un script y ap
 a mano) en una **plataforma multi-tenant** con persistencia, orquestación durable, compuerta humana
 real y un portal donde el equipo de la agencia trabaje.
 
-## Las cinco etapas
+## Las seis etapas
 
 | # | Etapa | Estado |
 |---|---|---|
@@ -28,10 +28,10 @@ Después de la **5** el sistema es **usable por una persona que no sea yo**: la 
 aprobación (ADR-06) ya no se ejecuta editando un JSON a mano — se aprueba desde el portal, página por
 página, y el evento despierta al workflow. *(Falta desplegarlo en algún lado: etapa 5.3.)*
 
-Después de la **6** el cliente **tiene una web**, no "una web generada". Hoy el M1 produce el HTML y
-publica el contenido en Storyblok, pero **nada lo sirve en un dominio** — y por lo tanto el Visual
-Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna página publicada
-([ADR-19](../decisiones-arquitectura.md), cierra OBS-03).
+Después de la **6** el cliente **tiene una web**, no "una web generada": `renderer/` la sirve en vivo
+desde Storyblok, con la URL de preview y el Bridge que el Visual Editor necesita —o sea que *la razón
+por la que se eligió Storyblok* por fin se cobra ([ADR-19](../decisiones-arquitectura.md), cierra
+OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `localhost`.
 
 ---
 
@@ -53,11 +53,18 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
        │             │         │  + RLS     │          │              │
        │ prompt →    │         │            │          │ brief JSON → │
        │ brief SEO   │         │            │          │ Storyblok    │
-       └─────────────┘         └────────────┘          └──────────────┘
+       └─────────────┘         └────────────┘          └──────┬───────┘
+                                     ▲                        │
+                                     │ dominio → space        ▼
+                               ┌─────┴──────────┐      ┌──────────────┐
+   navegante ────────────────▶ │ renderer/ (6)✅ │◀─────│  Storyblok   │
+   (anónimo, sin identidad)    │ 1 servicio,    │ CDA  │  (contenido) │
+                               │ N dominios     │      └──────────────┘
+                               └────────────────┘
 ```
 
-- **5 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`.
-- **324 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
+- **333 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -170,30 +177,42 @@ Node estándar.
 
 ---
 
-## Etapa 6: el renderizador (`renderer/`)
-
-**El cliente todavía no tiene una web.** Tiene páginas generadas y contenido publicado en Storyblok,
-pero **nada las sirve en un dominio**. [ADR-19](../decisiones-arquitectura.md) resuelve cómo:
+## Etapa 6: el renderizador (`renderer/`) ✅ HECHA
 
 **Un único servicio Node, multi-tenant** (1 servicio, N dominios) que lee la Content Delivery API de
-Storyblok y sirve la web **en vivo**.
+Storyblok y sirve la web **en vivo**, reutilizando `renderStory()`, que ya existía y estaba probado.
+**60 tests**, verificado en un navegador real.
 
 ```
 Editor toca Storyblok ──▶ (contenido)
                               │
 navegante ──▶ RENDERIZADOR ───┘ ──▶ HTML + JSON-LD
-                 │ dominio → space del cliente
-                 └─ reutiliza renderStory() de web-builder  ← YA EXISTE
+                 │ Host → dominio → space del cliente
+                 └─ reutiliza renderStory() de web-builder
 ```
 
-Lo que falta construir es **menos de lo que parece**: `renderStory()` ya produce el HTML semántico +
-JSON-LD validado. Falta el servicio que lo envuelve: mapear dominio → space, leer la story, **cache
-en el borde invalidada por webhook** (eso es lo que hace que "runtime" no signifique lento ni caro),
-y exponer la **URL de preview + el Bridge** que el Visual Editor necesita.
+| Pieza | Qué resuelve |
+|---|---|
+| `dominio.ts` | El `Host` como **dato hostil**: normaliza, valida, y **sin fallback** — host desconocido → 404 sin explicación (un 404 que dice *por qué* es un oráculo para enumerar la cartera). |
+| `cda.ts` | Content **Delivery** API, jamás la Management. Timeout de 5 s; 404 ≠ 503. |
+| `cache.ts` | TTL + LRU + invalidación por space. La clave lleva el space: `/menu` es el slug de **todos** los restaurantes. |
+| `webhook.ts` | HMAC en tiempo constante. Sin firma sería **un botón público para tirar la cache** de cualquier cliente y hacernos pagar la CDA en cada visita. |
+| `preview.ts` | Enlace firmado **atado al dominio** y con vencimiento + el Storyblok Bridge. |
+| `perfil.ts` | Un NAP mal cargado **degrada la página**, no tira la web. |
 
-> ⚠️ **Riesgo que un sitio estático no tenía:** el renderizador pasa a ser una pieza de
-> **disponibilidad**. Si se cae, **se caen todas las webs de cliente a la vez**. Se mitiga con la
-> cache en el borde, pero hay que dimensionarlo **antes de vender un SLA**.
+**La decisión de fondo no fue de render, fue de autorización.** ADR-15 deriva el rol de
+`memberships`; un navegante anónimo no tiene ninguna, así que el modelo de seguridad del proyecto no
+cubría este caso. La respuesta: **el dominio es la autorización**, con el rol de base de datos más
+pobre del sistema (`app_render`). La pregunta de diseño fue **"si me lo toman, ¿qué se llevan?"** —
+es la única pieza expuesta a internet anónimo.
+
+> ⚠️ **Riesgo que un sitio estático no tenía, y que sigue vivo:** el renderizador es una pieza de
+> **disponibilidad**. Si se cae, **se caen todas las webs de cliente a la vez**. Mitigado (health
+> check que no toca dependencias, timeout, 503 que no se cachea), **no eliminado**. Dimensionarlo
+> antes de vender un SLA.
+>
+> Y **"cache en el borde" quedó a medias**: lo construido es una cache *en proceso*. El borde es una
+> CDN al desplegar. Con más de una instancia, el webhook llega a **una sola**.
 
 ---
 

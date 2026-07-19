@@ -5,7 +5,7 @@ Base de datos de AMG OS. Implementa **ADR-01** (Supabase/Postgres + RLS) y **ADR
 
 ```bash
 npm install
-npm test        # 76 tests de RLS contra Postgres 18 REAL
+npm test        # 93 tests de RLS contra Postgres 18 REAL
 npm run typecheck
 ```
 

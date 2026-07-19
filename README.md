@@ -5,10 +5,15 @@ Convierte el conocimiento operativo de la agencia en software con agentes de IA
 supervisados, RBAC y multi-tenancy. Este repositorio contiene la documentación de
 producto y arquitectura, y el código de los dos primeros módulos.
 
-## 🚦 Estado actual — Fase 2 en curso
+## 🚦 Estado actual — Fase 2 construida, sin desplegar
 
-**La cadena `prompt → research → persistencia → compuerta humana → web publicada` funciona de punta
-a punta**, con orquestación durable y aislamiento multi-tenant real.
+**La cadena completa funciona de punta a punta**, con orquestación durable y aislamiento
+multi-tenant impuesto por Postgres:
+
+```
+prompt → research → persistencia (RLS) → COMPUERTA HUMANA → contenido →
+       → publicación en Storyblok → la web del cliente, servida en vivo
+```
 
 | Paquete | Qué es | Estado |
 |---|---|---|
@@ -16,20 +21,24 @@ a punta**, con orquestación durable y aislamiento multi-tenant real.
 | **[web-builder/](web-builder/)** | Módulo 1 — Creador de Webs (`brief → Storyblok`) | ✅ |
 | **[db/](db/)** | Esquema, RLS multi-tenant, cache, registro de tareas | ✅ |
 | **[orchestrator/](orchestrator/)** | Inngest: steps durables + compuerta humana | ✅ |
-| `api/` | REST autenticada para el portal | ⏳ siguiente |
-| `portal/` | SPA Angular (donde se aprueba la compuerta) | ⏳ |
+| **[api/](api/)** | REST autenticada (Hono): JWT verificado, RLS decide | ✅ |
+| **[renderer/](renderer/)** | Sirve las webs de cliente: 1 servicio, N dominios (ADR-19) | ✅ |
+| **[portal/](portal/)** | SPA Angular — donde se aprueba la compuerta *(fuera del monorepo)* | ✅ |
 
-- **223 tests en verde** · typecheck limpio en los 4 paquetes · `npm test` desde la raíz.
+- **333 tests en verde** (+29 en el portal) · typecheck limpio en los 6 paquetes · `npm test` desde
+  la raíz.
 - Los tests de seguridad corren contra **Postgres real** (PGlite en WASM): sin Docker, sin cuenta.
 - Todo corre **sin una sola credencial**: providers mock + base en memoria.
 
-> 🧭 **¿Retomás el proyecto?** Empezá por el
-> [**Plan de la Fase 2**](docs/proyecto/11-plan-fase-2.md): de dónde venimos, dónde estamos y qué
-> falta.
+> 🧭 **¿Retomás el proyecto?** Empezá por
+> [**Estado y roadmap**](docs/proyecto/09-estado-y-roadmap.md): qué hay construido, dónde estamos y
+> qué queda por delante, ordenado por lo que realmente bloquea.
+
+⚠️ **Nada está desplegado.** El sistema funciona entero, pero en `localhost`: el hosting sigue sin
+decidirse (etapa 5.3), y **eso es lo único que lo separa de que lo use un cliente**.
 
 ⚠️ **El research corre contra el *sandbox* de DataForSEO** → volúmenes y costo **ficticios**. La
-corrida real cuesta **~$0.31** ([guía](docs/acciones/06-corrida-final-demo.md)). **La compuerta de
-aprobación todavía se ejecuta editando un JSON a mano** — eso es lo que resuelve el portal.
+corrida real cuesta **~$0.31** ([guía](docs/acciones/06-corrida-final-demo.md)).
 
 ## 📂 Documentos y orden de lectura
 
@@ -75,25 +84,26 @@ Detalle y justificación —**incluidas las decisiones que tuve que corregir**�
 
 ## ▶️ Próximos pasos
 
-Ver el [**Plan de la Fase 2**](docs/proyecto/11-plan-fase-2.md). En corto:
+Detalle en [**Estado y roadmap**](docs/proyecto/09-estado-y-roadmap.md). En corto:
 
-1. **La API REST** (autenticada, Supabase Auth) → siguiente.
-2. **El portal Angular**: donde el equipo aprueba la compuerta. Hoy eso se hace **editando un JSON a
-   mano**, y es lo que impide que use el sistema alguien que no sea yo.
-3. **Desplegar** (orquestador + API como servicio Node de larga duración; el research tarda minutos
-   y no entra en una función serverless).
-
-4. **El renderizador** (etapa 6, ADR-19): hoy el M1 genera la web y publica el contenido en
-   Storyblok, pero **nada la sirve en un dominio**. Sin esto, el cliente no *tiene* una web — y el
-   Visual Editor, que es la razón por la que se eligió Storyblok, no llega a ninguna página
-   publicada.
+1. **Desplegar** (etapa 5.3) — **es lo único que bloquea de verdad.** Tres procesos de larga
+   duración (API, orquestador, renderizador) más la SPA estática. El research tarda minutos y no
+   entra en una función serverless; y el renderizador necesita **DNS por cliente + TLS por dominio**,
+   lo que condiciona qué hosting sirve.
+2. **La corrida final** (~$0.31) y **republicar**: lo que está hoy en Storyblok es anterior a
+   `kr.v0.5` y no muestra la evidencia etiquetada, que es el argumento de venta.
+3. **Una CDN delante del renderizador.** ADR-19 dice "cache en el borde"; lo construido es una cache
+   **en proceso**. Además, con más de una instancia el webhook de invalidación llega a una sola.
 
 ### 🔴 Decisiones abiertas
 
 - **OBS-01 — unificar el alcance.** Dos documentos de producto describen alcances incompatibles.
   Es la última observación abierta.
-- **Reescribir ADR-11** (offboarding) en términos del renderizador: sigue redactado sobre "el
-  frontend Next.js", que no existe — y de ahí sale una cláusula de contrato.
+- **Reescribir ADR-11** (offboarding). Ya **hay qué entregar** —el space de Storyblok **más** el
+  renderizador—, pero el ADR sigue redactado sobre "el frontend Next.js", que no existe. De ahí sale
+  una cláusula de contrato, así que no puede firmarse como está.
+- **Dimensionar el riesgo de disponibilidad antes de vender un SLA.** El renderizador es un punto
+  único: si se cae, **se caen todas las webs de cliente a la vez**. Está mitigado, no eliminado.
 
 **Acciones que solo Juan puede hacer** — guías paso a paso en [**docs/acciones/**](docs/acciones/):
 la **corrida final en producción** (~$0.31) y **unificar el alcance** (OBS-01) antes de consolidar la

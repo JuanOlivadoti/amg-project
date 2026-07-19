@@ -2,14 +2,28 @@
 
 ## Vista general
 
-**Cuatro paquetes** en un monorepo de workspaces npm. Dos son los módulos de negocio
-(`kr-service` = M2, `web-builder` = M1), conectados por **un contrato de datos** (el brief JSON) y
-no por código compartido. Los otros dos son la plataforma: `db` (Postgres + RLS) y `orchestrator`
-(Inngest), que es el **composition root** — el único punto que conoce a los tres a la vez.
+**Seis paquetes** en un monorepo de workspaces npm, más el portal Angular fuera de él.
+
+Dos son los **módulos de negocio** (`kr-service` = M2, `web-builder` = M1), conectados por **un
+contrato de datos** (el brief JSON) y no por código compartido. Uno es la **plataforma de datos**
+(`db`: Postgres + RLS). Y tres son **procesos que atienden a alguien**:
+
+| Proceso | A quién atiende | Cómo se autoriza |
+|---|---|---|
+| `orchestrator` | a nadie de afuera (eventos Inngest) | credencial de BD (`amg_orquestador` → `app_service`) |
+| `api` | al equipo y al cliente, autenticados | JWT verificado → RLS deriva el rol de `memberships` |
+| `renderer` | a **cualquiera**, sin autenticar | **el dominio** (`amg_render` → `app_render`, ADR-19) |
+
+Esa última fila es la que rompió el molde: es el primer proceso que atiende a alguien **sin
+identidad**, y por eso necesitó su propia respuesta (ver [ADR-19](../decisiones-arquitectura.md) y
+la migración `0007`).
+
+`orchestrator` es además el **composition root** del pipeline: el único punto que conoce a M1, M2 y
+`db` a la vez.
 
 ```
-   LA API (falta) ──crea la fila del run BAJO RLS, con la identidad del humano──▶ kr_runs
-        │            aquí ocurre la autorización: sin membresía, Postgres rechaza el insert
+   LA API ──crea la fila del run BAJO RLS, con la identidad del humano──▶ kr_runs
+        │   aquí ocurre la autorización: sin membresía, Postgres rechaza el insert
         │
         └──emite research/solicitado { runId, tenantId } ──▶  ORCHESTRATOR (Inngest, ADR-12)
                                                                    │  steps durables
@@ -34,11 +48,21 @@ no por código compartido. Los otros dos son la plataforma: `db` (Postgres + RLS
                     ▼                               ▼
            out/preview/*.html            Storyblok (Management API)
            (HTML autocontenido,          → editable en Visual Editor
-            base del snapshot)           → ⚠️ el RENDERIZADOR (ADR-19) aún no existe
+            base del snapshot)                      │
+                                                    ▼
+                                    RENDERER (ADR-19) — 1 servicio, N dominios
+                                      Host → dominio → space del cliente
+                                      lee la Content DELIVERY API (nunca la Management)
+                                      reutiliza renderStory() de web-builder
+                                      cache invalidada por webhook firmado
+                                             │
+                                             ▼
+                                    la web pública del cliente
 ```
 
-> ⚠️ **La API todavía no existe.** Hoy el único caller es el CLI. Es lo que se construye ahora
-> ([Plan de la Fase 2](11-plan-fase-2.md)).
+> **Las dos APIs de Storyblok no se cruzan, y es deliberado.** El orquestador **escribe** por la
+> Management API; el renderizador **lee** por la Content Delivery API. El proceso expuesto a
+> internet anónimo nunca toca una credencial que pueda *modificar* el space de un cliente.
 
 ## El patrón que sostiene todo: proveedores abstractos
 
@@ -177,33 +201,41 @@ Storyblok y se emite en el preview HTML como un bloque
 
 Esto permite responder, ante cualquier página publicada: *¿por qué existe esta página?*
 
-## Lo que está decidido pero NO construido
+## Lo que está construido, y lo que no
 
 | Pieza | Decisión | Estado |
 |---|---|---|
-| Persistencia + multi-tenancy (RLS) | Supabase / Postgres (ADR-01, ADR-10, ADR-13, ADR-15) | ✅ **Construido** — `db/`, 5 migraciones, 76 tests contra Postgres real |
+| Persistencia + multi-tenancy (RLS) | Supabase / Postgres (ADR-01, ADR-10, ADR-13, ADR-15) | ✅ **Construido** — `db/`, **7 migraciones**, **93 tests** contra Postgres real |
 | Orquestación durable (`waitForEvent`, reintentos por paso) | Inngest (ADR-03, ADR-12) | ✅ **Construido** — `orchestrator/` |
 | Idempotencia del gasto | `payload_hash` (ADR-14) | ✅ **Construido** |
-| **API REST autenticada** | ADR-15, ADR-17, ADR-18 | ⏳ **Siguiente.** Sin ella, el único caller es el CLI |
-| **Portal** | **Angular + Tailwind** (ADR-16, *reemplaza* ADR-02/Next) | ⛔ No implementado — es lo que hace usable el sistema |
-| **Despliegue** | Servicio Node de larga duración | ⛔ Nada corre en ningún servidor |
-| **El renderizador** — servir la web del cliente en un dominio | **Servicio propio en runtime**, multi-tenant (ADR-19, *cierra OBS-03*) | ⛔ Decidido, **no construido** — es la etapa 6 |
+| **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Construida** — `api/` (Hono), 33 tests |
+| **Portal** | **Angular + Tailwind** (ADR-16, ADR-21, *reemplaza* ADR-02/Next) | ✅ **Construido** — `portal/`, 29 tests de núcleo |
+| **Despliegue** | Tres servicios Node de larga duración + una SPA estática | ⛔ **Nada corre en ningún servidor.** Es lo único que bloquea |
+| **El renderizador** — servir la web del cliente en un dominio | **Servicio propio en runtime**, multi-tenant (ADR-19, *cierra OBS-03*) | ✅ **Construido** — `renderer/`, 60 tests |
 
-### El renderizador: decidido (ADR-19), todavía no construido
+### El renderizador (ADR-19) — construido ✅
 
 ADR-02 asumía que **un frontend Next.js** renderizaría las webs públicas leyendo Storyblok. ADR-16
 quitó Next del stack… **y no puso nada en su lugar**. Eso dejó un agujero que ningún test podía
-detectar, porque no era un bug: era una **ausencia** (OBS-03).
+detectar, porque no era un bug: era una **ausencia** (OBS-03) — y hacía que *una edición en el Visual
+Editor no llegara a ninguna página publicada*, que era **la justificación entera de ADR-04**.
 
-Hoy `web-builder` **genera** el HTML (`render/html.ts`) y **publica** el contenido en Storyblok, pero
-**nada sirve esa web en un dominio** y **no hay rebuild**. Por lo tanto **una edición en el Visual
-Editor no llega a ninguna página publicada** — y eso era *la justificación entera de ADR-04*.
+Hoy `renderer/` lo cierra: **un único servicio Node, multi-tenant** (1 servicio, N dominios) que lee
+la Content Delivery API y sirve la web **en vivo**, reutilizando `renderStory()`, con cache
+invalidada por webhook firmado y la URL de preview + Bridge que el Visual Editor necesita.
 
-**[ADR-19](../decisiones-arquitectura.md) lo resuelve:** un **único servicio Node, multi-tenant**
-(1 servicio, N dominios) que lee la Content Delivery API de Storyblok y sirve la web **en vivo**,
-reutilizando `renderStory()`, con cache en el borde invalidada por webhook y la URL de preview que el
-Visual Editor necesita.
+**La decisión de fondo fue de autorización, no de render.** ADR-15 deriva el rol de `memberships`; un
+navegante anónimo no tiene ninguna, así que el modelo no cubría este caso. La respuesta: **el dominio
+es la autorización**, con el rol de base de datos más pobre del sistema (`app_render`: siete columnas
+de una tabla, sin escritura, sin acceso a `kr_*`, `memberships`, `tenants` ni a las funciones de
+`app`). La pregunta de diseño no fue *"¿qué necesita?"* sino **"si me lo toman, ¿qué se llevan?"** —
+porque es la única pieza expuesta a internet anónimo.
 
-> ⚠️ **Riesgo que un estático no tenía:** el renderizador pasa a ser una pieza de **disponibilidad**.
-> Si se cae, **se caen todas las webs de cliente a la vez**. Hay que dimensionarlo antes de vender un
-> SLA.
+> ⚠️ **Riesgo que un estático no tenía, y que sigue vivo:** el renderizador es una pieza de
+> **disponibilidad**. Si se cae, **se caen todas las webs de cliente a la vez**. Mitigado (health
+> check que no toca dependencias, timeout de 5 s contra la CDA, 503 que no se cachea), **no
+> eliminado**. Dimensionarlo antes de vender un SLA.
+>
+> Y **"cache en el borde" sigue siendo media frase**: lo construido es una cache *en proceso*. El
+> borde es una CDN al desplegar. Con más de una instancia, el webhook de invalidación llega a **una
+> sola**; las demás sirven contenido viejo hasta que venza el TTL.

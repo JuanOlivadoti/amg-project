@@ -2,7 +2,7 @@
 
 ## Principio: todo funciona sin credenciales
 
-**Los cuatro paquetes** corren de punta a punta **sin una sola API key ni contraseña**: providers
+**Los seis paquetes** corren de punta a punta **sin una sola API key ni contraseña**: providers
 mock + **PGlite en memoria** (Postgres real, en WASM). Los mocks son **deterministas y realistas**
 (no random), así que sirven para desarrollar, testear y demostrar el flujo completo.
 
@@ -31,7 +31,7 @@ verdad.
 > No es una convención del código: **la frontera la impone Postgres**.
 
 **Sin ninguna de estas variables el sistema arranca igual**, con PGlite en memoria. Es deliberado y
-es lo que permite que los 260 tests corran en CI sin Docker, sin cuenta y sin red.
+es lo que permite que los 333 tests corran en CI sin Docker, sin cuenta y sin red.
 
 ---
 

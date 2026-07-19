@@ -4,12 +4,17 @@ Documentación completa del proyecto: qué es, cómo está construido, qué hace
 y en qué estado está. **Refleja el código real** del repositorio, no un diseño aspiracional:
 cuando algo está diseñado pero no implementado, se dice explícitamente.
 
-> Última revisión: 2026-07-14 · Estado: **Fase 2 en curso** — persistencia multi-tenant,
-> orquestador durable e idempotencia del gasto, hechos. Falta la **API + el portal**.
-> **260 tests en verde.**
+> Última revisión: 2026-07-19 · Estado: **Fase 2 construida, sin desplegar.** La cadena completa
+> —research → compuerta humana → publicación → **la web servida en vivo**— funciona de punta a punta.
+> API, portal y renderizador existen y se manejaron en un navegador real.
+> **333 tests en verde** (+29 en el portal).
 >
-> 👉 Si venís a **retomar el proyecto**, empezá por el
-> [**Plan de la Fase 2**](11-plan-fase-2.md): dice de dónde venimos, dónde estamos y qué falta.
+> ⚠️ **Nada corre en ningún servidor.** El hosting sigue sin decidirse (etapa 5.3), y eso es lo único
+> que separa al sistema de que lo use un cliente.
+>
+> 👉 Si venís a **retomar el proyecto**, empezá por
+> [**Estado y roadmap**](09-estado-y-roadmap.md): qué hay construido, dónde estamos y qué queda por
+> delante, ordenado por lo que realmente bloquea.
 
 ## Orden de lectura
 
@@ -23,12 +28,13 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 | 6 | [Contrato de handoff](06-contrato-handoff.md) | El brief JSON: la frontera entre los dos módulos. |
 | 7 | [Configuración y entornos](07-configuracion.md) | Variables de entorno, modos mock/live, manejo de secretos. |
 | 8 | [Testing y calidad](08-testing-calidad.md) | Suite de tests, typecheck, la review externa y qué se corrigió. |
-| 9 | [Estado y roadmap](09-estado-y-roadmap.md) | Qué funciona hoy, qué falta para producción, riesgos abiertos. |
+| 9 | 🧭 [**Estado y roadmap**](09-estado-y-roadmap.md) | **Empezá por acá si retomás.** Qué funciona hoy, qué queda por delante (ordenado por lo que bloquea), deudas y riesgos abiertos. |
 | 10 | ⚠️ [**Acciones pendientes (lado del usuario)**](10-acciones-pendientes.md) | Lo que **solo Juan puede hacer**: rotar la key, los números de precios, el research de prueba en producción, la cuenta de Storyblok y la decisión de alcance. |
 | 11 | 🧭 [**Plan de la Fase 2**](11-plan-fase-2.md) | **Empezá por acá si retomás.** De dónde venimos, en qué punto exacto estamos, qué falta y en qué orden. |
 
 ## Contexto adicional
 
-- **Decisiones de arquitectura (ADR-01..11):** [`../decisiones-arquitectura.md`](../decisiones-arquitectura.md) — el *porqué* de cada elección técnica, con las alternativas descartadas. Esta documentación las referencia constantemente.
+- **Decisiones de arquitectura (ADR-01..22 + OBS-01/02/03):** [`../decisiones-arquitectura.md`](../decisiones-arquitectura.md) — el *porqué* de cada elección técnica, con las alternativas descartadas **y las decisiones que hubo que corregir**. Esta documentación las referencia constantemente.
+- **Credenciales y roles de Postgres:** [`12-credenciales.md`](12-credenciales.md) — los cuatro logins, qué puede cada uno y, sobre todo, **qué NO puede**.
 - **Producto:** [`../contexto-proyecto-frank.md`](../contexto-proyecto-frank.md) y [`../A_PRD_AMG_Madrid_v1_Ilustrado.md`](../A_PRD_AMG_Madrid_v1_Ilustrado.md).
-- **READMEs de código:** [`../../kr-service/README.md`](../../kr-service/README.md) y [`../../web-builder/README.md`](../../web-builder/README.md) — cómo correr cada módulo.
+- **READMEs de código:** [`kr-service`](../../kr-service/README.md) · [`web-builder`](../../web-builder/README.md) · [`api`](../../api/README.md) · [`renderer`](../../renderer/README.md) · [`portal`](../../portal/README.md) — cómo correr cada pieza.
