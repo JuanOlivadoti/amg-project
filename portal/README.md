@@ -28,7 +28,7 @@ standalone + signals, Tailwind puro, **habla solo con nuestra API** (nunca con P
 ## La decisión de fondo: la lógica es TypeScript puro, testeable sin navegador
 
 Todo lo que se puede romper vive en `src/app/core/`, **sin Angular ni DOM**, y se prueba con
-`node:test` (16 tests): el cliente HTTP (`api-core.ts`, con `fetch` inyectable), el login
+`node:test` (29 tests): el cliente HTTP (`api-core.ts`, con `fetch` inyectable), el login
 (`auth-core.ts`), y la separación por evidencia (`evidence.ts`). Los componentes son cáscaras finas.
 Es la misma disciplina que hace testeable a RLS sin Docker: acá, HTTP y auth sin red.
 

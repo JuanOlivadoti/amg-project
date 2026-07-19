@@ -21,11 +21,12 @@ real y un portal donde el equipo de la agencia trabaje.
 | 2 | **Orquestador durable** — Inngest: steps, reintentos, compuerta humana con `waitForEvent` | ✅ Hecha |
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
-| 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ⏳ **5.1 (API) HECHA · 5.2 (portal) EN CURSO** |
-| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ⏳ Después |
+| 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal) · falta desplegar (5.3) |
+| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ⏳ **ACÁ ESTAMOS** |
 
-Después de la **5** el sistema es **usable por una persona que no sea yo**. Hoy todavía no lo es:
-**la compuerta de aprobación (ADR-06) se ejecuta editando un JSON a mano.**
+Después de la **5** el sistema es **usable por una persona que no sea yo**: la compuerta de
+aprobación (ADR-06) ya no se ejecuta editando un JSON a mano — se aprueba desde el portal, página por
+página, y el evento despierta al workflow. *(Falta desplegarlo en algún lado: etapa 5.3.)*
 
 Después de la **6** el cliente **tiene una web**, no "una web generada". Hoy el M1 produce el HTML y
 publica el contenido en Storyblok, pero **nada lo sirve en un dominio** — y por lo tanto el Visual
@@ -63,12 +64,16 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
 
 ### Lo que NO existe todavía
 
-- **El portal.** La API ya está (5.1), pero nadie que no sea yo puede aprobar un brief desde una UI.
-- **Un despliegue.** Nada corre en ningún servidor.
+- **Un despliegue.** Nada corre en ningún servidor (etapa 5.3; dónde se hostea, sin decidir).
+- **La web del cliente.** Se publica contenido en Storyblok, pero **nada lo sirve en un dominio**
+  (etapa 6, ADR-19). Es lo único que separa "una web generada" de que el cliente **tenga** una web.
+- **Tests de componente del portal.** El núcleo está cubierto; los componentes se verifican
+  compilando (AOT) y a mano en el navegador.
 
-> ✅ **La API HTTP ya existe** (`api/`, Hono, ADR-22): endpoints autenticados con la compuerta y los
-> comandos compuestos. El portal (5.2) es lo único que falta para que el flujo sea usable sin tocar
-> la base a mano.
+> ✅ **API y portal ya existen.** `api/` (Hono, ADR-22) con la compuerta y los comandos compuestos, y
+> `portal/` (Angular 20, ADR-21) donde se aprueba. El flujo completo se manejó en un navegador real
+> contra la API sobre PGlite: login → lista → brief por evidencia → aprobar página → aprobar run →
+> evento.
 
 ---
 
@@ -101,15 +106,21 @@ REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.us
    lleva solo el `runId`; si llevara el `clientId`, quien lo emita elegiría **a nombre de quién se
    gasta** (**ADR-18**).
 
-### 5.2 — El portal (`portal/`) ⏳ EN CURSO
+### 5.2 — El portal (`portal/`) ✅ HECHA
 
-> **Ya construido:** login (Supabase), lista de research (RLS decide qué ve cada quien) con lanzar
+> **Construido:** login (Supabase), lista de research (RLS decide qué ve cada quien) con lanzar
 > *(solo equipo)*, el brief **separado por evidencia** (✅/⚠️), la **compuerta doble** (aprobar
 > página, editar —revoca—, aprobar run), **refresh del token** (401 → refresca y reintenta una vez;
-> si falla, al login) y **polling** del research en curso (ADR-21). Angular 20 standalone + signals +
-> Tailwind; la lógica (HTTP, login, evidencia) en TS puro con **19 tests `node:test`**, sin navegador.
-> **Falta:** tests de componente (karma) y calibrar el intervalo de polling con la duración real. La
-> API ganó **CORS** para que el navegador pueda llamarla.
+> si falla, al login), **polling** del research en curso (ADR-21) y las **carreras asincrónicas
+> cerradas** (`core/vigencia.ts`: una respuesta tardía no pisa la pantalla y no queda polling
+> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **29 tests
+> `node:test`**, sin navegador. La API ganó **CORS** para que el navegador pueda llamarla.
+>
+> **Verificado en un navegador real** (`npm run dev:server -w api` levanta la API sobre PGlite):
+> el flujo entero, más la medición de que el polling **se detiene** al salir de la pantalla.
+>
+> **Falta:** tests de componente (karma) y calibrar el intervalo de polling (4 s, a ojo) con la
+> duración real de una corrida.
 
 **Stack cerrado en [ADR-21](../decisiones-arquitectura.md)** — las cuatro decisiones, para no
 reabrirlas a mitad de camino:

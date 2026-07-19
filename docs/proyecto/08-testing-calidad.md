@@ -60,13 +60,23 @@ comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la
 
 `src/fixtures.ts` centraliza los datos de prueba (brief, página y perfil válidos).
 
-## Revisión externa (Codex) — qué encontró y qué se corrigió
+## Revisiones externas (Codex) — qué encontraron y qué se corrigió
 
-Se sometió el código a una revisión adversarial externa. Encontró **18 hallazgos**; la mayoría eran
-bugs reales. Se corrigieron en dos tandas y **los tests de arriba los fijan como contrato** para
-que no reaparezcan.
+**Nueve rondas de revisión adversarial**, en 15 tandas de correcciones. Todos los hallazgos están
+corregidos y **los tests los fijan como contrato** para que no reaparezcan.
 
-### Tanda 1 — Seguridad, validación y compuerta ✅
+El patrón que se repite —y por eso las reviews están en el proceso— es que **casi siempre encuentran
+algo que yo ya había declarado hecho**. Las cuatro últimas: el aislamiento multi-tenant se perdía al
+salir por la puerta (Storyblok), el CLI de producción corría **sin registro de idempotencia**, el
+verificador de JWT **no lo tocaba ningún test**, y el portal tenía **carreras asincrónicas**. En
+varios casos la documentación afirmaba una garantía que el código desmentía.
+
+> **Las lecciones, en una línea cada una:** probar el contrato y no la implementación · el
+> *mutation testing* es lo que distingue un test de un adorno · leer el código y manejar la app
+> encuentran cosas **distintas** · y cuando un argumento me conviene, tiendo a escribirlo sin
+> verificarlo.
+
+### Tanda 1 — Seguridad, validación y compuerta ✅ *(1ª review, 18 hallazgos)*
 
 | # | Hallazgo | Corrección |
 |---|---|---|
