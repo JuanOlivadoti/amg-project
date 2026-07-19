@@ -29,7 +29,7 @@
 | ADR-20 | El portal **también sirve al cliente, en modo lectura** (amplía ADR-16) | Aceptada |
 | ADR-21 | **El stack del portal, cerrado**: solo habla con nuestra API · polling · Tailwind puro · standalone+signals | Aceptada (completa ADR-16) |
 | ADR-22 | **La API en Hono**: comandos compuestos (fila bajo RLS → después el evento), auth = JWT + RLS | Aceptada (implementa 5.1) |
-| OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | Abierta — riesgo |
+| OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | ✅ **CERRADA** (2026-07-19) — manda `contexto-proyecto-frank.md`; el PRD queda como visión |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 | OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
 
@@ -537,10 +537,42 @@ dos tests de "no gasta un centavo".
 
 ---
 
-## OBS-01 — Solapamiento de alcance entre los dos documentos (riesgo, no decisión)
+## OBS-01 — Solapamiento de alcance entre los dos documentos ✅ CERRADA
 **Observación.** `contexto-proyecto-frank.md` describe "Frank, cliente de la agencia" con 4 módulos; `A_PRD_AMG_Madrid_v1_Ilustrado.md` tiene sponsor "Franco · CEO" con 5 agentes y prioridades distintas. **Frank ≈ Franco es casi con seguridad la misma persona/proyecto**, con framings que no cierran (p. ej. el Creador de Webs es "Módulo 1 avanzado" en un doc y "web-por-prompt diferido a I+D / O10" en el otro).
 **Riesgo.** Presupuestar o presentar dos alcances incompatibles al mismo cliente.
 **Acción pendiente.** Unificar en un **único alcance coherente por fases** antes de consolidar la propuesta comercial. Confirmar con Juan el estado real del Creador de Webs.
+
+> ### ✅ CERRADA (2026-07-19) — decisión de alcance
+>
+> **Manda `contexto-proyecto-frank.md`.** El PRD (`A_PRD_AMG_Madrid_v1_Ilustrado.md`) queda como
+> **visión de largo plazo**, no como alcance presupuestado. Donde los dos digan cosas distintas,
+> gana contexto-frank.
+>
+> **El alcance base de la propuesta son TRES módulos:**
+>
+> | Módulo | Estado real |
+> |---|---|
+> | **1 — Creador de Webs** | ✅ **Construido y funcionando** de punta a punta (`web-builder` + `renderer`) |
+> | **2 — Keyword Research** | ✅ **Construido**, y corrido en producción: 52 keywords → 8 páginas por **$0.31** |
+> | **3 — Respondedor de reseñas (GBP)** | ⛔ Sin empezar. Es lo único del alcance base que falta construir |
+>
+> **El módulo 4 sale del presupuesto inicial** y pasa a la "línea futura" que ese mismo documento ya
+> contempla. Con eso se disuelve el pendiente *"¿Trello o calendario de redes?"*: no hay que elegir
+> entre dos productos distintos ahora, y se pueden ofrecer después por separado.
+>
+> **Consecuencias que importan para la propuesta:**
+>
+> - **La contradicción de fondo desaparece a favor de lo construido.** El PRD difería la
+>   web-por-prompt a I+D; contexto-frank la pone como módulo 1 prioritario. Gana contexto-frank — y
+>   además ya no es una apuesta: **el módulo más caro de construir bien ya está construido**.
+> - **Dos de los tres módulos base están hechos.** El presupuesto deja de ser "cuánto cuesta
+>   construir esto" y pasa a ser "cuánto vale esto, que ya funciona, más un módulo por hacer".
+> - **ADR-04 se confirma sin cambios:** sigue Storyblok, se descarta WordPress/Elementor. No hay ADR
+>   nueva que escribir.
+>
+> **Lo que ya no aplica de la acción 05:** su pendiente *"decidir motor de Keyword Research (Google
+> Ads API vs SEMrush)"* estaba obsoleto — lo resolvió **ADR-05** (DataForSEO) hace tiempo, y ya se
+> ejecutó contra producción.
 
 ## OBS-02 — El rol y el `client_id` los declara el caller ✅ RESUELTA (ver ADR-15)
 

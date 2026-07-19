@@ -97,8 +97,6 @@ Detalle en [**Estado y roadmap**](docs/proyecto/09-estado-y-roadmap.md). En cort
 
 ### 🔴 Decisiones abiertas
 
-- **OBS-01 — unificar el alcance.** Dos documentos de producto describen alcances incompatibles.
-  Es la última observación abierta.
 - **Reescribir ADR-11** (offboarding). Ya **hay qué entregar** —el space de Storyblok **más** el
   renderizador—, pero el ADR sigue redactado sobre "el frontend Next.js", que no existe. De ahí sale
   una cláusula de contrato, así que no puede firmarse como está.
@@ -106,5 +104,5 @@ Detalle en [**Estado y roadmap**](docs/proyecto/09-estado-y-roadmap.md). En cort
   único: si se cae, **se caen todas las webs de cliente a la vez**. Está mitigado, no eliminado.
 
 **Acciones que solo Juan puede hacer** — guías paso a paso en [**docs/acciones/**](docs/acciones/):
-la **corrida final en producción** (~$0.31) y **unificar el alcance** (OBS-01) antes de consolidar la
-propuesta comercial.
+la **corrida final en producción** (~$0.31) antes de consolidar la propuesta comercial.
+(**OBS-01 ya está cerrada**: alcance base = 3 módulos, manda `contexto-proyecto-frank.md`.)

@@ -15,7 +15,7 @@ Una guía por acción, con los pasos exactos, cómo verificar que salió bien y 
 | 🟡 [**02**](02-precios-modelos.md) | **Confirmar los precios de los modelos** | ~5 min | gratis | ✅ **Hecha** (2026-07-13) |
 | ⭐ [**03**](03-research-produccion-dataforseo.md) | **Research de prueba en producción** | ~20 min | ~$0.87 gastados | ✅ **Hecha** (2026-07-13) |
 | 🟢 [**04**](04-storyblok-space.md) | **Space de Storyblok** | ~15 min | gratis | ✅ **Hecha** (2026-07-13) |
-| 🔵 [**05**](05-unificar-alcance.md) | **Unificar el alcance (OBS-01)** | una charla | gratis | ⏳ **Pendiente** |
+| ✅ [**05**](05-unificar-alcance.md) | **Unificar el alcance (OBS-01)** | una charla | gratis | ✅ **Hecha** (2026-07-19) |
 | 🎬 [**06**](06-corrida-final-demo.md) | **Corrida final + republicar la demo** | ~15 min | ~$0.31 | ⏳ **Pendiente** (antes de ver a Frank) |
 
 ## El número que salió de la 03

@@ -25,7 +25,7 @@ funciona entero pero en `localhost`.
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
 | **Tests** | **354** en el monorepo + **29** en el portal. Los de seguridad, contra Postgres real |
 | **Migraciones** | 8 (`0001`..`0008`) |
-| **ADRs** | 22, más 3 observaciones (2 cerradas) |
+| **ADRs** | 22, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 10 rondas (Codex), 17 tandas de correcciones |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
 
@@ -47,7 +47,7 @@ funciona entero pero en `localhost`.
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
 | ✅ | **354 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
-| ✅ | **Nueve reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las tres últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, y carreras asincrónicas en el portal. Ver [ADR-13..22 y el registro de correcciones](../decisiones-arquitectura.md). |
+| ✅ | **Diez reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las tres últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, y carreras asincrónicas en el portal. Ver [ADR-13..22 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## El número para la propuesta comercial
 
@@ -109,8 +109,8 @@ dominios personalizados arbitrarios, y hace que "una CDN delante" deje de ser op
 - **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** (~$0.31) — lo publicado en
   Storyblok es **anterior a `kr.v0.5`**: no muestra la evidencia etiquetada, que es *el argumento de
   venta*. Acción humana.
-- **[Unificar el alcance (OBS-01)](../acciones/05-unificar-alcance.md)** — una charla, no código. Es
-  la única observación abierta del proyecto.
+- ✅ ~~Unificar el alcance (OBS-01)~~ — **hecho** (2026-07-19): manda ,
+  alcance base = 3 módulos, ADR-04 se mantiene. Era la última observación abierta del proyecto.
 
 ### 🟡 3. Lo que ADR-19 dejó a medias y hay que cerrar antes de un SLA
 
@@ -143,7 +143,7 @@ dominios personalizados arbitrarios, y hace que "una CDN delante" deje de ser op
 
 El PRD describe cuatro módulos. **Están hechos el 1 y el 2** (Creador de Webs y Keyword Research).
 Los otros —tablero tipo Trello, mensajería, dashboards, los agentes de contenido social— no tienen
-ni una línea, y eso es correcto: son Fase 3, y su alcance depende de OBS-01.
+ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisión: el **módulo 3** (respondedor de reseñas de Google) es lo único del alcance base sin construir; el calendario de redes y el gestor de tareas quedaron en **línea futura**, fuera del presupuesto inicial.
 
 ---
 
@@ -155,7 +155,7 @@ ni una línea, y eso es correcto: son Fase 3, y su alcance depende de OBS-01.
 
 | Tarea | Por qué | Costo |
 |---|---|---|
-| **[Unificar el alcance (OBS-01)](../acciones/05-unificar-alcance.md)** | Evitar presentarle al cliente dos alcances incompatibles. Es una charla, no código. | gratis |
+| ~~Unificar el alcance (OBS-01)~~ | ✅ **Hecha (2026-07-19).** Manda ; alcance base = 3 módulos; ADR-04 se mantiene. | — |
 | **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** ⚠️ | **Lo publicado en Storyblok es de ANTES de la tanda 5**: no muestra la evidencia etiquetada y 7 de 8 páginas declaran `LocalBusiness` sin serlo. Hacerlo **antes de ver a Frank**. | ~$0.31 |
 
 ### Tanda 3 — PROD-readiness ✅ COMPLETA
@@ -219,16 +219,25 @@ reales, no solo contra tests.
 
 ## Riesgos abiertos
 
-### OBS-01 — Solapamiento de alcance (riesgo de producto, no técnico)
+### ✅ OBS-01 — Solapamiento de alcance · **CERRADA (2026-07-19)**
 
-Los dos documentos de producto describen alcances distintos: `contexto-proyecto-frank.md` habla de
-4 módulos con "Frank, cliente de la agencia"; el PRD tiene sponsor "Franco · CEO" con 5 agentes y
-prioridades diferentes (el Creador de Webs es "Módulo 1 avanzado" en uno y "diferido a I+D" en el
-otro).
+Era el último riesgo de producto abierto. Los dos documentos describían alcances distintos
+(`contexto-proyecto-frank.md`: 4 módulos con "Frank"; el PRD: 5 agentes con "Franco · CEO", y el
+Creador de Webs "diferido a I+D"). **Decidido:**
 
-**Casi con seguridad son la misma persona/proyecto**, pero con framings que no cierran.
-**Hay que unificar en un único alcance coherente por fases antes de consolidar la propuesta
-comercial**, o se corre el riesgo de presentarle al cliente dos alcances incompatibles.
+- **Manda `contexto-proyecto-frank.md`.** El PRD queda como visión de largo plazo.
+- **Alcance base: 3 módulos.** El 4 (calendario de redes / Trello) pasa a línea futura.
+- **El Creador de Webs va en la propuesta base**, y **ADR-04 se mantiene** (Storyblok, no WordPress).
+
+**Dos de los tres módulos base ya están construidos.** Eso cambia la conversación comercial: el
+presupuesto deja de ser *"cuánto cuesta construir esto"* y pasa a ser *"cuánto vale esto, que ya
+funciona, más un módulo por hacer"*.
+
+| Módulo | Estado |
+|---|---|
+| 1 — Creador de Webs | ✅ Construido, de punta a punta |
+| 2 — Keyword Research | ✅ Construido, corrido en producción (**$0.31**/research) |
+| 3 — Respondedor de reseñas (GBP) | ⛔ Sin empezar — lo único del alcance base por construir |
 
 Registrado en [decisiones de arquitectura](../decisiones-arquitectura.md).
 

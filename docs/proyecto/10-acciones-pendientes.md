@@ -126,23 +126,27 @@ space real**. Sin esto, la demo no muestra la parte más vendible.
 
 ---
 
-## 🔵 D. Decisión de producto: unificar el alcance (OBS-01)
+## ✅ D. Decisión de producto: unificar el alcance (OBS-01) — **CERRADA (2026-07-19)**
 
-**Por qué:** hay dos documentos de producto con alcances que no cierran:
-- `contexto-proyecto-frank.md`: "Frank, cliente de la agencia", **4 módulos**.
-- El PRD: sponsor "Franco · CEO", **5 agentes**, prioridades distintas. El Creador de Webs es
-  "Módulo 1 avanzado" en uno y "diferido a I+D" en el otro.
+Había dos documentos de producto con alcances que no cerraban (`contexto-proyecto-frank.md`: 4
+módulos con "Frank"; el PRD: 5 agentes con "Franco · CEO", y el Creador de Webs "diferido a I+D").
+El riesgo era presentarle al mismo cliente **dos alcances incompatibles**.
 
-**Casi con seguridad son la misma persona/proyecto**, pero si se presupuesta sobre framings
-distintos, se le presentan al cliente **dos alcances incompatibles**.
+**Decidido:**
 
-**Qué hacer:** confirmar con el socio y con Juan (el dev que ya avanzó el módulo de WordPress):
-1. ¿Frank y Franco son el mismo? ¿Cuál es el alcance real acordado?
-2. ¿El Creador de Webs es prioritario o queda diferido?
-3. ¿El trabajo previo de Juan sobre WordPress/Elementor se descarta? (La [ADR-04](../decisiones-arquitectura.md)
-   ya decidió **no** usar WordPress; conviene confirmarlo con él antes de la propuesta.)
+| | |
+|---|---|
+| Documento rector | **`contexto-proyecto-frank.md`**. El PRD queda como visión de largo plazo. |
+| Alcance base | **3 módulos** (Creador de Webs · Keyword Research · Respondedor de reseñas). |
+| Módulo 4 | Ni calendario de redes ni Trello: **a línea futura**, fuera del presupuesto inicial. |
+| WordPress/Elementor | **Descartado, se mantiene [ADR-04](../decisiones-arquitectura.md)** (Storyblok). Sin ADR nueva. |
 
-**Qué desbloquea:** poder consolidar la **propuesta comercial** sin riesgo de contradicción.
+**Lo que desbloqueó:** la propuesta comercial se puede consolidar sin contradicción — y con un
+argumento mucho mejor del que había cuando se escribió esta acción: **dos de los tres módulos base
+ya están construidos y funcionando**. El presupuesto deja de ser "cuánto cuesta construir esto" y
+pasa a ser "cuánto vale esto, que ya funciona, más un módulo por hacer".
+
+Detalle en [OBS-01](../decisiones-arquitectura.md) y en la [acción 05](../acciones/05-unificar-alcance.md).
 
 ---
 

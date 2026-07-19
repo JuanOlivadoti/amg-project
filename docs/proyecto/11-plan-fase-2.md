@@ -255,7 +255,7 @@ Todas con su ADR. Las que más condicionan lo que viene:
 
 | Qué | Dónde | Por qué importa |
 |---|---|---|
-| **OBS-01 — unificar el alcance** | [acciones/05](../acciones/05-unificar-alcance.md) | Dos documentos de producto describen alcances incompatibles. Conversación de negocio, no código. **Solo Juan puede.** Es la última observación abierta. |
+| ✅ ~~OBS-01 — unificar el alcance~~ | [acciones/05](../acciones/05-unificar-alcance.md) | **Cerrada (2026-07-19).** Manda `contexto-proyecto-frank.md`; alcance base = 3 módulos (2 ya construidos); el 4 a línea futura; ADR-04 se mantiene. Era la última observación abierta. |
 | **Reescribir ADR-11 (offboarding)** | [decisiones](../decisiones-arquitectura.md) | Está redactado sobre "el frontend Next.js", que no existe. Con ADR-19 ya hay **qué entregar** (space + renderizador), pero **el texto todavía promete otra cosa** y de ahí sale una cláusula de contrato. |
 
 > ✅ **OBS-03 cerrada** por [ADR-19](../decisiones-arquitectura.md) (renderizador propio en runtime).
