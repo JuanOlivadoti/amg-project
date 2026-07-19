@@ -721,6 +721,39 @@ que un estático no tenía**, y hay que dimensionarlo antes de vender SLA.
 > hay timeout de 5 s contra la CDA; y un fallo del origen es 503 **que no se cachea**. Sigue siendo
 > un punto único: **una instancia caída son todas las webs de cliente caídas a la vez.**
 
+> ### ⚠️ Corrección (2026-07-19) — la 10ª review: "no está lista para exponerse a internet"
+>
+> Codex revisó la etapa 6 y el veredicto fue ese. Tenía razón, y **cinco de los nueve hallazgos eran
+> afirmaciones de este ADR y de la migración 0007 que nada hacía cumplir**:
+>
+> - **"Un space de Storyblok por cliente"** (ADR-04/ADR-11) no lo impedía nada. Con dos clientes en
+>   el mismo space, el renderizador servía **el HTML de A bajo el dominio de B** desde su propia
+>   cache, sin consultar el token de B. Ahora hay un `unique` (migración `0008`). Es exactamente el
+>   mismo agujero que `0006` cerró del lado de la escritura, reaparecido del lado de la lectura —
+>   porque en `0006` arreglé el síntoma y no el invariante.
+> - **"Timeout de 5 s contra la CDA"**: cortaba al recibir los *headers*. El cuerpo podía quedar
+>   abierto para siempre.
+> - **"Lo que se llevan es el NAP, que ya era público"**: el grant daba la columna `jsonb` **entera**.
+>   Ahora es una columna generada con allowlist de claves (`0008`), así que la frase es cierta *por
+>   construcción* y no por buena voluntad de quien carga la ficha.
+> - **"No puede ejecutar las funciones de `app`"**: sí puede. Lo que protege es que son
+>   `SECURITY INVOKER`, un mecanismo mejor que el que yo había descrito — pero la frase estaba mal.
+> - **La clave de cache** usaba un espacio de separador, y un espacio **puede aparecer en un slug**,
+>   que lo controla quien pide. Ambigüedad de concatenación: el mismo error que el HMAC de preview
+>   evita separando campos, cometido a diez metros de distancia.
+>
+> Los otros cuatro no eran afirmaciones falsas sino **ausencia de límites**: el camino anónimo no
+> tenía ningún tope (ni de concurrencia, ni de cuerpo, ni cache negativa, ni coalescing), el pool de
+> Postgres no tenía ningún plazo y la resolución de dominio ocurría **antes** de mirar la cache — así
+> que una base colgada dejaba pendiente hasta una página cacheada, con `/_health` devolviendo 200.
+>
+> **Todo corregido y verificado por mutación** (`renderer/` pasó de 60 a 75 tests; `db/` de 93 a 99).
+> Detalle en [08-testing-calidad.md](proyecto/08-testing-calidad.md), tanda 17.
+>
+> **La conclusión que me llevo, que es de método:** este ADR estaba escrito con la seguridad en
+> prosa. Una garantía que no tiene ni una *constraint* que la imponga ni una mutación que la tumbe no
+> es una garantía: es una intención. Van tres rondas seguidas con el mismo diagnóstico.
+
 ## ADR-20 — El portal también sirve al cliente, en modo lectura (amplía ADR-16)
 
 **Contexto.** ADR-16 acotó el alcance a "**solo el portal interno**". Pero el esquema tiene un rol

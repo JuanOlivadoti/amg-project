@@ -50,19 +50,29 @@ export class ErrorCda extends Error {
 export interface OpcionesCda {
   fetch?: FetchLike;
   base?: string;
-  /** Ni una petición al origen puede colgar al renderizador entero. Default 5 s. */
+  /**
+   * Plazo para la respuesta **COMPLETA**, cuerpo incluido. Default 5 s.
+   *
+   * El nombre importa porque la versión anterior no cumplía lo que decía: cortaba al recibir los
+   * headers y después leía el cuerpo sin plazo. Un origen que manda `200 OK` al instante y deja el
+   * body abierto colgaba la petición para siempre (10ª review, #2).
+   */
   timeoutMs?: number;
+  /** Tope de bytes de la respuesta. Default 4 MB. Una story de un restaurante no llega ni cerca. */
+  maxBytes?: number;
 }
 
 export class StoryblokCda implements Cda {
   private readonly fetch: FetchLike;
   private readonly base: string;
   private readonly timeoutMs: number;
+  private readonly maxBytes: number;
 
   constructor(opts: OpcionesCda = {}) {
     this.fetch = opts.fetch ?? globalThis.fetch;
     this.base = opts.base ?? CDA_BASE;
     this.timeoutMs = opts.timeoutMs ?? 5_000;
+    this.maxBytes = opts.maxBytes ?? 4 * 1024 * 1024;
   }
 
   async traerStory({ slug, token, version, cacheVersion }: PeticionStory): Promise<Story | null> {
@@ -87,29 +97,94 @@ export class StoryblokCda implements Cda {
     url.searchParams.set("version", version);
     if (cacheVersion) url.searchParams.set("cv", cacheVersion);
 
-    const res = await this.conTimeout(url.toString());
+    return this.conPlazo(async (signal) => {
+      const res = await this.fetch(url.toString(), { signal });
 
-    if (res.status === 404) return null;
-    if (!res.ok) {
-      // El cuerpo NO se propaga: puede traer el token en un mensaje de error de Storyblok, y de acá
-      // el mensaje termina en un log. Lo que hace falta para diagnosticar es el status.
-      throw new ErrorCda(`Storyblok respondió ${res.status} para /${slug}`, res.status);
-    }
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        // El cuerpo NO se propaga: puede traer el token en un mensaje de error de Storyblok, y de
+        // acá el mensaje termina en un log. Lo que hace falta para diagnosticar es el status.
+        throw new ErrorCda(`Storyblok respondió ${res.status} para /${slug}`, res.status);
+      }
 
-    const cuerpo = (await res.json()) as { story?: Story };
-    return cuerpo.story ?? null;
+      const cuerpo = (await this.leerAcotado(res)) as { story?: Story };
+      return cuerpo.story ?? null;
+    });
   }
 
-  private async conTimeout(url: string): Promise<Response> {
+  /**
+   * Corre `fn` con un plazo que cubre **todo** lo que haga, no solo la primera promesa.
+   *
+   * El `AbortController` se aborta al vencer y el timer se limpia recién en el `finally` de afuera,
+   * así que sigue armado mientras se lee el cuerpo. Y como un `signal` abortado no interrumpe un
+   * `res.json()` que ya está en curso en todos los runtimes, además se corre contra un
+   * `Promise.race`: lo que garantiza el plazo es la carrera, no la señal. La señal es lo que además
+   * libera el socket.
+   */
+  private async conPlazo<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
     const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), this.timeoutMs);
+    let t: NodeJS.Timeout | undefined;
+
+    const vencimiento = new Promise<never>((_, rej) => {
+      t = setTimeout(() => {
+        ac.abort();
+        rej(new ErrorCda(`Storyblok no completó la respuesta en ${this.timeoutMs} ms`, 504));
+      }, this.timeoutMs);
+    });
+
     try {
-      return await this.fetch(url, { signal: ac.signal });
+      return await Promise.race([fn(ac.signal), vencimiento]);
     } catch (e) {
-      // Un abort o un fallo de red son 504: el origen no contestó. NO es un 404.
+      // Un ErrorCda ya viene clasificado (404 ya salió por return, 4xx/5xx del origen, o el 504 de
+      // arriba). Lo demás es un fallo de red o un abort: el origen no contestó → 504.
+      if (e instanceof ErrorCda) throw e;
       throw new ErrorCda(`Storyblok no respondió: ${(e as Error).message}`, 504);
     } finally {
       clearTimeout(t);
+    }
+  }
+
+  /**
+   * Lee el JSON con tope de bytes.
+   *
+   * `res.json()` no permite acotar nada: consume lo que venga. Con `body` disponible se lee por
+   * chunks y se corta al pasarse; si el runtime no lo expone (o un mock no lo trae), se cae a
+   * `json()` y el tope lo aplica el `Promise.race` de arriba por tiempo. Un JSON que excede el tope
+   * es **502**: el origen mandó algo que no se puede procesar, y eso no es ni un 404 ni un timeout.
+   */
+  private async leerAcotado(res: Response): Promise<unknown> {
+    const body = res.body as ReadableStream<Uint8Array> | null | undefined;
+
+    if (!body || typeof body.getReader !== "function") {
+      const j = (await res.json()) as unknown;
+      const bytes = Buffer.byteLength(JSON.stringify(j) ?? "", "utf8");
+      if (bytes > this.maxBytes) {
+        throw new ErrorCda(`La story excede el tope (${bytes} > ${this.maxBytes} bytes)`, 502);
+      }
+      return j;
+    }
+
+    const reader = body.getReader();
+    const trozos: Uint8Array[] = [];
+    let total = 0;
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      total += value.byteLength;
+      if (total > this.maxBytes) {
+        await reader.cancel(); // corta la descarga: no se sigue pagando ancho de banda ni memoria
+        throw new ErrorCda(`La story excede el tope (> ${this.maxBytes} bytes)`, 502);
+      }
+      trozos.push(value);
+    }
+
+    try {
+      return JSON.parse(Buffer.concat(trozos).toString("utf8"));
+    } catch {
+      throw new ErrorCda("Storyblok devolvió algo que no es JSON", 502);
     }
   }
 }

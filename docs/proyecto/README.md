@@ -7,7 +7,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 > Última revisión: 2026-07-19 · Estado: **Fase 2 construida, sin desplegar.** La cadena completa
 > —research → compuerta humana → publicación → **la web servida en vivo**— funciona de punta a punta.
 > API, portal y renderizador existen y se manejaron en un navegador real.
-> **333 tests en verde** (+29 en el portal).
+> **354 tests en verde** (+29 en el portal).
 >
 > ⚠️ **Nada corre en ningún servidor.** El hosting sigue sin decidirse (etapa 5.3), y eso es lo único
 > que separa al sistema de que lo use un cliente.

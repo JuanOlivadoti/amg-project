@@ -18,6 +18,10 @@ export interface ConfigRenderer {
   previewSecret?: string;
   confiarEnProxy?: boolean;
   cacheTtlMs?: number;
+  /** Conexiones del pool. Default 10 — este servicio hace UN select por dominio, no necesita más. */
+  maxConexiones?: number;
+  /** Trabajo externo simultáneo. Default 64. Pasado el tope se responde 503. */
+  maxConcurrencia?: number;
 }
 
 /**
@@ -57,7 +61,34 @@ export async function crearDeps(
   config: ConfigRenderer,
 ): Promise<{ deps: RendererDeps; cerrar: () => Promise<void> }> {
   const { Pool } = await import("pg");
-  const pool = new Pool({ connectionString: config.databaseUrl });
+
+  /**
+   * El pool, con TODOS los plazos puestos.
+   *
+   * Antes se construía solo con `connectionString`, y los defaults de `pg` son **esperar para
+   * siempre**: sin timeout de conexión, de adquisición ni de query, una base que acepta la conexión
+   * pero no responde deja la petición colgada indefinidamente. Con ADR-19 eso es toda la cartera de
+   * webs sin servir — y `/_health` seguía devolviendo 200, declarando sano un proceso que no servía
+   * nada (10ª review, #4).
+   *
+   * Los números son deliberadamente cortos: esta consulta es **un `select` por clave única**. Si
+   * tarda más de dos segundos, algo está roto y esperar no lo va a arreglar; lo correcto es fallar
+   * rápido y dejar que la cache de resolución (en `app.ts`) siga sirviendo lo que ya sabe.
+   */
+  const pool = new Pool({
+    connectionString: config.databaseUrl,
+    max: config.maxConexiones ?? 10,
+    connectionTimeoutMillis: 2_000, // esperar un socket del pool
+    idleTimeoutMillis: 30_000,
+    query_timeout: 2_000, // del lado del cliente
+    statement_timeout: 2_000, // del lado de Postgres: corta la query de verdad
+    // Un socket a medio morir (firewall que traga paquetes) se detecta en vez de esperar al TCP.
+    keepAlive: true,
+  });
+
+  // Un error del pool sin listener es una excepción no capturada que **mata el proceso**, y con
+  // ADR-19 eso son todas las webs a la vez. Se registra y se sigue: las conexiones se rehacen.
+  pool.on("error", (e) => console.error("[renderer] error del pool de Postgres:", e.message));
 
   return {
     deps: {
@@ -67,6 +98,7 @@ export async function crearDeps(
       webhookSecret: config.webhookSecret,
       ...(config.previewSecret ? { previewSecret: config.previewSecret } : {}),
       confiarEnProxy: config.confiarEnProxy ?? false,
+      ...(config.maxConcurrencia ? { maxConcurrencia: config.maxConcurrencia } : {}),
     },
     cerrar: () => pool.end(),
   };

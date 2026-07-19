@@ -205,13 +205,13 @@ Esto permite responder, ante cualquier página publicada: *¿por qué existe est
 
 | Pieza | Decisión | Estado |
 |---|---|---|
-| Persistencia + multi-tenancy (RLS) | Supabase / Postgres (ADR-01, ADR-10, ADR-13, ADR-15) | ✅ **Construido** — `db/`, **7 migraciones**, **93 tests** contra Postgres real |
+| Persistencia + multi-tenancy (RLS) | Supabase / Postgres (ADR-01, ADR-10, ADR-13, ADR-15) | ✅ **Construido** — `db/`, **8 migraciones**, **99 tests** contra Postgres real |
 | Orquestación durable (`waitForEvent`, reintentos por paso) | Inngest (ADR-03, ADR-12) | ✅ **Construido** — `orchestrator/` |
 | Idempotencia del gasto | `payload_hash` (ADR-14) | ✅ **Construido** |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Construida** — `api/` (Hono), 33 tests |
 | **Portal** | **Angular + Tailwind** (ADR-16, ADR-21, *reemplaza* ADR-02/Next) | ✅ **Construido** — `portal/`, 29 tests de núcleo |
 | **Despliegue** | Tres servicios Node de larga duración + una SPA estática | ⛔ **Nada corre en ningún servidor.** Es lo único que bloquea |
-| **El renderizador** — servir la web del cliente en un dominio | **Servicio propio en runtime**, multi-tenant (ADR-19, *cierra OBS-03*) | ✅ **Construido** — `renderer/`, 60 tests |
+| **El renderizador** — servir la web del cliente en un dominio | **Servicio propio en runtime**, multi-tenant (ADR-19, *cierra OBS-03*) | ✅ **Construido** — `renderer/`, 75 tests |
 
 ### El renderizador (ADR-19) — construido ✅
 

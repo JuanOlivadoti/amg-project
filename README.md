@@ -25,7 +25,7 @@ prompt → research → persistencia (RLS) → COMPUERTA HUMANA → contenido �
 | **[renderer/](renderer/)** | Sirve las webs de cliente: 1 servicio, N dominios (ADR-19) | ✅ |
 | **[portal/](portal/)** | SPA Angular — donde se aprueba la compuerta *(fuera del monorepo)* | ✅ |
 
-- **333 tests en verde** (+29 en el portal) · typecheck limpio en los 6 paquetes · `npm test` desde
+- **354 tests en verde** (+29 en el portal) · typecheck limpio en los 6 paquetes · `npm test` desde
   la raíz.
 - Los tests de seguridad corren contra **Postgres real** (PGlite en WASM): sin Docker, sin cuenta.
 - Todo corre **sin una sola credencial**: providers mock + base en memoria.

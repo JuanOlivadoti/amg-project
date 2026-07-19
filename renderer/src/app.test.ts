@@ -269,6 +269,126 @@ describe("renderizador — cache", () => {
     assert.equal(cache.get("222", "menu"), null);
   });
 
+  it("🔴 una base COLGADA no tumba las páginas que ya están en cache (10ª review, #4)", async () => {
+    // El orden era `resolver dominio (DB) → mirar cache`, así que una base que acepta la conexión y
+    // no responde dejaba pendiente hasta una página cacheada. Ahora la resolución se cachea y una
+    // visita repetida no vuelve a pasar por Postgres.
+    let colgada = false;
+    const sitiosLentos = {
+      porDominio: async (d: string) => {
+        if (colgada) return new Promise<never>(() => {}); // no resuelve NUNCA
+        return d === "bellanapoli.es" ? sitioA : null;
+      },
+    };
+    const app = createApp({ sitios: sitiosLentos, cda: montar().cda, cache: new CacheRender() });
+
+    assert.equal((await pedir(app, "/menu", "bellanapoli.es")).status, 200);
+    colgada = true;
+
+    const conPlazo = await Promise.race<number | string>([
+      Promise.resolve(pedir(app, "/menu", "bellanapoli.es")).then((r) => r.status),
+      new Promise<string>((r) => setTimeout(() => r("COLGADA"), 300)),
+    ]);
+    assert.equal(conPlazo, 200, "la página cacheada tiene que salir sin preguntarle a Postgres");
+  });
+
+  it("🔴 enumerar paths inexistentes deja de golpear el origen (10ª review, #3)", async () => {
+    // `/a-1`, `/a-2`, `/a-3`… cada uno provocaba una llamada a la CDA. Es un bucle con curl, no un
+    // ataque ingenioso, y lo paga nuestra cuenta de Storyblok.
+    const { app, cda } = montar();
+
+    await pedir(app, "/no-existe", "bellanapoli.es");
+    await pedir(app, "/no-existe", "bellanapoli.es");
+    await pedir(app, "/no-existe", "bellanapoli.es");
+
+    assert.equal(cda.pedidos.length, 1, "el 404 se recuerda un rato corto");
+  });
+
+  it("🔴 N visitas simultáneas al mismo slug frío son UNA llamada al origen", async () => {
+    // Cache stampede: cien visitas a una portada recién invalidada eran cien llamadas a la CDA. Y
+    // un webhook de invalidación lo vuelve fácil de provocar a propósito.
+    let llamadas = 0;
+    const cda = {
+      async traerStory() {
+        llamadas++;
+        await new Promise((r) => setTimeout(r, 20));
+        return story("La carta");
+      },
+    };
+    const app = createApp({ sitios: new MemSitios([sitioA]), cda, cache: new CacheRender() });
+
+    const todas = await Promise.all(
+      Array.from({ length: 10 }, () => pedir(app, "/menu", "bellanapoli.es")),
+    );
+
+    assert.ok(todas.every((r) => r.status === 200), "las diez tienen que salir bien");
+    assert.equal(llamadas, 1, "y con una sola llamada a Storyblok");
+  });
+
+  it("🔴 un pico se rechaza con 503 en vez de acumular trabajo sin techo", async () => {
+    // Una cola infinita no protege: convierte un pico en latencia creciente hasta quedarse sin
+    // memoria. Un 503 rápido deja el proceso vivo para las páginas que ya están en cache.
+    const cda = {
+      traerStory: () => new Promise<never>(() => {}), // se queda en vuelo
+    };
+    const app = createApp({
+      sitios: new MemSitios([sitioA]),
+      cda,
+      cache: new CacheRender(),
+      maxConcurrencia: 2,
+    });
+
+    // Dos ocupan el semáforo (y no resuelven); la tercera, con OTRO slug para saltear el coalescing.
+    void pedir(app, "/menu", "bellanapoli.es");
+    void pedir(app, "/otra", "bellanapoli.es");
+    await new Promise((r) => setTimeout(r, 20));
+
+    const tercera = await pedir(app, "/tercera", "bellanapoli.es");
+    assert.equal(tercera.status, 503);
+    assert.equal(tercera.headers.get("retry-after"), "2");
+  });
+
+  it("🔴 el webhook rechaza un cuerpo enorme ANTES de leerlo (10ª review, #3)", async () => {
+    // Verificar la firma exige el cuerpo entero, así que sin corte previo un anónimo SIN el secreto
+    // nos hace bufferear lo que quiera: la firma lo rechazaría después de comernos la memoria.
+    const { app } = montar();
+    const enorme = "x".repeat(300 * 1024);
+
+    const res = await app.request("http://x/_webhook/storyblok", {
+      method: "POST",
+      body: enorme,
+      headers: { "content-length": `${enorme.length}` },
+    });
+
+    assert.equal(res.status, 413);
+  });
+
+  it("🔴 un webhook firmado REPETIDO no invalida dos veces (10ª review, #7)", async () => {
+    // La firma autentica el cuerpo y nada más: sin timestamp ni id de entrega, una petición
+    // legítima capturada se repite para siempre. Repetirla en bucle es cache busting gratis.
+    const { app, cda } = montar();
+    await pedir(app, "/menu", "bellanapoli.es");
+
+    const body = JSON.stringify({ action: "published", space_id: 111 });
+    const firma = createHmac("sha1", WEBHOOK_SECRET).update(body).digest("hex");
+    const enviar = () =>
+      app.request("http://x/_webhook/storyblok", {
+        method: "POST",
+        body,
+        headers: { [HEADER_FIRMA]: firma },
+      });
+
+    assert.deepEqual(await (await enviar()).json(), { ok: true, invalidadas: 1 });
+
+    const repetido = await enviar();
+    assert.equal(repetido.status, 200);
+    assert.deepEqual(await repetido.json(), { ok: true, invalidadas: 0, repetido: true });
+
+    // Y no se re-renderizó de más: una invalidación, un re-render.
+    await pedir(app, "/menu", "bellanapoli.es");
+    assert.equal(cda.pedidos.length, 2);
+  });
+
   it("el health check no depende de Storyblok ni de la base", async () => {
     // Si dependiera, el orquestador de despliegue mataría el servicio cuando el caído es Storyblok
     // — cambiando "servir de cache" por "todas las webs abajo a la vez" (el riesgo de ADR-19).
@@ -303,7 +423,28 @@ describe("renderizador — preview del Visual Editor", () => {
     const html = await res.text();
     assert.match(html, /La carta BORRADOR/);
     assert.match(html, /storyblok-v2-latest\.js/, "sin el Bridge el Visual Editor no funciona");
-    assert.equal(res.headers.get("x-robots-tag"), "noindex");
+    assert.equal(res.headers.get("x-robots-tag"), "noindex, nofollow");
+  });
+
+  it("🔴 el preview se marca NO CACHEABLE, no solo no indexable (10ª review, #5)", async () => {
+    // `noindex` evita que Google lo liste; **no** evita que una CDN lo guarde. ADR-19 exige una CDN
+    // delante, y el default frecuente es cachear HTML por host+path ignorando la query — o sea,
+    // ignorando la firma. Una visita firmada llenaría el borde con el borrador y un anónimo lo
+    // recibiría. El servicio tiene que decirlo él, no confiar en configuración externa perfecta.
+    const { app } = montar();
+    const res = await pedir(app, `/menu?${conFirma("bellanapoli.es")}`, "bellanapoli.es");
+
+    const cc = res.headers.get("cache-control") ?? "";
+    assert.match(cc, /no-store/, `el borrador no puede guardarse en ningún lado: ${cc}`);
+    assert.match(cc, /private/);
+  });
+
+  it("una página pública SÍ declara que se puede cachear", async () => {
+    // La otra mitad: sin `Cache-Control`, cada CDN inventa su heurística. Se declara una vez.
+    const { app } = montar();
+    const res = await pedir(app, "/menu", "bellanapoli.es");
+
+    assert.match(res.headers.get("cache-control") ?? "", /public/);
   });
 
   it("🔴 SIN firma sirve lo publicado, no el borrador", async () => {
@@ -313,6 +454,16 @@ describe("renderizador — preview del Visual Editor", () => {
 
     assert.doesNotMatch(html, /BORRADOR/);
     assert.doesNotMatch(html, /storyblok-v2-latest/);
+  });
+
+  it("la firma vale para TODO el dominio, a propósito (10ª review, #6)", async () => {
+    // Decisión, no descuido: el Visual Editor es un editor donde se NAVEGA entre las páginas del
+    // space. Un enlace por-path obligaría a re-firmar en cada clic. Lo que acota el riesgo es que
+    // está atado al dominio, que vence, y que solo lo emite la agencia. Ver `preview.ts`.
+    const { app, cda } = montar();
+    await pedir(app, `/otra-pagina?${conFirma("bellanapoli.es")}`, "bellanapoli.es");
+
+    assert.equal(cda.pedidos.at(-1)?.version, "draft", "el mismo enlace sirve para otro slug");
   });
 
   it("🔴 una firma de OTRO dominio no sirve para espiar este borrador", async () => {

@@ -64,7 +64,7 @@ paquetes transitivos.
 
 **PGlite es la decisión de testing que más rindió.** Las políticas RLS son la frontera de
 seguridad del producto, y un *mock* de Postgres no puede probarlas: lo que hay que verificar es
-que **Postgres las hace cumplir**. Con PGlite, los 93 tests de `db/` corren las migraciones
+que **Postgres las hace cumplir**. Con PGlite, los 99 tests de `db/` corren las migraciones
 reales contra un Postgres real —**sin Docker, sin cuenta, sin red**— y se ejecutan en CI como
 cualquier test unitario. Sin esto, los agujeros multi-tenant que encontraron las reviews externas
 no se habrían podido cerrar con una prueba, solo con un argumento.

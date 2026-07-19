@@ -23,6 +23,7 @@
 export interface EntradaCache {
   html: string;
   expiraEn: number;
+  bytes: number;
 }
 
 export interface OpcionesCache {
@@ -30,6 +31,14 @@ export interface OpcionesCache {
   ttlMs?: number;
   /** Tope de entradas: una cache sin tope es una fuga de memoria con buena prensa. Default 500. */
   maxEntradas?: number;
+  /**
+   * Tope de BYTES. Default 64 MB.
+   *
+   * El tope de entradas no acota la memoria: 500 páginas de 2 MB son 1 GB. Lo que agota el proceso
+   * son los bytes, no las claves — y con ADR-19 un proceso agotado son **todas** las webs de cliente
+   * caídas a la vez. (10ª review, #2.)
+   */
+  maxBytes?: number;
   /** Reloj inyectable — el TTL se prueba sin esperar cinco minutos. */
   ahora?: () => number;
 }
@@ -38,16 +47,30 @@ export class CacheRender {
   private readonly entradas = new Map<string, EntradaCache>();
   private readonly ttlMs: number;
   private readonly maxEntradas: number;
+  private readonly maxBytes: number;
   private readonly ahora: () => number;
+  private bytesUsados = 0;
 
   constructor(opts: OpcionesCache = {}) {
     this.ttlMs = opts.ttlMs ?? 5 * 60_000;
     this.maxEntradas = opts.maxEntradas ?? 500;
+    this.maxBytes = opts.maxBytes ?? 64 * 1024 * 1024;
     this.ahora = opts.ahora ?? Date.now;
   }
 
+  /**
+   * Clave **inambigua**, con la longitud del space delante.
+   *
+   * Antes era `${spaceId} ${slug}`, y el espacio **puede aparecer en un slug** — que lo controla
+   * quien hace la petición. Con eso, `("11", "1 menu")` y `("11 1", "menu")` daban la misma clave:
+   * un cliente sirviendo la página de otro, con la mitad de la clave puesta por el atacante.
+   *
+   * Prefijar la longitud hace la codificación **inyectiva**: dos pares distintos no pueden producir
+   * la misma cadena, sin importar qué caracteres traigan. Es la misma razón por la que el HMAC de
+   * `preview.ts` separa sus campos — ambigüedad de concatenación, el mismo error dos veces.
+   */
   private static clave(spaceId: string, slug: string): string {
-    return `${spaceId} ${slug}`;
+    return `${spaceId.length}:${spaceId}:${slug}`;
   }
 
   get(spaceId: string, slug: string): string | null {
@@ -68,15 +91,31 @@ export class CacheRender {
   }
 
   set(spaceId: string, slug: string, html: string): void {
-    const k = CacheRender.clave(spaceId, slug);
-    this.entradas.delete(k);
-    this.entradas.set(k, { html, expiraEn: this.ahora() + this.ttlMs });
+    const bytes = Buffer.byteLength(html, "utf8");
 
-    while (this.entradas.size > this.maxEntradas) {
+    // Una página que por sí sola no entra en el tope NO se guarda. Si se guardara, el bucle de
+    // desalojo vaciaría la cache entera intentando hacerle lugar a algo que igual no cabe.
+    if (bytes > this.maxBytes) return;
+
+    const k = CacheRender.clave(spaceId, slug);
+    this.olvidar(k);
+    this.entradas.set(k, { html, expiraEn: this.ahora() + this.ttlMs, bytes });
+    this.bytesUsados += bytes;
+
+    while (this.entradas.size > this.maxEntradas || this.bytesUsados > this.maxBytes) {
       const masVieja = this.entradas.keys().next();
       if (masVieja.done) break;
-      this.entradas.delete(masVieja.value);
+      this.olvidar(masVieja.value);
     }
+  }
+
+  /** Borra una clave manteniendo el contador de bytes coherente. */
+  private olvidar(k: string): boolean {
+    const e = this.entradas.get(k);
+    if (!e) return false;
+    this.bytesUsados -= e.bytes;
+    this.entradas.delete(k);
+    return true;
   }
 
   /**
@@ -94,18 +133,22 @@ export class CacheRender {
    * instancia hay que mover esto a una cache compartida o bajar el TTL a sabiendas.
    */
   invalidarSpace(spaceId: string): number {
-    const prefijo = `${spaceId} `;
+    // El prefijo lleva la longitud, igual que la clave: así `11` no puede llevarse por delante a
+    // `111`, ni un space cuyo id empiece igual que otro.
+    const prefijo = `${spaceId.length}:${spaceId}:`;
     let n = 0;
     for (const k of [...this.entradas.keys()]) {
-      if (k.startsWith(prefijo)) {
-        this.entradas.delete(k);
-        n++;
-      }
+      if (k.startsWith(prefijo) && this.olvidar(k)) n++;
     }
     return n;
   }
 
   get tamano(): number {
     return this.entradas.size;
+  }
+
+  /** Bytes de HTML retenidos. Lo expone `/_health` para poder ver la presión de memoria. */
+  get bytes(): number {
+    return this.bytesUsados;
   }
 }

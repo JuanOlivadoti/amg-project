@@ -17,16 +17,16 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 333 tests (monorepo) + 29 (portal)
+## Cobertura actual: 354 tests (monorepo) + 29 (portal)
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
-| `db` | **80** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
+| `db` | **99** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
 | `kr-service` | **88** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). |
 | `web-builder` | **41** | Contrato, handoff, render, XSS, idempotencia de publicación. |
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **33** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
-| `renderer` | **60** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), y `perfilValido` (un NAP mal cargado degrada, no tira la web). |
+| `renderer` | **75** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web), y **los límites del camino anónimo** (10ª review): plazo de la respuesta COMPLETA, topes de bytes, cache negativa, coalescing, semáforo→503, cuerpo del webhook y replay. |
 | `portal` | **29** | *(fuera del monorepo)* El núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, y **la separación por evidencia** (✅/⚠️). Con `node:test` y `fetch` de mentira — sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
@@ -63,7 +63,7 @@ comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la
 
 ## Revisiones externas (Codex) — qué encontraron y qué se corrigió
 
-**Nueve rondas de revisión adversarial**, en 16 tandas de correcciones (la 16ª sin review externa todavía). Todos los hallazgos están
+**Diez rondas de revisión adversarial**, en 17 tandas de correcciones. Todos los hallazgos están
 corregidos y **los tests los fijan como contrato** para que no reaparezcan.
 
 El patrón que se repite —y por eso las reviews están en el proceso— es que **casi siempre encuentran
@@ -75,7 +75,8 @@ varios casos la documentación afirmaba una garantía que el código desmentía.
 > **Las lecciones, en una línea cada una:** probar el contrato y no la implementación · el
 > *mutation testing* es lo que distingue un test de un adorno · leer el código y manejar la app
 > encuentran cosas **distintas** · y cuando un argumento me conviene, tiendo a escribirlo sin
-> verificarlo.
+> verificarlo · y **un default sin test es una decisión sin dueño** (si el test elige el parámetro,
+> no está fijando el que corre en producción).
 
 ### Tanda 1 — Seguridad, validación y compuerta ✅ *(1ª review, 18 hallazgos)*
 
@@ -304,6 +305,58 @@ caerse**; dominio desconocido → 404 sin fallback; `miss`→`hit` en la cache y
 webhook firmado, **sin tocar el otro space**; y el preview firmado sirve el borrador con el Bridge y
 `noindex`, mientras que sin firma, con firma de otro dominio o con la firma alterada **sirve lo
 publicado**.
+
+### Tanda 17 — 10ª review: la mejor de las diez, y el mismo error mío cinco veces ✅
+
+Codex revisó la etapa 6 y su veredicto fue **"no está lista para exponerse a internet"**. Tenía
+razón. Nueve hallazgos, todos corregidos.
+
+**Lo que importa no son los bugs, es que cinco de los nueve son garantías que yo declaré y nada
+hacía cumplir.** Prosa que daba por ejecutada:
+
+| Yo había escrito | La verdad | Ahora lo impone |
+|---|---|---|
+| "un space de Storyblok por cliente" (ADR-04/11) | nada lo impedía → dos clientes con el mismo space **comparten cache**: la web de B servía el HTML de A, sin consultar el token de B | `unique` en `clients.storyblok_space_id` (`0008`) |
+| "timeout de 5 s contra la CDA" | cortaba al recibir los **headers**; el cuerpo podía colgar para siempre | el plazo cubre la respuesta completa |
+| "lo que se llevan es el NAP, que ya era público" | el grant daba el `jsonb` **entero**: notas internas, emails, lo que hubiera en la ficha | columna generada con allowlist (`0008`) |
+| "no puede ejecutar las funciones de `app`" | sí puede; lo que protege es que son `SECURITY INVOKER` | corregido en la doc |
+| la clave de cache aísla clientes | el separador era un **espacio**, que puede aparecer en un slug → `("11","1 menu")` y `("11 1","menu")` colisionaban | clave con longitud prefijada |
+
+Los otros cuatro son **ausencia de límites**, no afirmaciones falsas. El servicio estaba escrito para
+el camino feliz:
+
+| # | Hallazgo | Qué se hizo |
+|---|---|---|
+| **#3** HIGH | El camino anónimo **no tenía un solo tope**: cada path aleatorio era un lookup de Postgres + una llamada a la CDA; los 404 no se cacheaban (`/a-1`, `/a-2`… amplificaban sin fin); N visitas al mismo slug frío eran N llamadas al origen; el webhook leía el cuerpo **antes** de verificar la firma. No hace falta ingenio: es un bucle con `curl`, y lo paga nuestra cuenta. | `limites.ts`: coalescing, cache negativa (30 s) y semáforo (**503, no cola infinita**). Tope de 256 KB en el webhook, comprobado antes de leer. |
+| **#4** HIGH | El pool de Postgres **sin ningún plazo** (los defaults de `pg` son esperar para siempre), y la resolución de dominio ocurría **antes** de mirar la cache: una base colgada dejaba pendiente hasta una página cacheada, mientras `/_health` devolvía 200. | Timeouts en todo el pool (2 s), cache de resolución de 60 s **antes** de la base, y un health check que reporta presión interna. |
+| **#5** MED | El preview llevaba `noindex`, que evita que se **indexe** pero no que se **cachee**. Una CDN que ignore la query —default frecuente— guardaría el borrador y se lo serviría a un anónimo. | `Cache-Control: private, no-store` + `Vary: *`. Y las públicas declaran su cacheabilidad explícitamente, en vez de dejar que cada CDN invente. |
+| **#7** MED | La firma del webhook autentica el cuerpo **y nada más**: sin timestamp ni id de entrega, una petición legítima capturada se repite para siempre. Cache busting gratis. | Dedupe por hash del cuerpo en ventana de 5 min. No es perfecto (quien capture dos entregas distintas las alterna), pero convierte "infinitas" en "una por ventana". |
+
+**#6** (la firma de preview vale para todo el dominio) se revisó y **se deja como está**: el Visual
+Editor es un editor donde se *navega* entre páginas, y firmar por-path obligaría a re-firmar en cada
+clic. Lo que acota el riesgo es que está atada al dominio, que vence y que solo la emite la agencia.
+Estaba bien; lo que faltaba era **decirlo**.
+
+**Los falsos-verdes que encontró, que son el hallazgo metodológico:**
+
+- Subió el tope por defecto de la cache de 500 a **infinito** y los ocho tests siguieron verdes:
+  todos pasaban `maxEntradas` explícito, así que **ninguno fijaba el valor de producción**.
+- El test de timeout usaba un `fetch` que rechazaba *antes* de los headers: probaba el mecanismo del
+  abort, **no el contrato** "la petición completa termina en N ms".
+
+> **La lección de esta ronda.** Las nueve reviews anteriores me encontraron tests que probaban la
+> implementación en vez del contrato. Esta encontró algo peor: **tests que fijan el parámetro que el
+> test elige, no el que corre en producción**. Un default sin test es una decisión sin dueño.
+>
+> Y sobre lo otro: ya sé que escribo garantías en comentarios y no las ejercito. Van tres rondas
+> seguidas con el mismo diagnóstico. Lo que cambió acá es que **cinco de golpe** dejan claro que no
+> es descuido puntual sino un hábito — y que el antídoto no es "tener más cuidado" sino que cada
+> afirmación de seguridad tenga o una constraint que la imponga, o una mutación que la tumbe.
+
+**Verificado en un navegador real** tras los arreglos: `hit/hit/hit` del lado del servidor, la cache
+negativa anotando el 404, el webhook firmado invalidando (`invalidadas: 2`) y el **repetido**
+devolviendo `repetido: true`, un cuerpo de 300 KB rechazado con 413, el preview con `no-store` +
+`noindex, nofollow` + Bridge, y la firma alterada cayendo a contenido público.
 
 ### 🔑 Pendiente de acción humana
 

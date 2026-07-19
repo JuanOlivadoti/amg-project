@@ -13,6 +13,9 @@ export { CacheRender } from "./cache.js";
 export { StoryblokCda, MockCda, ErrorCda, CDA_BASE } from "./cda.js";
 export type { Cda, Version, PeticionStory, FetchLike } from "./cda.js";
 
+export { Coalescedor, CacheNegativa, Semaforo, Saturado } from "./limites.js";
+export { perfilValido } from "./perfil.js";
+
 export { normalizarHost, hostDeLaPeticion } from "./dominio.js";
 export { firmarPreview, previewAutorizado, PARAM_FIRMA, PARAM_VENCE } from "./preview.js";
 export { firmaValida, parsearEvento, HEADER_FIRMA } from "./webhook.js";

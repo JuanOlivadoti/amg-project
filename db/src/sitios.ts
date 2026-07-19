@@ -27,7 +27,13 @@ export interface Sitio {
   publicToken: string | null;
   /** Token de BORRADORES. **Sí** es un secreto: solo se usa tras validar una firma de preview. */
   previewToken: string | null;
-  /** NAP del negocio → enriquece el JSON-LD. Ya va impreso en cada página publicada. */
+  /**
+   * NAP del negocio → enriquece el JSON-LD. Ya va impreso en cada página publicada.
+   *
+   * Sale de `clients.business_profile_publico`, una columna GENERADA con allowlist de claves — NO
+   * de la columna cruda. La ficha de un cliente puede tener campos privados y `app_render` no los
+   * ve: la garantía la impone el esquema, no el código que la consume (10ª review, #8).
+   */
   businessProfile: unknown;
   languageCode: string;
 }
@@ -66,7 +72,7 @@ interface FilaSitio {
   storyblok_space_id: string | null;
   storyblok_public_token: string | null;
   storyblok_preview_token: string | null;
-  business_profile: unknown;
+  business_profile_publico: unknown;
   market_language: string;
 }
 
@@ -93,7 +99,7 @@ export class PgSitios implements SitioResolver {
 
       const { rows } = await tx.query<FilaSitio>(
         `select id, domain, storyblok_space_id, storyblok_public_token, storyblok_preview_token,
-                business_profile, market_language
+                business_profile_publico, market_language
            from clients
           where domain = $1`,
         [host],
@@ -108,7 +114,7 @@ export class PgSitios implements SitioResolver {
         spaceId: fila.storyblok_space_id,
         publicToken: fila.storyblok_public_token,
         previewToken: fila.storyblok_preview_token,
-        businessProfile: fila.business_profile ?? null,
+        businessProfile: fila.business_profile_publico ?? null,
         languageCode: fila.market_language,
       };
     });

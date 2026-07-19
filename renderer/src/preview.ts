@@ -22,6 +22,25 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * El secreto es UNO del servicio (`PREVIEW_SECRET`), no uno por cliente: quien emite estos enlaces
  * es la agencia, no el cliente. Rotarlo invalida todos los enlaces vivos, que es exactamente lo que
  * uno quiere de una rotación.
+ *
+ * ## El alcance es TODO el dominio, y es deliberado (10ª review, #6)
+ *
+ * La firma cubre `dominio + vencimiento`. **No cubre el path**, así que un enlace emitido para
+ * `/menu` sirve para cualquier slug de ese dominio hasta que venza. La review lo marcó como alcance
+ * excesivo si la intención era compartir *una página*, y tiene razón en la duda: no estaba dicho.
+ *
+ * **Se queda site-wide, por lo que es esta función.** El Visual Editor de Storyblok no muestra una
+ * página: es un editor donde alguien **navega** entre las páginas de su space. Un enlace por-path
+ * obligaría a re-firmar en cada clic —o a que el editor perdiera el preview al moverse—, que es
+ * romper justamente lo que ADR-19 fue a comprar.
+ *
+ * Lo que acota el riesgo no es el path, son las otras tres cosas: está **atado al dominio** (no
+ * sirve para espiar a otro cliente), **vence** (un enlace filtrado deja de servir solo), y **solo
+ * lo emite la agencia**. Y lo que se ve son borradores del propio negocio de quien edita.
+ *
+ * Si algún día hace falta compartir una página suelta con alguien de afuera —un cliente aprobando
+ * un texto, por ejemplo— eso es **otra** función, con el path en el HMAC y un vencimiento más
+ * corto. No es esta.
  */
 
 export const PARAM_FIRMA = "_amg_preview";

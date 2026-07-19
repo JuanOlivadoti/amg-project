@@ -47,6 +47,46 @@ describe("CacheRender", () => {
     assert.equal(c.get("222", "menu"), "c", "un webhook de un space no puede vaciar el de otro");
   });
 
+  it("🔴 la clave no se puede falsificar desde el slug (10ª review, #1)", () => {
+    // La clave era `${spaceId} ${slug}`, un separador que PUEDE aparecer en el slug. Con eso,
+    // ("11", "1 menu") y ("11 1", "menu") producían la misma entrada: un cliente sirviendo la
+    // página de otro. El slug lo controla quien pide, así que la mitad de la clave era del atacante.
+    const c = new CacheRender();
+    c.set("11", "1 menu", "cliente A");
+    c.set("11 1", "menu", "cliente B");
+
+    assert.equal(c.get("11", "1 menu"), "cliente A");
+    assert.equal(c.get("11 1", "menu"), "cliente B", "dos claves distintas no pueden colapsar");
+  });
+
+  it("🔴 el tope POR DEFECTO existe: no es infinito (10ª review, falso-verde)", () => {
+    // Codex subió el default de 500 a infinito y los ocho tests siguieron verdes: todos pasaban
+    // `maxEntradas` explícito, así que ninguno fijaba el valor de producción. Este sí.
+    const c = new CacheRender({ ahora: () => 0 });
+    for (let i = 0; i < 600; i++) c.set("111", `slug-${i}`, "x".repeat(10));
+
+    assert.ok(c.tamano <= 500, `el default tiene que acotar; quedaron ${c.tamano} entradas`);
+  });
+
+  it("🔴 hay tope de BYTES, no solo de entradas (10ª review, #2)", () => {
+    // 500 entradas de 2 MB son 1 GB. Un tope por cantidad no acota la memoria si no se acota el
+    // tamaño: lo que agota el proceso son los bytes, no las claves.
+    const c = new CacheRender({ maxBytes: 10_000, ahora: () => 0 });
+    for (let i = 0; i < 50; i++) c.set("111", `slug-${i}`, "x".repeat(1_000));
+
+    assert.ok(c.bytes <= 10_000, `los bytes tienen que acotarse; hay ${c.bytes}`);
+    assert.ok(c.tamano < 50, "y eso implica desalojar aunque sobren entradas");
+  });
+
+  it("🔴 una página más grande que el tope NO se guarda (y no vacía la cache)", () => {
+    const c = new CacheRender({ maxBytes: 1_000, ahora: () => 0 });
+    c.set("111", "chica", "x".repeat(100));
+    c.set("111", "enorme", "x".repeat(5_000));
+
+    assert.equal(c.get("111", "enorme"), null, "no entra");
+    assert.equal(c.get("111", "chica"), "x".repeat(100), "y no se lleva puesto lo que ya estaba");
+  });
+
   it("🔴 invalidarSpace no borra un space cuyo id EMPIEZA igual", () => {
     // Sin el separador en la clave, invalidar "11" se llevaría "111" por delante.
     const c = new CacheRender();

@@ -55,6 +55,48 @@ describe("StoryblokCda", () => {
     );
   });
 
+  it("🔴 un cuerpo que se cuelga DESPUÉS de los headers también vence (10ª review, #2)", async () => {
+    // El agujero: `conTimeout` limpiaba el timer al recibir el `Response`, y `res.json()` consumía
+    // el cuerpo sin señal ni plazo. Storyblok podía mandar `200 OK` + headers al instante y dejar el
+    // body abierto para siempre. El test viejo usaba un fetch que rechazaba ANTES de los headers:
+    // probaba el abort, no el contrato "la petición COMPLETA termina en N ms".
+    const fetch: FetchLike = async () =>
+      ({
+        status: 200,
+        ok: true,
+        json: () => new Promise(() => {}), // nunca resuelve
+      }) as unknown as Response;
+
+    const cda = new StoryblokCda({ fetch, timeoutMs: 20 });
+
+    await assert.rejects(
+      () => cda.traerStory({ slug: "menu", token: "t", version: "published" }),
+      (e: ErrorCda) => e.status === 504,
+      "el plazo tiene que cubrir la respuesta entera, no solo los headers",
+    );
+  });
+
+  it("🔴 una respuesta enorme se corta en vez de comerse la memoria (10ª review, #2)", async () => {
+    // Sin tope de bytes, un origen (comprometido, o simplemente roto) puede mandar un JSON sin fin.
+    // Con ADR-19, un proceso sin memoria son TODAS las webs de cliente caídas a la vez.
+    const gigante = "x".repeat(3 * 1024 * 1024);
+    const fetch: FetchLike = async () =>
+      ({
+        status: 200,
+        ok: true,
+        json: async () => ({ story: { name: gigante, slug: "menu", content: {} } }),
+        text: async () => JSON.stringify({ story: { name: gigante } }),
+      }) as unknown as Response;
+
+    const cda = new StoryblokCda({ fetch, maxBytes: 1024 });
+
+    await assert.rejects(
+      () => cda.traerStory({ slug: "menu", token: "t", version: "published" }),
+      (e: ErrorCda) => e.status === 502,
+      "una story que excede el tope es un error del origen, no algo que se guarda",
+    );
+  });
+
   it("🔴 el mensaje de error NO propaga el cuerpo de Storyblok", async () => {
     // El cuerpo de un error de Storyblok puede traer el token, y de acá el mensaje va a un log.
     const { fetch } = espia({
