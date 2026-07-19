@@ -220,6 +220,25 @@ entra en bucle— pero encontró cuatro cosas, dos serias:
 > dejó la **puerta de entrada** sin un solo test. Probar lo fácil en vez de lo que se rompe, en el
 > lugar exacto donde más caro sale.
 
+#### Verificación en un navegador real (Chrome DevTools)
+
+El hallazgo **#2 estaba en PLAUSIBLE**: "el bug sale de la lógica, pero no lo reproduje porque el
+portal no corre en vivo acá". Sí corre. `npm run dev:server -w api` levanta la **API real sobre
+PGlite** (posible porque `createApp` recibe todo inyectado), y con eso se manejó el portal en Chrome:
+
+- **El #2, CONFIRMADO y luego cerrado.** Con `snapshot`, navegar de `/runs/A` a `/runs/B` dejaba la
+  URL en B y **la pantalla entera en A** —título y páginas—: aprobar ahí habría aprobado una página
+  de A. Con la suscripción a `paramMap`, el brief cambia entero. **Mutación hecha en el navegador**:
+  volver a `snapshot` reprodujo el bug; restaurar lo cerró.
+- **La cadena completa, en vivo:** portal → API (Hono) → PGlite con RLS. Login, lista de runs,
+  el brief **separado por evidencia** (✅ 2 / ⚠️ 1, con `n/d` donde no hay dato), aprobar una página
+  (el botón de aprobar el run pasa de deshabilitado a habilitado: la compuerta doble de ADR-06), y
+  aprobar el run → el evento `research/aprobado` sale **después** de que la base lo aprobó (ADR-18).
+- **Cero errores y cero warnings** en la consola del navegador.
+
+> Sigue sin haber tests de componente automatizados. Esto fue una verificación **manual asistida**, no
+> una suite: vale como evidencia de que funciona hoy, no como red de seguridad contra regresiones.
+
 ### 🔑 Pendiente de acción humana
 
 **#2 — Secretos:** la misma API key de OpenAI está duplicada en los dos `.env` (gitignoreados,

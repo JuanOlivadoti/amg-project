@@ -48,11 +48,19 @@ mismo principio que ya hacía testeable a RLS.
 # Tests (sin credenciales):
 npm test -w api
 
-# Servidor (requiere config real):
+# Servidor de DESARROLLO: la API real sobre PGlite, sin credenciales ni Supabase.
+# Siembra dos runs con páginas e imprime la sesión para pegarle al portal.
+npm run dev:server -w api
+
+# Servidor de producción (requiere config real):
 DATABASE_URL_API=postgres://amg_api:...@host/db \
 SUPABASE_JWT_SECRET=... \
 npm run serve -w api
 ```
+
+> `dev:server` usa un **verificador de token falso** (`valid:<uuid>`) y una base en memoria. Es lo
+> que permite levantar el portal contra una API de verdad sin tener Supabase ni Postgres — y es
+> posible **solo porque `createApp` recibe todo inyectado**. Aborta si `NODE_ENV=production`.
 
 `DATABASE_URL_API` es el login `amg_api` (rol `app_user`). Si falta algo, la API **no arranca**:
 una API a medio configurar es un riesgo, no una comodidad.
