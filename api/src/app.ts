@@ -127,21 +127,21 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     const code = (err as { code?: string }).code;
 
     /*
-     * 42501 llega por DOS motivos que no se pueden confundir:
+     * 42501 = `insufficient_privilege`. Llega por RLS (el usuario no tiene acceso) **y** por un GRANT
+     * roto, y Postgres **no los distingue por código**.
      *
-     *  · **RLS rechazó la fila** (`new row violates row-level security policy`): el usuario no tiene
-     *    acceso a ese tenant/cliente. Es un **403 legítimo**, y el mensaje al cliente va sin detalle.
-     *  · **`permission denied` / no puede hacer `set role`**: eso NO es culpa del usuario — es un
-     *    GRANT roto o un deploy mal configurado (ADR-17). Devolverlo como 403 lo disfraza de
-     *    "problema de permisos del negocio" y la rotura del backend queda **invisible**. Es un 500,
-     *    y se grita en el log.
+     * La versión anterior los separaba mirando si el mensaje decía `row-level security`. Eso está
+     * mal y la 9ª review lo cazó: Postgres **traduce** los mensajes según `lc_messages`, así que en
+     * un servidor no-inglés un rechazo legítimo de RLS **dejaba de coincidir** y salía como **500 en
+     * vez de 403**. Parsear texto de errores es una dependencia del idioma disfrazada de lógica.
+     *
+     * Ahora no se adivina: al cliente **siempre 403 sin detalle** (que es lo correcto para los dos
+     * casos — no se le filtra si fue RLS o un GRANT), y al log el error completo, que es donde un
+     * operador puede ver si en realidad hay una credencial mal configurada (ADR-17).
      */
     if (code === "42501") {
-      if (/row-level security/i.test(err.message)) {
-        return c.json({ error: "No autorizado para esta operación." }, 403);
-      }
-      console.error("[api] 42501 que NO es RLS — revisá GRANTs/roles (ADR-17):", err.message);
-      return c.json({ error: "Error interno." }, 500);
+      console.error("[api] 42501 insufficient_privilege (RLS o GRANT mal configurado):", err.message);
+      return c.json({ error: "No autorizado para esta operación." }, 403);
     }
     // Entrada malformada (uuid inválido, falta un NOT NULL, FK o CHECK que no cierra): es del
     // cliente, no del servidor. Se mapea a 400 en vez de un 500 que mentiría sobre de quién es la culpa.

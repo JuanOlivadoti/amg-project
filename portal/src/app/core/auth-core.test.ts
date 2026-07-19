@@ -90,6 +90,28 @@ test('🔴 parseSesion rechaza formas inválidas: nada de sesiones fantasma', ()
   );
 });
 
+test('🔴 parseSesion rechaza un expiraEn imposible, pero ACEPTA uno vencido', () => {
+  const con = (expiraEn: unknown) =>
+    parseSesion(JSON.stringify({ accessToken: 'a', refreshToken: 'r', userId: 'u', tenantId: 't', expiraEn }));
+  assert.equal(con(-1), null, 'negativo es basura');
+  assert.equal(con(0), null, 'cero es basura');
+  // Vencido NO se rechaza: el refresh token vive más, y el 401 lo resuelve solo. Deslogear acá
+  // obligaría a re-entrar cuando no hacía falta.
+  assert.ok(con(Date.now() - 60_000), 'una sesión vencida se restaura y se refresca');
+});
+
+test('🔴 un rol inventado se normaliza a desconocido', () => {
+  const con = (rol: unknown) =>
+    parseSesion(
+      JSON.stringify({ accessToken: 'a', refreshToken: 'r', userId: 'u', tenantId: 't', expiraEn: 1, rol }),
+    );
+  assert.equal(con('superadmin-inventado')?.rol, '', 'no se cuela un rol fuera del dominio');
+  assert.equal(con(123)?.rol, '');
+  assert.equal(con('cliente')?.rol, 'cliente', 'los reales sí pasan');
+  assert.equal(con('equipo')?.rol, 'equipo');
+  assert.equal(con('maestro')?.rol, 'maestro');
+});
+
 test('parseSesion conserva un tenantId vacío: es el caso real del usuario sin app_metadata', () => {
   const raw = JSON.stringify({
     accessToken: 'jwt',

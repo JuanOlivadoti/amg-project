@@ -94,6 +94,32 @@ test("si se configura issuer, un token de OTRO proyecto se rechaza", async () =>
   assert.equal(await conIssuer(ajeno), null);
 });
 
+test("🔴 un HS512 firmado con el MISMO secreto se rechaza: el contrato es HS256", async () => {
+  // No es un bypass (hace falta el secreto), pero una política declarada y no impuesta no es una
+  // política. Sin `algorithms: ["HS256"]` esto entraba.
+  const token = await new SignJWT({})
+    .setProtectedHeader({ alg: "HS512" })
+    .setSubject("user-1")
+    .setIssuedAt()
+    .setExpirationTime("2h")
+    .setAudience(AUD_SUPABASE)
+    .sign(clave);
+  assert.equal(await verificar(token), null);
+});
+
+test("alg:none se rechaza", async () => {
+  // Header y payload sin firma: el ataque clásico.
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const exp = Math.floor(Date.now() / 1000) + 3600;
+  const token = `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: "user-1", exp, aud: AUD_SUPABASE })}.`;
+  assert.equal(await verificar(token), null);
+});
+
+test("un sub de solo espacios se rechaza: no identifica a nadie", async () => {
+  const token = await firmar({ sub: "   ", exp: "2h", aud: AUD_SUPABASE });
+  assert.equal(await verificar(token), null);
+});
+
 test("basura no rompe: devuelve null, no lanza", async () => {
   assert.equal(await verificar("no-es-un-jwt"), null);
   assert.equal(await verificar(""), null);

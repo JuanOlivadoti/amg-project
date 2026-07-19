@@ -24,7 +24,7 @@ para que lo use alguien que no sea yo es la **API + el portal**: hoy la compuert
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **257 tests en verde** + typecheck limpio en los 5 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **260 tests en verde** + typecheck limpio en los 5 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Cinco reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía (o afirmaciones de seguridad **falsas** que documenté y el código desmentía). Ver [ADR-13..21 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## El número para la propuesta comercial

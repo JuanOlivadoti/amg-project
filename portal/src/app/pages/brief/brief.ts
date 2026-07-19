@@ -7,6 +7,7 @@ import { ApiService } from '../../services/api';
 import { AuthService } from '../../services/auth';
 import type { Brief, PaginaPropuesta } from '../../core/models';
 import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
+import { Vigencia } from '../../core/vigencia';
 
 @Component({
   selector: 'app-brief',
@@ -149,7 +150,11 @@ export class BriefPage implements OnInit, OnDestroy {
   private static readonly POLL_MS = 4000;
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  private runId = '';
+  /** A qué run corresponde el trabajo en vuelo, y si el componente sigue vivo. Ver `vigencia.ts`. */
+  private readonly vigencia = new Vigencia();
+  private get runId(): string {
+    return this.vigencia.actual;
+  }
   readonly brief = signal<Brief | null>(null);
   readonly cargando = signal(true);
   readonly error = signal('');
@@ -180,8 +185,8 @@ export class BriefPage implements OnInit, OnDestroy {
     this.sub = this.route.paramMap.subscribe((params) => {
       const id = params.get('id') ?? '';
       if (id === this.runId) return;
-      this.runId = id;
-      // Estado del run anterior: fuera. Si no, se vería el brief viejo mientras carga el nuevo.
+      // Cambiar la vigencia ANTES de nada: lo que venga del run anterior queda obsoleto solo.
+      this.vigencia.cambiarA(id);
       this.pararPolling();
       this.brief.set(null);
       this.editando.set(null);
@@ -191,20 +196,27 @@ export class BriefPage implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // Primero destruir la vigencia: una carga en vuelo que resuelva después NO puede crear un timer
+    // nuevo (quedaría huérfano, pegándole a la API para siempre).
+    this.vigencia.destruir();
     this.pararPolling();
     this.sub?.unsubscribe();
   }
 
   async cargar(): Promise<void> {
+    const pedido = this.runId; // a qué run corresponde ESTA petición
     this.cargando.set(true);
     this.error.set('');
     try {
-      this.brief.set(await this.api.verBrief(this.runId));
+      const brief = await this.api.verBrief(pedido);
+      if (this.vigencia.obsoleta(pedido)) return; // llegó tarde: ya es otro run, o nos fuimos
+      this.brief.set(brief);
       this.ajustarPolling();
     } catch (e) {
+      if (this.vigencia.obsoleta(pedido)) return;
       this.error.set((e as Error).message);
     } finally {
-      this.cargando.set(false);
+      if (!this.vigencia.obsoleta(pedido)) this.cargando.set(false);
     }
   }
 
@@ -213,6 +225,11 @@ export class BriefPage implements OnInit, OnDestroy {
    * NO toca `cargando` (no queremos el spinner cada 4 s pisando la pantalla) ni `error` transitorio.
    */
   private ajustarPolling(): void {
+    // Si el componente ya no existe, NADIE crea un timer: no habría quién lo limpie.
+    if (!this.vigencia.viva) {
+      this.pararPolling();
+      return;
+    }
     const corriendo = this.brief()?.run.status === 'running';
     if (corriendo && !this.timer) {
       this.timer = setInterval(() => void this.refetch(), BriefPage.POLL_MS);
@@ -229,8 +246,11 @@ export class BriefPage implements OnInit, OnDestroy {
   }
 
   private async refetch(): Promise<void> {
+    const pedido = this.runId;
     try {
-      this.brief.set(await this.api.verBrief(this.runId));
+      const brief = await this.api.verBrief(pedido);
+      if (this.vigencia.obsoleta(pedido)) return; // otro run, o ya nos fuimos
+      this.brief.set(brief);
       this.ajustarPolling();
     } catch {
       /* un fallo transitorio no rompe el polling; el próximo tick reintenta */

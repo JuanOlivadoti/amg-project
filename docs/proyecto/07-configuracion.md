@@ -31,7 +31,7 @@ verdad.
 > No es una convención del código: **la frontera la impone Postgres**.
 
 **Sin ninguna de estas variables el sistema arranca igual**, con PGlite en memoria. Es deliberado y
-es lo que permite que los 257 tests corran en CI sin Docker, sin cuenta y sin red.
+es lo que permite que los 260 tests corran en CI sin Docker, sin cuenta y sin red.
 
 ---
 

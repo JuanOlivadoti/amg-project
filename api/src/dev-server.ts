@@ -51,13 +51,13 @@ const equipo = (
   )
 )[0]!.user_id;
 
-const crearRun = async (prompt: string): Promise<string> =>
+const crearRun = async (prompt: string, status = "pending_approval"): Promise<string> =>
   (
     await sql<{ id: string }>(
       `insert into kr_runs (tenant_id, client_id, schema_version, status, prompt,
                             market_country, market_language, market_location_code, coste_micros_usd)
-       values ($1,$2,'kr.v0.5','pending_approval',$3,'ES','es',2724, 310800) returning id`,
-      [tenant, client, prompt],
+       values ($1,$2,'kr.v0.5',$4,$3,'ES','es',2724, 310800) returning id`,
+      [tenant, client, prompt, status],
     )
   )[0]!.id;
 
@@ -105,6 +105,10 @@ const verificar: VerificadorToken = async (t) => (t.startsWith("valid:") ? { use
 
 const app = createApp({ store, emisor, verificar, corsOrigins: ["http://localhost:4200"] });
 
+// Un run EN CURSO: es el que dispara el polling del brief (y con el que se comprueba que no quede
+// un intervalo huérfano al salir de la pantalla).
+const runCorriendo = await crearRun("Pizzería en Chamberí (corriendo)", "running");
+
 serve({ fetch: app.fetch, port: 3000 }, () => {
   const sesion = {
     accessToken: `valid:${equipo}`,
@@ -116,8 +120,9 @@ serve({ fetch: app.fetch, port: 3000 }, () => {
     rol: "equipo",
   };
   console.log("\n▶ API de desarrollo en http://localhost:3000  (PGlite en memoria, token falso)\n");
-  console.log(`  runA (italiano): ${runA}`);
-  console.log(`  runB (tapas):    ${runB}\n`);
+  console.log(`  runA (italiano):  ${runA}`);
+  console.log(`  runB (tapas):     ${runB}`);
+  console.log(`  runC (corriendo): ${runCorriendo}\n`);
   console.log("  Sesión para el portal (pegar en la consola del navegador):");
   console.log(`  localStorage.setItem('amg.sesion', ${JSON.stringify(JSON.stringify(sesion))})\n`);
 });

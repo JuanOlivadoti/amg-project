@@ -96,16 +96,32 @@ export function parseSesion(raw: string | null): Sesion | null {
 
   const texto = (k: string): boolean => typeof s[k] === 'string' && (s[k] as string).length > 0;
   if (!texto('accessToken') || !texto('refreshToken') || !texto('userId')) return null;
-  if (typeof s['expiraEn'] !== 'number' || !Number.isFinite(s['expiraEn'])) return null;
   if (typeof s['tenantId'] !== 'string') return null;
+  // `expiraEn` tiene que ser un instante posible. Un negativo o un 0 no es "vencido": es basura.
+  // Vencido SÍ se acepta: el refresh token suele vivir más que el access token, así que deslogear
+  // por eso obligaría a re-entrar cuando el 401 lo habría resuelto solo.
+  const expiraEn = s['expiraEn'];
+  if (typeof expiraEn !== 'number' || !Number.isFinite(expiraEn) || expiraEn <= 0) return null;
 
   return {
     accessToken: s['accessToken'] as string,
     refreshToken: s['refreshToken'] as string,
-    expiraEn: s['expiraEn'] as number,
+    expiraEn,
     userId: s['userId'] as string,
     email: typeof s['email'] === 'string' ? s['email'] : '',
     tenantId: s['tenantId'] as string,
-    rol: typeof s['rol'] === 'string' ? s['rol'] : '',
+    rol: normalizarRol(s['rol']),
   };
+}
+
+/** Los roles que el sistema conoce (`memberships.rol`). Cualquier otra cosa: desconocido. */
+const ROLES = ['maestro', 'equipo', 'cliente'] as const;
+
+/**
+ * Un rol inventado en `localStorage` no debe colarse como si fuera del dominio. No es escalada —la
+ * API/RLS deciden igual— pero `esEquipo` mostraría controles de equipo por un valor arbitrario.
+ * Lo desconocido se normaliza a `''`, que ya significa "no sé, asumo equipo y que filtre la base".
+ */
+function normalizarRol(v: unknown): string {
+  return typeof v === 'string' && (ROLES as readonly string[]).includes(v) ? v : '';
 }

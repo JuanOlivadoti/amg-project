@@ -43,13 +43,18 @@ export function verificadorSupabase(jwtSecret: string, opts: OpcionesJwt = {}): 
   return async (token) => {
     try {
       const { payload } = await jwtVerify(token, secret, {
+        // El contrato es HS256 y hay que IMPONERLO: sin esta línea, un HS512 firmado con el mismo
+        // secreto también entraba. No era un bypass (hay que tener el secreto), pero una política
+        // declarada y no impuesta no es una política. Lo halló la 9ª review.
+        algorithms: ["HS256"],
         // Sin esto, un token sin `exp` es eterno. Y sin `sub` no hay a quién identificar.
         requiredClaims: ["exp", "sub"],
         ...(audience ? { audience } : {}),
         ...(opts.issuer ? { issuer: opts.issuer } : {}),
       });
-      const sub = payload.sub;
-      return typeof sub === "string" && sub.length > 0 ? { userId: sub } : null;
+      const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
+      // `sub` en blanco (o solo espacios) no identifica a nadie: `app.user_id` quedaría vacío.
+      return sub.length > 0 ? { userId: sub } : null;
     } catch {
       return null;
     }

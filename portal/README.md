@@ -19,7 +19,11 @@ standalone + signals, Tailwind puro, **habla solo con nuestra API** (nunca con P
 
 > El brief se **suscribe** al parámetro de la ruta, no lee el snapshot: Angular reutiliza el
 > componente al ir de `/runs/A` a `/runs/B`, y con snapshot la pantalla decía B mientras **aprobar
-> iba contra A** (8ª review).
+> iba contra A** (8ª review, confirmado en un navegador real).
+>
+> Y una promesa no se cancela: `core/vigencia.ts` marca a qué run corresponde cada petición **antes**
+> de lanzarla, así una respuesta que llega tarde no pisa la pantalla y una carga en vuelo no puede
+> crear un `setInterval` huérfano al destruirse el componente (9ª review).
 
 ## La decisión de fondo: la lógica es TypeScript puro, testeable sin navegador
 

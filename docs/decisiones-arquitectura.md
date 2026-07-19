@@ -849,7 +849,24 @@ Supabase no abra esta puerta.
 
 > El agujero sobrevivió porque **ningún test tocaba el verificador real**: los de la API inyectan uno
 > falso (correcto para probar rutas y RLS sin criptografía), así que mutar el verdadero para aceptar
-> cualquier token dejaba la suite entera en verde. Hoy hay 9 tests con JWT firmados de verdad.
+> cualquier token dejaba la suite entera en verde. Hoy hay 12 tests con JWT firmados de verdad.
+
+También se **impone el algoritmo** (`algorithms: ["HS256"]`). La 9ª review mostró que un **HS512
+firmado con el mismo secreto entraba**: no es un bypass —hay que tener el secreto— pero una política
+declarada y no impuesta no es una política. `alg:none` y un `sub` en blanco también se rechazan.
+
+### Los errores de permisos NO se clasifican por el texto
+
+`42501` (`insufficient_privilege`) llega por **RLS** y por un **GRANT roto**, y Postgres **no los
+distingue por código**. Hubo una versión que los separaba mirando si el mensaje decía
+`row-level security`. Está mal, y la 9ª review lo cazó: Postgres **traduce** los mensajes según
+`lc_messages`, así que en un servidor no-inglés un rechazo legítimo de RLS dejaba de coincidir y
+salía **500 en vez de 403**. Parsear texto de errores es una dependencia del idioma disfrazada de
+lógica.
+
+Ahora no se adivina: al cliente **siempre 403 sin detalle** —que es lo correcto para los dos casos,
+no se le filtra si fue RLS o configuración— y al log el error completo, que es donde un operador
+puede ver si hay una credencial mal puesta (ADR-17).
 
 ### CORS: el navegador del portal llama desde otro origen
 
