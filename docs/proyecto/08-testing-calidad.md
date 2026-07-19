@@ -17,7 +17,7 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 260 tests (monorepo) + 29 (portal)
+## Cobertura actual: 324 tests (monorepo) + 29 (portal)
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
@@ -26,6 +26,7 @@ sin cuenta.
 | `web-builder` | **41** | Contrato, handoff, render, XSS, idempotencia de publicación. |
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **33** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
+| `renderer` | **60** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), y `perfilValido` (un NAP mal cargado degrada, no tira la web). |
 | `portal` | **29** | *(fuera del monorepo)* El núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, y **la separación por evidencia** (✅/⚠️). Con `node:test` y `fetch` de mentira — sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
@@ -62,7 +63,7 @@ comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la
 
 ## Revisiones externas (Codex) — qué encontraron y qué se corrigió
 
-**Nueve rondas de revisión adversarial**, en 15 tandas de correcciones. Todos los hallazgos están
+**Nueve rondas de revisión adversarial**, en 16 tandas de correcciones (la 16ª sin review externa todavía). Todos los hallazgos están
 corregidos y **los tests los fijan como contrato** para que no reaparezcan.
 
 El patrón que se repite —y por eso las reviews están en el proceso— es que **casi siempre encuentran
@@ -280,6 +281,29 @@ código**; **yo manejé el portal en un navegador real** con la API levantada so
 > ⚠️ **Sigue sin haber tests de componente.** La lógica de la carrera ahora **sí** está cubierta
 > (`Vigencia`), pero que `BriefPage` la use correctamente se verificó a mano en el navegador: eso es
 > evidencia de que funciona hoy, **no una red contra regresiones**.
+
+### Tanda 16 — Etapa 6, el renderizador: dos bugs que encontró la verificación, no yo ✅
+
+Sin review externa todavía. Estos salieron **escribiendo el código y manejándolo**, y los dos son de
+la misma familia: *yo había afirmado algo que no era cierto*.
+
+| | Qué pasó | Cómo apareció | Qué se hizo |
+|---|---|---|---|
+| **#1** HIGH | **Una política de RLS sin cláusula `to` aplica a roles que todavía no existen.** `client_select` (de `0001`) llamaba a `app.ve_cliente()` → lee `memberships`. Al agregar el rol público `app_render`, esa política vieja se evaluaba también para él y lanzaba `42501`: el renderizador no podía leer **ni la fila que su propia política le autorizaba**. Las políticas se combinan con OR, pero **si cualquiera lanza, la query entera muere**. | El **test de RLS**, en rojo, antes de que existiera el servicio. | `client_select`/`client_write` acotadas con `to app_user, app_service`. **Lo importante es lo que casi pasa:** si le hubiera dado `execute on schema app` por inercia —como tienen los otros tres roles— habría funcionado **en silencio**, con el rol público evaluando políticas de usuarios autenticados y leyendo `memberships` en cada visita a la web de un restaurante. El fallo ruidoso fue lo que lo hizo visible. |
+| **#2** HIGH | **Un NAP mal cargado tiraba la web entera del cliente.** `renderStory()` **lanza** si `business_profile` trae `address` como texto plano en vez de un `PostalAddress` → 503. La columna es `jsonb`: Postgres garantiza JSON válido y **nada más**. Y en `app.ts` yo había escrito que un perfil mal formado *"degrada la página en vez de romperla"* — **falso**: el `typeof p === "object"` que tenía deja pasar `{address: "Calle Mayor 1"}` sin pestañear. | **El navegador**, en la primera carga del dev-server. Los tests no lo vieron porque **todos** usaban `businessProfile: null`. | `perfil.ts`: valida forma, descarta lo irreconocible, y la página sale sin bloque de contacto. **Una página sin dirección es mucho mejor que ninguna página.** 10 tests, incluido uno que documenta que `renderStory` lanza — si algún día se vuelve tolerante, ese test cae y avisa. |
+| **#3** MED | `encodeURIComponent` **no** neutraliza `..`: el punto es un carácter no reservado, pasa intacto, y `new URL()` colapsa la ruta **después** — un slug `../../spaces/111` se salía de `/stories/` y le pegaba a otro endpoint de la API de Storyblok. | Un test que escribí **esperando que ya estuviera cubierto**. | Los segmentos `.` y `..` se descartan antes de escapar. |
+
+> **La lección: el comentario es donde las afirmaciones no se ejecutan.** El #2 no fue un descuido de
+> implementación — fue que escribí la garantía en prosa, me la creí, y nunca la ejercité. Es la misma
+> forma exacta de los hallazgos de las reviews 7, 8 y 9. La diferencia es que esta vez la encontré
+> antes de decir "hecho", y solo porque **levanté el servicio y lo miré**.
+
+**Verificado en un navegador real** (Chrome DevTools, contra el dev-server sobre PGlite): la web
+sirve con su JSON-LD `LocalBusiness` + `FAQPage`; el cliente con el NAP roto **degrada en vez de
+caerse**; dominio desconocido → 404 sin fallback; `miss`→`hit` en la cache y `miss` de nuevo tras el
+webhook firmado, **sin tocar el otro space**; y el preview firmado sirve el borrador con el Bridge y
+`noindex`, mientras que sin firma, con firma de otro dominio o con la firma alterada **sirve lo
+publicado**.
 
 ### 🔑 Pendiente de acción humana
 

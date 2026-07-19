@@ -25,7 +25,7 @@
 | ADR-16 | Portal en **Angular + Tailwind** (reemplaza ADR-02) | Aceptada |
 | ADR-17 | **Un proceso, un login, un rol**: la separación la impone Postgres | Aceptada (corrige ADR-15) |
 | ADR-18 | Un evento no porta autoridad: la API crea el run, el evento lo dispara | Aceptada |
-| ADR-19 | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | Aceptada (cierra OBS-03) |
+| ADR-19 | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | Aceptada · ✅ **implementada** en `renderer/` (etapa 6) |
 | ADR-20 | El portal **también sirve al cliente, en modo lectura** (amplía ADR-16) | Aceptada |
 | ADR-21 | **El stack del portal, cerrado**: solo habla con nuestra API · polling · Tailwind puro · standalone+signals | Aceptada (completa ADR-16) |
 | ADR-22 | **La API en Hono**: comandos compuestos (fila bajo RLS → después el evento), auth = JWT + RLS | Aceptada (implementa 5.1) |
@@ -188,6 +188,20 @@
 >
 > ⚠️ **Este ADR hay que reescribirlo en esos términos antes de llevarlo a un contrato.** Tal como
 > está redactado arriba, promete un frontend Next.js que no existe.
+>
+> **Actualización (2026-07-19).** El renderizador **ya existe** (`renderer/`, etapa 6), así que la
+> pieza que faltaba para poder firmar esto está construida. Dos cosas que el nuevo código aporta al
+> offboarding y conviene anotar antes de redactar la cláusula:
+>
+> - **Archivar al cliente APAGA su web**, sin ningún paso extra: la política de `app_render` exige
+>   `archived_at is null`. El "offboarding en <5 min" del PRD no depende de que alguien se acuerde
+>   de tocar el renderizador.
+> - **El dominio es único y no se libera solo.** Si un cliente se va y otro toma su dominio, tiene
+>   que ser un acto explícito, no una carrera que resuelve el `order by` de una query.
+>
+> Lo que **sigue pendiente y es trabajo humano, no de código**: verificar el *snapshot estático* como
+> entregable real (se puede sacar de `renderStory()`, nadie lo ha hecho) y poner precio a la "salida
+> gestionada". El ADR sigue sin poder llevarse a un contrato tal como está redactado arriba.
 
 ---
 
@@ -669,6 +683,43 @@ con la cache en el borde (que sigue sirviendo aunque el origen esté caído), pe
 que un estático no tenía**, y hay que dimensionarlo antes de vender SLA.
 
 **Estado.** Aceptada. **Cierra OBS-03.** No entra en la Fase 2 (API + portal): es su propia tanda.
+
+> ### ✅ Implementada (2026-07-19) — etapa 6, paquete `renderer/` (60 tests)
+>
+> Los cinco puntos de "qué hay que construir" están. Lo que este ADR **no** había resuelto y hubo
+> que decidir sobre la marcha:
+>
+> **1. El modelo de seguridad no cubría a un visitante anónimo.** ADR-15 deriva el rol de
+> `memberships`; un navegante no tiene ninguna, así que `app.current_role()` le da NULL y no puede
+> leer nada. Correcto, pero incompleto. La decisión: **el dominio ES la autorización**, con un login
+> propio (`amg_render` → `app_render`) y *grants a nivel de columna* sobre `clients`. Es el rol más
+> pobre del sistema, y a propósito: es la única pieza expuesta a internet anónimo, así que la
+> pregunta no fue "¿qué necesita?" sino **"si me lo toman, ¿qué se llevan?"**. Se llevan el mapa
+> dominio→space y el NAP, que ya está impreso en cada página pública. Ver `0007_render_publico.sql`.
+>
+> **2. La política no filtra por tenant, y es deliberado.** Sería teatro: el renderizador podría
+> poner el tenant que quisiera, porque es él quien lo derivaría del dominio. Un control que el
+> controlado se autoexpide no controla nada.
+>
+> **3. Los dos tokens de la CDA no son la misma clase de cosa.** El público lee contenido publicado
+> (viaja en el bundle del navegador en cualquier setup normal: no es un secreto). El de **preview**
+> lee borradores y **sí** lo es. El renderizador necesita el segundo para servir la URL del Visual
+> Editor — o sea que **el token de borradores está dentro del radio de explosión del servicio más
+> expuesto**. Es el costo real de haber elegido runtime sobre estático, y se paga a sabiendas: lo
+> que lo hace tolerable es que servir draft exige además una **firma de preview atada al dominio y
+> con vencimiento**, y que la Management API (la que puede *modificar* el space) nunca entra acá.
+>
+> **4. "Cache en el borde" es media frase.** Lo que se construyó es una cache **en proceso** con TTL,
+> tope e invalidación por webhook firmado. El borde —una CDN delante— es una **decisión de
+> despliegue**, no código de este repositorio. Las dos hacen falta y solo una está, y con más de una
+> instancia el webhook llega a UNA sola: las demás sirven viejo hasta que venza el TTL. Dicho acá
+> para que nadie lea el ADR como si estuviera hecho.
+>
+> **El riesgo de disponibilidad, dimensionado** (lo pide el propio ADR antes de vender SLA): el
+> *health check* no toca ni la base ni Storyblok —si dependiera, el orquestador de despliegue mataría
+> el servicio justo cuando el caído es Storyblok, cambiando una degradación por una caída total—;
+> hay timeout de 5 s contra la CDA; y un fallo del origen es 503 **que no se cachea**. Sigue siendo
+> un punto único: **una instancia caída son todas las webs de cliente caídas a la vez.**
 
 ## ADR-20 — El portal también sirve al cliente, en modo lectura (amplía ADR-16)
 

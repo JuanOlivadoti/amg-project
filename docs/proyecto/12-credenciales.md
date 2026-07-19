@@ -16,8 +16,15 @@ convención del código: es una frontera que **hace cumplir Postgres**.
 | `amg_api` | `app_user` | Leer/escribir datos de tenant **bajo RLS**, con el rol derivado de `memberships` | **Asumir `app_service`.** Tocar las caches. |
 | `amg_orquestador` | `app_service` | Escribir los resultados del research bajo RLS | **Asumir `app_user`.** Tocar las caches. |
 | `amg_cache` | (ninguno) | Solo `kr_metrics_cache`, `kr_serp_cache`, `kr_provider_tasks` | **Ver una sola fila de un tenant.** |
+| `amg_render` | `app_render` | **7 columnas de `clients`**, y solo de clientes con dominio publicado y sin archivar | **Escribir nada. Ver `kr_*`, `memberships`, `tenants`, las caches, ni las funciones de `app`.** |
 
-Los tres son **`NOINHERIT`**, y esa palabra es la mitad del mecanismo.
+Los cuatro son **`NOINHERIT`**, y esa palabra es la mitad del mecanismo.
+
+> **`amg_render` es el más pobre a propósito.** Es el único proceso expuesto a internet **anónimo**
+> (la API exige un JWT; el orquestador no atiende a nadie de afuera), así que la pregunta de diseño
+> fue *"si me lo toman, ¿qué se llevan?"*. Se llevan el mapa dominio→space y el NAP del negocio —que
+> ya está impreso en cada página pública—, **y el token de preview de Storyblok**, que sí es un
+> secreto y es el costo declarado de ADR-19. Ver `0007_render_publico.sql`.
 
 ### Por qué `NOINHERIT` no es opcional
 
@@ -49,6 +56,9 @@ DATABASE_URL_CACHE=postgres://amg_cache:...@host/db     # ← LA LEE EL CÓDIGO 
 
 # La API (portal). Rol app_user: RLS + rol derivado de memberships.
 DATABASE_URL_API=postgres://amg_api:...@host/db         # ← LA LEE EL CÓDIGO HOY
+
+# El renderizador público (ADR-19). Rol app_render: el más pobre del sistema.
+DATABASE_URL_RENDER=postgres://amg_render:...@host/db   # ← LA LEE EL CÓDIGO HOY
 ```
 
 > ✅ **`DATABASE_URL_API` ya se usa.** La API (etapa 5.1) la lee en `api/src/deps.ts` y construye su
@@ -59,7 +69,16 @@ DATABASE_URL_API=postgres://amg_api:...@host/db         # ← LA LEE EL CÓDIGO 
 > La API necesita además `SUPABASE_JWT_SECRET` (y, en producción, `SUPABASE_JWT_ISS`): ver
 > [`api/README.md`](../../api/README.md).
 
-> **Sin ninguna de las tres**, el sistema arranca igual con **PGlite en memoria**. Es deliberado:
+> ✅ **`DATABASE_URL_RENDER` ya se usa.** El renderizador (etapa 6) la lee en `renderer/src/deps.ts`.
+> Necesita además **`STORYBLOK_WEBHOOK_SECRET`** (obligatoria: sin ella la invalidación de cache queda
+> cerrada y el Visual Editor solo *casi* funciona) y **`PREVIEW_SECRET`** (sin ella no se sirven
+> borradores, ni con firma). Ver [`renderer/README.md`](../../renderer/README.md).
+>
+> Ojo con una que **no** es de Postgres: los tokens de la Content Delivery API viven **por cliente en
+> la base** (`clients.storyblok_public_token` / `storyblok_preview_token`), no en el entorno. Tienen
+> que ser así porque hay uno por space y ADR-04 da **un space por cliente**.
+
+> **Sin ninguna de las cuatro**, el sistema arranca igual con **PGlite en memoria**. Es deliberado:
 > todo el proyecto corre sin una sola credencial.
 
 **Las contraseñas no van en el repositorio, ni en las migraciones, ni en un mensaje.** Se ponen al
@@ -69,6 +88,7 @@ desplegar:
 alter role amg_api           with password '…';
 alter role amg_orquestador   with password '…';
 alter role amg_cache         with password '…';
+alter role amg_render        with password '…';
 ```
 
 ---

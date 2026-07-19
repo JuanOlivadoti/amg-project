@@ -22,7 +22,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
 | 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal) · falta desplegar (5.3) |
-| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ⏳ **ACÁ ESTAMOS** |
+| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 60 tests |
 
 Después de la **5** el sistema es **usable por una persona que no sea yo**: la compuerta de
 aprobación (ADR-06) ya no se ejecuta editando un JSON a mano — se aprueba desde el portal, página por
@@ -57,7 +57,7 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
 ```
 
 - **5 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`.
-- **260 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **324 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -65,8 +65,12 @@ Editor, que es *la razón por la que se eligió Storyblok*, no llega a ninguna p
 ### Lo que NO existe todavía
 
 - **Un despliegue.** Nada corre en ningún servidor (etapa 5.3; dónde se hostea, sin decidir).
-- **La web del cliente.** Se publica contenido en Storyblok, pero **nada lo sirve en un dominio**
-  (etapa 6, ADR-19). Es lo único que separa "una web generada" de que el cliente **tenga** una web.
+- ~~**La web del cliente.**~~ ✅ Existe: `renderer/` (etapa 6, ADR-19) la sirve en vivo desde
+  Storyblok, con preview firmado para el Visual Editor e invalidación por webhook. **Pero solo corre
+  en `localhost`**: lo que falta para que el cliente *tenga* una web es el despliegue de arriba.
+- **Una CDN delante del renderizador.** ADR-19 dice "cache en el borde"; lo construido es una cache
+  **en proceso**. El borde es decisión de despliegue. Con más de una instancia, el webhook invalida
+  solo una: antes de escalar hay que resolverlo (ver `renderer/README.md`).
 - **Tests de componente del portal.** El núcleo está cubierto; los componentes se verifican
   compilando (AOT) y a mano en el navegador.
 

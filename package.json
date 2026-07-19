@@ -9,7 +9,8 @@
     "kr-service",
     "web-builder",
     "orchestrator",
-    "api"
+    "api",
+    "renderer"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",

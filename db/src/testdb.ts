@@ -62,6 +62,27 @@ export class TestDb {
   }
 
   /**
+   * Query como `app_render`: el renderizador público (ADR-19).
+   *
+   * No recibe contexto porque **no hay ninguno**: del otro lado hay un visitante anónimo. Que este
+   * método no tenga un `RequestContext` que aceptar es la misma garantía en el tipo que ya da
+   * `RequestContext` al no tener un `rol`: no se puede probar accidentalmente con una identidad
+   * que en producción nunca va a existir.
+   */
+  async asRender<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+    await this.pg.exec("begin");
+    try {
+      await this.pg.exec("set local role app_render");
+      const res = await this.pg.query<T>(sql, params);
+      await this.pg.exec("rollback");
+      return res.rows;
+    } catch (e) {
+      await this.pg.exec("rollback");
+      throw e;
+    }
+  }
+
+  /**
    * Query como service-role de INFRAESTRUCTURA (superusuario: salta RLS).
    *
    * Ojo con no confundirla con `app_service`: esta es la que corre migraciones y siembra datos.
@@ -86,6 +107,15 @@ export class TestDb {
   async queryEnTx<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
     const res = await this.pg.query<T>(sql, params);
     return res.rows;
+  }
+
+  /**
+   * La instancia cruda, para envolverla en un `PglitePool` y probar las clases de acceso reales
+   * (`PgStore`, `PgSitios`) contra la MISMA base ya sembrada. Sin esto habría que sembrar dos veces
+   * y los tests probarían un escenario distinto del que dicen probar.
+   */
+  get pglite(): PGlite {
+    return this.pg;
   }
 
   async close(): Promise<void> {

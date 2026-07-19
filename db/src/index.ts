@@ -16,6 +16,9 @@ export type {
   RunSummary,
 } from "./store.js";
 
+export { PgSitios, MemSitios } from "./sitios.js";
+export type { Sitio, SitioResolver } from "./sitios.js";
+
 export { NodePgPool, PglitePool, ejecutorDe } from "./pool.js";
 export type { DbPool, Tx, SqlExecutor, NodePgPoolLike, NodePgClientLike } from "./pool.js";
 
