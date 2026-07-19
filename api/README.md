@@ -56,3 +56,19 @@ npm run serve -w api
 
 `DATABASE_URL_API` es el login `amg_api` (rol `app_user`). Si falta algo, la API **no arranca**:
 una API a medio configurar es un riesgo, no una comodidad.
+
+### Variables
+
+| Variable | Default | Para qué |
+|---|---|---|
+| `DATABASE_URL_API` | **obligatoria** | Login `amg_api` → rol `app_user`. No puede asumir `app_service` (ADR-17). |
+| `SUPABASE_JWT_SECRET` | **obligatoria** | Verifica la firma del token (HS256). |
+| `SUPABASE_JWT_AUD` | `authenticated` | `aud` esperado. Es lo que emite Supabase para un usuario logueado. |
+| `SUPABASE_JWT_ISS` | *(no se exige)* | `iss` esperado (`https://<proy>.supabase.co/auth/v1`). **Configuralo en producción**: cierra la puerta a un token válido de OTRO proyecto Supabase. |
+| `CORS_ORIGINS` | `*` | Orígenes del portal, coma-separados. Seguro con `*` porque se autentica por header, no por cookies. |
+| `PORT` | `3000` | |
+
+> 🔐 **Al token se le exige `exp` y `sub`, no solo la firma.** `jwtVerify` valida la expiración *si el
+> claim está*, pero no lo exige: un token firmado con el secreto correcto y **sin `exp` era eterno**.
+> Lo encontró la 8ª review, y sobrevivió porque los tests inyectan un verificador falso y **nadie
+> probaba el real**. Hoy hay 9 tests con JWT firmados de verdad (`auth.test.ts`).

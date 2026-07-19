@@ -48,14 +48,16 @@ DATABASE_URL_ORQUESTADOR=postgres://amg_orquestador:...@host/db
 DATABASE_URL_CACHE=postgres://amg_cache:...@host/db     # ← LA LEE EL CÓDIGO HOY
 
 # La API (portal). Rol app_user: RLS + rol derivado de memberships.
-DATABASE_URL_API=postgres://amg_api:...@host/db         # ⏳ TODAVÍA NADIE LA LEE
+DATABASE_URL_API=postgres://amg_api:...@host/db         # ← LA LEE EL CÓDIGO HOY
 ```
 
-> ⚠️ **`DATABASE_URL_API` está aquí por adelantado.** El rol `amg_api` **ya existe** en la migración
-> `0003_credenciales.sql` y **ya hay un test** que verifica contra `pg_auth_members` que no puede
-> asumir el rol del servicio. Pero **la API no está construida**, así que ninguna línea de código lee
-> esa variable todavía. Se documenta para que el contrato esté fijado *antes* de escribirla — no
-> porque funcione.
+> ✅ **`DATABASE_URL_API` ya se usa.** La API (etapa 5.1) la lee en `api/src/deps.ts` y construye su
+> `PgStore` con el rol `app_user`. El rol `amg_api` existe desde `0003_credenciales.sql`, y un test
+> verifica contra `pg_auth_members` que **no puede** asumir el rol del servicio (ADR-17). Si falta la
+> variable, la API **no arranca**.
+>
+> La API necesita además `SUPABASE_JWT_SECRET` (y, en producción, `SUPABASE_JWT_ISS`): ver
+> [`api/README.md`](../../api/README.md).
 
 > **Sin ninguna de las tres**, el sistema arranca igual con **PGlite en memoria**. Es deliberado:
 > todo el proyecto corre sin una sola credencial.

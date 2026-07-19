@@ -17,7 +17,7 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 248 tests (monorepo) + 19 (portal)
+## Cobertura actual: 257 tests (monorepo) + 22 (portal)
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
@@ -25,8 +25,8 @@ sin cuenta.
 | `kr-service` | **88** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). |
 | `web-builder` | **41** | Contrato, handoff, render, XSS, idempotencia de publicación. |
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
-| `api` | **21** | Auth (JWT + tenant), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
-| `portal` | **19** | *(fuera del monorepo)* El núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, y **la separación por evidencia** (✅/⚠️). Con `node:test` y `fetch` de mentira — sin navegador. |
+| `api` | **30** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
+| `portal` | **22** | *(fuera del monorepo)* El núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, y **la separación por evidencia** (✅/⚠️). Con `node:test` y `fetch` de mentira — sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
 
@@ -200,6 +200,25 @@ ejercita sin red y sin Supabase, igual que RLS se prueba sin Docker.
 > autorevisión encontró dos cosas reales antes del commit —el 500 tosco por uuid malformado y el
 > `approveRun` sin booleano— y las dos quedaron con test + mutación. El registro queda acá para que
 > la próxima review (externa o no) tenga dónde empezar a dudar.
+
+### Tanda 14 — 8ª review: la etapa 5 (API + portal) ✅
+
+Codex revisó la etapa 5 completa. Confirmó cerrado lo que más importaba —ningún camino toca tablas de
+tenant fuera de `PgStore.withTenant`; el comando compuesto emite el evento **solo** después del
+`createRun`; `evidence.ts` usa la MISMA etiqueta (`datos_mercado`) que el pipeline; el refresh no
+entra en bucle— pero encontró cuatro cosas, dos serias:
+
+| # | Hallazgo | Corrección |
+|---|---|---|
+| **#1** HIGH | **`verificadorSupabase` no exigía `exp`, `aud` ni `iss`.** Un token firmado con el secreto correcto y **sin `exp` no caducaba nunca** y era aceptado. Peor: **ningún test lo tocaba** — mutarlo para aceptar cualquier token dejaba los 21 tests en verde. | `requiredClaims: ["exp","sub"]`, `aud` verificado (`authenticated`) e `iss` configurable. **9 tests nuevos con JWT firmados de verdad**; la mutación tumba 3. |
+| **#2** HIGH | El brief leía el `runId` del **snapshot** en `ngOnInit`. Angular **reutiliza el componente** al ir de `/runs/A` a `/runs/B`: la pantalla decía B y **aprobar iba contra A**. | Se **suscribe** a `paramMap`; al cambiar, corta el polling, limpia el estado y recarga. |
+| **#3** MEDIUM | Todo `42501` se mapeaba a 403. Pero ese código llega por RLS **y** por un GRANT roto: una rotura de deploy se disfrazaba de "no autorizado" y quedaba invisible. | Se distingue por mensaje: RLS → **403**; `permission denied`/rol → **500 + log ruidoso** (ADR-17). |
+| **#4** LOW | La sesión de `localStorage` se casteaba sin validar: un `{}` creaba una **sesión fantasma** (autenticado sin token). | `parseSesion` valida la forma. Conserva el `tenantId` vacío a propósito (caso real del usuario sin `app_metadata`). |
+
+> La lección de esta ronda, otra vez la mía: **escribí el verificador de JWT y no lo probé**. Los tests
+> de la API inyectan un verificador falso —correcto para probar rutas y RLS sin criptografía— y eso
+> dejó la **puerta de entrada** sin un solo test. Probar lo fácil en vez de lo que se rompe, en el
+> lugar exacto donde más caro sale.
 
 ### 🔑 Pendiente de acción humana
 

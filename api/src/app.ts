@@ -125,8 +125,24 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
 
   app.onError((err, c) => {
     const code = (err as { code?: string }).code;
-    // RLS rechazó la escritura (WITH CHECK): el usuario no tiene acceso a ese tenant/cliente.
-    if (code === "42501") return c.json({ error: "No autorizado para esta operación." }, 403);
+
+    /*
+     * 42501 llega por DOS motivos que no se pueden confundir:
+     *
+     *  · **RLS rechazó la fila** (`new row violates row-level security policy`): el usuario no tiene
+     *    acceso a ese tenant/cliente. Es un **403 legítimo**, y el mensaje al cliente va sin detalle.
+     *  · **`permission denied` / no puede hacer `set role`**: eso NO es culpa del usuario — es un
+     *    GRANT roto o un deploy mal configurado (ADR-17). Devolverlo como 403 lo disfraza de
+     *    "problema de permisos del negocio" y la rotura del backend queda **invisible**. Es un 500,
+     *    y se grita en el log.
+     */
+    if (code === "42501") {
+      if (/row-level security/i.test(err.message)) {
+        return c.json({ error: "No autorizado para esta operación." }, 403);
+      }
+      console.error("[api] 42501 que NO es RLS — revisá GRANTs/roles (ADR-17):", err.message);
+      return c.json({ error: "Error interno." }, 500);
+    }
     // Entrada malformada (uuid inválido, falta un NOT NULL, FK o CHECK que no cierra): es del
     // cliente, no del servidor. Se mapea a 400 en vez de un 500 que mentiría sobre de quién es la culpa.
     if (code && ["22P02", "23502", "23503", "23514"].includes(code)) {

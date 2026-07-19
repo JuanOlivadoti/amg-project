@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy, computed, inject, signal } from '@angular
 import { FormsModule } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink, ActivatedRoute } from '@angular/router';
+import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
 import { AuthService } from '../../services/auth';
 import type { Brief, PaginaPropuesta } from '../../core/models';
@@ -166,13 +167,32 @@ export class BriefPage implements OnInit, OnDestroy {
   );
   readonly puedeAprobar = computed(() => (this.brief() ? puedeAprobarseRun(this.brief()!.pages) : false));
 
-  async ngOnInit(): Promise<void> {
-    this.runId = this.route.snapshot.paramMap.get('id') ?? '';
-    await this.cargar();
+  private sub: Subscription | null = null;
+
+  /**
+   * Se SUSCRIBE al parámetro, no lee el snapshot.
+   *
+   * Angular **reutiliza el componente** al navegar de `/runs/A` a `/runs/B` (misma ruta): con
+   * `snapshot`, `runId` se quedaba en A mientras la pantalla decía B. El polling seguía preguntando
+   * por A y —lo grave— **aprobar una página en la pantalla de B iba contra el run A**.
+   */
+  ngOnInit(): void {
+    this.sub = this.route.paramMap.subscribe((params) => {
+      const id = params.get('id') ?? '';
+      if (id === this.runId) return;
+      this.runId = id;
+      // Estado del run anterior: fuera. Si no, se vería el brief viejo mientras carga el nuevo.
+      this.pararPolling();
+      this.brief.set(null);
+      this.editando.set(null);
+      this.error.set('');
+      void this.cargar();
+    });
   }
 
   ngOnDestroy(): void {
     this.pararPolling();
+    this.sub?.unsubscribe();
   }
 
   async cargar(): Promise<void> {

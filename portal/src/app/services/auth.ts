@@ -1,5 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { loginConPassword, refrescarSesion } from '../core/auth-core';
+import { loginConPassword, refrescarSesion, parseSesion } from '../core/auth-core';
 import type { Sesion } from '../core/models';
 import { environment } from '../../environments/environment';
 
@@ -96,8 +96,9 @@ export class AuthService {
 
   private leerGuardada(): Sesion | null {
     try {
-      const raw = localStorage.getItem(CLAVE);
-      return raw ? (JSON.parse(raw) as Sesion) : null;
+      // `parseSesion` VALIDA la forma: un localStorage viejo o manipulado no puede fabricar una
+      // sesión fantasma (autenticado sin token). Ver `auth-core.ts`.
+      return parseSesion(localStorage.getItem(CLAVE));
     } catch {
       return null;
     }

@@ -839,6 +839,18 @@ comando rechazado no emite".
 La API se conecta con el login `amg_api`, autorizado a **un solo rol**. Si intentara asumir
 `app_service`, Postgres rechaza el `set role`: la frontera es una credencial, no un `if`.
 
+### Qué se le exige al token (corregido por la 8ª review)
+
+Verificar la firma **no alcanza**. La primera versión llamaba `jwtVerify(token, secret)` a secas, y
+eso valida la expiración **solo si el claim está**: un token firmado con el secreto correcto y **sin
+`exp` era eterno**. Ahora se exigen `exp` y `sub`, se verifica `aud` (`authenticated`, lo que emite
+Supabase) y se puede fijar `iss` (`SUPABASE_JWT_ISS`) para que un token válido de **otro proyecto**
+Supabase no abra esta puerta.
+
+> El agujero sobrevivió porque **ningún test tocaba el verificador real**: los de la API inyectan uno
+> falso (correcto para probar rutas y RLS sin criptografía), así que mutar el verdadero para aceptar
+> cualquier token dejaba la suite entera en verde. Hoy hay 9 tests con JWT firmados de verdad.
+
 ### CORS: el navegador del portal llama desde otro origen
 
 El portal (5.2) corre en otro origen, así que la API lleva CORS (`CORS_ORIGINS`, default `*`). Es

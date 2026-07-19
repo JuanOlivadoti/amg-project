@@ -17,6 +17,10 @@ standalone + signals, Tailwind puro, **habla solo con nuestra API** (nunca con P
 - **Polling** — mientras un research corre, el brief se repregunta cada 4 s hasta que termina
   (ADR-21: polling, no realtime).
 
+> El brief se **suscribe** al parámetro de la ruta, no lee el snapshot: Angular reutiliza el
+> componente al ir de `/runs/A` a `/runs/B`, y con snapshot la pantalla decía B mientras **aprobar
+> iba contra A** (8ª review).
+
 ## La decisión de fondo: la lógica es TypeScript puro, testeable sin navegador
 
 Todo lo que se puede romper vive en `src/app/core/`, **sin Angular ni DOM**, y se prueba con

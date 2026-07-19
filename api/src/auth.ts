@@ -11,18 +11,43 @@ import type { TenantContext } from "db";
  */
 export type VerificadorToken = (token: string) => Promise<{ userId: string } | null>;
 
+/** Qué se le exige al token además de la firma. Ver `verificadorSupabase`. */
+export interface OpcionesJwt {
+  /** `aud` esperado. Supabase emite `authenticated` para un usuario logueado. */
+  audience?: string;
+  /** `iss` esperado (`https://<proy>.supabase.co/auth/v1`). Si no se configura, no se exige. */
+  issuer?: string;
+}
+
+/** El `aud` que Supabase pone en el token de un usuario logueado. */
+export const AUD_SUPABASE = "authenticated";
+
 /**
  * Verificador de JWT de Supabase (HS256 con el secreto del proyecto).
  *
- * `jwtVerify` comprueba la **firma** y la **expiración**; si algo no cierra, lanza y devolvemos
- * `null` (→ 401). El `sub` del token es el user id. Acá termina lo que la API afirma: **quién es**.
- * **Qué puede hacer** no se decide en TypeScript — lo deriva Postgres de `memberships` (ADR-15).
+ * Comprueba la firma **y exige `exp` y `sub`**. Lo de `exp` no es un detalle: `jwtVerify` valida la
+ * expiración *si el claim está*, pero **no lo exige** — así que un token firmado con el secreto
+ * correcto y **sin `exp` no caducaba nunca** y era aceptado. Con `requiredClaims` deja de pasar.
+ * (Lo encontró la 8ª review: yo escribí este verificador y **ningún test lo tocaba** — los de la API
+ * usan un verificador falso, así que mutarlo para aceptar cualquier token dejaba todo en verde.)
+ *
+ * `aud` se verifica por defecto (`authenticated`) y `iss` si se configura: un token válido emitido
+ * por otro proyecto, o para otra audiencia, no debería abrir esta puerta.
+ *
+ * Acá termina lo que la API afirma: **quién es**. **Qué puede hacer** no se decide en TypeScript —
+ * lo deriva Postgres de `memberships` (ADR-15).
  */
-export function verificadorSupabase(jwtSecret: string): VerificadorToken {
+export function verificadorSupabase(jwtSecret: string, opts: OpcionesJwt = {}): VerificadorToken {
   const secret = new TextEncoder().encode(jwtSecret);
+  const audience = opts.audience ?? AUD_SUPABASE;
   return async (token) => {
     try {
-      const { payload } = await jwtVerify(token, secret);
+      const { payload } = await jwtVerify(token, secret, {
+        // Sin esto, un token sin `exp` es eterno. Y sin `sub` no hay a quién identificar.
+        requiredClaims: ["exp", "sub"],
+        ...(audience ? { audience } : {}),
+        ...(opts.issuer ? { issuer: opts.issuer } : {}),
+      });
       const sub = payload.sub;
       return typeof sub === "string" && sub.length > 0 ? { userId: sub } : null;
     } catch {

@@ -71,3 +71,41 @@ export async function refrescarSesion(opts: AuthOpts, refreshToken: string): Pro
   const j = await postToken(opts, 'grant_type=refresh_token', { refresh_token: refreshToken });
   return aSesion(j, '');
 }
+
+/**
+ * Lee una sesión guardada, **validando la forma**.
+ *
+ * Que el JSON parsee no significa que sirva: un `localStorage` manipulado, de una versión vieja o
+ * simplemente `{}` producía una **sesión fantasma** —`autenticado()` en true, sin token— que dejaba
+ * al portal navegando a pantallas que fallaban todas. No es un agujero de autoridad (la API/RLS
+ * mandan), pero rompe el arranque. Si falta lo esencial, no hay sesión: al login.
+ *
+ * `tenantId` puede venir vacío a propósito: es el caso real del usuario sin `app_metadata.tenant_id`,
+ * y el portal tiene que poder decirlo en vez de deslogearlo en silencio.
+ */
+export function parseSesion(raw: string | null): Sesion | null {
+  if (!raw) return null;
+  let v: unknown;
+  try {
+    v = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof v !== 'object' || v === null) return null;
+  const s = v as Record<string, unknown>;
+
+  const texto = (k: string): boolean => typeof s[k] === 'string' && (s[k] as string).length > 0;
+  if (!texto('accessToken') || !texto('refreshToken') || !texto('userId')) return null;
+  if (typeof s['expiraEn'] !== 'number' || !Number.isFinite(s['expiraEn'])) return null;
+  if (typeof s['tenantId'] !== 'string') return null;
+
+  return {
+    accessToken: s['accessToken'] as string,
+    refreshToken: s['refreshToken'] as string,
+    expiraEn: s['expiraEn'] as number,
+    userId: s['userId'] as string,
+    email: typeof s['email'] === 'string' ? s['email'] : '',
+    tenantId: s['tenantId'] as string,
+    rol: typeof s['rol'] === 'string' ? s['rol'] : '',
+  };
+}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loginConPassword, refrescarSesion } from './auth-core';
+import { loginConPassword, refrescarSesion, parseSesion } from './auth-core';
 
 function fakeFetch(status: number, body: unknown) {
   const capturado: { url?: string; headers?: Record<string, string>; body?: string } = {};
@@ -51,6 +51,56 @@ test('sin tenant_id en app_metadata, tenantId queda vacío (el portal lo dirá)'
 test('credenciales inválidas → error con el mensaje de Supabase', async () => {
   const { fn } = fakeFetch(400, { error_description: 'Invalid login credentials' });
   await assert.rejects(() => loginConPassword(opts(fn), 'a@b.com', 'mal'), /Invalid login credentials/);
+});
+
+const sesionValida = JSON.stringify({
+  accessToken: 'jwt',
+  refreshToken: 'ref',
+  expiraEn: 1_800_000_000_000,
+  userId: 'u1',
+  email: 'a@b.com',
+  tenantId: 't1',
+  rol: '',
+});
+
+test('parseSesion acepta una sesión guardada bien formada', () => {
+  const s = parseSesion(sesionValida);
+  assert.equal(s?.accessToken, 'jwt');
+  assert.equal(s?.tenantId, 't1');
+});
+
+test('🔴 parseSesion rechaza formas inválidas: nada de sesiones fantasma', () => {
+  // El bug: JSON válido pero forma incorrecta se casteaba a Sesion → autenticado() true SIN token.
+  assert.equal(parseSesion('{}'), null, 'objeto vacío');
+  assert.equal(parseSesion('null'), null);
+  assert.equal(parseSesion('"soy-un-string"'), null);
+  assert.equal(parseSesion('[]'), null);
+  assert.equal(parseSesion('no es json'), null);
+  assert.equal(parseSesion(null), null);
+  assert.equal(parseSesion(JSON.stringify({ accessToken: 'jwt' })), null, 'faltan campos');
+  assert.equal(
+    parseSesion(JSON.stringify({ accessToken: '', refreshToken: 'r', userId: 'u', expiraEn: 1, tenantId: 't' })),
+    null,
+    'token vacío no sirve',
+  );
+  assert.equal(
+    parseSesion(JSON.stringify({ accessToken: 'a', refreshToken: 'r', userId: 'u', expiraEn: 'ayer', tenantId: 't' })),
+    null,
+    'expiraEn tiene que ser número',
+  );
+});
+
+test('parseSesion conserva un tenantId vacío: es el caso real del usuario sin app_metadata', () => {
+  const raw = JSON.stringify({
+    accessToken: 'jwt',
+    refreshToken: 'ref',
+    expiraEn: 1_800_000_000_000,
+    userId: 'u1',
+    tenantId: '',
+  });
+  const s = parseSesion(raw);
+  assert.equal(s?.tenantId, '', 'el portal tiene que poder decirlo, no deslogear en silencio');
+  assert.equal(s?.rol, '');
 });
 
 test('refrescarSesion usa grant_type=refresh_token', async () => {

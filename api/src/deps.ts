@@ -17,6 +17,11 @@ export interface ConfigApi {
   inngestId?: string;
   /** Orígenes CORS permitidos (coma-separados en `CORS_ORIGINS`). Sin esto: `*` (ver `app.ts`). */
   corsOrigins?: string[];
+  /** `aud` esperado del JWT. Default `authenticated` (lo que emite Supabase). */
+  jwtAudience?: string;
+  /** `iss` esperado (`https://<proy>.supabase.co/auth/v1`). Configurarlo cierra la puerta a tokens
+   *  válidos de OTRO proyecto Supabase. Sin configurar, no se exige. */
+  jwtIssuer?: string;
 }
 
 /** Lee la config del entorno y **falla cerrado** si falta algo: una API a medio configurar no arranca. */
@@ -31,10 +36,14 @@ export function leerConfig(): ConfigApi {
     throw new Error(`Faltan variables de entorno de la API:\n  - ${faltan.join("\n  - ")}`);
   }
   const corsRaw = process.env["CORS_ORIGINS"]?.trim();
+  const aud = process.env["SUPABASE_JWT_AUD"]?.trim();
+  const iss = process.env["SUPABASE_JWT_ISS"]?.trim();
   return {
     databaseUrl: databaseUrl as string,
     jwtSecret: jwtSecret as string,
     ...(corsRaw ? { corsOrigins: corsRaw.split(",").map((s) => s.trim()) } : {}),
+    ...(aud ? { jwtAudience: aud } : {}),
+    ...(iss ? { jwtIssuer: iss } : {}),
   };
 }
 
@@ -56,7 +65,10 @@ export async function crearDeps(
     send: (evento) => inngest.send({ name: evento.name, data: evento.data }),
   };
 
-  const verificar: VerificadorToken = verificadorSupabase(config.jwtSecret);
+  const verificar: VerificadorToken = verificadorSupabase(config.jwtSecret, {
+    ...(config.jwtAudience ? { audience: config.jwtAudience } : {}),
+    ...(config.jwtIssuer ? { issuer: config.jwtIssuer } : {}),
+  });
 
   return {
     deps: { store, emisor, verificar, ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}) },

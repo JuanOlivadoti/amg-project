@@ -4,7 +4,7 @@ Las **5 cosas que solo vos podés hacer** (requieren cuentas, dinero o decisione
 Una guía por acción, con los pasos exactos, cómo verificar que salió bien y qué hacer si falla.
 
 > **El código está al día.** La cadena `prompt → research → persistencia → compuerta humana → web`
-> funciona de punta a punta, con **248 tests en verde**. Ver el
+> funciona de punta a punta, con **257 tests en verde**. Ver el
 > [Plan de la Fase 2](../proyecto/11-plan-fase-2.md).
 
 ## Las 5 acciones
