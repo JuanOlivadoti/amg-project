@@ -1,5 +1,15 @@
 import { stableUid } from "../lib/uid.js";
-import type { FaqBlok, HeroBlok, SectionBlok, Story } from "../types.js";
+import type {
+  Blok,
+  FaqBlok,
+  HeroBlok,
+  PageContent,
+  PageType,
+  SchemaType,
+  SearchIntent,
+  SectionBlok,
+  Story,
+} from "../types.js";
 
 /**
  * Transforma el contenido canónico (limpio, agnóstico) al formato que espera Storyblok:
@@ -69,5 +79,107 @@ function shapeBlok(blok: HeroBlok | SectionBlok | FaqBlok, slug: string): Record
           answer: it.answer,
         })),
       };
+  }
+}
+
+// ---------------------------------------------------------------- el viaje de vuelta
+
+/**
+ * El INVERSO de `toStoryblokContent`: del contenido tal como lo guarda Storyblok, de vuelta a la
+ * `Story` que consume `renderStory`.
+ *
+ * ## Por qué esto existe (y por qué no existía)
+ *
+ * `toStoryblokContent` **aplana** el contenido para Storyblok: `seo` (objeto) se parte en `seo_title`
+ * / `seo_description` / etc., y las FAQs pasan a bloks `faq_item`. `renderStory`, en cambio, espera la
+ * forma canónica anidada (`content.seo.title`, `content.body` con `hero`/`section`/`faq`).
+ *
+ * Mientras **nadie leyó de vuelta** lo publicado (OBS-03: no había renderizador), la asimetría no
+ * molestaba. En cuanto el renderizador (ADR-19) lee la Content Delivery API y le pasa el contenido a
+ * `renderStory`, la forma **no calza**: `c.seo` es `undefined` → `c.seo.title` explota. Lo cazó la
+ * demo contra el space real, no los tests — porque los tests armaban `Story` a mano y salteaban el
+ * ida-y-vuelta `toStoryblokContent → Storyblok → renderStory`. La lección de siempre: el bug vive en
+ * la costura que ningún test cruzaba.
+ *
+ * ## Lo que se puede reconstruir y lo que no
+ *
+ * El aplanado es **con pérdida**: Storyblok no guarda casi nada de `meta` (volumen, dificultad,
+ * opportunity_score, word_count…). Eso está bien — `renderStory` los usa solo para el bloque de
+ * traza (un `<script>` oculto). Se rellenan con valores neutros; la página sale igual.
+ */
+export function fromStoryblokContent(raw: {
+  name?: unknown;
+  slug?: unknown;
+  content?: Record<string, unknown>;
+}): Story {
+  const c = raw.content ?? {};
+  const s = (k: string): string => (typeof c[k] === "string" ? (c[k] as string) : "");
+  const lista = (k: string): string[] =>
+    typeof c[k] === "string" && c[k] ? (c[k] as string).split("\n").filter(Boolean) : [];
+
+  const content: PageContent = {
+    component: "page",
+    seo: {
+      title: s("seo_title"),
+      description: s("seo_description"),
+      canonical: s("seo_canonical"),
+      og_title: s("og_title"),
+      og_description: s("og_description"),
+    },
+    schema_type: (s("schema_type") || "WebPage") as SchemaType,
+    page_type: (s("page_type") || "servicio") as PageType,
+    intent: (s("intent") || "informational") as SearchIntent,
+    is_local: c["is_local"] === true,
+    body: Array.isArray(c["body"]) ? (c["body"] as unknown[]).map(desShapeBlok).filter((b): b is Blok => b !== null) : [],
+    meta: {
+      contract_version: "web.v0.1",
+      source_keyword: s("source_keyword"),
+      secondary_keywords: [],
+      internal_links: lista("internal_links"),
+      word_count_objetivo: 0,
+      claims_permitidos: lista("claims_permitidos"),
+      claims_prohibidos: lista("claims_prohibidos"),
+      opportunity_score: 0,
+      volumen: null,
+      dificultad: null,
+    },
+  };
+
+  return {
+    name: typeof raw.name === "string" ? raw.name : content.seo.title,
+    slug: typeof raw.slug === "string" ? raw.slug : "",
+    content,
+  };
+}
+
+/** Un blok guardado (con `_uid`, `_editable`, componentes anidados) → el blok canónico, o `null`. */
+function desShapeBlok(raw: unknown): Blok | null {
+  if (!raw || typeof raw !== "object") return null;
+  const b = raw as Record<string, unknown>;
+  const str = (k: string): string => (typeof b[k] === "string" ? (b[k] as string) : "");
+
+  switch (b["component"]) {
+    case "hero": {
+      const hero: HeroBlok = { component: "hero", headline: str("headline"), subhead: str("subhead") };
+      if (str("cta_label")) hero.cta_label = str("cta_label");
+      return hero;
+    }
+    case "section":
+      return { component: "section", heading: str("heading"), body: str("body") };
+    case "faq": {
+      const items = Array.isArray(b["items"]) ? (b["items"] as unknown[]) : [];
+      return {
+        component: "faq",
+        items: items
+          .map((it) => (it && typeof it === "object" ? (it as Record<string, unknown>) : null))
+          .filter((it): it is Record<string, unknown> => it !== null)
+          .map((it) => ({
+            question: typeof it["question"] === "string" ? it["question"] : "",
+            answer: typeof it["answer"] === "string" ? it["answer"] : "",
+          })),
+      };
+    }
+    default:
+      return null; // un blok desconocido no rompe la página: se ignora
   }
 }

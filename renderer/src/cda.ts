@@ -1,4 +1,12 @@
+import { fromStoryblokContent } from "web-builder";
 import type { Story } from "web-builder";
+
+/** La story CRUDA de Storyblok: `content` aplanado, con `_uid`/`_editable`. La convierte el CDA. */
+interface RawStoryblokStory {
+  name?: unknown;
+  slug?: unknown;
+  content?: Record<string, unknown>;
+}
 
 /**
  * Cliente de la **Content Delivery API** de Storyblok. Solo lectura.
@@ -107,8 +115,14 @@ export class StoryblokCda implements Cda {
         throw new ErrorCda(`Storyblok respondió ${res.status} para /${slug}`, res.status);
       }
 
-      const cuerpo = (await this.leerAcotado(res)) as { story?: Story };
-      return cuerpo.story ?? null;
+      const cuerpo = (await this.leerAcotado(res)) as { story?: RawStoryblokStory };
+      if (!cuerpo.story) return null;
+
+      // **La costura.** Storyblok devuelve el contenido APLANADO (`seo_title`, bloks `faq_item`…),
+      // que NO es la forma que consume `renderStory` (`seo` objeto anidado). `fromStoryblokContent`
+      // deshace el aplanado. Sin esto, `renderStory` hacía `c.seo.title` con `c.seo` undefined y
+      // tiraba un TypeError → 500 → 503. Lo cazó la demo contra el space real (ver web-builder).
+      return fromStoryblokContent(cuerpo.story);
     });
   }
 
