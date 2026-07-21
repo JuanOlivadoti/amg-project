@@ -149,4 +149,30 @@ describe("StoryblokCda", () => {
     const { fetch } = espia({ json: async () => ({}) });
     assert.equal(await pedir(fetch), null);
   });
+
+  it("🔴 convierte el contenido APLANADO de Storyblok a la forma de renderStory (demo)", async () => {
+    // El bug que cazó la demo: Storyblok guarda `seo_title` plano, no un `seo` anidado. La CDA tiene
+    // que deshacer el aplanado o `renderStory` explota (`c.seo.title` con `c.seo` undefined).
+    const aplanado = {
+      component: "page",
+      seo_title: "Trattoria | Menú",
+      seo_description: "La carta",
+      seo_canonical: "https://x.es/menu",
+      og_title: "Menú",
+      og_description: "La carta",
+      schema_type: "LocalBusiness",
+      page_type: "servicio",
+      intent: "local",
+      is_local: true,
+      body: [{ component: "hero", _uid: "u1", headline: "La carta", subhead: "napolitana" }],
+    };
+    const fetch: FetchLike = async () =>
+      ({ status: 200, ok: true, json: async () => ({ story: { name: "M", slug: "menu", content: aplanado } }) }) as Response;
+
+    const story = await new StoryblokCda({ fetch }).traerStory({ slug: "menu", token: "t", version: "published" });
+
+    assert.ok(story, "tiene que devolver una story");
+    assert.equal(story.content.seo.title, "Trattoria | Menú", "el seo se re-anida");
+    assert.equal(story.content.body[0]?.component, "hero");
+  });
 });
