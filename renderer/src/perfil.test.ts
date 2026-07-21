@@ -99,6 +99,24 @@ describe("perfilValido + renderStory: el contrato de verdad", () => {
     assert.doesNotMatch(html, /undefined/, "sin rastros de lo que se descartó");
   });
 
+  it("🔴 la MARCA sobrevive perfilValido y llega al render (demo)", () => {
+    // El tema por tenant se perdía acá: perfilValido recorta con allowlist y tiraba `brand`.
+    const html = renderStory(story(), perfilValido({ name: "N", brand: { color: "#0a7d34", font: "serif" } }), "es");
+    assert.match(html, /--accent:#0a7d34/, "el color de marca llega al CSS");
+    assert.match(html, /--font:Georgia/, "y la fuente");
+  });
+
+  it("🔴 una marca con inyección/basura se descarta, no llega al render", () => {
+    const html = renderStory(
+      story(),
+      perfilValido({ name: "N", brand: { color: "red;}x{", font: "Comic", logo: "javascript:1" } }),
+      "es",
+    );
+    assert.doesNotMatch(html, /--accent:red/);
+    assert.doesNotMatch(html, /Comic/);
+    assert.doesNotMatch(html, /javascript:/);
+  });
+
   it("un perfil bien formado sí llega al JSON-LD y al bloque de contacto", () => {
     const html = renderStory(story(), perfilValido(NAP_BUENO), "es");
 

@@ -102,6 +102,29 @@ const postalAddressSchema = z.object({
   addressCountry: z.string().optional(),
 });
 
+/**
+ * Tema de marca. La validación acá es DEFENSA, no cosmética: `color` y `font` terminan dentro de un
+ * `<style>` y el `logo` en un `<img src>`. Un `color` con `red;}` o un `font` con `</style>` serían
+ * inyección de CSS/markup. Se valida en la puerta; el renderizador vuelve a validar (defensa en
+ * profundidad, porque en PROD el perfil puede venir de Storyblok sin pasar por acá).
+ */
+const brandSchema = z.object({
+  // Solo hex (#rgb o #rrggbb). Nada más puede colarse a la hoja de estilo.
+  color: z
+    .string()
+    .regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "color debe ser un hex (#0a7d34)")
+    .optional(),
+  // Allowlist cerrada → el renderizador la mapea a un stack seguro. No es texto libre.
+  font: z.enum(["sistema", "serif", "moderna"]).optional(),
+  // `.url()` de Zod acepta `javascript:` (tiene esquema): hay que exigir http(s) explícitamente,
+  // porque el logo termina en un `<img src>`.
+  logo: z
+    .string()
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), "el logo debe ser una URL http(s)")
+    .optional(),
+});
+
 const businessProfileSchema = z.object({
   name: z.string().min(1),
   telephone: z.string().optional(),
@@ -110,6 +133,7 @@ const businessProfileSchema = z.object({
   image: z.string().url().optional(),
   address: postalAddressSchema.optional(),
   opening_hours: z.string().optional(),
+  brand: brandSchema.optional(),
 });
 
 /** Valida el perfil de negocio. Lanza si el JSON existe pero está mal formado. */

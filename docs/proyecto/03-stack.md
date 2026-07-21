@@ -133,6 +133,7 @@ AMG/
 │   ├── migrations/        # 0001_init · 0002_auth · 0003_credenciales
 │   │                      # 0004_paginas · 0005_lease_tareas
 │   │                      # 0006_cliente_publicacion · 0007_render_publico
+│   │                      # 0008_render_endurecido · 0009_marca_publica
 │   └── src/
 │       ├── pool.ts        # DbPool/Tx: acceso SOLO por transacción reservada (ADR-13)
 │       ├── store.ts       # PgStore: runs, keywords, páginas — todo bajo RLS

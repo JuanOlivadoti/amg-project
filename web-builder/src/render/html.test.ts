@@ -64,3 +64,66 @@ test("#13 render: con perfil, LocalBusiness incluye telephone y address", () => 
   assert.equal(lb.telephone, "+34 911 23 45 67");
   assert.equal(lb.address["@type"], "PostalAddress");
 });
+
+// ---------------------------------------------------------------- marca por tenant (tema)
+
+test("tema: un color de marca válido pinta el acento", () => {
+  const html = renderStory(story(), validProfile({ brand: { color: "#0a7d34" } }));
+  assert.match(html, /--accent:#0a7d34/, "el hex de marca entra como variable CSS");
+});
+
+test("🔴 tema: un color con inyección CSS se DESCARTA, no se inyecta", () => {
+  // El color va dentro de un <style>. `red;} body{display:none} .x{` rompería la página.
+  const html = renderStory(story(), validProfile({ brand: { color: "red;}body{display:none}" } as never }));
+  assert.doesNotMatch(html, /display:none/, "el valor malicioso no llega a la hoja de estilo");
+  assert.doesNotMatch(html, /--accent:red/, "y tampoco se acepta un color no-hex");
+});
+
+test("🔴 tema: la fuente sale de una allowlist, no es texto libre", () => {
+  const ok = renderStory(story(), validProfile({ brand: { font: "serif" } }));
+  assert.match(ok, /--font:Georgia/, "la fuente elegida mapea a un stack seguro");
+
+  // Un valor fuera de la allowlist se ignora (no se puede escribir el stack a mano).
+  const malo = renderStory(story(), validProfile({ brand: { font: "</style><script>" } as never }));
+  assert.doesNotMatch(malo, /<\/style><script>/);
+});
+
+test("marca: el logo aparece en la cabecera del sitio, escapado", () => {
+  const html = renderStory(story(), validProfile({ brand: { logo: "https://cdn.ej/logo.png" } }));
+  assert.match(html, /class="sitebar"/, "hay cabecera de sitio");
+  assert.match(html, /<img class="logo" src="https:\/\/cdn\.ej\/logo\.png"/);
+});
+
+test("marca: sin logo, la cabecera muestra el nombre del negocio", () => {
+  const html = renderStory(story(), validProfile());
+  assert.match(html, /class="marca">Trattoria Bella Napoli/);
+});
+
+test("sin perfil no hay cabecera de sitio (falla suave)", () => {
+  assert.doesNotMatch(renderStory(story()), /class="sitebar"/);
+});
+
+// ---------------------------------------------------------------- imágenes de contenido
+
+test("imagen: el hero renderiza su foto con lazy, alt y dimensiones del asset", () => {
+  const s = story();
+  const hero = s.content.body.find((b) => b.component === "hero")!;
+  (hero as { image?: unknown }).image = {
+    src: "https://a.storyblok.com/f/1/1600x900/abc/portada.jpg",
+    alt: "Fachada del restaurante",
+  };
+  const html = renderStory(s);
+
+  assert.match(html, /class="hero-img"/);
+  assert.match(html, /loading="lazy"/);
+  assert.match(html, /alt="Fachada del restaurante"/);
+  assert.match(html, /width="1600" height="900"/, "las dimensiones salen de la URL de Storyblok (anti-CLS)");
+});
+
+test("🔴 imagen: una src no-http no se renderiza (una img rota es peor que ninguna)", () => {
+  const s = story();
+  const hero = s.content.body.find((b) => b.component === "hero")!;
+  (hero as { image?: unknown }).image = { src: "javascript:alert(1)", alt: "x" };
+  // Ojo: `.hero-img` está siempre en el CSS; lo que NO debe aparecer es la etiqueta <img>.
+  assert.doesNotMatch(renderStory(s), /<img class="hero-img"/);
+});

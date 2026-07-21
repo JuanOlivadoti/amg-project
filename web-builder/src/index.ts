@@ -12,4 +12,4 @@ export { getPublisher } from "./publish/publisher.js";
 export type { Publisher, PublishResult } from "./publish/publisher.js";
 export { applyProse, loadProfile } from "./enrich.js";
 export { config } from "./config.js";
-export type { KrBrief, KrProposedPage, BusinessProfile, Story, Blok } from "./types.js";
+export type { KrBrief, KrProposedPage, BusinessProfile, BrandTheme, Imagen, Story, Blok } from "./types.js";

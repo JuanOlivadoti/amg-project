@@ -1,7 +1,9 @@
 import type {
+  BrandTheme,
   BusinessProfile,
   FaqBlok,
   HeroBlok,
+  Imagen,
   PageContent,
   SchemaType,
   SectionBlok,
@@ -50,9 +52,10 @@ ${profile?.image ? `<meta property="og:image" content="${esc(profile.image)}">` 
 ${safeJson(jsonLd(c, url, profile))}
 </script>
 ${researchTrace(c)}
-<style>${CSS}</style>
+<style>${CSS}${themeCss(profile?.brand)}</style>
 </head>
 <body>
+${renderSiteHeader(profile)}
 <main>
 ${hero ? renderHero(hero, ctaHref) : ""}
 ${sections.map(renderSection).join("\n")}
@@ -62,6 +65,69 @@ ${profile ? renderContact(profile) : ""}
 <footer><p>Página generada por AMG OS · contrato ${esc(c.meta.contract_version)} · schema ${esc(c.schema_type)}</p></footer>
 </body>
 </html>`;
+}
+
+/** Familias tipográficas seguras, por nombre. La marca elige un nombre, NUNCA escribe el stack. */
+const FONT_STACKS: Record<NonNullable<BrandTheme["font"]>, string> = {
+  sistema: "system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
+  serif: "Georgia,'Times New Roman',serif",
+  moderna: "'Helvetica Neue',Arial,sans-serif",
+};
+
+/**
+ * Traduce el tema de marca a CSS, **revalidando cada valor** aunque ya lo haya validado Zod: en PROD
+ * el perfil puede venir de Storyblok sin pasar por `parseProfile`, así que el renderizador no confía.
+ * Lo que no valida, lo descarta → cae al default. Un color inválido no rompe la página, la deja sobria.
+ */
+function themeCss(brand?: BrandTheme | null): string {
+  if (!brand) return "";
+  const reglas: string[] = [];
+
+  if (typeof brand.color === "string" && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(brand.color)) {
+    reglas.push(`--accent:${brand.color}`);
+  }
+  if (brand.font && brand.font in FONT_STACKS) {
+    reglas.push(`--font:${FONT_STACKS[brand.font]}`);
+  }
+  return reglas.length ? `\n:root{${reglas.join(";")}}` : "";
+}
+
+/** Cabecera del sitio: logo + nombre. Es lo que hace que la página se sienta DE alguien. */
+function renderSiteHeader(profile?: BusinessProfile | null): string {
+  if (!profile) return "";
+  // El logo va a un `<img src>`: se exige http(s) acá también, no solo en Zod (en PROD el perfil
+  // puede venir de Storyblok sin validar). Un logo dudoso cae al nombre, no rompe la cabecera.
+  const logo = profile.brand?.logo;
+  const logoOk = typeof logo === "string" && /^https?:\/\//i.test(logo);
+  const marca = logoOk
+    ? `<img class="logo" src="${esc(logo)}" alt="${esc(profile.name)}" height="40">`
+    : `<span class="marca">${esc(profile.name)}</span>`;
+  return `<header class="sitebar"><a href="/" class="brand">${marca}</a></header>`;
+}
+
+/**
+ * Una `<img>` de contenido, lista para Core Web Vitals: `loading="lazy"`, `decoding="async"`, y
+ * `width`/`height` cuando se pueden inferir del asset de Storyblok (evita el salto de layout, CLS).
+ * Sin src válido no se renderiza nada — una imagen rota es peor que ninguna.
+ */
+function renderImagen(img: Imagen | undefined, clase: string): string {
+  if (!img || typeof img.src !== "string" || !/^https?:\/\//i.test(img.src)) return "";
+  const dim = dimsDeStoryblok(img.src);
+  const wh = dim ? ` width="${dim.w}" height="${dim.h}"` : "";
+  return `<img class="${clase}" src="${esc(img.src)}" alt="${esc(img.alt ?? "")}" loading="lazy" decoding="async"${wh}>`;
+}
+
+/**
+ * Las URLs de assets de Storyblok llevan las dimensiones en la ruta: `.../f/<space>/1200x800/<hash>/…`.
+ * Extraerlas deja fijar `width`/`height` sin descargar la imagen. Si no matchea, se omite (mejor sin
+ * dimensiones que con dimensiones inventadas).
+ */
+function dimsDeStoryblok(src: string): { w: number; h: number } | null {
+  const m = src.match(/\/(\d{1,5})x(\d{1,5})\//);
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  return w > 0 && h > 0 ? { w, h } : null;
 }
 
 /**
@@ -92,7 +158,10 @@ function renderContact(p: BusinessProfile): string {
 }
 
 function renderHero(h: HeroBlok, ctaHref: string | null): string {
-  return `<header class="hero">
+  // La foto de portada va como banner arriba del título: es lo primero que ve un humano.
+  const foto = renderImagen(h.image, "hero-img");
+  return `<header class="hero${foto ? " has-img" : ""}">
+  ${foto}
   <h1>${esc(h.headline)}</h1>
   ${h.subhead ? `<p class="lede">${esc(h.subhead)}</p>` : ""}
   ${h.cta_label && ctaHref ? `<a class="cta" href="${ctaHref}">${esc(h.cta_label)}</a>` : ""}
@@ -103,8 +172,10 @@ function renderSection(s: SectionBlok): string {
   const body = s.body
     ? `<p>${esc(s.body)}</p>`
     : `<p class="pending">Contenido pendiente de redacción (generación por LLM — siguiente paso del pipeline).</p>`;
-  return `<section>
+  const foto = renderImagen(s.image, "section-img");
+  return `<section${foto ? " class=\"has-img\"" : ""}>
   <h2>${esc(s.heading)}</h2>
+  ${foto}
   ${body}
 </section>`;
 }
@@ -219,20 +290,28 @@ function esc(s: string): string {
 }
 
 const CSS = `
-:root{--fg:#1a1a1a;--muted:#6b7280;--accent:#b91c1c;--bg:#fff;--soft:#f8f7f5}
+:root{--fg:#1a1a1a;--muted:#6b7280;--accent:#b91c1c;--bg:#fff;--soft:#f8f7f5;--font:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 *{box-sizing:border-box}
-body{margin:0;font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--fg);background:var(--bg)}
+body{margin:0;font:16px/1.6 var(--font);color:var(--fg);background:var(--bg)}
+img{max-width:100%;height:auto}
+.sitebar{border-bottom:1px solid #eee;padding:14px 20px}
+.sitebar .brand{display:inline-flex;align-items:center;text-decoration:none;color:var(--fg)}
+.sitebar .marca{font-weight:700;font-size:1.15rem;letter-spacing:-.01em}
+.sitebar .logo{display:block}
 main{max-width:760px;margin:0 auto;padding:0 20px}
-.hero{padding:64px 0 40px;border-bottom:1px solid #eee}
-.hero h1{font-size:2.2rem;line-height:1.15;margin:0 0 12px}
-.lede{font-size:1.15rem;color:var(--muted);margin:0 0 24px}
+.hero{padding:48px 0 40px;border-bottom:1px solid #eee}
+.hero.has-img{padding-top:24px}
+.hero-img{width:100%;border-radius:14px;margin:0 0 28px;object-fit:cover;aspect-ratio:16/9}
+.hero h1{font-size:2.3rem;line-height:1.12;margin:0 0 12px;letter-spacing:-.02em}
+.lede{font-size:1.18rem;color:var(--muted);margin:0 0 24px}
 .cta{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600}
 section{padding:32px 0;border-bottom:1px solid #f0f0f0}
-section h2{font-size:1.4rem;margin:0 0 12px}
+section h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em}
+.section-img{width:100%;border-radius:12px;margin:0 0 18px;object-fit:cover;aspect-ratio:3/2}
 .pending{color:var(--muted);font-style:italic}
 .faq{background:var(--soft);border-radius:12px;padding:24px;margin:32px 0}
 details{padding:12px 0;border-bottom:1px solid #e7e5e0}
 summary{font-weight:600;cursor:pointer}
 footer{max-width:760px;margin:24px auto 48px;padding:0 20px;color:var(--muted);font-size:.85rem}
-@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}.hero{border-color:#222}section{border-color:#1e1e1e}}
+@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}.sitebar,.hero{border-color:#222}section{border-color:#1e1e1e}}
 `;

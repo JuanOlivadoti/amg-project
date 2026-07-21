@@ -232,6 +232,33 @@ describe("Las garantías que estaban escritas y no impuestas (10ª review)", () 
       /permission denied|no tiene permiso/i,
     );
   });
+
+  it("🔴 0009 — la MARCA pasa la allowlist, pero un campo privado en `brand` NO", async () => {
+    // El tema por tenant vive en business_profile.brand. Sin agregarlo a la allowlist de 0008, se
+    // filtraría en silencio y toda web saldría con el color por defecto. Y al agregarlo, la
+    // sub-allowlist tiene que seguir cerrada: un campo privado escondido en `brand` no pasa.
+    await db.asService(
+      `update clients set domain = 'marca.es', storyblok_space_id = 'SB-MARCA',
+                          business_profile = $2::jsonb where id = $1`,
+      [
+        s.clientA2,
+        JSON.stringify({
+          name: "Bar Pepe",
+          brand: { color: "#0a7d34", font: "serif", logo: "https://cdn.ej/l.png", margen_secreto: "42%" },
+        }),
+      ],
+    );
+
+    const [fila] = await db.asRender<{ p: { brand?: Record<string, unknown> } }>(
+      "select business_profile_publico as p from clients where domain = 'marca.es'",
+    );
+    const brand = fila?.p.brand ?? {};
+
+    assert.equal(brand["color"], "#0a7d34", "el color de marca pasa");
+    assert.equal(brand["font"], "serif");
+    assert.equal(brand["logo"], "https://cdn.ej/l.png");
+    assert.equal(brand["margen_secreto"], undefined, "un campo privado escondido en brand NO pasa");
+  });
 });
 
 describe("MemSitios", () => {

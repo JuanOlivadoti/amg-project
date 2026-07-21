@@ -17,16 +17,16 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 354 tests (monorepo) + 29 (portal)
+## Cobertura actual: 377 tests (monorepo) + 29 (portal)
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
-| `db` | **99** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
+| `db` | **100** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto. |
 | `kr-service` | **88** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). |
-| `web-builder` | **41** | Contrato, handoff, render, XSS, idempotencia de publicación. |
+| `web-builder` | **60** | Contrato, handoff, render, XSS, idempotencia de publicación. |
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **33** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
-| `renderer` | **75** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web), y **los límites del camino anónimo** (10ª review): plazo de la respuesta COMPLETA, topes de bytes, cache negativa, coalescing, semáforo→503, cuerpo del webhook y replay. |
+| `renderer` | **78** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web), y **los límites del camino anónimo** (10ª review): plazo de la respuesta COMPLETA, topes de bytes, cache negativa, coalescing, semáforo→503, cuerpo del webhook y replay. |
 | `portal` | **29** | *(fuera del monorepo)* El núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, y **la separación por evidencia** (✅/⚠️). Con `node:test` y `fetch` de mentira — sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
@@ -47,7 +47,7 @@ comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la
 | `lib/budget.test.ts` | El **preflight bloquea ANTES de gastar** si la estimación no entra; tiene en cuenta lo ya gastado; sin tope nunca bloquea; corte post-fase si la estimación se quedó corta. |
 | `lib/http.test.ts` | Clasificación de errores (429/5xx reintentables, 4xx no); backoff dentro del tope; `Retry-After` en segundos y fecha HTTP; **un 500 se reintenta y termina bien**; **un 400 NO se reintenta**; se propaga `HttpError` con el status al agotar reintentos; fallos de red. *(Con `fetch` stubeado: sin red.)* |
 
-### `web-builder` (41 tests)
+### `web-builder` (60 tests)
 
 | Archivo | Qué fija |
 |---|---|

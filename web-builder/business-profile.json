@@ -11,5 +11,9 @@
     "addressRegion": "Madrid",
     "addressCountry": "ES"
   },
-  "opening_hours": "Lun-Dom 13:00-16:00 y 20:00-23:30"
+  "opening_hours": "Lun-Dom 13:00-16:00 y 20:00-23:30",
+  "brand": {
+    "color": "#0a7d34",
+    "font": "serif"
+  }
 }

@@ -61,6 +61,8 @@ export const COMPONENT_SCHEMAS: StoryblokComponent[] = [
       headline: { type: "text", pos: 0 },
       subhead: { type: "textarea", pos: 1 },
       cta_label: { type: "text", pos: 2 },
+      // Foto de portada: el cliente la arrastra en el Visual Editor. Es el motivo de elegir Storyblok.
+      image: { type: "asset", filetypes: ["images"], pos: 3 },
     },
   },
   {
@@ -71,6 +73,7 @@ export const COMPONENT_SCHEMAS: StoryblokComponent[] = [
     schema: {
       heading: { type: "text", pos: 0 },
       body: { type: "textarea", pos: 1 },
+      image: { type: "asset", filetypes: ["images"], pos: 2 },
     },
   },
   {

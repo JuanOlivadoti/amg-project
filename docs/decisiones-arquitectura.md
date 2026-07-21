@@ -168,6 +168,22 @@
 **Alternativas descartadas.** "Entregar solo el space de Storyblok y ya está" → insuficiente (no hay web renderizada). Migrar a WordPress en la baja → descartado junto con ADR-04 por mantenimiento.
 **Justificación.** La clientela (restaurantes, no técnica) mayoritariamente quiere que su web no se caiga, no seguir maquetando. El snapshot cubre eso con coste casi nulo; el handoff editable se cobra y protege la relación.
 **Implicancia de diseño (día 1).** (1) **Un space de Storyblok por cliente** (no compartido) → transferencia limpia. (2) **Frontend por-tenant exportable** (config/tema por tenant, no hardcodeado) → snapshot estático de un solo cliente trivial. (3) Capacidad de **export estático** en el frontend.
+
+> ### Actualización (2026-07-22) — el "tema por tenant, no hardcodeado" existe
+>
+> El punto (2) decía *"config/tema por tenant, no hardcodeado"*. Estaba hardcodeado: `renderStory`
+> pintaba a **todos** los clientes con el mismo rojo, la misma fuente y sin logo. Ahora el tema vive
+> en `business_profile.brand` (color, fuente, logo) y viaja hasta el renderizador por la allowlist de
+> `business_profile_publico` (migración `0009` — la marca **no** es secreta, así que se expone al rol
+> `app_render` a propósito). Cada web se ve **propia**.
+>
+> Y las páginas ganaron **imágenes editables** (campos `asset` en los bloks `hero`/`section`): el
+> cliente arrastra sus fotos en el Visual Editor. Es, por fin, usar Storyblok para lo que se eligió.
+>
+> **Nota de seguridad:** color y fuente se inyectan en un `<style>` y el logo en un `<img src>`, así
+> que son superficie de inyección. Se validan en tres capas —Zod al cargar, la allowlist de la base,
+> y el propio renderizador— con hex para el color, allowlist cerrada para la fuente y http(s) para las
+> URLs. Lo que no pasa, se descarta y cae al default; nunca rompe la página.
 **Pendiente comercial.** Reflejar en el contrato: la web es servicio recurrente; snapshot incluido, handoff editable con tarifa.
 
 > ### ⚠️ Actualización (2026-07-14) — este ADR está EN REVISIÓN

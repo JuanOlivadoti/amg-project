@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-19** · **354 tests en verde**
+> Última actualización: **2026-07-22** · **377 tests en verde**
 
 ---
 
@@ -22,7 +22,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
 | 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal) · falta desplegar (5.3) |
-| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 75 tests |
+| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 78 tests |
 
 Después de la **5** el sistema es **usable por una persona que no sea yo**: la compuerta de
 aprobación (ADR-06) ya no se ejecuta editando un JSON a mano — se aprueba desde el portal, página por
@@ -64,7 +64,7 @@ OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `loc
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **354 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **377 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.

@@ -1,4 +1,24 @@
-import type { BusinessProfile } from "web-builder";
+import type { BrandTheme, BusinessProfile } from "web-builder";
+
+const FUENTES = new Set(["sistema", "serif", "moderna"]);
+
+/**
+ * La marca, validada. Es doble frontera: `renderStory` también revalida, pero acá se recorta ANTES
+ * de que el objeto entre a `renderStory` — y sobre todo, si no estuviera, `perfilValido` tiraría
+ * `brand` con su allowlist y el tema no llegaría nunca (lo que pasó en la demo). Cada campo se valida
+ * como lo que va a ser: hex (va a `<style>`), fuente de allowlist, logo http(s) (va a `<img src>`).
+ */
+function marca(v: unknown): BrandTheme | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const b = v as Record<string, unknown>;
+
+  const color = typeof b["color"] === "string" && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(b["color"]) ? b["color"] : undefined;
+  const font = typeof b["font"] === "string" && FUENTES.has(b["font"]) ? (b["font"] as BrandTheme["font"]) : undefined;
+  const logo = typeof b["logo"] === "string" && /^https?:\/\//i.test(b["logo"]) ? b["logo"] : undefined;
+
+  if (!color && !font && !logo) return undefined;
+  return { ...(color ? { color } : {}), ...(font ? { font } : {}), ...(logo ? { logo } : {}) };
+}
 
 /**
  * Valida el `business_profile` que sale de la base ANTES de dárselo a `renderStory()`.
@@ -73,5 +93,6 @@ export function perfilValido(bruto: unknown): BusinessProfile | null {
     ...(texto(p["image"]) ? { image: texto(p["image"])! } : {}),
     ...(addr ? { address: addr } : {}),
     ...(texto(p["opening_hours"]) ? { opening_hours: texto(p["opening_hours"])! } : {}),
+    ...(marca(p["brand"]) ? { brand: marca(p["brand"]) } : {}),
   };
 }

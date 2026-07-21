@@ -3,6 +3,7 @@ import type {
   Blok,
   FaqBlok,
   HeroBlok,
+  Imagen,
   PageContent,
   PageType,
   SchemaType,
@@ -10,6 +11,20 @@ import type {
   SectionBlok,
   Story,
 } from "../types.js";
+
+/** El campo `asset` de Storyblok que corresponde a una imagen: `{filename, alt}` (o vacío). */
+function assetDe(img: Imagen | undefined): Record<string, unknown> | undefined {
+  return img && img.src ? { filename: img.src, alt: img.alt ?? "" } : undefined;
+}
+
+/** El inverso: un asset de Storyblok → `Imagen`, o `undefined` si está vacío/mal formado. */
+function imagenDe(raw: unknown): Imagen | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const a = raw as Record<string, unknown>;
+  const src = typeof a["filename"] === "string" ? a["filename"] : "";
+  if (!src) return undefined; // un asset vacío (`{filename:null}`) no es una imagen
+  return { src, alt: typeof a["alt"] === "string" ? a["alt"] : "" };
+}
 
 /**
  * Transforma el contenido canónico (limpio, agnóstico) al formato que espera Storyblok:
@@ -60,6 +75,7 @@ function shapeBlok(blok: HeroBlok | SectionBlok | FaqBlok, slug: string): Record
         headline: blok.headline,
         subhead: blok.subhead,
         cta_label: blok.cta_label ?? "",
+        ...(assetDe(blok.image) ? { image: assetDe(blok.image) } : {}),
       };
     case "section":
       return {
@@ -67,6 +83,7 @@ function shapeBlok(blok: HeroBlok | SectionBlok | FaqBlok, slug: string): Record
         _uid: stableUid(slug, "section", blok.heading),
         heading: blok.heading,
         body: blok.body,
+        ...(assetDe(blok.image) ? { image: assetDe(blok.image) } : {}),
       };
     case "faq":
       return {
@@ -162,10 +179,16 @@ function desShapeBlok(raw: unknown): Blok | null {
     case "hero": {
       const hero: HeroBlok = { component: "hero", headline: str("headline"), subhead: str("subhead") };
       if (str("cta_label")) hero.cta_label = str("cta_label");
+      const img = imagenDe(b["image"]);
+      if (img) hero.image = img;
       return hero;
     }
-    case "section":
-      return { component: "section", heading: str("heading"), body: str("body") };
+    case "section": {
+      const sec: SectionBlok = { component: "section", heading: str("heading"), body: str("body") };
+      const img = imagenDe(b["image"]);
+      if (img) sec.image = img;
+      return sec;
+    }
     case "faq": {
       const items = Array.isArray(b["items"]) ? (b["items"] as unknown[]) : [];
       return {

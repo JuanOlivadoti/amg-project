@@ -33,3 +33,21 @@ test("#14 parseProfile: rechaza url inválida (no disfraza corrupción)", () => 
 test("#14 parseProfile: rechaza name faltante", () => {
   assert.throws(() => parseProfile({ telephone: "+34 900" } as never), /inválido/);
 });
+
+test("parseProfile: acepta una marca válida (hex + fuente allowlist + logo)", () => {
+  const p = parseProfile(validProfile({ brand: { color: "#0a7d34", font: "serif", logo: "https://cdn.ej/l.png" } }));
+  assert.equal(p.brand?.color, "#0a7d34");
+  assert.equal(p.brand?.font, "serif");
+});
+
+test("🔴 parseProfile: rechaza un color que no es hex (superficie de inyección CSS)", () => {
+  assert.throws(() => parseProfile(validProfile({ brand: { color: "red;}body{}" } as never })), /inválido/);
+});
+
+test("🔴 parseProfile: rechaza una fuente fuera de la allowlist", () => {
+  assert.throws(() => parseProfile(validProfile({ brand: { font: "Comic Sans" } as never })), /inválido/);
+});
+
+test("🔴 parseProfile: rechaza un logo que no es URL", () => {
+  assert.throws(() => parseProfile(validProfile({ brand: { logo: "javascript:alert(1)" } as never })), /inválido/);
+});

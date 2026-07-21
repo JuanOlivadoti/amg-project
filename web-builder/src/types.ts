@@ -77,11 +77,21 @@ export interface SeoFields {
   og_description: string;
 }
 
+/** Una imagen editable desde el Visual Editor (campo `asset` de Storyblok). */
+export interface Imagen {
+  /** URL del asset (Storyblok o cualquier CDN). Se escapa al renderizar. */
+  src: string;
+  /** Texto alternativo. Vacío = imagen decorativa (`alt=""`). */
+  alt: string;
+}
+
 export interface HeroBlok {
   component: "hero";
   headline: string;
   subhead: string;
   cta_label?: string;
+  /** Foto de portada. La sube el cliente en el Visual Editor; el handoff la deja vacía. */
+  image?: Imagen;
 }
 
 export interface SectionBlok {
@@ -89,6 +99,8 @@ export interface SectionBlok {
   heading: string;
   /** Prose final. Vacío en el handoff estructural; lo completa la generación por LLM. */
   body: string;
+  /** Imagen de la sección, opcional. */
+  image?: Imagen;
 }
 
 export interface FaqItem {
@@ -163,4 +175,23 @@ export interface BusinessProfile {
   address?: PostalAddress;
   /** Horario en texto libre (ej. "Lun-Dom 13:00-16:00, 20:00-23:30"). */
   opening_hours?: string;
+  /** Marca del negocio: lo que hace que su web se vea PROPIA y no idéntica a la del vecino. */
+  brand?: BrandTheme;
+}
+
+/**
+ * Tema de marca por tenant (ADR-11: "tema por tenant, no hardcodeado").
+ *
+ * ⚠️ **Estos valores se inyectan en un `<style>` y en `<img src>`.** Son una superficie de
+ * inyección: un `color` con `;}` o un `font` con `</style>` romperían la página o algo peor. Por eso
+ * el renderizador **valida cada uno** (hex para el color, allowlist para la fuente, escape para el
+ * logo) y descarta lo que no pase — nunca confía en que el dato venga limpio.
+ */
+export interface BrandTheme {
+  /** Color de acento, hex (`#0a7d34` o `#0a7`). Se ignora si no es un hex válido. */
+  color?: string;
+  /** Familia tipográfica, por nombre. El renderizador la mapea a un stack seguro. */
+  font?: "sistema" | "serif" | "moderna";
+  /** URL del logo. Se muestra en la cabecera del sitio. */
+  logo?: string;
 }

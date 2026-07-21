@@ -126,3 +126,29 @@ test("fromStoryblokContent: contenido vacío no explota (falla suave)", () => {
   assert.equal(story.content.body.length, 0);
   assert.doesNotThrow(() => renderStory(story), "una página sin bloks sale, no revienta");
 });
+
+test("🔴 round-trip: una imagen de hero sobrevive el viaje (Imagen ↔ asset Storyblok)", () => {
+  const s = pageToStory(validPage(), validBrief());
+  const hero = s.content.body.find((b) => b.component === "hero")!;
+  (hero as { image?: unknown }).image = { src: "https://a.storyblok.com/f/1/800x600/h/foto.jpg", alt: "Mesa" };
+
+  const guardado = toStoryblokContent(s);
+  const heroGuardado = (guardado["body"] as Array<Record<string, unknown>>).find((b) => b["component"] === "hero")!;
+  assert.deepEqual(heroGuardado["image"], { filename: "https://a.storyblok.com/f/1/800x600/h/foto.jpg", alt: "Mesa" }, "se guarda como asset");
+
+  const vuelta = fromStoryblokContent({ slug: "x", content: guardado });
+  const heroVuelto = vuelta.content.body.find((b) => b.component === "hero")!;
+  assert.deepEqual((heroVuelto as { image?: unknown }).image, {
+    src: "https://a.storyblok.com/f/1/800x600/h/foto.jpg",
+    alt: "Mesa",
+  });
+});
+
+test("fromStoryblokContent: un asset VACÍO no se vuelve una imagen rota", () => {
+  const story = fromStoryblokContent({
+    slug: "x",
+    content: { component: "page", body: [{ component: "hero", headline: "H", subhead: "S", image: { filename: null } }] },
+  });
+  const hero = story.content.body[0]!;
+  assert.equal((hero as { image?: unknown }).image, undefined, "un `{filename:null}` no es imagen");
+});

@@ -23,8 +23,8 @@ funciona entero pero en `localhost`.
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **354** en el monorepo + **29** en el portal. Los de seguridad, contra Postgres real |
-| **Migraciones** | 8 (`0001`..`0008`) |
+| **Tests** | **377** en el monorepo + **29** en el portal. Los de seguridad, contra Postgres real |
+| **Migraciones** | 9 (`0001`..`0009`) |
 | **ADRs** | 22, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 10 rondas (Codex), 17 tandas de correcciones |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
@@ -46,7 +46,7 @@ funciona entero pero en `localhost`.
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **354 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **377 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Diez reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las tres últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, y carreras asincrónicas en el portal. Ver [ADR-13..22 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## El número para la propuesta comercial
@@ -109,7 +109,7 @@ dominios personalizados arbitrarios, y hace que "una CDN delante" deje de ser op
 - **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** (~$0.31) — lo publicado en
   Storyblok es **anterior a `kr.v0.5`**: no muestra la evidencia etiquetada, que es *el argumento de
   venta*. Acción humana.
-- ✅ ~~Unificar el alcance (OBS-01)~~ — **hecho** (2026-07-19): manda ,
+- ✅ ~~Unificar el alcance (OBS-01)~~ — **hecho** (2026-07-19): manda `contexto-proyecto-frank.md`,
   alcance base = 3 módulos, ADR-04 se mantiene. Era la última observación abierta del proyecto.
 
 ### 🟡 3. Lo que ADR-19 dejó a medias y hay que cerrar antes de un SLA
