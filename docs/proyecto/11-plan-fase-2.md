@@ -214,6 +214,26 @@ es la única pieza expuesta a internet anónimo.
 > Y **"cache en el borde" quedó a medias**: lo construido es una cache *en proceso*. El borde es una
 > CDN al desplegar. Con más de una instancia, el webhook llega a **una sola**.
 
+### 6.1 — Lo que se hizo DESPUÉS de cerrar la etapa 6
+
+La etapa se cerró, pero al manejarla contra el Storyblok real aparecieron cosas que los tests no
+veían. Se documentan acá para que el plan no mienta por omisión:
+
+- **La demo local (`npm run demo -w renderer`).** El renderizador sirviendo el space **real** por la
+  CDA, con el mapa dominio→space sembrado en PGlite (cero credenciales de base). Es lo que permite
+  enseñar la web viva sin desplegar. Necesita `renderer/.env` con el token de **lectura** de la CDA.
+- **El bug que cazó la demo (`fromStoryblokContent`).** El contenido que Storyblok guarda está
+  **aplanado** y `renderStory` esperaba la forma anidada → 503. Nadie lo había visto porque nadie
+  leía de vuelta lo publicado (era OBS-03). Adaptador inverso + tests de ida-y-vuelta.
+- **Diseño: marca por tenant + imágenes.** El tema (color/fuente/logo) sale de `business_profile.brand`
+  y llega al renderizador por la allowlist de `0009`; las imágenes son campos `asset` editables en el
+  Visual Editor. Cada web se ve **propia**, con validación anti-inyección en tres capas. Verificado
+  contra el space real.
+
+> **Deuda de diseño, dicha:** las páginas siguen siendo **landing pages sueltas** — no hay navegación
+> entre ellas ni una `home` (el research no la genera). Y republicar desde un brief **pisa** las
+> imágenes que el cliente haya subido. Ninguna bloquea; se resuelven cuando se vuelvan reales.
+
 ---
 
 ## Decisiones tomadas en esta fase (y por qué)
