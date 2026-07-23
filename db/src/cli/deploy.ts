@@ -16,7 +16,7 @@
  * El `import("pg")` es dinámico a propósito: así el paquete `db` sigue compilando y testeando sin
  * `pg` ni conexión real (todo el proyecto corre sin credenciales; solo este CLI necesita una).
  */
-import { migrarConRegistro, type Ejecutor } from "../deploy.js";
+import { migrarConRegistro, ConexionReservada } from "../deploy.js";
 
 const databaseUrl = process.env["DATABASE_URL_ADMIN"];
 if (!databaseUrl) {
@@ -30,19 +30,14 @@ if (!databaseUrl) {
 }
 
 const { Client } = await import("pg");
+// Un `Client` (no un `Pool`): una sola conexión para toda la secuencia, como exige ADR-13. La
+// `ConexionReservada` no acepta un pool a propósito — repartiría el begin/commit entre conexiones.
 const client = new Client({ connectionString: databaseUrl });
 await client.connect();
-
-// `pg` cumple `Ejecutor` con un envoltorio mínimo: `exec` por el protocolo simple (multi-sentencia,
-// una migración entera) y `query` por el extendido (una sentencia con parámetros, para el registro).
-const ej: Ejecutor = {
-  exec: (sql) => client.query(sql),
-  query: <T>(sql: string, params?: unknown[]) =>
-    client.query(sql, params) as unknown as Promise<{ rows: T[] }>,
-};
+const con = ConexionReservada.desdeClientePg(client);
 
 try {
-  const aplicadas = await migrarConRegistro(ej, (msg) => console.log(msg));
+  const aplicadas = await migrarConRegistro(con, (msg) => console.log(msg));
   if (aplicadas.length === 0) {
     console.log("\n✔ La base ya estaba al día: no había migraciones pendientes.");
   } else {

@@ -19,5 +19,8 @@ export const environment = {
   supabaseAnonKey: 'TU-ANON-KEY-PUBLICA',
   features: {
     lanzarResearch: false,
+    // Fase 1: aprobar el run emitiría un evento sin orquestador detrás. Frank aprueba PÁGINAS (la
+    // compuerta), no el run. Se reenciende en Fase 2. NO tocar al desplegar.
+    aprobarRun: false,
   },
 };

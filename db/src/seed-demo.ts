@@ -1,4 +1,4 @@
-import type { Ejecutor } from "./deploy.js";
+import type { ConexionReservada } from "./deploy.js";
 
 /**
  * Seed de la demo de Fase 1: el caso de **Bella Napoli** pre-cargado para que el portal de Frank
@@ -282,51 +282,51 @@ const PERFIL_BELLA_NAPOLI = {
 };
 
 /**
- * Siembra (o re-siembra) el caso de Bella Napoli. Idempotente: el tenant se upserta por slug, el
- * cliente y las membresías por sus claves naturales, y el run de demo se **borra y recrea** para que
- * re-correr el seed refresque el contenido sin acumular duplicados.
+ * IDs FIJOS del cliente y del run de demo. Son la clave estable que hace el seed idempotente **sin
+ * ser destructivo**: se upserta el cliente por su `id` y se reemplaza SOLO el run de demo por el
+ * suyo. La versión anterior resolvía el cliente por nombre (dos seeds concurrentes lo duplicaban) y
+ * borraba runs con `delete ... where client_id` —que en Fase 2 se llevaría puesta la investigación
+ * real del cliente—. Con un id fijo, re-sembrar toca exactamente estas dos filas y ninguna más.
+ * (10ª review externa, #3 y #10.)
+ */
+const DEMO_CLIENT_ID = "d3305eba-11a5-4e0e-9c1f-000000000001";
+const DEMO_RUN_ID = "d3305eba-11a5-4e0e-9c1f-000000000002";
+
+const PROMPT_BELLA_NAPOLI =
+  "Restaurante italiano en Madrid centro. Especialidades: pizza napolitana, pasta fresca, menú del día, cenas para grupos y brunch de fin de semana.";
+
+/**
+ * Siembra (o re-siembra) el caso de Bella Napoli. Idempotente **y no destructivo**: el tenant se
+ * upserta por slug, el cliente por su id fijo, las membresías por (tenant, usuario), y **solo el run
+ * de demo** (id fijo) se reemplaza. Un run distinto del mismo cliente NO se toca.
  *
  * Todo dentro de UNA transacción: si algo falla, la base queda como estaba (no a medio sembrar).
  */
 export async function sembrarBellaNapoli(
-  ej: Ejecutor,
+  con: ConexionReservada,
   opts: OpcionesSeed,
 ): Promise<ResultadoSeed> {
-  await ej.exec("begin");
+  await con.exec("begin");
   try {
     // --- Tenant (upsert por slug) ---
-    const { rows: t } = await ej.query<{ id: string }>(
+    const { rows: t } = await con.query<{ id: string }>(
       `insert into tenants (nombre, slug) values ('AMG Madrid', 'amg')
        on conflict (slug) do update set nombre = excluded.nombre
        returning id`,
     );
     const tenantId = t[0]!.id;
 
-    // --- Cliente (find-or-create por nombre dentro del tenant; no hay unique natural) ---
-    const { rows: existente } = await ej.query<{ id: string }>(
-      "select id from clients where tenant_id = $1 and nombre = $2",
-      [tenantId, "Trattoria Bella Napoli"],
+    // --- Cliente (upsert por id FIJO: sin resolución por nombre, sin carreras) ---
+    await con.query(
+      `insert into clients (id, tenant_id, nombre, prompt_negocio, business_profile)
+       values ($1, $2, $3, $4, $5::jsonb)
+       on conflict (id) do update
+         set nombre = excluded.nombre,
+             prompt_negocio = excluded.prompt_negocio,
+             business_profile = excluded.business_profile`,
+      [DEMO_CLIENT_ID, tenantId, "Trattoria Bella Napoli", PROMPT_BELLA_NAPOLI, JSON.stringify(PERFIL_BELLA_NAPOLI)],
     );
-    let clientId: string;
-    if (existente[0]) {
-      clientId = existente[0].id;
-      await ej.query("update clients set business_profile = $2 where id = $1", [
-        clientId,
-        JSON.stringify(PERFIL_BELLA_NAPOLI),
-      ]);
-    } else {
-      const { rows: c } = await ej.query<{ id: string }>(
-        `insert into clients (tenant_id, nombre, prompt_negocio, business_profile)
-         values ($1, $2, $3, $4) returning id`,
-        [
-          tenantId,
-          "Trattoria Bella Napoli",
-          "Restaurante italiano en Madrid centro. Especialidades: pizza napolitana, pasta fresca, menú del día, cenas para grupos y brunch de fin de semana.",
-          JSON.stringify(PERFIL_BELLA_NAPOLI),
-        ],
-      );
-      clientId = c[0]!.id;
-    }
+    const clientId = DEMO_CLIENT_ID;
 
     // --- Membresías (upsert por (tenant_id, user_id)). maestro/equipo => client_id NULL (la
     // constraint cliente_exige_client_id lo exige). El rol se DERIVA de acá, no se declara. ---
@@ -334,7 +334,7 @@ export async function sembrarBellaNapoli(
       [opts.frankUserId, "maestro"],
       [opts.juanUserId, "equipo"],
     ] as const) {
-      await ej.query(
+      await con.query(
         `insert into memberships (tenant_id, user_id, rol, client_id)
          values ($1, $2, $3::user_role, null)
          on conflict (tenant_id, user_id) do update set rol = excluded.rol, client_id = null`,
@@ -342,20 +342,22 @@ export async function sembrarBellaNapoli(
       );
     }
 
-    // --- El run de demo: borrar el anterior (cascada a páginas) y recrear ---
-    await ej.query("delete from kr_runs where client_id = $1", [clientId]);
+    // --- El run de demo: reemplazar SOLO el run de id fijo (cascada a sus páginas). Los demás runs
+    // del cliente —investigación real en Fase 2— quedan intactos. ---
+    await con.query("delete from kr_runs where id = $1", [DEMO_RUN_ID]);
 
-    const { rows: run } = await ej.query<{ id: string }>(
-      `insert into kr_runs (tenant_id, client_id, schema_version, status, prompt,
+    const { rows: run } = await con.query<{ id: string }>(
+      `insert into kr_runs (id, tenant_id, client_id, schema_version, status, prompt,
                             market_country, market_language, market_location_code,
                             coste_micros_usd, calidad_datos, config)
-       values ($1, $2, 'kr.v0.5', 'pending_approval', $3, 'ES', 'es', 2724, 310800,
-               $4::jsonb, $5::jsonb)
+       values ($1, $2, $3, 'kr.v0.5', 'pending_approval', $4, 'ES', 'es', 2724, 310800,
+               $5::jsonb, $6::jsonb)
        returning id`,
       [
+        DEMO_RUN_ID,
         tenantId,
         clientId,
-        "Restaurante italiano en Madrid centro. Especialidades: pizza napolitana, pasta fresca, menú del día, cenas para grupos y brunch de fin de semana.",
+        PROMPT_BELLA_NAPOLI,
         // 3 de 8 páginas con volumen ⇒ cobertura 0.375, coherente con "cobertura volumen > 0" de la acción 06.
         JSON.stringify({ cobertura_volumen: 0.375, keywords_con_volumen: 3, keywords_totales: 8 }),
         JSON.stringify({ max_cost_usd: 1.0, max_pages: 8 }),
@@ -365,7 +367,7 @@ export async function sembrarBellaNapoli(
 
     // --- Las 8 páginas del brief ---
     for (const p of PAGINAS) {
-      await ej.query(
+      await con.query(
         `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, page_strategy,
                                url_slug, keyword_principal, keywords_secundarias, intencion, local,
                                volumen, dificultad, evidencia, opportunity_score, score_confidence,
@@ -395,10 +397,10 @@ export async function sembrarBellaNapoli(
       );
     }
 
-    await ej.exec("commit");
+    await con.exec("commit");
     return { tenantId, clientId, runId };
   } catch (e) {
-    await ej.exec("rollback");
+    await con.exec("rollback");
     throw e;
   }
 }

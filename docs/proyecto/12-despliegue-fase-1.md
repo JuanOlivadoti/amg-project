@@ -125,13 +125,26 @@ pegar credenciales y hacer click).
 
 ### C. El deploy — **juntos, en este orden**
 
-1. **Base:** aplicar las migraciones contra Supabase (esquema + roles + RLS).
-2. **Seed:** cargar los usuarios (Frank/Juan) y el run de Bella Napoli.
-3. **API:** desplegar en Railway con sus variables (§8). Verificar que `/health` responda.
-4. **Portal:** `ng build` apuntando a la api desplegada → subir a Pages/Hostinger.
-5. **Dominio:** apuntar `app.` → portal y `api.` → api. El TLS lo pone el PaaS solo.
-6. **Login de Frank:** crear su usuario en Supabase Auth.
-7. **Verificar de punta a punta:** Frank entra, ve el research de Bella Napoli, navega la compuerta.
+1. **Base:** aplicar las migraciones contra Supabase (`DATABASE_URL_ADMIN=… npm run migrate:deploy -w db`).
+   Crean el esquema, los roles **sin contraseña** y la RLS.
+2. **Contraseñas de los roles.** Las migraciones dejan `amg_api`/`amg_render`/`amg_cache`/`amg_orquestador`
+   **sin contraseña**: sin este paso, `DATABASE_URL_API` no conecta y la API no arranca. Ponerlas con
+   los `alter role … with password` de **[`12-credenciales.md`](12-credenciales.md#al-desplegar-en-supabase)**
+   y armar las `DATABASE_URL_*`. *(Lo señaló la 10ª review, #1: estaba documentado en el doc hermano
+   pero este plan no lo enlazaba.)*
+3. **Usuarios de Frank y Juan** en Supabase Auth (antes del seed: sus `sub` son parámetros del seed).
+   En el `app_metadata` de cada uno: `{ "tenant_id": "<el del seed>", "rol": "maestro"|"equipo" }`.
+4. **Seed:** `DATABASE_URL_ADMIN=… SEED_FRANK_USER_ID=… SEED_JUAN_USER_ID=… npm run seed:demo -w db`.
+   Imprime el `tenant_id` para el paso anterior (si aún no lo tenías, corré el seed, tomá el
+   `tenant_id`, completá el `app_metadata`, y listo).
+5. **API:** desplegar en Railway con sus variables (§8, incluida `CORS_ORIGINS`). Verificar que
+   **`GET /health` responda 200** (ruta pública, sin token — existe desde la ronda de review).
+6. **Portal:** completar `environment.prod.ts` (el `prebuild` rechaza placeholders) → `npm run build`
+   → subir a Pages/Hostinger.
+7. **Dominio:** apuntar `app.` → portal y `api.` → api. El TLS lo pone el PaaS solo.
+8. **Verificar de punta a punta:** Frank entra, ve el research de Bella Napoli, navega la compuerta,
+   y **NO ve** el formulario de "lanzar research" ni el botón "Aprobar el run" (confirmarlo en el
+   navegador con su sesión: es la parte de A.5 que los tests no ven).
 
 ---
 
@@ -256,3 +269,37 @@ verificación de punta a punta (§C.7) hay que **confirmarlo en el navegador** c
 
 **El Bloque A está cerrado.** El código está listo para que desplegar sea "pegar credenciales y
 click": siguen el Bloque B (cuentas de Juan) y el C (deploy).
+
+### 2026-07-23 (cont.) — Ronda de review de Codex: 12 hallazgos ✅
+
+Codex revisó el Bloque A (solo revisa, no toca código — ver `CLAUDE.md`). Se corrigieron todos los
+hallazgos válidos; con TDD y verificación por mutación donde aplicaba:
+
+- **#9 (registro auto-bloqueante):** el registro de migraciones ya **no** usa `force RLS` (se
+  auto-bloquearía si el rol de deploy de Supabase no tiene `BYPASSRLS`). Protegido por falta de grants.
+- **#8 (ADR-13 no impuesto):** el runner y el seed ahora reciben una `ConexionReservada` (una sola
+  conexión, sin constructor público) en vez de una interfaz suelta que un `Pool` podía cumplir.
+- **#12 (deriva de migraciones):** el registro guarda **checksum SHA-256**; editar una migración
+  aplicada aborta en vez de correr en silencio.
+- **#3 + #10 (seed destructivo / cliente por nombre):** IDs fijos de demo + `on conflict (id)`; se
+  reemplaza **solo** el run de demo. Test nuevo: un run ajeno del cliente **sobrevive** al re-seed.
+- **#7 (CORS `*`/vacíos):** `leerConfig` ahora **rechaza** `*`, orígenes vacíos y los que no son URL
+  http(s) completa. "No `*` en prod" pasó de comentario a invariante con test.
+- **#5 (`/health` inexistente):** `GET /health` público (sin token), con test. El §C.5 ya es real.
+- **#2 (aprobar-run en Fase 1):** el botón "Aprobar el run y publicar" se **oculta** con
+  `features.aprobarRun=false` (emitía un evento sin orquestador). Frank aprueba **páginas** igual.
+- **#4 (falso verde de A.5):** el `npm test` puro no fijaba ni el default de prod ni el `@if`. Se
+  agregó un test que importa `environment.prod.ts` (flags en `false`) y **specs de componente (karma
+  headless)** que renderizan `RunsPage`/`BriefPage` y comprueban el DOM. Mutación confirmada: ignorar
+  el gate tumba el spec.
+- **#11 (contrato "a través de la API"):** test de integración nuevo `api/src/seed-integracion.test.ts`
+  (seed → `GET /runs`/`GET /runs/:id` como Frank/Juan/intruso, por HTTP). Comentario del test del seed
+  corregido (prueba RLS, no HTTP).
+- **#6 (build con placeholders):** `prebuild` que **frena** `npm run build` si `environment.prod.ts`
+  tiene placeholders o URLs no-HTTPS (`portal/src/environments/config-check.ts`, testeado).
+- **#1 (contraseña de `amg_api`):** NO era un bloqueo — está documentado en `12-credenciales.md`. Se
+  agregó el cross-reference y el paso explícito en §C.2.
+
+**Verde el 2026-07-23:** monorepo `npm test` (db 114, api 45; 429 en total) + `npm run typecheck`
+(6 paquetes); portal `npm test` (45 puros) + `npm run test:components` (5, karma headless) + el
+`prebuild` frena el `ng build` con placeholders.

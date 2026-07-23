@@ -17,5 +17,8 @@ export const environment = {
    */
   features: {
     lanzarResearch: true,
+    /** Aprobar el run (emite el evento de publicación). En dev hay orquestador de mentira; en Fase 1
+     *  prod se apaga porque no hay consumidor y "publicar" no publicaría. Ver §A.5 / 10ª review #2. */
+    aprobarRun: true,
   },
 };

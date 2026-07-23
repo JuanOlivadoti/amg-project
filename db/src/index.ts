@@ -30,5 +30,7 @@ export type { Reserva } from "./task-log.js";
 
 export { aplicarMigraciones, MIGRATIONS_DIR } from "./migrate.js";
 
-export { migrarConRegistro } from "./deploy.js";
-export type { Ejecutor } from "./deploy.js";
+export { migrarConRegistro, ConexionReservada } from "./deploy.js";
+
+export { sembrarBellaNapoli } from "./seed-demo.js";
+export type { OpcionesSeed, ResultadoSeed } from "./seed-demo.js";

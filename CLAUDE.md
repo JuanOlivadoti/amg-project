@@ -29,6 +29,13 @@ Al terminar cualquier pieza de trabajo, antes de darla por cerrada:
 La lección de diez reviews externas: **una garantía en un comentario es una intención, no una
 garantía.** La hace cumplir una constraint, un test que la mute, o nada.
 
+### Revisiones con Codex
+
+Cuando el usuario pida una **revisión de Codex**, el prompt para Codex debe pedir explícitamente que
+**NO toque el código: solo revisa y reporta**. Codex no aplica cambios; los hallazgos los evalúa y los
+implementa el agente principal (con el rigor de la skill de recibir reviews: verificar antes de
+implementar, discrepar con razón técnica).
+
 ---
 
 ## Credenciales y seguridad (reglas duras)

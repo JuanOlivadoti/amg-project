@@ -47,3 +47,24 @@ test("sigue fallando si falta la conexión o el secreto del JWT", () => {
   conEntorno({ CORS_ORIGINS: "https://app.tudominio.com" });
   assert.throws(() => leerConfig(), /DATABASE_URL_API/);
 });
+
+test("RECHAZA `*`: 'CORS_ORIGINS obligatorio' no sirve si se acepta el comodín", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: "*" });
+  assert.throws(() => leerConfig(), /\*|comod/i);
+});
+
+test("rechaza un origen que no es una URL http(s) completa", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: "app.tudominio.com" }); // sin esquema
+  assert.throws(() => leerConfig(), /origen|http/i);
+});
+
+test("rechaza una lista con un elemento vacío (coma colgando)", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: "https://app.tudominio.com," });
+  assert.throws(() => leerConfig(), /vac|origen/i);
+});
+
+test("acepta varios orígenes https válidos", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: "https://app.tudominio.com,http://localhost:4200" });
+  const config = leerConfig();
+  assert.deepEqual(config.corsOrigins, ["https://app.tudominio.com", "http://localhost:4200"]);
+});

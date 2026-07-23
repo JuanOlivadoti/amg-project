@@ -43,15 +43,48 @@ export function leerConfig(): ConfigApi {
   if (faltan.length > 0) {
     throw new Error(`Faltan variables de entorno de la API:\n  - ${faltan.join("\n  - ")}`);
   }
+  // Cada origen tiene que ser una URL http(s) COMPLETA, y `*` está prohibido explícitamente. Que la
+  // variable exista no basta: `CORS_ORIGINS=*` la cumpliría y volvería a abrir la puerta que el `throw`
+  // de arriba dice cerrar. Un elemento vacío (coma colgando) tampoco pasa —`origin: [""]` es un
+  // origen que nadie tiene y que solo esconde un error de tipeo—.
+  const corsOrigins = (corsRaw as string).split(",").map((s) => s.trim());
+  for (const origen of corsOrigins) {
+    if (origen === "*") {
+      throw new Error("CORS_ORIGINS no puede ser `*`: producción se sirve solo a los orígenes del portal.");
+    }
+    if (origen === "") {
+      throw new Error("CORS_ORIGINS tiene un origen vacío (¿una coma colgando?): revisá la lista.");
+    }
+    if (!esOrigenHttp(origen)) {
+      throw new Error(`CORS_ORIGINS tiene un origen inválido: "${origen}". Debe ser una URL http(s) completa.`);
+    }
+  }
+
   const aud = process.env["SUPABASE_JWT_AUD"]?.trim();
   const iss = process.env["SUPABASE_JWT_ISS"]?.trim();
   return {
     databaseUrl: databaseUrl as string,
     jwtSecret: jwtSecret as string,
-    corsOrigins: (corsRaw as string).split(",").map((s) => s.trim()),
+    corsOrigins,
     ...(aud ? { jwtAudience: aud } : {}),
     ...(iss ? { jwtIssuer: iss } : {}),
   };
+}
+
+/**
+ * ¿Es un ORIGEN http(s) válido? Un origen es `esquema://host[:puerto]`, sin path, query ni fragment
+ * (es lo que un navegador manda en la cabecera `Origin`, y lo que `hono/cors` compara literalmente).
+ * `https://app.x` pasa; `app.x`, `ftp://x`, `https://app.x/ruta` y `*` no.
+ */
+function esOrigenHttp(v: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(v);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return false;
+  return (u.pathname === "/" || u.pathname === "") && u.search === "" && u.hash === "";
 }
 
 /** Construye las dependencias reales. Devuelve también `cerrar` para soltar el pool al apagar. */

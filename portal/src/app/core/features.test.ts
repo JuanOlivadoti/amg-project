@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mostrarLanzarResearch } from './features';
+import { mostrarLanzarResearch, mostrarAprobarRun } from './features';
 
 /**
  * El botón "lanzar research" (§A.5). La regla de Fase 1: aunque seas equipo, si el flag está
@@ -23,4 +23,16 @@ test('no-equipo (cliente): no se muestra ni con el flag encendido', () => {
 
 test('no-equipo + flag apagado: no se muestra', () => {
   assert.equal(mostrarLanzarResearch(false, false), false);
+});
+
+test('aprobar run: equipo + flag encendido → se muestra', () => {
+  assert.equal(mostrarAprobarRun(true, true), true);
+});
+
+test('aprobar run: equipo + flag apagado (Fase 1) → NO se muestra', () => {
+  assert.equal(mostrarAprobarRun(true, false), false);
+});
+
+test('aprobar run: no-equipo → no se muestra ni con el flag encendido', () => {
+  assert.equal(mostrarAprobarRun(false, true), false);
 });

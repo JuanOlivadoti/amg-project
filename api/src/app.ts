@@ -37,7 +37,14 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     }),
   );
 
-  // Toda la superficie exige token. No hay ruta pública: seguro por defecto.
+  /*
+   * Chequeo de salud, SIN auth y ANTES del middleware que exige token. Es la única ruta pública, y a
+   * propósito: el PaaS (Railway) la sondea para saber si el proceso está vivo, y un health-check que
+   * necesitara un JWT válido no serviría para eso. No toca la base ni revela nada: responde `ok` y ya.
+   */
+  app.get("/health", (c) => c.json({ status: "ok" }));
+
+  // Del resto de la superficie, todo exige token. Seguro por defecto.
   app.use("*", autenticar(deps.verificar));
 
   /*

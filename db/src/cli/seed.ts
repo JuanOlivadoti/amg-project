@@ -17,7 +17,7 @@
  * una petición de usuario (no pasa por RLS). Lo sembrado se lee después bajo RLS.
  */
 import { sembrarBellaNapoli, type OpcionesSeed } from "../seed-demo.js";
-import type { Ejecutor } from "../deploy.js";
+import { ConexionReservada } from "../deploy.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -57,15 +57,10 @@ const opts: OpcionesSeed = { frankUserId: frankUserId!, juanUserId: juanUserId! 
 const { Client } = await import("pg");
 const client = new Client({ connectionString: databaseUrl });
 await client.connect();
-
-const ej: Ejecutor = {
-  exec: (sql) => client.query(sql),
-  query: <T>(sql: string, params?: unknown[]) =>
-    client.query(sql, params) as unknown as Promise<{ rows: T[] }>,
-};
+const con = ConexionReservada.desdeClientePg(client);
 
 try {
-  const r = await sembrarBellaNapoli(ej, opts);
+  const r = await sembrarBellaNapoli(con, opts);
   console.log("\n✔ Sembrado el caso de Bella Napoli.\n");
   console.log("  tenant_id:", r.tenantId);
   console.log("  client_id:", r.clientId);

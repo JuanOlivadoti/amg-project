@@ -16,3 +16,16 @@
 export function mostrarLanzarResearch(esEquipo: boolean, lanzarHabilitado: boolean): boolean {
   return esEquipo && lanzarHabilitado;
 }
+
+/**
+ * ¿Se muestra el botón "Aprobar el run y publicar"?
+ *
+ * Misma forma que lanzar (equipo + flag), pero flag PROPIO (`aprobarRun`) porque son capacidades
+ * distintas. En Fase 1 se apaga: aprobar el run emite un evento a Inngest que **no tiene orquestador
+ * detrás** —la base quedaría aprobada, el usuario vería un error y nada se publicaría—, y el texto
+ * "y publicar" prometería algo imposible. Frank igual cruza la compuerta aprobando PÁGINAS (solo
+ * escritura en la base). Se reenciende en Fase 2, con el orquestador. (10ª review externa, #2.)
+ */
+export function mostrarAprobarRun(esEquipo: boolean, aprobarHabilitado: boolean): boolean {
+  return esEquipo && aprobarHabilitado;
+}

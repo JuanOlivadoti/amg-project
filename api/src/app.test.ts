@@ -138,6 +138,12 @@ const ctxServicio = (): TenantContext => ({ tenantId: tenantA });
 
 // ---------------------------------------------------------------- autenticación
 
+test("GET /health responde 200 SIN token (lo sondea el PaaS)", async () => {
+  const res = await app.request("/health");
+  assert.equal(res.status, 200, "el health-check no exige JWT: si no, no serviría de health-check");
+  assert.deepEqual(await res.json(), { status: "ok" });
+});
+
 test("sin token → 401", async () => {
   const res = await req("GET", "/runs", { tenant: tenantA });
   assert.equal(res.status, 401);

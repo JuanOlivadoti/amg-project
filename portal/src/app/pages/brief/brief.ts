@@ -7,6 +7,8 @@ import { ApiService } from '../../services/api';
 import { AuthService } from '../../services/auth';
 import type { Brief, PaginaPropuesta } from '../../core/models';
 import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
+import { mostrarAprobarRun } from '../../core/features';
+import { environment } from '../../../environments/environment';
 import { Vigencia } from '../../core/vigencia';
 
 @Component({
@@ -26,7 +28,7 @@ import { Vigencia } from '../../core/vigencia';
           <p class="mt-1 text-xs text-gray-500">
             Estado: {{ b.run.status }} · Coste: \${{ usd(b.run.coste_micros_usd) }}
           </p>
-          @if (auth.esEquipo()) {
+          @if (puedeAprobarRunUI()) {
             <button
               (click)="aprobarRun()"
               [disabled]="!puedeAprobar() || trabajando()"
@@ -171,6 +173,15 @@ export class BriefPage implements OnInit, OnDestroy {
     this.brief() ? separarPorEvidencia(this.brief()!.pages).sinValidar : [],
   );
   readonly puedeAprobar = computed(() => (this.brief() ? puedeAprobarseRun(this.brief()!.pages) : false));
+
+  /**
+   * ¿Se muestra el botón "Aprobar el run y publicar"? Equipo + flag de Fase 1. En Fase 1 está
+   * apagado: aprobar el run emite un evento sin orquestador detrás (ver `features.ts`). La aprobación
+   * de PÁGINAS —abajo, en cada tarjeta— sigue visible: es lo que demuestra la compuerta.
+   */
+  readonly puedeAprobarRunUI = computed(() =>
+    mostrarAprobarRun(this.auth.esEquipo(), environment.features.aprobarRun),
+  );
 
   private sub: Subscription | null = null;
 
