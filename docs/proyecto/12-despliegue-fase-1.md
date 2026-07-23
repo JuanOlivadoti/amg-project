@@ -1,6 +1,9 @@
 # Despliegue — Fase 1: el portal de Frank en pre-producción
 
-> **Estado:** 📋 Plan, sin ejecutar · **Última actualización:** 2026-07-22
+> **Estado:** 🛠️ En ejecución — Bloque A (código) arrancado · **Última actualización:** 2026-07-23
+>
+> **Progreso:** A.1 (runner de migraciones) ✅ · A.2 (seed de Bella Napoli) ✅ · A.3/A.4/A.5 pendientes.
+> Detalle al final, en **§13. Registro de ejecución**.
 >
 > Este documento es **el plan acordado** para poner el portal en un dominio, funcionando como
 > pre-producción, para mostrárselo a Frank. Nace de una conversación de alineación: lo que entra, lo
@@ -78,14 +81,23 @@ pegar credenciales y hacer click).
 
 ### A. Prerequisitos de código — **los preparo yo, antes de tocar ninguna cuenta**
 
-1. **Runner de migraciones contra una base remota.** Hoy las migraciones corren en los tests contra
-   PGlite; falta un pequeño CLI que se conecte a la `DATABASE_URL` de Supabase y las aplique en orden
-   (crea el esquema, **los roles `amg_api`/`amg_render` y la RLS**).
-2. **Script de seed (lo que hace que el portal tenga algo que mostrar).** Carga en la base:
-   - los **usuarios** Frank y Juan con sus membresías/roles;
-   - un **run completo de Bella Napoli**, derivado del brief de la acción 06, para que el portal
-     muestre research, brief y compuerta reales sin necesidad del orquestador.
-   *(Al construirlo confirmo la forma exacta de las tablas; el brief ya existe del pipeline.)*
+1. **Runner de migraciones contra una base remota.** ✅ **Hecho.** `db/src/deploy.ts`
+   (`migrarConRegistro`) + CLI `db/src/cli/deploy.ts` (`npm run migrate:deploy -w db`). Aplica las
+   migraciones pendientes en orden, cada una en su transacción, y las anota en `app.migraciones_aplicadas`
+   → **idempotente**: re-correr no re-aplica ni rompe. Los roles (`amg_api`/`amg_render`/…) y la RLS
+   ya los crean las migraciones (0003/0007); el runner solo las aplica de forma segura y repetible.
+   Tests contra PGlite (incluida verificación por mutación de la idempotencia).
+   > **Credencial:** usa `DATABASE_URL_ADMIN` (superusuario `postgres` de Supabase), **no** `amg_api`:
+   > las migraciones crean roles y `amg_api` no puede. Es el único uso de esa credencial de admin.
+2. **Script de seed (lo que hace que el portal tenga algo que mostrar).** ✅ **Hecho.**
+   `db/src/seed-demo.ts` (`sembrarBellaNapoli`) + CLI `db/src/cli/seed.ts` (`npm run seed:demo -w db`).
+   Carga:
+   - los **usuarios** Frank (`maestro`) y Juan (`equipo`) con sus membresías — sus UUID entran por
+     `SEED_FRANK_USER_ID` / `SEED_JUAN_USER_ID` (los `sub` de Supabase Auth, que se crean antes);
+   - un **run completo de Bella Napoli** (acción 06): `pending_approval`, 8 páginas, **3 respaldadas
+     por datos + 5 `sin_validar`**, `approved = false` (la compuerta la cruza Frank en vivo).
+   **Idempotente** (upsert por slug/usuario; el run de demo se borra y recrea). Los tests leen lo
+   sembrado **bajo RLS** (como Frank/Juan/un intruso): prueban lo que el portal mostrará, no el insert.
 3. **Config de producción del portal.** Hoy apunta a `localhost`; que apunte a la `api` desplegada, y
    las variables de Supabase (URL + anon key) para el login.
 4. **CORS de la api.** Sumar el origen del portal a `CORS_ORIGINS` (hoy sin eso sería `*`, que no
@@ -116,6 +128,13 @@ pegar credenciales y hacer click).
 ---
 
 ## 8. Variables de entorno (checklist, confirmadas contra el código)
+
+**deploy de base** (una vez, y al agregar migraciones — `db/src/cli`):
+
+| Variable | Qué es |
+|---|---|
+| `DATABASE_URL_ADMIN` | Conexión de **admin** (superusuario `postgres` de Supabase). Crea roles y esquema. Solo la usan `migrate:deploy` y `seed:demo`; **no** es la de la API. |
+| `SEED_FRANK_USER_ID` / `SEED_JUAN_USER_ID` | Los `sub` (UUID) de Frank y Juan en Supabase Auth. Solo para `seed:demo`. |
 
 **api** (`npm run serve -w api`, falla cerrado si falta algo):
 
@@ -170,3 +189,42 @@ la corrida de seed (acción 06) ~$0.31, una vez. → **~$0–5/mes** para la dem
 - **Las webs de cliente:** desplegar el **renderizador + CDN**, con el dominio de cada cliente
   apuntando al servicio (ADR-19). Es el "momento ajá" de la demo, y el paso que convierte esto de
   "les generamos contenido" en "su equipo edita y sirve su web".
+
+---
+
+## 13. Registro de ejecución
+
+### 2026-07-23 — Bloque A: A.1 (runner) y A.2 (seed) ✅
+
+**Qué se hizo.** Los dos prerequisitos de código que hacen que desplegar sea "pegar credenciales y
+click":
+
+- **A.1 — Runner de migraciones.** `db/src/deploy.ts` + `db/src/cli/deploy.ts`. Aplica las
+  migraciones pendientes en orden, con registro en `app.migraciones_aplicadas` → idempotente.
+  Correr: `DATABASE_URL_ADMIN=… npm run migrate:deploy -w db`.
+- **A.2 — Seed de Bella Napoli.** `db/src/seed-demo.ts` + `db/src/cli/seed.ts`. Correr:
+  `DATABASE_URL_ADMIN=… SEED_FRANK_USER_ID=… SEED_JUAN_USER_ID=… npm run seed:demo -w db`. Imprime el
+  `tenant_id` y qué poner en el `app_metadata` de cada usuario en Supabase Auth.
+
+**Verde:** `npm test` (db: 111 tests, incl. runner + seed bajo RLS + verificación por mutación) y
+`npm run typecheck` (6 paquetes) en verde el 2026-07-23.
+
+**Dos hallazgos de leer el código (afinan A.3 y A.5):**
+
+1. **El portal NO renderiza `content_brief` / `seo` / `preguntas_frecuentes`.** La tarjeta de brief
+   (`portal/.../brief.ts`) muestra `keyword_principal`, `url_slug`, volumen, KD, `opportunity_score`,
+   evidencia y estado de aprobación — nada más. **Lo vendible visible es el split ✅3/⚠️5 con números
+   realistas**, no el detalle del brief. El seed carga igual el `content_brief` (es la forma real del
+   dato y lo devuelve la API), pero la demo no depende de él. Si se quiere mostrar el brief completo,
+   es trabajo de portal aparte, no del seed.
+2. **El botón "Lanzar research" (§A.5) es el `<form>` de `portal/.../runs.ts`, visible bajo
+   `auth.esEquipo()`.** Frank es `maestro` → hoy lo vería. A.5 = ocultar ese formulario en Fase 1
+   (recomendado en §10). Ahí también está el botón "Aprobar el run y publicar" del brief: decidir si
+   en Nivel 1 la aprobación queda visible (no publica en vivo, pero sí cambia el estado en la base).
+
+**Orden que impone A.2 (matiz sobre §7.C).** Las membresías necesitan los `sub` de Supabase Auth, así
+que **los usuarios de Frank y Juan se crean ANTES del seed** (o el seed se re-corre después con los
+IDs). El paso §C.6 ("crear el usuario de Frank") sube de orden: va antes de §C.2 (seed), no al final.
+
+**Falta del Bloque A:** A.3 (config de prod del portal → apuntar a la api desplegada + URL/anon key
+de Supabase), A.4 (CORS de la api), A.5 (ocultar "lanzar research").
