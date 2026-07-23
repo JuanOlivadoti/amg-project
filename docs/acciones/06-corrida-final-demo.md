@@ -144,8 +144,10 @@ credenciales de base de datos. Imprime las URLs de cada página publicada, ya li
   ...
 ```
 
-> **La raíz `/` da 404 a propósito.** El research genera **landing pages temáticas, no una home** —
-> es una observación honesta de producto, no un bug. Entrá por uno de los slugs que imprime.
+> **La raíz `/` sirve una home sintetizada.** El research genera landing pages temáticas, no una
+> portada; antes la raíz daba 404. Ahora el renderizador, si no hay una story `home` publicada,
+> sintetiza un índice (el nombre del negocio + una tarjeta por página). También podés entrar por
+> cualquiera de los slugs que imprime — todos llevan la barra de navegación del sitio.
 
 ### 6.3 — El Visual Editor (si pusiste el preview token)
 
