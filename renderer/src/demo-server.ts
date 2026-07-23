@@ -163,10 +163,12 @@ function imprimirGuia(puerto: number): void {
     console.log(`\n    ${base}/?_host=noexiste.es          ← 404, sin fallback (así debe ser)`);
   }
 
-  // OJO: no hay slug "home" — el research produce páginas temáticas, no una portada. Por eso `/`
-  // da 404 y la demo entra por un slug real. Es una observación honesta de producto, no un bug.
-  console.log(`\n  Nota: ${base}/?_host=${dominio} (la raíz) da 404 a propósito: el research genera`);
-  console.log("        landing pages temáticas, no una home. Entrá por uno de los slugs de arriba.");
+  // El research produce páginas temáticas, no una portada. Antes la raíz daba 404; ahora el
+  // renderizador SINTETIZA una home (el nombre del negocio + el índice de las páginas) cuando no hay
+  // una story `home` publicada. Así la raíz de un dominio válido nunca es un 404.
+  console.log(`\n  Portada: ${base}/?_host=${dominio} (la raíz) sirve una home sintetizada — el nombre`);
+  console.log("           del negocio + el índice de las páginas. Si el cliente crea su propia `home`");
+  console.log("           en Storyblok, esa gana.");
 
   if (previewToken && slugs[0]) {
     const { firma, vence } = firmarPreview(PREVIEW_SECRET, dominio!);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CDA_BASE, ErrorCda, StoryblokCda, type FetchLike } from "./cda.js";
+import { CDA_BASE, ErrorCda, normalizarLinks, StoryblokCda, type FetchLike } from "./cda.js";
 
 /** `fetch` de mentira que anota la URL pedida: es lo que hace testeable esto sin red ni credenciales. */
 function espia(respuesta: Partial<Response> & { json?: () => Promise<unknown> }) {
@@ -150,6 +150,31 @@ describe("StoryblokCda", () => {
     assert.equal(await pedir(fetch), null);
   });
 
+  it("traerNav pega a la Links API con el token y la versión", async () => {
+    const { fetch, urls } = espia({ json: async () => ({ links: {} }) });
+    await new StoryblokCda({ fetch }).traerNav({ token: "pub-111", version: "published" });
+
+    const url = new URL(urls[0]!);
+    assert.ok(urls[0]!.startsWith(`${CDA_BASE}/links`));
+    assert.equal(url.searchParams.get("token"), "pub-111");
+    assert.equal(url.searchParams.get("version"), "published");
+  });
+
+  it("🔴 traerNav propaga un fallo del origen (no inventa una nav vacía)", async () => {
+    // Si un 500 se volviera `[]`, la nav desaparecería en silencio cada vez que Storyblok hipara.
+    // Que LANCE deja que el renderizador decida degradar; que devuelva `[]` esconde el problema.
+    const { fetch } = espia({ status: 500, ok: false, json: async () => ({}) });
+    await assert.rejects(
+      () => new StoryblokCda({ fetch }).traerNav({ token: "t", version: "published" }),
+      (e: ErrorCda) => e.status === 500,
+    );
+  });
+
+  it("traerNav: un 404 (space sin páginas) es lista vacía, no un error", async () => {
+    const { fetch } = espia({ status: 404, ok: false });
+    assert.deepEqual(await new StoryblokCda({ fetch }).traerNav({ token: "t", version: "published" }), []);
+  });
+
   it("🔴 convierte el contenido APLANADO de Storyblok a la forma de renderStory (demo)", async () => {
     // El bug que cazó la demo: Storyblok guarda `seo_title` plano, no un `seo` anidado. La CDA tiene
     // que deshacer el aplanado o `renderStory` explota (`c.seo.title` con `c.seo` undefined).
@@ -174,5 +199,52 @@ describe("StoryblokCda", () => {
     assert.ok(story, "tiene que devolver una story");
     assert.equal(story.content.seo.title, "Trattoria | Menú", "el seo se re-anida");
     assert.equal(story.content.body[0]?.component, "hero");
+  });
+});
+
+describe("normalizarLinks", () => {
+  it("mapea a {slug, name}, descarta carpetas y ordena por position", () => {
+    const items = normalizarLinks({
+      a: { slug: "reservas", name: "Reservas", position: 20 },
+      b: { slug: "menu", name: "La carta", position: 10 },
+      c: { slug: "blog", name: "Blog", is_folder: true, position: 5 },
+    });
+    assert.deepEqual(items, [
+      { slug: "menu", name: "La carta" },
+      { slug: "reservas", name: "Reservas" },
+    ]);
+  });
+
+  it("🔴 descarta la startpage: la home se llega por el logo, no por la barra", () => {
+    const items = normalizarLinks({
+      a: { slug: "home", name: "Inicio", is_startpage: true, position: 0 },
+      b: { slug: "menu", name: "La carta", position: 1 },
+    });
+    assert.deepEqual(items, [{ slug: "menu", name: "La carta" }]);
+  });
+
+  it("🔴 acota el número de páginas (una nav no son 200)", () => {
+    const muchas: Record<string, unknown> = {};
+    for (let i = 0; i < 120; i++) muchas[`k${i}`] = { slug: `p-${i}`, name: `P${i}`, position: i };
+    assert.ok(normalizarLinks(muchas).length <= 50);
+  });
+
+  it("una fila sin slug string se descarta; sin nombre, el slug es el fallback", () => {
+    const items = normalizarLinks({
+      a: { slug: 123, name: "número" },
+      b: { slug: "reservas" },
+    });
+    assert.deepEqual(items, [{ slug: "reservas", name: "reservas" }]);
+  });
+
+  it("una entrada que no es un objeto no rompe el mapeo", () => {
+    assert.deepEqual(normalizarLinks({ a: null, b: "x", c: { slug: "menu", name: "M" } }), [
+      { slug: "menu", name: "M" },
+    ]);
+  });
+
+  it("links ausente o no-objeto es lista vacía", () => {
+    assert.deepEqual(normalizarLinks(undefined), []);
+    assert.deepEqual(normalizarLinks("nope"), []);
   });
 });

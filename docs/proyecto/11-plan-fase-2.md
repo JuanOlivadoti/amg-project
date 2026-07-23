@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-22** · **377 tests en verde**
+> Última actualización: **2026-07-22** · **403 tests en verde**
 
 ---
 
@@ -22,7 +22,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
 | 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal) · falta desplegar (5.3) |
-| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 78 tests |
+| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 94 tests (nav + home incluidas) |
 
 Después de la **5** el sistema es **usable por una persona que no sea yo**: la compuerta de
 aprobación (ADR-06) ya no se ejecuta editando un JSON a mano — se aprueba desde el portal, página por
@@ -64,7 +64,7 @@ OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `loc
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **377 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **403 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -229,10 +229,19 @@ veían. Se documentan acá para que el plan no mienta por omisión:
   y llega al renderizador por la allowlist de `0009`; las imágenes son campos `asset` editables en el
   Visual Editor. Cada web se ve **propia**, con validación anti-inyección en tres capas. Verificado
   contra el space real.
+- **Navegación + home (cierra la deuda de "landing pages sueltas").** El renderizador pide la lista de
+  páginas publicadas a la **Links API** de Storyblok (`cdn/links`, con las mismas defensas que la CDA:
+  timeout completo, tope de bytes, un fallo LANZA) y `renderStory` pinta una **barra de navegación**.
+  Es un **enhancement no-fatal**: si la Links API falla, la página se sirve *sin* barra, nunca 503 —
+  un menú no puede tumbar la web. La nav se cachea por space y se invalida con el mismo webhook. Y la
+  **raíz de un dominio ya no es 404**: si no hay una story `home` publicada, el renderizador
+  **sintetiza** una portada (nombre del negocio + índice de las páginas); si el cliente crea su propia
+  `home` en Storyblok, esa gana. El `name`/`slug` de cada página son superficie de inyección: el
+  nombre se escapa, el `href` se arma con segmentos escapados (igual que la CDA con el slug hostil).
+  Verificado contra el space real (la barra lista las 8 páginas borrador, ordenadas y escapadas).
 
-> **Deuda de diseño, dicha:** las páginas siguen siendo **landing pages sueltas** — no hay navegación
-> entre ellas ni una `home` (el research no la genera). Y republicar desde un brief **pisa** las
-> imágenes que el cliente haya subido. Ninguna bloquea; se resuelven cuando se vuelvan reales.
+> **Deuda de diseño, dicha:** republicar desde un brief **pisa** las imágenes que el cliente haya
+> subido en el Visual Editor. No bloquea; se resuelve cuando se vuelva real.
 
 ---
 

@@ -1,5 +1,5 @@
 import { fromStoryblokContent } from "web-builder";
-import type { Story } from "web-builder";
+import type { NavItem, Story } from "web-builder";
 
 /** La story CRUDA de Storyblok: `content` aplanado, con `_uid`/`_editable`. La convierte el CDA. */
 interface RawStoryblokStory {
@@ -32,9 +32,63 @@ export interface PeticionStory {
   cacheVersion?: string;
 }
 
+/** La navegación se pide con el token del space y una versión; no lleva slug (es el mapa entero). */
+export interface PeticionNav {
+  token: string;
+  version: Version;
+  cacheVersion?: string;
+}
+
 export interface Cda {
   /** `null` = la story no existe en ese space (404). Cualquier otro fallo LANZA. */
   traerStory(p: PeticionStory): Promise<Story | null>;
+  /**
+   * La lista de páginas publicadas del space, para armar la navegación. Un fallo LANZA (igual que
+   * `traerStory`): quien llama decide si degradar a "sin nav" o propagar. Nunca inventa una lista.
+   *
+   * **Opcional a propósito.** La nav es una mejora, no parte de servir una página: un `Cda` que no la
+   * implemente (o que falle al pedirla) deja el sitio sin barra, no caído. El renderizador lo trata así.
+   */
+  traerNav?(p: PeticionNav): Promise<NavItem[]>;
+}
+
+/** Tope de páginas que se guardan de la Links API. Una nav no necesita más; acota la memoria. */
+const MAX_NAV_ITEMS = 50;
+
+/** Un enlace tal como lo emite la Links API de Storyblok (`cdn/links`). Todo es no confiable. */
+interface RawLink {
+  slug?: unknown;
+  name?: unknown;
+  is_folder?: unknown;
+  is_startpage?: unknown;
+  position?: unknown;
+}
+
+/**
+ * De la respuesta cruda de la Links API a `NavItem[]`.
+ *
+ * Se descartan las **carpetas** (no son páginas) y la **startpage** (es la home, se llega por el logo,
+ * no por la barra). Se ordena por `position` (el orden que fija el editor en Storyblok) y se corta a
+ * `MAX_NAV_ITEMS`. Cada `slug`/`name` se valida como string: en PROD esto viene de la red sin Zod.
+ */
+export function normalizarLinks(links: unknown): NavItem[] {
+  if (!links || typeof links !== "object") return [];
+  const filas = Object.values(links as Record<string, unknown>)
+    .filter((l): l is RawLink => !!l && typeof l === "object")
+    .filter((l) => l.is_folder !== true && l.is_startpage !== true)
+    .filter((l) => typeof l.slug === "string" && (l.slug as string).length > 0);
+
+  filas.sort((a, b) => posDe(a.position) - posDe(b.position));
+
+  return filas.slice(0, MAX_NAV_ITEMS).map((l) => ({
+    slug: l.slug as string,
+    // Sin nombre, el slug es un fallback razonable (nunca un enlace sin texto).
+    name: typeof l.name === "string" && l.name.length > 0 ? (l.name as string) : (l.slug as string),
+  }));
+}
+
+function posDe(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
 /** `fetch` inyectable: es lo que permite probar todo esto sin red ni credenciales. */
@@ -127,6 +181,34 @@ export class StoryblokCda implements Cda {
   }
 
   /**
+   * La lista de páginas publicadas del space, vía la Links API (`cdn/links`).
+   *
+   * Mismas defensas que `traerStory`, y no por copiar: la Links API es OTRO vector hacia internet
+   * anónimo. `conPlazo` cubre la respuesta completa (un body colgado no cuelga la nav), `leerAcotado`
+   * la corta por bytes, y un fallo del origen LANZA (el renderizador degrada a "sin nav", no sirve una
+   * nav inventada). Un 404 acá es un space sin páginas → lista vacía, no un error.
+   */
+  async traerNav({ token, version, cacheVersion }: PeticionNav): Promise<NavItem[]> {
+    const url = new URL(`${this.base}/links`);
+    url.searchParams.set("token", token);
+    url.searchParams.set("version", version);
+    if (cacheVersion) url.searchParams.set("cv", cacheVersion);
+
+    return this.conPlazo(async (signal) => {
+      const res = await this.fetch(url.toString(), { signal });
+
+      if (res.status === 404) return [];
+      if (!res.ok) {
+        // El cuerpo NO se propaga: puede traer el token en un mensaje de error de Storyblok.
+        throw new ErrorCda(`Storyblok respondió ${res.status} para /links`, res.status);
+      }
+
+      const cuerpo = (await this.leerAcotado(res)) as { links?: unknown };
+      return normalizarLinks(cuerpo.links);
+    });
+  }
+
+  /**
    * Corre `fn` con un plazo que cubre **todo** lo que haga, no solo la primera promesa.
    *
    * El `AbortController` se aborta al vencer y el timer se limpia recién en el `finally` de afuera,
@@ -207,14 +289,34 @@ export class StoryblokCda implements Cda {
 export class MockCda implements Cda {
   /** Clave: `${token}:${version}:${slug}`. El token forma parte para que un space no vea otro. */
   private readonly stories = new Map<string, Story>();
+  /** Nav por `${token}:${version}`. La deriva de las stories puestas si no se fijó una explícita. */
+  private readonly navs = new Map<string, NavItem[]>();
   readonly pedidos: PeticionStory[] = [];
+  readonly pedidosNav: PeticionNav[] = [];
 
   poner(token: string, version: Version, slug: string, story: Story): void {
     this.stories.set(`${token}:${version}:${slug}`, story);
   }
 
+  /** Fija la nav de un space explícitamente (para probar el orden, el escape, el cap…). */
+  ponerNav(token: string, version: Version, items: NavItem[]): void {
+    this.navs.set(`${token}:${version}`, items);
+  }
+
   async traerStory(p: PeticionStory): Promise<Story | null> {
     this.pedidos.push(p);
     return this.stories.get(`${p.token}:${p.version}:${p.slug}`) ?? null;
+  }
+
+  async traerNav(p: PeticionNav): Promise<NavItem[]> {
+    this.pedidosNav.push(p);
+    const explicita = this.navs.get(`${p.token}:${p.version}`);
+    if (explicita) return explicita;
+    // Sin nav explícita, se deriva de las stories puestas para ese token+versión (menos la home).
+    const prefijo = `${p.token}:${p.version}:`;
+    return [...this.stories.entries()]
+      .filter(([k]) => k.startsWith(prefijo))
+      .map(([k, s]) => ({ slug: k.slice(prefijo.length), name: s.name }))
+      .filter((n) => n.slug !== "home");
   }
 }

@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderStory } from "./html.js";
+import { renderHome, renderStory } from "./html.js";
 import { pageToStory } from "../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../fixtures.js";
+import type { NavItem } from "../types.js";
 
 const story = () => pageToStory(validPage(), validBrief());
 
@@ -126,4 +127,93 @@ test("🔴 imagen: una src no-http no se renderiza (una img rota es peor que nin
   (hero as { image?: unknown }).image = { src: "javascript:alert(1)", alt: "x" };
   // Ojo: `.hero-img` está siempre en el CSS; lo que NO debe aparecer es la etiqueta <img>.
   assert.doesNotMatch(renderStory(s), /<img class="hero-img"/);
+});
+
+// ---------------------------------------------------------------- navegación entre páginas
+
+const nav: NavItem[] = [
+  { slug: "menu", name: "La carta" },
+  { slug: "reservas", name: "Reservas" },
+];
+
+test("nav: renderStory pinta una barra con enlace a cada página", () => {
+  const html = renderStory(story(), validProfile(), "es", nav);
+  assert.match(html, /<nav class="nav"/, "hay barra de navegación");
+  assert.match(html, /href="\/menu"[^>]*>La carta<\/a>/);
+  assert.match(html, /href="\/reservas"[^>]*>Reservas<\/a>/);
+});
+
+test("nav: la página actual se marca como activa y no se pierde el resto", () => {
+  // La story de fixture tiene slug 'restaurante-italiano-madrid-centro'; incluímos esa entrada.
+  const conActual: NavItem[] = [...nav, { slug: story().slug, name: "Inicio real" }];
+  const html = renderStory(story(), validProfile(), "es", conActual);
+  assert.match(html, /href="\/restaurante-italiano-madrid-centro"[^>]*aria-current="page"/);
+});
+
+test("🔴 nav: el nombre de una página se escapa (no inyecta markup)", () => {
+  // El `name` viene del space (Storyblok) → superficie de inyección en el texto del enlace.
+  const veneno: NavItem[] = [{ slug: "x", name: "</a><script>alert(1)</script>" }];
+  const html = renderStory(story(), validProfile(), "es", veneno);
+  assert.doesNotMatch(html, /<\/a><script>alert/, "el markup del nombre no puede salir crudo");
+  assert.match(html, /&lt;script&gt;/, "el nombre queda escapado");
+});
+
+test("🔴 nav: un slug hostil sale como ruta, nunca como esquema ni con salto de atributo", () => {
+  // El `slug` va dentro de un href. `javascript:` no puede quedar como esquema; unas comillas no
+  // pueden cerrar el atributo; un `..` no puede escalar la ruta.
+  const veneno: NavItem[] = [
+    { slug: 'javascript:alert(1)', name: "js" },
+    { slug: '"><script>alert(1)</script>', name: "quote" },
+    { slug: "../../secreto", name: "escape" },
+  ];
+  const html = renderStory(story(), validProfile(), "es", veneno);
+  assert.doesNotMatch(html, /href="javascript:/i, "nunca un esquema ejecutable en el href");
+  assert.doesNotMatch(html, /"><script>/, "las comillas no cierran el atributo");
+  assert.doesNotMatch(html, /href="\/\.\.\//, "los segmentos de navegación se descartan");
+});
+
+test("nav: se limita el número de enlaces (una nav no son 200 páginas)", () => {
+  const muchas: NavItem[] = Array.from({ length: 30 }, (_, i) => ({
+    slug: `p-${i}`,
+    name: `Página ${i}`,
+  }));
+  const html = renderStory(story(), validProfile(), "es", muchas);
+  const enlaces = html.match(/class="nav"[^>]*>([\s\S]*?)<\/nav>/)![1]!.match(/<a /g) ?? [];
+  assert.ok(enlaces.length <= 8, `la barra no debe pintar 30 enlaces, pintó ${enlaces.length}`);
+});
+
+test("sin nav (y sin cambio de firma) el render sigue igual: no hay barra", () => {
+  assert.doesNotMatch(renderStory(story(), validProfile()), /<nav class="nav"/);
+});
+
+// ---------------------------------------------------------------- home sintetizada
+
+test("home: sintetiza una portada válida con el nombre del negocio y el índice de páginas", () => {
+  const html = renderHome(validProfile(), nav, "es");
+  assert.match(html, /^<!doctype html>/, "es una página completa");
+  assert.match(html, /<h1>Trattoria Bella Napoli<\/h1>/, "el hero es el nombre del negocio");
+  assert.match(html, /class="card" href="\/menu"><h3>La carta<\/h3>/);
+  assert.match(html, /class="card" href="\/reservas"><h3>Reservas<\/h3>/);
+  assert.match(html, /application\/ld\+json/, "la home también lleva JSON-LD");
+  assert.match(html, /"@type": "LocalBusiness"/, "con perfil, la home es un LocalBusiness");
+});
+
+test("home: sin páginas publicadas la portada no rompe, avisa que vendrán", () => {
+  const html = renderHome(validProfile(), [], "es");
+  assert.match(html, /<h1>Trattoria Bella Napoli<\/h1>/);
+  assert.doesNotMatch(html, /class="cards"/, "sin páginas no hay grid");
+  assert.match(html, /class="pending"/, "hay un aviso en su lugar");
+});
+
+test("🔴 home: el nombre y el slug de una tarjeta se escapan/sanean como en la nav", () => {
+  const veneno: NavItem[] = [{ slug: 'javascript:alert(1)', name: "</h3><script>x</script>" }];
+  const html = renderHome(validProfile(), veneno, "es");
+  assert.doesNotMatch(html, /<\/h3><script>/, "el nombre de la tarjeta no sale crudo");
+  assert.doesNotMatch(html, /href="javascript:/i, "el slug de la tarjeta tampoco es un esquema");
+});
+
+test("home: sin perfil cae a un WebSite y un título neutro (falla suave)", () => {
+  const html = renderHome(null, nav, "es");
+  assert.match(html, /<h1>Inicio<\/h1>/);
+  assert.match(html, /"@type": "WebSite"/);
 });

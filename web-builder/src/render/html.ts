@@ -4,7 +4,9 @@ import type {
   FaqBlok,
   HeroBlok,
   Imagen,
+  NavItem,
   PageContent,
+  PostalAddress,
   SchemaType,
   SectionBlok,
   Story,
@@ -25,6 +27,7 @@ export function renderStory(
   story: Story,
   profile?: BusinessProfile | null,
   languageCode = "es",
+  nav: NavItem[] = [],
 ): string {
   const c = story.content;
   const lang = esc(languageCode);
@@ -55,16 +58,153 @@ ${researchTrace(c)}
 <style>${CSS}${themeCss(profile?.brand)}</style>
 </head>
 <body>
-${renderSiteHeader(profile)}
+${renderSiteHeader(profile, nav, story.slug)}
 <main>
 ${hero ? renderHero(hero, ctaHref) : ""}
 ${sections.map(renderSection).join("\n")}
 ${faq ? renderFaq(faq) : ""}
 ${profile ? renderContact(profile) : ""}
 </main>
-<footer><p>Página generada por AMG OS · contrato ${esc(c.meta.contract_version)} · schema ${esc(c.schema_type)}</p></footer>
+${footer(c.meta.contract_version, c.schema_type)}
 </body>
 </html>`;
+}
+
+/** El slug convencional de la portada. La raíz del dominio la sirve. */
+const SLUG_HOME = "home";
+
+/**
+ * La **home sintetizada**: la portada que el renderizador sirve en la raíz de un dominio cuando en el
+ * space NO existe una story `home`.
+ *
+ * Sin esto, la raíz de una web recién publicada da 404 (las páginas que produce el pipeline son
+ * landings aisladas, no hay portada). Antes de que el cliente redacte su home en el Visual Editor,
+ * esta página lo cubre: el nombre del negocio + un índice de las páginas publicadas. Es HTML válido y
+ * autocontenido, con su JSON-LD, igual que una página normal — no un placeholder feo.
+ *
+ * Cuando el cliente crea su propia `home` en Storyblok, esa gana: el renderizador la sirve y esta
+ * función deja de invocarse. Es un fallback, no una imposición.
+ */
+export function renderHome(
+  profile?: BusinessProfile | null,
+  nav: NavItem[] = [],
+  languageCode = "es",
+): string {
+  const lang = esc(languageCode);
+  const nombre = profile?.name ?? "Inicio";
+  const url = profile?.url ? profile.url.replace(/\/+$/, "") + "/" : "/";
+  const descripcion = profile
+    ? `${profile.name}${profile.address ? ` · ${profile.address.addressLocality}` : ""}`
+    : "";
+
+  const tarjetas = nav.length
+    ? `<div class="cards">
+${nav.map(tarjetaIndice).join("\n")}
+</div>`
+    : `<p class="pending">Aún no hay páginas publicadas. Aparecerán aquí en cuanto se publiquen.</p>`;
+
+  return `<!doctype html>
+<html lang="${lang}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(nombre)}</title>
+${descripcion ? `<meta name="description" content="${esc(descripcion)}">` : ""}
+<link rel="canonical" href="${esc(url)}">
+<meta property="og:title" content="${esc(nombre)}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${esc(url)}">
+${profile?.image ? `<meta property="og:image" content="${esc(profile.image)}">` : ""}
+<script type="application/ld+json">
+${safeJson(homeLd(profile, url))}
+</script>
+<style>${CSS}${themeCss(profile?.brand)}</style>
+</head>
+<body>
+${renderSiteHeader(profile, nav, SLUG_HOME)}
+<main>
+<header class="hero">
+  <h1>${esc(nombre)}</h1>
+  ${descripcion ? `<p class="lede">${esc(descripcion)}</p>` : ""}
+</header>
+<section class="indice">
+  <h2>Páginas</h2>
+  ${tarjetas}
+</section>
+${profile ? renderContact(profile) : ""}
+</main>
+${footer("web.v0.1", "WebPage")}
+</body>
+</html>`;
+}
+
+/** Una tarjeta del índice de la home: enlace a una página publicada. */
+function tarjetaIndice(item: NavItem): string {
+  return `  <a class="card" href="${esc(hrefDeSlug(item.slug))}"><h3>${esc(item.name)}</h3></a>`;
+}
+
+/** JSON-LD de la home: LocalBusiness con NAP si hay perfil; si no, un WebSite mínimo. */
+function homeLd(profile: BusinessProfile | null | undefined, url: string): unknown {
+  if (!profile) {
+    return { "@context": "https://schema.org", "@type": "WebSite", url };
+  }
+  const entity: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: profile.name,
+    url,
+  };
+  if (profile.telephone) entity.telephone = profile.telephone;
+  if (profile.priceRange) entity.priceRange = profile.priceRange;
+  if (profile.image) entity.image = profile.image;
+  if (profile.address) entity.address = postalAddressLd(profile.address);
+  return entity;
+}
+
+/**
+ * La barra de navegación del sitio: enlaces a las páginas publicadas.
+ *
+ * - **Cap de ítems** (`MAX_NAV`): la lista viene de la Links API y podría traer decenas de páginas;
+ *   una nav con 200 enlaces no es una nav. Se muestran las primeras.
+ * - El `name` va escapado (texto de enlace) y el `href` se arma con `hrefDeSlug` (segmentos
+ *   escapados) — la misma defensa que la CDA aplica al slug de la petición.
+ * - La página actual se marca con `aria-current` y no enlaza a sí misma.
+ */
+function renderNav(nav: NavItem[], activeSlug: string): string {
+  if (nav.length === 0) return "";
+  const items = nav
+    .slice(0, MAX_NAV)
+    .map((item) => {
+      const activo = item.slug === activeSlug;
+      const attrs = activo ? ` class="activo" aria-current="page"` : "";
+      // `title` con el nombre completo: la barra trunca por CSS (los títulos SEO son largos), pero el
+      // texto entero sigue disponible al hover y para lectores de pantalla. También va escapado.
+      return `<a href="${esc(hrefDeSlug(item.slug))}" title="${esc(item.name)}"${attrs}>${esc(item.name)}</a>`;
+    })
+    .join("");
+  return `<nav class="nav" aria-label="Páginas del sitio">${items}</nav>`;
+}
+
+/** Tope de enlaces en la barra de navegación. */
+const MAX_NAV = 8;
+
+/**
+ * Un slug de Storyblok → un `href` seguro. Mismo criterio que la CDA con el slug de la petición: los
+ * segmentos de navegación (`.`, `..`) se descartan y cada segmento se escapa. Un `slug` como
+ * `javascript:alert(1)` sale como `/javascript:alert(1)` codificado — una ruta, nunca un esquema.
+ */
+function hrefDeSlug(slug: string): string {
+  const ruta = slug
+    .split("/")
+    .filter((s) => s.length > 0 && s !== "." && s !== "..")
+    .map(encodeURIComponent)
+    .join("/");
+  return `/${ruta}`;
+}
+
+/** El pie, común a las páginas y a la home. */
+function footer(contractVersion: string, schemaType: string): string {
+  return `<footer><p>Página generada por AMG OS · contrato ${esc(contractVersion)} · schema ${esc(schemaType)}</p></footer>`;
 }
 
 /** Familias tipográficas seguras, por nombre. La marca elige un nombre, NUNCA escribe el stack. */
@@ -92,17 +232,29 @@ function themeCss(brand?: BrandTheme | null): string {
   return reglas.length ? `\n:root{${reglas.join(";")}}` : "";
 }
 
-/** Cabecera del sitio: logo + nombre. Es lo que hace que la página se sienta DE alguien. */
-function renderSiteHeader(profile?: BusinessProfile | null): string {
-  if (!profile) return "";
+/**
+ * Cabecera del sitio: marca (logo o nombre) + la barra de navegación. Es lo que hace que la página se
+ * sienta DE alguien y, con la nav, lo que impide que un visitante quede varado en una landing aislada.
+ *
+ * Se omite entera solo si no hay NI perfil NI navegación: una página suelta sin contexto de sitio
+ * (el caso de `renderStory(story)` a secas en un test) no lleva cabecera. En PROD el renderizador
+ * siempre pasa la nav del sitio, así que la cabecera está.
+ */
+function renderSiteHeader(
+  profile: BusinessProfile | null | undefined,
+  nav: NavItem[],
+  activeSlug: string,
+): string {
+  const navHtml = renderNav(nav, activeSlug);
+  if (!profile && !navHtml) return "";
   // El logo va a un `<img src>`: se exige http(s) acá también, no solo en Zod (en PROD el perfil
   // puede venir de Storyblok sin validar). Un logo dudoso cae al nombre, no rompe la cabecera.
-  const logo = profile.brand?.logo;
+  const logo = profile?.brand?.logo;
   const logoOk = typeof logo === "string" && /^https?:\/\//i.test(logo);
   const marca = logoOk
-    ? `<img class="logo" src="${esc(logo)}" alt="${esc(profile.name)}" height="40">`
-    : `<span class="marca">${esc(profile.name)}</span>`;
-  return `<header class="sitebar"><a href="/" class="brand">${marca}</a></header>`;
+    ? `<img class="logo" src="${esc(logo)}" alt="${esc(profile!.name)}" height="40">`
+    : `<span class="marca">${esc(profile?.name ?? "Inicio")}</span>`;
+  return `<header class="sitebar"><a href="/" class="brand">${marca}</a>${navHtml}</header>`;
 }
 
 /**
@@ -234,18 +386,21 @@ function primaryEntity(c: PageContent, url: string, profile?: BusinessProfile | 
     if (profile.telephone) entity.telephone = profile.telephone;
     if (profile.priceRange) entity.priceRange = profile.priceRange;
     if (profile.image) entity.image = profile.image;
-    if (profile.address) {
-      entity.address = {
-        "@type": "PostalAddress",
-        streetAddress: profile.address.streetAddress,
-        addressLocality: profile.address.addressLocality,
-        postalCode: profile.address.postalCode,
-        ...(profile.address.addressRegion ? { addressRegion: profile.address.addressRegion } : {}),
-        ...(profile.address.addressCountry ? { addressCountry: profile.address.addressCountry } : {}),
-      };
-    }
+    if (profile.address) entity.address = postalAddressLd(profile.address);
   }
   return entity;
+}
+
+/** El PostalAddress de schema.org. Compartido por la página (LocalBusiness) y la home. */
+function postalAddressLd(address: PostalAddress): Record<string, unknown> {
+  return {
+    "@type": "PostalAddress",
+    streetAddress: address.streetAddress,
+    addressLocality: address.addressLocality,
+    postalCode: address.postalCode,
+    ...(address.addressRegion ? { addressRegion: address.addressRegion } : {}),
+    ...(address.addressCountry ? { addressCountry: address.addressCountry } : {}),
+  };
 }
 
 /**
@@ -294,10 +449,19 @@ const CSS = `
 *{box-sizing:border-box}
 body{margin:0;font:16px/1.6 var(--font);color:var(--fg);background:var(--bg)}
 img{max-width:100%;height:auto}
-.sitebar{border-bottom:1px solid #eee;padding:14px 20px}
+.sitebar{border-bottom:1px solid #eee;padding:14px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;max-width:1100px;margin:0 auto}
 .sitebar .brand{display:inline-flex;align-items:center;text-decoration:none;color:var(--fg)}
 .sitebar .marca{font-weight:700;font-size:1.15rem;letter-spacing:-.01em}
 .sitebar .logo{display:block}
+.nav{display:flex;gap:6px 18px;flex-wrap:wrap;margin-left:auto;font-size:.95rem}
+.nav a{text-decoration:none;color:var(--muted);padding:4px 2px;border-bottom:2px solid transparent;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav a:hover{color:var(--fg)}
+.nav a.activo{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+.indice{padding:8px 0 32px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:8px}
+.card{display:block;text-decoration:none;color:var(--fg);border:1px solid #e7e5e0;border-radius:12px;padding:20px;transition:border-color .15s,transform .15s}
+.card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.card h3{margin:0;font-size:1.1rem;letter-spacing:-.01em}
 main{max-width:760px;margin:0 auto;padding:0 20px}
 .hero{padding:48px 0 40px;border-bottom:1px solid #eee}
 .hero.has-img{padding-top:24px}
@@ -313,5 +477,5 @@ section h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em}
 details{padding:12px 0;border-bottom:1px solid #e7e5e0}
 summary{font-weight:600;cursor:pointer}
 footer{max-width:760px;margin:24px auto 48px;padding:0 20px;color:var(--muted);font-size:.85rem}
-@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}.sitebar,.hero{border-color:#222}section{border-color:#1e1e1e}}
+@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}.sitebar,.hero{border-color:#222}section{border-color:#1e1e1e}.card{border-color:#2a2a2a}}
 `;

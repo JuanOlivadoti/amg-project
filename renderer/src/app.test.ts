@@ -408,6 +408,106 @@ describe("renderizador — cache", () => {
   });
 });
 
+// ------------------------------------------------------------------ navegación y home
+
+describe("renderizador — navegación entre páginas", () => {
+  it("una página normal sale con la barra de navegación del sitio", async () => {
+    const { app, cda } = montar();
+    cda.ponerNav("pub-111", "published", [
+      { slug: "menu", name: "La carta" },
+      { slug: "reservas", name: "Reservas" },
+    ]);
+    const html = await (await pedir(app, "/menu", "bellanapoli.es")).text();
+
+    assert.match(html, /<nav class="nav"/, "la página lleva la barra del sitio");
+    assert.match(html, /href="\/reservas"[^>]*>Reservas<\/a>/, "enlaza a las otras páginas");
+  });
+
+  it("🔴 si la nav falla, la página se sirve igual — sin barra, no 503", async () => {
+    // La barra es una mejora: un fallo de la Links API no puede tumbar la web. Sería regalarle al
+    // origen un modo de tirar todas las páginas de todos los clientes a la vez (el riesgo de ADR-19).
+    const cda = {
+      async traerStory() {
+        return story("La carta");
+      },
+      async traerNav(): Promise<never> {
+        throw new ErrorCda("links caído", 500);
+      },
+    };
+    const app = createApp({ sitios: new MemSitios([sitioA]), cda, cache: new CacheRender() });
+    const res = await pedir(app, "/menu", "bellanapoli.es");
+
+    assert.equal(res.status, 200, "la página sale aunque la nav no");
+    assert.doesNotMatch(await res.text(), /<nav class="nav"/, "sin barra, pero servida");
+  });
+
+  it("la nav pública se cachea por space y el webhook la invalida", async () => {
+    const { app, cda } = montar();
+
+    await pedir(app, "/menu", "bellanapoli.es"); // miss: 1 llamada a la Links API
+    await pedir(app, "/menu", "bellanapoli.es"); // hit de página: no vuelve a pedir nav
+    assert.equal(cda.pedidosNav.length, 1, "la nav no se re-pide en cada visita");
+
+    const body = JSON.stringify({ action: "published", space_id: 111 });
+    await app.request("http://x/_webhook/storyblok", {
+      method: "POST",
+      body,
+      headers: { [HEADER_FIRMA]: createHmac("sha1", WEBHOOK_SECRET).update(body).digest("hex") },
+    });
+
+    await pedir(app, "/menu", "bellanapoli.es"); // el webhook vació ambas caches → re-pide nav
+    assert.equal(cda.pedidosNav.length, 2, "publicar una página nueva refresca la barra");
+  });
+
+  it("🔴 la nav del preview usa borradores y NO se cachea", async () => {
+    const { firma, vence } = firmarPreview(PREVIEW_SECRET, "bellanapoli.es");
+    const q = `${PARAM_FIRMA}=${firma}&${PARAM_VENCE}=${vence}`;
+    const { app, cda } = montar();
+
+    await pedir(app, `/menu?${q}`, "bellanapoli.es");
+    await pedir(app, `/menu?${q}`, "bellanapoli.es");
+
+    const draft = cda.pedidosNav.filter((p) => p.version === "draft");
+    assert.equal(draft.length, 2, "cada preview re-pide la nav en draft: nunca se cachea el borrador");
+  });
+});
+
+// ------------------------------------------------------------------ la raíz del dominio (home)
+
+describe("renderizador — la home", () => {
+  it("con story `home` publicada, la raíz sirve esa story", async () => {
+    const { app, cda } = montar();
+    const res = await pedir(app, "/", "bellanapoli.es");
+
+    assert.equal(res.status, 200);
+    assert.equal(cda.pedidos.at(-1)?.slug, "home");
+    assert.match(await res.text(), /<h1>Trattoria Bella Napoli<\/h1>/);
+  });
+
+  it("🔴 sin story `home`, la raíz sintetiza un índice — no da 404", async () => {
+    // Las páginas del pipeline son landings aisladas: sin esto, la raíz de un dominio recién
+    // publicado da 404. La home sintetizada cubre ese hueco con el índice de las páginas.
+    const { app, cda } = montar();
+    cda.ponerNav("pub-222", "published", [{ slug: "menu", name: "La carta" }]);
+    const res = await pedir(app, "/", "sushizen.es"); // sitioB no tiene story `home`
+
+    assert.equal(res.status, 200, "la raíz de un dominio válido nunca es 404");
+    const html = await res.text();
+    assert.match(html, /^<!doctype html>/, "es una página completa");
+    assert.match(html, /class="card" href="\/menu"/, "con el índice de las páginas publicadas");
+  });
+
+  it("la home sintetizada se sirve desde cache en la segunda visita", async () => {
+    const { app, cda } = montar();
+    await pedir(app, "/", "sushizen.es");
+    const dos = await pedir(app, "/", "sushizen.es");
+
+    assert.equal(dos.headers.get("x-amg-cache"), "hit");
+    // Solo la primera visita pegó al origen buscando la story `home` (que no existe).
+    assert.equal(cda.pedidos.filter((p) => p.token === "pub-222").length, 1);
+  });
+});
+
 // ------------------------------------------------------------------ preview
 
 describe("renderizador — preview del Visual Editor", () => {

@@ -802,6 +802,33 @@ que un estático no tenía**, y hay que dimensionarlo antes de vender SLA.
 > prosa. Una garantía que no tiene ni una *constraint* que la imponga ni una mutación que la tumbe no
 > es una garantía: es una intención. Van tres rondas seguidas con el mismo diagnóstico.
 
+> ### ➕ Navegación entre páginas + home sintetizada (2026-07-22)
+>
+> Al manejar la demo se vio lo que ningún test veía: las páginas del pipeline son **landing pages
+> sueltas**. No hay forma de ir de una a otra, y la **raíz de un dominio daba 404** (nadie crea una
+> story `home`). Una web sin menú y sin portada no es una web.
+>
+> **Tercera lectura de Storyblok, y sigue siendo del lado seguro.** Para saber *qué páginas existen*,
+> el renderizador pide la **Links API** (`cdn/links`) con el **token público** y `version=published`
+> — la misma clase de credencial de solo-lectura que ya usa, nunca la Management API. Es otro vector
+> hacia internet anónimo, así que hereda **las mismas defensas** que la CDA: plazo que cubre la
+> respuesta completa, tope de bytes, y un fallo **lanza** (no inventa una nav vacía). El `name` y el
+> `slug` de cada página **son superficie de inyección** (terminan en el texto de un enlace y en un
+> `href`): el nombre se escapa, el `href` se arma con segmentos escapados descartando `.`/`..` —
+> exactamente la defensa que la CDA aplica al slug hostil de la petición.
+>
+> **La nav es un enhancement no-fatal, y eso es una decisión de disponibilidad, no de estilo.** Si la
+> Links API falla, la página se sirve **sin barra**, nunca 503. Un menú no puede tumbar la web que
+> enriquece: con ADR-19 eso sería regalarle al origen un modo de tirar **todas** las webs a la vez.
+> La nav se cachea por space (misma invalidación por webhook que las páginas) y en preview usa
+> borradores y **no** se cachea, igual que las páginas de preview.
+>
+> **La raíz ya no es 404.** Si no hay una story `home` publicada, el renderizador **sintetiza** una
+> portada (nombre del negocio + índice de las páginas, HTML válido con su JSON-LD). Si el cliente
+> crea su propia `home` en Storyblok, **esa gana** — la síntesis es un fallback, no una imposición.
+> `renderer/` pasó de 78 a 94 tests; `web-builder/` sumó los de `renderNav`/`renderHome`. Verificado
+> contra el space real: la barra lista las 8 páginas borrador, ordenadas y escapadas.
+
 ## ADR-20 — El portal también sirve al cliente, en modo lectura (amplía ADR-16)
 
 **Contexto.** ADR-16 acotó el alcance a "**solo el portal interno**". Pero el esquema tiene un rol

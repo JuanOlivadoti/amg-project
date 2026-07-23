@@ -150,6 +150,21 @@ export interface Story {
   content: PageContent;
 }
 
+/**
+ * Un ítem de navegación: una página publicada del sitio, tal como la lista la Links API de Storyblok.
+ *
+ * ⚠️ **`name` y `slug` vienen del space y terminan en el HTML** — `name` como texto de un enlace,
+ * `slug` dentro de un `href`. Son superficie de inyección: el renderizador escapa el `name` y arma el
+ * `href` con segmentos escapados (igual que la CDA con el slug de la petición). Nunca se confía en que
+ * el dato venga limpio: en PROD llega de Storyblok sin pasar por Zod.
+ */
+export interface NavItem {
+  /** Slug de la story (ruta relativa a la raíz del dominio). */
+  slug: string;
+  /** Nombre visible de la página. */
+  name: string;
+}
+
 // ---------------------------------------------------------------- 3) Perfil de negocio (NAP)
 /** Dirección postal (schema.org PostalAddress). */
 export interface PostalAddress {

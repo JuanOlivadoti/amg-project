@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { SitioResolver, Sitio } from "db";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { renderStory } from "web-builder";
+import { renderHome, renderStory } from "web-builder";
+import type { NavItem } from "web-builder";
 import { ErrorCda, type Cda } from "./cda.js";
 import { CacheRender } from "./cache.js";
 import { hostDeLaPeticion } from "./dominio.js";
@@ -78,10 +79,56 @@ export function createApp(deps: RendererDeps) {
   const MAX_SITIOS = 1_000;
 
   const coalescer = new Coalescedor<string | null>();
+  const coalescerNav = new Coalescedor<NavItem[]>();
   const faltantes = deps.cacheNegativa ?? new CacheNegativa();
   const semaforo = new Semaforo(deps.maxConcurrencia ?? 64);
   /** Entregas del webhook ya vistas, por hash del cuerpo. Ventana de 5 min. */
   const entregas = new CacheNegativa(5 * 60_000, 500);
+
+  /**
+   * Cache de la navegación por space. La nav se hornea DENTRO del HTML cacheado, así que una página
+   * en cache no vuelve a pedirla; esto solo cubre el momento de renderizar. Se invalida con el mismo
+   * webhook que la cache de páginas: publicar una página nueva tiene que aparecer en la barra.
+   */
+  const navCache = new Map<string, { items: NavItem[]; hasta: number }>();
+  const TTL_NAV_MS = 60_000;
+
+  /**
+   * La nav del sitio, con degradación a "sin barra" ante cualquier fallo.
+   *
+   * **Nunca 503 por la nav.** La barra es una mejora; si la Links API falla, se rompe o el `Cda` ni la
+   * implementa, la página se sirve igual, sin nav. Un enhancement no puede tumbar la página que
+   * enriquece — sería regalarle al origen un modo de tirar todas las webs a la vez.
+   *
+   * El preview pide borradores (`draft`) y NO se cachea: el editor tiene que ver la nav que refleja lo
+   * que acaba de escribir, no una versión pública guardada.
+   */
+  async function navDe(sitio: Sitio, esPreview: boolean): Promise<NavItem[]> {
+    if (!deps.cda.traerNav || !sitio.spaceId) return [];
+    const token = esPreview ? sitio.previewToken : sitio.publicToken;
+    if (!token) return [];
+
+    if (!esPreview) {
+      const guardado = navCache.get(sitio.spaceId);
+      if (guardado && guardado.hasta > Date.now()) return guardado.items;
+    }
+
+    try {
+      const traer = () =>
+        deps.cda.traerNav!({
+          token,
+          version: esPreview ? "draft" : "published",
+          ...(esPreview ? { cacheVersion: `${Date.now()}` } : {}),
+        });
+      // Coalescing igual que las páginas: N renders fríos del mismo space = UNA llamada a la Links API.
+      const items = esPreview ? await traer() : await coalescerNav.hacer(`nav:${sitio.spaceId}`, traer);
+      if (!esPreview) navCache.set(sitio.spaceId, { items, hasta: Date.now() + TTL_NAV_MS });
+      return items;
+    } catch (e) {
+      console.warn(`[renderer] nav de ${sitio.domain}: ${(e as Error).message} — se sirve sin barra`);
+      return [];
+    }
+  }
 
   async function resolver(dominio: string): Promise<Sitio | null> {
     const guardado = sitios.get(dominio);
@@ -173,6 +220,8 @@ export function createApp(deps: RendererDeps) {
     const invalidadas = cache.invalidarSpace(`${spaceId}`);
     // Un contenido nuevo publicado tiene que poder verse aunque su 404 esté anotado como faltante.
     faltantes.olvidarTodo();
+    // Y una página nueva tiene que aparecer en la barra: la nav cacheada del space ya no vale.
+    navCache.delete(`${spaceId}`);
     return c.json({ ok: true, invalidadas });
   });
 
@@ -228,15 +277,31 @@ export function createApp(deps: RendererDeps) {
       );
 
       async function traer(): Promise<string | null> {
-        const story = await deps.cda.traerStory({
-          slug,
-          token: token as string,
-          version: esPreview ? "draft" : "published",
-          ...(esPreview ? { cacheVersion: `${Date.now()}` } : {}),
-        });
-        if (!story) return null;
+        // La story y la nav se piden en paralelo: la nav es no-fatal (navDe degrada a []), así que no
+        // suma un modo de fallo, solo trabajo simultáneo dentro del mismo cupo del semáforo.
+        const [story, nav] = await Promise.all([
+          deps.cda.traerStory({
+            slug,
+            token: token as string,
+            version: esPreview ? "draft" : "published",
+            ...(esPreview ? { cacheVersion: `${Date.now()}` } : {}),
+          }),
+          navDe(sitio!, esPreview),
+        ]);
 
-        const salida = renderStory(story, perfilValido(sitio!.businessProfile), sitio!.languageCode);
+        // La home es el logo, no una entrada de la barra: se saca de la nav visible.
+        const navVisible = nav.filter((n) => n.slug !== SLUG_HOME);
+        const perfil = perfilValido(sitio!.businessProfile);
+
+        // La raíz de un dominio válido NUNCA es 404: si no hay story `home` publicada, se sintetiza un
+        // índice de las páginas (ver renderHome). Cualquier otro slug ausente sí es un 404 legítimo.
+        if (!story) {
+          if (slug !== SLUG_HOME) return null;
+          const home = renderHome(perfil, navVisible, sitio!.languageCode);
+          return esPreview ? home.replace("</body>", `${scriptBridge()}</body>`) : home;
+        }
+
+        const salida = renderStory(story, perfil, sitio!.languageCode, navVisible);
         return esPreview ? salida.replace("</body>", `${scriptBridge()}</body>`) : salida;
       }
     } catch (e) {
