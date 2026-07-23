@@ -5,6 +5,8 @@ import { DatePipe } from '@angular/common';
 import { ApiService } from '../../services/api';
 import { AuthService } from '../../services/auth';
 import type { RunStatus, RunSummary } from '../../core/models';
+import { mostrarLanzarResearch } from '../../core/features';
+import { environment } from '../../../environments/environment';
 
 const ETIQUETA: Record<RunStatus, string> = {
   running: 'Corriendo',
@@ -19,7 +21,7 @@ const ETIQUETA: Record<RunStatus, string> = {
   imports: [FormsModule, RouterLink, DatePipe],
   template: `
     <div class="max-w-3xl mx-auto px-4 py-8 space-y-8">
-      @if (auth.esEquipo()) {
+      @if (puedeLanzar()) {
         <section class="bg-white rounded-xl border border-gray-200 p-6">
           <h2 class="text-sm font-semibold text-gray-900 mb-3">Lanzar un research</h2>
           <form (ngSubmit)="lanzar()" class="space-y-3">
@@ -95,6 +97,15 @@ export class RunsPage implements OnInit {
   readonly clientId = signal('');
   readonly prompt = signal('');
   readonly lanzando = signal(false);
+
+  /**
+   * ¿Se muestra el formulario de "lanzar research"? Equipo + flag de despliegue. En Fase 1 el flag
+   * está apagado (no hay orquestador), así que ni el equipo lo ve. La lógica vive en `features.ts`,
+   * testeada; acá solo se cablea al rol y al environment. Ver §A.5.
+   */
+  readonly puedeLanzar = computed(() =>
+    mostrarLanzarResearch(this.auth.esEquipo(), environment.features.lanzarResearch),
+  );
 
   async ngOnInit(): Promise<void> {
     await this.cargar();

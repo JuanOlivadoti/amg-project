@@ -1,8 +1,10 @@
 # Despliegue — Fase 1: el portal de Frank en pre-producción
 
-> **Estado:** 🛠️ En ejecución — Bloque A (código) arrancado · **Última actualización:** 2026-07-23
+> **Estado:** ✅ Bloque A (código) COMPLETO — listo para el Bloque B (cuentas de Juan) · **Última
+> actualización:** 2026-07-23
 >
-> **Progreso:** A.1 (runner de migraciones) ✅ · A.2 (seed de Bella Napoli) ✅ · A.3/A.4/A.5 pendientes.
+> **Progreso:** A.1 runner ✅ · A.2 seed ✅ · A.3 config del portal ✅ · A.4 CORS de la api ✅ · A.5
+> ocultar "lanzar research" ✅. Falta el Bloque B (cuentas/credenciales) y el C (deploy).
 > Detalle al final, en **§13. Registro de ejecución**.
 >
 > Este documento es **el plan acordado** para poner el portal en un dominio, funcionando como
@@ -98,13 +100,19 @@ pegar credenciales y hacer click).
      por datos + 5 `sin_validar`**, `approved = false` (la compuerta la cruza Frank en vivo).
    **Idempotente** (upsert por slug/usuario; el run de demo se borra y recrea). Los tests leen lo
    sembrado **bajo RLS** (como Frank/Juan/un intruso): prueban lo que el portal mostrará, no el insert.
-3. **Config de producción del portal.** Hoy apunta a `localhost`; que apunte a la `api` desplegada, y
-   las variables de Supabase (URL + anon key) para el login.
-4. **CORS de la api.** Sumar el origen del portal a `CORS_ORIGINS` (hoy sin eso sería `*`, que no
-   queremos en algo expuesto).
-5. **El botón de "lanzar research".** En Nivel 1 no hay orquestador detrás. Hay que **ocultarlo o
-   deshabilitarlo con un cartel "próximamente"** — un botón que no hace nada es peor que no tenerlo
-   delante de Frank. *(Decisión de UX, ver §10.)*
+3. **Config de producción del portal.** ✅ **Hecho.** `portal/src/environments/environment.prod.ts`
+   (nuevo) + `fileReplacements` en `angular.json` (config `production`): `ng build` reemplaza el
+   `environment.ts` de dev por el de prod. Juan completa 3 valores (no secretos) antes del build:
+   `apiBaseUrl` (api de Railway), `supabaseUrl` y `supabaseAnonKey`. Verificado: el build de prod
+   inlinea los valores de prod y **no** cuela `localhost`.
+4. **CORS de la api.** ✅ **Hecho.** `leerConfig()` ahora **falla cerrado si falta `CORS_ORIGINS`**:
+   el arranque de producción no sirve con `*`. (Antes era un default silencioso; ahora es una
+   invariante impuesta, con test —incluida verificación por mutación—.) Juan pone
+   `CORS_ORIGINS=https://app.tudominio.com` en Railway.
+5. **El botón de "lanzar research".** ✅ **Hecho** (decisión: ocultarlo, §10). Flag
+   `features.lanzarResearch` en `environment`: `false` en prod (Fase 1), `true` en dev. El formulario
+   de `runs.ts` se muestra solo si `mostrarLanzarResearch(esEquipo, flag)` —función pura en
+   `portal/src/app/core/features.ts`, testeada—: en Fase 1 ni el equipo lo ve. Se reenciende en Fase 2.
 
 ### B. Cuentas y credenciales — **las hacés vos** (no me pases las keys; van al gestor de secretos)
 
@@ -146,12 +154,14 @@ pegar credenciales y hacer click).
 | `SUPABASE_JWT_ISS` / `SUPABASE_JWT_AUD` | *(recomendado)* cierran la puerta a tokens de otro proyecto Supabase. |
 | `PORT` | Lo inyecta Railway automáticamente. |
 
-**portal** (build de Angular):
+**portal** (build de Angular — se completan en `environment.prod.ts`, **no** son env vars; el build
+las inlinea. Ninguna es secreta):
 
-| Variable | Qué es |
+| Valor en `environment.prod.ts` | Qué es |
 |---|---|
-| URL de la api | `https://api.tudominio.com`. |
-| `SUPABASE_URL` + anon key | Para el login. |
+| `apiBaseUrl` | La api desplegada, ej. `https://api.tudominio.com`. |
+| `supabaseUrl` + `supabaseAnonKey` | Para el login. La anon key es pública por diseño (RLS autoriza, no la clave). |
+| `features.lanzarResearch` | **Ya fijado en `false`** para Fase 1. No tocar; se enciende en Fase 2. |
 
 ## 9. Seguridad del despliegue (no negociable)
 
@@ -170,8 +180,7 @@ la corrida de seed (acción 06) ~$0.31, una vez. → **~$0–5/mes** para la dem
 **Decisiones abiertas:**
 - **Cold start de Railway.** El free tier duerme el servicio; para una demo en vivo con Frank, el
   plan hobby (~$5/mes) evita que la primera carga tarde. *(Recomiendo hobby para la demo.)*
-- **El botón "lanzar research"** (§A.5): ¿ocultarlo o dejar un cartel "próximamente"? Recomiendo
-  ocultarlo en Fase 1.
+- ~~**El botón "lanzar research"** (§A.5).~~ **Decidido: ocultarlo en Fase 1** (hecho, `features.lanzarResearch=false`).
 - **Hosting del portal:** Cloudflare Pages (gratis, auto-deploy desde GitHub) vs Hostinger (si ya lo
   vas a usar de registrador). Recomiendo Pages; es menos fricción.
 
@@ -228,3 +237,22 @@ IDs). El paso §C.6 ("crear el usuario de Frank") sube de orden: va antes de §C
 
 **Falta del Bloque A:** A.3 (config de prod del portal → apuntar a la api desplegada + URL/anon key
 de Supabase), A.4 (CORS de la api), A.5 (ocultar "lanzar research").
+
+### 2026-07-23 (cont.) — Bloque A completo: A.3, A.4, A.5 ✅
+
+- **A.3 — Config de prod del portal.** `portal/src/environments/environment.prod.ts` + `fileReplacements`
+  en `angular.json`. Verificado con `ng build --configuration production`: el bundle inlinea los
+  valores de prod y **no** cuela `localhost:3000`.
+- **A.4 — CORS de la api.** `leerConfig()` ahora exige `CORS_ORIGINS` (falla cerrado): producción no
+  arranca con `*`. Tests nuevos en `api/src/deps.test.ts` (antes `leerConfig` no tenía ninguno).
+- **A.5 — Ocultar "lanzar research".** Flag `features.lanzarResearch` (`false` en prod) + función pura
+  `mostrarLanzarResearch` (`portal/src/app/core/features.ts`, testeada), cableada en `runs.ts`.
+
+**Verde el 2026-07-23:** monorepo `npm test` (db 111, api 88, resto sin cambios) + `npm run typecheck`
+(6 paquetes); portal `npm test` (33) + `ng build` de prod OK. Verificación por mutación en A.4.
+**Nota:** el ocultamiento del botón EN PROD no se manejó en navegador porque necesita Supabase
+desplegado (Bloque B); queda cubierto por el test unitario + la inspección del bundle de prod. En la
+verificación de punta a punta (§C.7) hay que **confirmarlo en el navegador** con la sesión de Frank.
+
+**El Bloque A está cerrado.** El código está listo para que desplegar sea "pegar credenciales y
+click": siguen el Bloque B (cuentas de Juan) y el C (deploy).

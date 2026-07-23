@@ -28,20 +28,27 @@ export interface ConfigApi {
 export function leerConfig(): ConfigApi {
   const databaseUrl = process.env["DATABASE_URL_API"];
   const jwtSecret = process.env["SUPABASE_JWT_SECRET"];
+  const corsRaw = process.env["CORS_ORIGINS"]?.trim();
+  // CORS_ORIGINS es OBLIGATORIO acá a propósito. `createApp` defaultea a `origin: *`, y para la API
+  // local (dev-server, que arma sus deps a mano) eso está bien. Pero este `leerConfig` es el arranque
+  // de PRODUCCIÓN, y la API es la única pieza autenticada expuesta a internet: dejarla en `*` porque
+  // alguien olvidó una variable es exactamente la clase de default abierto que no debe existir.
+  // Falla cerrado: sin el origen del portal, no arranca. (No es un bypass —la auth es por header, no
+  // por cookies—, pero una restricción declarada y no impuesta no es una restricción.)
   const faltan = [
     !databaseUrl && "DATABASE_URL_API (login amg_api → rol app_user)",
     !jwtSecret && "SUPABASE_JWT_SECRET (para verificar el token)",
+    !corsRaw && "CORS_ORIGINS (origen del portal; en producción no se sirve con `*`)",
   ].filter((x): x is string => Boolean(x));
   if (faltan.length > 0) {
     throw new Error(`Faltan variables de entorno de la API:\n  - ${faltan.join("\n  - ")}`);
   }
-  const corsRaw = process.env["CORS_ORIGINS"]?.trim();
   const aud = process.env["SUPABASE_JWT_AUD"]?.trim();
   const iss = process.env["SUPABASE_JWT_ISS"]?.trim();
   return {
     databaseUrl: databaseUrl as string,
     jwtSecret: jwtSecret as string,
-    ...(corsRaw ? { corsOrigins: corsRaw.split(",").map((s) => s.trim()) } : {}),
+    corsOrigins: (corsRaw as string).split(",").map((s) => s.trim()),
     ...(aud ? { jwtAudience: aud } : {}),
     ...(iss ? { jwtIssuer: iss } : {}),
   };
