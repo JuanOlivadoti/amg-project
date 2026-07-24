@@ -1,0 +1,14 @@
+# Fallback de SPA para hosting estático (Cloudflare Pages / Hostinger).
+#
+# El portal es una Single-Page App con router de Angular: las rutas (/login, /runs, /runs/:id) NO son
+# archivos en disco, las resuelve el JavaScript en el navegador. Un hosting estático, ante GET
+# /runs/abc, busca un archivo que no existe y devuelve 404. Frank recargando en /runs/:id, o abriendo
+# un link directo, vería un 404 con la app "muerta".
+#
+# Esta regla dice: cualquier ruta que no matchee un archivo real, servila con index.html y código 200
+# — ahí arranca Angular y el router muestra la pantalla correcta. Los assets reales (JS/CSS/favicon)
+# tienen prioridad sobre esta regla, así que no rompe el cacheo.
+#
+# Cloudflare Pages lee este archivo desde la raíz del output. `angular.json` copia `public/**/*` al
+# output, así que este `_redirects` termina en `dist/portal/browser/_redirects`. No se necesita nada más.
+/*    /index.html    200
