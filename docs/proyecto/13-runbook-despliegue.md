@@ -15,9 +15,21 @@
 
 - [ ] Una cuenta de **Supabase** (base + auth).
 - [ ] Una cuenta de **Railway** (la API), conectada a tu GitHub.
-- [ ] Una cuenta de **Cloudflare Pages** (el portal estático), conectada a tu GitHub.
-- [ ] Un **dominio** (Hostinger u otro registrador) — para `app.` y `api.`.
+- [ ] **Hostinger** con el dominio **`bigball.es`** (hosting del portal estático + DNS).
 - [ ] El repo pusheado a GitHub (ya está: `main`).
+- [ ] Node instalado en tu máquina (para correr los CLI de deploy y buildear el portal).
+
+**La arquitectura del deploy:**
+
+```text
+   navegador  ──▶  PORTAL (Angular estático)  ──▶  API (Node/Hono)  ──▶  Postgres (Supabase)
+   (Frank)          bigball.es  ·  Hostinger        api.bigball.es       + Supabase Auth (login)
+                                                       Railway
+```
+
+- **Portal** → `https://bigball.es` (Hostinger, archivos estáticos).
+- **API** → `https://api.bigball.es` (Railway).
+- **Base + login** → Supabase.
 
 ---
 
@@ -30,9 +42,11 @@
    - **API → Project URL** (`https://xxxx.supabase.co`) y **anon key**: para el portal.
    - **API → JWT Settings → JWT Secret**: para la API.
 
-### B.2 — Railway y Cloudflare Pages
-- Railway: creá un proyecto vacío, lo configuramos en C.5.
-- Cloudflare Pages: lo conectás al repo en C.6.
+### B.2 — Railway y Hostinger
+
+- **Railway:** creá un proyecto vacío, lo configuramos en C.5.
+- **Hostinger:** ya tenés el dominio `bigball.es` y el hosting. El portal se sube a mano en C.6 (no
+  hay auto-deploy desde GitHub en el hosting compartido: se buildea local y se suben los archivos).
 
 ---
 
@@ -109,52 +123,69 @@ usuario NO puede editar), poné:
 3. **Variables** (Settings → Variables) — de la plantilla [`api/.env.example`](../../api/.env.example):
    - `DATABASE_URL_API` = la de C.2 (login `amg_api`).
    - `SUPABASE_JWT_SECRET` = el JWT Secret de B.1.
-   - `CORS_ORIGINS` = `https://app.tudominio.com` (el dominio del portal; **sin `*`**, lo rechaza).
+   - `CORS_ORIGINS` = `https://bigball.es` (el dominio del portal; **sin `*`**, lo rechaza). Si vas a
+     servir también `www.bigball.es`, poné `https://bigball.es,https://www.bigball.es`.
    - `SUPABASE_JWT_ISS` = `https://xxxx.supabase.co/auth/v1` (recomendado).
    - **`NPM_CONFIG_PRODUCTION=false`** ⚠️ **importante:** el server corre con `tsx` (no hay paso de
      build). `tsx` es una devDependency; si Railway instala en modo producción, `npm run serve`
      fallaría con "tsx: not found". Esta variable fuerza a instalar también las devDependencies.
 4. **Deploy.** Cuando termine, Railway te da una URL tipo `https://amg-api-production.up.railway.app`.
+5. **Dominio propio:** Settings → Networking → **Custom Domain** → `api.bigball.es`. Railway te da un
+   destino CNAME; lo cargás en el DNS de Hostinger en C.7. (El portal ya espera `https://api.bigball.es`.)
 
-**Verificá:** abrí `https://esa-url/health` → debe responder `{"status":"ok"}` (sin login).
+**Verificá:** abrí `https://amg-api-production.up.railway.app/health` (la URL de Railway, antes de que
+el DNS propague) → debe responder `{"status":"ok"}` (sin login).
 
-### C.6 — Desplegar el portal en Cloudflare Pages
+### C.6 — Desplegar el portal en Hostinger
 
-1. **Antes de nada, completá [`portal/src/environments/environment.prod.ts`](../../portal/src/environments/environment.prod.ts)**
-   (3 valores, ninguno secreto) y **commiteá + pusheá**:
-   - `apiBaseUrl` = la URL de la API de C.5 (o `https://api.tudominio.com` si ya vas a apuntar el DNS).
+A diferencia de la API (auto-deploy desde GitHub), el hosting compartido de Hostinger **no buildea**:
+se buildea en tu máquina y se **suben los archivos** resultantes.
+
+1. **Completá [`portal/src/environments/environment.prod.ts`](../../portal/src/environments/environment.prod.ts)**
+   (solo 2 valores de Supabase; ninguno es secreto) y **commiteá + pusheá**:
    - `supabaseUrl` = el Project URL de B.1.
    - `supabaseAnonKey` = la anon key de B.1.
-   > No toques `features.*`: están fijados en `false` para Fase 1 a propósito. Si dejás un placeholder,
-   > el `prebuild` **frena el build** y te avisa cuál.
-2. Cloudflare Pages → **Create a project → Connect to Git** → este repo.
-3. **Build settings:**
-   - **Framework preset:** None (o Angular).
-   - **Build command:** `npm ci && npm run build -w portal` *(o, con el subdirectorio del portal como
-     root: `npm ci && npm run build`)*.
-   - **Build output directory:** `portal/dist/portal/browser`.
-4. **Deploy.**
+   > `apiBaseUrl` ya está en `https://api.bigball.es`. No toques `features.*` (fijados en `false` para
+   > Fase 1). Si dejás un placeholder, el `prebuild` **frena el build** y te dice cuál.
+2. **Buildeá el portal** (desde la raíz del repo):
+
+   ```bash
+   npm ci
+   npm run build -w portal
+   ```
+
+   Genera los archivos en **`portal/dist/portal/browser/`** (incluye `index.html`, los `.js`/`.css`,
+   `favicon.ico` y el **`.htaccess`** del fallback de SPA). Si quedó algún placeholder, el `prebuild`
+   corta acá y te dice cuál.
+3. **Subí el CONTENIDO de `portal/dist/portal/browser/` a `public_html`** en Hostinger (hPanel →
+   **File Manager**, o por FTP). Subí **lo de adentro** de `browser/`, no la carpeta: `index.html`
+   tiene que quedar en la raíz de `public_html`. **Incluí el `.htaccess`** (en File Manager, activá
+   "mostrar archivos ocultos" o subilo explícitamente — es un dotfile y es el que evita los 404).
+4. **SSL:** hPanel → **SSL** → activá el certificado (Let's Encrypt, gratis) para `bigball.es`.
+   Activá también el redirect de HTTP a HTTPS.
 
 **Verificá:**
-- La home carga.
-- **Entrá directo a una ruta profunda** (ej. `.../runs`) y **recargá**: debe cargar, no dar 404
-  (lo garantiza `portal/public/_redirects` → `/* /index.html 200`). Si da 404, el `_redirects` no
-  llegó al output: revisá el build output directory.
+- `https://bigball.es` abre la pantalla de login.
+- **Entrá directo a una ruta profunda** (`https://bigball.es/runs`) y **recargá**: debe cargar, no dar
+  404. Si da 404, falta el `.htaccess` en `public_html` (o no se subió por ser oculto): revisá el paso 3.
 
-### C.7 — Dominios
+### C.7 — Dominios (DNS en Hostinger)
 
-En tu registrador / Cloudflare DNS:
-- `app.tudominio.com` → el portal de Pages (CNAME al proyecto de Pages).
-- `api.tudominio.com` → la API de Railway (CNAME al dominio de Railway; en Railway, Settings →
-  Networking → Custom Domain).
+El portal ya vive en `bigball.es` (es tu hosting de Hostinger, no hace falta DNS extra). Falta apuntar
+el subdominio de la API:
 
-Si cambiaste `apiBaseUrl`/`CORS_ORIGINS` para usar `api.tudominio.com`/`app.tudominio.com`, asegurate
-de que **coincidan**: el `CORS_ORIGINS` de la API debe ser exactamente el origen del portal, y el
-`apiBaseUrl` del portal debe ser exactamente la URL de la API. El TLS lo ponen Railway/Pages solos.
+- **`api.bigball.es`** → la API de Railway. En hPanel → **DNS Zone Editor**, agregá un **CNAME**:
+  `api` → el destino que te dio Railway en C.5 (Custom Domain). En Railway, confirmá que el custom
+  domain `api.bigball.es` quede "verified".
+
+**Coherencia (lo que más falla):** el `CORS_ORIGINS` de la API (`https://bigball.es`) tiene que ser
+**exactamente** el origen del portal, y el `apiBaseUrl` del portal (`https://api.bigball.es`) la URL
+exacta de la API. El TLS lo ponen Railway (API) y Hostinger (portal) — asegurate de que **los dos**
+sirvan por HTTPS, o el navegador bloquea la llamada de una página https a un backend http.
 
 ### C.8 — Verificación de punta a punta (con Frank)
 
-- [ ] `https://app.tudominio.com` abre la pantalla de login.
+- [ ] `https://bigball.es` abre la pantalla de login.
 - [ ] Frank se loguea con su usuario de Supabase.
 - [ ] Ve el research de **Bella Napoli**: el split **✅ 3 respaldadas / ⚠️ 5 sin validar**.
 - [ ] Entra a un run, ve las páginas, y **puede aprobar una página** (la compuerta).
@@ -170,12 +201,13 @@ de que **coincidan**: el `CORS_ORIGINS` de la API debe ser exactamente el origen
 |---|---|---|
 | La API no arranca, log dice `Faltan variables de entorno` | Falta una var obligatoria en Railway | Completá `DATABASE_URL_API`, `SUPABASE_JWT_SECRET`, `CORS_ORIGINS`. |
 | La API no arranca, `tsx: not found` | Railway instaló sin devDependencies | Agregá la variable `NPM_CONFIG_PRODUCTION=false` y redesplegá. |
-| La API no arranca, error sobre `CORS_ORIGINS` | Pusiste `*`, vacío, o una URL sin esquema | Poné el origen completo, ej. `https://app.tudominio.com`. |
+| La API no arranca, error sobre `CORS_ORIGINS` | Pusiste `*`, vacío, o una URL sin esquema | Poné el origen completo, ej. `https://bigball.es`. |
 | `/health` da 404 | La URL o el service están mal | Es `GET /health` en la raíz de la API, sin `/api` adelante. |
-| El portal carga pero el login/llamadas fallan con error de CORS | `CORS_ORIGINS` de la API ≠ origen real del portal | Que sean idénticos (esquema+host, sin barra final). |
-| Recargar en `/runs/:id` da 404 | Falta el fallback de SPA en el output | `portal/public/_redirects` debe estar en `dist/portal/browser/_redirects`; revisá el output dir. |
+| El portal carga pero el login/llamadas fallan con error de CORS | `CORS_ORIGINS` de la API ≠ origen real del portal | Que sean idénticos (`https://bigball.es`, sin barra final). Si entrás por `www.`, agregá `https://www.bigball.es`. |
+| Recargar en `/runs/:id` da 404 | Falta el `.htaccess` en `public_html` | Es un dotfile: subilo explícitamente (o activá "mostrar ocultos" en File Manager). Debe estar junto a `index.html`. |
+| El portal (https) no puede llamar a la API | La API responde por http, no https | Activá el custom domain con TLS en Railway; `apiBaseUrl` debe ser `https://api.bigball.es`. |
 | Login OK pero Frank no ve nada | El `app_metadata.tenant_id` no coincide con el del seed | Copiá el `tenant_id` que imprimió `seed:demo` al `app_metadata` de cada usuario. |
-| Frank SÍ ve el botón "lanzar research" | El portal se buildeó en modo development | Cloudflare debe correr `npm run build` (producción, `features.lanzarResearch=false`). |
+| Frank SÍ ve el botón "lanzar research" | El portal se buildeó en modo development | El build tiene que ser `npm run build -w portal` (producción, `features.lanzarResearch=false`). |
 
 ---
 

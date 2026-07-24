@@ -1,0 +1,23 @@
+# Fallback de SPA para Hostinger (Apache / LiteSpeed).
+#
+# El portal es una Single-Page App con router de Angular: /login, /runs, /runs/:id NO son archivos en
+# disco, los resuelve el JavaScript. Un hosting estático, ante GET /runs/abc, busca un archivo que no
+# existe y devuelve 404. Con esto, cualquier ruta que no sea un archivo o carpeta real se sirve con
+# index.html (código 200) y ahí arranca Angular y muestra la pantalla correcta.
+#
+# Es el equivalente del `_redirects` de Cloudflare, pero para Apache/LiteSpeed (Hostinger). Los dos
+# conviven en el repo sin molestarse: cada host lee el suyo e ignora el otro.
+#
+# `angular.json` copia `public/**/*` al output, así que este archivo termina en
+# `dist/portal/browser/.htaccess`. Se sube junto con el resto del build.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  # index.html se sirve tal cual (evita un loop de reescritura).
+  RewriteRule ^index\.html$ - [L]
+  # Si el pedido es un archivo o carpeta REAL (JS, CSS, favicon…), servilo tal cual.
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  # Cualquier otra cosa (una ruta del router): index.html, y Angular resuelve.
+  RewriteRule . /index.html [L]
+</IfModule>
