@@ -163,15 +163,43 @@ usuario NO puede editar), poné:
    - **Root Directory:** la raíz del repo (dejar vacío / `/`).
    - **Start Command:** `npm run serve -w api`
    - **Health Check Path:** `/health`
-3. **Variables** (Settings → Variables) — de la plantilla [`api/.env.example`](../../api/.env.example):
-   - `DATABASE_URL_API` = la de C.2 (login `amg_api`).
-   - `SUPABASE_JWT_SECRET` = el JWT Secret de B.1.
-   - `CORS_ORIGINS` = `https://bigballs.es` (el dominio del portal; **sin `*`**, lo rechaza). Si vas a
-     servir también `www.bigballs.es`, poné `https://bigballs.es,https://www.bigballs.es`.
-   - `SUPABASE_JWT_ISS` = `https://xxxx.supabase.co/auth/v1` (recomendado).
-   - **`NPM_CONFIG_PRODUCTION=false`** ⚠️ **importante:** el server corre con `tsx` (no hay paso de
-     build). `tsx` es una devDependency; si Railway instala en modo producción, `npm run serve`
-     fallaría con "tsx: not found". Esta variable fuerza a instalar también las devDependencies.
+3. **Variables.** Railway **no lee ningún archivo `.env`** del repo: hay que cargarlas en el servicio.
+   Pero no las tipees de nuevo — `api/.env` ya las tiene todas y correctas.
+
+   **Camino corto (recomendado):**
+
+   ```bash
+   npm run env:sync     # asegura que api/.env está al día con docs/private/credenciales.env
+   ```
+
+   Abrí `api/.env`, copiá **las 5 líneas `CLAVE=valor`** (salteá los comentarios de la cabecera) y
+   pegalas en Railway: **Variables → Raw Editor**. Acepta el formato `CLAVE=valor` de a varias líneas.
+   Si no encontrás el Raw Editor, cargalas de a una con **+ New Variable**.
+
+   **Después agregá a mano esta, que no está en `api/.env`** (es de Railway, no de la app):
+
+   ```env
+   NPM_CONFIG_PRODUCTION=false
+   ```
+
+   ⚠️ **No la saltees:** el server corre con `tsx` y no hay paso de build. `tsx` es una
+   devDependency; si Railway instala en modo producción, `npm run serve` falla con `tsx: not found`.
+
+   Deberías terminar con estas 6 variables:
+
+   | Variable | De dónde sale | Obligatoria |
+   | --- | --- | --- |
+   | `DATABASE_URL_API` | C.2 — login `amg_api`, **no** el de admin | sí |
+   | `SUPABASE_JWT_SECRET` | B.1 — Project Settings → JWT Keys → Legacy | sí |
+   | `CORS_ORIGINS` | `https://bigballs.es,https://www.bigballs.es` | sí |
+   | `SUPABASE_JWT_ISS` | `https://<project-ref>.supabase.co/auth/v1` | recomendada |
+   | `SUPABASE_JWT_AUD` | vacía salvo que hayas cambiado el default | no |
+   | `NPM_CONFIG_PRODUCTION` | `false` — a mano, ver arriba | sí |
+
+   > 🔴 **Nunca pegues `DATABASE_URL_ADMIN` en Railway.** Es el superusuario que crea roles y es dueño
+   > del esquema. La API usa `amg_api`, que es `NOINHERIT` y trabaja bajo RLS; darle la de admin
+   > convierte el aislamiento de ADR-17 en una convención en vez de una barrera. Por eso `env:sync`
+   > no la pone en `api/.env`, y hay un test que lo verifica.
 4. **Deploy.** Cuando termine, Railway te da una URL tipo `https://amg-api-production.up.railway.app`.
 5. **Dominio propio:** Settings → Networking → **Custom Domain** → `api.bigballs.es`. Railway te da un
    destino CNAME; lo cargás en el DNS de Hostinger en C.7. (El portal ya espera `https://api.bigballs.es`.)

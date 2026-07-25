@@ -104,8 +104,13 @@ implementar, discrepar con razón técnica).
 ## Cómo correr
 
 ```bash
-npm test            # los 6 paquetes
-npm run typecheck   # tsc --noEmit en todos
+npm test            # los 6 paquetes + los tests de scripts/
+npm run typecheck   # tsc --noEmit en todos, incluido scripts/
+npm run env:sync    # reparte docs/private/credenciales.env a los .env de cada paquete
 npm run dev:server -w api        # la API real sobre PGlite (verificar el portal)
 npm run demo -w renderer         # el renderizador sobre el Storyblok REAL (demo)
 ```
+
+Los `.env` de los paquetes son **generados**: se editan en `docs/private/credenciales.env` y se
+reparten con `env:sync`. Cada paquete recibe solo sus claves — el reparto es la compartimentación
+(ver [12-credenciales.md](docs/proyecto/12-credenciales.md)).

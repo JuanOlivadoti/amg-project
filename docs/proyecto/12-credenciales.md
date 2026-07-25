@@ -45,6 +45,42 @@ Hay un test que lo comprueba contra `pg_auth_members` (la fuente de verdad, no e
 
 ---
 
+## Dónde viven: una fuente, reparto por paquete
+
+Los valores se escriben **en un solo archivo**, `docs/private/credenciales.env` (gitignoreado), y
+`npm run env:sync` los reparte a los `.env` de cada paquete. Los `.env` de los paquetes son
+**generados**: editarlos a mano no sirve, el próximo sync los pisa.
+
+```bash
+npm run env:sync    # docs/private/credenciales.env → api/.env, db/.env, kr-service/.env, …
+```
+
+**Por qué no un único `.env` en la raíz que carguen todos.** Sería más simple y borraría la
+duplicación igual, pero le daría a cada proceso el entorno completo: el renderizador —el único
+expuesto a internet anónimo (ADR-19)— tendría a mano la password de `amg_api` y el token de escritura
+de Storyblok. **El reparto ES la compartimentación**, y es la misma pregunta de siempre: *si me lo
+toman, ¿qué se llevan?*
+
+Quién recibe qué lo decide `MAPA` en [`scripts/env-sync.mts`](../../scripts/env-sync.mts), y **lo
+impone su test**, no un comentario:
+
+- el `MAPA` debe coincidir **exactamente** con el `.env.example` de cada paquete, en las dos
+  direcciones — agregar una clave a un `.env.example` rompe el test hasta que alguien decida quién
+  puede verla;
+- el renderizador nunca recibe `STORYBLOK_MANAGEMENT_TOKEN` ni ninguna `DATABASE_URL_*`;
+- la API nunca recibe `DATABASE_URL_ADMIN` (es lo de arriba: si la tuviera en el entorno, el
+  `NOINHERIT` sería decorativo).
+
+Si dos paquetes necesitan la **misma clave con distinto valor** —`BUSINESS_PROFILE_PATH` es relativa
+y se resuelve desde cwd distintos; dos servicios pueden querer API keys separadas para rotarlas
+aparte— se usa un override `PAQUETE__CLAVE` (`WEB_BUILDER__OPENAI_API_KEY`), que gana sobre el valor
+global. El override tampoco se filtra a otro paquete: hay un test de eso.
+
+> **`DATABASE_URL_ADMIN` es la excepción de todo esto.** No es de ningún proceso: la usan solo
+> `migrate:deploy` y `seed:demo`, a mano, una vez. Vive en `db/.env` y **nunca** se carga en Railway.
+
+---
+
 ## Variables de entorno
 
 ```bash
