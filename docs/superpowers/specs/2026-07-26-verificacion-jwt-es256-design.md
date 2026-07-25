@@ -2,6 +2,12 @@
 
 > **Estado:** aprobado el 2026-07-26. Es la **pieza A** de cuatro (ver §Contexto).
 > **Bloquea todo lo demás:** hoy ningún login funciona contra la API en producción.
+>
+> **Revisado el 2026-07-26** tras una revisión externa (Codex) del spec y del plan. Los cambios de
+> diseño que salieron de ahí están incorporados abajo y marcados con *(revisión)*. Los tres de fondo:
+> el emisor se valida como ancla de confianza y no solo como `https`; el verificador distingue
+> *"token inválido"* de *"no pude comprobarlo"*; y la lista de algoritmos se fija con un test de
+> **ES384**, porque se midió que el de HS256 no cae bajo mutación.
 
 ---
 
@@ -78,10 +84,32 @@ otro lado, el token robado sigue acuñando access tokens. Y el refresh token **n
 
 Entra en el alcance de esta pieza: es el mismo archivo, el mismo tema y el mismo borde de
 autenticación. El arreglo es llamar al endpoint de logout de Supabase (`POST /auth/v1/logout` con el
-access token) **antes** de limpiar el estado local, y —esto es lo que hay que testear— limpiar el
-estado local **igual aunque la llamada falle**: si la red está caída, el usuario tiene que quedar
-deslogueado en su navegador de todas formas. Un logout que falla y deja la sesión abierta en pantalla
-es peor que uno que no revoca.
+access token) y limpiar el estado local **igual aunque la llamada falle**: si la red está caída, el
+usuario tiene que quedar deslogueado en su navegador de todas formas. Un logout que falla y deja la
+sesión abierta en pantalla es peor que uno que no revoca.
+
+**El orden es al revés de lo que parece natural** *(revisión)*. El diseño original decía "revocar y
+después limpiar en un `finally`". Eso deja la UI autenticada mientras el `fetch` está en vuelo — y
+`fetch` no tiene timeout propio, así que puede colgar indefinidamente. Se limpia **primero**, de
+forma síncrona, y la revocación viaja después con el token ya capturado.
+
+**Y hay dos carreras que ningún `finally` cubre** *(revisión)*:
+
+- Un **refresh en vuelo** que resuelve *después* del logout escribe una sesión válida: el portal
+  queda autenticado sin que nadie lo pidiera.
+- Una **revocación lenta** que termina después de que el usuario volvió a entrar borraría la sesión
+  **nueva**.
+
+Las cierra una **guarda de época**: un contador que cambia en cada login y cada logout, y que todo lo
+que escriba estado después de un `await` comprueba antes de escribir.
+
+**Alcance de la revocación:** global — el default de `POST /auth/v1/logout` sin `scope`. Es el que
+corresponde al caso que motiva la función (el equipo robado): revoca los refresh tokens de todas las
+sesiones del usuario. **Lo que no hace**, y hay que decirlo: los access tokens ya emitidos siguen
+siendo válidos hasta su `exp` (una hora). La API los verifica localmente contra el JWKS y no consulta
+a Supabase en cada request, así que la revocación corta la **renovación**, no el acceso en curso.
+Cortarlo de inmediato exigiría comprobar la sesión contra el servidor en cada llamada; ese costo no se
+justifica acá.
 
 ---
 
@@ -97,11 +125,18 @@ es peor que uno que no revoca.
 - **Tests** inyectan un JWKS **local** (`createLocalJWKSet`) con una clave generada en el propio
   test. La suite sigue **sin red**, como el resto del proyecto.
 
-El resto del verificador **no cambia**: `requiredClaims: ["exp","sub"]`, el chequeo de `aud`, el de
-`iss` y el rechazo de `sub` en blanco quedan igual. Es un fix acotado, no una reescritura.
+Las **comprobaciones** del verificador no cambian: `requiredClaims: ["exp","sub"]`, el chequeo de
+`aud`, el de `iss` y el rechazo de `sub` en blanco quedan igual. Sigue siendo un fix acotado.
 
 `algorithms` pasa de `["HS256"]` a `["ES256"]`. Sigue siendo una lista cerrada de un solo algoritmo:
 la lección de la 9ª review se conserva, solo cambia cuál.
+
+Lo que **sí** cambia además de la firma *(revisión)*:
+
+- El emisor se canoniza y valida en una función pura (`emisorSupabase`), y de ese **único** valor
+  salen el `iss` que se exige y la URL del JWKS. Ver §Configuración.
+- El resultado deja de ser binario: se agrega `NO_DISPONIBLE` para los fallos que no hablan del
+  token. Ver §Errores.
 
 ### Configuración
 
@@ -118,6 +153,23 @@ Que `iss` pase a obligatoria tiene un efecto de seguridad deseado: hoy es opcion
 emitido por **otro** proyecto de Supabase entraría si compartiera el secreto. Al volverse obligatoria,
 el proyecto emisor queda amarrado por construcción, no por convención.
 
+**El emisor es el ancla de confianza, y se valida como tal** *(revisión)*. Si de `SUPABASE_JWT_ISS`
+sale la clave con la que se comprueba **toda** la autenticación, entonces esa variable no es un dato
+de configuración más: es la raíz de confianza del sistema. Se canoniza y se valida **una sola vez**,
+al arrancar, en una función pura (`emisorSupabase`):
+
+- **`https`**, host de `supabase.co`, ruta `/auth/v1`, sin puerto, credenciales, query ni fragment.
+- Exigir solo `https` **no alcanzaba**: `https://atacante.example/auth/v1` es https y válido, y
+  habría sustituido el emisor de confianza entero — a partir de ahí, cualquier token que ese host
+  firmara entra. No es una petición saliente indeseada, es un cambio de dueño de la autenticación.
+- **Una sola canonización, para los dos usos.** Si se le quitara la barra final solo para armar la
+  URL del JWKS, el `iss` que se le exige al token quedaría *con* la barra, no coincidiría con el que
+  emite Supabase y **ningún token verificaría** — exactamente el 401 total que este cambio arregla.
+
+*Limitación aceptada:* un dominio de auth propio (Supabase lo permite) no pasa esta validación.
+Ampliarla sería una decisión deliberada; mientras tanto el fallo es ruidoso y al arrancar, no
+silencioso y en cada login.
+
 Hay que actualizar, en este orden: `api/src/deps.ts` (validación de obligatorias),
 `api/.env.example`, el `MAPA` de `scripts/env-sync.mts`, `docs/private/credenciales.env` y las
 variables del servicio en Railway.
@@ -126,13 +178,39 @@ variables del servicio en Railway.
 > el `.env.example` se actualicen juntos. Eso es el test funcionando: obliga a decidir explícitamente
 > qué claves recibe la API.
 
-### Errores: fallar cerrado
+### Errores: fallar cerrado, pero sin mentir *(revisión)*
 
-Si el JWKS no se puede obtener —Supabase caído, DNS roto, timeout—, la verificación **falla** y la
-API responde `401`. Nunca "dejar pasar porque no se pudo comprobar".
+Si el JWKS no se puede obtener —Supabase caído, DNS roto, timeout—, la verificación **falla**. Nunca
+"dejar pasar porque no se pudo comprobar".
 
-`createRemoteJWKSet` cachea la clave y refresca con *cooldown*, así que un corte breve no se nota. Uno
-largo cierra la puerta, que es el comportamiento correcto en el borde de autenticación.
+Pero fallar cerrado **no obliga a responder siempre lo mismo**. Devolver `401` en ese caso tiene una
+consecuencia concreta: el portal interpreta cualquier `401` como *token vencido*, así que dispara un
+refresh, lo quema y termina cerrando la sesión. Una caída del JWKS —una dependencia de red que este
+cambio **introduce**— desloguearía a todo el mundo y se vería como un problema de credenciales.
+
+Por eso el verificador tiene tres resultados en vez de dos:
+
+| Resultado | Significa | La API responde |
+| --- | --- | --- |
+| `{ userId }` | el token es válido | sigue |
+| `null` | el token es inválido | **401** |
+| `NO_DISPONIBLE` | no se pudo comprobar | **503** |
+
+Los dos últimos **deniegan igual**: no es una relajación del borde, es información. Y el 503 le dice
+al portal que no toque la sesión.
+
+**Cómo se clasifica, y por qué así.** Con una *allowlist de códigos de token* de `jose`
+(`ERR_JWT_EXPIRED`, `ERR_JWS_SIGNATURE_VERIFICATION_FAILED`, `ERR_JOSE_ALG_NOT_ALLOWED`, …); todo lo
+demás cuenta como infraestructura. La dirección importa y está **medida**: un fallo de red no siempre
+trae un código de `jose` — un resolvedor que rechaza llega **sin `code`**, y `createRemoteJWKSet`
+contra un host muerto llega con `ECONNREFUSED`, que es de Node. Enumerar lo enumerable (los errores
+del token) y tratar el resto como "no pude comprobar" es lo único que no deja casos sin clasificar.
+
+`createRemoteJWKSet` cachea la clave y refresca con *cooldown* (medido en jose 5.10.0: timeout 5 s,
+cooldown 30 s, cache 10 min), así que un corte breve no se nota y la rotación de claves se resuelve
+sola. Durante una rotación puede haber una ventana de ~30 s en que un `kid` recién publicado no se
+resuelve; es aceptable porque Supabase publica la clave nueva **antes** de empezar a firmar con ella,
+y la anterior sigue en el JWKS.
 
 ### Tests
 
@@ -140,7 +218,8 @@ Los actuales (`api/src/auth.test.ts`) firman con un secreto simétrico, así que
 generar un par EC en el test (`generateKeyPair('ES256')`), firmar con la privada, verificar contra un
 JWKS local con la pública.
 
-**Se conservan los diez casos que ya existen**, traducidos a ES256 — ninguno se descarta:
+**Se conservan los doce casos que ya existen** *(revisión: son 12, no 10 — el conteo original se
+escribió de memoria)*, traducidos a ES256. Ninguno se descarta:
 
 | Caso actual | Qué protege |
 | --- | --- |
@@ -152,31 +231,65 @@ JWKS local con la pública.
 | `sub` vacío | que no se ponga `app.user_id = ''` |
 | `sub` de solo espacios | lo mismo, con `trim` |
 | otro `iss` | que un token de otro proyecto no entre |
+| otra `aud` | que un token para otra app no entre |
 | **`alg: none`** | **el bypass clásico de JWT** — crítico conservarlo |
+| `alg` fuera del contrato (era HS512) | que la política declarada se **imponga** |
 | basura → `null`, no lanza | que un token malformado no tumbe la API |
 
-**Se agregan dos:**
+**Se agregan** *(revisión)*:
 
-1. **JWKS inalcanzable → 401.** Que el fallo de red no abra la puerta.
-2. **Token HS256 → rechazado**, aunque venga bien formado. Es el caso que motivó todo esto.
+1. **Resolvedor caído → `NO_DISPONIBLE`.** Que el fallo de red no abra la puerta *y* no se confunda
+   con una credencial mala. Se **inyecta** un resolvedor que rechaza: nada de apuntar a
+   `127.0.0.1:1`, que abriría un socket y rompería el invariante de suite sin red.
+2. **Token inválido → `null`, no `NO_DISPONIBLE`.** El complemento del anterior: sin este, mandar
+   todo a `NO_DISPONIBLE` dejaría el 401 sin existir y la suite en verde.
+3. **Token HS256 → rechazado.** Contrato, no prueba de la lista de algoritmos (ver abajo).
+4. **`kid` desconocido → rechazado**, y **token sin `kid` → aceptado** si el JWKS tiene una sola
+   clave compatible. Lo segundo está medido y se fija como **decisión**: la clave sale igual del
+   conjunto de confianza, y exigir `kid` nos ataría a un detalle del header que Supabase puede
+   cambiar. Si algún día se decide exigirlo, ese test es el que tiene que cambiar.
+5. **El emisor canónico**: barra final, host ajeno, `http`, ruta distinta, query, fragment, puerto y
+   credenciales embebidas.
 
 El de `alg: none` merece atención especial: con verificación asimétrica el atacante conoce la clave
 **pública**, así que un verificador mal configurado que acepte `none` —o que acepte `HS256` usando la
 clave pública como secreto— es explotable **sin conocer ningún secreto**. Con `HS256` compartido ese
-ataque no existía. La lista cerrada `algorithms: ["ES256"]` es lo que lo cierra, y el test lo fija.
+ataque no existía.
 
-**Verificación por mutación** (no negociable, es la disciplina del proyecto): volver a agregar
-`"HS256"` a la lista de algoritmos y confirmar que cae **exactamente** el test 2. Un test de seguridad
-que siempre pasa es peor que no tenerlo.
+**La lista de algoritmos se fija con ES384, no con HS256** *(revisión — y este fue el hallazgo más
+caro)*. El diseño original decía: "agregá `HS256` a la lista y confirmá que cae exactamente ese test".
+Se ejecutó y **no cae ninguno**: con un resolvedor JWKS, `jose` rechaza `HS256` aunque el algoritmo
+esté permitido, porque no resuelve claves HMAC desde un JWKS (`ERR_JOSE_NOT_SUPPORTED`). La mutación
+habría pasado en verde y la "garantía" habría sido falsa — la clase exacta de test que este proyecto
+viene eliminando.
+
+El test que sí la fija usa **ES384 con su clave pública dentro del JWKS de prueba**: es realmente
+resoluble, así que al abrir la lista el token verifica y el test cae. Verificado ejecutándolo.
+
+**Verificación por mutación** (no negociable): además del algoritmo, se mutan la clasificación de
+errores (en las dos direcciones) y, en el portal, el orden de limpieza y la guarda de época. Cada
+mutación tiene que tumbar **exactamente** el test que la nombra.
 
 ### Documentación a actualizar al cerrar
 
+*(revisión: la lista original se quedaba corta. `SUPABASE_JWT_SECRET` y `HS256` sobreviven en más
+lugares de los que se habían anotado, y varios son **instrucciones operativas** que quedarían
+mandando copiar un secreto que ya no existe.)*
+
 - `docs/proyecto/12-credenciales.md` — `SUPABASE_JWT_SECRET` ya no existe.
-- `docs/proyecto/13-runbook-despliegue.md` — B.1 (ya no hace falta copiar el JWT Secret) y C.5 (la
-  tabla de variables de Railway pasa de 6 a 5).
-- `docs/decisiones-arquitectura.md` — ADR nuevo o extensión del existente: **la API verifica identidad
-  contra el JWKS del emisor, no contra un secreto compartido.**
+- `docs/proyecto/13-runbook-despliegue.md` — B.1 (ya no hace falta copiar el JWT Secret), C.5 (la
+  tabla de variables de Railway pasa de 6 a 5) y el troubleshooting, que hoy nombra el secreto.
+- `api/README.md` — el `alg` que verifica, el ejemplo de arranque y la tabla de variables.
+- `docs/proyecto/03-stack.md` — el comentario del árbol dice `alg fijado a HS256`.
+- `docs/proyecto/09-estado-y-roadmap.md` — la tabla de variables por paquete.
+- `docs/proyecto/12-despliegue-fase-1.md` — la fila del secreto.
+- `portal/src/app/core/auth-core.ts` — el comentario de cabecera.
+- `docs/decisiones-arquitectura.md` — **ADR-23: la API verifica identidad contra el JWKS del emisor,
+  no contra un secreto compartido.**
 - Sincronizar las cifras de tests donde aparezcan.
+
+**No se toca** `docs/proyecto/08-testing-calidad.md`: su mención de HS256 es el registro histórico de
+la 3ª review, no una instrucción. La regla es corregir lo que hoy es falso y dejar lo que es memoria.
 
 ---
 

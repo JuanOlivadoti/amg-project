@@ -46,3 +46,7 @@ Thumbs.db
 
 # Cache de respuestas de DataForSEO (datos pagos, pero regenerables; no van al repo)
 .cache/
+
+# Scratch de las skills de superpowers (ledger de progreso, briefs, diffs de review).
+# Es estado de una sesión de trabajo, no del proyecto.
+.superpowers/
