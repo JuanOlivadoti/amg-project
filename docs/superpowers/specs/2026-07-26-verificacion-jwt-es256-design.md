@@ -41,26 +41,47 @@ solo código más nuevo.
 
 ---
 
-## Paso 0 (obligatorio, antes de escribir código)
+## Paso 0 — ✅ HECHO (2026-07-26): el diseño está validado contra el proyecto real
 
-Obtener el payload real de un token ES256 del proyecto y **confirmar tres claims**: `alg`, `aud` e
-`iss`. El diseño asume que solo cambió el algoritmo; si además cambió la audiencia, el fix no alcanza.
+Antes de escribir código se verificó un token de producción **de verdad**, no se asumió. Resultado:
 
-```bash
-curl -s -X POST "https://<ref>.supabase.co/auth/v1/token?grant_type=password" \
-  -H "apikey: <anon key>" -H "Content-Type: application/json" \
-  -d '{"email":"<usuario>","password":"<password>"}' \
-  | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const t=JSON.parse(s).access_token;const[h,p]=t.split('.').slice(0,2).map(x=>JSON.parse(Buffer.from(x,'base64url')));console.log(JSON.stringify({header:h,claims:p},null,2))})"
-```
-
-Qué hacer con el resultado:
-
-| Si el token trae | Entonces |
+| Qué se comprobó | Resultado |
 | --- | --- |
-| `alg: ES256`, `aud: authenticated`, `iss: https://<ref>.supabase.co/auth/v1` | El diseño vale tal cual. Seguir. |
-| Otro `aud` | Actualizar `AUD_SUPABASE` en `api/src/auth.ts` **al valor real** y su test. |
-| Otro `iss` | Corregir el valor de `SUPABASE_JWT_ISS` y la derivación del JWKS. |
-| `alg` distinto de `ES256` | **Parar.** El JWKS decía otra cosa; rehacer el diagnóstico. |
+| `header.alg` | **`ES256`** |
+| `header.kid` | `2e9e5796-…` — **coincide** con la única clave del JWKS del proyecto |
+| `claims.iss` | `https://<ref>.supabase.co/auth/v1` — como se esperaba |
+| `claims.aud` | **`authenticated`** — `AUD_SUPABASE` **no cambia** |
+| `app_metadata` | trae `tenant_id` y `rol` — el portal sigue teniendo lo que necesita |
+| **Verificación contra el JWKS remoto** | **✔ verifica**, con las opciones exactas que usará la API |
+| Contraprueba `algorithms: ["HS256"]` | **✔ rechazado** (`"alg" Header Parameter value not allowed`) |
+
+La prueba corrió `createRemoteJWKSet` contra el JWKS real y `jwtVerify` con
+`algorithms:["ES256"]`, `requiredClaims:["exp","sub"]`, `audience:"authenticated"` e `issuer` — es
+decir, **la configuración final del diseño**, sobre un token real, y funcionó.
+
+Esto elimina el riesgo principal del cambio: no hay que descubrir en la implementación que la
+audiencia cambió o que el `iss` no es el que se cree. Lo que queda es escribirlo bien y testearlo.
+
+> **Nota de seguridad del proceso:** el token de prueba llegó dentro de una sesión completa, con su
+> `refreshToken`. Un refresh token no caduca y permite acuñar access tokens hasta que se revoque.
+> Para inspeccionar un token alcanza con el **payload decodificado**, que no sirve como credencial.
+> La sesión usada acá se revocó desde el panel de Supabase.
+
+### Hallazgo colateral: el logout no revoca nada
+
+Al verificar lo anterior salió a la luz que `AuthService.logout()`
+(`portal/src/app/services/auth.ts:43`) **solo borra el `localStorage`**: no llama a Supabase, así que
+**el refresh token sigue válido del lado del servidor** después de "cerrar sesión".
+
+Un logout que no revoca es una promesa a medias: si a Frank le roban el equipo y cierra sesión desde
+otro lado, el token robado sigue acuñando access tokens. Y el refresh token **no caduca solo**.
+
+Entra en el alcance de esta pieza: es el mismo archivo, el mismo tema y el mismo borde de
+autenticación. El arreglo es llamar al endpoint de logout de Supabase (`POST /auth/v1/logout` con el
+access token) **antes** de limpiar el estado local, y —esto es lo que hay que testear— limpiar el
+estado local **igual aunque la llamada falle**: si la red está caída, el usuario tiene que quedar
+deslogueado en su navegador de todas formas. Un logout que falla y deja la sesión abierta en pantalla
+es peor que uno que no revoca.
 
 ---
 
