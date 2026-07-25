@@ -272,37 +272,51 @@ el DNS propague) → debe responder `{"status":"ok"}` (sin login).
 
 ### C.6 — Desplegar el portal en Hostinger
 
-A diferencia de la API (auto-deploy desde GitHub), el hosting compartido de Hostinger **no buildea**:
-se buildea en tu máquina y se **suben los archivos** resultantes.
+**Hostinger sí buildea** (en los planes con Node.js): hPanel conecta GitHub por OAuth y despliega
+desde `main` con un webhook, corriendo el build en el servidor. No hacen falta GitHub Actions ni FTP.
 
 1. **Completá [`portal/src/environments/environment.prod.ts`](../../portal/src/environments/environment.prod.ts)**
    (solo 2 valores de Supabase; ninguno es secreto) y **commiteá + pusheá**:
    - `supabaseUrl` = el Project URL de B.1.
    - `supabaseAnonKey` = la anon key de B.1.
      > `apiBaseUrl` ya está en `https://api.bigballs.es`. No toques `features.*` (fijados en `false` para
-     > Fase 1). Si dejás un placeholder, el `prebuild` **frena el build** y te dice cuál.
-2. **Buildeá el portal** — **desde `portal/`, no desde la raíz**:
+     > Fase 1). Si dejás un placeholder, el `prebuild` **frena el build** y te dice cuál — en el
+     > servidor de Hostinger también, así que un placeholder olvidado corta el deploy en vez de
+     > publicar un portal roto.
 
-   ```bash
-   cd portal
-   npm ci          # las deps del portal se instalan ACÁ
-   npm run build
-   ```
+2. **Conectá el repo en hPanel** y configurá el proyecto como **Angular**:
 
-   > ⚠️ `npm run build -w portal` **no funciona**: falla con `No workspaces found`. El portal está
-   > **fuera del monorepo a propósito** (su toolchain de Angular no se mezcla con el de los paquetes),
-   > así que no es un workspace y `-w` no lo encuentra. Su `node_modules` es propio.
+   | Campo | Valor |
+   | --- | --- |
+   | Repositorio | tu repo de GitHub |
+   | Rama | `main` |
+   | Framework / tipo | **Angular** |
+   | **Build command** | **`npm run build:portal`** |
+   | **Output / publish directory** | **`portal/dist/portal/browser`** |
+   | Versión de Node | **20 o superior** (Angular 20 lo exige) |
 
-   Genera los archivos en **`portal/dist/portal/browser/`** (incluye `index.html`, los `.js`/`.css`,
-   `favicon.ico` y el **`.htaccess`** del fallback de SPA). Si quedó algún placeholder, el `prebuild`
-   corta acá y te dice cuál.
+   > ⚠️ **El build command es `npm run build:portal`, no `npm run build`.** El portal está **fuera del
+   > monorepo a propósito** (su toolchain de Angular no se mezcla con el de los paquetes), así que no
+   > es un workspace: `npm run build -w portal` falla con `No workspaces found`, y en la raíz no hay
+   > script `build`. El script `build:portal` de la raíz entra a `portal/`, instala **sus** deps y
+   > buildea — es lo que hace que el subdirectorio funcione desde un campo que corre en la raíz.
 
-3. **Subí el CONTENIDO de `portal/dist/portal/browser/` a `public_html`** en Hostinger (hPanel →
-   **File Manager**, o por FTP). Subí **lo de adentro** de `browser/`, no la carpeta: `index.html`
-   tiene que quedar en la raíz de `public_html`. **Incluí el `.htaccess`** (en File Manager, activá
-   "mostrar archivos ocultos" o subilo explícitamente — es un dotfile y es el que evita los 404).
-4. **SSL:** hPanel → **SSL** → activá el certificado (Let's Encrypt, gratis) para `bigballs.es`.
-   Activá también el redirect de HTTP a HTTPS.
+3. **SSL:** hPanel → **SSL** → certificado de Let's Encrypt (gratis) para `bigballs.es`, y activá el
+   redirect de HTTP a HTTPS.
+
+**El `.htaccess` viaja solo.** `angular.json` copia `public/**` al output, así que sale dentro de
+`portal/dist/portal/browser/` en cada build. Es el fallback de SPA: sin él, recargar en `/runs` da
+404. Ya no hay que acordarse de subirlo a mano — que era el error más común de este paso.
+
+#### Camino manual (solo si el plan no buildea en el servidor)
+
+```bash
+npm run build:portal
+```
+
+Y subí el **CONTENIDO** de `portal/dist/portal/browser/` a `public_html` (hPanel → File Manager o
+FTP): lo de **adentro** de `browser/`, no la carpeta — `index.html` va en la raíz de `public_html`.
+**Incluí el `.htaccess`**: es un dotfile, activá "mostrar archivos ocultos" o subilo explícitamente.
 
 **Verificá:**
 

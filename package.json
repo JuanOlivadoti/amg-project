@@ -15,7 +15,8 @@
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p scripts",
     "test": "npm run test --workspaces --if-present && node --import tsx --test \"scripts/*.test.mts\"",
-    "env:sync": "tsx scripts/env-sync.mts"
+    "env:sync": "tsx scripts/env-sync.mts",
+    "build:portal": "npm --prefix portal ci && npm --prefix portal run build"
   },
   "devDependencies": {
     "tsx": "^4.19.2",
