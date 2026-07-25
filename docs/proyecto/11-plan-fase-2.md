@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-22** · **403 tests en verde**
+> Última actualización: **2026-07-22** · **445 tests en verde**
 
 ---
 
@@ -64,7 +64,7 @@ OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `loc
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **403 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **445 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -124,7 +124,7 @@ REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.us
 > página, editar —revoca—, aprobar run), **refresh del token** (401 → refresca y reintenta una vez;
 > si falla, al login), **polling** del research en curso (ADR-21) y las **carreras asincrónicas
 > cerradas** (`core/vigencia.ts`: una respuesta tardía no pisa la pantalla y no queda polling
-> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **29 tests
+> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **45 tests
 > `node:test`**, sin navegador. La API ganó **CORS** para que el navegador pueda llamarla.
 >
 > **Verificado en un navegador real** (`npm run dev:server -w api` levanta la API sobre PGlite):

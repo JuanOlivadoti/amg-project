@@ -67,8 +67,8 @@
 ### B.2 — Railway y Hostinger
 
 - **Railway:** creá un proyecto vacío, lo configuramos en C.5.
-- **Hostinger:** ya tenés el dominio `bigballs.es` y el hosting. El portal se sube a mano en C.6 (no
-  hay auto-deploy desde GitHub en el hosting compartido: se buildea local y se suben los archivos).
+- **Hostinger:** ya tenés el dominio `bigballs.es` y el hosting. El portal se conecta a GitHub en C.6
+  y se despliega solo en cada push a `main`: hPanel buildea en el servidor (planes con Node.js).
 
 ---
 
@@ -284,29 +284,53 @@ desde `main` con un webhook, corriendo el build en el servidor. No hacen falta G
      > servidor de Hostinger también, así que un placeholder olvidado corta el deploy en vez de
      > publicar un portal roto.
 
-2. **Conectá el repo en hPanel** y configurá el proyecto como **Angular**:
+2. **Conectá el repo en hPanel** y configurá el proyecto como **Angular**. Esta es la configuración
+   que quedó funcionando en producción:
 
    | Campo | Valor |
    | --- | --- |
    | Repositorio | tu repo de GitHub |
    | Rama | `main` |
    | Framework / tipo | **Angular** |
-   | **Build command** | **`npm run build:portal`** |
-   | **Output / publish directory** | **`portal/dist/portal/browser`** |
+   | **Directorio raíz** | **`portal`** |
+   | **Build command** | **`npm run build`** |
+   | **Output / publish directory** | **`dist/portal/browser`** |
    | Versión de Node | **20 o superior** (Angular 20 lo exige) |
 
-   > ⚠️ **El build command es `npm run build:portal`, no `npm run build`.** El portal está **fuera del
-   > monorepo a propósito** (su toolchain de Angular no se mezcla con el de los paquetes), así que no
-   > es un workspace: `npm run build -w portal` falla con `No workspaces found`, y en la raíz no hay
-   > script `build`. El script `build:portal` de la raíz entra a `portal/`, instala **sus** deps y
-   > buildea — es lo que hace que el subdirectorio funcione desde un campo que corre en la raíz.
+   > ⚠️ **Los tres campos van juntos: raíz, comando y output.** El portal está **fuera del monorepo a
+   > propósito** (su toolchain de Angular no se mezcla con el de los paquetes), así que hay dos
+   > combinaciones válidas y **mezclarlas falla**:
+   >
+   > | Directorio raíz | Build command | Output |
+   > | --- | --- | --- |
+   > | `portal` ✅ | `npm run build` | `dist/portal/browser` |
+   > | `./` | `npm run build:portal` | `portal/dist/portal/browser` |
+   >
+   > `build:portal` vive en el `package.json` de la **raíz del repo**; `build` vive en el de
+   > **`portal/`**. Con la raíz en `portal`, pedir `build:portal` da `Missing script`.
+   >
+   > **Preferí la raíz en `portal`**: con `./`, Hostinger instala los 6 workspaces (~300 paquetes)
+   > para buildear un frontend que no usa ninguno.
 
 3. **SSL:** hPanel → **SSL** → certificado de Let's Encrypt (gratis) para `bigballs.es`, y activá el
    redirect de HTTP a HTTPS.
 
 **El `.htaccess` viaja solo.** `angular.json` copia `public/**` al output, así que sale dentro de
-`portal/dist/portal/browser/` en cada build. Es el fallback de SPA: sin él, recargar en `/runs` da
-404. Ya no hay que acordarse de subirlo a mano — que era el error más común de este paso.
+`dist/portal/browser/` en cada build. Es el fallback de SPA: sin él, recargar en `/runs` da 404. Ya
+no hay que acordarse de subirlo a mano — que era el error más común de este paso.
+
+> 🔴 **`portal/package-lock.json` TIENE que estar commiteado.** El build de Hostinger corre `npm ci`
+> sobre un clon limpio, y sin lockfile falla con `EUSAGE`. El `.gitignore` tiene
+> `*/package-lock.json` —correcto para los 6 workspaces, donde no deben existir lockfiles propios—
+> con una excepción explícita `!portal/package-lock.json`, porque el portal **no** es workspace.
+>
+> Esto no se ve en la máquina de desarrollo: ahí el archivo existe en disco aunque no esté en el
+> repo, así que el build local pasa y el del servidor falla. **Para verificar un cambio que afecte
+> al build de CI, probalo contra un clon limpio**, no contra tu copia de trabajo:
+>
+> ```bash
+> git clone --depth 1 <url-del-repo> /tmp/clon && cd /tmp/clon/portal && npm ci && npm run build
+> ```
 
 #### Camino manual (solo si el plan no buildea en el servidor)
 
@@ -377,17 +401,21 @@ sirvan por HTTPS, o el navegador bloquea la llamada de una página https a un ba
 
 ## Troubleshooting (los errores que más probablemente veas)
 
-| Síntoma                                                         | Causa probable                                          | Fix                                                                                                                  |
-| --------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| La API no arranca, log dice `Faltan variables de entorno`       | Falta una var obligatoria en Railway                    | Completá `DATABASE_URL_API`, `SUPABASE_JWT_SECRET`, `CORS_ORIGINS`.                                                  |
-| La API no arranca, `tsx: not found`                             | Railway instaló sin devDependencies                     | Agregá la variable `NPM_CONFIG_PRODUCTION=false` y redesplegá.                                                       |
-| La API no arranca, error sobre `CORS_ORIGINS`                   | Pusiste `*`, vacío, o una URL sin esquema               | Poné el origen completo, ej. `https://bigballs.es`.                                                                  |
-| `/health` da 404                                                | La URL o el service están mal                           | Es `GET /health` en la raíz de la API, sin `/api` adelante.                                                          |
-| El portal carga pero el login/llamadas fallan con error de CORS | `CORS_ORIGINS` de la API ≠ origen real del portal       | Que sean idénticos (`https://bigballs.es`, sin barra final). Si entrás por `www.`, agregá `https://www.bigballs.es`. |
-| Recargar en `/runs/:id` da 404                                  | Falta el `.htaccess` en `public_html`                   | Es un dotfile: subilo explícitamente (o activá "mostrar ocultos" en File Manager). Debe estar junto a `index.html`.  |
-| El portal (https) no puede llamar a la API                      | La API responde por http, no https                      | Activá el custom domain con TLS en Railway; `apiBaseUrl` debe ser `https://api.bigballs.es`.                         |
-| Login OK pero Frank no ve nada                                  | El `app_metadata.tenant_id` no coincide con el del seed | Copiá el `tenant_id` que imprimió `seed:demo` al `app_metadata` de cada usuario.                                     |
-| Frank SÍ ve el botón "lanzar research"                          | El portal se buildeó en modo development                | El build tiene que ser `npm run build -w portal` (producción, `features.lanzarResearch=false`).                      |
+| Síntoma                                                                                                    | Causa probable                                          | Fix                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| La API no arranca, log dice `Faltan variables de entorno`                                                  | Falta una var obligatoria en Railway                    | Completá `DATABASE_URL_API`, `SUPABASE_JWT_SECRET`, `CORS_ORIGINS`.                                                                          |
+| La API no arranca, `tsx: not found`                                                                        | Railway instaló sin devDependencies                     | Agregá la variable `NPM_CONFIG_PRODUCTION=false` y redesplegá.                                                                               |
+| La API no arranca, error sobre `CORS_ORIGINS`                                                              | Pusiste `*`, vacío, o una URL sin esquema               | Poné el origen completo, ej. `https://bigballs.es`.                                                                                          |
+| `/health` da 404                                                                                           | La URL o el service están mal                           | Es `GET /health` en la raíz de la API, sin `/api` adelante.                                                                                  |
+| El portal carga pero el login/llamadas fallan con error de CORS                                            | `CORS_ORIGINS` de la API ≠ origen real del portal       | Que sean idénticos (`https://bigballs.es`, sin barra final). Si entrás por `www.`, agregá `https://www.bigballs.es`.                         |
+| Recargar en `/runs/:id` da 404                                                                             | Falta el `.htaccess` en `public_html`                   | Es un dotfile: subilo explícitamente (o activá "mostrar ocultos" en File Manager). Debe estar junto a `index.html`.                          |
+| El portal (https) no puede llamar a la API                                                                 | La API responde por http, no https                      | Activá el custom domain con TLS en Railway; `apiBaseUrl` debe ser `https://api.bigballs.es`.                                                 |
+| Login OK pero Frank no ve nada                                                                             | El `app_metadata.tenant_id` no coincide con el del seed | Copiá el `tenant_id` que imprimió `seed:demo` al `app_metadata` de cada usuario.                                                             |
+| **Deploy del portal:** `npm ci` falla con `EUSAGE ... can only install with an existing package-lock.json` | `portal/package-lock.json` no está en el repo           | Es la excepción `!portal/package-lock.json` del `.gitignore`. Commitealo. No se reproduce en local: ahí el archivo existe en disco.          |
+| **Deploy del portal:** `Missing script: "build:portal"`                                                    | Directorio raíz y build command no se corresponden      | Con raíz `portal` el comando es `npm run build`. Con raíz `./`, `npm run build:portal`. Ver la tabla en C.6.                                 |
+| **Deploy del portal:** instala ~300 paquetes que no usa                                                    | Directorio raíz en `./` en vez de `portal`              | Poné la raíz en `portal`: Hostinger instala solo sus deps, no los 6 workspaces.                                                              |
+| El `app_metadata` no se puede editar desde el dashboard                                                    | Supabase no expone `raw_app_meta_data` en la UI         | Va por SQL Editor, y **fusionando** con el operador de concatenación de `jsonb`: asignar el objeto entero borra `provider` y rompe el login. |
+| Frank SÍ ve el botón "lanzar research"                                                                     | El portal se buildeó en modo development                | El build tiene que ser `npm run build -w portal` (producción, `features.lanzarResearch=false`).                                              |
 
 ---
 

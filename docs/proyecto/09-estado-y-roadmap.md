@@ -2,7 +2,7 @@
 
 ## Resumen ejecutivo
 
-*(Actualizado 2026-07-19, al cerrar la etapa 6.)*
+*(Actualizado 2026-07-25, al desplegar Fase 1 en producción.)*
 
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
@@ -16,14 +16,17 @@ on-page, prose final). Todo lo que depende de aislamiento entre clientes lo impo
 el código de la aplicación. Y las tres interfaces por las que pasa un humano —la API, el portal y la
 web pública del cliente— **existen y se manejaron en un navegador real**.
 
-**Lo que separa esto de estar en producción ya no es código de producto: es despliegue.** Nada corre
-en ningún servidor. El hosting sigue sin decidirse (etapa 5.3). Hasta que eso ocurra, el sistema
-funciona entero pero en `localhost`.
+**Fase 1 está desplegada y verificada en producción** (2026-07-25): el portal en
+[`bigballs.es`](https://bigballs.es) (Hostinger, autodeploy desde `main`), la API en
+`api.bigballs.es` (Railway, `europe-west4`) y la base con RLS forzada en Supabase (`eu-west-2`).
+Falta solo **C.8**: manejar la app en el navegador con Frank.
+
+Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **403** en el monorepo + **29** en el portal. Los de seguridad, contra Postgres real |
+| **Tests** | **445** en el monorepo + **45** en el portal. Los de seguridad, contra Postgres real |
 | **Migraciones** | 9 (`0001`..`0009`) |
 | **ADRs** | 22, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 10 rondas (Codex), 17 tandas de correcciones |
@@ -46,7 +49,7 @@ funciona entero pero en `localhost`.
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **403 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **445 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Diez reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las tres últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, y carreras asincrónicas en el portal. Ver [ADR-13..22 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## El número para la propuesta comercial
@@ -88,26 +91,44 @@ verdad. Encontrarlos era exactamente el punto de correr en producción. **Los tr
 
 *Ordenado por lo que realmente bloquea. Lo de arriba impide vender; lo de abajo, no.*
 
-### 🔴 1. El despliegue (etapa 5.3) — **en curso; la base ya está en pie**
+### ✅ 1. El despliegue (etapa 5.3) — **COMPLETO (2026-07-25)**
 
-**Hosting decidido** (ya no está abierto): portal en **Hostinger** (`bigballs.es`), API en **Railway**
-(`api.bigballs.es`), base y login en **Supabase** (`eu-west-2`). Runbook paso a paso en
+**Fase 1 está en producción.** Ya no bloquea nada.
+
+| Pieza | Dónde | Estado |
+| --- | --- | --- |
+| Portal | `https://bigballs.es` — Hostinger, autodeploy desde `main` | ✅ |
+| API | `https://api.bigballs.es` — Railway, `europe-west4` | ✅ |
+| Base + login | Supabase `eu-west-2` (Londres) | ✅ |
+
+Runbook paso a paso, con los tropiezos reales, en
 [13-runbook-despliegue.md](13-runbook-despliegue.md).
 
-**Hecho (2026-07-25):**
+**Lo verificado en producción** (no "el deploy dio verde", sino comprobado desde afuera):
 
-- **C.1 — migraciones aplicadas** contra Supabase: las 9, verificadas por introspección, no por el
-  output del runner. 9 tablas con RLS **forzada** (`relforcerowsecurity`), `clients.business_profile_publico`
-  como columna generada (la allowlist de ADR-19 vive en la base), y el runner confirmado idempotente.
-- **C.2 — los 4 logins con contraseña**, y los 4 **conectan de verdad por el pooler** (`amg_api`,
-  `amg_render`, `amg_cache`, `amg_orquestador`), con `INHERIT=false` intacto tras el `alter role`.
-- **Credenciales centralizadas**: una fuente privada única + `npm run env:sync` reparte a cada
-  paquete solo sus claves (ver §Deudas, y `scripts/env-sync.mts`).
+- **C.1 — las 9 migraciones**, verificadas por **introspección de la base**: 9 tablas con RLS
+  **forzada** (`relforcerowsecurity`), `clients.business_profile_publico` como columna generada (la
+  allowlist de ADR-19 vive en la base), runner idempotente confirmado con una segunda corrida.
+- **C.2 — los 4 logins con contraseña** y los 4 **conectando de verdad** por el pooler, con
+  `INHERIT=false` intacto tras el `alter role` (ADR-17 sigue en pie).
+- **C.4 — seed verificado**: 2 `memberships` con `user_id` distintos, Frank `maestro` / Juan
+  `equipo`, 1 run y 8 páginas, `business_profile_publico` poblado.
+- **C.5 — la API**: `/health` 200, **TLS válido**, CORS que **acepta** `bigballs.es` y `www.` y
+  **rechaza** cualquier otro origen, y `401` sin token en `/runs` y `/clients`.
+- **C.6 — el portal**: 200 con TLS, redirect 301 de http a https, y las rutas profundas (`/runs`,
+  `/login`, `/runs/abc123`) devolviendo el `index.html` — el fallback de SPA funciona. El bundle
+  servido contiene `api.bigballs.es` y el ref de Supabase, y **cero `localhost`**: es el build de
+  producción, no uno de desarrollo disfrazado.
+- **C.7 — DNS**: CNAME y TXT de verificación propagados, custom domain *verified* en Railway.
 
-**Falta:** el JWT Secret en Railway, C.3 (usuarios de Frank y Juan), C.4 (seed), C.5 (desplegar la
-API), C.6 (subir el portal) y C.7 (DNS).
+**Credenciales centralizadas**: una fuente privada única + `npm run env:sync` reparte a cada paquete
+solo sus claves, con la separación impuesta por tests (ver `scripts/env-sync.mts`).
 
-Son **tres procesos** de larga duración más una SPA estática:
+**Falta solo C.8**: la verificación de punta a punta con Frank en el navegador — que es la que
+encuentra lo que los tests no ven.
+
+Son **tres procesos** de larga duración más una SPA estática (el orquestador y el renderizador son
+de Fase 2 y **aún no están desplegados**):
 
 | Qué | Puerto dev | Necesita |
 |---|---|---|
@@ -143,7 +164,7 @@ que la elección de Fase 1 no cierra esa puerta.
 
 ### 🟢 4. Deuda conocida, ninguna bloqueante
 
-- **Tests de componente del portal** (karma). El núcleo está cubierto (29 tests) y los componentes se
+- **Tests de componente del portal** (karma). El núcleo está cubierto (45 tests) y los componentes se
   verifican compilando con AOT y a mano. Es evidencia de que funciona hoy, **no una red contra
   regresiones**.
 - **El polling del brief (4 s) es a ojo**, y la lista de runs no pollea. Se calibra con la duración
@@ -207,7 +228,7 @@ reales, no solo contra tests.
 | **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **93 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **33 tests** contra PGlite. |
-| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **29 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
+| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **45 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
 | **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **94 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. **Falta:** desplegarlo en un dominio (5.3) y una CDN delante. |
 | **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Navegación entre páginas** (barra desde la Links API, enhancement no-fatal) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |

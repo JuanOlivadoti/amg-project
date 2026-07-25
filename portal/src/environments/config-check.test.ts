@@ -39,11 +39,13 @@ test('rechaza valores vacíos', () => {
 });
 
 /**
- * El estado ACTUAL del repo: `environment.prod.ts` tiene placeholders a propósito (Juan los completa
- * antes de desplegar). Este test fija esa expectativa —el guard DEBE marcarlo como no-listo— para que
- * el propio guard no se rompa en silencio. Cuando Juan complete los valores reales, este test se
- * actualiza a `deepEqual([])`.
+ * Desplegado (2026-07-25): `environment.prod.ts` ya tiene los valores reales, así que este test pasó
+ * de "aún tiene placeholders" a su forma definitiva —la que anticipaba su propio comentario—.
+ *
+ * Ahora vale más que antes: el portal se despliega SOLO en cada push a `main` (Hostinger buildea en
+ * el servidor). Si alguien revierte un valor a placeholder o lo pasa a `http://`, esto cae acá, en
+ * el test, y no en un deploy que publica un portal que no puede hablar con su API.
  */
-test('el environment.prod del repo AÚN tiene placeholders (Juan los completa al desplegar)', () => {
-  assert.ok(problemasDeConfigProd(prod).length > 0, 'con placeholders, el guard frena el build');
+test('el environment.prod del repo está LISTO para desplegar: sin placeholders y todo HTTPS', () => {
+  assert.deepEqual(problemasDeConfigProd(prod), []);
 });
