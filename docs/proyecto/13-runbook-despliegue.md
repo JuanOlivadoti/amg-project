@@ -218,12 +218,17 @@ se buildea en tu máquina y se **suben los archivos** resultantes.
    - `supabaseAnonKey` = la anon key de B.1.
      > `apiBaseUrl` ya está en `https://api.bigballs.es`. No toques `features.*` (fijados en `false` para
      > Fase 1). Si dejás un placeholder, el `prebuild` **frena el build** y te dice cuál.
-2. **Buildeá el portal** (desde la raíz del repo):
+2. **Buildeá el portal** — **desde `portal/`, no desde la raíz**:
 
    ```bash
-   npm ci
-   npm run build -w portal
+   cd portal
+   npm ci          # las deps del portal se instalan ACÁ
+   npm run build
    ```
+
+   > ⚠️ `npm run build -w portal` **no funciona**: falla con `No workspaces found`. El portal está
+   > **fuera del monorepo a propósito** (su toolchain de Angular no se mezcla con el de los paquetes),
+   > así que no es un workspace y `-w` no lo encuentra. Su `node_modules` es propio.
 
    Genera los archivos en **`portal/dist/portal/browser/`** (incluye `index.html`, los `.js`/`.css`,
    `favicon.ico` y el **`.htaccess`** del fallback de SPA). Si quedó algún placeholder, el `prebuild`
