@@ -176,7 +176,12 @@ usuario NO puede editar), poné:
      darle acceso solo a este repositorio; no necesita el resto de tu cuenta.
    - Elegí el repo y la rama **`main`**.
    - Railway arranca un primer deploy solo, **y ese primero va a fallar**: todavía no cargaste las
-     variables y la API falla cerrado si le falta alguna obligatoria. Es lo esperado, seguí.
+     variables y la API falla cerrado si le falta alguna obligatoria.
+
+   > ⚠️ **Fijate EN QUÉ ETAPA falla, no alcanza con "falló".** El fallo esperado es en **Deploy**
+   > (`Faltan variables de entorno` en los Deploy Logs). Si falla en **Build › Build image**, eso
+   > **no** es lo esperado: ni siquiera llegó a arrancar el proceso, así que las variables no tienen
+   > nada que ver. Andá a **Build Logs** y leé el error real antes de tocar nada.
 
 2. **Settings del servicio.** Están agrupados por sección:
 
