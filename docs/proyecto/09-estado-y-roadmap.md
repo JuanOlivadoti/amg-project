@@ -88,9 +88,26 @@ verdad. Encontrarlos era exactamente el punto de correr en producción. **Los tr
 
 *Ordenado por lo que realmente bloquea. Lo de arriba impide vender; lo de abajo, no.*
 
-### 🔴 1. El despliegue (etapa 5.3) — **es lo único que bloquea de verdad**
+### 🔴 1. El despliegue (etapa 5.3) — **en curso; la base ya está en pie**
 
-Nada corre en ningún servidor. Son **tres procesos** de larga duración más una SPA estática:
+**Hosting decidido** (ya no está abierto): portal en **Hostinger** (`bigballs.es`), API en **Railway**
+(`api.bigballs.es`), base y login en **Supabase** (`eu-west-2`). Runbook paso a paso en
+[13-runbook-despliegue.md](13-runbook-despliegue.md).
+
+**Hecho (2026-07-25):**
+
+- **C.1 — migraciones aplicadas** contra Supabase: las 9, verificadas por introspección, no por el
+  output del runner. 9 tablas con RLS **forzada** (`relforcerowsecurity`), `clients.business_profile_publico`
+  como columna generada (la allowlist de ADR-19 vive en la base), y el runner confirmado idempotente.
+- **C.2 — los 4 logins con contraseña**, y los 4 **conectan de verdad por el pooler** (`amg_api`,
+  `amg_render`, `amg_cache`, `amg_orquestador`), con `INHERIT=false` intacto tras el `alter role`.
+- **Credenciales centralizadas**: una fuente privada única + `npm run env:sync` reparte a cada
+  paquete solo sus claves (ver §Deudas, y `scripts/env-sync.mts`).
+
+**Falta:** el JWT Secret en Railway, C.3 (usuarios de Frank y Juan), C.4 (seed), C.5 (desplegar la
+API), C.6 (subir el portal) y C.7 (DNS).
+
+Son **tres procesos** de larga duración más una SPA estática:
 
 | Qué | Puerto dev | Necesita |
 |---|---|---|
@@ -99,10 +116,11 @@ Nada corre en ningún servidor. Son **tres procesos** de larga duración más un
 | `renderer/` | 8080 | `DATABASE_URL_RENDER`, `STORYBLOK_WEBHOOK_SECRET`, `PREVIEW_SECRET` |
 | `portal/` | 4200 | estático, se compila con AOT |
 
-**La decisión de hosting sigue abierta.** Y hay una restricción que la condiciona y conviene decidir
-antes: el renderizador necesita **DNS por cliente apuntando al mismo servicio** (es un `Host` →
-dominio → space), más certificados TLS por dominio. Eso descarta cualquier hosting que no permita
-dominios personalizados arbitrarios, y hace que "una CDN delante" deje de ser opcional (ver §3).
+La restricción que queda viva es del **renderizador** (Fase 2, aún sin desplegar): necesita **DNS por
+cliente apuntando al mismo servicio** (es un `Host` → dominio → space), más certificados TLS por
+dominio. Eso descarta cualquier hosting que no permita dominios personalizados arbitrarios, y hace
+que "una CDN delante" deje de ser opcional (ver §3). Railway sí admite dominios personalizados, así
+que la elección de Fase 1 no cierra esa puerta.
 
 ### 🟡 2. La demo, antes de ver a Frank
 

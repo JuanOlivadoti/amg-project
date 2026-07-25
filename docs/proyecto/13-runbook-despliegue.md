@@ -1,13 +1,13 @@
 # Runbook de despliegue — Fase 1 (el portal de Frank)
 
 > **Qué es esto:** la versión "hacé esto, pegá aquello, verificá esto otro" del plan
-> ([12-despliegue-fase-1.md](12-despliegue-fase-1.md)). El plan dice el *qué* y el *por qué*; esto es
-> el *cómo*, paso a paso, para ejecutar de una sentada. **Todo el código ya está listo** (Bloque A):
+> ([12-despliegue-fase-1.md](12-despliegue-fase-1.md)). El plan dice el _qué_ y el _por qué_; esto es
+> el _cómo_, paso a paso, para ejecutar de una sentada. **Todo el código ya está listo** (Bloque A):
 > acá no se programa, se despliega.
 >
 > **Regla de oro:** los secretos (contraseñas, JWT secret, connection strings) van al gestor de
 > secretos del host (Railway/Supabase), **nunca al repo ni al chat**. Las plantillas `.env.example`
-> dicen *qué* poner, no los valores.
+> dicen _qué_ poner, no los valores.
 
 ---
 
@@ -15,7 +15,7 @@
 
 - [ ] Una cuenta de **Supabase** (base + auth).
 - [ ] Una cuenta de **Railway** (la API), conectada a tu GitHub.
-- [ ] **Hostinger** con el dominio **`bigball.es`** (hosting del portal estático + DNS).
+- [ ] **Hostinger** con el dominio **`bigballs.es`** (hosting del portal estático + DNS).
 - [ ] El repo pusheado a GitHub (ya está: `main`).
 - [ ] Node instalado en tu máquina (para correr los CLI de deploy y buildear el portal).
 
@@ -23,12 +23,12 @@
 
 ```text
    navegador  ──▶  PORTAL (Angular estático)  ──▶  API (Node/Hono)  ──▶  Postgres (Supabase)
-   (Frank)          bigball.es  ·  Hostinger        api.bigball.es       + Supabase Auth (login)
+   (Frank)          bigballs.es  ·  Hostinger        api.bigballs.es       + Supabase Auth (login)
                                                        Railway
 ```
 
-- **Portal** → `https://bigball.es` (Hostinger, archivos estáticos).
-- **API** → `https://api.bigball.es` (Railway).
+- **Portal** → `https://bigballs.es` (Hostinger, archivos estáticos).
+- **API** → `https://api.bigballs.es` (Railway).
 - **Base + login** → Supabase.
 
 ---
@@ -36,16 +36,38 @@
 ## Bloque B — crear las cuentas (tus pasos)
 
 ### B.1 — Proyecto de Supabase
-1. Nuevo proyecto. Elegí región cercana (Europa, para Madrid).
-2. Anotá (de **Project Settings**):
-   - **Database → Connection string (URI)** con el rol `postgres`: es tu `DATABASE_URL_ADMIN`.
-   - **API → Project URL** (`https://xxxx.supabase.co`) y **anon key**: para el portal.
-   - **API → JWT Settings → JWT Secret**: para la API.
+
+1. Nuevo proyecto. Región: cualquiera de Europa occidental. **El proyecto real está en West EU
+   (London) `eu-west-2`** — Paris (`eu-west-3`) hubiera estado ~10 ms más cerca de Madrid, diferencia
+   irrelevante para este caso de uso. No lo recrees por eso.
+   **Anotá la contraseña de la base que ponés acá**: Supabase la guarda hasheada y no la muestra
+   nunca más. Si la perdés, se resetea en _Project Settings → Database → Database password_.
+
+2. **`DATABASE_URL_ADMIN`** → botón verde **"Connect"** en la barra superior del proyecto (no está en
+   Project Settings; Supabase movió esa pantalla). El modal ofrece tres modos: usá **Session pooler**.
+
+   > **Por qué el pooler y no "Direct connection":** la conexión directa hoy es **solo IPv6** (el
+   > IPv4 es un add-on de pago). Las migraciones de C.1 las corrés desde tu máquina, y si tu ISP no
+   > te da IPv6 la directa falla por _timeout_, sin decir por qué. El session pooler va por IPv4 y
+   > soporta DDL y `create role` — que es todo lo que necesitan C.1, C.2 y C.4.
+
+   Dos trampas al copiar el string:
+   - el usuario **no** es `postgres` sino **`postgres.<project-ref>`**;
+   - el string trae `[YOUR-PASSWORD]` literal — reemplazalo por la del paso 1, y si tiene `@ # / :`
+     **URL-encodeala** (`@` → `%40`), o el string se parsea mal.
+
+3. **Project URL + anon key** (para el portal) → **Project Settings → API Keys**. La `anon` está en la
+   pestaña **Legacy API keys** — las nuevas (`publishable` / `secret`) son otro esquema; el portal usa
+   la legacy. Ninguno de los dos valores es secreto (RLS autoriza, no la clave).
+
+4. **JWT Secret** (para la API) → **Project Settings → JWT Keys**, pestaña **Legacy JWT Secret**
+   (hay que darle a _reveal_). Ya no está bajo _API_. **Esto sí es secreto**: va solo al `.env` y a
+   las variables de Railway.
 
 ### B.2 — Railway y Hostinger
 
 - **Railway:** creá un proyecto vacío, lo configuramos en C.5.
-- **Hostinger:** ya tenés el dominio `bigball.es` y el hosting. El portal se sube a mano en C.6 (no
+- **Hostinger:** ya tenés el dominio `bigballs.es` y el hosting. El portal se sube a mano en C.6 (no
   hay auto-deploy desde GitHub en el hosting compartido: se buildea local y se suben los archivos).
 
 ---
@@ -56,11 +78,20 @@ El orden importa: la base antes que todo, los usuarios antes que el seed, la API
 
 ### C.1 — Aplicar las migraciones (esquema + roles + RLS)
 
-Desde tu máquina, con la conexión de admin de Supabase:
+Las credenciales tienen **una sola fuente**: `docs/private/credenciales.env` (gitignoreado). Pegá ahí
+`DATABASE_URL_ADMIN` y repartí a los paquetes:
 
 ```bash
-DATABASE_URL_ADMIN="postgres://postgres:PASS@HOST:5432/postgres" npm run migrate:deploy -w db
+npm run env:sync            # escribe api/.env, db/.env, kr-service/.env, renderer/.env, web-builder/.env
+npm run migrate:deploy -w db
 ```
+
+> **No uses `DATABASE_URL_ADMIN=... npm run ...`.** El comando con la password adentro queda en el
+> historial de la shell (en Windows, `ConsoleHost_history.txt`, en texto plano) y no caduca.
+>
+> **No edites los `.env` de los paquetes a mano**: `env:sync` los sobrescribe. Cada uno recibe solo
+> sus claves — el mapa está en `scripts/env-sync.mts` y lo verifica su test (el renderizador, por
+> ejemplo, no puede recibir el token de escritura de Storyblok ni una credencial de base).
 
 **Verificá:** imprime `+ 0001_init.sql … + 0009_marca_publica.sql` y `✔ Aplicadas 9 migración(es)`.
 Es idempotente: si lo corrés de nuevo, dice "ya estaba al día".
@@ -80,8 +111,19 @@ alter role amg_orquestador with password 'PONÉ-OTRA';
 > En Fase 1 solo se usa `amg_api`. Las otras tres se ponen igual ahora (son de Fase 2) para no volver.
 > Detalle en [12-credenciales.md](12-credenciales.md#al-desplegar-en-supabase).
 
-**Armá `DATABASE_URL_API`** (la vas a usar en C.5):
-`postgres://amg_api:LA-PASS-DE-AMG_API@HOST:5432/postgres`
+**Armá `DATABASE_URL_API`** (la vas a usar en C.5): mismo host y puerto que la de C.1, cambiando el
+login y la password:
+`postgresql://amg_api.<project-ref>:LA-PASS-DE-AMG_API@aws-1-eu-west-2.pooler.supabase.com:5432/postgres`
+
+> ⚠️ **El sufijo `.<project-ref>` en el usuario no es opcional con el pooler**: es cómo Supavisor
+> sabe a qué proyecto rutear. Sin él, el login de `amg_api` falla y el error no dice que falta eso.
+> El rol dentro de Postgres sigue siendo `amg_api` — el `NOINHERIT` de ADR-17 se mantiene intacto.
+>
+> **Pendiente de decidir en C.5:** si la API usa el **session pooler** (5432) o el **transaction
+> pooler** (6543). El transaction pooler escala mejor para una API, y ADR-13 ya obliga a que todo
+> acceso vaya por transacción con conexión reservada (`Tx`), que es justo el patrón que ese modo
+> soporta — pero **no está verificado contra este código**. Empezá con el session pooler (5432), que
+> se comporta como Postgres normal, y si hace falta cambiar, probalo con los tests antes.
 
 ### C.3 — Crear los usuarios de Frank y Juan (antes del seed)
 
@@ -90,10 +132,11 @@ Anotá el **User UID** (uuid) de cada uno — son parámetros del seed.
 
 ### C.4 — Seed del caso de Bella Napoli
 
+Completá los dos UIDs de C.3 en `docs/private/credenciales.env` (`SEED_FRANK_USER_ID`,
+`SEED_JUAN_USER_ID`) y:
+
 ```bash
-DATABASE_URL_ADMIN="postgres://postgres:PASS@HOST:5432/postgres" \
-SEED_FRANK_USER_ID="<uid de Frank>" \
-SEED_JUAN_USER_ID="<uid de Juan>" \
+npm run env:sync
 npm run seed:demo -w db
 ```
 
@@ -123,15 +166,15 @@ usuario NO puede editar), poné:
 3. **Variables** (Settings → Variables) — de la plantilla [`api/.env.example`](../../api/.env.example):
    - `DATABASE_URL_API` = la de C.2 (login `amg_api`).
    - `SUPABASE_JWT_SECRET` = el JWT Secret de B.1.
-   - `CORS_ORIGINS` = `https://bigball.es` (el dominio del portal; **sin `*`**, lo rechaza). Si vas a
-     servir también `www.bigball.es`, poné `https://bigball.es,https://www.bigball.es`.
+   - `CORS_ORIGINS` = `https://bigballs.es` (el dominio del portal; **sin `*`**, lo rechaza). Si vas a
+     servir también `www.bigballs.es`, poné `https://bigballs.es,https://www.bigballs.es`.
    - `SUPABASE_JWT_ISS` = `https://xxxx.supabase.co/auth/v1` (recomendado).
    - **`NPM_CONFIG_PRODUCTION=false`** ⚠️ **importante:** el server corre con `tsx` (no hay paso de
      build). `tsx` es una devDependency; si Railway instala en modo producción, `npm run serve`
      fallaría con "tsx: not found". Esta variable fuerza a instalar también las devDependencies.
 4. **Deploy.** Cuando termine, Railway te da una URL tipo `https://amg-api-production.up.railway.app`.
-5. **Dominio propio:** Settings → Networking → **Custom Domain** → `api.bigball.es`. Railway te da un
-   destino CNAME; lo cargás en el DNS de Hostinger en C.7. (El portal ya espera `https://api.bigball.es`.)
+5. **Dominio propio:** Settings → Networking → **Custom Domain** → `api.bigballs.es`. Railway te da un
+   destino CNAME; lo cargás en el DNS de Hostinger en C.7. (El portal ya espera `https://api.bigballs.es`.)
 
 **Verificá:** abrí `https://amg-api-production.up.railway.app/health` (la URL de Railway, antes de que
 el DNS propague) → debe responder `{"status":"ok"}` (sin login).
@@ -145,8 +188,8 @@ se buildea en tu máquina y se **suben los archivos** resultantes.
    (solo 2 valores de Supabase; ninguno es secreto) y **commiteá + pusheá**:
    - `supabaseUrl` = el Project URL de B.1.
    - `supabaseAnonKey` = la anon key de B.1.
-   > `apiBaseUrl` ya está en `https://api.bigball.es`. No toques `features.*` (fijados en `false` para
-   > Fase 1). Si dejás un placeholder, el `prebuild` **frena el build** y te dice cuál.
+     > `apiBaseUrl` ya está en `https://api.bigballs.es`. No toques `features.*` (fijados en `false` para
+     > Fase 1). Si dejás un placeholder, el `prebuild` **frena el build** y te dice cuál.
 2. **Buildeá el portal** (desde la raíz del repo):
 
    ```bash
@@ -157,35 +200,36 @@ se buildea en tu máquina y se **suben los archivos** resultantes.
    Genera los archivos en **`portal/dist/portal/browser/`** (incluye `index.html`, los `.js`/`.css`,
    `favicon.ico` y el **`.htaccess`** del fallback de SPA). Si quedó algún placeholder, el `prebuild`
    corta acá y te dice cuál.
+
 3. **Subí el CONTENIDO de `portal/dist/portal/browser/` a `public_html`** en Hostinger (hPanel →
    **File Manager**, o por FTP). Subí **lo de adentro** de `browser/`, no la carpeta: `index.html`
    tiene que quedar en la raíz de `public_html`. **Incluí el `.htaccess`** (en File Manager, activá
    "mostrar archivos ocultos" o subilo explícitamente — es un dotfile y es el que evita los 404).
-4. **SSL:** hPanel → **SSL** → activá el certificado (Let's Encrypt, gratis) para `bigball.es`.
+4. **SSL:** hPanel → **SSL** → activá el certificado (Let's Encrypt, gratis) para `bigballs.es`.
    Activá también el redirect de HTTP a HTTPS.
 
 **Verificá:**
-- `https://bigball.es` abre la pantalla de login.
-- **Entrá directo a una ruta profunda** (`https://bigball.es/runs`) y **recargá**: debe cargar, no dar
-  404. Si da 404, falta el `.htaccess` en `public_html` (o no se subió por ser oculto): revisá el paso 3.
+
+- `https://bigballs.es` abre la pantalla de login.
+- **Entrá directo a una ruta profunda** (`https://bigballs.es/runs`) y **recargá**: debe cargar, no dar 404. Si da 404, falta el `.htaccess` en `public_html` (o no se subió por ser oculto): revisá el paso 3.
 
 ### C.7 — Dominios (DNS en Hostinger)
 
-El portal ya vive en `bigball.es` (es tu hosting de Hostinger, no hace falta DNS extra). Falta apuntar
+El portal ya vive en `bigballs.es` (es tu hosting de Hostinger, no hace falta DNS extra). Falta apuntar
 el subdominio de la API:
 
-- **`api.bigball.es`** → la API de Railway. En hPanel → **DNS Zone Editor**, agregá un **CNAME**:
+- **`api.bigballs.es`** → la API de Railway. En hPanel → **DNS Zone Editor**, agregá un **CNAME**:
   `api` → el destino que te dio Railway en C.5 (Custom Domain). En Railway, confirmá que el custom
-  domain `api.bigball.es` quede "verified".
+  domain `api.bigballs.es` quede "verified".
 
-**Coherencia (lo que más falla):** el `CORS_ORIGINS` de la API (`https://bigball.es`) tiene que ser
-**exactamente** el origen del portal, y el `apiBaseUrl` del portal (`https://api.bigball.es`) la URL
+**Coherencia (lo que más falla):** el `CORS_ORIGINS` de la API (`https://bigballs.es`) tiene que ser
+**exactamente** el origen del portal, y el `apiBaseUrl` del portal (`https://api.bigballs.es`) la URL
 exacta de la API. El TLS lo ponen Railway (API) y Hostinger (portal) — asegurate de que **los dos**
 sirvan por HTTPS, o el navegador bloquea la llamada de una página https a un backend http.
 
 ### C.8 — Verificación de punta a punta (con Frank)
 
-- [ ] `https://bigball.es` abre la pantalla de login.
+- [ ] `https://bigballs.es` abre la pantalla de login.
 - [ ] Frank se loguea con su usuario de Supabase.
 - [ ] Ve el research de **Bella Napoli**: el split **✅ 3 respaldadas / ⚠️ 5 sin validar**.
 - [ ] Entra a un run, ve las páginas, y **puede aprobar una página** (la compuerta).
@@ -197,17 +241,17 @@ sirvan por HTTPS, o el navegador bloquea la llamada de una página https a un ba
 
 ## Troubleshooting (los errores que más probablemente veas)
 
-| Síntoma | Causa probable | Fix |
-|---|---|---|
-| La API no arranca, log dice `Faltan variables de entorno` | Falta una var obligatoria en Railway | Completá `DATABASE_URL_API`, `SUPABASE_JWT_SECRET`, `CORS_ORIGINS`. |
-| La API no arranca, `tsx: not found` | Railway instaló sin devDependencies | Agregá la variable `NPM_CONFIG_PRODUCTION=false` y redesplegá. |
-| La API no arranca, error sobre `CORS_ORIGINS` | Pusiste `*`, vacío, o una URL sin esquema | Poné el origen completo, ej. `https://bigball.es`. |
-| `/health` da 404 | La URL o el service están mal | Es `GET /health` en la raíz de la API, sin `/api` adelante. |
-| El portal carga pero el login/llamadas fallan con error de CORS | `CORS_ORIGINS` de la API ≠ origen real del portal | Que sean idénticos (`https://bigball.es`, sin barra final). Si entrás por `www.`, agregá `https://www.bigball.es`. |
-| Recargar en `/runs/:id` da 404 | Falta el `.htaccess` en `public_html` | Es un dotfile: subilo explícitamente (o activá "mostrar ocultos" en File Manager). Debe estar junto a `index.html`. |
-| El portal (https) no puede llamar a la API | La API responde por http, no https | Activá el custom domain con TLS en Railway; `apiBaseUrl` debe ser `https://api.bigball.es`. |
-| Login OK pero Frank no ve nada | El `app_metadata.tenant_id` no coincide con el del seed | Copiá el `tenant_id` que imprimió `seed:demo` al `app_metadata` de cada usuario. |
-| Frank SÍ ve el botón "lanzar research" | El portal se buildeó en modo development | El build tiene que ser `npm run build -w portal` (producción, `features.lanzarResearch=false`). |
+| Síntoma                                                         | Causa probable                                          | Fix                                                                                                                  |
+| --------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| La API no arranca, log dice `Faltan variables de entorno`       | Falta una var obligatoria en Railway                    | Completá `DATABASE_URL_API`, `SUPABASE_JWT_SECRET`, `CORS_ORIGINS`.                                                  |
+| La API no arranca, `tsx: not found`                             | Railway instaló sin devDependencies                     | Agregá la variable `NPM_CONFIG_PRODUCTION=false` y redesplegá.                                                       |
+| La API no arranca, error sobre `CORS_ORIGINS`                   | Pusiste `*`, vacío, o una URL sin esquema               | Poné el origen completo, ej. `https://bigballs.es`.                                                                  |
+| `/health` da 404                                                | La URL o el service están mal                           | Es `GET /health` en la raíz de la API, sin `/api` adelante.                                                          |
+| El portal carga pero el login/llamadas fallan con error de CORS | `CORS_ORIGINS` de la API ≠ origen real del portal       | Que sean idénticos (`https://bigballs.es`, sin barra final). Si entrás por `www.`, agregá `https://www.bigballs.es`. |
+| Recargar en `/runs/:id` da 404                                  | Falta el `.htaccess` en `public_html`                   | Es un dotfile: subilo explícitamente (o activá "mostrar ocultos" en File Manager). Debe estar junto a `index.html`.  |
+| El portal (https) no puede llamar a la API                      | La API responde por http, no https                      | Activá el custom domain con TLS en Railway; `apiBaseUrl` debe ser `https://api.bigballs.es`.                         |
+| Login OK pero Frank no ve nada                                  | El `app_metadata.tenant_id` no coincide con el del seed | Copiá el `tenant_id` que imprimió `seed:demo` al `app_metadata` de cada usuario.                                     |
+| Frank SÍ ve el botón "lanzar research"                          | El portal se buildeó en modo development                | El build tiene que ser `npm run build -w portal` (producción, `features.lanzarResearch=false`).                      |
 
 ---
 

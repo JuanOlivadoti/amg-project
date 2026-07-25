@@ -23,6 +23,10 @@ out/
 .env.local
 *.env
 
+# Notas de despliegue con valores reales (connection strings, uids, refs). El runbook del repo lleva
+# placeholders; lo que tiene valores vive acá y NO se commitea.
+docs/private/
+
 # Logs
 *.log
 npm-debug.log*

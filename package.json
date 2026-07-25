@@ -13,10 +13,15 @@
     "renderer"
   ],
   "scripts": {
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p scripts",
+    "test": "npm run test --workspaces --if-present && node --import tsx --test \"scripts/*.test.mts\"",
+    "env:sync": "tsx scripts/env-sync.mts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12.0"
   }
 }

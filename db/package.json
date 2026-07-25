@@ -11,8 +11,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "migrate:deploy": "tsx src/cli/deploy.ts",
-    "seed:demo": "tsx src/cli/seed.ts"
+    "migrate:deploy": "tsx --env-file-if-exists=.env src/cli/deploy.ts",
+    "seed:demo": "tsx --env-file-if-exists=.env src/cli/seed.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
@@ -25,6 +25,6 @@
     "typescript": "^5.7.2"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12.0"
   }
 }

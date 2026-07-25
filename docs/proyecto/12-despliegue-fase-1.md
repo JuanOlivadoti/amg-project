@@ -50,7 +50,7 @@ gestionado**. Hostinger, si querés, queda como **registrador del dominio** y/o 
 ## 4. La arquitectura de la demo
 
 ```text
-                    bigball.es                        api.bigball.es
+                    bigballs.es                        api.bigballs.es
    navegador  ──▶  PORTAL (Angular estático)  ──▶  API (Node, Hono)  ──▶  Postgres (Supabase)
    (Frank)          Hostinger                        Railway              + Supabase Auth (login)
                                                           │
@@ -62,10 +62,10 @@ gestionado**. Hostinger, si querés, queda como **registrador del dominio** y/o 
 
 | Pieza | Dónde | Costo | Notas |
 |---|---|---|---|
-| **portal** (estático) | **Hostinger** (`bigball.es`) | ya lo tenés | `ng build` → archivos → subir a `public_html`. SPA fallback por `.htaccess`. |
-| **api** (Node) | **Railway** (`api.bigball.es`) | gratis / ~$5 mes | Auto-deploy desde GitHub. `npm run serve -w api`. |
+| **portal** (estático) | **Hostinger** (`bigballs.es`) | ya lo tenés | `ng build` → archivos → subir a `public_html`. SPA fallback por `.htaccess`. |
+| **api** (Node) | **Railway** (`api.bigballs.es`) | gratis / ~$5 mes | Auto-deploy desde GitHub. `npm run serve -w api`. |
 | **Postgres + Auth** | Supabase | gratis | Postgres real: soporta los roles y la RLS. El login ya usa su JWT. |
-| **dominio** | **Hostinger** (`bigball.es`) | ya lo tenés | raíz → portal, `api.` (CNAME) → Railway. |
+| **dominio** | **Hostinger** (`bigballs.es`) | ya lo tenés | raíz → portal, `api.` (CNAME) → Railway. |
 
 ## 6. Supuestos (corregí lo que no cuadre)
 
@@ -108,7 +108,7 @@ pegar credenciales y hacer click).
 4. **CORS de la api.** ✅ **Hecho.** `leerConfig()` ahora **falla cerrado si falta `CORS_ORIGINS`**:
    el arranque de producción no sirve con `*`. (Antes era un default silencioso; ahora es una
    invariante impuesta, con test —incluida verificación por mutación—.) Juan pone
-   `CORS_ORIGINS=https://bigball.es` en Railway.
+   `CORS_ORIGINS=https://bigballs.es` en Railway.
 5. **El botón de "lanzar research".** ✅ **Hecho** (decisión: ocultarlo, §10). Flag
    `features.lanzarResearch` en `environment`: `false` en prod (Fase 1), `true` en dev. El formulario
    de `runs.ts` se muestra solo si `mostrarLanzarResearch(esEquipo, flag)` —función pura en
@@ -116,7 +116,7 @@ pegar credenciales y hacer click).
 
 ### B. Cuentas y credenciales — **las hacés vos** (no me pases las keys; van al gestor de secretos)
 
-1. **El dominio `bigball.es`** ya lo tenés en Hostinger (registrador + hosting del portal).
+1. **El dominio `bigballs.es`** ya lo tenés en Hostinger (registrador + hosting del portal).
 2. **Crear un proyecto en Supabase.** De ahí salen: las *connection strings* (para `amg_api`), el
    **JWT secret**, y la **URL + anon key** del proyecto.
 3. **Crear cuenta en Railway** (o Render) y conectarla al repo de GitHub.
@@ -144,7 +144,7 @@ pegar credenciales y hacer click).
    **`GET /health` responda 200** (ruta pública, sin token — existe desde la ronda de review).
 6. **Portal:** completar `environment.prod.ts` (el `prebuild` rechaza placeholders) → `npm run build -w portal`
    → subir el contenido de `portal/dist/portal/browser/` (con el `.htaccess`) a `public_html` de Hostinger.
-7. **Dominio:** `bigball.es` ya sirve el portal (es el hosting); `api.bigball.es` → CNAME a Railway.
+7. **Dominio:** `bigballs.es` ya sirve el portal (es el hosting); `api.bigballs.es` → CNAME a Railway.
    TLS: Railway (API) automático, Hostinger (portal) con su SSL de Let's Encrypt.
 8. **Verificar de punta a punta:** Frank entra, ve el research de Bella Napoli, navega la compuerta,
    y **NO ve** el formulario de "lanzar research" ni el botón "Aprobar el run" (confirmarlo en el
@@ -167,7 +167,7 @@ pegar credenciales y hacer click).
 |---|---|
 | `DATABASE_URL_API` | Conexión del login `amg_api` (→ rol `app_user`). |
 | `SUPABASE_JWT_SECRET` | Para verificar la firma del token de login. |
-| `CORS_ORIGINS` | El origen del portal: `https://bigball.es` (+ `,https://www.bigball.es` si usás www). |
+| `CORS_ORIGINS` | El origen del portal: `https://bigballs.es` (+ `,https://www.bigballs.es` si usás www). |
 | `SUPABASE_JWT_ISS` / `SUPABASE_JWT_AUD` | *(recomendado)* cierran la puerta a tokens de otro proyecto Supabase. |
 | `PORT` | Lo inyecta Railway automáticamente. |
 
@@ -176,7 +176,7 @@ las inlinea. Ninguna es secreta):
 
 | Valor en `environment.prod.ts` | Qué es |
 |---|---|
-| `apiBaseUrl` | **Ya fijado en `https://api.bigball.es`** (la API en Railway). |
+| `apiBaseUrl` | **Ya fijado en `https://api.bigballs.es`** (la API en Railway). |
 | `supabaseUrl` + `supabaseAnonKey` | Para el login. La anon key es pública por diseño (RLS autoriza, no la clave). **Los únicos 2 valores a completar.** |
 | `features.lanzarResearch` / `features.aprobarRun` | **Ya fijados en `false`** para Fase 1. No tocar; se encienden en Fase 2. |
 
@@ -195,10 +195,10 @@ las inlinea. Ninguna es secreta):
 gratis o ~$5/mes · la corrida de seed (acción 06) ~$0.31, una vez. → **~$0–5/mes** extra para la demo.
 
 **Decisiones tomadas:**
-- **Hosting del portal:** **Hostinger** (`bigball.es`), donde ya está el dominio. El portal estático
+- **Hosting del portal:** **Hostinger** (`bigballs.es`), donde ya está el dominio. El portal estático
   se sube a `public_html`; el fallback de SPA lo da el `.htaccess`. *(Se descartó Cloudflare Pages
   para consolidar en Hostinger.)*
-- **Hosting de la API:** **Railway** (`api.bigball.es`). Se evaluó un VPS de Hostinger; para la demo,
+- **Hosting de la API:** **Railway** (`api.bigballs.es`). Se evaluó un VPS de Hostinger; para la demo,
   Railway gana por ser gestionado (sin administrar nginx/SSL/procesos). Ver la conversación en el
   historial y la nota de §13.
 - **Cold start de Railway.** El free tier duerme el servicio; para la demo en vivo, el plan hobby
@@ -207,7 +207,7 @@ gratis o ~$5/mes · la corrida de seed (acción 06) ~$0.31, una vez. → **~$0�
 
 ## 11. Cómo sabremos que salió bien
 
-- [ ] Frank abre `https://bigball.es` y ve la pantalla de login.
+- [ ] Frank abre `https://bigballs.es` y ve la pantalla de login.
 - [ ] Se loguea con su usuario.
 - [ ] Ve el research de **Bella Napoli**: clusters, brief por evidencia (✅ respaldadas / ⚠️ sin validar).
 - [ ] Navega la **compuerta de aprobación** (aunque en Fase 1 no publique en vivo).
