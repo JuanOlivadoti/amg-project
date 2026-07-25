@@ -201,6 +201,12 @@ usuario NO puede editar), poné:
      una variable del builder, que es específica de cuál esté activo.
 
    **Deploy**
+   - **Region:** **Europa** (`europe-west4`, Ámsterdam). ⚠️ El default de Railway es **US West**, y
+     eso deja la API a un océano y un continente de la base (Supabase está en `eu-west-2`, Londres).
+     No es un detalle de milisegundos: ADR-13 obliga a que todo acceso vaya por transacción con
+     conexión reservada, así que cada request son **varios** viajes de ida y vuelta —abrir la
+     transacción, el `set local` del tenant, la consulta, el commit—. Con ~150 ms de RTT, una llamada
+     de 30 ms se va a 600-800 ms. Es lo primero que se nota al usar el portal.
    - **Start Command:** `npm run serve -w api`
    - **Health Check Path:** `/health` — responde `{"status":"ok"}` **sin token**, a propósito: un
      health-check que exigiera JWT no serviría de health-check.
