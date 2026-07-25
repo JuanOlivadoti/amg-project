@@ -314,9 +314,35 @@ se buildea en tu máquina y se **suben los archivos** resultantes.
 El portal ya vive en `bigballs.es` (es tu hosting de Hostinger, no hace falta DNS extra). Falta apuntar
 el subdominio de la API:
 
-- **`api.bigballs.es`** → la API de Railway. En hPanel → **DNS Zone Editor**, agregá un **CNAME**:
-  `api` → el destino que te dio Railway en C.5 (Custom Domain). En Railway, confirmá que el custom
-  domain `api.bigballs.es` quede "verified".
+**`api.bigballs.es`** → la API de Railway. Al agregar el Custom Domain en Railway (C.5, paso 6), te
+muestra un cuadro _Configure DNS Records_ con **DOS registros**. Hay que cargar **los dos** en hPanel
+→ **DNS Zone Editor**:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| `CNAME` | `api` | el destino que te da Railway (ej. `f0j2w3va.up.railway.app`) |
+| `TXT` | `_railway-verify.api` | `railway-verify=…` (la cadena que te da Railway) |
+
+> ⚠️ **El TXT no es opcional**: es como Railway prueba que el dominio es tuyo antes de emitirte el
+> certificado. Con solo el CNAME, el dominio resuelve pero el custom domain nunca pasa a _verified_
+> y `https://api.bigballs.es` falla con error de TLS.
+>
+> En el campo **Name** va solo `api` y `_railway-verify.api`, **sin** el dominio: Hostinger lo
+> agrega solo. Si ponés el completo terminás con `api.bigballs.es.bigballs.es`.
+
+El destino del CNAME es **único por dominio** y lo genera Railway al agregarlo: no es la URL pública
+del servicio (`…-production.up.railway.app`) ni se puede deducir. Copiá el que te muestra.
+
+**Verificá** (desde tu máquina, no desde el navegador — el navegador cachea):
+
+```bash
+nslookup -type=CNAME api.bigballs.es          # -> el destino de Railway
+nslookup -type=TXT _railway-verify.api.bigballs.es
+curl -s https://api.bigballs.es/health        # -> {"status":"ok"}, sin avisos de TLS
+```
+
+El certificado lo emite Railway **minutos después** de que el DNS propague. Hasta entonces
+`https://api.bigballs.es` da error de certificado aunque el DNS ya resuelva: es normal, esperá.
 
 **Coherencia (lo que más falla):** el `CORS_ORIGINS` de la API (`https://bigballs.es`) tiene que ser
 **exactamente** el origen del portal, y el `apiBaseUrl` del portal (`https://api.bigballs.es`) la URL
