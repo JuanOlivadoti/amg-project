@@ -2,8 +2,12 @@
 node_modules/
 /yarn.lock
 # El package-lock.json de la RAÍZ sí va al repo: con workspaces es el único lockfile y es lo que
-# hace reproducible la instalación. Los de los paquetes no deben existir.
+# hace reproducible la instalación. Los de los WORKSPACES no deben existir.
 */package-lock.json
+# El portal es la excepción: NO es un workspace (su toolchain de Angular vive aparte a propósito),
+# así que tiene su propio árbol de dependencias y su lockfile SÍ va al repo. Sin él, un `npm ci` en
+# un clon limpio —el build de Hostinger, cualquier CI— falla con EUSAGE.
+!portal/package-lock.json
 
 # Builds / salidas
 dist/
