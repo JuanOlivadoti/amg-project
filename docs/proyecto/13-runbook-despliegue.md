@@ -127,8 +127,21 @@ login y la password:
 
 ### C.3 — Crear los usuarios de Frank y Juan (antes del seed)
 
-En Supabase → **Authentication → Users → Add user** (email + password). Creá **Frank** y **Juan**.
-Anotá el **User UID** (uuid) de cada uno — son parámetros del seed.
+Van **antes** del seed porque el seed necesita sus UUIDs: las filas de `memberships` se crean
+apuntando a ellos, y sin eso Frank no tiene rol y RLS no le deja ver nada.
+
+1. Supabase → **Authentication** → **Users** → botón **Add user** → _Create new user_.
+2. Por cada uno (Frank y Juan):
+   - **Email**: el que va a usar para entrar al portal. Puede ser real o inventado.
+   - **Password**: la que le vas a dar. Anotala — Supabase no la muestra después.
+   - ✅ **Marcá "Auto Confirm User"**. Si no lo marcás, Supabase le manda un mail de confirmación y
+     **hasta que no lo confirme no puede iniciar sesión**. Es el tropiezo más común de este paso.
+3. **Copiá el User UID** de cada uno: en la lista de usuarios, click en el usuario → el campo `UID`
+   (un uuid tipo `a1b2c3d4-…`). Son los dos parámetros del seed.
+4. Pegalos en `docs/private/credenciales.env` como `SEED_FRANK_USER_ID` y `SEED_JUAN_USER_ID`.
+
+> El `app_metadata` (el `tenant_id` y el `rol`) **todavía no** se puede completar: sale del seed.
+> Se carga en C.4, después de correrlo.
 
 ### C.4 — Seed del caso de Bella Napoli
 
@@ -158,11 +171,36 @@ usuario NO puede editar), poné:
 
 ### C.5 — Desplegar la API en Railway
 
-1. **New Service → Deploy from GitHub repo** → elegí este repo.
-2. **Settings:**
-   - **Root Directory:** la raíz del repo (dejar vacío / `/`).
+1. **Crear el servicio.** En Railway: **New Project** → **Deploy from GitHub repo**.
+   - Si no aparece el repo, Railway te va a pedir instalar su **GitHub App** y darle acceso. Podés
+     darle acceso solo a este repositorio; no necesita el resto de tu cuenta.
+   - Elegí el repo y la rama **`main`**.
+   - Railway arranca un primer deploy solo, **y ese primero va a fallar**: todavía no cargaste las
+     variables y la API falla cerrado si le falta alguna obligatoria. Es lo esperado, seguí.
+
+2. **Settings del servicio.** Están agrupados por sección:
+
+   **Source**
+   - **Root Directory:** vacío (o `/`). Es un monorepo con workspaces y el `package-lock.json` de la
+     raíz es el único lockfile: apuntar a `api/` rompería la instalación.
+   - **Branch:** `main`.
+
+   **Build**
+   - **Builder:** dejá el automático (Nixpacks). Detecta Node por el `package.json` de la raíz.
+   - **Build Command:** **vacío**. No hay paso de build — el server corre con `tsx` directamente
+     (ver el stack en CLAUDE.md). Si Railway te propone uno, borralo.
+   - La versión de Node sale de `engines` de la raíz (`>=20.12.0`). Si querés fijarla, agregá la
+     variable `NIXPACKS_NODE_VERSION=22`.
+
+   **Deploy**
    - **Start Command:** `npm run serve -w api`
-   - **Health Check Path:** `/health`
+   - **Health Check Path:** `/health` — responde `{"status":"ok"}` **sin token**, a propósito: un
+     health-check que exigiera JWT no serviría de health-check.
+   - **Restart Policy:** `On Failure` está bien.
+
+   > **No pongas `PORT` a mano.** Railway la inyecta sola y `api/src/server.ts` la lee (con 3000 de
+   > default para local). Si la fijás vos, el proceso escucha en un puerto que Railway no rutea y el
+   > health-check falla con timeout, que es un síntoma muy confuso.
 3. **Variables.** Railway **no lee ningún archivo `.env`** del repo: hay que cargarlas en el servicio.
    Pero no las tipees de nuevo — `api/.env` ya las tiene todas y correctas.
 
@@ -200,9 +238,20 @@ usuario NO puede editar), poné:
    > del esquema. La API usa `amg_api`, que es `NOINHERIT` y trabaja bajo RLS; darle la de admin
    > convierte el aislamiento de ADR-17 en una convención en vez de una barrera. Por eso `env:sync`
    > no la pone en `api/.env`, y hay un test que lo verifica.
-4. **Deploy.** Cuando termine, Railway te da una URL tipo `https://amg-api-production.up.railway.app`.
-5. **Dominio propio:** Settings → Networking → **Custom Domain** → `api.bigballs.es`. Railway te da un
-   destino CNAME; lo cargás en el DNS de Hostinger en C.7. (El portal ya espera `https://api.bigballs.es`.)
+4. **Redesplegá** (**Deployments** → `⋮` → **Redeploy**). El primer deploy había fallado por falta de
+   variables; este es el que tiene que quedar en verde. Mirá los **Deploy Logs**: al final tenés que
+   ver el server escuchando, sin `Faltan variables de entorno` ni `tsx: not found`.
+
+5. **Generá la URL pública.** Un servicio nuevo **no tiene dominio** hasta que se lo pedís:
+   Settings → **Networking** → **Public Networking** → **Generate Domain**. Te da algo como
+   `https://amg-api-production.up.railway.app`.
+
+   > Si te pregunta el puerto, poné el que muestran los logs (Railway suele detectarlo solo).
+
+6. **Dominio propio:** en la misma sección, **Custom Domain** → `api.bigballs.es`. Railway te da un
+   destino CNAME; lo cargás en el DNS de Hostinger en C.7. (El portal ya espera
+   `https://api.bigballs.es`.) El certificado TLS lo emite Railway solo, después de que el DNS
+   propague — hasta entonces el dominio propio da error, y es normal.
 
 **Verificá:** abrí `https://amg-api-production.up.railway.app/health` (la URL de Railway, antes de que
 el DNS propague) → debe responder `{"status":"ok"}` (sin login).
