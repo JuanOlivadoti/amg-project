@@ -191,11 +191,14 @@ usuario NO puede editar), poné:
    - **Branch:** `main`.
 
    **Build**
-   - **Builder:** dejá el automático (Nixpacks). Detecta Node por el `package.json` de la raíz.
+   - **Builder:** dejá **el que venga por defecto** — hoy es **Railpack** (Nixpacks quedó deprecado).
+     Detecta Node por el `package.json` de la raíz. Lo que importa es que **no** quede en _Dockerfile_:
+     no hay ninguno en el repo y el build falla en un par de segundos.
    - **Build Command:** **vacío**. No hay paso de build — el server corre con `tsx` directamente
      (ver el stack en CLAUDE.md). Si Railway te propone uno, borralo.
-   - La versión de Node sale de `engines` de la raíz (`>=20.12.0`). Si querés fijarla, agregá la
-     variable `NIXPACKS_NODE_VERSION=22`.
+   - **Versión de Node:** sale de `engines` del `package.json` de la raíz (`>=20.12.0`), que respetan
+     tanto Railpack como Nixpacks. Si necesitás fijarla exacta, cambiala ahí y commiteá — mejor que
+     una variable del builder, que es específica de cuál esté activo.
 
    **Deploy**
    - **Start Command:** `npm run serve -w api`
