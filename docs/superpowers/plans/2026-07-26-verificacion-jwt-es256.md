@@ -72,7 +72,25 @@ asignable en Node 24, y los 23 casos de aceptación/rechazo de `emisorSupabase`.
 
 ---
 
-## Task 1: El verificador exige ES256 contra el JWKS y distingue "no pude comprobar"
+## Task 1: El verificador exige ES256 contra el JWKS y distingue "no pude comprobar" ✅ HECHA
+
+> **Estado: completa** — implementación `9706bec`, correcciones de review `5f6bc23`. 464 tests en el
+> monorepo (64 en `api`, 27 en `auth.test.ts`), typecheck limpio.
+>
+> **Tres cosas quedaron distintas de lo escrito abajo**, por hallazgos de la review. Si leés estos
+> pasos para entender el código, leé también esto:
+>
+> 1. **Existe `verificadorDeEmisor(emisor, claves?, opts?)`**, y es lo que usa `crearDeps`. Los pasos
+>    de abajo hacían que `deps.ts` pasara el resolvedor y el `issuer` por separado, y la garantía de
+>    que salieran del mismo emisor vivía **solo en un comentario**: `crearDeps` no lo prueba nadie, así
+>    que borrar la línea del issuer dejaba la suite entera en verde y la API dejaba de comprobar el
+>    emisor. Ahora un token de otro proyecto Supabase tumba un test.
+> 2. **`ERR_JWKS_MULTIPLE_MATCHING_KEYS` NO está en `CODIGOS_DE_TOKEN`.** El bloque de abajo lo
+>    incluye; fue un error. Ese código describe **nuestro** conjunto de claves, no la credencial:
+>    salta durante una rotación que publica dos claves ES256 a la vez, que es exactamente la ventana
+>    para la que existe el 503.
+> 3. **La audiencia usa `||` con `trim()`, no `??`.** Con `??`, un `audience: ""` apagaba la
+>    comprobación de audiencia en silencio.
 
 **Files:**
 
@@ -572,8 +590,10 @@ que tumba media suite no señala nada. Mutá **un solo código de la allowlist**
 Run: `cd api && npx tsx --test src/auth.test.ts`
 
 Expected: FAIL, y **exactamente 1 test**: `un kid que no está en el JWKS se rechaza` — que pasa a
-devolver `NO_DISPONIBLE` en vez de `null`. Eso prueba que la allowlist se consulta de verdad y que
-cada código que está en ella tiene un caso que lo cubre.
+devolver `NO_DISPONIBLE` en vez de `null`. Eso prueba que la allowlist **se consulta de verdad**.
+
+Ojo con lo que *no* prueba: quitar una entrada demuestra que **esa** entrada se consulta, no que todas
+las demás tengan un caso que las cubra. Si querés esa garantía, hay que ir código por código.
 
 **Revertí las dos mutaciones** y volvé a verde.
 
@@ -1516,6 +1536,19 @@ una **allowlist de códigos de token**: un fallo de red no siempre trae un códi
 resolvedor que rechaza llega sin `code`; `createRemoteJWKSet` contra un host muerto llega con
 `ECONNREFUSED`, que es de Node), así que todo lo no enumerado se trata como infraestructura.
 
+El criterio para decidir de qué lado va cada código es **de quién habla el error**.
+`ERR_JWKS_NO_MATCHING_KEY` habla del token: trae un `kid` que no está en el conjunto de confianza.
+`ERR_JWKS_MULTIPLE_MATCHING_KEYS` habla de **nosotros**: salta cuando el token no trae `kid` y dos de
+*nuestras* claves matchean el algoritmo, que es lo que pasa durante una rotación —justo la ventana
+para la que existe el 503—, así que va del lado de infraestructura.
+
+**El emisor se amarra por construcción, no por convención.** `verificadorDeEmisor(emisor, …)` deriva
+el `iss` exigido y la URL del JWKS del mismo `EmisorSupabase`. La primera versión los pasaba por
+separado y confiaba en un comentario; como `crearDeps` no tiene tests, borrar el `issuer` dejaba la
+suite entera en verde y la API aceptaba tokens de cualquier otro proyecto Supabase. Lo encontró la
+review de la tarea 1. `verificadorSupabase` conserva los dos parámetros sueltos porque es lo que
+permite inyectar un JWKS local y probar la criptografía sin red — pero producción no pasa por ahí.
+
 **Consecuencia operativa: la rotación de emergencia necesita un reinicio.** `createRemoteJWKSet`
 cachea el JWKS 10 minutos y tiene 30 s de cooldown. En una rotación *planificada* eso es invisible,
 porque Supabase publica la clave nueva antes de firmar con ella. En una rotación **reactiva** —por
@@ -1575,6 +1608,21 @@ EOF
 2. Repartí a los paquetes: `npm run env:sync`
 3. Confirmá que el secreto desapareció: `grep -c SUPABASE_JWT_SECRET api/.env` debe imprimir `0`.
 4. En **Railway → Variables**, **borrá `SUPABASE_JWT_SECRET`** y confirmá que `SUPABASE_JWT_ISS` esté puesta con ese valor exacto. Redeploy.
+
+- [ ] **Step 9b: Dos puntos de vigilancia operativa (anotar, no "arreglar")**
+
+Salieron de la review de la tarea 1. Ninguno es un defecto; los dos importan al desplegar:
+
+1. **Una rotación de Supabase a otro algoritmo daría 401, no 503.** `ERR_JOSE_ALG_NOT_ALLOWED` es un
+   código de token, así que si el proyecto pasara a RS256 todos los logins fallarían **y quemarían
+   refresh tokens**. Hoy el JWKS sirve una sola clave ES256 (verificado). Si Supabase anuncia un
+   cambio de algoritmo, hay que tocar `algorithms` antes, no después.
+2. **Durante una caída del JWKS, cada request paga el timeout de 5 s antes de su 503.** El caché vence
+   a los 10 minutos y `_local` solo se reemplaza cuando el fetch tiene éxito, así que cada petición
+   secuencial reintenta. Falla cerrado y es correcto, pero se lee como un cuelgue. Si molesta, el
+   lugar para afinar `timeoutDuration`/`cacheMaxAge` es `crearDeps` — **con una medición, no a ojo**.
+
+Agregá los dos a `docs/proyecto/09-estado-y-roadmap.md`, en deudas conocidas.
 
 - [ ] **Step 10: Verificación en producción (el paso que cierra la pieza)**
 
