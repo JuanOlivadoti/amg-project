@@ -3,7 +3,12 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-22** · **445 tests en verde**
+> Última actualización: **2026-07-26** · **461 tests en verde**
+>
+> **Dónde estamos hoy:** Fase 1 desplegada, pero **el login está roto en producción** — el proyecto de
+> Supabase firma `ES256` y la API esperaba `HS256`. Se arregla en la **pieza A** (rama
+> `fix/jwt-es256`, tarea 1 de 4 hecha). Ver §5.3 y el
+> [estado y roadmap](09-estado-y-roadmap.md).
 
 ---
 
@@ -64,7 +69,7 @@ OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `loc
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **445 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **461 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -163,12 +168,30 @@ Las pantallas:
    justamente lo que el cliente entra a ver.
 4. **Aprobar página por página**, y después el run. Publicar *(solo equipo)*.
 
-### 5.3 — Desplegar
+### 5.3 — Desplegar 🟡 HECHA para Fase 1, con el login roto
 
-Orquestador + API como **servicio Node de larga duración**, portal como estático. **No serverless**:
-el research encadena llamadas live a DataForSEO y generación por LLM, y probablemente no entra en el
-timeout de una función (60-300 s). **Dónde se hostea: sin decidir** — no bloquea nada, el código es
-Node estándar.
+**Desplegado el 2026-07-25:** portal en [`bigballs.es`](https://bigballs.es) (Hostinger, autodeploy
+desde `main`), API en `api.bigballs.es` (Railway, `europe-west4`), base en Supabase (`eu-west-2`).
+Paso a paso, con los tropiezos reales, en [13-runbook-despliegue.md](13-runbook-despliegue.md).
+
+> ### 🔴 Y sin embargo, ningún login funciona
+>
+> El proyecto de Supabase se creó el 2026-07-25, ya con **claves asimétricas**: firma `ES256`. La API
+> solo aceptaba `HS256` con un secreto compartido, así que todo login termina en `401`.
+>
+> Lo destapó **manejar la app**, no la verificación desde afuera — que daba verde en las siete
+> comprobaciones. Es la misma lección de siempre: leer el código y manejar la app encuentran cosas
+> distintas.
+>
+> **Pieza A** (rama `fix/jwt-es256`): la API verifica contra el **JWKS público** del emisor,
+> `SUPABASE_JWT_SECRET` desaparece y `SUPABASE_JWT_ISS` pasa a obligatoria. De paso se arregla el
+> logout, que solo borraba el `localStorage` sin revocar nada del lado del servidor.
+> [Spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
+> [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) · tarea 1 de 4 hecha.
+
+El orquestador y el renderizador siguen **sin desplegar** (son Fase 2). Van como **servicio Node de
+larga duración**, no serverless: el research encadena llamadas live a DataForSEO y generación por
+LLM, y probablemente no entra en el timeout de una función (60-300 s).
 
 > ⚠️ **Dato que no tengo: cuánto tarda un research real.** Tengo el coste ($0.31), nunca medí la
 > duración. Ya no bloquea el diseño (el orquestador es un proceso largo), pero **define la UX del
@@ -296,7 +319,8 @@ Todas con su ADR. Las que más condicionan lo que viene:
 |---|---|---|
 | **Acción 06 — corrida final** | [acciones/06](../acciones/06-corrida-final-demo.md) | ~$0.31. La demo publicada es anterior a kr.v0.5. |
 | ~~Migrar SERP + Search Volume a Standard~~ | `kr-service/src/dataforseo/` | ✅ **Hecho** (tandas 11-12): `task_post`/`task_get` con doble capa de recuperación. La 6ª review encontró 4 bugs en la primera versión; corregidos y mutation-tested. |
-| **Cuánto tarda un research real** | — | **Nunca se midió.** Tengo el coste ($0.31), no la duración. Define la UX del portal. |
+| **Pieza A — verificación JWT ES256** | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | 🔴 **Bloquea todo**: hoy ningún login funciona en producción. Tarea 1 de 4 hecha (`9706bec`). |
+| **Cuánto tarda un research real** | — | **Nunca se midió.** Tengo el coste ($0.31), no la duración. Define la UX del portal **y decide si la pieza D (research en vivo en la demo) se hace**: a ~90 s es el mejor momento de la demo; a ~12 min, Frank mira un spinner. |
 | Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
 | `is_local` se dispara de más | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo `LocalBusiness`. Ensucia el JSON-LD. |
 | `endpoints_degradados` incompleto | `meta_run` | Omite los fallos de suggestion/SERP. |
