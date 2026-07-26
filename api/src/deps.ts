@@ -1,9 +1,8 @@
 import { NodePgPool, PgStore } from "db";
 import { Inngest } from "inngest";
 import {
-  verificadorSupabase,
+  verificadorDeEmisor,
   emisorSupabase,
-  jwksDeSupabase,
   type EmisorSupabase,
   type VerificadorToken,
 } from "./auth.js";
@@ -114,11 +113,12 @@ export async function crearDeps(
     send: (evento) => inngest.send({ name: evento.name, data: evento.data }),
   };
 
-  // El JWKS se deriva del MISMO emisor canónico que se exige como `iss`, y se comparte para toda la
-  // vida del proceso: `createRemoteJWKSet` cachea la clave y refresca sola.
-  const verificar: VerificadorToken = verificadorSupabase(jwksDeSupabase(config.emisor), {
+  // `verificadorDeEmisor` arma el `iss` que se exige y la URL del JWKS del MISMO `EmisorSupabase`,
+  // así que acá no hay dos valores que puedan discrepar (a diferencia de pasarle el issuer aparte a
+  // `verificadorSupabase`). El resolvedor por default de `verificadorDeEmisor` es el JWKS remoto, que
+  // se comparte para toda la vida del proceso: `createRemoteJWKSet` cachea la clave y refresca sola.
+  const verificar: VerificadorToken = verificadorDeEmisor(config.emisor, undefined, {
     ...(config.jwtAudience ? { audience: config.jwtAudience } : {}),
-    issuer: config.emisor.issuer,
   });
 
   return {

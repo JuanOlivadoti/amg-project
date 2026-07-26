@@ -8,7 +8,13 @@ import {
   type JWTVerifyGetKey,
   type KeyLike,
 } from "jose";
-import { verificadorSupabase, emisorSupabase, AUD_SUPABASE, NO_DISPONIBLE } from "./auth.js";
+import {
+  verificadorSupabase,
+  verificadorDeEmisor,
+  emisorSupabase,
+  AUD_SUPABASE,
+  NO_DISPONIBLE,
+} from "./auth.js";
 
 /**
  * EL TEST QUE NO EXISTÍA — y su ausencia dejaba abierta la frontera de autenticación.
@@ -105,6 +111,14 @@ test("🔴 un token con OTRA audiencia se rechaza (no es para esta API)", async 
   assert.equal(await verificar(token), null);
 });
 
+test("🔴 audience: '' NO apaga la comprobación: sigue exigiendo el default", async () => {
+  // `??` no cae en el default con `""`, así que una var de entorno vacía o un trim de más apagaba la
+  // comprobación de audiencia en silencio. `||` sí cae.
+  const conAudienciaVacia = verificadorSupabase(JWKS, { audience: "" });
+  const token = await firmar({ sub: "user-1", exp: "2h", aud: "otra-app" });
+  assert.equal(await conAudienciaVacia(token), null);
+});
+
 test("si se configura issuer, un token de OTRO proyecto se rechaza", async () => {
   const conIssuer = verificadorSupabase(JWKS, {
     issuer: "https://proyecto-real.supabase.co/auth/v1",
@@ -181,6 +195,21 @@ test("un token SIN kid entra si el JWKS tiene una sola clave compatible", async 
   assert.deepEqual(await verificar(token), { userId: "user-1" });
 });
 
+test("🔴 dos claves compatibles y un token sin kid: es NUESTRO conjunto de claves, no el token", async () => {
+  // Pasa durante una rotación que publica dos claves a la vez. El usuario no tiene la culpa y su
+  // credencial puede ser perfectamente buena: 503, no 401, o el portal quema el refresh token.
+  // JWKS local propio: NO se le agrega una segunda ES256 al `JWKS` compartido porque eso rompería
+  // el test de arriba ("sin kid entra si el JWKS tiene una sola clave compatible").
+  const jwksAmbiguo = createLocalJWKSet({
+    keys: [
+      { ...(await exportJWK(publicKey)), alg: "ES256", kid: "una" },
+      { ...(await exportJWK(otro.publicKey)), alg: "ES256", kid: "otra" },
+    ],
+  });
+  const token = await firmar({ sub: "user-1", exp: "2h", aud: AUD_SUPABASE, kid: "" });
+  assert.equal(await verificadorSupabase(jwksAmbiguo)(token), NO_DISPONIBLE);
+});
+
 test("🔴 si el JWKS no se puede obtener, devuelve NO_DISPONIBLE (no null)", async () => {
   // Fallar cerrado, pero SIN mentir: un error de red no dice nada del token. El resolvedor se
   // INYECTA rechazando — nada de apuntar a un puerto muerto, que abriría un socket de verdad.
@@ -238,4 +267,20 @@ test("🔴 emisorSupabase rechaza query, fragment, puerto y credenciales", async
 
 test("emisorSupabase rechaza una URL que no es URL", async () => {
   assert.throws(() => emisorSupabase("no-es-una-url"), /URL válida/);
+});
+
+test("🔴 verificadorDeEmisor amarra el `iss` al emisor: un token de OTRO proyecto no entra", async () => {
+  // La garantía estaba solo en un comentario de `deps.ts`, y `crearDeps` no lo prueba nadie: se
+  // podía borrar el `issuer` y la suite entera seguía en verde. Con esto, borrarlo tumba este test.
+  const emisor = emisorSupabase("https://proyecto-real.supabase.co/auth/v1");
+  const verificarDelEmisor = verificadorDeEmisor(emisor, JWKS);
+  const propio = await firmar({ sub: "user-1", exp: "2h", aud: AUD_SUPABASE, iss: emisor.issuer });
+  const ajeno = await firmar({
+    sub: "user-1",
+    exp: "2h",
+    aud: AUD_SUPABASE,
+    iss: "https://proyecto-de-otro.supabase.co/auth/v1",
+  });
+  assert.deepEqual(await verificarDelEmisor(propio), { userId: "user-1" });
+  assert.equal(await verificarDelEmisor(ajeno), null);
 });

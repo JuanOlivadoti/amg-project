@@ -47,6 +47,12 @@ export const AUD_SUPABASE = "authenticated";
  * `ERR_JWKS_NO_MATCHING_KEY` cuenta como token: el `kid` no está en el conjunto de confianza. La
  * rotación no lo dispara en la práctica — Supabase publica la clave nueva antes de firmar con ella,
  * y la vieja sigue en el JWKS.
+ *
+ * `ERR_JWKS_MULTIPLE_MATCHING_KEYS` NO está acá, y es a propósito: ese código sale cuando el token no
+ * trae `kid` y DOS claves de NUESTRO JWKS matchean el algoritmo — describe nuestro conjunto de
+ * claves, no la credencial. Pasa durante una rotación que publica dos claves ES256 a la vez, que es
+ * justo la ventana para la que existe el 503: tratarlo como culpa del token le manda un 401 a un
+ * usuario con una credencial perfectamente buena.
  */
 const CODIGOS_DE_TOKEN = new Set([
   "ERR_JWS_INVALID",
@@ -57,7 +63,6 @@ const CODIGOS_DE_TOKEN = new Set([
   "ERR_JOSE_ALG_NOT_ALLOWED",
   "ERR_JOSE_NOT_SUPPORTED",
   "ERR_JWKS_NO_MATCHING_KEY",
-  "ERR_JWKS_MULTIPLE_MATCHING_KEYS",
 ]);
 
 /**
@@ -87,7 +92,9 @@ export function verificadorSupabase(
   claves: JWTVerifyGetKey,
   opts: OpcionesJwt = {},
 ): VerificadorToken {
-  const audience = opts.audience ?? AUD_SUPABASE;
+  // `||`, no `??`: una audiencia en blanco NO debe significar "no compruebes la audiencia". Con `??`
+  // un `""` —una variable de entorno vacía, un trim de más— apagaba la comprobación en silencio.
+  const audience = opts.audience?.trim() || AUD_SUPABASE;
   return async (token) => {
     try {
       const { payload } = await jwtVerify(token, claves, {
@@ -187,6 +194,24 @@ export function jwksDeSupabase(emisor: EmisorSupabase): JWTVerifyGetKey {
   return createRemoteJWKSet(emisor.jwksUrl);
 }
 
+/**
+ * El verificador de un emisor concreto: el `iss` que se exige y la URL del JWKS salen del **mismo**
+ * valor, así que no hay dos que puedan discrepar.
+ *
+ * Existe porque `verificadorSupabase` recibe el resolvedor y el issuer por separado —lo que hace
+ * testeable la criptografía sin red— y esa separación permite pasarle un par que no case. Acá se
+ * cierra: quien arma el verificador de producción no puede equivocarse en eso.
+ *
+ * `claves` se inyecta solo en tests; producción usa el JWKS remoto del propio emisor.
+ */
+export function verificadorDeEmisor(
+  emisor: EmisorSupabase,
+  claves: JWTVerifyGetKey = jwksDeSupabase(emisor),
+  opts: { audience?: string } = {},
+): VerificadorToken {
+  return verificadorSupabase(claves, { ...opts, issuer: emisor.issuer });
+}
+
 /** UUID, para rechazar un tenant basura antes de tocar la base. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -197,7 +222,8 @@ export const TENANT_HEADER = "x-amg-tenant";
 export type Variables = { ctx: TenantContext };
 
 /**
- * Middleware de autenticación. Deja un `TenantContext` en el contexto de Hono, o corta con 401/400.
+ * Middleware de autenticación. Deja un `TenantContext` en el contexto de Hono, o corta con 401
+ * (credencial mala), 503 (no se pudo comprobar) o 400 (tenant inválido).
  *
  * Dos entradas, y su diferencia ES el modelo de seguridad:
  *  · El **token** dice quién sos y está **firmado**: sin la clave del emisor no se falsifica.
