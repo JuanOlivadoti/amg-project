@@ -93,15 +93,34 @@ después limpiar en un `finally`". Eso deja la UI autenticada mientras el `fetch
 `fetch` no tiene timeout propio, así que puede colgar indefinidamente. Se limpia **primero**, de
 forma síncrona, y la revocación viaja después con el token ya capturado.
 
-**Y hay dos carreras que ningún `finally` cubre** *(revisión)*:
+**Y hay cuatro carreras que ningún `finally` cubre** *(revisión, en dos vueltas)*:
 
 - Un **refresh en vuelo** que resuelve *después* del logout escribe una sesión válida: el portal
   queda autenticado sin que nadie lo pidiera.
 - Una **revocación lenta** que termina después de que el usuario volvió a entrar borraría la sesión
   **nueva**.
+- Un **login en vuelo** que resuelve después de un logout reabre la sesión.
+- Un **refresh de la sesión vieja disparado después de arrancar un login** sobrescribe la sesión
+  nueva con la anterior.
 
-Las cierra una **guarda de época**: un contador que cambia en cada login y cada logout, y que todo lo
-que escriba estado después de un `await` comprueba antes de escribir.
+Se cierran con **dos guardas, y hacen falta las dos**:
+
+- **Identidad de la sesión capturada.** El refresh recibe la sesión a refrescar por parámetro y, antes
+  de escribir, comprueba que siga siendo la viva. Cubre los tres casos de una vez: tras un logout
+  `_sesion()` es `null`, tras otro login es otro objeto, y en el caso normal es el mismo.
+- **Época.** Un contador que cambia en cada login y cada logout. Es para el **login**, la única
+  operación que no tiene sesión previa contra la cual compararse porque crea una nueva.
+
+*Por qué no alcanza solo la época* — y este fue el hallazgo de la segunda revisión: la época cambia
+al **iniciar** una operación, así que un refresh disparado *después* de arrancar un login comparte su
+época, pasa la guarda y escribe la sesión vieja encima de la nueva. Solo la identidad lo frena.
+
+*Y por qué no alcanza solo la identidad:* el login no tiene con qué compararse.
+
+Además, la promesa de refresh compartida (`refrescoEnVuelo`, que existe para no disparar N refrescos)
+se comparte **solo dentro de la misma sesión**. Compartirla entre sesiones hacía que el refresh de la
+sesión nueva devolviera el resultado de la vieja —normalmente `false`—, y el cliente propagara un 401
+que no correspondía.
 
 **Alcance de la revocación:** global — el default de `POST /auth/v1/logout` sin `scope`. Es el que
 corresponde al caso que motiva la función (el equipo robado): revoca los refresh tokens de todas las
@@ -211,6 +230,14 @@ cooldown 30 s, cache 10 min), así que un corte breve no se nota y la rotación 
 sola. Durante una rotación puede haber una ventana de ~30 s en que un `kid` recién publicado no se
 resuelve; es aceptable porque Supabase publica la clave nueva **antes** de empezar a firmar con ella,
 y la anterior sigue en el JWKS.
+
+**Ese razonamiento no aplica a una rotación de emergencia** *(revisión)*, y hay que dejarlo escrito
+porque es justo cuando importa. Si una clave se retira **de forma reactiva** —por sospecha de
+compromiso—, el caché local puede seguir aceptando firmas de la clave retirada **hasta 10 minutos**, y
+los tokens de la clave nueva pueden recibir 401 hasta que termine el cooldown. Publicar-antes-de-firmar
+no ocurre en ese escenario. El procedimiento de emergencia, entonces, **no es solo rotar en Supabase:
+hay que reiniciar el servicio de la API** (o forzar la recarga del resolvedor) para vaciar el caché.
+Va al runbook.
 
 ### Tests
 

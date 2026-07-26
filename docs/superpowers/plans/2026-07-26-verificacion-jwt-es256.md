@@ -26,18 +26,29 @@
 
 ## Contexto de la revisión (leer antes de empezar)
 
-Este plan es la **segunda versión**. La primera fue revisada por Codex y tenía defectos reales que ya
-están corregidos acá. Si al ejecutar te dan ganas de "simplificar" alguno de estos puntos, son
-justamente los que costaron una revisión:
+Este plan es la **tercera versión**: dos rondas de revisión externa (Codex), con cada hallazgo
+verificado contra el código real o ejecutándolo. Si al ejecutar te dan ganas de "simplificar" alguno
+de estos puntos, son justamente los que costaron una revisión:
 
 | Lo que parecía razonable | Por qué no lo es |
 | --- | --- |
 | Probar la lista de algoritmos con un token HS256 | Medido: no cae bajo mutación. `jose` lo rechaza por otra razón |
 | Quitarle la barra final al issuer solo para el JWKS | El `iss` que se exige quedaría con la barra y **ningún token verificaría** |
 | Validar que el issuer sea `https` y nada más | Deja pasar `https://atacante.example/auth/v1`: cambia el emisor de confianza entero |
+| Anclar el host con `endsWith(".supabase.co")` | Deja pasar `supabase.co` pelado y `a.b.supabase.co`, que no son endpoints de proyecto |
 | Un test que apunte a `127.0.0.1:1` | Abre un socket: rompe el invariante de suite sin red |
 | Limpiar el estado local en un `finally` después del `await` | La UI queda autenticada mientras el `fetch` cuelga, y puede pisar una sesión nueva |
+| Cubrir las carreras del portal **solo** con una época | La época cambia al *iniciar*: un refresh disparado después de un login comparte la suya y pisa la sesión nueva |
+| Compartir `refrescoEnVuelo` sin mirar de qué sesión es | Tras logout + login, el refresh nuevo devuelve el `false` del viejo |
+| Probar el logout mirando solo la signal | Quitar el `removeItem` queda en verde, y la sesión vuelve al recargar |
+| Un `fetch` falso único para logout y refresh | El test se **cuelga** en vez de fallar: ambos esperan la misma promesa |
+| Mutar el `catch` entero para probar la clasificación 401/503 | Tumba media suite. Hay que mutar **un** código de la allowlist |
+| Dar por hecho que cada mutación tumba 1 test | Varias tumban 2. Lo que importa es predecir **cuáles**, no que sea una |
 | Confiar en que "los 10 tests actuales" se conservan | Son **12**, y dos usan símbolos que el andamiaje viejo definía |
+
+**Verificado ejecutándolo** antes de escribir esta versión: la mutación de algoritmo, los códigos de
+error de `jose` por caso, que `AuthService` es instanciable bajo `node --test`, que `localStorage` es
+asignable en Node 24, y los 23 casos de aceptación/rechazo de `emisorSupabase`.
 
 ---
 
@@ -376,9 +387,12 @@ export function emisorSupabase(valor: string): EmisorSupabase {
   if (url.search || url.hash) {
     throw new Error("SUPABASE_JWT_ISS no puede llevar query ni fragment.");
   }
-  if (url.hostname !== "supabase.co" && !url.hostname.endsWith(".supabase.co")) {
+  // Exactamente `<project-ref>.supabase.co`: UNA etiqueta no vacía y nada más. Un `endsWith`
+  // dejaba pasar `supabase.co` pelado, `.supabase.co` y `a.b.supabase.co`, que no son endpoints de
+  // proyecto: la API arrancaría para después fallar en cada login con un 503 inexplicable.
+  if (!/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname)) {
     throw new Error(
-      `SUPABASE_JWT_ISS debe ser un host de Supabase (es "${url.hostname}"). ` +
+      `SUPABASE_JWT_ISS debe ser un host de proyecto Supabase (es "${url.hostname}"). ` +
         "Formato esperado: https://<project-ref>.supabase.co/auth/v1",
     );
   }
@@ -495,9 +509,13 @@ test("emisorSupabase acepta el formato normal y recorta espacios", async () => {
   assert.equal(e.issuer, "https://abc.supabase.co/auth/v1");
 });
 
-test("🔴 emisorSupabase rechaza un host que no sea de Supabase", async () => {
+test("🔴 emisorSupabase exige exactamente <project-ref>.supabase.co", async () => {
   // No alcanza con exigir https: un issuer ajeno sustituye el emisor de confianza entero.
   assert.throws(() => emisorSupabase("https://atacante.example/auth/v1"), /Supabase/);
+  // Y no alcanza con un `endsWith`: ninguno de estos es un endpoint de proyecto.
+  assert.throws(() => emisorSupabase("https://supabase.co/auth/v1"), /Supabase/);
+  assert.throws(() => emisorSupabase("https://a.b.supabase.co/auth/v1"), /Supabase/);
+  assert.throws(() => emisorSupabase("https://malo.supabase.co.atacante.example/auth/v1"), /Supabase/);
 });
 
 test("🔴 emisorSupabase rechaza http", async () => {
@@ -546,7 +564,18 @@ Run: `cd api && npx tsx --test src/auth.test.ts`
 
 Expected: FAIL, y **exactamente 1 test**: `🔴 si el JWKS no se puede obtener, devuelve NO_DISPONIBLE (no null)`.
 
-Después hacé lo contrario —que devuelva siempre `NO_DISPONIBLE`— y confirmá que cae **exactamente 1**: `🔴 un token inválido devuelve null, no NO_DISPONIBLE`. **Revertí** y volvé a verde.
+Después, para la dirección contraria, **no** mutes el `catch` entero: hacer que devuelva siempre
+`NO_DISPONIBLE` tumbaría una decena de tests (todos los que rechazan por excepción), y una mutación
+que tumba media suite no señala nada. Mutá **un solo código de la allowlist**: quitá
+`"ERR_JWKS_NO_MATCHING_KEY"` de `CODIGOS_DE_TOKEN` y corré:
+
+Run: `cd api && npx tsx --test src/auth.test.ts`
+
+Expected: FAIL, y **exactamente 1 test**: `un kid que no está en el JWKS se rechaza` — que pasa a
+devolver `NO_DISPONIBLE` en vez de `null`. Eso prueba que la allowlist se consulta de verdad y que
+cada código que está en ella tiene un caso que lo cubre.
+
+**Revertí las dos mutaciones** y volvé a verde.
 
 - [ ] **Step 11: El 503 en la API**
 
@@ -943,110 +972,212 @@ import type { Sesion } from '../core/models';
 
 /**
  * Lo que se prueba acá NO lo prueban los tests de `auth-core`: que el estado local del portal se
- * limpie SIEMPRE y de inmediato, y que una llamada en vuelo no pueda resucitar ni pisar una sesión.
+ * limpie SIEMPRE, de inmediato y **también en `localStorage`**, y que ninguna llamada en vuelo pueda
+ * resucitar una sesión cerrada ni pisar una nueva.
  *
- * Sin estos tests, mover la limpieza detrás del `await` —o borrar la guarda de época— deja todo en
- * verde. Era exactamente el agujero de la primera versión del plan.
+ * Sin estos tests, mover la limpieza detrás del `await`, borrar la guarda de identidad o quitar el
+ * `removeItem` deja todo en verde. Son los primeros tests que tiene el servicio.
+ *
+ * Las cuatro carreras que se cubren, todas reales:
+ *  · login en vuelo → logout → el login resuelve  (no debe autenticar)
+ *  · refresh en vuelo → logout → el refresh resuelve  (no debe resucitar)
+ *  · sesión A → login B → el refresh de A resuelve  (no debe pisar a B)
+ *  · logout lento → login nuevo → la revocación termina  (no debe borrar al nuevo)
  */
 
-const SESION: Sesion = {
-  accessToken: 'tok-viejo',
-  refreshToken: 'refresh-viejo',
-  tenantId: '11111111-1111-1111-1111-111111111111',
-  rol: 'equipo',
-  email: 'frank@ejemplo.com',
-};
+const CLAVE = 'amg.sesion';
+const TENANT = '11111111-1111-1111-1111-111111111111';
 
-/** Instala una sesión sin pasar por la red. */
-function conSesion(a: AuthService, s: Sesion = SESION): void {
-  (a as unknown as { _sesion: { set(v: Sesion | null): void } })._sesion.set(s);
+function sesion(id: string, email: string, token: string): Sesion {
+  return {
+    accessToken: token,
+    refreshToken: `${token}-r`,
+    expiraEn: Date.now() + 3_600_000,
+    userId: id,
+    email,
+    tenantId: TENANT,
+    rol: 'equipo',
+  };
 }
 
-test('🔴 logout limpia el estado local ANTES de esperar a la red', async () => {
-  // Si la limpieza estuviera después del `await`, la UI seguiría autenticada mientras el fetch
-  // cuelga — y `fetch` no tiene timeout propio, así que puede colgar para siempre.
-  let soltar: (() => void) | null = null;
-  const colgado = new Promise<Response>((r) => {
-    soltar = () => r(new Response(null, { status: 204 }));
-  });
+const SESION_A = sesion('user-a', 'a@ejemplo.com', 'tok-a');
+const SESION_B = sesion('user-b', 'b@ejemplo.com', 'tok-b');
+
+/** Cuerpo de respuesta de GoTrue, como lo parsea `aSesion` en `auth-core.ts`. */
+function respuestaGoTrue(id: string, email: string, token: string) {
+  return {
+    access_token: token,
+    refresh_token: `${token}-r`,
+    expires_in: 3600,
+    user: { id, email, app_metadata: { tenant_id: TENANT, rol: 'equipo' } },
+  };
+}
+
+/**
+ * `fetch` falso que **enruta por URL** y deja cada respuesta pendiente hasta que se la suelta.
+ *
+ * Que las colas estén separadas no es un detalle: con una sola promesa compartida, un test que
+ * espera el logout antes de soltar el token se cuelga para siempre en vez de fallar.
+ */
+function fetchControlado() {
+  const colas = { token: [] as ((r: Response) => void)[], logout: [] as ((r: Response) => void)[] };
+  const fetchFn = ((url: string) =>
+    new Promise<Response>((resolver) => {
+      colas[url.includes('/logout') ? 'logout' : 'token'].push(resolver);
+    })) as unknown as typeof fetch;
+  return {
+    fetchFn,
+    soltarToken(cuerpo: unknown): void {
+      colas.token.shift()!(
+        new Response(JSON.stringify(cuerpo), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    },
+    soltarLogout(): void {
+      colas.logout.shift()!(new Response(null, { status: 204 }));
+    },
+  };
+}
+
+/** Un servicio nuevo con `localStorage` y red falsos. El almacén se devuelve para poder afirmarlo. */
+function crear() {
+  const almacen = new Map<string, string>();
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (k: string) => almacen.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      almacen.set(k, v);
+    },
+    removeItem: (k: string) => {
+      almacen.delete(k);
+    },
+  };
+  const red = fetchControlado();
   const a = new AuthService();
-  (a as unknown as { authOpts: { fetchFn: unknown } }).authOpts.fetchFn = () => colgado;
-  conSesion(a);
+  (a as unknown as { authOpts: { fetchFn: unknown } }).authOpts.fetchFn = red.fetchFn;
+  return { a, red, almacen };
+}
 
-  const enVuelo = a.logout();
+/** Instala una sesión viva, en la signal y en el almacén, sin pasar por la red. */
+function instalar(a: AuthService, almacen: Map<string, string>, s: Sesion): void {
+  (a as unknown as { _sesion: { set(v: Sesion | null): void } })._sesion.set(s);
+  almacen.set(CLAVE, JSON.stringify(s));
+}
+
+test('🔴 logout limpia signal y localStorage ANTES de esperar a la red', async () => {
+  // Si la limpieza estuviera después del `await`, la UI seguiría autenticada mientras el fetch
+  // cuelga — y `fetch` no tiene timeout propio, así que puede colgar indefinidamente.
+  const { a, red, almacen } = crear();
+  instalar(a, almacen, SESION_A);
+
+  const cierre = a.logout();
   assert.equal(a.autenticado(), false, 'la sesión tiene que estar cerrada YA, sin esperar la red');
+  assert.equal(almacen.has(CLAVE), false, 'y el localStorage también, o vuelve al recargar');
 
-  soltar!();
-  await enVuelo;
+  red.soltarLogout();
+  await cierre;
   assert.equal(a.autenticado(), false);
 });
 
 test('🔴 logout deja al usuario deslogueado aunque la revocación falle', async () => {
-  const a = new AuthService();
+  const { a, almacen } = crear();
   (a as unknown as { authOpts: { fetchFn: unknown } }).authOpts.fetchFn = () => {
     throw new Error('ECONNREFUSED');
   };
-  conSesion(a);
+  instalar(a, almacen, SESION_A);
 
   await a.logout();
   assert.equal(a.autenticado(), false);
+  assert.equal(almacen.has(CLAVE), false);
 });
 
-test('🔴 un logout lento no puede pisar un login posterior', async () => {
-  // La carrera real: logout → el usuario vuelve a entrar → la revocación vieja termina y borra la
-  // sesión NUEVA. Con la limpieza adelantada y la época, no hay escritura tardía que la pise.
-  let soltar: (() => void) | null = null;
-  const colgado = new Promise<Response>((r) => {
-    soltar = () => r(new Response(null, { status: 204 }));
-  });
-  const a = new AuthService();
-  (a as unknown as { authOpts: { fetchFn: unknown } }).authOpts.fetchFn = () => colgado;
-  conSesion(a);
+test('🔴 un login en vuelo no autentica si mientras tanto hubo logout', async () => {
+  const { a, red } = crear();
+  const entrada = a.login('b@ejemplo.com', 'pw');
+  // Sin sesión viva, `logout` no llama a la red: resuelve solo.
+  await a.logout();
 
-  const enVuelo = a.logout();
-  conSesion(a, { ...SESION, accessToken: 'tok-nuevo', email: 'nuevo@ejemplo.com' });
+  red.soltarToken(respuestaGoTrue('user-b', 'b@ejemplo.com', 'tok-b'));
+  await entrada;
 
-  soltar!();
-  await enVuelo;
+  assert.equal(a.autenticado(), false, 'un login que llega tarde no puede reabrir la sesión');
+});
+
+test('🔴 un logout lento no pisa un login posterior', async () => {
+  // logout → el usuario vuelve a entrar → la revocación vieja termina. No debe borrar lo nuevo.
+  const { a, red, almacen } = crear();
+  instalar(a, almacen, SESION_A);
+
+  const cierre = a.logout();
+  const entrada = a.login('b@ejemplo.com', 'pw');
+  red.soltarToken(respuestaGoTrue('user-b', 'b@ejemplo.com', 'tok-b'));
+  await entrada;
+  red.soltarLogout();
+  await cierre;
 
   assert.equal(a.autenticado(), true, 'el logout viejo no debe borrar la sesión nueva');
-  assert.equal(a.email(), 'nuevo@ejemplo.com');
+  assert.equal(a.email(), 'b@ejemplo.com');
 });
 
 test('🔴 un refresh en vuelo no resucita la sesión después de un logout', async () => {
-  // La carrera inversa: se dispara un refresh, el usuario cierra sesión, y el refresh resuelve
-  // después escribiendo una sesión válida. El portal quedaría autenticado sin que nadie lo pidiera.
-  let soltar: ((v: Response) => void) | null = null;
-  const colgado = new Promise<Response>((r) => {
-    soltar = r;
-  });
-  const a = new AuthService();
-  (a as unknown as { authOpts: { fetchFn: unknown } }).authOpts.fetchFn = () => colgado;
-  conSesion(a);
+  const { a, red, almacen } = crear();
+  instalar(a, almacen, SESION_A);
 
   const refresco = a.refrescar();
-  await a.logout();
+  const cierre = a.logout();
+  red.soltarLogout();
+  await cierre;
 
-  soltar!(
-    new Response(
-      JSON.stringify({ access_token: 'nuevo', refresh_token: 'nuevo-r', user: { id: 'u' } }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
-    ),
-  );
+  red.soltarToken(respuestaGoTrue('user-a', 'a@ejemplo.com', 'tok-a2'));
   assert.equal(await refresco, false);
   assert.equal(a.autenticado(), false, 'el refresh no puede resucitar una sesión cerrada');
+  assert.equal(almacen.has(CLAVE), false);
+});
+
+test('🔴 el refresh de la sesión vieja no pisa un login nuevo', async () => {
+  // La carrera que la ÉPOCA sola no cubre: el refresh arranca después del login, así que comparte
+  // su época y la guarda por época lo dejaría escribir. Solo la identidad de la sesión lo frena.
+  const { a, red, almacen } = crear();
+  instalar(a, almacen, SESION_A);
+
+  const entrada = a.login('b@ejemplo.com', 'pw'); // encola primero
+  const refresco = a.refrescar(); // captura A, encola segundo
+  red.soltarToken(respuestaGoTrue('user-b', 'b@ejemplo.com', 'tok-b')); // resuelve el LOGIN
+  await entrada;
+  red.soltarToken(respuestaGoTrue('user-a', 'a@ejemplo.com', 'tok-a2')); // resuelve el REFRESH
+
+  assert.equal(await refresco, false);
+  assert.equal(a.email(), 'b@ejemplo.com', 'la sesión nueva tiene que sobrevivir');
+});
+
+test('🔴 un refresco en vuelo no se comparte con una sesión distinta', async () => {
+  // `refrescoEnVuelo` se comparte para no disparar N refrescos. Compartirlo entre SESIONES haría
+  // que el refresh de la sesión nueva devolviera el resultado (false) del de la vieja.
+  const { a, red, almacen } = crear();
+  instalar(a, almacen, SESION_A);
+
+  const viejo = a.refrescar();
+  const cierre = a.logout();
+  red.soltarLogout();
+  await cierre;
+  instalar(a, almacen, SESION_B);
+
+  const nuevo = a.refrescar();
+  assert.notEqual(nuevo, viejo, 'no debe reusar el refresco de otra sesión');
+
+  red.soltarToken(respuestaGoTrue('user-a', 'a@ejemplo.com', 'tok-a2'));
+  red.soltarToken(respuestaGoTrue('user-b', 'b@ejemplo.com', 'tok-b2'));
+  await Promise.allSettled([viejo, nuevo]);
 });
 ```
-
-> **Nota para quien implemente:** los campos de `Sesion` y la forma de la respuesta de refresh salen
-> de `portal/src/app/core/models.ts` y de `refrescarSesion` en `auth-core.ts`. **Leelos y usá los
-> nombres reales** — si no coinciden con los de arriba, corregí el test, no el modelo.
 
 - [ ] **Step 6: Correr y verificar que FALLAN**
 
 Run: `cd portal && npx tsx --test src/app/services/auth.test.ts`
 
-Expected: FAIL. `logout()` todavía es síncrono y no revoca, y no existe la guarda de época.
+Expected: FAIL. `logout()` todavía es síncrono y no revoca, y no existen ni la guarda de época ni la
+de identidad de sesión.
 
 - [ ] **Step 7: Reescribir el servicio**
 
@@ -1060,11 +1191,11 @@ Justo después de `private readonly authOpts = {...}` (línea 31), agregá:
 
 ```typescript
   /**
-   * Generación de la sesión. Cambia en cada login y en cada logout, y **todo lo que escriba estado
-   * después de un `await` comprueba que siga siendo la suya**.
+   * Generación de la sesión: cambia en cada login y en cada logout.
    *
-   * Sin esto hay dos carreras reales: un refresh en vuelo que resuelve después de un logout deja la
-   * sesión viva otra vez, y una revocación lenta puede borrar un login posterior.
+   * Sirve **solo para el login**, que es la única operación que no tiene una sesión previa contra la
+   * cual compararse — crea una nueva. Todo lo demás usa la identidad de la sesión capturada, que es
+   * una guarda más fuerte (ver `hacerRefresh`).
    */
   private epoca = 0;
 ```
@@ -1075,7 +1206,8 @@ Reemplazá `login` (líneas 33-41) por:
   async login(email: string, password: string): Promise<void> {
     const epoca = ++this.epoca;
     const sesion = await loginConPassword(this.authOpts, email, password);
-    // Si mientras viajaba el login hubo un logout, este resultado ya no es el que manda.
+    // Si mientras viajaba el login hubo un logout (u otro login), este resultado ya no es el que
+    // manda: escribirlo dejaría al portal autenticado después de que el usuario cerró sesión.
     if (epoca !== this.epoca) return;
     this._sesion.set(sesion);
     try {
@@ -1115,18 +1247,53 @@ Reemplazá `logout` (líneas 43-50) por:
   }
 ```
 
-Reemplazá `hacerRefresh` (líneas 68-91) por:
+Reemplazá el bloque completo de `refrescoEnVuelo` + `refrescar` + `hacerRefresh` (líneas 52-91, incluido el comentario de cabecera) por:
 
 ```typescript
-  private async hacerRefresh(): Promise<boolean> {
+  /**
+   * Renueva el access token con el refresh token. La llama el cliente HTTP cuando la API responde
+   * 401. Si el refresh falla (token revocado o vencido del todo), **cierra la sesión** y devuelve
+   * `false`: el guard mandará al login en la próxima navegación.
+   *
+   * En vuelo puede haber varias llamadas a la vez; se comparte una sola promesa para no disparar N
+   * refrescos. Pero se comparte **solo entre llamadas de la MISMA sesión**: tras un logout y un login
+   * nuevo, engancharse al refresco viejo devolvería su resultado —normalmente `false`— para una
+   * sesión que sí se podía refrescar, y el cliente propagaría un 401 que no correspondía.
+   */
+  private refrescoEnVuelo: { sesion: Sesion; promesa: Promise<boolean> } | null = null;
+
+  refrescar(): Promise<boolean> {
     const actual = this._sesion();
-    if (!actual) return false;
-    const epoca = this.epoca;
+    if (!actual) return Promise.resolve(false);
+    const enVuelo = this.refrescoEnVuelo;
+    if (enVuelo && enVuelo.sesion === actual) return enVuelo.promesa;
+
+    const promesa = this.hacerRefresh(actual);
+    const entrada = { sesion: actual, promesa };
+    this.refrescoEnVuelo = entrada;
+    void promesa.finally(() => {
+      // Solo limpia si sigue siendo el suyo: una promesa vieja no puede borrar una más nueva.
+      if (this.refrescoEnVuelo === entrada) this.refrescoEnVuelo = null;
+    });
+    return promesa;
+  }
+
+  /**
+   * La sesión a refrescar se recibe por parámetro y se usa como **identidad**: antes de escribir se
+   * comprueba que siga siendo la sesión viva.
+   *
+   * Por qué identidad y no la época: la época solo cambia al *iniciar* un login o un logout, así que
+   * un refresh disparado DESPUÉS de arrancar un login comparte su época y pasaría la guarda —
+   * escribiendo la sesión vieja encima de la nueva. Comparar contra `actual` cubre los tres casos de
+   * una vez: tras un logout `_sesion()` es `null`, tras otro login es otro objeto, y en el caso
+   * normal es el mismo.
+   */
+  private async hacerRefresh(actual: Sesion): Promise<boolean> {
     try {
       const sesion = await refrescarSesion(this.authOpts, actual.refreshToken);
-      // Si hubo logout (o un login nuevo) mientras refrescábamos, este resultado está viejo:
-      // escribirlo resucitaría una sesión que el usuario cerró.
-      if (epoca !== this.epoca) return false;
+      // Si mientras refrescábamos hubo un logout o un login, este resultado está viejo: escribirlo
+      // resucitaría una sesión cerrada o pisaría una nueva.
+      if (this._sesion() !== actual) return false;
       // El refresh de Supabase no repite app_metadata: conservamos tenant/rol/email de la sesión viva.
       const fusion: Sesion = {
         ...sesion,
@@ -1142,7 +1309,7 @@ Reemplazá `hacerRefresh` (líneas 68-91) por:
       }
       return true;
     } catch {
-      if (epoca !== this.epoca) return false;
+      if (this._sesion() !== actual) return false;
       // El refresh token ya no sirve —por eso estamos acá—, así que pedirle a Supabase que lo
       // revoque es una llamada que va a fallar. Solo se limpia lo local.
       this.limpiarLocal();
@@ -1169,16 +1336,27 @@ Expected: PASS.
 
 - [ ] **Step 10: Verificación por mutación (NO saltear)**
 
-Tres mutaciones, una por vez, revirtiendo cada una antes de la siguiente:
+Seis mutaciones, **una por vez**, revirtiendo cada una antes de la siguiente. Corré la suite entera
+del portal (`cd portal && npm test`) porque algunas cruzan de archivo.
 
-1. En `services/auth.ts`, mové `this.limpiarLocal()` de antes del `await` a después (`await cerrarSesion(...); this.limpiarLocal();`).
-   Expected: FAIL, **exactamente 1 test**: `🔴 logout limpia el estado local ANTES de esperar a la red`.
-2. En `services/auth.ts`, borrá la guarda `if (epoca !== this.epoca) return false;` del `try` de `hacerRefresh`.
-   Expected: FAIL, **exactamente 1 test**: `🔴 un refresh en vuelo no resucita la sesión después de un logout`.
-3. En `core/auth-core.ts`, quitá el `try`/`catch` de `cerrarSesion`.
-   Expected: FAIL, **exactamente 1 test**: `🔴 cerrarSesion devuelve false si la red falla, y NO lanza`.
+Lo importante no es que caiga *un* test: es que caigan **exactamente los que se predicen acá**. Si
+cae otro, o cae otro número, la garantía no está donde creés y hay que entender por qué antes de
+seguir.
 
-Si alguna tumba otro número de tests, la garantía no está donde creés. **Revertí las tres** y volvé a verde.
+| # | Mutación | Tienen que caer |
+| --- | --- | --- |
+| 1 | En `services/auth.ts`, mové `this.limpiarLocal()` de antes del `await` a después | **2**: `logout limpia signal y localStorage ANTES…` y `un logout lento no pisa un login posterior` |
+| 2 | En `services/auth.ts`, quitá `localStorage.removeItem(CLAVE)` de `limpiarLocal` | **2**: `logout limpia signal y localStorage ANTES…` y `logout deja al usuario deslogueado aunque la revocación falle` |
+| 3 | En `services/auth.ts`, borrá la guarda `if (this._sesion() !== actual) return false;` del `try` de `hacerRefresh` | **2**: `un refresh en vuelo no resucita…` y `el refresh de la sesión vieja no pisa un login nuevo` |
+| 4 | En `services/auth.ts`, borrá la guarda `if (epoca !== this.epoca) return;` de `login` | **1**: `un login en vuelo no autentica si mientras tanto hubo logout` |
+| 5 | En `services/auth.ts`, en `refrescar`, compartí siempre el refresco en vuelo (quitá `&& enVuelo.sesion === actual`) | **1**: `un refresco en vuelo no se comparte con una sesión distinta` |
+| 6 | En `core/auth-core.ts`, quitá el `try`/`catch` de `cerrarSesion` | **2**: `cerrarSesion devuelve false si la red falla…` (auth-core) y `logout deja al usuario deslogueado aunque la revocación falle` (services) |
+
+La 3 y la 4 juntas son la prueba de que **hacen falta las dos guardas**: la de época no cubre el caso
+de la 3 (el refresh arranca *después* del login, así que comparte su época) y la de identidad no
+cubre el de la 4 (el login no tiene sesión previa contra la cual compararse).
+
+**Revertí las seis** y volvé a verde.
 
 - [ ] **Step 11: Commit**
 
@@ -1197,10 +1375,15 @@ Ahora se llama a POST /auth/v1/logout con el access token. El estado local se
 limpia PRIMERO y de forma síncrona: si esperara a la red, la UI quedaría
 autenticada mientras el fetch cuelga, y `fetch` no tiene timeout propio.
 
-Se agrega una guarda de época para dos carreras reales que antes no cubría
-nada: un refresh en vuelo que resolvía después del logout resucitaba la sesión,
-y una revocación lenta podía borrar un login posterior. Con tests de servicio
-—los primeros que tiene— y tres mutaciones que los fijan.
+Se agregan dos guardas para cuatro carreras reales que antes no cubría nada: la
+identidad de la sesión capturada, que impide que un refresh escriba encima de
+una sesión que ya no es la suya, y una época, que invalida un login que llega
+tarde. Hacen falta las dos: un refresh disparado DESPUÉS de arrancar un login
+comparte su época y la pasaría, y un login no tiene sesión previa contra la
+cual compararse. `refrescoEnVuelo` se comparte ahora solo dentro de la misma
+sesión, o el refresh de la sesión nueva devolvería el resultado de la vieja.
+
+Con tests de servicio —los primeros que tiene— y seis mutaciones que los fijan.
 
 Alcance global (el default de Supabase): revoca todas las sesiones del usuario.
 Los access tokens ya emitidos siguen valiendo hasta su exp; la API verifica
@@ -1278,6 +1461,7 @@ En la fila de troubleshooting de la línea 406, reemplazá `SUPABASE_JWT_SECRET`
 ```markdown
 | El login falla con `Token inválido o expirado` y las credenciales son correctas | El proyecto firma con un algoritmo que la API no acepta | Mirá `curl -s https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`: el `alg` que declare es el que `api/src/auth.ts` tiene que exigir. |
 | La API responde `503` con `No se puede verificar el token` | No puede bajar el JWKS de Supabase | No es un problema de credenciales. Comprobá que `SUPABASE_JWT_ISS` sea exactamente `https://<ref>.supabase.co/auth/v1` y que Supabase esté arriba. |
+| Rotaste la clave de firma **por sospecha de compromiso** y la vieja sigue funcionando | La API cachea el JWKS 10 minutos | Rotar en Supabase no alcanza: **reiniciá el servicio de la API en Railway** para vaciar el caché. En una rotación planificada no hace falta. |
 ```
 
 - [ ] **Step 4: Corregir el resto de las referencias**
@@ -1331,6 +1515,13 @@ daba la sesión por muerta y quemaba el refresh token ante una caída de Supabas
 una **allowlist de códigos de token**: un fallo de red no siempre trae un código de `jose` (un
 resolvedor que rechaza llega sin `code`; `createRemoteJWKSet` contra un host muerto llega con
 `ECONNREFUSED`, que es de Node), así que todo lo no enumerado se trata como infraestructura.
+
+**Consecuencia operativa: la rotación de emergencia necesita un reinicio.** `createRemoteJWKSet`
+cachea el JWKS 10 minutos y tiene 30 s de cooldown. En una rotación *planificada* eso es invisible,
+porque Supabase publica la clave nueva antes de firmar con ella. En una rotación **reactiva** —por
+sospecha de compromiso— no: el caché puede seguir aceptando firmas de la clave retirada hasta 10
+minutos. El procedimiento de emergencia no es solo rotar en Supabase; hay que **reiniciar el servicio
+de la API en Railway** para vaciar el caché.
 
 **Descartado.** Volver el proyecto a HS256 (deuda a seis meses, y conserva el secreto) y aceptar
 ambos algoritmos (dos caminos en el borde de seguridad más crítico, justo donde diez reviews vinieron
