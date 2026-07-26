@@ -5,7 +5,7 @@ import { aplicarMigraciones, PglitePool, PgStore } from "db";
 import type { TenantContext } from "db";
 import { createApp } from "./app.js";
 import type { EmisorEventos } from "./solicitar.js";
-import type { VerificadorToken } from "./auth.js";
+import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
 
 /**
  * La API entera contra Postgres REAL (PGlite), sin red y sin Supabase.
@@ -349,4 +349,16 @@ test("sanity: el store de servicio ve la fila sembrada", async () => {
   const servicio = new PgStore(new PglitePool(pg), "app_service");
   const run = await servicio.getRun(ctxServicio(), runA1);
   assert.equal(run?.id, runA1);
+});
+
+test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", async () => {
+  // Un 401 acá haría que el portal dé la sesión por muerta y queme el refresh token por una caída
+  // de Supabase. Sigue sin dejar pasar a nadie.
+  const caido: VerificadorToken = async () => NO_DISPONIBLE;
+  const emisorInerte: EmisorEventos = { send: async () => ({}) };
+  const appCaida = createApp({ store, emisor: emisorInerte, verificar: caido });
+  const res = await appCaida.request("/runs", {
+    headers: { authorization: "Bearer lo-que-sea", "x-amg-tenant": tenantA },
+  });
+  assert.equal(res.status, 503);
 });

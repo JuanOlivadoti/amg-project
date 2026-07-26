@@ -1,6 +1,12 @@
 import { NodePgPool, PgStore } from "db";
 import { Inngest } from "inngest";
-import { verificadorSupabase, type VerificadorToken } from "./auth.js";
+import {
+  verificadorSupabase,
+  emisorSupabase,
+  jwksDeSupabase,
+  type EmisorSupabase,
+  type VerificadorToken,
+} from "./auth.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { ApiDeps } from "./app.js";
 
@@ -11,23 +17,25 @@ import type { ApiDeps } from "./app.js";
 export interface ConfigApi {
   /** Cadena de conexión del login `amg_api`. Ese login SOLO puede asumir `app_user` (ADR-17). */
   databaseUrl: string;
-  /** Secreto del JWT de Supabase (HS256), para verificar la firma del token. */
-  jwtSecret: string;
+  /**
+   * Emisor Supabase **ya validado y canonizado** (de `SUPABASE_JWT_ISS`). **Obligatorio**: de acá
+   * salen las dos cosas que antes podían no coincidir — el `iss` que se le exige al token y la URL
+   * del JWKS con el que se comprueba la firma. Antes el issuer era opcional; que lo fuera era el
+   * agujero: un token válido de OTRO proyecto Supabase entraba.
+   */
+  emisor: EmisorSupabase;
   /** Id de la app Inngest emisora. La API es una app distinta del orquestador: solo envía eventos. */
   inngestId?: string;
   /** Orígenes CORS permitidos (coma-separados en `CORS_ORIGINS`). Sin esto: `*` (ver `app.ts`). */
   corsOrigins?: string[];
   /** `aud` esperado del JWT. Default `authenticated` (lo que emite Supabase). */
   jwtAudience?: string;
-  /** `iss` esperado (`https://<proy>.supabase.co/auth/v1`). Configurarlo cierra la puerta a tokens
-   *  válidos de OTRO proyecto Supabase. Sin configurar, no se exige. */
-  jwtIssuer?: string;
 }
 
 /** Lee la config del entorno y **falla cerrado** si falta algo: una API a medio configurar no arranca. */
 export function leerConfig(): ConfigApi {
   const databaseUrl = process.env["DATABASE_URL_API"];
-  const jwtSecret = process.env["SUPABASE_JWT_SECRET"];
+  const issCrudo = process.env["SUPABASE_JWT_ISS"]?.trim();
   const corsRaw = process.env["CORS_ORIGINS"]?.trim();
   // CORS_ORIGINS es OBLIGATORIO acá a propósito. `createApp` defaultea a `origin: *`, y para la API
   // local (dev-server, que arma sus deps a mano) eso está bien. Pero este `leerConfig` es el arranque
@@ -37,7 +45,7 @@ export function leerConfig(): ConfigApi {
   // por cookies—, pero una restricción declarada y no impuesta no es una restricción.)
   const faltan = [
     !databaseUrl && "DATABASE_URL_API (login amg_api → rol app_user)",
-    !jwtSecret && "SUPABASE_JWT_SECRET (para verificar el token)",
+    !issCrudo && "SUPABASE_JWT_ISS (https://<proy>.supabase.co/auth/v1; de acá sale el JWKS)",
     !corsRaw && "CORS_ORIGINS (origen del portal; en producción no se sirve con `*`)",
   ].filter((x): x is string => Boolean(x));
   if (faltan.length > 0) {
@@ -61,13 +69,14 @@ export function leerConfig(): ConfigApi {
   }
 
   const aud = process.env["SUPABASE_JWT_AUD"]?.trim();
-  const iss = process.env["SUPABASE_JWT_ISS"]?.trim();
+  // Valida y canoniza acá, al arrancar: si el issuer está mal, la API no levanta. Es preferible a
+  // levantar y rechazar todos los logins, que es como se ve el mismo error desde afuera.
+  const emisor = emisorSupabase(issCrudo as string);
   return {
     databaseUrl: databaseUrl as string,
-    jwtSecret: jwtSecret as string,
+    emisor,
     corsOrigins,
     ...(aud ? { jwtAudience: aud } : {}),
-    ...(iss ? { jwtIssuer: iss } : {}),
   };
 }
 
@@ -105,9 +114,11 @@ export async function crearDeps(
     send: (evento) => inngest.send({ name: evento.name, data: evento.data }),
   };
 
-  const verificar: VerificadorToken = verificadorSupabase(config.jwtSecret, {
+  // El JWKS se deriva del MISMO emisor canónico que se exige como `iss`, y se comparte para toda la
+  // vida del proceso: `createRemoteJWKSet` cachea la clave y refresca sola.
+  const verificar: VerificadorToken = verificadorSupabase(jwksDeSupabase(config.emisor), {
     ...(config.jwtAudience ? { audience: config.jwtAudience } : {}),
-    ...(config.jwtIssuer ? { issuer: config.jwtIssuer } : {}),
+    issuer: config.emisor.issuer,
   });
 
   return {

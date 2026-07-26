@@ -1,6 +1,17 @@
-import { jwtVerify } from "jose";
+import { jwtVerify, createRemoteJWKSet, type JWTVerifyGetKey } from "jose";
 import type { MiddlewareHandler } from "hono";
 import type { TenantContext } from "db";
+
+/**
+ * El verificador no pudo COMPROBAR la firma: JWKS inalcanzable, DNS caído, timeout.
+ *
+ * No es lo mismo que un token inválido, y confundirlos tiene una consecuencia concreta: el portal
+ * trata cualquier 401 como "token vencido", así que quema el refresh token y reintenta. Con esto,
+ * una caída del JWKS devuelve 503 y el portal no destruye la sesión de nadie.
+ *
+ * **Sigue fallando cerrado**: 401 y 503 deniegan igual. Lo único que cambia es qué se informa.
+ */
+export const NO_DISPONIBLE = "no-disponible";
 
 /**
  * Verifica el token y devuelve QUIÉN es. Nada más.
@@ -9,7 +20,9 @@ import type { TenantContext } from "db";
  * Supabase ni criptografía; producción pasa el de abajo. Es la misma disciplina que ya separa el
  * emisor de eventos de Inngest.
  */
-export type VerificadorToken = (token: string) => Promise<{ userId: string } | null>;
+export type VerificadorToken = (
+  token: string,
+) => Promise<{ userId: string } | null | typeof NO_DISPONIBLE>;
 
 /** Qué se le exige al token además de la firma. Ver `verificadorSupabase`. */
 export interface OpcionesJwt {
@@ -23,30 +36,66 @@ export interface OpcionesJwt {
 export const AUD_SUPABASE = "authenticated";
 
 /**
- * Verificador de JWT de Supabase (HS256 con el secreto del proyecto).
+ * Códigos de `jose` que hablan del TOKEN: la credencial que trajo el usuario está mal.
+ *
+ * Todo lo que NO esté acá se trata como "no pude comprobar". Es a propósito que la lista sea de
+ * códigos de token y no de códigos de red: un fallo de red no siempre trae un código de `jose` —
+ * está medido que un resolvedor que rechaza llega **sin `code`**, y `createRemoteJWKSet` contra un
+ * host muerto llega con `ECONNREFUSED`, que es de Node. Enumerar lo enumerable y tratar el resto
+ * como infraestructura es lo único que no deja un caso sin clasificar.
+ *
+ * `ERR_JWKS_NO_MATCHING_KEY` cuenta como token: el `kid` no está en el conjunto de confianza. La
+ * rotación no lo dispara en la práctica — Supabase publica la clave nueva antes de firmar con ella,
+ * y la vieja sigue en el JWKS.
+ */
+const CODIGOS_DE_TOKEN = new Set([
+  "ERR_JWS_INVALID",
+  "ERR_JWT_INVALID",
+  "ERR_JWS_SIGNATURE_VERIFICATION_FAILED",
+  "ERR_JWT_EXPIRED",
+  "ERR_JWT_CLAIM_VALIDATION_FAILED",
+  "ERR_JOSE_ALG_NOT_ALLOWED",
+  "ERR_JOSE_NOT_SUPPORTED",
+  "ERR_JWKS_NO_MATCHING_KEY",
+  "ERR_JWKS_MULTIPLE_MATCHING_KEYS",
+]);
+
+/**
+ * Verificador de JWT de Supabase (**ES256 contra el JWKS del proyecto**).
+ *
+ * No recibe un secreto: recibe un RESOLVEDOR de claves. Producción le pasa `jwksDeSupabase(...)`
+ * —que baja la clave pública y la cachea— y los tests le pasan un JWKS local. Esa inversión es lo
+ * que mantiene la suite sin red.
+ *
+ * Por qué no hay secreto compartido: Supabase firma con una clave asimétrica y **la privada nunca
+ * sale de Supabase**. Antes había un `SUPABASE_JWT_SECRET` en las variables de Railway, en las notas
+ * de despliegue y en cualquier transcript donde se hubiera pegado. Ahora no hay nada que filtrar.
  *
  * Comprueba la firma **y exige `exp` y `sub`**. Lo de `exp` no es un detalle: `jwtVerify` valida la
- * expiración *si el claim está*, pero **no lo exige** — así que un token firmado con el secreto
- * correcto y **sin `exp` no caducaba nunca** y era aceptado. Con `requiredClaims` deja de pasar.
- * (Lo encontró la 8ª review: yo escribí este verificador y **ningún test lo tocaba** — los de la API
- * usan un verificador falso, así que mutarlo para aceptar cualquier token dejaba todo en verde.)
+ * expiración *si el claim está*, pero **no lo exige** — así que un token bien firmado y **sin `exp`
+ * no caducaba nunca**. Con `requiredClaims` deja de pasar. (Lo encontró la 8ª review: yo escribí
+ * este verificador y **ningún test lo tocaba**.)
  *
- * `aud` se verifica por defecto (`authenticated`) y `iss` si se configura: un token válido emitido
- * por otro proyecto, o para otra audiencia, no debería abrir esta puerta.
+ * Un token **sin `kid`** se acepta si el JWKS tiene una sola clave compatible. Está medido y es una
+ * decisión, no un descuido: la clave sale igual del conjunto de confianza, y exigir `kid` nos ata a
+ * un detalle del header que Supabase puede cambiar. Hay un test que lo fija.
  *
  * Acá termina lo que la API afirma: **quién es**. **Qué puede hacer** no se decide en TypeScript —
  * lo deriva Postgres de `memberships` (ADR-15).
  */
-export function verificadorSupabase(jwtSecret: string, opts: OpcionesJwt = {}): VerificadorToken {
-  const secret = new TextEncoder().encode(jwtSecret);
+export function verificadorSupabase(
+  claves: JWTVerifyGetKey,
+  opts: OpcionesJwt = {},
+): VerificadorToken {
   const audience = opts.audience ?? AUD_SUPABASE;
   return async (token) => {
     try {
-      const { payload } = await jwtVerify(token, secret, {
-        // El contrato es HS256 y hay que IMPONERLO: sin esta línea, un HS512 firmado con el mismo
-        // secreto también entraba. No era un bypass (hay que tener el secreto), pero una política
-        // declarada y no impuesta no es una política. Lo halló la 9ª review.
-        algorithms: ["HS256"],
+      const { payload } = await jwtVerify(token, claves, {
+        // Lista CERRADA de un solo algoritmo, y ahora importa más que antes: con firma asimétrica la
+        // clave pública es conocida, así que aceptar un segundo algoritmo abre la puerta a que el
+        // token se valide contra una clave que no es la que debería firmarlo. La fija el test de
+        // ES384 (el de HS256 NO sirve para esto: ver su comentario).
+        algorithms: ["ES256"],
         // Sin esto, un token sin `exp` es eterno. Y sin `sub` no hay a quién identificar.
         requiredClaims: ["exp", "sub"],
         ...(audience ? { audience } : {}),
@@ -55,10 +104,87 @@ export function verificadorSupabase(jwtSecret: string, opts: OpcionesJwt = {}): 
       const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
       // `sub` en blanco (o solo espacios) no identifica a nadie: `app.user_id` quedaría vacío.
       return sub.length > 0 ? { userId: sub } : null;
-    } catch {
-      return null;
+    } catch (e) {
+      const code = (e as { code?: unknown }).code;
+      // Los dos caminos deniegan. La diferencia es si el problema es del token o nuestro.
+      return typeof code === "string" && CODIGOS_DE_TOKEN.has(code) ? null : NO_DISPONIBLE;
     }
   };
+}
+
+/** Emisor Supabase ya validado y canonizado: el `iss` que se exige y de dónde sale su clave. */
+export interface EmisorSupabase {
+  /** `iss` exacto que tiene que traer el token. Sin barra final. */
+  issuer: string;
+  /** `<issuer>/.well-known/jwks.json`. */
+  jwksUrl: URL;
+}
+
+/**
+ * Valida y canoniza el emisor. **Lanza** si no cierra: una API a medio configurar no arranca.
+ *
+ * Por qué canoniza en UN solo lugar: si se le quitara la barra final solo para armar la URL del
+ * JWKS, el `iss` que se exige quedaría con la barra, no coincidiría con el que emite Supabase y
+ * **ningún token verificaría** — el mismo 401 total que este cambio viene a arreglar.
+ *
+ * Por qué no alcanza con exigir `https`: `https://atacante.example/auth/v1` es https y válido, y
+ * bajaría el JWKS de un host ajeno. Eso no es solo una petición saliente indeseada: sustituye el
+ * emisor de confianza entero, y a partir de ahí cualquier token que ese host firme entra. Por eso se
+ * ancla al dominio de Supabase.
+ *
+ * Limitación conocida y aceptada: un dominio de auth propio (Supabase lo permite) no pasaría esta
+ * validación. Si algún día se usa, hay que ampliar esto a propósito — que falle ruidosamente al
+ * arrancar es exactamente lo que se busca.
+ */
+export function emisorSupabase(valor: string): EmisorSupabase {
+  const crudo = valor.trim();
+  let url: URL;
+  try {
+    url = new URL(crudo);
+  } catch {
+    throw new Error(`SUPABASE_JWT_ISS no es una URL válida: "${crudo}".`);
+  }
+  if (url.protocol !== "https:") {
+    throw new Error(`SUPABASE_JWT_ISS debe ser https (es "${url.protocol}").`);
+  }
+  if (url.username || url.password) {
+    throw new Error("SUPABASE_JWT_ISS no puede llevar credenciales embebidas.");
+  }
+  if (url.port) {
+    throw new Error(`SUPABASE_JWT_ISS no lleva puerto (tiene ":${url.port}").`);
+  }
+  if (url.search || url.hash) {
+    throw new Error("SUPABASE_JWT_ISS no puede llevar query ni fragment.");
+  }
+  // Exactamente `<project-ref>.supabase.co`: UNA etiqueta no vacía y nada más. Un `endsWith`
+  // dejaba pasar `supabase.co` pelado, `.supabase.co` y `a.b.supabase.co`, que no son endpoints de
+  // proyecto: la API arrancaría para después fallar en cada login con un 503 inexplicable.
+  if (!/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname)) {
+    throw new Error(
+      `SUPABASE_JWT_ISS debe ser un host de proyecto Supabase (es "${url.hostname}"). ` +
+        "Formato esperado: https://<project-ref>.supabase.co/auth/v1",
+    );
+  }
+  const ruta = url.pathname.replace(/\/+$/, "");
+  if (ruta !== "/auth/v1") {
+    throw new Error(
+      `SUPABASE_JWT_ISS debe terminar en /auth/v1 (su ruta es "${url.pathname}").`,
+    );
+  }
+  const issuer = `${url.origin}${ruta}`;
+  return { issuer, jwksUrl: new URL(`${issuer}/.well-known/jwks.json`) };
+}
+
+/**
+ * El resolvedor de claves del proyecto.
+ *
+ * `createRemoteJWKSet` cachea la clave y refresca con cooldown (medido en jose 5.10.0: timeout 5 s,
+ * cooldown 30 s, cache 10 min), así que soporta rotación sin redeploy y no pega en cada request.
+ * Durante una rotación puede haber hasta ~30 s en que un `kid` recién publicado no se resuelve; es
+ * aceptable porque Supabase publica la clave nueva antes de firmar con ella.
+ */
+export function jwksDeSupabase(emisor: EmisorSupabase): JWTVerifyGetKey {
+  return createRemoteJWKSet(emisor.jwksUrl);
 }
 
 /** UUID, para rechazar un tenant basura antes de tocar la base. */
@@ -89,6 +215,11 @@ export function autenticar(
     if (!token) return c.json({ error: "Falta el token Bearer." }, 401);
 
     const claims = await verificar(token);
+    if (claims === NO_DISPONIBLE) {
+      // No es culpa de la credencial: no pudimos comprobarla. Con 401 el portal daría por muerta la
+      // sesión y quemaría el refresh token por una caída de Supabase.
+      return c.json({ error: "No se puede verificar el token en este momento." }, 503);
+    }
     if (!claims) return c.json({ error: "Token inválido o expirado." }, 401);
 
     const tenantId = c.req.header(TENANT_HEADER) ?? "";

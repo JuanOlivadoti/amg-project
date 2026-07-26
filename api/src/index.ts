@@ -4,8 +4,8 @@
  */
 export { createApp } from "./app.js";
 export type { ApiDeps } from "./app.js";
-export { autenticar, verificadorSupabase, TENANT_HEADER } from "./auth.js";
-export type { VerificadorToken, Variables } from "./auth.js";
+export { autenticar, verificadorSupabase, emisorSupabase, jwksDeSupabase, TENANT_HEADER, NO_DISPONIBLE } from "./auth.js";
+export type { VerificadorToken, Variables, EmisorSupabase } from "./auth.js";
 export { solicitarResearch } from "./solicitar.js";
 export type { EmisorEventos, PeticionResearch } from "./solicitar.js";
 export { crearDeps, leerConfig } from "./deps.js";
