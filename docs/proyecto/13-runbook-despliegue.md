@@ -398,6 +398,49 @@ sirvan por HTTPS, o el navegador bloquea la llamada de una página https a un ba
 
 ---
 
+## Actualizar una instalación ya desplegada
+
+Este runbook, hasta acá, es _green-field_: asume que estás desplegando desde cero y podés cargar
+todas las variables antes del primer deploy. Pero un push a `main` **autodespliega los dos lados a la
+vez** —la API en Railway y el portal en Hostinger— así que no se pueden escalonar: no hay forma de
+subir el código nuevo y esperar a cargar la variable después.
+
+**Regla general:** cuando una release hace que una variable nueva sea **obligatoria**, esa variable
+va a Railway **antes** que el código, no después. `leerConfig` (`api/src/deps.ts`) falla cerrado si
+falta algo obligatorio, así que el orden importa dos veces:
+
+- variable primero, código después → el deploy nuevo arranca con la variable ya puesta;
+- código primero, variable después → la API **no arranca**: `/health` deja de responder y el
+  servicio entero da 502, no un 401 como hasta entonces. **El apagón empeora, no mejora.**
+
+### Esta release (`fix/jwt-es256`): qué cargar antes de mergear
+
+1. En Railway → **Variables**, agregá:
+
+   | Variable | Valor exacto |
+   | --- | --- |
+   | `SUPABASE_JWT_ISS` | `https://<project-ref>.supabase.co/auth/v1` |
+
+   Sin barra final, y **con** el sufijo `/auth/v1`: una URL "pelada" como
+   `https://<project-ref>.supabase.co` **no sirve** — `emisorSupabase` la rechaza al arrancar (es de
+   ahí que sale el JWKS, y sin `/auth/v1` la ruta no existe). El `<project-ref>` es el mismo que ya
+   usa el portal en `environment.prod.ts`; no es secreto, viaja en el bundle.
+
+2. **En la misma edición**, borrá `SUPABASE_JWT_SECRET` de Railway si todavía está cargada: ya no
+   forma parte del contrato de la API (`leerConfig` no la lee), y dejarla ahí no hace nada salvo
+   confundir a quien mire la lista de variables después. _No_ hace falta rotarla en Supabase para
+   este paso — eso es aparte, ver [12-credenciales.md](12-credenciales.md#al-desplegar-en-supabase).
+
+3. Recién ahí, mergeá `fix/jwt-es256` a `main`. El push dispara el autodeploy de la API (Railway) y
+   del portal (Hostinger) al mismo tiempo — con `SUPABASE_JWT_ISS` ya puesta, el proceso nuevo arranca
+   igual que el viejo, solo que ahora los logins funcionan.
+
+4. Verificá con el navegador (no alcanza con `/health` en verde): entrá a `https://bigballs.es`,
+   logueate con un usuario real y confirmá que **no** da `401 Token inválido o expirado`. Recién ahí
+   el login está arreglado — arreglado es "desplegado y verificado", no "el código está en la rama".
+
+---
+
 ## Troubleshooting (los errores que más probablemente veas)
 
 | Síntoma                                                                                                    | Causa probable                                          | Fix                                                                                                                                                |

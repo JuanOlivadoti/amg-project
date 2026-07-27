@@ -3,12 +3,13 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-26** · **464 tests en verde**
+> Última actualización: **2026-07-27** · **464 tests en verde** (monorepo) + **60** en el portal
 >
-> **Dónde estamos hoy:** Fase 1 desplegada, pero **el login está roto en producción** — el proyecto de
-> Supabase firma `ES256` y la API esperaba `HS256`. Se arregla en la **pieza A** (rama
-> `fix/jwt-es256`, tarea 1 de 4 hecha). Ver §5.3 y el
-> [estado y roadmap](09-estado-y-roadmap.md).
+> **Dónde estamos hoy:** Fase 1 desplegada, pero **el login sigue roto en producción** — el proyecto
+> de Supabase firma `ES256` y la API esperaba `HS256`. **Las 4 tareas de la pieza A están completas**
+> en la rama `fix/jwt-es256`, pero la rama no está mergeada. Lo que falta es operativo, no código:
+> cargar `SUPABASE_JWT_ISS` en Railway, borrar `SUPABASE_JWT_SECRET`, mergear y verificar el login en
+> el navegador. Ver §5.3 y el [estado y roadmap](09-estado-y-roadmap.md).
 
 ---
 
@@ -187,7 +188,12 @@ Paso a paso, con los tropiezos reales, en [13-runbook-despliegue.md](13-runbook-
 > `SUPABASE_JWT_SECRET` desaparece y `SUPABASE_JWT_ISS` pasa a obligatoria. De paso se arregla el
 > logout, que solo borraba el `localStorage` sin revocar nada del lado del servidor.
 > [Spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
-> [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) · tarea 1 de 4 hecha.
+> [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) · **las 4 tareas hechas en la
+> rama.** Lo que sigue pendiente es operativo: `SUPABASE_JWT_ISS` en Railway (cargarla ANTES del
+> merge — [runbook § Actualizar una instalación ya
+> desplegada](13-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada)), borrar
+> `SUPABASE_JWT_SECRET`, mergear a `main`, y **verificar el login en el navegador**. Hasta que las
+> cuatro pasen, el login sigue roto en producción — el código en una rama no es un login arreglado.
 
 El orquestador y el renderizador siguen **sin desplegar** (son Fase 2). Van como **servicio Node de
 larga duración**, no serverless: el research encadena llamadas live a DataForSEO y generación por
@@ -319,7 +325,7 @@ Todas con su ADR. Las que más condicionan lo que viene:
 |---|---|---|
 | **Acción 06 — corrida final** | [acciones/06](../acciones/06-corrida-final-demo.md) | ~$0.31. La demo publicada es anterior a kr.v0.5. |
 | ~~Migrar SERP + Search Volume a Standard~~ | `kr-service/src/dataforseo/` | ✅ **Hecho** (tandas 11-12): `task_post`/`task_get` con doble capa de recuperación. La 6ª review encontró 4 bugs en la primera versión; corregidos y mutation-tested. |
-| **Pieza A — verificación JWT ES256** | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | 🔴 **Bloquea todo**: hoy ningún login funciona en producción. Tarea 1 de 4 hecha (`9706bec`). |
+| **Pieza A — verificación JWT ES256** | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | 🔴 **Bloquea todo hasta desplegarse**: las 4 tareas están hechas en `fix/jwt-es256`, pero mientras la rama no se mergee y se despliegue (`SUPABASE_JWT_ISS` en Railway primero), ningún login funciona en producción. |
 | **Cuánto tarda un research real** | — | **Nunca se midió.** Tengo el coste ($0.31), no la duración. Define la UX del portal **y decide si la pieza D (research en vivo en la demo) se hace**: a ~90 s es el mejor momento de la demo; a ~12 min, Frank mira un spinner. |
 | Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
 | `is_local` se dispara de más | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo `LocalBusiness`. Ensucia el JSON-LD. |

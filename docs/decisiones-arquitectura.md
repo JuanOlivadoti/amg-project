@@ -1038,10 +1038,14 @@ puede ver si hay una credencial mal puesta (ADR-17).
 
 ### CORS: el navegador del portal llama desde otro origen
 
-El portal (5.2) corre en otro origen, así que la API lleva CORS (`CORS_ORIGINS`, default `*`). Es
-seguro con `*` porque la API autentica por **header `Authorization`**, no por cookies: no hay
-credenciales de sesión que un origen ajeno pueda robar, y el token igual hay que tenerlo. El
-preflight (OPTIONS) corre **antes** que el middleware de auth —si no, lo bloquearía—. Probado.
+El portal (5.2) corre en otro origen, así que la API lleva CORS (`CORS_ORIGINS`). La API autentica
+por **header `Authorization`**, no por cookies —no hay credenciales de sesión que un origen ajeno
+pueda robar, y el token igual hay que tenerlo—, así que `*` sería inofensivo en teoría. Pero
+`leerConfig` lo **rechaza en la práctica**: `CORS_ORIGINS` es **obligatoria, sin default**, y un
+valor `*` hace que la API no arranque. Un default abierto en la única pieza autenticada expuesta a
+internet no debe depender de que nadie se olvide de configurarlo — la teoría de que `*` es seguro no
+es motivo para dejarlo como salida fácil. El preflight (OPTIONS) corre **antes** que el middleware
+de auth —si no, lo bloquearía—. Probado.
 
 ### Un lector-no-escritor no puede colarse por la puerta del 200
 

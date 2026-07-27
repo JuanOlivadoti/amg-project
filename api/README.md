@@ -73,7 +73,7 @@ una API a medio configurar es un riesgo, no una comodidad.
 | `DATABASE_URL_API` | **obligatoria** | Login `amg_api` → rol `app_user`. No puede asumir `app_service` (ADR-17). |
 | `SUPABASE_JWT_ISS` | **obligatoria** | `iss` del proyecto Supabase (`https://<proy>.supabase.co/auth/v1`). De acá sale el JWKS contra el que se verifica la firma ES256, y amarra el emisor: cierra la puerta a un token válido de OTRO proyecto Supabase. |
 | `SUPABASE_JWT_AUD` | `authenticated` | `aud` esperado. Es lo que emite Supabase para un usuario logueado. |
-| `CORS_ORIGINS` | `*` | Orígenes del portal, coma-separados. Seguro con `*` porque se autentica por header, no por cookies. |
+| `CORS_ORIGINS` | **obligatoria, sin default** | Orígenes del portal, coma-separados, cada uno una URL http(s) completa. `leerConfig` **rechaza `*` explícitamente**: aunque la auth por header (no cookies) haría `*` inofensivo en teoría, un default abierto en la única pieza autenticada expuesta a internet es la clase de cosa que no debe depender de que nadie se olvide de configurarla. |
 | `PORT` | `3000` | |
 
 > 🔐 **Al token se le exige `exp` y `sub`, no solo la firma.** `jwtVerify` valida la expiración *si el

@@ -80,9 +80,17 @@ global. El override tampoco se filtra a otro paquete: hay un test de eso.
 > `migrate:deploy` y `seed:demo`, a mano, una vez. Vive en `db/.env` y **nunca** se carga en Railway.
 
 > **La API no tiene ningún secreto de Supabase.** Verifica los tokens contra el **JWKS público** del
-> proyecto (`<iss>/.well-known/jwks.json`), derivado de `SUPABASE_JWT_ISS`. La clave privada nunca
-> sale de Supabase y la pública es pública por definición: no hay nada que rotar ni que filtrar.
-> Antes había un `SUPABASE_JWT_SECRET` compartido — se eliminó el 2026-07-26.
+> proyecto (`<iss>/.well-known/jwks.json`), derivado de `SUPABASE_JWT_ISS`. La clave privada de la
+> firma nunca sale de Supabase y la pública es pública por definición: no hay nada que rotar ni que
+> filtrar **en el JWKS**.
+>
+> Lo que se eliminó el 2026-07-26 es el `SUPABASE_JWT_SECRET` compartido **del contrato de la API**:
+> ya no lo lee, ya no lo acepta, ya no confía en HS256. Eso **no** lo vuelve inerte: el secreto sigue
+> siendo válido en el proyecto de Supabase hasta que se revoque **ahí**, y un HS256 firmado con él
+> puede acuñar un token `service_role` que **bypassea RLS por completo** contra la base — un radio de
+> daño que no depende de si nuestra API lo acepta. **Pendiente:** revocar/rotar `SUPABASE_JWT_SECRET`
+> en el proyecto de Supabase (Project Settings → API → JWT Settings). No es una tarea de esta pieza,
+> pero queda abierta hasta que alguien la haga.
 
 ---
 

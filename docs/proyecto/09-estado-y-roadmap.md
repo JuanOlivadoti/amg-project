@@ -2,7 +2,10 @@
 
 ## Resumen ejecutivo
 
-> Actualizado 2026-07-26: pieza A en curso — la verificación de JWT que hoy bloquea el login.
+> Actualizado 2026-07-27: pieza A **completa en la rama** `fix/jwt-es256` (las 4 tareas). Lo que
+> falta es operativo, no código: cargar `SUPABASE_JWT_ISS` en Railway, borrar `SUPABASE_JWT_SECRET`,
+> mergear y verificar el login en el navegador. Hasta que eso no pase, el login **sigue roto en
+> producción** — el código en la rama no arregla nada por sí solo.
 
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
@@ -31,16 +34,18 @@ con RLS forzada en Supabase (`eu-west-2`).
 > distintas.** `/health` daba 200, el CORS aceptaba solo el portal, el `401` sin token era correcto —
 > y aun así nada funcionaba para un usuario real.
 >
-> Se está arreglando en la **pieza A** (rama `fix/jwt-es256`): ver abajo.
+> **El código que lo arregla está completo en la pieza A** (rama `fix/jwt-es256`, las 4 tareas —ver
+> abajo), pero **no está mergeado ni desplegado**. Hasta que no lo esté y se verifique en el
+> navegador, esta caja sigue en rojo: código en una rama no es lo mismo que login funcionando.
 
 Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **461** en el monorepo + **45** en el portal. Los de seguridad, contra Postgres real |
+| **Tests** | **464** en el monorepo + **60** en el portal. Los de seguridad, contra Postgres real |
 | **Migraciones** | 9 (`0001`..`0009`) |
-| **ADRs** | 22, más 3 observaciones (**las 3 cerradas**). ADR-23 se agrega al cerrar la pieza A |
+| **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
 
@@ -169,22 +174,28 @@ panorama — son lo que las hace creíbles.
 
 | # | Pieza | Estado | Depende de |
 | --- | --- | --- | --- |
-| **A** | **Verificación JWT ES256 + logout que revoca** | 🟡 **En curso** — rama `fix/jwt-es256` | — |
+| **A** | **Verificación JWT ES256 + logout que revoca** | 🟢 **Código completo** en `fix/jwt-es256`, **falta mergear y desplegar** | — |
 | **B** | Modo oscuro (**solo el portal**) | ⚪ Sin empezar | — |
 | **C** | Dashboard de cartera + seed de 4-6 restaurantes | ⚪ Sin empezar | A |
 | **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | A + la medición |
 
 **Pieza A** ([spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
-[plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md)): 4 tareas.
+[plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md)): 4 tareas, **las 4 hechas** en la
+rama.
 
 | Tarea | Estado |
 | --- | --- |
 | 1 — El verificador exige ES256 contra el JWKS y distingue "no pude comprobar" (503) | ✅ Hecha (`9706bec`) |
-| 2 — El contrato de variables pierde el secreto | ⏳ Pendiente |
-| 3 — El logout revoca en Supabase, sin bloquear la UI ni pisar sesiones nuevas | ⏳ Pendiente |
-| 4 — Documentación, credenciales y despliegue | ⏳ Pendiente |
+| 2 — El contrato de variables pierde el secreto | ✅ Hecha (`2630878`) |
+| 3 — El logout revoca en Supabase, sin bloquear la UI ni pisar sesiones nuevas | ✅ Hecha (`c0ead5b`, `9f57376`) |
+| 4 — Documentación, credenciales y despliegue | ✅ Hecha (revisión final, esta misma pieza) |
 
-**Hasta que A no se mergee y se despliegue, el login sigue roto en producción.**
+**El código ya no es lo que falta.** Lo que queda es operativo y sin dueño hasta que alguien lo
+ejecute: cargar `SUPABASE_JWT_ISS` en Railway, borrar `SUPABASE_JWT_SECRET`, mergear
+`fix/jwt-es256` a `main` y **verificar el login en el navegador** — ver
+[13-runbook-despliegue.md § Actualizar una instalación ya desplegada](13-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada).
+**Hasta que eso no pase, el login sigue roto en producción**: una rama sin mergear no arregla nada
+para Frank.
 
 **B — modo oscuro:** solo el portal. El renderizador queda afuera a propósito: la web pública es la
 marca del restaurante, y ahí el tema lo decide su diseño.

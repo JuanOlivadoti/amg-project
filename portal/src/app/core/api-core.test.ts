@@ -91,6 +91,33 @@ test('un error de la API se propaga con status y el mensaje del body', async () 
   );
 });
 
+test('🔴 un 503 se propaga como ApiError con status 503 y NO dispara refrescar', async () => {
+  // El refresh solo tiene sentido para un token vencido (401). Un 503 es la API diciendo "no puedo
+  // verificar el token" (caída del JWKS) — refrescar ahí no arregla nada, y gatillar el reintento en
+  // ese caso reabriría exactamente el hueco que el 401-vs-503 del lado de la API vino a cerrar.
+  const { fn, llamadas } = fakeSecuencia([{ status: 503, body: { error: 'No se puede verificar el token' } }]);
+  let refrescos = 0;
+  const api = crearApi({
+    baseUrl: 'http://api.test',
+    getToken: () => 'tok',
+    getTenant: () => 't',
+    fetchFn: fn,
+    refrescar: async () => {
+      refrescos++;
+      return true;
+    },
+  });
+  await assert.rejects(
+    () => api.listarRuns(),
+    (e: ApiError) => {
+      assert.equal(e.status, 503);
+      return true;
+    },
+  );
+  assert.equal(refrescos, 0, 'un 503 no es un token vencido: no debe refrescar');
+  assert.equal(llamadas(), 1, 'no reintentó');
+});
+
 test('sin token no se manda el header Authorization (la API responderá 401)', async () => {
   const { fn, capturado } = fakeFetch({ body: { runs: [] } });
   await crearApi({ baseUrl: 'http://api.test', getToken: () => null, getTenant: () => 't', fetchFn: fn }).listarRuns();

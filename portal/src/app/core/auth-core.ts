@@ -41,12 +41,31 @@ function aSesion(j: RespuestaGoTrue, emailFallback: string): Sesion {
   };
 }
 
+/**
+ * Cuánto se espera a que Supabase responda un `POST /auth/v1/token` (login o refresh) antes de
+ * rendirse.
+ *
+ * Sin esto, `postToken` puede quedar colgado indefinidamente —`fetch` no tiene timeout propio— y eso
+ * no es solo un login lento: `refrescarSesion` (que usa `postToken`) es el reintento de
+ * `AuthService.revocar`, y `AuthService.login` **espera** a que esa revocación en vuelo termine antes
+ * de pedir un token nuevo (`revocacionEnVuelo`). Una conexión negra ahí (wifi entrecortado, portal
+ * cautivo) deja a `login` esperando para siempre con el botón "Entrando…" deshabilitado, sin error ni
+ * forma de salir salvo recargar la página.
+ *
+ * Mismo valor que `TIMEOUT_REVOCACION_MS`: es el mismo endpoint de GoTrue con el mismo modo de fallo
+ * (red que no responde ni falla), así que no hay motivo para que el presupuesto sea distinto. Se
+ * mantiene como constante propia —no una reutilización silenciosa de la otra— porque login/refresh y
+ * logout son decisiones de producto separadas que podrían divergir mañana.
+ */
+export const TIMEOUT_TOKEN_MS = 8_000;
+
 async function postToken(opts: AuthOpts, params: string, body: unknown): Promise<RespuestaGoTrue> {
   const fetchFn = opts.fetchFn ?? fetch;
   const res = await fetchFn(`${opts.supabaseUrl}/auth/v1/token?${params}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', apikey: opts.anonKey },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_TOKEN_MS),
   });
   if (!res.ok) {
     let mensaje = 'No se pudo iniciar sesión.';

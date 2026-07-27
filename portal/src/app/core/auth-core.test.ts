@@ -1,13 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loginConPassword, refrescarSesion, parseSesion, cerrarSesion, TIMEOUT_REVOCACION_MS } from './auth-core';
+import {
+  loginConPassword,
+  refrescarSesion,
+  parseSesion,
+  cerrarSesion,
+  TIMEOUT_REVOCACION_MS,
+  TIMEOUT_TOKEN_MS,
+} from './auth-core';
 
 function fakeFetch(status: number, body: unknown) {
-  const capturado: { url?: string; headers?: Record<string, string>; body?: string } = {};
+  const capturado: { url?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal | null } =
+    {};
   const fn = (async (url: string, init: RequestInit = {}) => {
     capturado.url = url;
     capturado.headers = init.headers as Record<string, string>;
     capturado.body = init.body as string;
+    capturado.signal = init.signal;
     return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   }) as unknown as typeof fetch;
   return { fn, capturado };
@@ -190,4 +199,36 @@ test('🔴 cerrarSesion manda un AbortSignal: sin esto, un logout colgado no tie
 
 test('🔴 el timeout de revocación es 8s: un default de producción sin test no tiene dueño', () => {
   assert.equal(TIMEOUT_REVOCACION_MS, 8000);
+});
+
+test('🔴 el timeout de login/refresh es 8s: un default de producción sin test no tiene dueño', () => {
+  assert.equal(TIMEOUT_TOKEN_MS, 8000);
+});
+
+test('🔴 loginConPassword manda un AbortSignal: sin esto, un login colgado no tiene límite', async () => {
+  const { fn, capturado } = fakeFetch(200, {
+    access_token: 'j',
+    refresh_token: 'r',
+    expires_in: 3600,
+    user: { id: 'u', email: 'a@b.com' },
+  });
+  await loginConPassword(opts(fn), 'a@b.com', 'x');
+  assert.ok(capturado.signal instanceof AbortSignal, 'la request de login tiene que llevar un signal de timeout');
+});
+
+test('🔴 refrescarSesion manda un AbortSignal: es el reintento que login() espera, y sin límite lo cuelga', async () => {
+  // El escenario real: `revocar()` reintenta con `refrescarSesion` cuando el logout da 401 (token
+  // vencido). `AuthService.login` espera esa revocación en vuelo antes de pedir un token nuevo. Si
+  // `refrescarSesion` queda colgada (wifi cortado, portal cautivo), `login` cuelga con ella.
+  const { fn, capturado } = fakeFetch(200, {
+    access_token: 'j2',
+    refresh_token: 'r2',
+    expires_in: 3600,
+    user: { id: 'u' },
+  });
+  await refrescarSesion(opts(fn), 'ref-viejo');
+  assert.ok(
+    capturado.signal instanceof AbortSignal,
+    'la request de refresh tiene que llevar un signal de timeout',
+  );
 });
