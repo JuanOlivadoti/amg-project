@@ -127,6 +127,14 @@ function normalizarRol(v: unknown): string {
 }
 
 /**
+ * Cuánto se espera a que Supabase confirme una revocación antes de rendirse.
+ *
+ * `fetch` no tiene timeout propio: sin esto, una revocación puede quedar colgada indefinidamente.
+ * No es solo prolijidad — mientras cuelga, `login` la está esperando (ver `AuthService.login`).
+ */
+export const TIMEOUT_REVOCACION_MS = 8_000;
+
+/**
  * Revoca la sesión **en Supabase**, no solo en el navegador.
  *
  * Por qué existe: borrar el `localStorage` no invalida nada. El refresh token sigue siendo válido
@@ -146,6 +154,12 @@ function normalizarRol(v: unknown): string {
  * **Nunca lanza.** Revocar es best-effort: si la red está caída, el usuario tiene que quedar
  * deslogueado en su navegador igual. Devuelve si Supabase confirmó, para que quien llame pueda
  * registrarlo en vez de descubrirlo por casualidad.
+ *
+ * **El timeout acota la ESPERA, no el trabajo del servidor.** Abortar la conexión de este lado no
+ * significa que Supabase deje de procesar una request que ya recibió: el POST puede confirmarse
+ * igual del otro lado aunque acá se haya dejado de esperar. Por eso `AuthService` no solo reintenta
+ * esta llamada — también hace que `login` espere a que la revocación en vuelo termine antes de pedir
+ * un token nuevo (ver `revocacionEnVuelo`).
  */
 export async function cerrarSesion(opts: AuthOpts, accessToken: string): Promise<boolean> {
   const fetchFn = opts.fetchFn ?? fetch;
@@ -153,6 +167,7 @@ export async function cerrarSesion(opts: AuthOpts, accessToken: string): Promise
     const res = await fetchFn(`${opts.supabaseUrl}/auth/v1/logout`, {
       method: 'POST',
       headers: { apikey: opts.anonKey, authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(TIMEOUT_REVOCACION_MS),
     });
     return res.ok;
   } catch {

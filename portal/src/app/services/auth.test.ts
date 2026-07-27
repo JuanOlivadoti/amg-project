@@ -61,34 +61,51 @@ function respuestaGoTrue(id: string, email: string, token: string) {
  */
 function fetchControlado() {
   const colas = { token: [] as ((r: Response) => void)[], logout: [] as ((r: Response) => void)[] };
-  // Captura el `init` de cada request de logout: sin esto, ningún test del servicio observa QUÉ
-  // credencial viaja en el `authorization` — y ese amarre (accessToken de LA sesión que cierra, no
-  // otro) es el punto entero de la función.
-  let ultimoLogout: RequestInit | undefined;
+  // Captura el `init` de CADA request de logout (no solo la última): el reintento de logout (Gap A)
+  // hace dos, y hay tests que necesitan comparar ambos —cuántos hubo y qué credencial llevó cada uno.
+  const logoutsVistos: RequestInit[] = [];
   const fetchFn = ((url: string, init?: RequestInit) => {
     const cola = url.includes('/logout') ? 'logout' : 'token';
-    if (cola === 'logout') ultimoLogout = init;
+    if (cola === 'logout') logoutsVistos.push(init ?? {});
     return new Promise<Response>((resolver) => {
       colas[cola].push(resolver);
     });
   }) as unknown as typeof fetch;
   return {
     fetchFn,
-    soltarToken(cuerpo: unknown): void {
+    soltarToken(cuerpo: unknown, status = 200): void {
       colas.token.shift()!(
         new Response(JSON.stringify(cuerpo), {
-          status: 200,
+          status,
           headers: { 'content-type': 'application/json' },
         }),
       );
     },
-    soltarLogout(): void {
-      colas.logout.shift()!(new Response(null, { status: 204 }));
+    soltarLogout(status = 204): void {
+      colas.logout.shift()!(new Response(null, { status }));
     },
     get ultimoLogout(): RequestInit | undefined {
-      return ultimoLogout;
+      return logoutsVistos[logoutsVistos.length - 1];
+    },
+    get logoutsVistos(): RequestInit[] {
+      return logoutsVistos;
+    },
+    // Cuántas requests de /token siguen sin soltar: lo usa el test de Gap B para confirmar que
+    // `login` NO llegó a pedir token mientras la revocación seguía en vuelo (no alcanza con mirar
+    // el resultado final, porque si pidiera de más igual podría "colar" bien en el orden equivocado).
+    get pendientesToken(): number {
+      return colas.token.length;
     },
   };
+}
+
+/**
+ * Deja correr la cola de microtasks (y un tick de macrotask) para que una continuación `async`
+ * encadenada —logout falla → refresh → reintento de logout— llegue a inscribirse en la cola
+ * correspondiente antes de que el test intente soltarla.
+ */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /** Un servicio nuevo con `localStorage` y red falsos. El almacén se devuelve para poder afirmarlo. */
@@ -162,14 +179,20 @@ test('🔴 un login en vuelo no autentica si mientras tanto hubo logout', async 
 
 test('🔴 un logout lento no pisa un login posterior', async () => {
   // logout → el usuario vuelve a entrar → la revocación vieja termina. No debe borrar lo nuevo.
+  //
+  // Orden obligado por Gap B: `login` ahora espera la revocación en vuelo ANTES de pedir token
+  // (ver `revocacionEnVuelo`), así que el `/token` de este login no se dispara hasta soltar el
+  // `/logout`. Antes de esa guarda, esta prueba soltaba el token primero — hoy eso se traba, porque
+  // el login todavía ni pidió el token: es la propia carrera que Gap B cierra.
   const { a, red, almacen } = crear();
   instalar(a, almacen, SESION_A);
 
   const cierre = a.logout();
   const entrada = a.login('b@ejemplo.com', 'pw');
+  red.soltarLogout();
+  await flush();
   red.soltarToken(respuestaGoTrue('user-b', 'b@ejemplo.com', 'tok-b'));
   await entrada;
-  red.soltarLogout();
   await cierre;
 
   assert.equal(a.autenticado(), true, 'el logout viejo no debe borrar la sesión nueva');
@@ -230,4 +253,80 @@ test('🔴 un refresco en vuelo no se comparte con una sesión distinta', async 
   const [nuevoResuelto, viejoResuelto] = await Promise.all([nuevo, viejo]);
   assert.equal(nuevoResuelto, true, 'el refresco de la sesión nueva tiene que resolver bien');
   assert.equal(viejoResuelto, false, 'el de la sesión vieja (ya cerrada) tiene que seguir en false');
+});
+
+/**
+ * Gap A: una pestaña abierta desde ayer tiene el access token vencido. El portal solo refresca ante
+ * un 401, así que sin el reintento, el `/logout` con ese JWT muerto fallaría en silencio y el
+ * refresh token quedaría vivo para siempre — exactamente lo que este logout vino a evitar.
+ */
+test('🔴 logout con access token vencido reintenta el /logout con un token fresco (Gap A)', async () => {
+  const { a, red, almacen } = crear();
+  instalar(a, almacen, SESION_A);
+
+  const cierre = a.logout();
+  assert.equal(red.logoutsVistos.length, 1, 'el primer intento usa el token que ya tenía la sesión');
+  const headersIniciales = red.ultimoLogout?.headers as Record<string, string> | undefined;
+  assert.equal(headersIniciales?.['authorization'], `Bearer ${SESION_A.accessToken}`);
+
+  red.soltarLogout(401); // el access token está vencido: Supabase lo rechaza
+  await flush();
+
+  // El 401 dispara un refresh con el refresh token de la sesión que cierra.
+  red.soltarToken(respuestaGoTrue('user-a', 'a@ejemplo.com', 'tok-a-fresco'));
+  await flush();
+
+  // El logout se reintenta, esta vez con el access token recién emitido.
+  assert.equal(red.logoutsVistos.length, 2, 'tiene que haber un segundo intento con el token fresco');
+  const headers = red.ultimoLogout?.headers as Record<string, string> | undefined;
+  assert.equal(headers?.['authorization'], 'Bearer tok-a-fresco');
+
+  red.soltarLogout();
+  await cierre;
+  assert.equal(a.autenticado(), false);
+});
+
+/** Gap A, sin reintento infinito: si el segundo intento (ya con token fresco) también falla, no hay un tercero. */
+test('🔴 logout no reintenta sin límite: si el segundo intento también falla, igual queda deslogueado', async () => {
+  const { a, red, almacen } = crear();
+  instalar(a, almacen, SESION_A);
+
+  const cierre = a.logout();
+  red.soltarLogout(401); // primer intento: token vencido
+  await flush();
+
+  red.soltarToken(respuestaGoTrue('user-a', 'a@ejemplo.com', 'tok-a-fresco')); // el refresh sí funciona
+  await flush();
+
+  red.soltarLogout(500); // el segundo intento, ya con el token fresco, también falla
+  await cierre;
+
+  assert.equal(a.autenticado(), false, 'el usuario tiene que quedar deslogueado igual');
+  assert.equal(almacen.has(CLAVE), false);
+  assert.equal(red.logoutsVistos.length, 2, 'no debe haber un tercer intento de logout');
+});
+
+/**
+ * Gap B: la revocación es de alcance GLOBAL. Si `login` no la esperara, una revocación lenta que
+ * termina después de que el usuario ya volvió a entrar le mataría la sesión que acaba de crear.
+ */
+test('🔴 login espera una revocación en vuelo antes de pedir el token nuevo (Gap B)', async () => {
+  const { a, red, almacen } = crear();
+  instalar(a, almacen, SESION_A);
+
+  const cierre = a.logout(); // dispara la revocación y la deja "en vuelo"
+  const entrada = a.login('b@ejemplo.com', 'pw');
+
+  // Mientras la revocación sigue viva, `login` no puede haber pedido el token todavía.
+  assert.equal(red.pendientesToken, 0, 'login no debe pedir token mientras la revocación sigue en vuelo');
+
+  red.soltarLogout(); // la revocación se resuelve con éxito
+  await cierre;
+
+  // Recién ahora `login` puede seguir y pedir el token nuevo.
+  red.soltarToken(respuestaGoTrue('user-b', 'b@ejemplo.com', 'tok-b'));
+  await entrada;
+
+  assert.equal(a.autenticado(), true, 'el login tiene que completarse una vez que la revocación terminó');
+  assert.equal(a.email(), 'b@ejemplo.com', 'la sesión nueva tiene que sobrevivir a la revocación tardía');
 });

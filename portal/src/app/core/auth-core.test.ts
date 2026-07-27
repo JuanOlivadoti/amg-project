@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loginConPassword, refrescarSesion, parseSesion, cerrarSesion } from './auth-core';
+import { loginConPassword, refrescarSesion, parseSesion, cerrarSesion, TIMEOUT_REVOCACION_MS } from './auth-core';
 
 function fakeFetch(status: number, body: unknown) {
   const capturado: { url?: string; headers?: Record<string, string>; body?: string } = {};
@@ -174,4 +174,20 @@ test('🔴 cerrarSesion devuelve false si la red falla, y NO lanza', async () =>
     await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn }, 'tok'),
     false,
   );
+});
+
+test('🔴 cerrarSesion manda un AbortSignal: sin esto, un logout colgado no tiene límite', async () => {
+  let capturado: RequestInit | undefined;
+  const fetchFn = (async (_url: string, init: RequestInit) => {
+    capturado = init;
+    return new Response(null, { status: 204 });
+  }) as unknown as typeof fetch;
+
+  await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn }, 'tok');
+
+  assert.ok(capturado?.signal instanceof AbortSignal, 'la request tiene que llevar un signal de timeout');
+});
+
+test('🔴 el timeout de revocación es 8s: un default de producción sin test no tiene dueño', () => {
+  assert.equal(TIMEOUT_REVOCACION_MS, 8000);
 });
