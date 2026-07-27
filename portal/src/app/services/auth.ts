@@ -1,5 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { loginConPassword, refrescarSesion, parseSesion } from '../core/auth-core';
+import { loginConPassword, refrescarSesion, parseSesion, cerrarSesion } from '../core/auth-core';
 import type { Sesion } from '../core/models';
 import { environment } from '../../environments/environment';
 
@@ -30,8 +30,21 @@ export class AuthService {
     anonKey: environment.supabaseAnonKey,
   };
 
+  /**
+   * Generación de la sesión: cambia en cada login y en cada logout.
+   *
+   * Sirve **solo para el login**, que es la única operación que no tiene una sesión previa contra la
+   * cual compararse — crea una nueva. Todo lo demás usa la identidad de la sesión capturada, que es
+   * una guarda más fuerte (ver `hacerRefresh`).
+   */
+  private epoca = 0;
+
   async login(email: string, password: string): Promise<void> {
+    const epoca = ++this.epoca;
     const sesion = await loginConPassword(this.authOpts, email, password);
+    // Si mientras viajaba el login hubo un logout (u otro login), este resultado ya no es el que
+    // manda: escribirlo dejaría al portal autenticado después de que el usuario cerró sesión.
+    if (epoca !== this.epoca) return;
     this._sesion.set(sesion);
     try {
       localStorage.setItem(CLAVE, JSON.stringify(sesion));
@@ -40,36 +53,75 @@ export class AuthService {
     }
   }
 
-  logout(): void {
+  /**
+   * Cierra sesión de verdad: limpia el estado local **y** revoca en Supabase.
+   *
+   * El orden importa y es al revés de lo que parece natural: se limpia PRIMERO, de forma síncrona.
+   * Si la limpieza esperara a la red, la UI quedaría autenticada mientras el `fetch` cuelga — y
+   * `fetch` no tiene timeout propio, así que puede colgar indefinidamente. La revocación viaja
+   * después con el token que ya se capturó; que falle no cambia nada de lo que ve el usuario.
+   */
+  async logout(): Promise<void> {
+    const s = this._sesion();
+    this.epoca++;
+    this.limpiarLocal();
+    if (s) await cerrarSesion(this.authOpts, s.accessToken);
+  }
+
+  /** Solo el estado del navegador. Se usa cuando la sesión YA está muerta (ver `hacerRefresh`). */
+  private limpiarLocal(): void {
     this._sesion.set(null);
     try {
       localStorage.removeItem(CLAVE);
     } catch {
-      /* idem */
+      /* sin localStorage (modo privado) */
     }
   }
 
   /**
    * Renueva el access token con el refresh token. La llama el cliente HTTP cuando la API responde
    * 401. Si el refresh falla (token revocado o vencido del todo), **cierra la sesión** y devuelve
-   * `false`: el guard mandará al login en la próxima navegación. En vuelo puede haber varias
-   * llamadas a la vez; se comparte una sola promesa para no disparar N refrescos.
+   * `false`: el guard mandará al login en la próxima navegación.
+   *
+   * En vuelo puede haber varias llamadas a la vez; se comparte una sola promesa para no disparar N
+   * refrescos. Pero se comparte **solo entre llamadas de la MISMA sesión**: tras un logout y un login
+   * nuevo, engancharse al refresco viejo devolvería su resultado —normalmente `false`— para una
+   * sesión que sí se podía refrescar, y el cliente propagaría un 401 que no correspondía.
    */
-  private refrescoEnVuelo: Promise<boolean> | null = null;
+  private refrescoEnVuelo: { sesion: Sesion; promesa: Promise<boolean> } | null = null;
 
   refrescar(): Promise<boolean> {
-    if (this.refrescoEnVuelo) return this.refrescoEnVuelo;
-    this.refrescoEnVuelo = this.hacerRefresh().finally(() => {
-      this.refrescoEnVuelo = null;
+    const actual = this._sesion();
+    if (!actual) return Promise.resolve(false);
+    const enVuelo = this.refrescoEnVuelo;
+    if (enVuelo && enVuelo.sesion === actual) return enVuelo.promesa;
+
+    const promesa = this.hacerRefresh(actual);
+    const entrada = { sesion: actual, promesa };
+    this.refrescoEnVuelo = entrada;
+    void promesa.finally(() => {
+      // Solo limpia si sigue siendo el suyo: una promesa vieja no puede borrar una más nueva.
+      if (this.refrescoEnVuelo === entrada) this.refrescoEnVuelo = null;
     });
-    return this.refrescoEnVuelo;
+    return promesa;
   }
 
-  private async hacerRefresh(): Promise<boolean> {
-    const actual = this._sesion();
-    if (!actual) return false;
+  /**
+   * La sesión a refrescar se recibe por parámetro y se usa como **identidad**: antes de escribir se
+   * comprueba que siga siendo la sesión viva.
+   *
+   * Por qué identidad y no la época: la época solo cambia al *iniciar* un login o un logout, así que
+   * un refresh disparado DESPUÉS de arrancar un login comparte su época y pasaría la guarda —
+   * escribiendo la sesión vieja encima de la nueva. Comparar contra `actual` cubre los tres casos de
+   * una vez: tras un logout `_sesion()` es `null`, tras otro login es otro objeto, y en el caso
+   * normal es el mismo.
+   */
+  private async hacerRefresh(actual: Sesion): Promise<boolean> {
     try {
       const sesion = await refrescarSesion(this.authOpts, actual.refreshToken);
+      // Si mientras refrescábamos hubo un logout o un login, este resultado está viejo: escribirlo
+      // resucitaría una sesión cerrada o pisaría una nueva.
+      if (this._sesion() !== actual) return false;
       // El refresh de Supabase no repite app_metadata: conservamos tenant/rol/email de la sesión viva.
       const fusion: Sesion = {
         ...sesion,
@@ -85,7 +137,10 @@ export class AuthService {
       }
       return true;
     } catch {
-      this.logout();
+      if (this._sesion() !== actual) return false;
+      // El refresh token ya no sirve —por eso estamos acá—, así que pedirle a Supabase que lo
+      // revoque es una llamada que va a fallar. Solo se limpia lo local.
+      this.limpiarLocal();
       return false;
     }
   }

@@ -22,7 +22,7 @@ export class App {
   }
 
   async salir(): Promise<void> {
-    this.auth.logout();
+    void this.auth.logout();
     await this.router.navigate(['/login']);
   }
 }

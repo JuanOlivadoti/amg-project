@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loginConPassword, refrescarSesion, parseSesion } from './auth-core';
+import { loginConPassword, refrescarSesion, parseSesion, cerrarSesion } from './auth-core';
 
 function fakeFetch(status: number, body: unknown) {
   const capturado: { url?: string; headers?: Record<string, string>; body?: string } = {};
@@ -136,4 +136,42 @@ test('refrescarSesion usa grant_type=refresh_token', async () => {
   assert.equal(capturado.url, 'https://proj.supabase.co/auth/v1/token?grant_type=refresh_token');
   assert.deepEqual(JSON.parse(capturado.body!), { refresh_token: 'ref-viejo' });
   assert.equal(sesion.accessToken, 'jwt2');
+});
+
+test('cerrarSesion llama al logout de Supabase con el token del usuario', async () => {
+  let capturado: { url: string; init: RequestInit } | null = null;
+  const fetchFn = (async (url: string, init: RequestInit) => {
+    capturado = { url, init };
+    return new Response(null, { status: 204 });
+  }) as unknown as typeof fetch;
+
+  const ok = await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'anon-123', fetchFn }, 'tok-abc');
+
+  assert.equal(ok, true);
+  assert.equal(capturado!.url, 'https://p.supabase.co/auth/v1/logout');
+  assert.equal(capturado!.init.method, 'POST');
+  const h = capturado!.init.headers as Record<string, string>;
+  assert.equal(h['apikey'], 'anon-123');
+  // Sin el Bearer, Supabase no sabe QUÉ sesión revocar: revocaría nada.
+  assert.equal(h['authorization'], 'Bearer tok-abc');
+});
+
+test('🔴 cerrarSesion devuelve false si Supabase responde error, y NO lanza', async () => {
+  // Que no lance es lo que garantiza que el usuario quede deslogueado igual. Que devuelva false es
+  // lo que permite distinguir "revocado" de "solo limpiado acá" sin obligar a nadie a mirarlo.
+  const fetchFn = (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch;
+  assert.equal(
+    await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn }, 'tok'),
+    false,
+  );
+});
+
+test('🔴 cerrarSesion devuelve false si la red falla, y NO lanza', async () => {
+  const fetchFn = (async () => {
+    throw new Error('ECONNREFUSED');
+  }) as unknown as typeof fetch;
+  assert.equal(
+    await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn }, 'tok'),
+    false,
+  );
 });

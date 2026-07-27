@@ -125,3 +125,37 @@ const ROLES = ['maestro', 'equipo', 'cliente'] as const;
 function normalizarRol(v: unknown): string {
   return typeof v === 'string' && (ROLES as readonly string[]).includes(v) ? v : '';
 }
+
+/**
+ * Revoca la sesión **en Supabase**, no solo en el navegador.
+ *
+ * Por qué existe: borrar el `localStorage` no invalida nada. El refresh token sigue siendo válido
+ * del lado del servidor y **no caduca solo**, así que un "cerrar sesión" que solo limpia local deja
+ * viva una credencial que puede acuñar access tokens indefinidamente. Si a alguien le roban el
+ * equipo y cierra sesión desde otro lado, sin esto no pasa absolutamente nada.
+ *
+ * **Alcance: global.** Es el default de `POST /auth/v1/logout` sin `scope`, y es el que corresponde
+ * al caso que motiva la función — el equipo robado —: revoca los refresh tokens de TODAS las
+ * sesiones del usuario, no solo la de este navegador.
+ *
+ * **Lo que NO hace:** los access tokens ya emitidos siguen siendo válidos hasta su `exp` (una hora).
+ * La API los verifica localmente contra el JWKS y no consulta a Supabase en cada request, así que la
+ * revocación corta la renovación, no el acceso en curso. Cortarlo de inmediato exigiría comprobar la
+ * sesión contra el servidor en cada llamada, y ese costo no se justifica acá.
+ *
+ * **Nunca lanza.** Revocar es best-effort: si la red está caída, el usuario tiene que quedar
+ * deslogueado en su navegador igual. Devuelve si Supabase confirmó, para que quien llame pueda
+ * registrarlo en vez de descubrirlo por casualidad.
+ */
+export async function cerrarSesion(opts: AuthOpts, accessToken: string): Promise<boolean> {
+  const fetchFn = opts.fetchFn ?? fetch;
+  try {
+    const res = await fetchFn(`${opts.supabaseUrl}/auth/v1/logout`, {
+      method: 'POST',
+      headers: { apikey: opts.anonKey, authorization: `Bearer ${accessToken}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
