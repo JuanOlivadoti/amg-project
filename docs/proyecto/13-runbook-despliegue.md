@@ -426,18 +426,36 @@ falta algo obligatorio, así que el orden importa dos veces:
    ahí que sale el JWKS, y sin `/auth/v1` la ruta no existe). El `<project-ref>` es el mismo que ya
    usa el portal en `environment.prod.ts`; no es secreto, viaja en el bundle.
 
-2. **En la misma edición**, borrá `SUPABASE_JWT_SECRET` de Railway si todavía está cargada: ya no
-   forma parte del contrato de la API (`leerConfig` no la lee), y dejarla ahí no hace nada salvo
-   confundir a quien mire la lista de variables después. _No_ hace falta rotarla en Supabase para
-   este paso — eso es aparte, ver [12-credenciales.md](12-credenciales.md#al-desplegar-en-supabase).
+   **No borres `SUPABASE_JWT_SECRET` todavía.** Ver el paso 4 y el recuadro de abajo.
 
-3. Recién ahí, mergeá `fix/jwt-es256` a `main`. El push dispara el autodeploy de la API (Railway) y
-   del portal (Hostinger) al mismo tiempo — con `SUPABASE_JWT_ISS` ya puesta, el proceso nuevo arranca
-   igual que el viejo, solo que ahora los logins funcionan.
+2. Mergeá `fix/jwt-es256` a `main`. El push dispara el autodeploy de la API (Railway) y del portal
+   (Hostinger) al mismo tiempo — con `SUPABASE_JWT_ISS` ya puesta, el proceso nuevo arranca igual que
+   el viejo, solo que ahora los logins funcionan.
 
-4. Verificá con el navegador (no alcanza con `/health` en verde): entrá a `https://bigballs.es`,
+3. **Esperá a que la revisión nueva esté sirviendo tráfico** y confirmá `/health` en verde. No sigas
+   hasta ver eso.
+
+4. **Recién ahora** borrá `SUPABASE_JWT_SECRET` de Railway. Ya no forma parte del contrato de la API
+   (`leerConfig` no la lee) y dejarla solo confunde a quien mire la lista después. _No_ alcanza con
+   esto para dejarla inerte: sigue siendo válida en Supabase hasta que la revoques **ahí** — ver
+   [12-credenciales.md](12-credenciales.md#al-desplegar-en-supabase).
+
+5. Verificá con el navegador (no alcanza con `/health` en verde): entrá a `https://bigballs.es`,
    logueate con un usuario real y confirmá que **no** da `401 Token inválido o expirado`. Recién ahí
    el login está arreglado — arreglado es "desplegado y verificado", no "el código está en la rama".
+
+> ### ⚠️ El orden de arriba no es preferencia: es evitar una caída
+>
+> La versión que **hoy** corre en producción todavía exige `SUPABASE_JWT_SECRET` para arrancar
+> (`leerConfig` la tiene entre las obligatorias). Railway **reinicia el servicio cuando cambiás una
+> variable**, así que borrarla antes de desplegar el código nuevo tumba el proceso que está sirviendo:
+> `/health` desaparece y todo pasa a **502** hasta que termine el merge.
+>
+> Sería empeorar el problema en vez de arreglarlo — hoy el login falla, pero la API está viva.
+>
+> La regla, más allá de esta release: **agregar** una variable es seguro en cualquier momento (el
+> código viejo la ignora); **quitar** una solo lo es después de que el código que ya no la necesita
+> esté sirviendo.
 
 ---
 
