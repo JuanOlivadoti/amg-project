@@ -1,5 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { loginConPassword, refrescarSesion, parseSesion, cerrarSesion } from '../core/auth-core';
+import type { AuthOpts } from '../core/auth-core';
 import type { Sesion } from '../core/models';
 import { environment } from '../../environments/environment';
 
@@ -25,7 +26,7 @@ export class AuthService {
     return s ? s.rol !== 'cliente' : false;
   });
 
-  private readonly authOpts = {
+  private readonly authOpts: AuthOpts = {
     supabaseUrl: environment.supabaseUrl,
     anonKey: environment.supabaseAnonKey,
   };
@@ -68,7 +69,12 @@ export class AuthService {
     if (s) await cerrarSesion(this.authOpts, s.accessToken);
   }
 
-  /** Solo el estado del navegador. Se usa cuando la sesión YA está muerta (ver `hacerRefresh`). */
+  /**
+   * Solo el estado del navegador: nunca revoca nada en Supabase, eso es cosa de quien la llama.
+   * La usan dos casos distintos: `logout`, donde la sesión sigue viva y la revocación va aparte
+   * (después, sin bloquear la UI); y `hacerRefresh`, donde la sesión YA está muerta y revocar sería
+   * pedirle a Supabase que invalide un refresh token que ya no sirve.
+   */
   private limpiarLocal(): void {
     this._sesion.set(null);
     try {
@@ -80,8 +86,9 @@ export class AuthService {
 
   /**
    * Renueva el access token con el refresh token. La llama el cliente HTTP cuando la API responde
-   * 401. Si el refresh falla (token revocado o vencido del todo), **cierra la sesión** y devuelve
-   * `false`: el guard mandará al login en la próxima navegación.
+   * 401. Si el refresh falla (token revocado o vencido del todo), limpia el estado local —sin
+   * revocar en Supabase: el refresh token ya está muerto, revocarlo no tiene sentido (ver
+   * `hacerRefresh`)— y devuelve `false`: el guard mandará al login en la próxima navegación.
    *
    * En vuelo puede haber varias llamadas a la vez; se comparte una sola promesa para no disparar N
    * refrescos. Pero se comparte **solo entre llamadas de la MISMA sesión**: tras un logout y un login

@@ -2,6 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AuthService } from './auth';
 import type { Sesion } from '../core/models';
+import { environment } from '../../environments/environment';
+
+// Si algún día el seam de inyección se rompe, `opts.fetchFn ?? fetch` caería en el fetch REAL y la
+// suite empezaría a pegarle a Supabase en silencio. Con esto, romperlo falla ruidosamente.
+globalThis.fetch = (() => {
+  throw new Error('la suite no toca la red: se rompió la inyección de fetchFn');
+}) as unknown as typeof fetch;
 
 /**
  * Lo que se prueba acá NO lo prueban los tests de `auth-core`: que el estado local del portal se
@@ -54,10 +61,17 @@ function respuestaGoTrue(id: string, email: string, token: string) {
  */
 function fetchControlado() {
   const colas = { token: [] as ((r: Response) => void)[], logout: [] as ((r: Response) => void)[] };
-  const fetchFn = ((url: string) =>
-    new Promise<Response>((resolver) => {
-      colas[url.includes('/logout') ? 'logout' : 'token'].push(resolver);
-    })) as unknown as typeof fetch;
+  // Captura el `init` de cada request de logout: sin esto, ningún test del servicio observa QUÉ
+  // credencial viaja en el `authorization` — y ese amarre (accessToken de LA sesión que cierra, no
+  // otro) es el punto entero de la función.
+  let ultimoLogout: RequestInit | undefined;
+  const fetchFn = ((url: string, init?: RequestInit) => {
+    const cola = url.includes('/logout') ? 'logout' : 'token';
+    if (cola === 'logout') ultimoLogout = init;
+    return new Promise<Response>((resolver) => {
+      colas[cola].push(resolver);
+    });
+  }) as unknown as typeof fetch;
   return {
     fetchFn,
     soltarToken(cuerpo: unknown): void {
@@ -70,6 +84,9 @@ function fetchControlado() {
     },
     soltarLogout(): void {
       colas.logout.shift()!(new Response(null, { status: 204 }));
+    },
+    get ultimoLogout(): RequestInit | undefined {
+      return ultimoLogout;
     },
   };
 }
@@ -107,6 +124,12 @@ test('🔴 logout limpia signal y localStorage ANTES de esperar a la red', async
   const cierre = a.logout();
   assert.equal(a.autenticado(), false, 'la sesión tiene que estar cerrada YA, sin esperar la red');
   assert.equal(almacen.has(CLAVE), false, 'y el localStorage también, o vuelve al recargar');
+
+  // El accessToken de LA sesión que se cerró, no otro campo: con el refreshToken, Supabase
+  // respondería 401 y la revocación se volvería un no-op silencioso (mutación confirmada).
+  const headers = red.ultimoLogout?.headers as Record<string, string> | undefined;
+  assert.equal(headers?.['authorization'], `Bearer ${SESION_A.accessToken}`);
+  assert.equal(headers?.['apikey'], environment.supabaseAnonKey);
 
   red.soltarLogout();
   await cierre;
@@ -199,7 +222,12 @@ test('🔴 un refresco en vuelo no se comparte con una sesión distinta', async 
   const nuevo = a.refrescar();
   assert.notEqual(nuevo, viejo, 'no debe reusar el refresco de otra sesión');
 
-  red.soltarToken(respuestaGoTrue('user-a', 'a@ejemplo.com', 'tok-a2'));
-  red.soltarToken(respuestaGoTrue('user-b', 'b@ejemplo.com', 'tok-b2'));
-  await Promise.allSettled([viejo, nuevo]);
+  // La identidad de las promesas no alcanza: un refactor que devolviera un wrapper nuevo
+  // (`Promise.resolve(enVuelo.promesa)`) pasaría el `notEqual` de arriba y seguiría compartiendo el
+  // resultado de abajo. Lo que importa es que B no herede el `false` de A.
+  red.soltarToken(respuestaGoTrue('user-a', 'a@ejemplo.com', 'tok-a2')); // resuelve el refresco de A (viejo)
+  red.soltarToken(respuestaGoTrue('user-b', 'b@ejemplo.com', 'tok-b2')); // resuelve el refresco de B (nuevo)
+  const [nuevoResuelto, viejoResuelto] = await Promise.all([nuevo, viejo]);
+  assert.equal(nuevoResuelto, true, 'el refresco de la sesión nueva tiene que resolver bien');
+  assert.equal(viejoResuelto, false, 'el de la sesión vieja (ya cerrada) tiene que seguir en false');
 });
