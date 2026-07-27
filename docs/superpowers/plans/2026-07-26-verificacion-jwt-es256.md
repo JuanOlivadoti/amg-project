@@ -1366,7 +1366,7 @@ seguir.
 | # | Mutación | Tienen que caer |
 | --- | --- | --- |
 | 1 | En `services/auth.ts`, mové `this.limpiarLocal()` de antes del `await` a después | **2**: `logout limpia signal y localStorage ANTES…` y `un logout lento no pisa un login posterior` |
-| 2 | En `services/auth.ts`, quitá `localStorage.removeItem(CLAVE)` de `limpiarLocal` | **2**: `logout limpia signal y localStorage ANTES…` y `logout deja al usuario deslogueado aunque la revocación falle` |
+| 2 | En `services/auth.ts`, quitá `localStorage.removeItem(CLAVE)` de `limpiarLocal` | **3**: `logout limpia signal y localStorage ANTES…`, `logout deja al usuario deslogueado aunque la revocación falle` y `un refresh en vuelo no resucita…` (este último también afirma que el almacén quedó limpio) |
 | 3 | En `services/auth.ts`, borrá la guarda `if (this._sesion() !== actual) return false;` del `try` de `hacerRefresh` | **2**: `un refresh en vuelo no resucita…` y `el refresh de la sesión vieja no pisa un login nuevo` |
 | 4 | En `services/auth.ts`, borrá la guarda `if (epoca !== this.epoca) return;` de `login` | **1**: `un login en vuelo no autentica si mientras tanto hubo logout` |
 | 5 | En `services/auth.ts`, en `refrescar`, compartí siempre el refresco en vuelo (quitá `&& enVuelo.sesion === actual`) | **1**: `un refresco en vuelo no se comparte con una sesión distinta` |
