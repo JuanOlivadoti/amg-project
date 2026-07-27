@@ -102,7 +102,7 @@ Nada de esto sustituye a un **rate limit en el borde**. Es el piso que el servic
 | `CACHE_TTL_MS` | default 5 min |
 
 ```bash
-npm test -w renderer        # 75 tests, sin red ni credenciales
+npm test -w renderer        # 94 tests, sin red ni credenciales
 npm run dev:server -w renderer   # el servicio real sobre PGlite + Storyblok de MENTIRA (verificar)
 npm run demo -w renderer         # el servicio real sobre PGlite + Storyblok REAL (demo a Frank)
 npm run serve -w renderer        # producción
