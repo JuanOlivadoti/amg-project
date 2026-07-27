@@ -166,9 +166,9 @@ pegar credenciales y hacer click).
 | Variable | Qué es |
 |---|---|
 | `DATABASE_URL_API` | Conexión del login `amg_api` (→ rol `app_user`). |
-| `SUPABASE_JWT_SECRET` | Para verificar la firma del token de login. |
+| `SUPABASE_JWT_ISS` | **Obligatoria.** De acá sale el JWKS (`<iss>/.well-known/jwks.json`) contra el que se verifica la firma ES256 del token — no hay secreto que copiar. |
 | `CORS_ORIGINS` | El origen del portal: `https://bigballs.es` (+ `,https://www.bigballs.es` si usás www). |
-| `SUPABASE_JWT_ISS` / `SUPABASE_JWT_AUD` | *(recomendado)* cierran la puerta a tokens de otro proyecto Supabase. |
+| `SUPABASE_JWT_AUD` | *(recomendado)* cierra la puerta a tokens con un `aud` distinto del default. |
 | `PORT` | Lo inyecta Railway automáticamente. |
 
 **portal** (build de Angular — se completan en `environment.prod.ts`, **no** son env vars; el build

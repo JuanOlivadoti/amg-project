@@ -7,7 +7,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 > Última revisión: 2026-07-19 · Estado: **Fase 2 construida, sin desplegar.** La cadena completa
 > —research → compuerta humana → publicación → **la web servida en vivo**— funciona de punta a punta.
 > API, portal y renderizador existen y se manejaron en un navegador real.
-> **445 tests en verde** (+45 en el portal).
+> **464 tests en verde** (+60 en el portal).
 >
 > ⚠️ **Nada corre en ningún servidor.** El hosting sigue sin decidirse (etapa 5.3), y eso es lo único
 > que separa al sistema de que lo use un cliente.
@@ -34,7 +34,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 
 ## Contexto adicional
 
-- **Decisiones de arquitectura (ADR-01..22 + OBS-01/02/03):** [`../decisiones-arquitectura.md`](../decisiones-arquitectura.md) — el *porqué* de cada elección técnica, con las alternativas descartadas **y las decisiones que hubo que corregir**. Esta documentación las referencia constantemente.
+- **Decisiones de arquitectura (ADR-01..23 + OBS-01/02/03):** [`../decisiones-arquitectura.md`](../decisiones-arquitectura.md) — el *porqué* de cada elección técnica, con las alternativas descartadas **y las decisiones que hubo que corregir**. Esta documentación las referencia constantemente.
 - **Credenciales y roles de Postgres:** [`12-credenciales.md`](12-credenciales.md) — los cuatro logins, qué puede cada uno y, sobre todo, **qué NO puede**.
 - **Producto:** [`../contexto-proyecto-frank.md`](../contexto-proyecto-frank.md) y [`../A_PRD_AMG_Madrid_v1_Ilustrado.md`](../A_PRD_AMG_Madrid_v1_Ilustrado.md).
 - **READMEs de código:** [`kr-service`](../../kr-service/README.md) · [`web-builder`](../../web-builder/README.md) · [`api`](../../api/README.md) · [`renderer`](../../renderer/README.md) · [`portal`](../../portal/README.md) — cómo correr cada pieza.

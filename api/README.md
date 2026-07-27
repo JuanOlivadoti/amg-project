@@ -33,7 +33,8 @@ de algo que la base no autorizó. Está probado por mutación (invertir el orden
 
 - `app.ts` — las rutas Hono. **No sabe** de Postgres, Inngest ni Supabase: recibe `{ store, emisor,
   verificar }` inyectados.
-- `auth.ts` — verifica el JWT de Supabase (HS256) y arma el `TenantContext`. El verificador se inyecta.
+- `auth.ts` — verifica el JWT de Supabase (ES256, contra el JWKS del emisor) y arma el
+  `TenantContext`. El verificador se inyecta.
 - `solicitar.ts` — el comando compuesto de `POST /runs`.
 - `deps.ts` / `server.ts` — el composition root real: pool de `amg_api` → `app_user` (ADR-17), Inngest
   como emisor, y el arranque del server. **El único lugar que toca credenciales.**
@@ -54,7 +55,7 @@ npm run dev:server -w api
 
 # Servidor de producción (requiere config real):
 DATABASE_URL_API=postgres://amg_api:...@host/db \
-SUPABASE_JWT_SECRET=... \
+SUPABASE_JWT_ISS=https://<project-ref>.supabase.co/auth/v1 \
 npm run serve -w api
 ```
 
@@ -70,13 +71,12 @@ una API a medio configurar es un riesgo, no una comodidad.
 | Variable | Default | Para qué |
 |---|---|---|
 | `DATABASE_URL_API` | **obligatoria** | Login `amg_api` → rol `app_user`. No puede asumir `app_service` (ADR-17). |
-| `SUPABASE_JWT_SECRET` | **obligatoria** | Verifica la firma del token (HS256). |
+| `SUPABASE_JWT_ISS` | **obligatoria** | `iss` del proyecto Supabase (`https://<proy>.supabase.co/auth/v1`). De acá sale el JWKS contra el que se verifica la firma ES256, y amarra el emisor: cierra la puerta a un token válido de OTRO proyecto Supabase. |
 | `SUPABASE_JWT_AUD` | `authenticated` | `aud` esperado. Es lo que emite Supabase para un usuario logueado. |
-| `SUPABASE_JWT_ISS` | *(no se exige)* | `iss` esperado (`https://<proy>.supabase.co/auth/v1`). **Configuralo en producción**: cierra la puerta a un token válido de OTRO proyecto Supabase. |
 | `CORS_ORIGINS` | `*` | Orígenes del portal, coma-separados. Seguro con `*` porque se autentica por header, no por cookies. |
 | `PORT` | `3000` | |
 
 > 🔐 **Al token se le exige `exp` y `sub`, no solo la firma.** `jwtVerify` valida la expiración *si el
 > claim está*, pero no lo exige: un token firmado con el secreto correcto y **sin `exp` era eterno**.
 > Lo encontró la 8ª review, y sobrevivió porque los tests inyectan un verificador falso y **nadie
-> probaba el real**. Hoy hay 9 tests con JWT firmados de verdad (`auth.test.ts`).
+> probaba el real**. Hoy hay 27 tests con JWT firmados de verdad (`auth.test.ts`).

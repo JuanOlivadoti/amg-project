@@ -28,7 +28,7 @@ standalone + signals, Tailwind puro, **habla solo con nuestra API** (nunca con P
 ## La decisión de fondo: la lógica es TypeScript puro, testeable sin navegador
 
 Todo lo que se puede romper vive en `src/app/core/`, **sin Angular ni DOM**, y se prueba con
-`node:test` (29 tests): el cliente HTTP (`api-core.ts`, con `fetch` inyectable), el login
+`node:test` (60 tests): el cliente HTTP (`api-core.ts`, con `fetch` inyectable), el login
 (`auth-core.ts`), y la separación por evidencia (`evidence.ts`). Los componentes son cáscaras finas.
 Es la misma disciplina que hace testeable a RLS sin Docker: acá, HTTP y auth sin red.
 
@@ -47,7 +47,7 @@ impone la API/RLS (ADR-20).
 
 ## Lo que queda abierto (a propósito, y dicho)
 
-- **Sin tests de componente** (karma). El núcleo cubre la lógica (19 tests); los componentes se
+- **Sin tests de componente** (karma). El núcleo cubre la lógica (60 tests); los componentes se
   verifican compilando (AOT valida los templates) y corriendo la app. `npm run test:karma` disponible.
 - **El intervalo de polling (4 s) es a ojo.** Se calibra cuando se mida la duración real de una
   corrida (acción 06): si un research tarda minutos, quizás convenga espaciarlo o avisar distinto.

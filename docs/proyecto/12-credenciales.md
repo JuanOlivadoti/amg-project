@@ -79,6 +79,11 @@ global. El override tampoco se filtra a otro paquete: hay un test de eso.
 > **`DATABASE_URL_ADMIN` es la excepción de todo esto.** No es de ningún proceso: la usan solo
 > `migrate:deploy` y `seed:demo`, a mano, una vez. Vive en `db/.env` y **nunca** se carga en Railway.
 
+> **La API no tiene ningún secreto de Supabase.** Verifica los tokens contra el **JWKS público** del
+> proyecto (`<iss>/.well-known/jwks.json`), derivado de `SUPABASE_JWT_ISS`. La clave privada nunca
+> sale de Supabase y la pública es pública por definición: no hay nada que rotar ni que filtrar.
+> Antes había un `SUPABASE_JWT_SECRET` compartido — se eliminó el 2026-07-26.
+
 ---
 
 ## Variables de entorno
@@ -102,7 +107,7 @@ DATABASE_URL_RENDER=postgres://amg_render:...@host/db   # ← LA LEE EL CÓDIGO 
 > verifica contra `pg_auth_members` que **no puede** asumir el rol del servicio (ADR-17). Si falta la
 > variable, la API **no arranca**.
 >
-> La API necesita además `SUPABASE_JWT_SECRET` (y, en producción, `SUPABASE_JWT_ISS`): ver
+> La API necesita además `SUPABASE_JWT_ISS` (obligatoria en producción): ver
 > [`api/README.md`](../../api/README.md).
 
 > ✅ **`DATABASE_URL_RENDER` ya se usa.** El renderizador (etapa 6) la lee en `renderer/src/deps.ts`.

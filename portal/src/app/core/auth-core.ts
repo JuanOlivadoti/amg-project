@@ -3,10 +3,11 @@ import type { Sesion } from './models';
 /**
  * Login contra Supabase Auth (GoTrue) **por su endpoint REST**, sin el SDK.
  *
- * Por qué sin SDK: el portal solo necesita el access token (que la API verifica con el secreto del
- * proyecto) y el refresh token. El endpoint `/auth/v1/token` es estable y documentado, y hacerlo por
- * `fetch` mantiene la lógica en TypeScript puro, **testeable sin red** — la misma disciplina que el
- * resto del proyecto. Si algún día hace falta lo que el SDK trae (OAuth, magic links), se reevalúa.
+ * Por qué sin SDK: el portal solo necesita el access token (que la API verifica contra el JWKS
+ * público del proyecto, sin ningún secreto compartido) y el refresh token. El endpoint
+ * `/auth/v1/token` es estable y documentado, y hacerlo por `fetch` mantiene la lógica en TypeScript
+ * puro, **testeable sin red** — la misma disciplina que el resto del proyecto. Si algún día hace
+ * falta lo que el SDK trae (OAuth, magic links), se reevalúa.
  *
  * El `tenantId` NO viene de la contraseña: sale de `app_metadata.tenant_id` del usuario (un claim que
  * Supabase firma). Es la coordenada que la API pasa a RLS; si el usuario no lo tiene, el portal no

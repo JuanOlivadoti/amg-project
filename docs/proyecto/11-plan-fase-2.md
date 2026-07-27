@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-26** · **461 tests en verde**
+> Última actualización: **2026-07-26** · **464 tests en verde**
 >
 > **Dónde estamos hoy:** Fase 1 desplegada, pero **el login está roto en producción** — el proyecto de
 > Supabase firma `ES256` y la API esperaba `HS256`. Se arregla en la **pieza A** (rama
@@ -69,7 +69,7 @@ OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `loc
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **461 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **464 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -100,7 +100,7 @@ El orden **no es negociable**, y el motivo es de seguridad:
 ### 5.1 — La API (`api/`) ✅ HECHA
 
 REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.user_id` y deja que
-**Postgres decida el resto** (ADR-15). 20 tests contra PGlite, sin red ni Supabase.
+**Postgres decida el resto** (ADR-15). 64 tests contra PGlite, sin red ni Supabase.
 
 | Endpoint | Qué hace |
 |---|---|
@@ -129,7 +129,7 @@ REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.us
 > página, editar —revoca—, aprobar run), **refresh del token** (401 → refresca y reintenta una vez;
 > si falla, al login), **polling** del research en curso (ADR-21) y las **carreras asincrónicas
 > cerradas** (`core/vigencia.ts`: una respuesta tardía no pisa la pantalla y no queda polling
-> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **45 tests
+> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **60 tests
 > `node:test`**, sin navegador. La API ganó **CORS** para que el navegador pueda llamarla.
 >
 > **Verificado en un navegador real** (`npm run dev:server -w api` levanta la API sobre PGlite):
@@ -204,7 +204,7 @@ LLM, y probablemente no entra en el timeout de una función (60-300 s).
 
 **Un único servicio Node, multi-tenant** (1 servicio, N dominios) que lee la Content Delivery API de
 Storyblok y sirve la web **en vivo**, reutilizando `renderStory()`, que ya existía y estaba probado.
-**60 tests**, verificado en un navegador real.
+**94 tests**, verificado en un navegador real.
 
 ```
 Editor toca Storyblok ──▶ (contenido)

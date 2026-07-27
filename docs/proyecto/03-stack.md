@@ -64,7 +64,7 @@ paquetes transitivos.
 
 **PGlite es la decisión de testing que más rindió.** Las políticas RLS son la frontera de
 seguridad del producto, y un *mock* de Postgres no puede probarlas: lo que hay que verificar es
-que **Postgres las hace cumplir**. Con PGlite, los 99 tests de `db/` corren las migraciones
+que **Postgres las hace cumplir**. Con PGlite, los 114 tests de `db/` corren las migraciones
 reales contra un Postgres real —**sin Docker, sin cuenta, sin red**— y se ejecutan en CI como
 cualquier test unitario. Sin esto, los agujeros multi-tenant que encontraron las reviews externas
 no se habrían podido cerrar con una prueba, solo con un argumento.
@@ -92,10 +92,10 @@ promesas.
 |---|---|---|---|---|
 | **Base de datos / Auth** | **Supabase** (Postgres + RLS + Auth + pgvector) | ADR-01 | ✅ **En el código** (Postgres/RLS **y el JWT, verificado y probado**) | Un solo Postgres resuelve multi-tenancy (RLS por `tenant_id`), RBAC y vectores a la vez. Se descartó ensamblar Auth0 + RDS + Pinecone + S3. |
 | **Orquestación** | **Inngest** (flujos como código, durables) | ADR-03, ADR-12 | ✅ **En el código** | Reintentos, idempotencia y `waitForEvent` para la compuerta humana. **Se descartó n8n como backbone** (flujos en JSON no se versionan ni testean bien); queda solo como *glue*. |
-| **Portal** | **Angular + Tailwind**, mobile-first · standalone + signals · **Tailwind puro** (sin librería de componentes) · **polling**, no Realtime | **ADR-16** (*reemplaza ADR-02*), **ADR-20**, **ADR-21** | ✅ **Construido** (`portal/`, 45 tests) | El portal es un **SPA privado y autenticado**: SSR/RSC/SEO —todo lo que justificaba Next— no aporta nada acá. Sirve al **equipo** (aprueba) y al **cliente** (solo lectura). |
-| **API** | REST sobre Node (**Hono**), login `amg_api` | ADR-15, ADR-17, ADR-18, **ADR-22** | ✅ **Construida** (`api/`, 33 tests) | Verifica el JWT, afirma **quién eres**, y deja que **Postgres decida qué podés**. **El portal habla solo con ella** — nunca con PostgREST. |
+| **Portal** | **Angular + Tailwind**, mobile-first · standalone + signals · **Tailwind puro** (sin librería de componentes) · **polling**, no Realtime | **ADR-16** (*reemplaza ADR-02*), **ADR-20**, **ADR-21** | ✅ **Construido** (`portal/`, 60 tests) | El portal es un **SPA privado y autenticado**: SSR/RSC/SEO —todo lo que justificaba Next— no aporta nada acá. Sirve al **equipo** (aprueba) y al **cliente** (solo lectura). |
+| **API** | REST sobre Node (**Hono**), login `amg_api` | ADR-15, ADR-17, ADR-18, **ADR-22** | ✅ **Construida** (`api/`, 64 tests) | Verifica el JWT, afirma **quién eres**, y deja que **Postgres decida qué podés**. **El portal habla solo con ella** — nunca con PostgREST. |
 | **CMS del Módulo 1** | **Storyblok** (headless + Visual Editor) | ADR-04 | ✅ Publica el contenido | Creación programática vía Management API + edición visual para no-técnicos. Se descartó WordPress/Elementor (JSON opaco) y Payload (sin edición visual sobre el lienzo). |
-| **Render de las webs de cliente** | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | **ADR-19** (*cierra OBS-03*) | ✅ **Construido** (`renderer/`, 60 tests) — falta desplegar | Lee la Content Delivery API de Storyblok y sirve la web en vivo. Elegido sobre "estático + rebuild" porque el **Visual Editor necesita una URL de preview en vivo** — y el Visual Editor es *la razón por la que se eligió Storyblok*. |
+| **Render de las webs de cliente** | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | **ADR-19** (*cierra OBS-03*) | ✅ **Construido** (`renderer/`, 94 tests) — falta desplegar | Lee la Content Delivery API de Storyblok y sirve la web en vivo. Elegido sobre "estático + rebuild" porque el **Visual Editor necesita una URL de preview en vivo** — y el Visual Editor es *la razón por la que se eligió Storyblok*. |
 | **Motor de keyword research** | **DataForSEO** | ADR-05 | ✅ En el código | Pay-as-you-go barato. Se descartó SEMrush (~450€/mes) y Google Ads API (developer token, volúmenes en rangos). |
 | **LLM** | **Proveedor abstracto** (OpenAI / Anthropic); embeddings con OpenAI | ADR-09 | ✅ En el código | No quedar casados con un proveedor. Embeddings van con OpenAI porque **Anthropic no tiene API de embeddings propia**. |
 
@@ -126,7 +126,7 @@ AMG/
 ├── docs/                  # toda la documentación
 │   ├── proyecto/          # ← esta documentación técnica
 │   ├── acciones/          # lo que solo Juan puede hacer (cuentas, saldo, decisiones)
-│   ├── decisiones-arquitectura.md    # ADR-01..22 + OBS-01/02/03
+│   ├── decisiones-arquitectura.md    # ADR-01..23 + OBS-01/02/03
 │   └── modulo-2-esquema/  # esquema de diseño v0 (SQL + tipos + ejemplo)
 │
 ├── db/                    # LA PLATAFORMA — esquema, RLS, cache, tareas
@@ -173,7 +173,7 @@ AMG/
 ├── api/                   # LA API REST (Hono) — etapa 5.1, ADR-22
 │   └── src/
 │       ├── app.ts         # rutas; recibe TODO inyectado (por eso se testea sin red)
-│       ├── auth.ts        # verifica el JWT: exp/sub/aud/iss y alg fijado a HS256
+│       ├── auth.ts        # verifica el JWT: exp/sub/aud/iss y alg fijado a ES256, verificado contra el JWKS del emisor
 │       ├── solicitar.ts   # comando compuesto: la fila bajo RLS, y RECIÉN ahí el evento
 │       ├── deps.ts        # composition root: el único que toca credenciales
 │       └── dev-server.ts  # la API real sobre PGlite, sin credenciales (nunca en prod)

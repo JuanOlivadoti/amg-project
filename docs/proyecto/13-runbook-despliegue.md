@@ -60,9 +60,9 @@
    pestaña **Legacy API keys** — las nuevas (`publishable` / `secret`) son otro esquema; el portal usa
    la legacy. Ninguno de los dos valores es secreto (RLS autoriza, no la clave).
 
-4. **JWT Secret** (para la API) → **Project Settings → JWT Keys**, pestaña **Legacy JWT Secret**
-   (hay que darle a _reveal_). Ya no está bajo _API_. **Esto sí es secreto**: va solo al `.env` y a
-   las variables de Railway.
+4. **No hace falta ningún JWT Secret.** La API verifica los tokens contra el JWKS público del
+   proyecto, que deriva del `iss`. El único valor que necesita es
+   `https://<project-ref>.supabase.co/auth/v1`, que ya conocés del paso 3.
 
 ### B.2 — Railway y Hostinger
 
@@ -224,7 +224,7 @@ usuario NO puede editar), poné:
    npm run env:sync     # asegura que api/.env está al día con docs/private/credenciales.env
    ```
 
-   Abrí `api/.env`, copiá **las 5 líneas `CLAVE=valor`** (salteá los comentarios de la cabecera) y
+   Abrí `api/.env`, copiá **las 4 líneas `CLAVE=valor`** (salteá los comentarios de la cabecera) y
    pegalas en Railway: **Variables → Raw Editor**. Acepta el formato `CLAVE=valor` de a varias líneas.
    Si no encontrás el Raw Editor, cargalas de a una con **+ New Variable**.
 
@@ -237,16 +237,15 @@ usuario NO puede editar), poné:
    ⚠️ **No la saltees:** el server corre con `tsx` y no hay paso de build. `tsx` es una
    devDependency; si Railway instala en modo producción, `npm run serve` falla con `tsx: not found`.
 
-   Deberías terminar con estas 6 variables:
+   Deberías terminar con estas 5 variables:
 
    | Variable | De dónde sale | Obligatoria |
    | --- | --- | --- |
    | `DATABASE_URL_API` | C.2 — login `amg_api`, **no** el de admin | sí |
-   | `SUPABASE_JWT_SECRET` | B.1 — Project Settings → JWT Keys → Legacy | sí |
+   | `SUPABASE_JWT_ISS` | `https://<project-ref>.supabase.co/auth/v1` | **sí** |
    | `CORS_ORIGINS` | `https://bigballs.es,https://www.bigballs.es` | sí |
-   | `SUPABASE_JWT_ISS` | `https://<project-ref>.supabase.co/auth/v1` | recomendada |
    | `SUPABASE_JWT_AUD` | vacía salvo que hayas cambiado el default | no |
-   | `NPM_CONFIG_PRODUCTION` | `false` — a mano, ver arriba | sí |
+   | `NPM_CONFIG_PRODUCTION` | `false` — a mano | sí |
 
    > 🔴 **Nunca pegues `DATABASE_URL_ADMIN` en Railway.** Es el superusuario que crea roles y es dueño
    > del esquema. La API usa `amg_api`, que es `NOINHERIT` y trabaja bajo RLS; darle la de admin
@@ -401,21 +400,24 @@ sirvan por HTTPS, o el navegador bloquea la llamada de una página https a un ba
 
 ## Troubleshooting (los errores que más probablemente veas)
 
-| Síntoma                                                                                                    | Causa probable                                          | Fix                                                                                                                                          |
-| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| La API no arranca, log dice `Faltan variables de entorno`                                                  | Falta una var obligatoria en Railway                    | Completá `DATABASE_URL_API`, `SUPABASE_JWT_SECRET`, `CORS_ORIGINS`.                                                                          |
-| La API no arranca, `tsx: not found`                                                                        | Railway instaló sin devDependencies                     | Agregá la variable `NPM_CONFIG_PRODUCTION=false` y redesplegá.                                                                               |
-| La API no arranca, error sobre `CORS_ORIGINS`                                                              | Pusiste `*`, vacío, o una URL sin esquema               | Poné el origen completo, ej. `https://bigballs.es`.                                                                                          |
-| `/health` da 404                                                                                           | La URL o el service están mal                           | Es `GET /health` en la raíz de la API, sin `/api` adelante.                                                                                  |
-| El portal carga pero el login/llamadas fallan con error de CORS                                            | `CORS_ORIGINS` de la API ≠ origen real del portal       | Que sean idénticos (`https://bigballs.es`, sin barra final). Si entrás por `www.`, agregá `https://www.bigballs.es`.                         |
-| Recargar en `/runs/:id` da 404                                                                             | Falta el `.htaccess` en `public_html`                   | Es un dotfile: subilo explícitamente (o activá "mostrar ocultos" en File Manager). Debe estar junto a `index.html`.                          |
-| El portal (https) no puede llamar a la API                                                                 | La API responde por http, no https                      | Activá el custom domain con TLS en Railway; `apiBaseUrl` debe ser `https://api.bigballs.es`.                                                 |
-| Login OK pero Frank no ve nada                                                                             | El `app_metadata.tenant_id` no coincide con el del seed | Copiá el `tenant_id` que imprimió `seed:demo` al `app_metadata` de cada usuario.                                                             |
-| **Deploy del portal:** `npm ci` falla con `EUSAGE ... can only install with an existing package-lock.json` | `portal/package-lock.json` no está en el repo           | Es la excepción `!portal/package-lock.json` del `.gitignore`. Commitealo. No se reproduce en local: ahí el archivo existe en disco.          |
-| **Deploy del portal:** `Missing script: "build:portal"`                                                    | Directorio raíz y build command no se corresponden      | Con raíz `portal` el comando es `npm run build`. Con raíz `./`, `npm run build:portal`. Ver la tabla en C.6.                                 |
-| **Deploy del portal:** instala ~300 paquetes que no usa                                                    | Directorio raíz en `./` en vez de `portal`              | Poné la raíz en `portal`: Hostinger instala solo sus deps, no los 6 workspaces.                                                              |
-| El `app_metadata` no se puede editar desde el dashboard                                                    | Supabase no expone `raw_app_meta_data` en la UI         | Va por SQL Editor, y **fusionando** con el operador de concatenación de `jsonb`: asignar el objeto entero borra `provider` y rompe el login. |
-| Frank SÍ ve el botón "lanzar research"                                                                     | El portal se buildeó en modo development                | El build tiene que ser `npm run build -w portal` (producción, `features.lanzarResearch=false`).                                              |
+| Síntoma                                                                                                    | Causa probable                                          | Fix                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| La API no arranca, log dice `Faltan variables de entorno`                                                  | Falta una var obligatoria en Railway                    | Completá `DATABASE_URL_API`, `SUPABASE_JWT_ISS`, `CORS_ORIGINS`.                                                                                   |
+| El login falla con `Token inválido o expirado` y las credenciales son correctas                            | El proyecto firma con un algoritmo que la API no acepta | Mirá `curl -s https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`: el `alg` que declare es el que `api/src/auth.ts` tiene que exigir.         |
+| La API responde `503` con `No se puede verificar el token`                                                 | No puede bajar el JWKS de Supabase                      | No es un problema de credenciales. Comprobá que `SUPABASE_JWT_ISS` sea exactamente `https://<ref>.supabase.co/auth/v1` y que Supabase esté arriba. |
+| Rotaste la clave de firma **por sospecha de compromiso** y la vieja sigue funcionando                      | La API cachea el JWKS 10 minutos                        | Rotar en Supabase no alcanza: **reiniciá el servicio de la API en Railway** para vaciar el caché. En una rotación planificada no hace falta.       |
+| La API no arranca, `tsx: not found`                                                                        | Railway instaló sin devDependencies                     | Agregá la variable `NPM_CONFIG_PRODUCTION=false` y redesplegá.                                                                                     |
+| La API no arranca, error sobre `CORS_ORIGINS`                                                              | Pusiste `*`, vacío, o una URL sin esquema               | Poné el origen completo, ej. `https://bigballs.es`.                                                                                                |
+| `/health` da 404                                                                                           | La URL o el service están mal                           | Es `GET /health` en la raíz de la API, sin `/api` adelante.                                                                                        |
+| El portal carga pero el login/llamadas fallan con error de CORS                                            | `CORS_ORIGINS` de la API ≠ origen real del portal       | Que sean idénticos (`https://bigballs.es`, sin barra final). Si entrás por `www.`, agregá `https://www.bigballs.es`.                               |
+| Recargar en `/runs/:id` da 404                                                                             | Falta el `.htaccess` en `public_html`                   | Es un dotfile: subilo explícitamente (o activá "mostrar ocultos" en File Manager). Debe estar junto a `index.html`.                                |
+| El portal (https) no puede llamar a la API                                                                 | La API responde por http, no https                      | Activá el custom domain con TLS en Railway; `apiBaseUrl` debe ser `https://api.bigballs.es`.                                                       |
+| Login OK pero Frank no ve nada                                                                             | El `app_metadata.tenant_id` no coincide con el del seed | Copiá el `tenant_id` que imprimió `seed:demo` al `app_metadata` de cada usuario.                                                                   |
+| **Deploy del portal:** `npm ci` falla con `EUSAGE ... can only install with an existing package-lock.json` | `portal/package-lock.json` no está en el repo           | Es la excepción `!portal/package-lock.json` del `.gitignore`. Commitealo. No se reproduce en local: ahí el archivo existe en disco.                |
+| **Deploy del portal:** `Missing script: "build:portal"`                                                    | Directorio raíz y build command no se corresponden      | Con raíz `portal` el comando es `npm run build`. Con raíz `./`, `npm run build:portal`. Ver la tabla en C.6.                                       |
+| **Deploy del portal:** instala ~300 paquetes que no usa                                                    | Directorio raíz en `./` en vez de `portal`              | Poné la raíz en `portal`: Hostinger instala solo sus deps, no los 6 workspaces.                                                                    |
+| El `app_metadata` no se puede editar desde el dashboard                                                    | Supabase no expone `raw_app_meta_data` en la UI         | Va por SQL Editor, y **fusionando** con el operador de concatenación de `jsonb`: asignar el objeto entero borra `provider` y rompe el login.       |
+| Frank SÍ ve el botón "lanzar research"                                                                     | El portal se buildeó en modo development                | El build tiene que ser `npm run build -w portal` (producción, `features.lanzarResearch=false`).                                                    |
 
 ---
 
