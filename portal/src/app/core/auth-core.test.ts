@@ -154,10 +154,12 @@ test('cerrarSesion llama al logout de Supabase con el token del usuario', async 
     return new Response(null, { status: 204 });
   }) as unknown as typeof fetch;
 
-  const ok = await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'anon-123', fetchFn }, 'tok-abc');
+  const resultado = await cerrarSesion(
+    { supabaseUrl: 'https://p.supabase.co', anonKey: 'anon-123', fetchFn },
+    'tok-abc',
+  );
 
-  assert.equal(ok, true);
-  assert.equal(capturado!.url, 'https://p.supabase.co/auth/v1/logout');
+  assert.equal(resultado, 'revocada');
   assert.equal(capturado!.init.method, 'POST');
   const h = capturado!.init.headers as Record<string, string>;
   assert.equal(h['apikey'], 'anon-123');
@@ -165,23 +167,49 @@ test('cerrarSesion llama al logout de Supabase con el token del usuario', async 
   assert.equal(h['authorization'], 'Bearer tok-abc');
 });
 
-test('🔴 cerrarSesion devuelve false si Supabase responde error, y NO lanza', async () => {
-  // Que no lance es lo que garantiza que el usuario quede deslogueado igual. Que devuelva false es
-  // lo que permite distinguir "revocado" de "solo limpiado acá" sin obligar a nadie a mirarlo.
-  const fetchFn = (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch;
+test('🔴 el scope del logout es local: "Salir" cierra esta sesión, no las de todos los dispositivos', async () => {
+  // Decisión del dueño del producto: el botón dice "Salir", no "Salir de todos lados". Mutación: si
+  // se le quita `?scope=local` a la URL, este test cae.
+  let url = '';
+  const fetchFn = (async (u: string) => {
+    url = u;
+    return new Response(null, { status: 204 });
+  }) as unknown as typeof fetch;
+  await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn }, 'tok');
+  assert.equal(url, 'https://p.supabase.co/auth/v1/logout?scope=local');
+});
+
+test('🔴 cerrarSesion: 401/403 es credencial-rechazada, el único caso que justifica reintentar', async () => {
+  const con401 = (async () => new Response('nope', { status: 401 })) as unknown as typeof fetch;
   assert.equal(
-    await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn }, 'tok'),
-    false,
+    await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn: con401 }, 'tok'),
+    'credencial-rechazada',
+  );
+  const con403 = (async () => new Response('nope', { status: 403 })) as unknown as typeof fetch;
+  assert.equal(
+    await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn: con403 }, 'tok'),
+    'credencial-rechazada',
   );
 });
 
-test('🔴 cerrarSesion devuelve false si la red falla, y NO lanza', async () => {
+test('🔴 cerrarSesion devuelve indeterminada si Supabase responde otro error, y NO lanza', async () => {
+  // Que no lance es lo que garantiza que el usuario quede deslogueado igual. `indeterminada` (no
+  // `credencial-rechazada`) es lo que evita que `revocar` reintente y rote un refresh token que
+  // podía estar perfectamente bien.
+  const fetchFn = (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch;
+  assert.equal(
+    await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn }, 'tok'),
+    'indeterminada',
+  );
+});
+
+test('🔴 cerrarSesion devuelve indeterminada si la red falla, y NO lanza', async () => {
   const fetchFn = (async () => {
     throw new Error('ECONNREFUSED');
   }) as unknown as typeof fetch;
   assert.equal(
     await cerrarSesion({ supabaseUrl: 'https://p.supabase.co', anonKey: 'a', fetchFn }, 'tok'),
-    false,
+    'indeterminada',
   );
 });
 
@@ -216,10 +244,10 @@ test('🔴 loginConPassword manda un AbortSignal: sin esto, un login colgado no 
   assert.ok(capturado.signal instanceof AbortSignal, 'la request de login tiene que llevar un signal de timeout');
 });
 
-test('🔴 refrescarSesion manda un AbortSignal: es el reintento que login() espera, y sin límite lo cuelga', async () => {
-  // El escenario real: `revocar()` reintenta con `refrescarSesion` cuando el logout da 401 (token
-  // vencido). `AuthService.login` espera esa revocación en vuelo antes de pedir un token nuevo. Si
-  // `refrescarSesion` queda colgada (wifi cortado, portal cautivo), `login` cuelga con ella.
+test('🔴 refrescarSesion manda un AbortSignal: es el reintento del logout, y sin límite lo cuelga', async () => {
+  // El escenario real: `revocar()` reintenta con `refrescarSesion` cuando el logout da
+  // `credencial-rechazada` (401/403, token vencido). Si `refrescarSesion` queda colgada (wifi
+  // cortado, portal cautivo), el reintento del logout cuelga con ella.
   const { fn, capturado } = fakeFetch(200, {
     access_token: 'j2',
     refresh_token: 'r2',

@@ -130,6 +130,22 @@ a Supabase en cada request, así que la revocación corta la **renovación**, no
 Cortarlo de inmediato exigiría comprobar la sesión contra el servidor en cada llamada; ese costo no se
 justifica acá.
 
+> ### ⚠️ Actualización (2026-07-27) — el alcance pasó a `local`, y con eso desapareció una carrera
+>
+> Decisión del dueño del producto, no un hallazgo técnico: el botón dice "Salir", no "Salir de todos
+> los dispositivos" — cierra ESTA sesión, no las de todos los dispositivos del usuario (una acción de
+> ese tipo necesitaría ser explícita y separada, y hoy no existe). `cerrarSesion` pasa `?scope=local`.
+>
+> Eso **le quitó la razón de existir** a una de las dos guardas de esta sección: la "revocación
+> lenta" que arriba se describe como una de las cuatro carreras (línea 100-101) solo podía matar una
+> sesión nueva porque el alcance era GLOBAL — una revocación tardía de la sesión vieja alcanzaba
+> también al refresh token de la sesión que se acababa de crear. Con `local`, una revocación tardía
+> solo puede tocar el refresh token de la sesión que la originó, que ya está muerta localmente: la
+> carrera desaparece por construcción, no por una guarda nueva. El mecanismo que la cerraba
+> (`revocacionEnVuelo`, que `AuthService.login()` esperaba antes de pedir un token nuevo) se **borró**
+> junto con la razón de que existiera. Las otras tres carreras de esta sección siguen vivas y sus
+> guardas (identidad de sesión, época) se mantienen sin cambios.
+
 ---
 
 ## Diseño

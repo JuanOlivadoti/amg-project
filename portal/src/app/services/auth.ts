@@ -41,9 +41,6 @@ export class AuthService {
   private epoca = 0;
 
   async login(email: string, password: string): Promise<void> {
-    // Esperar la revocación pendiente antes de pedir el token nuevo: es de alcance global, así que
-    // si llegara después mataría la sesión que estamos por crear.
-    if (this.revocacionEnVuelo) await this.revocacionEnVuelo;
     const epoca = ++this.epoca;
     const sesion = await loginConPassword(this.authOpts, email, password);
     // Si mientras viajaba el login hubo un logout (u otro login), este resultado ya no es el que
@@ -65,46 +62,41 @@ export class AuthService {
    * `fetch` no tiene timeout propio, así que puede colgar indefinidamente. La revocación viaja
    * después con el token que ya se capturó; que falle no cambia nada de lo que ve el usuario.
    *
-   * La revocación se guarda en `revocacionEnVuelo` mientras viaja: es lo que le permite a `login`
-   * esperarla antes de pedir un token nuevo (ver ahí por qué hace falta).
+   * No hay una revocación "en vuelo" que otro método deba esperar: el alcance es `local` (ver
+   * `cerrarSesion`), así que una revocación tardía solo puede afectar al refresh token de ESTA
+   * sesión, que ya está muerta localmente. Antes, con alcance global, una revocación lenta podía
+   * llegar después de un login nuevo y matarlo — por eso `login` esperaba. Ese mecanismo
+   * (`revocacionEnVuelo`) se borró junto con la razón de que existiera.
    */
   async logout(): Promise<void> {
     const s = this._sesion();
     this.epoca++;
     this.limpiarLocal();
     if (!s) return;
-
-    const tarea = this.revocar(s);
-    this.revocacionEnVuelo = tarea;
-    void tarea.finally(() => {
-      // Solo limpia si sigue siendo la suya: una revocación vieja no borra una más nueva.
-      if (this.revocacionEnVuelo === tarea) this.revocacionEnVuelo = null;
-    });
-    await tarea;
+    await this.revocar(s);
   }
-
-  /**
-   * La revocación que todavía está viajando, si la hay.
-   *
-   * `login` la espera antes de pedir un token nuevo. Sin eso hay una carrera con consecuencia real:
-   * la revocación es de alcance GLOBAL, así que una que llega tarde le mata al usuario la sesión
-   * que acaba de crear. Abortarla del lado del cliente no alcanza — el servidor puede haberla
-   * recibido ya—, así que hay que esperarla, no cancelarla.
-   */
-  private revocacionEnVuelo: Promise<void> | null = null;
 
   /**
    * Revoca en Supabase, reintentando UNA vez con un access token fresco.
    *
-   * Por qué el reintento: el portal solo refresca ante un 401, así que una pestaña abierta desde
-   * ayer tiene el access token vencido. Sin esto, el `/logout` se hace con un JWT muerto, Supabase
-   * lo rechaza y **el refresh token queda vivo para siempre** — justo lo que este logout vino a
-   * evitar, y en el caso más común, no en uno raro.
+   * El reintento es SOLO para `'credencial-rechazada'` (401/403): ahí el access token está vencido
+   * o es inválido —el caso común de una pestaña abierta desde ayer, que el portal solo refresca ante
+   * un 401— y sin refrescar, el refresh token queda vivo para siempre, justo lo que este logout vino
+   * a evitar.
+   *
+   * Un `'indeterminada'` (500, timeout, red caída) NO se reintenta: refrescar ROTA el refresh token,
+   * así que hacerlo ahí gastaría una credencial que probablemente estaba bien, y si el segundo
+   * intento también falla, el token rotado queda vivo del lado de Supabase y perdido acá — un
+   * resultado peor que no haber tocado nada.
    *
    * Best-effort de punta a punta: si el refresh token tampoco sirve, no hay nada que revocar.
    */
   private async revocar(s: Sesion): Promise<void> {
-    if (await cerrarSesion(this.authOpts, s.accessToken)) return;
+    const resultado = await cerrarSesion(this.authOpts, s.accessToken);
+    // Solo 'credencial-rechazada' reintenta (ver el comentario del método): 'revocada' ya terminó,
+    // e 'indeterminada' NO se reintenta a propósito — reintentar ahí rotaría un refresh token que
+    // probablemente estaba bien.
+    if (resultado !== 'credencial-rechazada') return;
     try {
       const fresca = await refrescarSesion(this.authOpts, s.refreshToken);
       await cerrarSesion(this.authOpts, fresca.accessToken);

@@ -258,11 +258,36 @@ test("🔴 emisorSupabase rechaza una ruta que no sea /auth/v1", async () => {
   assert.throws(() => emisorSupabase("https://abc.supabase.co/otra/cosa"), /auth\/v1/);
 });
 
-test("🔴 emisorSupabase rechaza query, fragment, puerto y credenciales", async () => {
+test("🔴 emisorSupabase rechaza query, fragment, puerto no estándar y credenciales", async () => {
   assert.throws(() => emisorSupabase("https://abc.supabase.co/auth/v1?x=1"), /query/);
   assert.throws(() => emisorSupabase("https://abc.supabase.co/auth/v1#x"), /query|fragment/);
   assert.throws(() => emisorSupabase("https://abc.supabase.co:8443/auth/v1"), /puerto/);
   assert.throws(() => emisorSupabase("https://u:p@abc.supabase.co/auth/v1"), /credenciales/);
+});
+
+test("emisorSupabase acepta :443 (el default de https): canoniza al mismo origen portless", async () => {
+  // `URL.port` viene vacío tanto sin puerto como con el default del esquema — el propio parser lo
+  // normaliza así. Rechazar `:443` sería pedantería: el origen resultante es idéntico al de no poner
+  // ningún puerto. Lo que la guarda rechaza es un puerto EXPLÍCITO y distinto del estándar.
+  const sinPuerto = emisorSupabase("https://abc.supabase.co/auth/v1");
+  const con443 = emisorSupabase("https://abc.supabase.co:443/auth/v1");
+  assert.equal(con443.issuer, sinPuerto.issuer);
+  assert.equal(con443.jwksUrl.href, sinPuerto.jwksUrl.href);
+});
+
+test("🔴 emisorSupabase rechaza un project-ref que no es una etiqueta DNS válida", async () => {
+  // `[a-z0-9-]+` a secas dejaba pasar guion inicial, guion final y etiquetas de más de 63
+  // caracteres — ninguno es un host DNS resoluble. Sin esto, la API arranca igual (esto solo valida
+  // la FORMA) y el typo recién se nota como un 503 inexplicable en el primer login, en vez de acá.
+  assert.throws(() => emisorSupabase("https://-abc.supabase.co/auth/v1"), /Supabase/, "guion inicial");
+  assert.throws(() => emisorSupabase("https://abc-.supabase.co/auth/v1"), /Supabase/, "guion final");
+  assert.throws(
+    () => emisorSupabase(`https://${"a".repeat(64)}.supabase.co/auth/v1`),
+    /Supabase/,
+    "etiqueta de más de 63 caracteres",
+  );
+  // El límite es 63, no menos: no debe rechazar lo que sí es válido.
+  assert.doesNotThrow(() => emisorSupabase(`https://${"a".repeat(63)}.supabase.co/auth/v1`));
 });
 
 test("emisorSupabase rechaza una URL que no es URL", async () => {

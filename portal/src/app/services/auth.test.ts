@@ -90,9 +90,9 @@ function fetchControlado() {
     get logoutsVistos(): RequestInit[] {
       return logoutsVistos;
     },
-    // Cuántas requests de /token siguen sin soltar: lo usa el test de Gap B para confirmar que
-    // `login` NO llegó a pedir token mientras la revocación seguía en vuelo (no alcanza con mirar
-    // el resultado final, porque si pidiera de más igual podría "colar" bien en el orden equivocado).
+    // Cuántas requests de /token siguen sin soltar: lo usa el test de "no reintentar en indeterminada"
+    // para confirmar que `revocar` NO llegó a pedir un access token fresco (no alcanza con mirar el
+    // resultado final, porque `logout` ya limpió el estado local antes de tocar la red de cualquier forma).
     get pendientesToken(): number {
       return colas.token.length;
     },
@@ -180,10 +180,9 @@ test('🔴 un login en vuelo no autentica si mientras tanto hubo logout', async 
 test('🔴 un logout lento no pisa un login posterior', async () => {
   // logout → el usuario vuelve a entrar → la revocación vieja termina. No debe borrar lo nuevo.
   //
-  // Orden obligado por Gap B: `login` ahora espera la revocación en vuelo ANTES de pedir token
-  // (ver `revocacionEnVuelo`), así que el `/token` de este login no se dispara hasta soltar el
-  // `/logout`. Antes de esa guarda, esta prueba soltaba el token primero — hoy eso se traba, porque
-  // el login todavía ni pidió el token: es la propia carrera que Gap B cierra.
+  // `login` ya NO espera la revocación (se borró junto con `revocacionEnVuelo`, ver `AuthService`):
+  // el `/token` de este login se dispara de inmediato, antes de soltar el `/logout`. Lo que evita
+  // que el logout viejo pise la sesión nueva es la ÉPOCA, capturada como primer statement de `login`.
   const { a, red, almacen } = crear();
   instalar(a, almacen, SESION_A);
 
@@ -307,26 +306,26 @@ test('🔴 logout no reintenta sin límite: si el segundo intento también falla
 });
 
 /**
- * Gap B: la revocación es de alcance GLOBAL. Si `login` no la esperara, una revocación lenta que
- * termina después de que el usuario ya volvió a entrar le mataría la sesión que acaba de crear.
+ * Complemento de Gap A: el reintento es SOLO para `'credencial-rechazada'` (401/403). Un 500 es
+ * `'indeterminada'` — no dice que el token esté vencido — y reintentar ahí rotaría un refresh token
+ * que probablemente estaba bien, para colmo sin garantía de que el segundo intento tampoco falle.
  */
-test('🔴 login espera una revocación en vuelo antes de pedir el token nuevo (Gap B)', async () => {
+test('🔴 logout NO reintenta un fallo indeterminado (500): reintentar ahí gastaría el refresh token sin motivo', async () => {
   const { a, red, almacen } = crear();
   instalar(a, almacen, SESION_A);
 
-  const cierre = a.logout(); // dispara la revocación y la deja "en vuelo"
-  const entrada = a.login('b@ejemplo.com', 'pw');
+  const cierre = a.logout();
+  red.soltarLogout(500); // fallo indeterminado: no dice si el access token está vencido
+  await flush();
 
-  // Mientras la revocación sigue viva, `login` no puede haber pedido el token todavía.
-  assert.equal(red.pendientesToken, 0, 'login no debe pedir token mientras la revocación sigue en vuelo');
+  // Si hubiera reintentado, ya habría pedido un access token fresco por /token.
+  assert.equal(
+    red.pendientesToken,
+    0,
+    'un 500 no es un rechazo de credencial: no debe gastar el refresh token reintentando',
+  );
+  assert.equal(red.logoutsVistos.length, 1, 'un solo intento de logout, no dos');
 
-  red.soltarLogout(); // la revocación se resuelve con éxito
   await cierre;
-
-  // Recién ahora `login` puede seguir y pedir el token nuevo.
-  red.soltarToken(respuestaGoTrue('user-b', 'b@ejemplo.com', 'tok-b'));
-  await entrada;
-
-  assert.equal(a.autenticado(), true, 'el login tiene que completarse una vez que la revocación terminó');
-  assert.equal(a.email(), 'b@ejemplo.com', 'la sesión nueva tiene que sobrevivir a la revocación tardía');
+  assert.equal(a.autenticado(), false, 'el usuario queda deslogueado localmente igual');
 });

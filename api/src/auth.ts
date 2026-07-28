@@ -53,6 +53,14 @@ export const AUD_SUPABASE = "authenticated";
  * claves, no la credencial. Pasa durante una rotación que publica dos claves ES256 a la vez, que es
  * justo la ventana para la que existe el 503: tratarlo como culpa del token le manda un 401 a un
  * usuario con una credencial perfectamente buena.
+ *
+ * Trade-off asumido, no un descuido: durante esa ventana de rotación, CUALQUIERA puede forzar el 503
+ * mandando un JWT ES256 sin `kid` — no hace falta credencial válida, alcanza con el algoritmo. No es
+ * una escalada (no se otorga acceso, y ninguna otra request se ve afectada) pero sí significa que,
+ * mientras dure la rotación, el 503 deja de ser "puramente nuestra infraestructura" y pasa a ser
+ * gatillable por un cliente cualquiera — con el costo de ensuciar métricas y alertas de esa señal.
+ * Se eligió así a propósito: la alternativa (401) le cuesta la sesión a un usuario legítimo que cayó
+ * en esa ventana con una credencial perfectamente buena, y ese costo es peor. Ver ADR-23.
  */
 const CODIGOS_DE_TOKEN = new Set([
   "ERR_JWS_INVALID",
@@ -157,16 +165,24 @@ export function emisorSupabase(valor: string): EmisorSupabase {
   if (url.username || url.password) {
     throw new Error("SUPABASE_JWT_ISS no puede llevar credenciales embebidas.");
   }
+  // No es "sin puerto": es "sin puerto NO estándar". `URL.port` viene vacío tanto si no se escribió
+  // ninguno como si se escribió el default del esquema (`:443` en https) — el propio parser lo
+  // canoniza así. `https://abc.supabase.co:443/auth/v1` pasa esta guarda y termina en el mismo
+  // origen portless que sin puerto: rechazarlo sería pedantería, no seguridad. Lo que sí para acá es
+  // un puerto EXPLÍCITO y distinto del estándar (`:8443`), que si se aceptara cambiaría a qué host
+  // real apunta el emisor.
   if (url.port) {
-    throw new Error(`SUPABASE_JWT_ISS no lleva puerto (tiene ":${url.port}").`);
+    throw new Error(`SUPABASE_JWT_ISS no puede llevar un puerto no estándar (tiene ":${url.port}").`);
   }
   if (url.search || url.hash) {
     throw new Error("SUPABASE_JWT_ISS no puede llevar query ni fragment.");
   }
-  // Exactamente `<project-ref>.supabase.co`: UNA etiqueta no vacía y nada más. Un `endsWith`
-  // dejaba pasar `supabase.co` pelado, `.supabase.co` y `a.b.supabase.co`, que no son endpoints de
-  // proyecto: la API arrancaría para después fallar en cada login con un 503 inexplicable.
-  if (!/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname)) {
+  // Exactamente `<project-ref>.supabase.co`, y `<project-ref>` tiene que ser una etiqueta DNS válida:
+  // 1-63 caracteres, sin guion inicial ni final. Sin este último requisito, `[a-z0-9-]+` deja pasar
+  // `-abc.supabase.co` o `abc-.supabase.co` — un typo que no es un host DNS resoluble. Con eso la API
+  // arrancaría igual (esto solo mira la forma) y el error recién aparecería como un 503 inexplicable
+  // en el primer login, en vez de fallar acá, ruidosamente, que es todo el sentido de validar esto.
+  if (!/^(?!-)[a-z0-9-]{1,63}(?<!-)\.supabase\.co$/.test(url.hostname)) {
     throw new Error(
       `SUPABASE_JWT_ISS debe ser un host de proyecto Supabase (es "${url.hostname}"). ` +
         "Formato esperado: https://<project-ref>.supabase.co/auth/v1",

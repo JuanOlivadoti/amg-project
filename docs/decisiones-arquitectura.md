@@ -1130,14 +1130,32 @@ de la API en Railway** para vaciar el caché.
 
 **El otro lado del mismo problema: el logout no puede quemar una sesión que no es suya.** El 503
 evita que una caída de Supabase mate sesiones válidas; `cerrarSesion` (`portal/src/app/core/auth-core.ts`)
-evita el caso simétrico. Revoca con el access token, y si ese token ya venció el intento falla en
-silencio y el refresh token —el que de verdad importa revocar— queda vivo para siempre; por eso
-reintenta una vez con un token fresco antes de rendirse. La llamada está acotada con
+evita el caso simétrico. Revoca con el access token, y si ese token ya venció (401/403,
+`'credencial-rechazada'`) reintenta una vez con un token fresco antes de rendirse — es el ÚNICO caso
+que reintenta: un fallo `'indeterminada'` (500, timeout, red caída) no dice que el token esté vencido,
+y refrescar ahí rotaría un refresh token que probablemente estaba bien. La llamada está acotada con
 `AbortSignal.timeout(TIMEOUT_REVOCACION_MS)` (8 s): `fetch` no tiene timeout propio, y sin esto una
-revocación puede quedar colgada indefinidamente. Y como la revocación de Supabase es de **alcance
-global** (todas las sesiones del usuario, no solo esta pestaña), `login()` espera a que una revocación
-en vuelo termine antes de pedir un token nuevo — si no, una revocación lenta de una sesión vieja podría
-matar la sesión que se acaba de abrir.
+revocación puede quedar colgada indefinidamente.
+
+**Alcance del logout: `local`, no global.** `cerrarSesion` pasa `?scope=local` — decisión del dueño
+del producto: el botón dice "Salir", cierra ESTA sesión, no las de todos los dispositivos del usuario
+(eso necesitaría una acción explícita y separada que hoy no existe). Esto **removió** un mecanismo
+entero: con alcance global, una revocación lenta de una sesión vieja podía llegar después de un login
+nuevo y matarlo, así que `AuthService.login()` esperaba (`revocacionEnVuelo`) a que la revocación en
+vuelo terminara antes de pedir un token nuevo. Con `local`, una revocación tardía solo puede afectar
+al refresh token de la sesión que la originó —que ya está muerta localmente—, así que la carrera
+desaparece por construcción y `revocacionEnVuelo` se borró junto con la razón de que existiera. Lo que
+sigue evitando que un logout viejo pise un login nuevo es la ÉPOCA de `AuthService`, que ya existía
+para otra carrera.
+
+**El 503 se puede gatillar desde afuera durante una rotación, y es un trade-off asumido.** Mientras el
+JWKS tiene dos claves ES256 vigentes (la ventana de una rotación), cualquiera puede forzar el 503
+mandando un JWT ES256 sin `kid` — no hace falta credencial válida, alcanza con el algoritmo (ver
+`ERR_JWKS_MULTIPLE_MATCHING_KEYS` arriba). No es una escalada: no se otorga acceso y ninguna otra
+request se ve afectada. Pero sí significa que, en esa ventana, el 503 deja de ser "puramente nuestra
+infraestructura": se puede disparar desde un cliente, y ensucia métricas y alertas de esa señal. Se
+mantiene así a propósito — la alternativa (401) le costaría la sesión a un usuario legítimo que cae en
+esa ventana con una credencial perfectamente buena, y ese costo es peor.
 
 **Descartado.** Volver el proyecto a HS256 (deuda a seis meses, y conserva el secreto) y aceptar
 ambos algoritmos (dos caminos en el borde de seguridad más crítico, justo donde diez reviews vinieron

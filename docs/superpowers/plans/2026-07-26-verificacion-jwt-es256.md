@@ -862,6 +862,27 @@ EOF
 
 ## Task 3: El logout revoca en Supabase, sin bloquear la UI ni pisar sesiones nuevas
 
+> ### ⚠️ Actualización (2026-07-27) — el alcance pasó a `local`, y `revocacionEnVuelo` se borró
+>
+> Lo que sigue describe el plan tal como se ejecutó, con alcance **global** (`POST /auth/v1/logout`
+> sin `scope`) y una guarda `revocacionEnVuelo` que `login()` esperaba antes de pedir un token nuevo.
+> Una revisión posterior (Codex) sobre `fix/jwt-es256` cambió el alcance a **local** por decisión del
+> dueño del producto: el botón dice "Salir", no "Salir de todos los dispositivos". Eso le quitó la
+> razón de existir a `revocacionEnVuelo` — con alcance local, una revocación tardía solo puede tocar
+> el refresh token de la sesión que la originó, que ya está muerta localmente, así que la carrera que
+> esa guarda cerraba desaparece por construcción. Se borró el campo, su bookkeeping en `logout` y el
+> `await` al inicio de `login`. Las guardas de identidad (`hacerRefresh`) y de época (`login`) no
+> cambiaron.
+>
+> También cambió `cerrarSesion`: en vez de `Promise<boolean>` devuelve `ResultadoRevocacion`
+> (`'revocada' | 'credencial-rechazada' | 'indeterminada'`), y el reintento de `revocar` (Step 4, más
+> abajo) pasó a dispararse SOLO con `'credencial-rechazada'` (401/403) — no con cualquier fallo. Antes,
+> un 500 o un timeout también reintentaban, lo que rotaba un refresh token que podía estar
+> perfectamente bien.
+>
+> El resto de este Task —el orden limpiar-antes-de-revocar, las cuatro carreras y sus dos guardas
+> (identidad + época), y el reintento en sí— sigue describiendo el diseño real.
+
 **Files:**
 
 - Modify: `portal/src/app/core/auth-core.ts` (agregar `cerrarSesion` al final)

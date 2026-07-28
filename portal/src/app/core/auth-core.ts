@@ -47,10 +47,8 @@ function aSesion(j: RespuestaGoTrue, emailFallback: string): Sesion {
  *
  * Sin esto, `postToken` puede quedar colgado indefinidamente —`fetch` no tiene timeout propio— y eso
  * no es solo un login lento: `refrescarSesion` (que usa `postToken`) es el reintento de
- * `AuthService.revocar`, y `AuthService.login` **espera** a que esa revocación en vuelo termine antes
- * de pedir un token nuevo (`revocacionEnVuelo`). Una conexión negra ahí (wifi entrecortado, portal
- * cautivo) deja a `login` esperando para siempre con el botón "Entrando…" deshabilitado, sin error ni
- * forma de salir salvo recargar la página.
+ * `AuthService.revocar`. Una conexión negra ahí (wifi entrecortado, portal cautivo) deja ese
+ * reintento colgado sin error ni forma de salir salvo recargar la página.
  *
  * Mismo valor que `TIMEOUT_REVOCACION_MS`: es el mismo endpoint de GoTrue con el mismo modo de fallo
  * (red que no responde ni falla), así que no hay motivo para que el presupuesto sea distinto. Se
@@ -150,9 +148,20 @@ function normalizarRol(v: unknown): string {
  * Cuánto se espera a que Supabase confirme una revocación antes de rendirse.
  *
  * `fetch` no tiene timeout propio: sin esto, una revocación puede quedar colgada indefinidamente.
- * No es solo prolijidad — mientras cuelga, `login` la está esperando (ver `AuthService.login`).
  */
 export const TIMEOUT_REVOCACION_MS = 8_000;
+
+/**
+ * Qué pasó al intentar revocar. La diferencia importa para quien llama (`AuthService.revocar`):
+ * solo un rechazo de credencial justifica gastar el refresh token en un reintento — ver ahí por qué.
+ *
+ * - `'revocada'`: Supabase confirmó (2xx).
+ * - `'credencial-rechazada'`: el access token está vencido o es inválido (401/403). Es el único caso
+ *   en el que refrescar y reintentar tiene sentido.
+ * - `'indeterminada'`: cualquier otra cosa — 500, timeout, red caída. No dice nada del token: podría
+ *   estar perfectamente vivo.
+ */
+export type ResultadoRevocacion = 'revocada' | 'credencial-rechazada' | 'indeterminada';
 
 /**
  * Revoca la sesión **en Supabase**, no solo en el navegador.
@@ -162,35 +171,35 @@ export const TIMEOUT_REVOCACION_MS = 8_000;
  * viva una credencial que puede acuñar access tokens indefinidamente. Si a alguien le roban el
  * equipo y cierra sesión desde otro lado, sin esto no pasa absolutamente nada.
  *
- * **Alcance: global.** Es el default de `POST /auth/v1/logout` sin `scope`, y es el que corresponde
- * al caso que motiva la función — el equipo robado —: revoca los refresh tokens de TODAS las
- * sesiones del usuario, no solo la de este navegador.
+ * **Alcance: local, y a propósito.** El botón dice "Salir", no "Salir de todos los dispositivos": el
+ * usuario que lo aprieta espera cerrar ESTA sesión, no desloguear su teléfono. Por eso se pasa
+ * `?scope=local` — revoca solo el refresh token de este navegador, no los de las demás sesiones del
+ * usuario.
  *
- * **Lo que NO hace:** los access tokens ya emitidos siguen siendo válidos hasta su `exp` (una hora).
- * La API los verifica localmente contra el JWKS y no consulta a Supabase en cada request, así que la
- * revocación corta la renovación, no el acceso en curso. Cortarlo de inmediato exigiría comprobar la
- * sesión contra el servidor en cada llamada, y ese costo no se justifica acá.
+ * **Lo que NO hace:** no cierra la sesión de un dispositivo robado ni de ningún otro dispositivo del
+ * usuario — esos refresh tokens siguen vivos. Eso necesitaría una acción explícita y separada
+ * ("cerrar sesión en todos los dispositivos", con `scope` global) que hoy no existe. Tampoco corta
+ * los access tokens ya emitidos: siguen siendo válidos hasta su `exp` (una hora). La API los verifica
+ * localmente contra el JWKS y no consulta a Supabase en cada request, así que la revocación corta la
+ * renovación, no el acceso en curso. Cortarlo de inmediato exigiría comprobar la sesión contra el
+ * servidor en cada llamada, y ese costo no se justifica acá.
  *
  * **Nunca lanza.** Revocar es best-effort: si la red está caída, el usuario tiene que quedar
- * deslogueado en su navegador igual. Devuelve si Supabase confirmó, para que quien llame pueda
- * registrarlo en vez de descubrirlo por casualidad.
- *
- * **El timeout acota la ESPERA, no el trabajo del servidor.** Abortar la conexión de este lado no
- * significa que Supabase deje de procesar una request que ya recibió: el POST puede confirmarse
- * igual del otro lado aunque acá se haya dejado de esperar. Por eso `AuthService` no solo reintenta
- * esta llamada — también hace que `login` espere a que la revocación en vuelo termine antes de pedir
- * un token nuevo (ver `revocacionEnVuelo`).
+ * deslogueado en su navegador igual. Devuelve por qué terminó como terminó (`ResultadoRevocacion`),
+ * para que quien llame pueda decidir si vale la pena reintentar en vez de adivinar.
  */
-export async function cerrarSesion(opts: AuthOpts, accessToken: string): Promise<boolean> {
+export async function cerrarSesion(opts: AuthOpts, accessToken: string): Promise<ResultadoRevocacion> {
   const fetchFn = opts.fetchFn ?? fetch;
   try {
-    const res = await fetchFn(`${opts.supabaseUrl}/auth/v1/logout`, {
+    const res = await fetchFn(`${opts.supabaseUrl}/auth/v1/logout?scope=local`, {
       method: 'POST',
       headers: { apikey: opts.anonKey, authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(TIMEOUT_REVOCACION_MS),
     });
-    return res.ok;
+    if (res.ok) return 'revocada';
+    if (res.status === 401 || res.status === 403) return 'credencial-rechazada';
+    return 'indeterminada';
   } catch {
-    return false;
+    return 'indeterminada';
   }
 }

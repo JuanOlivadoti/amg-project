@@ -56,6 +56,7 @@ npm run dev:server -w api
 # Servidor de producción (requiere config real):
 DATABASE_URL_API=postgres://amg_api:...@host/db \
 SUPABASE_JWT_ISS=https://<project-ref>.supabase.co/auth/v1 \
+CORS_ORIGINS=https://portal.ejemplo.com \
 npm run serve -w api
 ```
 
