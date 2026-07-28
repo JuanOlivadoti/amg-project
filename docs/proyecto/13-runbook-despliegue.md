@@ -435,10 +435,15 @@ falta algo obligatorio, así que el orden importa dos veces:
 3. **Esperá a que la revisión nueva esté sirviendo tráfico** y confirmá `/health` en verde. No sigas
    hasta ver eso.
 
-4. **Recién ahora** borrá `SUPABASE_JWT_SECRET` de Railway. Ya no forma parte del contrato de la API
-   (`leerConfig` no la lee) y dejarla solo confunde a quien mire la lista después. _No_ alcanza con
-   esto para dejarla inerte: sigue siendo válida en Supabase hasta que la revoques **ahí** — ver
-   [12-credenciales.md](12-credenciales.md#al-desplegar-en-supabase).
+4. `SUPABASE_JWT_SECRET` en Railway: **dejala por ahora, a propósito.** No molesta —`leerConfig` no la
+   lee, es una variable muerta— y **es tu red de rollback**: el código viejo la exige para arrancar,
+   así que si la borrás y después necesitás revertir el merge, el rollback no levanta. Borrala cuando
+   tengas la certeza de que no volvés atrás; es cosmético, y tenerla es opcionalidad real.
+
+   ⛔ Y **no** intentes cerrar el tema revocando el secreto en Supabase: el `anon key` del portal es
+   un JWT legacy firmado con ese mismo secreto, así que revocarlo **rompe el login otra vez**. Hay
+   que migrar antes el portal a las claves nuevas — ver
+   [12-credenciales.md](12-credenciales.md).
 
 5. Verificá con el navegador (no alcanza con `/health` en verde): entrá a `https://bigballs.es`,
    logueate con un usuario real y confirmá que **no** da `401 Token inválido o expirado`. Recién ahí

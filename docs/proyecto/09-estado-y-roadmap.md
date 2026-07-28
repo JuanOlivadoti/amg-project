@@ -2,10 +2,10 @@
 
 ## Resumen ejecutivo
 
-> Actualizado 2026-07-27: pieza A **completa en la rama** `fix/jwt-es256` (las 4 tareas). Lo que
-> falta es operativo, no código: cargar `SUPABASE_JWT_ISS` en Railway, borrar `SUPABASE_JWT_SECRET`,
-> mergear y verificar el login en el navegador. Hasta que eso no pase, el login **sigue roto en
-> producción** — el código en la rama no arregla nada por sí solo.
+> Actualizado 2026-07-27: pieza A **mergeada a `main` y desplegada**. `SUPABASE_JWT_ISS` está en
+> Railway y la API arrancó con ella. **Falta lo único que cierra esto: loguearse en el navegador.**
+> Desde afuera no hay señal que distinga el código viejo del nuevo, así que "desplegado" no es
+> "arreglado".
 
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
@@ -23,27 +23,30 @@ web pública del cliente— **existen y se manejaron en un navegador real**.
 (Hostinger, autodeploy desde `main`), la API en `api.bigballs.es` (Railway, `europe-west4`) y la base
 con RLS forzada en Supabase (`eu-west-2`).
 
-> ### 🔴 Pero hoy **ningún login funciona en producción**
+> ### 🟡 El login estaba roto; la pieza A está desplegada y **falta verificarlo en el navegador**
 >
 > C.8 —manejar la app en el navegador— destapó lo que la verificación desde afuera no podía ver: todo
-> login termina en `401 Token inválido o expirado`. **El proyecto de Supabase firma con `ES256`** (se
-> creó el 2026-07-25, ya con claves asimétricas) y la API solo aceptaba `HS256` con un secreto
-> compartido. No es un error de despliegue: es deuda de contexto en el código.
+> login terminaba en `401 Token inválido o expirado`. **El proyecto de Supabase firma con `ES256`**
+> (se creó el 2026-07-25, ya con claves asimétricas) y la API solo aceptaba `HS256` con un secreto
+> compartido. No era un error de despliegue: era deuda de contexto en el código.
 >
 > Es la lección de siempre, otra vez: **verificar desde afuera y manejar la app encuentran cosas
 > distintas.** `/health` daba 200, el CORS aceptaba solo el portal, el `401` sin token era correcto —
 > y aun así nada funcionaba para un usuario real.
 >
-> **El código que lo arregla está completo en la pieza A** (rama `fix/jwt-es256`, las 4 tareas —ver
-> abajo), pero **no está mergeado ni desplegado**. Hasta que no lo esté y se verifique en el
-> navegador, esta caja sigue en rojo: código en una rama no es lo mismo que login funcionando.
+> **Estado (2026-07-27):** la pieza A está mergeada a `main` y desplegada. `SUPABASE_JWT_ISS` está
+> cargada en Railway y el proceso arrancó con ella (20/20 chequeos de `/health` en 200 tras el push,
+> lo que prueba que `emisorSupabase` aceptó el valor). **Eso no prueba que el login funcione.** Desde
+> afuera no hay señal que distinga el código viejo del nuevo: `/health` responde igual y un token
+> basura da 401 en los dos. Falta entrar al portal y loguearse — que es, otra vez, lo único que
+> cierra esto.
 
 Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **464** en el monorepo + **60** en el portal. Los de seguridad, contra Postgres real |
+| **Tests** | **466** en el monorepo + **66** en el portal. Los de seguridad, contra Postgres real |
 | **Migraciones** | 9 (`0001`..`0009`) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones |
@@ -66,7 +69,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **464 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **466 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Diez reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las tres últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, y carreras asincrónicas en el portal. Ver [ADR-13..22 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## El número para la propuesta comercial
@@ -232,7 +235,7 @@ Aparte de las cuatro piezas:
 
 ### 🟢 4. Deuda conocida, ninguna bloqueante
 
-- **Tests de componente del portal** (karma). El núcleo está cubierto (60 tests) y los componentes se
+- **Tests de componente del portal** (karma). El núcleo está cubierto (66 tests) y los componentes se
   verifican compilando con AOT y a mano. Es evidencia de que funciona hoy, **no una red contra
   regresiones**.
 - **El polling del brief (4 s) es a ojo**, y la lista de runs no pollea. Se calibra con la duración
@@ -263,7 +266,8 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 | Tarea | Por qué | Costo |
 |---|---|---|
 | ~~Unificar el alcance (OBS-01)~~ | ✅ **Hecha (2026-07-19).** Manda ; alcance base = 3 módulos; ADR-04 se mantiene. | — |
-| **`SUPABASE_JWT_ISS` en Railway** ⚠️ | Desde la pieza A es **obligatoria**: de ella sale el JWKS con el que se verifica la firma, y sin ella la API no arranca. El valor es el `supabaseUrl` del portal + `/auth/v1` (el *project ref* es público: viaja en el bundle). Se pone al desplegar la pieza A, junto con **borrar** `SUPABASE_JWT_SECRET`. | — |
+| ~~`SUPABASE_JWT_ISS` en Railway~~ | ✅ **Hecha (2026-07-27).** Cargada antes del merge; la API arrancó con ella. `SUPABASE_JWT_SECRET` se **deja** en Railway a propósito: es la red de rollback (el código viejo la exige para arrancar) y no molesta, porque `leerConfig` ya no la lee. | — |
+| **Verificar el login en el navegador** ⚠️ | Es lo único que puede cerrar la pieza A. Entrar a `bigballs.es`, loguearse, y comprobar además que el logout revoca (Supabase → Auth → Users → Sessions) y que es **local** (cerrar sesión en un dispositivo no cierra la del otro). | — |
 | **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** ⚠️ | **Lo publicado en Storyblok es de ANTES de la tanda 5**: no muestra la evidencia etiquetada y 7 de 8 páginas declaran `LocalBusiness` sin serlo. Hacerlo **antes de ver a Frank**. | ~$0.31 |
 
 ### Tanda 3 — PROD-readiness ✅ COMPLETA
@@ -297,7 +301,7 @@ reales, no solo contra tests.
 | **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **114 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **64 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
-| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **60 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
+| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **66 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
 | **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **94 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. **Falta:** desplegarlo en un dominio (5.3) y una CDN delante. |
 | **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Navegación entre páginas** (barra desde la Links API, enhancement no-fatal) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |
@@ -321,6 +325,7 @@ reales, no solo contra tests.
 
 | Deuda | Dónde | Impacto |
 |---|---|---|
+| **El secreto legacy de Supabase sigue vivo, y no se puede revocar sin migrar antes el portal** | Supabase (Project Settings → API) · `portal/src/environments/environment.prod.ts` | Con ese secreto se puede acuñar un token `service_role` que **bypassea RLS por completo** — el radio de daño no depende de que nuestra API ya no lo acepte. Pero **no se puede revocar sin más**: el `anon key` del portal es un JWT legacy firmado con él (`alg: HS256`, verificado), así que revocarlo rompe el login. Hay que migrar el portal a las claves nuevas (*publishable*), desplegar, verificar, y recién ahí revocar. Ver [12-credenciales.md](12-credenciales.md). |
 | **Esquema Zod duplicado** entre M2 y M1 | `kr-service/src/validation/` y `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. Extraer a paquete compartido. |
 | **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos están verificadas** ✅ y ahora **hay datos reales** para calibrar las estimaciones por fase, pero todavía **no se aplicaron**: siguen a ojo. Se calibran con `out/keywords.json`, gratis. |
 | **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son 2-3× más baratos. **Pero la corrida real bajó la urgencia**: el LLM es solo el **19%** del costo, así que el ahorro total sería de ~10%. Ver [guía 02](../acciones/02-precios-modelos.md). |

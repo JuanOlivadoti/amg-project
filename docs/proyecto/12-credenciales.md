@@ -88,9 +88,40 @@ global. El override tampoco se filtra a otro paquete: hay un test de eso.
 > ya no lo lee, ya no lo acepta, ya no confía en HS256. Eso **no** lo vuelve inerte: el secreto sigue
 > siendo válido en el proyecto de Supabase hasta que se revoque **ahí**, y un HS256 firmado con él
 > puede acuñar un token `service_role` que **bypassea RLS por completo** contra la base — un radio de
-> daño que no depende de si nuestra API lo acepta. **Pendiente:** revocar/rotar `SUPABASE_JWT_SECRET`
-> en el proyecto de Supabase (Project Settings → API → JWT Settings). No es una tarea de esta pieza,
-> pero queda abierta hasta que alguien la haga.
+> daño que no depende de si nuestra API lo acepta.
+
+### ⛔ No revoques el secreto legacy sin migrar antes el portal
+
+Una versión anterior de este documento decía, sin más, "pendiente: revocar `SUPABASE_JWT_SECRET` en
+Supabase". **Seguir esa instrucción rompe el login del portal**, y conviene saber por qué antes de
+tocar nada.
+
+El `anon key` que el portal manda como header `apikey` en cada login, refresh y logout **es un JWT
+legacy firmado con ese mismo secreto**. Comprobado decodificándolo:
+
+```text
+header alg: HS256 · claims role: anon · iss: supabase
+```
+
+Revocar o rotar el secreto invalida ese `anon key` — y con él, todas las llamadas del portal a
+GoTrue. Sería reintroducir exactamente la caída que la pieza A vino a arreglar.
+
+**Cerrar esto es su propia pieza de trabajo**, en este orden:
+
+1. Generar las claves nuevas de Supabase (*publishable* / *secret*), que son las que reemplazan a
+   `anon` / `service_role` desde la migración a claves asimétricas.
+2. Cambiar `supabaseAnonKey` en `portal/src/environments/environment.prod.ts` por la *publishable*, y
+   desplegar el portal.
+3. Verificar el login **en el navegador** con la clave nueva.
+4. **Recién ahí** revocar el secreto legacy en Supabase.
+
+Hasta que eso pase, el secreto sigue vivo y es una credencial con alcance `service_role`: tratalo
+como tal — no va al chat, ni a un commit, ni a un ticket.
+
+> **Regla general que se ganó dos veces en esta pieza:** una credencial no está muerta porque
+> nosotros dejemos de usarla. Está muerta cuando el emisor la revoca — y antes de revocarla hay que
+> saber **qué más cuelga de ella**. Acá colgaba el `anon key`; en Railway colgaba el arranque del
+> proceso viejo (ver [el runbook](13-runbook-despliegue.md), bloque de actualización).
 
 ---
 

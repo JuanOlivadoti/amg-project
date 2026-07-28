@@ -3,13 +3,14 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-27** · **464 tests en verde** (monorepo) + **60** en el portal
+> Última actualización: **2026-07-27** · **466 tests en verde** (monorepo) + **66** en el portal
 >
-> **Dónde estamos hoy:** Fase 1 desplegada, pero **el login sigue roto en producción** — el proyecto
-> de Supabase firma `ES256` y la API esperaba `HS256`. **Las 4 tareas de la pieza A están completas**
-> en la rama `fix/jwt-es256`, pero la rama no está mergeada. Lo que falta es operativo, no código:
-> cargar `SUPABASE_JWT_ISS` en Railway, borrar `SUPABASE_JWT_SECRET`, mergear y verificar el login en
-> el navegador. Ver §5.3 y el [estado y roadmap](09-estado-y-roadmap.md).
+> **Dónde estamos hoy:** Fase 1 desplegada. La **pieza A** (verificación ES256 contra el JWKS + el
+> logout que revoca) está **mergeada a `main` y desplegada**: `SUPABASE_JWT_ISS` está cargada en
+> Railway y la API arrancó con ella. **Falta lo único que puede cerrarla: loguearse en el navegador.**
+> Desde afuera no hay señal que distinga el código viejo del nuevo —`/health` responde igual y un
+> token basura da 401 en ambos—, así que "desplegado" no es "arreglado". Ver §5.3 y el
+> [estado y roadmap](09-estado-y-roadmap.md).
 
 ---
 
@@ -70,7 +71,7 @@ OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `loc
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **464 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **466 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -101,7 +102,7 @@ El orden **no es negociable**, y el motivo es de seguridad:
 ### 5.1 — La API (`api/`) ✅ HECHA
 
 REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.user_id` y deja que
-**Postgres decida el resto** (ADR-15). 64 tests contra PGlite, sin red ni Supabase.
+**Postgres decida el resto** (ADR-15). 66 tests contra PGlite, sin red ni Supabase.
 
 | Endpoint | Qué hace |
 |---|---|
@@ -130,7 +131,7 @@ REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.us
 > página, editar —revoca—, aprobar run), **refresh del token** (401 → refresca y reintenta una vez;
 > si falla, al login), **polling** del research en curso (ADR-21) y las **carreras asincrónicas
 > cerradas** (`core/vigencia.ts`: una respuesta tardía no pisa la pantalla y no queda polling
-> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **60 tests
+> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **66 tests
 > `node:test`**, sin navegador. La API ganó **CORS** para que el navegador pueda llamarla.
 >
 > **Verificado en un navegador real** (`npm run dev:server -w api` levanta la API sobre PGlite):
