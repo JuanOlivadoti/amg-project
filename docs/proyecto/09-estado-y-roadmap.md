@@ -2,10 +2,9 @@
 
 ## Resumen ejecutivo
 
-> Actualizado 2026-07-27: pieza A **mergeada a `main` y desplegada**. `SUPABASE_JWT_ISS` está en
-> Railway y la API arrancó con ella. **Falta lo único que cierra esto: loguearse en el navegador.**
-> Desde afuera no hay señal que distinga el código viejo del nuevo, así que "desplegado" no es
-> "arreglado".
+> Actualizado 2026-07-30: **pieza A cerrada.** El login **funciona en `bigballs.es`**, verificado en
+> el navegador por Juan — que era lo único que podía cerrarla, porque desde afuera no había señal que
+> distinguiera el código viejo del nuevo. En curso: **pieza B (modo oscuro del portal)**.
 
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
@@ -23,7 +22,7 @@ web pública del cliente— **existen y se manejaron en un navegador real**.
 (Hostinger, autodeploy desde `main`), la API en `api.bigballs.es` (Railway, `europe-west4`) y la base
 con RLS forzada en Supabase (`eu-west-2`).
 
-> ### 🟡 El login estaba roto; la pieza A está desplegada y **falta verificarlo en el navegador**
+> ### ✅ El login estaba roto; la pieza A lo arregló y **está verificado en producción**
 >
 > C.8 —manejar la app en el navegador— destapó lo que la verificación desde afuera no podía ver: todo
 > login terminaba en `401 Token inválido o expirado`. **El proyecto de Supabase firma con `ES256`**
@@ -34,12 +33,12 @@ con RLS forzada en Supabase (`eu-west-2`).
 > distintas.** `/health` daba 200, el CORS aceptaba solo el portal, el `401` sin token era correcto —
 > y aun así nada funcionaba para un usuario real.
 >
-> **Estado (2026-07-27):** la pieza A está mergeada a `main` y desplegada. `SUPABASE_JWT_ISS` está
-> cargada en Railway y el proceso arrancó con ella (20/20 chequeos de `/health` en 200 tras el push,
-> lo que prueba que `emisorSupabase` aceptó el valor). **Eso no prueba que el login funcione.** Desde
-> afuera no hay señal que distinga el código viejo del nuevo: `/health` responde igual y un token
-> basura da 401 en los dos. Falta entrar al portal y loguearse — que es, otra vez, lo único que
-> cierra esto.
+> **Cerrado el 2026-07-30: Juan se logueó en `bigballs.es`.** Y hasta ese momento no estaba cerrado, a
+> propósito: entre el merge (2026-07-27) y ese login hubo tres días en que el código correcto ya
+> estaba desplegado y el estado seguía siendo 🟡, porque *20/20 chequeos de `/health` en 200* prueban
+> que `emisorSupabase` aceptó la variable de entorno y **nada más**. `/health` responde igual con el
+> código viejo, y un token basura da 401 con los dos. **No había ninguna señal externa que
+> distinguiera "arreglado" de "roto"** — solo entrar y loguearse.
 
 Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 
@@ -145,9 +144,10 @@ Runbook paso a paso, con los tropiezos reales, en
 solo sus claves, con la separación impuesta por tests (ver `scripts/env-sync.mts`).
 
 **C.8 —la verificación de punta a punta en el navegador— se hizo, y encontró lo que todo lo anterior
-no podía ver: ningún login funciona.** Ver el recuadro rojo del resumen. Los siete puntos de arriba
-siguen siendo ciertos: comprueban que la infraestructura está bien, no que el producto sirva. Es
-exactamente el hueco que C.8 existe para cubrir.
+no podía ver: ningún login funcionaba.** Los siete puntos de arriba seguían siendo ciertos:
+comprueban que la infraestructura está bien, no que el producto sirva. Es exactamente el hueco que
+C.8 existe para cubrir. **Arreglado por la pieza A y verificado el 2026-07-30** (ver el recuadro del
+resumen): el login funciona.
 
 Son **tres procesos** de larga duración más una SPA estática (el orquestador y el renderizador son
 de Fase 2 y **aún no están desplegados**):
@@ -165,7 +165,7 @@ dominio. Eso descarta cualquier hosting que no permita dominios personalizados a
 que "una CDN delante" deje de ser opcional (ver §3). Railway sí admite dominios personalizados, así
 que la elección de Fase 1 no cierra esa puerta.
 
-### 🔴 2. La demo con Frank — cuatro piezas, la A bloquea a las demás
+### 🟡 2. La demo con Frank — cuatro piezas, la A **ya no bloquea** a las demás
 
 De la sesión de diseño sobre la demo salió un recorrido de tres golpes: **dashboard** (panorama de
 cartera + economía), **entrar a un cliente** (la compuerta humana, que no se cuenta: se ve) y
@@ -177,10 +177,10 @@ panorama — son lo que las hace creíbles.
 
 | # | Pieza | Estado | Depende de |
 | --- | --- | --- | --- |
-| **A** | **Verificación JWT ES256 + logout que revoca** | 🟢 **Código completo** en `fix/jwt-es256`, **falta mergear y desplegar** | — |
-| **B** | Modo oscuro (**solo el portal**) | ⚪ Sin empezar | — |
-| **C** | Dashboard de cartera + seed de 4-6 restaurantes | ⚪ Sin empezar | A |
-| **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | A + la medición |
+| **A** | **Verificación JWT ES256 + logout que revoca** | ✅ **Cerrada** — mergeada, desplegada y el login **verificado en el navegador** (2026-07-30) | — |
+| **B** | Modo oscuro (**solo el portal**) | 🟡 **En curso** — [spec aprobado](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md), plan en marcha | — |
+| **C** | Dashboard de cartera + seed de 4-6 restaurantes | ⚪ Sin empezar | B (hereda los tokens) |
+| **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | la medición |
 
 **Pieza A** ([spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
 [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md)): 4 tareas, **las 4 hechas** en la
@@ -193,15 +193,14 @@ rama.
 | 3 — El logout revoca en Supabase, sin bloquear la UI ni pisar sesiones nuevas | ✅ Hecha (`c0ead5b`, `9f57376`) |
 | 4 — Documentación, credenciales y despliegue | ✅ Hecha (revisión final, esta misma pieza) |
 
-**El código ya no es lo que falta.** Lo que queda es operativo y sin dueño hasta que alguien lo
-ejecute: cargar `SUPABASE_JWT_ISS` en Railway, borrar `SUPABASE_JWT_SECRET`, mergear
-`fix/jwt-es256` a `main` y **verificar el login en el navegador** — ver
-[13-runbook-despliegue.md § Actualizar una instalación ya desplegada](13-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada).
-**Hasta que eso no pase, el login sigue roto en producción**: una rama sin mergear no arregla nada
-para Frank.
+**Nada queda pendiente de la pieza A.** El despliegue se ejecutó (`SUPABASE_JWT_ISS` en Railway,
+merge a `main`) y el login se verificó en el navegador. `SUPABASE_JWT_SECRET` **se deja** en Railway a
+propósito, como red de rollback: `leerConfig` ya no la lee, y el código viejo la exige para arrancar.
+Ver [13-runbook-despliegue.md § Actualizar una instalación ya desplegada](13-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada).
 
 **B — modo oscuro:** solo el portal. El renderizador queda afuera a propósito: la web pública es la
-marca del restaurante, y ahí el tema lo decide su diseño.
+marca del restaurante, y ahí el tema lo decide su diseño. Va por **tokens semánticos**, no por
+variantes `dark:`, para que la pieza C herede el tema por construcción en vez de tener que acordarse.
 
 **C — el dashboard:** los datos para poblarlo **ya existen y están sin explotar** — cada página trae
 `volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `local`, `cluster_id`
@@ -261,13 +260,14 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 ### 🔴 Lo que depende de Juan
 
-**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Quedan tres:
+**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Queda **una** (la corrida
+final); las otras tres se cerraron:
 
 | Tarea | Por qué | Costo |
 |---|---|---|
 | ~~Unificar el alcance (OBS-01)~~ | ✅ **Hecha (2026-07-19).** Manda ; alcance base = 3 módulos; ADR-04 se mantiene. | — |
 | ~~`SUPABASE_JWT_ISS` en Railway~~ | ✅ **Hecha (2026-07-27).** Cargada antes del merge; la API arrancó con ella. `SUPABASE_JWT_SECRET` se **deja** en Railway a propósito: es la red de rollback (el código viejo la exige para arrancar) y no molesta, porque `leerConfig` ya no la lee. | — |
-| **Verificar el login en el navegador** ⚠️ | Es lo único que puede cerrar la pieza A. Entrar a `bigballs.es`, loguearse, y comprobar además que el logout revoca (Supabase → Auth → Users → Sessions) y que es **local** (cerrar sesión en un dispositivo no cierra la del otro). | — |
+| ~~Verificar el login en el navegador~~ | ✅ **Hecha (2026-07-30).** Era lo único que podía cerrar la pieza A. Queda **sin verificar** el detalle del logout: que revoca en Supabase (Auth → Users → Sessions) y que es **local** (cerrar sesión en un dispositivo no cierra la del otro). Lo cubren 7 tests, pero no se miró en producción. | — |
 | **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** ⚠️ | **Lo publicado en Storyblok es de ANTES de la tanda 5**: no muestra la evidencia etiquetada y 7 de 8 páginas declaran `LocalBusiness` sin serlo. Hacerlo **antes de ver a Frank**. | ~$0.31 |
 
 ### Tanda 3 — PROD-readiness ✅ COMPLETA

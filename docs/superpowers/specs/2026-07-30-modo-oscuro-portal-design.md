@@ -26,13 +26,12 @@ Modo oscuro en `portal/` (Angular 20 + Tailwind 3), con:
 
 ## Por qué tokens semánticos y no variantes `dark:`
 
-El portal tiene hoy **130 usos de clases de color** en 4 plantillas (`app.html` y las tres páginas),
-de los cuales **67 son la escala de grises y el blanco** (medido, no estimado). Las dos formas de
-agregar modo oscuro:
+El portal tiene hoy **84 usos de clases de color** en 4 plantillas (`app.html` y las tres páginas),
+de los cuales **67 son la escala de grises y el blanco**. Las dos formas de agregar modo oscuro:
 
 | | Tokens semánticos (elegido) | Variantes `dark:` |
 | --- | --- | --- |
-| Trabajo inicial | Reemplazar 130 ocurrencias | **Agregar** en las mismas 130 |
+| Trabajo inicial | Reemplazar 84 ocurrencias | **Agregar** en las mismas 84 |
 | Un componente nuevo | Hereda el tema **por construcción** | Tiene que acordarse de `dark:` |
 | Dónde vive el tema | Un bloque CSS, se lee de un vistazo | Repartido en las plantillas |
 | Test de contraste | Lee **una tabla de datos** | Tendría que parsear plantillas |
@@ -250,10 +249,11 @@ como deuda anotada, no como olvido.
 | Los 24 pares de contraste | `core/contraste.test.ts` | La legibilidad del argumento de venta, impuesta |
 | El servicio | `services/tema.test.ts` | Persistencia, la clase en `documentElement`, y **que el listener del sistema no mueva nada si el tema es explícito** |
 | Que el script inline y `temaEfectivo` no se separen | `core/tema.test.ts` | Lee `index.html` y afirma que contiene la clave `amg.tema` y la clase `oscuro`. Es un test tosco a propósito: no puede probar que la lógica coincida, pero sí que nadie renombre una de las dos puntas sin ver la otra |
+| **Que ninguna plantilla incruste un color** | `core/contraste.test.ts` | Lee las 4 plantillas y falla si aparece un `#rrggbb` o un `style="…color…"`. Un color incrustado es un color que el tema **no puede** cambiar, y ya había dos (§Tres cosas). El test de contraste verifica la tabla de tokens; este verifica que la UI **use** la tabla |
 
 **Verificación por mutación** (disciplina del proyecto): reintroducir el bug y confirmar que cae
-*exactamente* su test. Como mínimo, para cada garantía: quitar la condición `auto` del listener, y
-bajar un color por debajo de 4.5:1.
+*exactamente* su test. Como mínimo, para cada garantía: quitar la condición `auto` del listener,
+bajar un color por debajo de 4.5:1, y **reponer uno de los dos hex incrustados** en `brief.ts`.
 
 ### Lo que ningún test ve, y hay que manejar en el navegador
 
@@ -272,7 +272,7 @@ bajar un color por debajo de 4.5:1.
 
 | Archivo | Acción |
 | --- | --- |
-| `portal/tailwind.config.js` | Los 16 tokens mapeados a `var()` |
+| `portal/tailwind.config.js` | Los 16 tokens mapeados a `var()`, más `borderColor.DEFAULT` |
 | `portal/src/styles.css` | `:root` y `.oscuro` con los dos temas |
 | `portal/src/index.html` | El script anti-fogonazo |
 | `portal/src/app/core/tema.ts` + `.test.ts` | **Nuevos** |
@@ -281,9 +281,36 @@ bajar un color por debajo de 4.5:1.
 | `portal/src/app/app.html` | La barra siempre visible + el botón |
 | `portal/src/app/pages/{login,runs,brief}/*.ts` | Migrar las clases de color a tokens |
 
-Las 130 ocurrencias se reparten así (contadas, no estimadas): `app.html` **10**, `login` **23**,
-`runs` **36**, `brief` **61**. `brief` es casi la mitad del trabajo y es donde vive el argumento de
-venta — conviene migrarlo último, con el resto ya verificado en el navegador.
+Las 84 ocurrencias se reparten así (contadas): `app.html` **7**, `login` **15**, `runs` **25**,
+`brief` **37**. `brief` es el **44%** del trabajo y es donde vive el argumento de venta — conviene
+migrarlo último, con el resto ya verificado en el navegador.
+
+> **Corrección (2026-07-30).** La primera versión de este spec decía «130 ocurrencias, repartidas
+> 10/23/36/61». El total real es **84** (7/15/25/37). La cifra de 67 grises sí estaba medida y coincide
+> exacto; el total no lo estaba. Se corrige acá con la medición, y queda anotado en vez de borrado:
+> este spec pedía «medido, no estimado» y él mismo tenía un número a ojo.
+
+### Tres cosas que la migración por clases NO alcanza
+
+Contar clases de color encuentra 84 ocurrencias y **se le escapan estas tres**, que son justamente las
+que un test de contraste sobre la tabla de tokens tampoco ve, porque no pasan por un token:
+
+| # | Qué | Dónde | Qué pasa en oscuro |
+| --- | --- | --- | --- |
+| 1 | **Dos hex incrustados en un `style` inline** — los títulos ✅ y ⚠️ | `brief.ts:53` (`color:#15803d`), `brief.ts:66` (`color:#b45309`) | Quedan **congelados en el tema claro**: 3.38:1 y 3.37:1 sobre `superficie` oscura. **No llegan a AA**, y es el argumento de venta |
+| 2 | **Dos `border` sin color** | `brief.ts:124` y `:138` (botones «Cancelar» y «Editar») | El preflight de Tailwind pone `#e5e7eb` por defecto → un borde **casi blanco** (13.68:1) sobre superficie oscura |
+| 3 | **Clases dentro de strings de TypeScript** | `runs.ts:150-153` (`estadoClase`), `brief.ts:94` (`[class]` ternario) | Funcionan (el scanner de Tailwind lee `.ts`), pero **no están en la plantilla**: quien migre «los templates» las saltea |
+
+Las tres se arreglan así:
+
+1. Los hex pasan a `text-respaldo` y `text-alerta`, y el `style` desaparece.
+2. `borderColor.DEFAULT` se mapea a `var(--borde)` en `tailwind.config.js`. Arregla el default del
+   preflight de una vez, en lugar de parchar dos botones y esperar que nadie escriba un tercero.
+3. Se migran explícitamente, y el plan las nombra por línea.
+
+**Y el punto 1 se convierte en test** (§Testing): un color incrustado en una plantilla es, por
+definición, un color que el tema no puede cambiar. Es exactamente el caso de «una garantía en un
+comentario»: se impone con un test que lea las cuatro plantillas, o no se impone.
 
 ---
 
@@ -293,13 +320,14 @@ Sale de la sesión de diseño de **la demo con Frank**. Cuatro piezas:
 
 | # | Pieza | Estado |
 | --- | --- | --- |
-| **A** | Verificación JWT ES256 + logout que revoca | ✅ Mergeada y desplegada; **falta verificar el login en el navegador** |
+| **A** | Verificación JWT ES256 + logout que revoca | ✅ Mergeada, desplegada y **verificada: el login funciona en `bigballs.es`** (2026-07-30) |
 | **B** | **Modo oscuro (solo el portal)** — este spec | 🟡 Diseño aprobado |
 | **C** | Dashboard de cartera + seed de 4-6 restaurantes | ⚪ Sin empezar. **Hereda los tokens de esta pieza** |
 | **D** | Research en vivo (desplegar el orquestador) | ⚪ Condicionada a medir cuánto tarda un research |
 
-**B no depende de A ni de C**, y es la razón por la que se hace ahora: se puede construir y verificar
-sin que el login esté confirmado.
+**B no depende de A ni de C**, y esa independencia es la razón por la que se eligió hacerla ahora: se
+podía construir y verificar sin que el login estuviera confirmado. (Para cuando arrancó, el login ya
+estaba confirmado — pero la pieza sigue sin depender de A.)
 
 **Lo que B le deja a C:** el vocabulario de tokens y el test de contraste. El dashboard es la pieza con
 más UI nueva del proyecto; que nazca sobre tokens en vez de sobre `dark:` es la diferencia entre

@@ -3,13 +3,14 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-27** · **466 tests en verde** (monorepo) + **66** en el portal
+> Última actualización: **2026-07-30** · **466 tests en verde** (monorepo) + **66** en el portal
 >
-> **Dónde estamos hoy:** Fase 1 desplegada. La **pieza A** (verificación ES256 contra el JWKS + el
-> logout que revoca) está **mergeada a `main` y desplegada**: `SUPABASE_JWT_ISS` está cargada en
-> Railway y la API arrancó con ella. **Falta lo único que puede cerrarla: loguearse en el navegador.**
-> Desde afuera no hay señal que distinga el código viejo del nuevo —`/health` responde igual y un
-> token basura da 401 en ambos—, así que "desplegado" no es "arreglado". Ver §5.3 y el
+> **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
+> JWKS y el logout que revoca están en `main`, desplegados, y **el login se verificó en el navegador**
+> (2026-07-30). Eso último es lo que la cerró: desde afuera no había señal que distinguiera el código
+> viejo del nuevo (`/health` responde igual y un token basura da 401 en ambos), así que "desplegado"
+> no era "arreglado". **En curso: la pieza B**, el modo oscuro del portal por tokens semánticos
+> ([spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md)). Ver §5.3 y el
 > [estado y roadmap](09-estado-y-roadmap.md).
 
 ---
@@ -189,12 +190,12 @@ Paso a paso, con los tropiezos reales, en [13-runbook-despliegue.md](13-runbook-
 > `SUPABASE_JWT_SECRET` desaparece y `SUPABASE_JWT_ISS` pasa a obligatoria. De paso se arregla el
 > logout, que solo borraba el `localStorage` sin revocar nada del lado del servidor.
 > [Spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
-> [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) · **las 4 tareas hechas en la
-> rama.** Lo que sigue pendiente es operativo: `SUPABASE_JWT_ISS` en Railway (cargarla ANTES del
-> merge — [runbook § Actualizar una instalación ya
-> desplegada](13-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada)), borrar
-> `SUPABASE_JWT_SECRET`, mergear a `main`, y **verificar el login en el navegador**. Hasta que las
-> cuatro pasen, el login sigue roto en producción — el código en una rama no es un login arreglado.
+> [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) · **las 4 tareas hechas**,
+> mergeadas y desplegadas, y **el login verificado en el navegador el 2026-07-30**. La pieza está
+> cerrada. Dos cosas que quedaron dichas y conviene no perder: `SUPABASE_JWT_SECRET` **se deja** en
+> Railway como red de rollback (`leerConfig` ya no la lee), y **no se puede revocar en Supabase** sin
+> migrar antes el portal, porque el `anon key` es un JWT legacy firmado con ella. Ver
+> [12-credenciales.md](12-credenciales.md).
 
 El orquestador y el renderizador siguen **sin desplegar** (son Fase 2). Van como **servicio Node de
 larga duración**, no serverless: el research encadena llamadas live a DataForSEO y generación por
@@ -326,7 +327,8 @@ Todas con su ADR. Las que más condicionan lo que viene:
 |---|---|---|
 | **Acción 06 — corrida final** | [acciones/06](../acciones/06-corrida-final-demo.md) | ~$0.31. La demo publicada es anterior a kr.v0.5. |
 | ~~Migrar SERP + Search Volume a Standard~~ | `kr-service/src/dataforseo/` | ✅ **Hecho** (tandas 11-12): `task_post`/`task_get` con doble capa de recuperación. La 6ª review encontró 4 bugs en la primera versión; corregidos y mutation-tested. |
-| **Pieza A — verificación JWT ES256** | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | 🔴 **Bloquea todo hasta desplegarse**: las 4 tareas están hechas en `fix/jwt-es256`, pero mientras la rama no se mergee y se despliegue (`SUPABASE_JWT_ISS` en Railway primero), ningún login funciona en producción. |
+| ~~Pieza A — verificación JWT ES256~~ | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | ✅ **Cerrada (2026-07-30).** Las 4 tareas, mergeadas y desplegadas, y el login verificado en el navegador. Ya no bloquea nada. |
+| **Pieza B — modo oscuro del portal** | [spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) · [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md) | 🟡 **En curso.** Tokens semánticos (no `dark:`) para que la pieza C herede el tema por construcción. Incluye un test de contraste que impone WCAG AA sobre los 24 pares. |
 | **Cuánto tarda un research real** | — | **Nunca se midió.** Tengo el coste ($0.31), no la duración. Define la UX del portal **y decide si la pieza D (research en vivo en la demo) se hace**: a ~90 s es el mejor momento de la demo; a ~12 min, Frank mira un spinner. |
 | Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
 | `is_local` se dispara de más | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo `LocalBusiness`. Ensucia el JSON-LD. |
