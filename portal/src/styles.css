@@ -1,6 +1,38 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme inline {
+  --color-fondo: var(--fondo);
+  --color-superficie: var(--superficie);
+  --color-superficie-2: var(--superficie-2);
+  --color-texto: var(--texto);
+  --color-texto-medio: var(--texto-medio);
+  --color-texto-tenue: var(--texto-tenue);
+  --color-texto-invertido: var(--texto-invertido);
+  --color-borde: var(--borde);
+  --color-borde-fuerte: var(--borde-fuerte);
+  --color-accion: var(--accion);
+  --color-respaldo: var(--respaldo);
+  --color-respaldo-suave: var(--respaldo-suave);
+  --color-alerta: var(--alerta);
+  --color-alerta-suave: var(--alerta-suave);
+  --color-error: var(--error);
+  --color-error-suave: var(--error-suave);
+}
+
+/*
+ * Tailwind v3 ponía --borde como default de `class="border"` vía `borderColor.DEFAULT` en
+ * tailwind.config.js. v4 no tiene ese archivo: se repone acá, mismo motivo que antes — sin esto,
+ * un `border` sin color explícito cae en el default del navegador, que el tema no puede cambiar.
+ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--borde);
+  }
+}
 
 /*
  * Los tokens del tema: un nombre por ROL, no por color (`superficie`, no `white`). Es la ÚNICA
