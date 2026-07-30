@@ -40,3 +40,19 @@ export function temaEfectivo(t: Tema, sistemaPrefiereOscuro: boolean): TemaEfect
   if (t === 'oscuro') return 'oscuro';
   return sistemaPrefiereOscuro ? 'oscuro' : 'claro';
 }
+
+/**
+ * El icono tiene que decir en qué posición está el botón, no qué va a hacer si lo toco: son tres
+ * estados, y "auto" no se adivina. `ETIQUETA` (el `aria-label`) lo dice con palabras, que es lo que
+ * lee un lector de pantalla y lo que aparece en el tooltip.
+ *
+ * `︎` es el selector de variación TEXTO. Sin él, el navegador pinta U+2600 como emoji de color —un
+ * sol naranja— que ignora `text-texto-tenue` y no cambia con el tema. `◐` y `☾` no tienen forma
+ * emoji, así que no lo necesitan.
+ */
+export const ICONO: Record<Tema, string> = { auto: '◐', claro: '☀︎', oscuro: '☾' };
+export const ETIQUETA: Record<Tema, string> = {
+  auto: 'Tema: automático (sigue al sistema). Tocar para pasar a claro',
+  claro: 'Tema: claro. Tocar para pasar a oscuro',
+  oscuro: 'Tema: oscuro. Tocar para volver a automático',
+};
