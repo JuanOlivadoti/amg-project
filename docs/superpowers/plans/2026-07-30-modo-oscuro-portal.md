@@ -212,11 +212,23 @@ test('🔴 temaEfectivo: una preferencia explícita MANDA sobre el sistema', () 
 });
 
 test('🔴 el script inline de index.html no se separa de tema.ts', () => {
-  // Test tosco a propósito: no puede probar que la lógica coincida, pero sí que nadie renombre una
-  // de las dos puntas sin ver la otra. El script DUPLICA `temaEfectivo` porque corre antes del bundle.
-  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes(CLAVE_TEMA), `index.html tiene que leer la clave ${CLAVE_TEMA}`);
-  assert.ok(html.includes(CLASE_OSCURO), `index.html tiene que aplicar la clase ${CLASE_OSCURO}`);
+  // Ata los NOMBRES; el test de abajo ata el COMPORTAMIENTO. Los dos hacen falta: este falla si
+  // alguien renombra la clave o la clase, aunque la lógica siga siendo equivalente.
+  //
+  // Se afirma sobre la LLAMADA, no sobre la presencia del string: `'oscuro'` aparece cuatro veces en
+  // el script (la variable, la comparación, la clase), así que un `includes(CLASE_OSCURO)` seguía en
+  // verde aunque `classList.add` pasara a poner otra clase — el único lugar que importa.
+  const html = HTML;
+  assert.match(
+    html,
+    new RegExp(`getItem\\(['"]${CLAVE_TEMA}['"]\\)`),
+    `index.html tiene que leer la clave ${CLAVE_TEMA}`,
+  );
+  assert.match(
+    html,
+    new RegExp(`classList\\.add\\(['"]${CLASE_OSCURO}['"]\\)`),
+    `index.html tiene que aplicar la clase ${CLASE_OSCURO}`,
+  );
   assert.ok(
     html.includes('prefers-color-scheme: dark'),
     'index.html tiene que resolver `auto` contra el sistema, como temaEfectivo',
@@ -226,6 +238,63 @@ test('🔴 el script inline de index.html no se separa de tema.ts', () => {
     'el script tiene que correr ANTES del bundle, o el fogonazo blanco sigue ahí',
   );
 });
+
+test('🔴 el script inline decide EXACTAMENTE lo mismo que temaEfectivo, caso por caso', () => {
+  // La duplicación es deliberada, pero "deliberada" no es "correcta": se ejecuta el script de verdad
+  // y se compara con la función pura en los 20 casos. Es la diferencia entre un comentario que dice
+  // que coinciden y una garantía de que coinciden.
+  const GUARDADOS = [
+    null,
+    '',
+    'auto',
+    'claro',
+    'oscuro',
+    'azul',
+    'Oscuro',
+    'AUTO',
+    ' claro',
+    '{"tema":"oscuro"}',
+  ];
+  for (const guardado of GUARDADOS) {
+    for (const sistemaOscuro of [false, true]) {
+      assert.equal(
+        correrScriptInline(guardado, sistemaOscuro),
+        temaEfectivo(parseTema(guardado), sistemaOscuro) === 'oscuro',
+        `divergen para ${JSON.stringify(guardado)} con el sistema en ${
+          sistemaOscuro ? 'oscuro' : 'claro'
+        }`,
+      );
+    }
+  }
+});
+```
+
+Y arriba de los tests, el helper que ejecuta el script (más los imports `vm` y `HTML`):
+
+```typescript
+import vm from 'node:vm';
+
+const HTML = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+
+/**
+ * Corre el script inline de `index.html` de verdad, en un contexto con `localStorage`, `matchMedia` y
+ * `document` falsos, y devuelve si le puso la clase a `<html>`.
+ *
+ * Existe porque el script **duplica** `temaEfectivo` (tiene que correr antes de que exista el bundle)
+ * y una duplicación que nadie verifica diverge en silencio.
+ */
+function correrScriptInline(guardado: string | null, sistemaOscuro: boolean): boolean {
+  const m = /<script>([\s\S]*?)<\/script>/.exec(HTML);
+  assert.ok(m?.[1], 'no encontré el script inline en index.html');
+  const clases = new Set<string>();
+  const contexto: Record<string, unknown> = {
+    localStorage: { getItem: (k: string) => (k === CLAVE_TEMA ? guardado : null) },
+    matchMedia: (consulta: string) => ({ matches: consulta.includes('dark') && sistemaOscuro }),
+    document: { documentElement: { classList: { add: (c: string) => clases.add(c) } } },
+  };
+  vm.runInNewContext(m[1], contexto);
+  return clases.has(CLASE_OSCURO);
+}
 ```
 
 - [ ] **Paso 2: correr el test y confirmar que falla**
@@ -301,13 +370,17 @@ Reemplazar el `<head>` completo por:
     // porque Angular aplica la clase después de bootear.
     //
     // DUPLICA a propósito la lógica de `temaEfectivo` (core/tema.ts) — es el precio de correr antes
-    // que Angular. Si cambian la clave o la clase, hay que cambiar las dos puntas; `tema.test.ts`
-    // falla si alguien renombra una sola.
+    // que Angular. `tema.test.ts` ejecuta este script y lo compara con la función pura caso por caso,
+    // así que la duplicación está verificada, no prometida.
+    //
+    // La condición es "cualquier cosa que no sea 'claro' sigue al sistema", y no "'auto' o vacío":
+    // es lo que hace `parseTema`, que manda a `auto` TODO lo que no reconoce. Con la versión ingenua,
+    // un valor basura en localStorage + el sistema en oscuro pintaba claro acá y oscuro al bootear
+    // Angular — el fogonazo que este script viene a evitar, al revés.
     try {
       var t = localStorage.getItem('amg.tema');
       var oscuro =
-        t === 'oscuro' ||
-        ((t === 'auto' || !t) && matchMedia('(prefers-color-scheme: dark)').matches);
+        t === 'oscuro' || (t !== 'claro' && matchMedia('(prefers-color-scheme: dark)').matches);
       if (oscuro) document.documentElement.classList.add('oscuro');
     } catch (e) {}
   </script>
@@ -321,7 +394,7 @@ npm test
 npm run typecheck
 ```
 
-Esperado: `npm test` en verde, con **6 tests nuevos** (66 → 72), `fail 0`. El typecheck, limpio.
+Esperado: `npm test` en verde, con **7 tests nuevos** (66 → 73), `fail 0`. El typecheck, limpio.
 **Anotar el número real que imprime el runner**, no el esperado.
 
 - [ ] **Paso 6: verificación por mutación**
@@ -335,6 +408,8 @@ predicho, revertir.
 | 2 | En `parseTema`, `return (raw as Tema) ?? 'auto';` (o sea: aceptar cualquier string) | **solo** `parseTema cae en auto ante cualquier cosa que no reconozca` |
 | 3 | En `index.html`, cambiar `'amg.tema'` por `'amg.theme'` | **solo** `🔴 el script inline de index.html no se separa de tema.ts` |
 | 4 | En `siguienteTema`, `if (t === 'oscuro') return 'oscuro';` | **solo** `siguienteTema cicla auto → claro → oscuro → auto` |
+| 5 | En `index.html`, `classList.add('dark')` (dejando la variable y la comparación en `'oscuro'`) | **dos**: `🔴 el script inline de index.html no se separa de tema.ts` **y** `🔴 el script inline decide EXACTAMENTE lo mismo que temaEfectivo` |
+| 6 | En `index.html`, volver a la condición ingenua `((t === 'auto' \|\| !t) && matchMedia(…).matches)` | **solo** `🔴 el script inline decide EXACTAMENTE lo mismo que temaEfectivo`, con el mensaje `divergen para "azul" con el sistema en oscuro` |
 
 **Si cae un número distinto de tests, o caen otros, eso ES el hallazgo: reportarlo.** No ajustar la
 predicción para que cierre — fue exactamente el defecto que más costó en la pieza A.
@@ -691,7 +766,7 @@ npm test
 npm run typecheck
 ```
 
-Esperado: verde, con **5 tests nuevos** (72 → 77), `fail 0`. El typecheck limpio prueba, además, que
+Esperado: verde, con **5 tests nuevos** (73 → 78), `fail 0`. El typecheck limpio prueba, además, que
 Tailwind compila con las variables. **Anotar los números reales.**
 
 - [ ] **Paso 7: verificación por mutación**
@@ -967,7 +1042,7 @@ npm test
 npm run typecheck
 ```
 
-Esperado: verde, con **7 tests nuevos** (77 → 84), `fail 0`. **Anotar los números reales.**
+Esperado: verde, con **7 tests nuevos** (78 → 85), `fail 0`. **Anotar los números reales.**
 
 - [ ] **Paso 5: verificación por mutación**
 
@@ -1099,7 +1174,7 @@ npm test
 npm run typecheck
 ```
 
-Esperado: los dos verdes, **sin tests nuevos** (84, `fail 0`). El typecheck es lo que prueba esta
+Esperado: los dos verdes, **sin tests nuevos** (85, `fail 0`). El typecheck es lo que prueba esta
 tarea: compila la plantilla con AOT, así que un token mal escrito en una clase **no** lo caza —
 `bg-fnodo` compilaría igual. Por eso la verificación de esta tarea es en el navegador, al final.
 
@@ -1203,7 +1278,7 @@ npm test
 npm run typecheck
 ```
 
-Esperado: verde, sin tests nuevos (84, `fail 0`).
+Esperado: verde, sin tests nuevos (85, `fail 0`).
 
 - [ ] **Paso 6: commit**
 
@@ -1355,7 +1430,7 @@ npm test
 npm run typecheck
 ```
 
-Esperado: verde, con **1 test nuevo** (84 → 85), `fail 0`. **Anotar los números reales del runner.**
+Esperado: verde, con **1 test nuevo** (85 → 86), `fail 0`. **Anotar los números reales del runner.**
 
 - [ ] **Paso 7: verificación por mutación**
 
@@ -1382,7 +1457,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 **No es opcional** (`CLAUDE.md`), y en la pieza A se cobró dos veces. Con MCP chrome-devtools, sobre
 `npm start` desde `portal/`.
 
-Nada de esto lo cubren los 19 tests nuevos: el typecheck compila `bg-fnodo` sin quejarse, y el test de
+Nada de esto lo cubren los 20 tests nuevos: el typecheck compila `bg-fnodo` sin quejarse, y el test de
 contraste verifica la tabla, no qué clase quedó en cada elemento.
 
 - [ ] **Las tres posiciones del botón**, y que el icono/tooltip digan en cuál está.
@@ -1444,8 +1519,11 @@ límites en vez de omitidas:
 1. **Una clase mal escrita compila igual.** `bg-fnodo` pasa el typecheck y no pinta nada. Lo caza el
    `grep` de los pasos 4/5 (que no es un test) y el navegador. No hay test de componente que lo cierre.
 2. **El umbral 4.5 no tiene test propio** (mutación 3 de la Tarea 2): bajarlo a 3 deja todo verde.
-3. **El script inline y `temaEfectivo` pueden divergir en la lógica.** El test solo ata los *nombres*
-   (la clave y la clase). Es tosco a propósito, y está dicho en el spec.
+3. ~~El script inline y `temaEfectivo` pueden divergir en la lógica.~~ **Cerrado durante la Tarea 1**
+   (commit `beed837`): el test ejecuta el script en `node:vm` y compara su decisión con la función
+   pura en los 20 casos. Se cerró porque **ya había divergido**: la condición que este plan traía
+   escrita fallaba en 5 de esos 20 casos. Quedó como recordatorio de que "duplicación deliberada" no
+   quiere decir "duplicación correcta".
 
 **Consistencia de tipos:** `Tema` y `TemaEfectivo` se definen en la Tarea 1 y se consumen con esos
 nombres exactos en las tareas 3 y 4. `TemaService` expone `tema`, `efectivo` y `alternar()`, y la
