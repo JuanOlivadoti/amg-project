@@ -1,95 +1,153 @@
 # Diseño: esqueleto UI del portal (traído de `dashboard-project`)
 
+> Revisión 2 (2026-07-30): corrige 8 hallazgos de una auditoría externa (Codex) verificados contra el
+> código real — ver "Historial de revisión" al final.
+
 ## Contexto
 
 El portal de AMG OS (`portal/`) hoy tiene 3 páginas reales (`login`, `runs`, `brief`), sin componentes
-reutilizables extraídos: todo vive inline con clases Tailwind repetidas. No hay shell de layout
-(sidebar/header), solo un header mínimo en `app.html`.
+reutilizables extraídos: todo vive inline con clases Tailwind repetidas. El shell actual (rama
+`feat/modo-oscuro-portal`, `portal/src/app/app.html`) es un único header global (`h-11`) que envuelve
+**todas** las rutas, incluido `/login`, vía `<router-outlet>` — no hay sidebar.
 
 Existe, en un proyecto externo (`C:\Users\oliva\Documents\projects\dashboard-project\`), una app Angular
-19 construida sobre el template comercial **TailAdmin**: shell completo (sidebar + header), una
-librería amplia de componentes UI (botones, badges, cards, tablas, charts, modales, tabs, dropdowns) y
-varias páginas reales de dominio (clientes, usuarios, dashboard con KPIs).
+19.2 construida sobre el template comercial **TailAdmin** (licencia verificada con el usuario — permite
+reutilizar el código en AMG OS): shell completo (sidebar + header), una librería amplia de componentes
+UI y varias páginas reales de dominio.
 
 El roadmap del portal (`docs/proyecto/09-estado-y-roadmap.md`, sección "La demo con Frank") tiene
-pendiente la **pieza C — Dashboard de cartera**: una pantalla nueva que muestra `volumen`, `dificultad`,
-`opportunity_score`, `score_confidence`, `intencion`, `cluster_id` y `evidencia` por página, y
-`coste_micros_usd`/`calidad_datos` por corrida. Los datos existen en Postgres pero **no hay ningún
-endpoint de la API que los sirva en formato listado** — solo aparecen en `api/src/app.test.ts` y
-`api/src/dev-server.ts` (mock).
+pendiente la **pieza C — Dashboard de cartera + seed de 4-6 restaurantes**: una pantalla que muestra
+`volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `cluster_id` y
+`evidencia` por página, y `coste_micros_usd`/`calidad_datos` por corrida.
 
-Este documento cubre **solo el frontend**: traer el esqueleto de layout y la librería de componentes
-del `dashboard-project`, adaptados a la arquitectura del portal, y construir con ellos el Dashboard de
-cartera usando datos de muestra. El endpoint real de la API queda fuera de alcance — es trabajo de
-backend separado, para más adelante.
+**Corrección sobre el acceso a datos** (la versión 1 de este documento decía lo contrario): la API
+**ya sirve** estos datos — `GET /runs` (`api/src/app.ts:74`) y `GET /runs/:id` (`api/src/app.ts:84`) — y
+el portal ya los consume (`listarRuns`/`verBrief` en `portal/src/app/services/api.ts:24-26`), tipados en
+`portal/src/app/core/models.ts` (`RunSummary`, `PaginaPropuesta`). Lo que **no existe** es (a) un
+endpoint agregado de "cartera" que junte varios runs/clientes en un solo listado, y (b) cualquier
+noción de nombre de cliente — la API no expone `nombre`, solo `client_id`. Decisión del usuario: para
+esta pieza se sigue con **datos 100% de muestra** (no se compone desde `/runs` real todavía, para no
+sumar N+1 ni mezclar datos reales parciales con un nombre inventado en la misma pantalla) — el
+endpoint agregado real queda para más adelante, como trabajo de backend separado.
+
+Este documento cubre **solo el frontend**: traer el esqueleto de layout y una librería de componentes
+UI del `dashboard-project`, adaptados a la arquitectura del portal, y construir con ellos el Dashboard
+de cartera con datos de muestra.
 
 ## Objetivo
 
-1. El portal gana un shell de layout (sidebar + header) y una librería de componentes UI reutilizables,
-   con la misma apariencia visual que `dashboard-project`, pero consumiendo el sistema de tokens
-   semánticos de tema que el portal ya tiene (`--fondo`, `--superficie`, `--texto`, `--accion`, etc.).
+1. El portal gana un shell de layout (sidebar + header) que envuelve **todas las rutas autenticadas**
+   (`/runs`, `/runs/:id`, `/cartera`) de forma consistente — no solo la pantalla nueva — y una
+   librería de componentes UI reutilizables, con la misma apariencia visual que `dashboard-project`,
+   pero consumiendo el sistema de tokens semánticos de tema que el portal ya tiene.
 2. Se construye la pantalla "Dashboard de cartera" (`/cartera`) usando esos componentes, con datos de
-   muestra que tienen la misma forma que los datos reales documentados en el roadmap.
-3. Las páginas existentes (`login`, `runs`, `brief`) **no se migran** al nuevo shell en este trabajo —
-   queda como tarea futura, fuera de este alcance.
+   muestra que tienen la misma forma que los DTOs reales (`RunSummary`, `PaginaPropuesta`).
+3. `login`, `runs` y `brief` **no se restylean** con la nueva librería de componentes — pero `runs` y
+   `brief` sí pasan a renderizar dentro del nuevo shell (sidebar + header), porque dejarlos afuera
+   produce la contradicción de ruteo descrita en la sección 4. `login` queda fuera del shell.
 
 ## Fuera de alcance (explícito)
 
-- Endpoint real de la API para servir datos de cartera (Postgres → API). Sigue con datos mock en el
-  frontend.
-- Migrar `login`/`runs`/`brief` al nuevo shell de layout.
+- Endpoint real de la API para servir datos de cartera agregados. Sigue con datos mock en el frontend
+  (ver "Fuente de datos" arriba).
+- Restylear el contenido interno de `login`/`runs`/`brief` con los componentes nuevos (solo cambia el
+  wrapper de layout de `runs`/`brief`, no su HTML interno).
 - NgRx (el portal usa signals + services directos; los componentes portados que dependían del store se
   reescriben para recibir datos por `@Input`/`input()`).
 - Firebase (el portal usa Supabase + Postgres con RLS; ningún componente portado debe traer una
   dependencia a `firebase`/`@angular/fire`).
-- Páginas de showcase del template (`buttons`, `badges`, `tabs`, `alerts`, `avatars`, etc. — demos del
-  template comercial, sin uso en el portal).
-- Librerías del `dashboard-project` no usadas por lo que se porta: `amCharts`, `swiper`, `flatpickr`,
-  `@fullcalendar/*`, `prismjs`, `marked`, `ng-otp-input`.
-- Tests de componente con Karma. El portal ya tiene la convención de separar lógica pura (`core/*.ts`,
-  testeada con `node:test`) de componentes presentacionales verificados a mano en el navegador — se
-  sigue esa misma convención acá, no se introduce Karma como red de pruebas nueva.
+- Páginas de showcase del template (`buttons`, `badges`, `tabs`, `alerts`, `avatars`, etc.).
+- `amCharts`, `swiper`, `flatpickr`, `@fullcalendar/*`, `prismjs`, `marked`, `ng-otp-input`.
+- Tests de componente con Karma para **todo**: se usan donde ya es la convención del portal (lógica
+  interactiva/condicional de template — ver sección "Verificación"), no como red exhaustiva de UI.
 
 ## Orden de trabajo
 
-1. **Mergear `feat/modo-oscuro-portal` → `main`.** Es trabajo ya cerrado (87 tests, documentado en
-   `09-estado-y-roadmap.md`). Se corren `npm test` y `npm run typecheck` antes de confirmar el merge y
-   el push — es una acción que toca la rama compartida, así que se hace con cuidado y visibilidad.
-2. **Nueva rama `feat/dashboard-ui-portal`** desde `main`, ya con los tokens de tema en la base.
+1. **Mergear `feat/modo-oscuro-portal` → `main`.** Trabajo ya cerrado (87 tests). Se corren
+   `npm --prefix portal test` y `npm --prefix portal run typecheck` antes de confirmar el merge y el
+   push.
+2. **Etapa propia: migración de Tailwind v3.4 → v4** (ver sección siguiente) — sobre `main`, antes de
+   portar ningún componente. Es un cambio transversal que afecta a `login`/`runs`/`brief` aunque no se
+   les toque el HTML.
+3. **Nueva rama `feat/dashboard-ui-portal`** desde el commit de la migración de Tailwind, para el shell
+   + componentes + dashboard de cartera.
 
-## Migración de Tailwind: v3.4 → v4
+## Migración de Tailwind: v3.4 → v4 (etapa separada)
 
-El portal usa hoy Tailwind 3.4 con `tailwind.config.js`. `dashboard-project` usa Tailwind v4
-(CSS-first, `@theme` dentro de `src/styles.css`, sin archivo de config). Se actualiza el portal a v4:
+Estado actual verificado: `portal/.postcssrc.json` usa el plugin `tailwindcss` (formato v3);
+`portal/src/styles.css` tiene las 3 directivas `@tailwind base/components/utilities`;
+`portal/tailwind.config.js` (rama modo oscuro) mapea los 16 tokens semánticos a `theme.extend.colors`
+usando `var(--token)`.
 
-- Se elimina `portal/tailwind.config.js`.
-- Los tokens semánticos existentes (`--fondo`, `--superficie`, `--superficie-2`, `--texto`,
-  `--texto-medio`, `--texto-tenue`, `--borde`, `--accion`, `--respaldo`, `--alerta`, `--error`, más
-  variantes "suave") se re-declaran dentro de un bloque `@theme` en `portal/src/styles.css`, generando
-  las mismas clases utilitarias que ya se usan (`bg-superficie`, `text-texto`, etc.) — cambia la
-  sintaxis de definición, no los nombres de clase ni el comportamiento.
-- El script anti-fogonazo en `portal/src/index.html` no cambia (no depende de la versión de Tailwind).
-- Se revisan usos de `@apply` y utilidades que hayan cambiado de nombre entre v3 y v4 al momento de
-  portar cada componente.
+Pasos:
+
+1. `npm --prefix portal install tailwindcss@4 @tailwindcss/postcss` (reemplaza la dependencia v3).
+2. `portal/.postcssrc.json`: el plugin pasa a `"@tailwindcss/postcss": {}`.
+3. `portal/src/styles.css`: las 3 directivas `@tailwind` se reemplazan por `@import "tailwindcss";`.
+4. Los 16 tokens (`--fondo`, `--superficie`, ... ya declarados en `:root`/`.oscuro`) se exponen como
+   utilidades vía un bloque `@theme inline` en el mismo `styles.css` (`inline` porque referencian
+   variables ya definidas en `:root`/`.oscuro`, no valores literales — ver
+   [`@theme inline`](https://tailwindcss.com/docs/theme#referencing-other-variables)):
+   ```css
+   @theme inline {
+     --color-fondo: var(--fondo);
+     --color-superficie: var(--superficie);
+     /* ...los 16, mismo nombre que hoy en tailwind.config.js */
+   }
+   ```
+   Esto **elimina `tailwind.config.js`** — el mapeo de color vive ahora en `styles.css`, junto con los
+   valores hex. El `borderColor.DEFAULT` actual (parche del preflight) se resuelve con la utilidad
+   equivalente de v4 (`@layer base { * { border-color: var(--borde); } }` o el mecanismo que v4 use
+   para el default de `border-color` — se confirma al implementar).
+5. **`contraste.test.ts` (pieza B) se actualiza, no se rompe en silencio.** Hoy tiene un test que
+   parsea `tailwind.config.js` para confirmar que expone los mismos 16 tokens que `TOKENS`. Con
+   `tailwind.config.js` eliminado, ese test pasa a parsear el bloque `@theme inline` de `styles.css` en
+   su lugar — sigue siendo el mismo triángulo de garantía (`TOKENS` ↔ `:root`/`.oscuro` ↔ utilidades
+   Tailwind), solo que las últimas dos fuentes ahora están en el mismo archivo. Este cambio de test es
+   una tarea explícita del plan, no un efecto secundario.
+6. Revisar la compatibilidad mínima de navegadores que exige Tailwind v4 (usa `@property` y otras
+   features CSS modernas) contra el target de build del portal.
+7. Verificar visualmente `login`/`runs`/`brief` sin cambios de HTML — deben verse idénticos antes y
+   después de la migración (regresión, no feature).
 
 ## Colores: mandan los tokens del portal
 
 Ningún componente portado trae la paleta `brand-*`/`gray-*` de TailAdmin. Todo color se traduce al
-token semántico equivalente del portal. Si un componente necesita un tono que no tiene token hoy
-(por ejemplo, un color de estado nuevo para un badge), se decide en el momento de portarlo y se agrega
-como token nuevo — no como color suelto.
+token semántico equivalente del portal.
+
+## Topología de rutas y shell
+
+Estado post-merge de modo oscuro: `app.html` envuelve *todo* (incluido `/login`) en un único header.
+Meter un `AppShell` nuevo solo en `/cartera` duplicaría ese header ahí y haría que el sidebar
+aparezca/desaparezca al navegar a `/runs` — contradicción que la v1 de este documento no resolvía.
+
+Resolución: el `AppShell` (sidebar + header nuevos) envuelve **todas las rutas autenticadas**, no solo
+la nueva. `login` queda afuera, con su propio layout simple (el que ya tiene hoy, sin sidebar).
+
+```
+/login                          → sin AppShell (layout propio, como hoy)
+/  (AppShell, canActivate: [authGuard])
+  /runs                         → RunsPage — HTML interno SIN cambios
+  /runs/:id                     → BriefPage — HTML interno SIN cambios
+  /cartera                      → página nueva, construida con la librería de componentes
+'' / '**'                       → redirect a /runs
+```
+
+`app.ts`/`app.html` deja de tener el header propio: pasa a ser solo el `<router-outlet>` raíz. El
+header actual (email, salir, toggle de tema) se reimplementa dentro del nuevo `AppHeaderComponent`
+(ver siguiente sección), no se duplica.
 
 ## Estructura de carpetas nueva
-
-El portal no tiene hoy `shared/`. Se crea:
 
 ```
 portal/src/app/shared/
   layout/
-    app-shell/          # compone sidebar + header + <router-outlet>
+    app-shell/           # sidebar + header + <router-outlet>, matched por la ruta padre autenticada
     app-sidebar/
     app-header/
-    backdrop/            # overlay mobile
+    backdrop/             # overlay mobile
+  services/
+    sidebar.ts            # nuevo — estado UI expandido/hover/mobile, no existe hoy en el portal
   components/
     ui/
       button/
@@ -97,58 +155,97 @@ portal/src/app/shared/
       avatar/
       dropdown/
       pagination/
-      tabs/
-      modal/
     cards/
-      stat-box/          # KPI tile (input-driven)
+      stat-box/            # KPI tile (input-driven)
     charts/
       bar-chart-one/
       line-chart-one/
 ```
 
+`tabs/` y `modal/` **salen del alcance inicial**: `/cartera` tal como está diseñada no los necesita
+(no hay pestañas ni diálogos modales en la composición de la sección "Página nueva"). Se agregan
+cuando haya un consumidor concreto, no antes — portar una librería amplia sin uso real es superficie
+que hay que mantener y verificar sin necesidad.
+
 ## Componentes a portar (con su adaptación puntual)
 
 | Componente | Origen | Adaptación |
 | --- | --- | --- |
-| `app-sidebar` | `shared/layout/app-sidebar/` (256 líneas, sin NgRx) | Se reemplaza `navItems` por solo `/runs` y `/cartera`. Se elimina el código muerto comentado (items de ejemplo del template). |
-| `app-header` | `shared/layout/app-header/` (41 líneas) | El input `user` cambia de `I_User` (dominio del template) al modelo `Usuario` del portal. Incluye el `theme-toggle` que el portal ya construyó en la pieza B. |
-| `stat-box` | `shared/components/stat-box/` (input-driven: `stat = input.required<{key,title,stats}>()`) | Se porta tal cual como tile de KPI — no `card-with-icon`, que es estático (título/lorem hardcodeados). |
-| `bar-chart-one` / `line-chart-one` | `shared/components/charts/` (hoy `series`/`categories`/`colors` hardcodeados en hex) | Se convierten a `@Input` (`series`, `categories`, `colors`) para poder graficar `opportunity_score`/`volumen` por cluster. |
-| `ui/` (button, badge, avatar, dropdown, pagination, tabs, modal) | `shared/components/ui/` | Sin cambios estructurales; solo mapeo de color a tokens del portal. |
-| Tabla de portafolio | Nueva, con `clients-table` como **referencia de patrón** (input-driven, `computed()` para filtrado local) — no se copia literal porque las columnas son de otro dominio. | Columnas: `volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `cluster_id`, `evidencia`. |
+| `app-sidebar` | `shared/layout/app-sidebar/` (256 líneas, sin NgRx) | `navItems` pasa a `/runs` y `/cartera`. Se elimina el código muerto comentado del template. |
+| `app-header` | — (se reimplementa, no se porta) | Nuevo componente sobre `AuthService` (`email()`, `autenticado()`, `salir()`) y `TemaService` (`tema()`, `alternar()`, ya construidos en la pieza B) + el nuevo `SidebarService` para el toggle. **No existe** un modelo `Usuario` en el portal (la v1 de este documento lo inventó) — el dato de sesión es `Sesion` (`portal/src/app/core/models.ts:71`), y el header consume `AuthService` directo, no un `@Input` de usuario. |
+| `stat-box` | `shared/components/stat-box/` (input-driven: `stat = input.required<{key,title,stats}>()`) | Se porta tal cual como tile de KPI. |
+| `button`, `badge`, `avatar`, `dropdown`, `pagination` | `shared/components/ui/` | **Sin `SafeHtmlPipe`/`bypassSecurityTrustHtml`** (confirmado en `button.component.ts:3` y `pipe/safe-html.pipe.ts:8` — choca con el invariante de superficie de inyección del proyecto). Los `@Input() startIcon/endIcon: string` se reemplazan por proyección de contenido (`<ng-content select="[icon]">` o un `TemplateRef`), nunca un string de HTML. El `@Input() className` libre se reemplaza por variantes tipadas (`variant`/`size` ya existen; se cubren los casos reales en vez de aceptar clases arbitrarias). Textos en español. Mapeo de color a tokens del portal. |
+| `bar-chart-one` / `line-chart-one` | `shared/components/charts/` (hoy `series`/`categories`/`colors` hardcodeados en hex) | Se convierten a `@Input`. **No se grafica por `cluster_id`**: es un UUID generado por `randomUUID()` (`kr-service/src/pipeline/cluster-map.ts:73`), ilegible como categoría de eje. En su lugar: barras horizontales de top oportunidades por `keyword_principal` (top N páginas por `opportunity_score`), y línea de `opportunity_score` promedio o `coste_micros_usd` por fecha de corrida (`created_at` de `RunSummary`). `ng-apexcharts`/`apexcharts` no están instalados en el portal hoy — se agregan, verificando compatibilidad con Angular 20.3 (el `dashboard-project` es Angular 19.2) antes de comprometerse a la librería. Los colores del chart deben reaccionar al cambio de tema (`effect()` sobre `tema.efectivo()` que actualiza las `options` de Apex), no quedar fijos en el hex inicial. |
+| Tabla de portafolio | Nueva — `clients-table` del template como **referencia de patrón** (input-driven, `computed()` para filtrado local), no se copia literal (columnas de otro dominio). | Columnas: `volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `cluster_id`, `evidencia`. |
 
-`pages/dashboard/dashboard.page.ts` del `dashboard-project` (acoplado a NgRx: dispatch de
-`IdeasActions`, selectors) se usa **solo como referencia de composición** (KPIs arriba + tabla abajo)
-— no se copia código de ahí.
+## Contrato de datos de muestra
+
+Función pura en `portal/src/app/core/cartera-mock.ts`, con la misma forma que los DTOs reales
+(`RunSummary`, `PaginaPropuesta` de `core/models.ts`) más lo único que la API no expone (`nombre` del
+cliente):
+
+```ts
+interface ClienteCartera {
+  client_id: string;
+  /** La API no expone nombre de cliente hoy (solo `client_id`) — 100% mock, documentado acá. */
+  nombre: string;
+  runs: RunSummary[];
+}
+
+interface CarteraDashboard {
+  clientes: ClienteCartera[]; // 4-6, según el roadmap (seed de 4-6 restaurantes)
+  pages: PaginaPropuesta[]; // de todos los runs, para agregación
+}
+
+function generarCarteraMock(): CarteraDashboard { /* ... */ }
+```
+
+Funciones de agregación puras y testeadas por separado (`node:test`), no calculadas inline en el
+componente: `kpisDeCartera(dashboard)` → `{ sitiosActivos, opportunityScorePromedio, costeDelMes }`,
+`topOportunidades(pages, n)`, `serieTemporalCoste(runs)`. El componente de página queda presentacional,
+consumiendo estas funciones.
 
 ## Página nueva: Dashboard de cartera
 
-- Ruta `/cartera`, protegida por `authGuard`, agregada a `app.routes.ts` y al nuevo `app-sidebar`.
-- Composición: fila de `stat-box` (KPIs: sitios activos, `opportunity_score` promedio, coste del mes)
-  → `bar-chart-one`/`line-chart-one` (distribución de `opportunity_score`/`volumen` por cluster) →
-  tabla de páginas.
-- **Datos de muestra**: función pura en `portal/src/app/core/cartera-mock.ts` que genera datos con la
-  misma forma que documenta el roadmap (`volumen`, `dificultad`, `opportunity_score`,
-  `score_confidence`, `intencion`, `local`, `cluster_id`, `evidencia`, y por corrida
-  `coste_micros_usd`/`calidad_datos`). Testeada con `node:test`. El componente de página queda
-  presentacional, consumiendo esa función.
+- Ruta `/cartera`, dentro del `AppShell` (`authGuard`), agregada al `app-sidebar`.
+- Composición: fila de `stat-box` (KPIs de `kpisDeCartera`) → `bar-chart-one` (top oportunidades por
+  `keyword_principal`) + `line-chart-one` (serie temporal de coste u `opportunity_score`) → tabla de
+  páginas (`volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `cluster_id`,
+  `evidencia`).
 
 ## Verificación
 
-Sigue la convención ya establecida en el portal:
+Comandos explícitos — **`portal` no está en los `workspaces` del `package.json` raíz** (confirmado:
+`["db","kr-service","web-builder","orchestrator","api","renderer"]`), así que `npm test`/
+`npm run typecheck` de la raíz **no cubren el portal**:
 
-- Lógica pura (mock de cartera, cualquier filtro/mapeo de color) → `core/*.ts`, testeada con
-  `node:test` (`npm test`).
-- `npm run typecheck` en el portal.
-- Componentes y la página nueva se verifican manejando el portal en el navegador (chrome-devtools MCP):
-  layout responsive, tema claro/oscuro/auto sobre los componentes nuevos, navegación del sidebar,
-  estados vacíos de la tabla.
+```bash
+npm --prefix portal test              # node:test — lógica pura (cartera-mock, agregaciones, colores)
+npm --prefix portal run typecheck
+npm --prefix portal run test:components   # Karma — DOM, ver abajo
+```
 
-## Riesgos / decisiones abiertas para el plan
+El portal **ya usa Karma** para lógica condicional de template que un mock a nivel función no cubre
+(`portal/src/app/pages/runs/runs.spec.ts` — renderiza `RunsPage` y verifica el DOM, con el comentario
+explícito de por qué: un test de función pura pasó en verde con el `@if` del template roto). Se sigue
+esa misma convención, no "todo a mano", para lo que el shell agrega de lógica interactiva/condicional:
 
-- El upgrade de Tailwind v3→v4 puede requerir ajustes no previstos en clases usadas hoy en
-  `login`/`runs`/`brief` (aunque esas páginas no se migran al shell, siguen compilando con Tailwind y
-  deben seguir viéndose igual).
-- El merge de `feat/modo-oscuro-portal` a `main` es una acción sobre rama compartida — se confirma el
-  estado verde (tests + typecheck) antes de hacerlo, y se hace como paso explícito y visible, no
-  implícito dentro de otro commit.
+- Toggle del sidebar mobile + backdrop (abre/cierra, clase aplicada).
+- Navegación del sidebar (item activo resaltado).
+- Estado vacío, filtro y paginación de la tabla de cartera.
+- Topología de rutas: `/login` sin shell, `/runs`/`/cartera` con shell.
+
+Verificación manual en el navegador (chrome-devtools MCP) queda para lo que un test de componente no
+captura bien: contraste real en los tres estados de tema (claro/oscuro/auto), responsive, que
+`login`/`runs`/`brief` se vean idénticos tras la migración de Tailwind.
+
+## Historial de revisión
+
+**Revisión 1 → 2** (auditoría de Codex, verificada punto por punto contra el código antes de aplicar):
+corrige la afirmación falsa sobre acceso a datos de la API, define el contrato de datos mock
+explícito, resuelve la contradicción de topología de rutas/shell duplicado, completa los pasos de
+migración de Tailwind v4 y protege el test de contraste de la pieza B, elimina `SafeHtmlPipe` de los
+componentes portados, corrige el modelo de header (no existe `Usuario`, es `Sesion`+`AuthService`),
+cambia la elección de gráficos (`cluster_id` es un UUID, no una categoría legible), y hace explícitos
+los comandos de verificación (`--prefix portal`) y el uso ya existente de Karma. La pregunta de
+licencia de TailAdmin quedó confirmada por el usuario (permite el uso en AMG OS).
