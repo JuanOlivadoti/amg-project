@@ -1357,10 +1357,14 @@ test('🔴 ninguna plantilla incrusta un color: todo pasa por un token', () => {
 npm test
 ```
 
-Esperado: **FALLA** el test `🔴 ninguna plantilla incrusta un color`, con dos mensajes:
-`../pages/brief/brief.ts tiene un hex: #15803d, #b45309` y
-`../pages/brief/brief.ts tiene un color en un style inline: style="color:, style="color:`.
-Los otros tres archivos **no** deben aparecer (la Tarea 5 ya los dejó limpios).
+Esperado: **FALLA** el test `🔴 ninguna plantilla incrusta un color`, nombrando
+`../pages/brief/brief.ts tiene un hex: #15803d, #b45309`. Los otros tres archivos **no** deben
+aparecer (la Tarea 5 ya los dejó limpios).
+
+> **Corregido durante la ejecución.** Este paso decía que se verían **dos** mensajes (el del hex y el
+> del `style` inline). Se ve **uno**: `assert.deepEqual` lanza en la primera aserción que falla, así
+> que corta antes de llegar al patrón del `style`. No es un defecto del test —los dos patrones siguen
+> activos, y el segundo salta apenas se arregla el primero—, pero la predicción estaba mal escrita.
 
 - [ ] **Paso 3: matar los dos hex (líneas 53 y 66)**
 
