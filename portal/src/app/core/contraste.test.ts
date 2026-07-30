@@ -45,14 +45,14 @@ test('🔴 @theme inline expone exactamente los mismos 16 tokens', () => {
   }
 });
 
-test('🔴 los dos temas definen exactamente los mismos 16 tokens', () => {
+test('🔴 los dos temas definen exactamente los mismos tokens', () => {
   // Un token que falte en `.oscuro` NO da error: hereda el valor claro de `:root` y se ve mal en
   // silencio. Por eso se afirma la igualdad de los dos juegos de nombres, no solo su presencia.
   for (const [nombre, tokens] of TEMAS) {
     assert.deepEqual(
       Object.keys(tokens).sort(),
       [...TOKENS].sort(),
-      `el tema ${nombre} no define los 16 tokens exactos`,
+      `el tema ${nombre} no define los ${TOKENS.length} tokens exactos`,
     );
   }
 });

@@ -17,6 +17,7 @@
   --color-alerta-suave: var(--alerta-suave);
   --color-error: var(--error);
   --color-error-suave: var(--error-suave);
+  --color-velo: var(--velo);
 }
 
 /*
@@ -64,6 +65,7 @@
   --alerta-suave: #fef3c7;
   --error: #b91c1c;
   --error-suave: #fee2e2;
+  --velo: #0f1419;
 }
 
 /*
@@ -92,6 +94,7 @@
   --alerta-suave: #3d2b06;
   --error: #fca5a5;
   --error-suave: #451a1a;
+  --velo: #0f1419;
 }
 
 /*
