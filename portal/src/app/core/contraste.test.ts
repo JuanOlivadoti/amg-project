@@ -37,6 +37,12 @@ test('🔴 @theme inline expone exactamente los mismos 16 tokens', () => {
     [...TOKENS].sort(),
     'el bloque @theme inline de styles.css y TOKENS se separaron',
   );
+  // Lo de arriba solo compara NOMBRES: `--color-respaldo: var(--alerta);` (un typo de variable)
+  // deja pasar el assert anterior — el nombre `respaldo` está — mientras el título ✅ se pinta con
+  // el color de ⚠️. Cada --color-X tiene que apuntar a --X, no solo existir.
+  for (const t of TOKENS) {
+    assert.equal(tema[`color-${t}`], `var(--${t})`, `--color-${t} no apunta a --${t}`);
+  }
 });
 
 test('🔴 los dos temas definen exactamente los mismos 16 tokens', () => {
@@ -119,9 +125,9 @@ test('🔴 ninguna plantilla incrusta un color: todo pasa por un token', () => {
   const HEX = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-zA-Z_-])/g;
   const ESTILO_COLOR = /style="[^"]*color\s*:/g;
   const FUNCION_COLOR = /\b(?:rgb|rgba|hsl|hsla)\(/g;
-  // La paleta cruda de Tailwind sigue existiendo (la config usa `extend`, y tiene que ser así
-  // mientras convivan). Pero `bg-gray-100` queda congelado en claro igual que un hex, y ESO no lo
-  // cazaba nada: lo garantizaba un `grep` corrido a mano una vez, no un test.
+  // La paleta cruda de Tailwind sigue existiendo (v4 la trae por defecto en `@theme` global — no
+  // hay `tailwind.config.js` que la desactive). Pero `bg-gray-100` queda congelado en claro igual
+  // que un hex, y ESO no lo cazaba nada: lo garantizaba un `grep` corrido a mano una vez, no un test.
   const PALETA_CRUDA =
     /\b(?:bg|text|border|ring|divide|placeholder|from|via|to)-(?:gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-(?:50|[1-9]00|950))?\b/g;
 

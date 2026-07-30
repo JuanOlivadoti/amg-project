@@ -22,7 +22,8 @@
 /*
  * Tailwind v3 ponía --borde como default de `class="border"` vía `borderColor.DEFAULT` en
  * tailwind.config.js. v4 no tiene ese archivo: se repone acá, mismo motivo que antes — sin esto,
- * un `border` sin color explícito cae en el default del navegador, que el tema no puede cambiar.
+ * un `border` sin color explícito cae en `currentColor` (el default de v4), que el tema no puede
+ * cambiar de forma consistente.
  */
 @layer base {
   *,
@@ -94,14 +95,15 @@
 }
 
 /*
- * El preflight de Tailwind le clava `theme('colors.gray.400')` —#9ca3af— al placeholder de todo
- * input. Es un color que el tema NO puede cambiar: en claro da **2.54:1** sobre `superficie`, muy por
- * debajo del 4.5:1 de AA, y en oscuro pasa solo por casualidad (resulta ser el mismo hex que
- * `--texto-tenue` oscuro).
+ * El preflight de Tailwind v4 le clava `color-mix(in oklab, currentcolor 50%, transparent)` al
+ * placeholder de todo input — 50% de opacidad sobre `currentColor`, no un gray fijo como en v3. Es
+ * un valor que el tema NO puede fijar de forma consistente: mezclado al 50% con `--texto` sobre
+ * `--superficie`, el resultado sigue por debajo del 4.5:1 que pide AA.
  *
- * Se arregla acá y no con `placeholderColor` en la config: esa clave genera utilidades, **no toca el
- * preflight**, que lee `colors.gray.400`. Y no se arregla poniéndole una clase a cada input, por lo
- * mismo que `borderColor.DEFAULT`: parchar los cuatro de hoy deja roto al quinto.
+ * No hay `tailwind.config.js` en v4, así que no hay `placeholderColor` que tocar: el preflight se
+ * aplica igual y hay que pisarlo acá. Y no se arregla poniéndole una clase a cada input, por lo
+ * mismo que `borderColor.DEFAULT` en el bloque de arriba: parchar los cuatro de hoy deja roto al
+ * quinto.
  *
  * El spec ya asignaba `texto-tenue` a "metadatos, placeholders"; esto lo cablea.
  */

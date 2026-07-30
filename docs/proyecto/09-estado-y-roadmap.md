@@ -206,18 +206,21 @@ herede el tema por construcción en vez de tener que acordarse
 [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)).
 
 > **Lo que la hace exigible, y no un acuerdo de buena voluntad.** 21 tests nuevos (66 → 87). El
-> contraste WCAG AA de los **17 pares × 2 temas** se lee de `styles.css`, no de una copia. Los tres
-> lados del triángulo —`TOKENS`, `styles.css` y `tailwind.config.js`— están atados entre sí: borrar un
-> token de la config dejaba `text-respaldo` sin emitir (el título ✅ en gris) con toda la suite en
-> verde. Y un test recorre `src/app` y **falla si una plantilla incrusta un color o usa la paleta
-> cruda** — descubre los archivos en vez de listarlos, así que también cubre las pantallas que la
-> pieza C todavía no escribió.
+> contraste WCAG AA de los **17 pares × 2 temas** se lee de `styles.css`, no de una copia. Tras la
+> migración a Tailwind v4 (que borró `tailwind.config.js`), el triángulo quedó en dos archivos:
+> `TOKENS` (en `contraste.ts`) y `styles.css`, y este último es internamente consistente entre
+> `:root`/`.oscuro` y el bloque `@theme inline` que Tailwind usa para emitir las utilidades — un test
+> ata los nombres de los tres lados y otro verifica que cada `--color-X` de `@theme inline` apunte a
+> `--X`, no solo que exista: borrar o desapuntar un token ahí dejaba `text-respaldo` sin emitir (el
+> título ✅ en gris) con toda la suite en verde. Y un test recorre `src/app` y **falla si una
+> plantilla incrusta un color o usa la paleta cruda** — descubre los archivos en vez de listarlos, así
+> que también cubre las pantallas que la pieza C todavía no escribió.
 >
 > **Lo que solo apareció manejando la app** (cuatro cosas que ningún test veía): el `☀` se pintaba
 > como emoji naranja y no seguía al tema; el `placeholder` de todo input estaba clavado por el
-> preflight de Tailwind en `#9ca3af`, o sea **2.54:1** en claro, por debajo de AA; poner la barra
-> siempre visible dejó el login con 44 px de scroll; y el botón del tema tenía la mitad del área
-> táctil que pide WCAG. Las cuatro, corregidas.
+> preflight de Tailwind (`color-mix(in oklab, currentcolor 50%, transparent)` en v4) por debajo del
+> 4.5:1 de AA en claro; poner la barra siempre visible dejó el login con 44 px de scroll; y el botón
+> del tema tenía la mitad del área táctil que pide WCAG. Las cuatro, corregidas.
 
 **C — el dashboard:** los datos para poblarlo **ya existen y están sin explotar** — cada página trae
 `volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `local`, `cluster_id`
