@@ -20,7 +20,13 @@ export class App {
    * estados, y "auto" no se adivina. El `aria-label` lo dice con palabras, que es lo que lee un
    * lector de pantalla y lo que aparece en el tooltip.
    */
-  readonly ICONO: Record<Tema, string> = { auto: '◐', claro: '☀', oscuro: '☾' };
+  /**
+   * `︎` es el selector de variación TEXTO. Sin él, el navegador pinta U+2600 como **emoji de
+   * color** —un sol naranja— que ignora `text-texto-tenue` y no cambia con el tema. Se vio en el
+   * navegador, no en un test: el typecheck no mira glifos. `◐` y `☾` no tienen forma emoji, así que
+   * no lo necesitan.
+   */
+  readonly ICONO: Record<Tema, string> = { auto: '◐', claro: '☀︎', oscuro: '☾' };
   readonly ETIQUETA: Record<Tema, string> = {
     auto: 'Tema: automático (sigue al sistema). Tocar para pasar a claro',
     claro: 'Tema: claro. Tocar para pasar a oscuro',
