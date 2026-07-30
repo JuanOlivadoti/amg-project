@@ -2,10 +2,10 @@
 
 ## Resumen ejecutivo
 
-> Actualizado 2026-07-27: pieza A **mergeada a `main` y desplegada**. `SUPABASE_JWT_ISS` está en
-> Railway y la API arrancó con ella. **Falta lo único que cierra esto: loguearse en el navegador.**
-> Desde afuera no hay señal que distinga el código viejo del nuevo, así que "desplegado" no es
-> "arreglado".
+> Actualizado 2026-07-30: **pieza A cerrada** (el login **funciona en `bigballs.es`**, verificado en
+> el navegador por Juan — lo único que podía cerrarla, porque desde afuera no había señal que
+> distinguiera el código viejo del nuevo) y **pieza B construida y verificada en el navegador**: el
+> portal tiene modo oscuro por tokens semánticos. **Sin mergear a `main` todavía**, a pedido.
 
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
@@ -23,7 +23,7 @@ web pública del cliente— **existen y se manejaron en un navegador real**.
 (Hostinger, autodeploy desde `main`), la API en `api.bigballs.es` (Railway, `europe-west4`) y la base
 con RLS forzada en Supabase (`eu-west-2`).
 
-> ### 🟡 El login estaba roto; la pieza A está desplegada y **falta verificarlo en el navegador**
+> ### ✅ El login estaba roto; la pieza A lo arregló y **está verificado en producción**
 >
 > C.8 —manejar la app en el navegador— destapó lo que la verificación desde afuera no podía ver: todo
 > login terminaba en `401 Token inválido o expirado`. **El proyecto de Supabase firma con `ES256`**
@@ -34,19 +34,19 @@ con RLS forzada en Supabase (`eu-west-2`).
 > distintas.** `/health` daba 200, el CORS aceptaba solo el portal, el `401` sin token era correcto —
 > y aun así nada funcionaba para un usuario real.
 >
-> **Estado (2026-07-27):** la pieza A está mergeada a `main` y desplegada. `SUPABASE_JWT_ISS` está
-> cargada en Railway y el proceso arrancó con ella (20/20 chequeos de `/health` en 200 tras el push,
-> lo que prueba que `emisorSupabase` aceptó el valor). **Eso no prueba que el login funcione.** Desde
-> afuera no hay señal que distinga el código viejo del nuevo: `/health` responde igual y un token
-> basura da 401 en los dos. Falta entrar al portal y loguearse — que es, otra vez, lo único que
-> cierra esto.
+> **Cerrado el 2026-07-30: Juan se logueó en `bigballs.es`.** Y hasta ese momento no estaba cerrado, a
+> propósito: entre el merge (2026-07-27) y ese login hubo tres días en que el código correcto ya
+> estaba desplegado y el estado seguía siendo 🟡, porque *20/20 chequeos de `/health` en 200* prueban
+> que `emisorSupabase` aceptó la variable de entorno y **nada más**. `/health` responde igual con el
+> código viejo, y un token basura da 401 con los dos. **No había ninguna señal externa que
+> distinguiera "arreglado" de "roto"** — solo entrar y loguearse.
 
 Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **466** en el monorepo + **66** en el portal. Los de seguridad, contra Postgres real |
+| **Tests** | **466** en el monorepo + **87** en el portal. Los de seguridad, contra Postgres real |
 | **Migraciones** | 9 (`0001`..`0009`) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones |
@@ -145,9 +145,10 @@ Runbook paso a paso, con los tropiezos reales, en
 solo sus claves, con la separación impuesta por tests (ver `scripts/env-sync.mts`).
 
 **C.8 —la verificación de punta a punta en el navegador— se hizo, y encontró lo que todo lo anterior
-no podía ver: ningún login funciona.** Ver el recuadro rojo del resumen. Los siete puntos de arriba
-siguen siendo ciertos: comprueban que la infraestructura está bien, no que el producto sirva. Es
-exactamente el hueco que C.8 existe para cubrir.
+no podía ver: ningún login funcionaba.** Los siete puntos de arriba seguían siendo ciertos:
+comprueban que la infraestructura está bien, no que el producto sirva. Es exactamente el hueco que
+C.8 existe para cubrir. **Arreglado por la pieza A y verificado el 2026-07-30** (ver el recuadro del
+resumen): el login funciona.
 
 Son **tres procesos** de larga duración más una SPA estática (el orquestador y el renderizador son
 de Fase 2 y **aún no están desplegados**):
@@ -165,7 +166,7 @@ dominio. Eso descarta cualquier hosting que no permita dominios personalizados a
 que "una CDN delante" deje de ser opcional (ver §3). Railway sí admite dominios personalizados, así
 que la elección de Fase 1 no cierra esa puerta.
 
-### 🔴 2. La demo con Frank — cuatro piezas, la A bloquea a las demás
+### 🟡 2. La demo con Frank — cuatro piezas, la A **ya no bloquea** a las demás
 
 De la sesión de diseño sobre la demo salió un recorrido de tres golpes: **dashboard** (panorama de
 cartera + economía), **entrar a un cliente** (la compuerta humana, que no se cuenta: se ve) y
@@ -177,10 +178,10 @@ panorama — son lo que las hace creíbles.
 
 | # | Pieza | Estado | Depende de |
 | --- | --- | --- | --- |
-| **A** | **Verificación JWT ES256 + logout que revoca** | 🟢 **Código completo** en `fix/jwt-es256`, **falta mergear y desplegar** | — |
-| **B** | Modo oscuro (**solo el portal**) | ⚪ Sin empezar | — |
-| **C** | Dashboard de cartera + seed de 4-6 restaurantes | ⚪ Sin empezar | A |
-| **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | A + la medición |
+| **A** | **Verificación JWT ES256 + logout que revoca** | ✅ **Cerrada** — mergeada, desplegada y el login **verificado en el navegador** (2026-07-30) | — |
+| **B** | Modo oscuro (**solo el portal**) | 🟢 **Construida y verificada en el navegador**, en `feat/modo-oscuro-portal`. **Falta mergear** | — |
+| **C** | Dashboard de cartera + seed de 4-6 restaurantes | ⚪ Sin empezar | B (hereda los tokens) |
+| **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | la medición |
 
 **Pieza A** ([spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
 [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md)): 4 tareas, **las 4 hechas** en la
@@ -193,15 +194,30 @@ rama.
 | 3 — El logout revoca en Supabase, sin bloquear la UI ni pisar sesiones nuevas | ✅ Hecha (`c0ead5b`, `9f57376`) |
 | 4 — Documentación, credenciales y despliegue | ✅ Hecha (revisión final, esta misma pieza) |
 
-**El código ya no es lo que falta.** Lo que queda es operativo y sin dueño hasta que alguien lo
-ejecute: cargar `SUPABASE_JWT_ISS` en Railway, borrar `SUPABASE_JWT_SECRET`, mergear
-`fix/jwt-es256` a `main` y **verificar el login en el navegador** — ver
-[13-runbook-despliegue.md § Actualizar una instalación ya desplegada](13-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada).
-**Hasta que eso no pase, el login sigue roto en producción**: una rama sin mergear no arregla nada
-para Frank.
+**Nada queda pendiente de la pieza A.** El despliegue se ejecutó (`SUPABASE_JWT_ISS` en Railway,
+merge a `main`) y el login se verificó en el navegador. `SUPABASE_JWT_SECRET` **se deja** en Railway a
+propósito, como red de rollback: `leerConfig` ya no la lee, y el código viejo la exige para arrancar.
+Ver [13-runbook-despliegue.md § Actualizar una instalación ya desplegada](13-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada).
 
-**B — modo oscuro:** solo el portal. El renderizador queda afuera a propósito: la web pública es la
-marca del restaurante, y ahí el tema lo decide su diseño.
+**B — modo oscuro:** solo el portal; el renderizador queda afuera a propósito (la web pública es la
+marca del restaurante). Va por **tokens semánticos**, no por variantes `dark:`, para que la pieza C
+herede el tema por construcción en vez de tener que acordarse
+([spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) ·
+[plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)).
+
+> **Lo que la hace exigible, y no un acuerdo de buena voluntad.** 21 tests nuevos (66 → 87). El
+> contraste WCAG AA de los **17 pares × 2 temas** se lee de `styles.css`, no de una copia. Los tres
+> lados del triángulo —`TOKENS`, `styles.css` y `tailwind.config.js`— están atados entre sí: borrar un
+> token de la config dejaba `text-respaldo` sin emitir (el título ✅ en gris) con toda la suite en
+> verde. Y un test recorre `src/app` y **falla si una plantilla incrusta un color o usa la paleta
+> cruda** — descubre los archivos en vez de listarlos, así que también cubre las pantallas que la
+> pieza C todavía no escribió.
+>
+> **Lo que solo apareció manejando la app** (cuatro cosas que ningún test veía): el `☀` se pintaba
+> como emoji naranja y no seguía al tema; el `placeholder` de todo input estaba clavado por el
+> preflight de Tailwind en `#9ca3af`, o sea **2.54:1** en claro, por debajo de AA; poner la barra
+> siempre visible dejó el login con 44 px de scroll; y el botón del tema tenía la mitad del área
+> táctil que pide WCAG. Las cuatro, corregidas.
 
 **C — el dashboard:** los datos para poblarlo **ya existen y están sin explotar** — cada página trae
 `volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `local`, `cluster_id`
@@ -235,7 +251,7 @@ Aparte de las cuatro piezas:
 
 ### 🟢 4. Deuda conocida, ninguna bloqueante
 
-- **Tests de componente del portal** (karma). El núcleo está cubierto (66 tests) y los componentes se
+- **Tests de componente del portal** (karma). El núcleo está cubierto (87 tests) y los componentes se
   verifican compilando con AOT y a mano. Es evidencia de que funciona hoy, **no una red contra
   regresiones**.
 - **El polling del brief (4 s) es a ojo**, y la lista de runs no pollea. Se calibra con la duración
@@ -261,13 +277,14 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 ### 🔴 Lo que depende de Juan
 
-**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Quedan tres:
+**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Queda **una** (la corrida
+final); las otras tres se cerraron:
 
 | Tarea | Por qué | Costo |
 |---|---|---|
 | ~~Unificar el alcance (OBS-01)~~ | ✅ **Hecha (2026-07-19).** Manda ; alcance base = 3 módulos; ADR-04 se mantiene. | — |
 | ~~`SUPABASE_JWT_ISS` en Railway~~ | ✅ **Hecha (2026-07-27).** Cargada antes del merge; la API arrancó con ella. `SUPABASE_JWT_SECRET` se **deja** en Railway a propósito: es la red de rollback (el código viejo la exige para arrancar) y no molesta, porque `leerConfig` ya no la lee. | — |
-| **Verificar el login en el navegador** ⚠️ | Es lo único que puede cerrar la pieza A. Entrar a `bigballs.es`, loguearse, y comprobar además que el logout revoca (Supabase → Auth → Users → Sessions) y que es **local** (cerrar sesión en un dispositivo no cierra la del otro). | — |
+| ~~Verificar el login en el navegador~~ | ✅ **Hecha (2026-07-30).** Era lo único que podía cerrar la pieza A. Queda **sin verificar** el detalle del logout: que revoca en Supabase (Auth → Users → Sessions) y que es **local** (cerrar sesión en un dispositivo no cierra la del otro). Lo cubren 7 tests, pero no se miró en producción. | — |
 | **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** ⚠️ | **Lo publicado en Storyblok es de ANTES de la tanda 5**: no muestra la evidencia etiquetada y 7 de 8 páginas declaran `LocalBusiness` sin serlo. Hacerlo **antes de ver a Frank**. | ~$0.31 |
 
 ### Tanda 3 — PROD-readiness ✅ COMPLETA
@@ -301,7 +318,7 @@ reales, no solo contra tests.
 | **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **114 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **64 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
-| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **66 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
+| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **87 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
 | **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **94 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. **Falta:** desplegarlo en un dominio (5.3) y una CDN delante. |
 | **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Navegación entre páginas** (barra desde la Links API, enhancement no-fatal) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |

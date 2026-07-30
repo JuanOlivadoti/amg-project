@@ -1,3 +1,79 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Los tokens del tema: un nombre por ROL, no por color (`superficie`, no `white`). Es la ÚNICA
+ * fuente de verdad de los valores — `core/contraste.test.ts` los parsea de acá, no de una copia.
+ *
+ * `color-scheme` no es decorativo: sin él, el navegador sigue pintando en claro los inputs, el caret
+ * y las barras de scroll, sobre un portal oscuro. El login son dos inputs, así que se nota.
+ *
+ * `.oscuro` va en <html>, que también es :root — las dos reglas tienen la misma especificidad y gana
+ * la última, así que `.oscuro` DEBE quedar debajo.
+ */
+:root {
+  color-scheme: light;
+
+  --fondo: #f9fafb;
+  --superficie: #ffffff;
+  --superficie-2: #f3f4f6;
+  --texto: #111827;
+  --texto-medio: #374151;
+  --texto-tenue: #6b7280;
+  --texto-invertido: #ffffff;
+  --borde: #e5e7eb;
+  --borde-fuerte: #d1d5db;
+  --accion: #111827;
+  --respaldo: #15803d;
+  --respaldo-suave: #dcfce7;
+  --alerta: #b45309;
+  --alerta-suave: #fef3c7;
+  --error: #b91c1c;
+  --error-suave: #fee2e2;
+}
+
+/*
+ * Las tres reglas que hacen que el tema oscuro funcione (ver el spec):
+ *  1. Las superficies son oscuras pero NO negras, y en tres niveles, para que la elevación se lea.
+ *  2. Los acentos se ACLARAN: un verde 700 sobre fondo oscuro no se distingue, y ahí se pierde el
+ *     argumento de venta.
+ *  3. `texto-invertido` se da vuelta —casi negro— porque va sobre un acento CLARO.
+ */
+.oscuro {
+  color-scheme: dark;
+
+  --fondo: #0f1419;
+  --superficie: #171d26;
+  --superficie-2: #222b38;
+  --texto: #f3f4f6;
+  --texto-medio: #d1d5db;
+  --texto-tenue: #9ca3af;
+  --texto-invertido: #0f1419;
+  --borde: #2a3441;
+  --borde-fuerte: #3d4859;
+  --accion: #f3f4f6;
+  --respaldo: #4ade80;
+  --respaldo-suave: #10331d;
+  --alerta: #fbbf24;
+  --alerta-suave: #3d2b06;
+  --error: #fca5a5;
+  --error-suave: #451a1a;
+}
+
+/*
+ * El preflight de Tailwind le clava `theme('colors.gray.400')` —#9ca3af— al placeholder de todo
+ * input. Es un color que el tema NO puede cambiar: en claro da **2.54:1** sobre `superficie`, muy por
+ * debajo del 4.5:1 de AA, y en oscuro pasa solo por casualidad (resulta ser el mismo hex que
+ * `--texto-tenue` oscuro).
+ *
+ * Se arregla acá y no con `placeholderColor` en la config: esa clave genera utilidades, **no toca el
+ * preflight**, que lee `colors.gray.400`. Y no se arregla poniéndole una clase a cada input, por lo
+ * mismo que `borderColor.DEFAULT`: parchar los cuatro de hoy deja roto al quinto.
+ *
+ * El spec ya asignaba `texto-tenue` a "metadatos, placeholders"; esto lo cablea.
+ */
+input::placeholder,
+textarea::placeholder {
+  color: var(--texto-tenue);
+}

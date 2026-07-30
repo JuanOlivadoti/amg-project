@@ -7,18 +7,23 @@ import { AuthService } from '../../services/auth';
   selector: 'app-login',
   imports: [FormsModule],
   template: `
-    <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <!--
+      La altura restada es la de la barra (h-11 en app.html), que desde esta pieza se renderiza
+      SIEMPRE, también sin sesión. Con min-h-screen a secas, la página medía viewport + barra y el
+      login aparecía con scroll y descentrado.
+    -->
+    <div class="min-h-[calc(100vh-2.75rem)] flex items-center justify-center bg-fondo px-4">
       <form
         (ngSubmit)="entrar()"
-        class="w-full max-w-sm bg-white rounded-xl shadow-sm border border-gray-200 p-8 space-y-5"
+        class="w-full max-w-sm bg-superficie rounded-xl shadow-sm border border-borde p-8 space-y-5"
       >
         <div>
-          <h1 class="text-xl font-semibold text-gray-900">AMG OS</h1>
-          <p class="text-sm text-gray-500">Entrá para ver y aprobar los research.</p>
+          <h1 class="text-xl font-semibold text-texto">AMG OS</h1>
+          <p class="text-sm text-texto-tenue">Entrá para ver y aprobar los research.</p>
         </div>
 
         <label class="block">
-          <span class="text-sm font-medium text-gray-700">Email</span>
+          <span class="text-sm font-medium text-texto-medio">Email</span>
           <input
             type="email"
             [ngModel]="email()"
@@ -26,12 +31,12 @@ import { AuthService } from '../../services/auth';
             name="email"
             autocomplete="username"
             required
-            class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+            class="mt-1 w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm focus:border-accion focus:outline-none"
           />
         </label>
 
         <label class="block">
-          <span class="text-sm font-medium text-gray-700">Contraseña</span>
+          <span class="text-sm font-medium text-texto-medio">Contraseña</span>
           <input
             type="password"
             [ngModel]="password()"
@@ -39,18 +44,18 @@ import { AuthService } from '../../services/auth';
             name="password"
             autocomplete="current-password"
             required
-            class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-gray-900 focus:outline-none"
+            class="mt-1 w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm focus:border-accion focus:outline-none"
           />
         </label>
 
         @if (error()) {
-          <p class="text-sm text-red-600">{{ error() }}</p>
+          <p class="text-sm text-error">{{ error() }}</p>
         }
 
         <button
           type="submit"
           [disabled]="cargando()"
-          class="w-full rounded-md bg-gray-900 text-white py-2 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+          class="w-full rounded-md bg-accion text-texto-invertido py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
         >
           {{ cargando() ? 'Entrando…' : 'Entrar' }}
         </button>

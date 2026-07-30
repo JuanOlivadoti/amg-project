@@ -16,45 +16,45 @@ import { Vigencia } from '../../core/vigencia';
   imports: [FormsModule, RouterLink, NgTemplateOutlet],
   template: `
     <div class="max-w-3xl mx-auto px-4 py-8 space-y-6">
-      <a routerLink="/runs" class="text-sm text-gray-500 hover:text-gray-900">← Volver</a>
+      <a routerLink="/runs" class="text-sm text-texto-tenue hover:text-texto">← Volver</a>
 
       @if (cargando()) {
-        <p class="text-sm text-gray-500">Cargando…</p>
+        <p class="text-sm text-texto-tenue">Cargando…</p>
       } @else if (error()) {
-        <p class="text-sm text-red-600">{{ error() }}</p>
+        <p class="text-sm text-error">{{ error() }}</p>
       } @else if (brief(); as b) {
-        <header class="bg-white rounded-xl border border-gray-200 p-6">
-          <h1 class="text-lg font-semibold text-gray-900">{{ b.run.prompt }}</h1>
-          <p class="mt-1 text-xs text-gray-500">
+        <header class="bg-superficie rounded-xl border border-borde p-6">
+          <h1 class="text-lg font-semibold text-texto">{{ b.run.prompt }}</h1>
+          <p class="mt-1 text-xs text-texto-tenue">
             Estado: {{ b.run.status }} · Coste: \${{ usd(b.run.coste_micros_usd) }}
           </p>
           @if (puedeAprobarRunUI()) {
             <button
               (click)="aprobarRun()"
               [disabled]="!puedeAprobar() || trabajando()"
-              class="mt-4 rounded-md bg-green-700 text-white px-4 py-2 text-sm font-medium hover:bg-green-800 disabled:opacity-40"
+              class="mt-4 rounded-md bg-respaldo text-texto-invertido px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-40"
             >
               Aprobar el run y publicar
             </button>
             @if (!puedeAprobar()) {
-              <p class="mt-2 text-xs text-gray-500">Aprobá al menos una página antes de aprobar el run.</p>
+              <p class="mt-2 text-xs text-texto-tenue">Aprobá al menos una página antes de aprobar el run.</p>
             }
           }
         </header>
 
         @if (b.run.status === 'running') {
-          <div class="bg-white rounded-xl border border-gray-200 p-6 text-sm text-gray-600">
-            <span class="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse mr-2"></span>
+          <div class="bg-superficie rounded-xl border border-borde p-6 text-sm text-texto-medio">
+            <span class="inline-block h-2 w-2 rounded-full bg-alerta animate-pulse mr-2"></span>
             El research está corriendo. Esta pantalla se actualiza sola.
           </div>
         } @else {
         <!-- ✅ RESPALDADAS por datos de mercado -->
         <section>
-          <h2 class="text-sm font-semibold mb-2" style="color:#15803d">
+          <h2 class="text-sm font-semibold mb-2 text-respaldo">
             ✅ Respaldadas por datos ({{ respaldadas().length }})
           </h2>
           @if (respaldadas().length === 0) {
-            <p class="text-sm text-gray-400">Ninguna página tiene datos de mercado que la respalden.</p>
+            <p class="text-sm text-texto-tenue">Ninguna página tiene datos de mercado que la respalden.</p>
           }
           @for (p of respaldadas(); track p.id) {
             <ng-container [ngTemplateOutlet]="tarjeta" [ngTemplateOutletContext]="{ $implicit: p }" />
@@ -63,10 +63,10 @@ import { Vigencia } from '../../core/vigencia';
 
         <!-- ⚠️ SIN VALIDAR: se muestran igual. Ocultarlas sería mentir. -->
         <section>
-          <h2 class="text-sm font-semibold mb-2" style="color:#b45309">
+          <h2 class="text-sm font-semibold mb-2 text-alerta">
             ⚠️ Sin validar ({{ sinValidar().length }})
           </h2>
-          <p class="text-xs text-gray-500 mb-2">
+          <p class="text-xs text-texto-tenue mb-2">
             No hay datos de mercado que las respalden. Se proponen, pero el sistema lo dice.
           </p>
           @for (p of sinValidar(); track p.id) {
@@ -79,19 +79,19 @@ import { Vigencia } from '../../core/vigencia';
 
     <!-- Tarjeta de página, reutilizada por los dos grupos -->
     <ng-template #tarjeta let-p>
-      <div class="bg-white rounded-lg border border-gray-200 p-4 mb-2">
+      <div class="bg-superficie rounded-lg border border-borde p-4 mb-2">
         <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
-            <p class="text-sm font-medium text-gray-900">{{ p.keyword_principal }}</p>
-            <p class="text-xs text-gray-500 truncate">{{ p.url_slug }}</p>
-            <p class="mt-1 text-xs text-gray-500">
+            <p class="text-sm font-medium text-texto">{{ p.keyword_principal }}</p>
+            <p class="text-xs text-texto-tenue truncate">{{ p.url_slug }}</p>
+            <p class="mt-1 text-xs text-texto-tenue">
               Vol: {{ p.volumen ?? 'n/d' }} · KD: {{ p.dificultad ?? 'n/d' }} · Score:
               {{ p.opportunity_score }}
             </p>
           </div>
           <span
             class="text-xs shrink-0 rounded-full px-2 py-0.5"
-            [class]="p.approved ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'"
+            [class]="p.approved ? 'bg-respaldo-suave text-respaldo' : 'bg-superficie-2 text-texto-medio'"
           >
             {{ p.approved ? 'Aprobada' : 'Pendiente' }}
           </span>
@@ -99,25 +99,25 @@ import { Vigencia } from '../../core/vigencia';
 
         @if (auth.esEquipo()) {
           @if (editando() === p.id) {
-            <div class="mt-3 space-y-2 border-t border-gray-100 pt-3">
+            <div class="mt-3 space-y-2 border-t border-borde pt-3">
               <input
                 [ngModel]="edKeyword()"
                 (ngModelChange)="edKeyword.set($event)"
                 placeholder="Keyword principal"
-                class="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-2 py-1 text-sm"
               />
               <input
                 [ngModel]="edSlug()"
                 (ngModelChange)="edSlug.set($event)"
                 placeholder="/url-slug"
-                class="w-full rounded-md border border-gray-300 px-2 py-1 text-sm"
+                class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-2 py-1 text-sm"
               />
-              <p class="text-xs text-amber-700">Editar quita la aprobación: alguien tendrá que volver a mirarla.</p>
+              <p class="text-xs text-alerta">Editar quita la aprobación: alguien tendrá que volver a mirarla.</p>
               <div class="flex gap-2">
                 <button
                   (click)="guardar(p)"
                   [disabled]="trabajando()"
-                  class="rounded-md bg-gray-900 text-white px-3 py-1 text-sm hover:bg-gray-800 disabled:opacity-40"
+                  class="rounded-md bg-accion text-texto-invertido px-3 py-1 text-sm hover:opacity-90 disabled:opacity-40"
                 >
                   Guardar
                 </button>
@@ -130,7 +130,7 @@ import { Vigencia } from '../../core/vigencia';
                 <button
                   (click)="aprobarPagina(p)"
                   [disabled]="trabajando()"
-                  class="rounded-md bg-green-700 text-white px-3 py-1 text-sm hover:bg-green-800 disabled:opacity-40"
+                  class="rounded-md bg-respaldo text-texto-invertido px-3 py-1 text-sm hover:opacity-90 disabled:opacity-40"
                 >
                   Aprobar
                 </button>

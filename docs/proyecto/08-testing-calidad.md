@@ -17,7 +17,7 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 466 tests (monorepo) + 66 (portal)
+## Cobertura actual: 466 tests (monorepo) + 87 (portal)
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
