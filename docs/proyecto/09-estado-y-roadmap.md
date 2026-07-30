@@ -179,8 +179,8 @@ panorama — son lo que las hace creíbles.
 | # | Pieza | Estado | Depende de |
 | --- | --- | --- | --- |
 | **A** | **Verificación JWT ES256 + logout que revoca** | ✅ **Cerrada** — mergeada, desplegada y el login **verificado en el navegador** (2026-07-30) | — |
-| **B** | Modo oscuro (**solo el portal**) | 🟢 **Construida y verificada en el navegador**, en `feat/modo-oscuro-portal`. **Falta mergear** | — |
-| **C** | Dashboard de cartera + seed de 4-6 restaurantes | ⚪ Sin empezar | B (hereda los tokens) |
+| **B** | Modo oscuro (**solo el portal**) | ✅ **Cerrada** — mergeada a `main` y migrada además a Tailwind v4 | — |
+| **C** | Dashboard de cartera + seed de 4-6 restaurantes | 🟡 **En curso** — esqueleto UI + shell del portal, Task 1/13 hecho en `feat/dashboard-ui-portal`. Detalle task-by-task en `.superpowers/sdd/progress.md` | B (hereda los tokens) ✅ |
 | **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | la medición |
 
 **Pieza A** ([spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
@@ -225,7 +225,18 @@ herede el tema por construcción en vez de tener que acordarse
 **C — el dashboard:** los datos para poblarlo **ya existen y están sin explotar** — cada página trae
 `volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `local`, `cluster_id`
 y `evidencia`; cada run trae `coste_micros_usd` y `calidad_datos`. Se puede construir **sin tocar la
-API**.
+API**: la pantalla arranca con datos de muestra (misma forma que los DTOs reales), no contra un
+endpoint agregado nuevo — eso queda para más adelante, como trabajo de backend separado.
+
+**En curso.** Se trae el esqueleto de layout (sidebar + header) y una librería chica de componentes
+del `dashboard-project` (TailAdmin) de referencia, adaptados a los tokens semánticos de la pieza B —
+no una librería genérica sin uso, solo lo que `/cartera` necesita
+([spec](../superpowers/specs/2026-07-30-dashboard-ui-portal-design.md) ·
+[plan de Tailwind v4](../superpowers/plans/2026-07-30-tailwind-v4-migracion-portal.md), ya cerrado ·
+[plan del shell + dashboard](../superpowers/plans/2026-07-30-dashboard-ui-portal.md), en curso en
+`feat/dashboard-ui-portal`). El detalle de qué task está hecho, con SHAs y resultado de cada review,
+vive en `.superpowers/sdd/progress.md` — es la fuente de verdad para retomar el trabajo, no este
+párrafo.
 
 **D — research en vivo:** el orquestador **ya está construido** (Inngest, `workflow.ts`,
 `functions.ts`, 18 tests). Falta desplegarlo y conectarlo, no escribirlo. Pero **está condicionado a

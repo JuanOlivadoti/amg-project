@@ -9,11 +9,15 @@
 > JWKS y el logout que revoca están en `main`, desplegados, y **el login se verificó en el navegador**
 > (2026-07-30). Eso último es lo que la cerró: desde afuera no había señal que distinguiera el código
 > viejo del nuevo (`/health` responde igual y un token basura da 401 en ambos), así que "desplegado"
-> no era "arreglado". La **pieza B** (modo oscuro del portal por tokens semánticos) está
-> **construida y verificada en el navegador** en `feat/modo-oscuro-portal`, **sin mergear todavía**
+> no era "arreglado". La **pieza B** (modo oscuro del portal por tokens semánticos) está **cerrada:
+> mergeada a `main`**, y de paso el portal migró a Tailwind v4
 > ([spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) ·
-> [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)). Ver §5.3 y el
-> [estado y roadmap](09-estado-y-roadmap.md).
+> [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)). La **pieza C** (dashboard de
+> cartera) está **en curso** — esqueleto de shell + componentes sobre esos tokens, en
+> `feat/dashboard-ui-portal`
+> ([spec](../superpowers/specs/2026-07-30-dashboard-ui-portal-design.md) ·
+> [plan](../superpowers/plans/2026-07-30-dashboard-ui-portal.md)); el detalle task-by-task vive en
+> `.superpowers/sdd/progress.md`. Ver §5.3 y el [estado y roadmap](09-estado-y-roadmap.md).
 
 ---
 
