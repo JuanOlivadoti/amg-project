@@ -6,6 +6,21 @@
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <script>
+    // Antes de que baje el bundle: sin esto, cada carga en oscuro arranca con un flash blanco,
+    // porque Angular aplica la clase después de bootear.
+    //
+    // DUPLICA a propósito la lógica de `temaEfectivo` (core/tema.ts) — es el precio de correr antes
+    // que Angular. Si cambian la clave o la clase, hay que cambiar las dos puntas; `tema.test.ts`
+    // falla si alguien renombra una sola.
+    try {
+      var t = localStorage.getItem('amg.tema');
+      var oscuro =
+        t === 'oscuro' ||
+        ((t === 'auto' || !t) && matchMedia('(prefers-color-scheme: dark)').matches);
+      if (oscuro) document.documentElement.classList.add('oscuro');
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <app-root></app-root>
