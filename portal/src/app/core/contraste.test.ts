@@ -63,3 +63,40 @@ test('🔴 parsearTokens no se come una MENCIÓN del selector en un comentario',
     'se llevó el bloque de :root: el test de contraste quedaría comparando claro contra claro',
   );
 });
+
+/**
+ * Un color incrustado en una plantilla es, por definición, un color que el tema **no puede cambiar**.
+ * Había dos —los títulos ✅ y ⚠️, justo el argumento de venta— en un `style` inline: en oscuro
+ * quedaban congelados en el tema claro, a 3.38:1 y 3.37:1, por debajo de AA.
+ *
+ * El test de contraste de arriba verifica la TABLA de tokens; este verifica que la UI **use** la
+ * tabla. Sin él, la garantía era un comentario.
+ */
+const PLANTILLAS = [
+  '../app.html',
+  '../pages/login/login.ts',
+  '../pages/runs/runs.ts',
+  '../pages/brief/brief.ts',
+] as const;
+
+test('🔴 ninguna plantilla incrusta un color: todo pasa por un token', () => {
+  const HEX = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-zA-Z_-])/g;
+  const ESTILO_COLOR = /style="[^"]*color\s*:/g;
+  const FUNCION_COLOR = /\b(?:rgb|rgba|hsl|hsla)\(/g;
+
+  for (const ruta of PLANTILLAS) {
+    const texto = readFileSync(new URL(ruta, import.meta.url), 'utf8');
+    for (const [nombre, patron] of [
+      ['un hex', HEX],
+      ['un color en un style inline', ESTILO_COLOR],
+      ['una función de color', FUNCION_COLOR],
+    ] as const) {
+      const hallados = [...texto.matchAll(patron)].map((m) => m[0]);
+      assert.deepEqual(
+        hallados,
+        [],
+        `${ruta} tiene ${nombre}: ${hallados.join(', ')} — usá un token, o el tema no lo puede cambiar`,
+      );
+    }
+  }
+});
