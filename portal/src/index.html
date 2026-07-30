@@ -11,13 +11,17 @@
     // porque Angular aplica la clase después de bootear.
     //
     // DUPLICA a propósito la lógica de `temaEfectivo` (core/tema.ts) — es el precio de correr antes
-    // que Angular. Si cambian la clave o la clase, hay que cambiar las dos puntas; `tema.test.ts`
-    // falla si alguien renombra una sola.
+    // que Angular. `tema.test.ts` ejecuta este script y lo compara con la función pura caso por caso,
+    // así que la duplicación está verificada, no prometida.
+    //
+    // La condición es "cualquier cosa que no sea 'claro' sigue al sistema", y no "'auto' o vacío":
+    // es lo que hace `parseTema`, que manda a `auto` TODO lo que no reconoce. Con la versión ingenua,
+    // un valor basura en localStorage + el sistema en oscuro pintaba claro acá y oscuro al bootear
+    // Angular — el fogonazo que este script viene a evitar, al revés.
     try {
       var t = localStorage.getItem('amg.tema');
       var oscuro =
-        t === 'oscuro' ||
-        ((t === 'auto' || !t) && matchMedia('(prefers-color-scheme: dark)').matches);
+        t === 'oscuro' || (t !== 'claro' && matchMedia('(prefers-color-scheme: dark)').matches);
       if (oscuro) document.documentElement.classList.add('oscuro');
     } catch (e) {}
   </script>

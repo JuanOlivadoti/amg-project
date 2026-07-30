@@ -1,8 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import { CLASE_OSCURO, CLAVE_TEMA, parseTema, siguienteTema, temaEfectivo } from './tema';
 import type { Tema } from './tema';
+
+const HTML = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+
+/**
+ * Corre el script inline de `index.html` de verdad, en un contexto con `localStorage`, `matchMedia` y
+ * `document` falsos, y devuelve si le puso la clase a `<html>`.
+ *
+ * Existe porque el script **duplica** `temaEfectivo` (tiene que correr antes de que exista el bundle)
+ * y una duplicación que nadie verifica diverge en silencio. De hecho ya había divergido: con la
+ * condición `(t === 'auto' || !t)`, un valor basura en `localStorage` con el sistema en oscuro
+ * pintaba claro acá y oscuro al bootear — el fogonazo que el script viene a evitar, invertido.
+ */
+function correrScriptInline(guardado: string | null, sistemaOscuro: boolean): boolean {
+  const m = /<script>([\s\S]*?)<\/script>/.exec(HTML);
+  assert.ok(m?.[1], 'no encontré el script inline en index.html');
+  const clases = new Set<string>();
+  const contexto: Record<string, unknown> = {
+    localStorage: { getItem: (k: string) => (k === CLAVE_TEMA ? guardado : null) },
+    matchMedia: (consulta: string) => ({ matches: consulta.includes('dark') && sistemaOscuro }),
+    document: { documentElement: { classList: { add: (c: string) => clases.add(c) } } },
+  };
+  vm.runInNewContext(m[1], contexto);
+  return clases.has(CLASE_OSCURO);
+}
 
 test('parseTema acepta los tres temas', () => {
   for (const t of ['auto', 'claro', 'oscuro'] as Tema[]) {
@@ -42,11 +67,23 @@ test('🔴 temaEfectivo: una preferencia explícita MANDA sobre el sistema', () 
 });
 
 test('🔴 el script inline de index.html no se separa de tema.ts', () => {
-  // Test tosco a propósito: no puede probar que la lógica coincida, pero sí que nadie renombre una
-  // de las dos puntas sin ver la otra. El script DUPLICA `temaEfectivo` porque corre antes del bundle.
-  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes(CLAVE_TEMA), `index.html tiene que leer la clave ${CLAVE_TEMA}`);
-  assert.ok(html.includes(CLASE_OSCURO), `index.html tiene que aplicar la clase ${CLASE_OSCURO}`);
+  // Ata los NOMBRES; el test de abajo ata el COMPORTAMIENTO. Los dos hacen falta: este falla si
+  // alguien renombra la clave o la clase, aunque la lógica siga siendo equivalente.
+  //
+  // Se afirma sobre la LLAMADA, no sobre la presencia del string: `'oscuro'` aparece cuatro veces en
+  // el script (la variable, la comparación, la clase), así que un `includes(CLASE_OSCURO)` seguía en
+  // verde aunque `classList.add` pasara a poner otra clase — el único lugar que importa.
+  const html = HTML;
+  assert.match(
+    html,
+    new RegExp(`getItem\\(['"]${CLAVE_TEMA}['"]\\)`),
+    `index.html tiene que leer la clave ${CLAVE_TEMA}`,
+  );
+  assert.match(
+    html,
+    new RegExp(`classList\\.add\\(['"]${CLASE_OSCURO}['"]\\)`),
+    `index.html tiene que aplicar la clase ${CLASE_OSCURO}`,
+  );
   assert.ok(
     html.includes('prefers-color-scheme: dark'),
     'index.html tiene que resolver `auto` contra el sistema, como temaEfectivo',
@@ -55,4 +92,33 @@ test('🔴 el script inline de index.html no se separa de tema.ts', () => {
     html.indexOf(CLAVE_TEMA) < html.indexOf('<app-root>'),
     'el script tiene que correr ANTES del bundle, o el fogonazo blanco sigue ahí',
   );
+});
+
+test('🔴 el script inline decide EXACTAMENTE lo mismo que temaEfectivo, caso por caso', () => {
+  // La duplicación es deliberada, pero "deliberada" no es "correcta": se ejecuta el script de verdad
+  // y se compara con la función pura en los 20 casos. Es la diferencia entre un comentario que dice
+  // que coinciden y una garantía de que coinciden.
+  const GUARDADOS = [
+    null,
+    '',
+    'auto',
+    'claro',
+    'oscuro',
+    'azul',
+    'Oscuro',
+    'AUTO',
+    ' claro',
+    '{"tema":"oscuro"}',
+  ];
+  for (const guardado of GUARDADOS) {
+    for (const sistemaOscuro of [false, true]) {
+      assert.equal(
+        correrScriptInline(guardado, sistemaOscuro),
+        temaEfectivo(parseTema(guardado), sistemaOscuro) === 'oscuro',
+        `divergen para ${JSON.stringify(guardado)} con el sistema en ${
+          sistemaOscuro ? 'oscuro' : 'claro'
+        }`,
+      );
+    }
+  }
 });
