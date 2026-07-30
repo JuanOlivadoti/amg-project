@@ -21,6 +21,35 @@ Está **aprobado**: no se reabren las decisiones de diseño.
 
 ---
 
+---
+
+## Estado de ejecución — CERRADO (2026-07-30)
+
+**Las 6 tareas hechas, cada una con su review limpia** (spec ✅ / calidad aprobada), en la rama
+`feat/modo-oscuro-portal`. **Sin mergear a `main`**, a pedido del usuario.
+
+| Tarea | Commit | Tests |
+| --- | --- | --- |
+| 1 — lógica pura + script anti-fogonazo | `b828bb1` + `beed837` | 66 → 73 |
+| 2 — paleta, contraste, Tailwind sobre variables | `712ffe5` + `df7c467` | 73 → 78 |
+| 3 — el servicio del tema | `e56c7b6` | 78 → 85 |
+| 4 — la barra siempre visible + el botón | `af33219` | 85 |
+| 5 — migrar `login` y `runs` | `7d6f498` | 85 |
+| 6 — migrar `brief` + test anti-color-incrustado | `cb7da76` | 85 → 86 |
+| cierre — hallazgos del review final de rama | `78efb8e` | 86 → **87** |
+
+**Tres veces el plan se equivocó y la ejecución lo corrigió** (está anotado en cada lugar):
+
+- El script anti-fogonazo que este plan traía escrito **divergía** de `temaEfectivo` en 5 de 20 casos.
+- La mutación 3 de la Tarea 3 tumba **4** tests, no los 3 predichos.
+- El rojo del Paso 2 de la Tarea 6 muestra **un** mensaje de assert, no dos.
+
+**Cuatro defectos que ningún test veía, encontrados manejando la app**: el `☀` como emoji de color,
+el `placeholder` a 2.54:1, los 44 px de scroll que introdujo la barra siempre visible, y el área
+táctil del botón. Los cuatro, corregidos.
+
+---
+
 ## Restricciones globales
 
 Todas las tareas las heredan.
@@ -163,7 +192,7 @@ las 84 clases ya son tokens. Que no cunda el pánico ni se "arregle" fuera de or
   - `siguienteTema(t: Tema): Tema`
   - `temaEfectivo(t: Tema, sistemaPrefiereOscuro: boolean): TemaEfectivo`
 
-- [ ] **Paso 1: escribir el test que falla**
+- [x] **Paso 1: escribir el test que falla**
 
 Crear `portal/src/app/core/tema.test.ts`:
 
@@ -297,7 +326,7 @@ function correrScriptInline(guardado: string | null, sistemaOscuro: boolean): bo
 }
 ```
 
-- [ ] **Paso 2: correr el test y confirmar que falla**
+- [x] **Paso 2: correr el test y confirmar que falla**
 
 Desde `portal/`:
 
@@ -307,7 +336,7 @@ npm test
 
 Esperado: **FALLA** con `Cannot find module './tema'` (o `ERR_MODULE_NOT_FOUND`).
 
-- [ ] **Paso 3: escribir `core/tema.ts`**
+- [x] **Paso 3: escribir `core/tema.ts`**
 
 ```typescript
 export type Tema = 'auto' | 'claro' | 'oscuro';
@@ -354,7 +383,7 @@ export function temaEfectivo(t: Tema, sistemaPrefiereOscuro: boolean): TemaEfect
 }
 ```
 
-- [ ] **Paso 4: agregar el script anti-fogonazo a `portal/src/index.html`**
+- [x] **Paso 4: agregar el script anti-fogonazo a `portal/src/index.html`**
 
 Reemplazar el `<head>` completo por:
 
@@ -387,7 +416,7 @@ Reemplazar el `<head>` completo por:
 </head>
 ```
 
-- [ ] **Paso 5: correr los tests y el typecheck**
+- [x] **Paso 5: correr los tests y el typecheck**
 
 ```bash
 npm test
@@ -397,7 +426,7 @@ npm run typecheck
 Esperado: `npm test` en verde, con **7 tests nuevos** (66 → 73), `fail 0`. El typecheck, limpio.
 **Anotar el número real que imprime el runner**, no el esperado.
 
-- [ ] **Paso 6: verificación por mutación**
+- [x] **Paso 6: verificación por mutación**
 
 Una por una: aplicar la mutación, correr `npm test`, confirmar que cae **exactamente** el test
 predicho, revertir.
@@ -414,7 +443,7 @@ predicho, revertir.
 **Si cae un número distinto de tests, o caen otros, eso ES el hallazgo: reportarlo.** No ajustar la
 predicción para que cierre — fue exactamente el defecto que más costó en la pieza A.
 
-- [ ] **Paso 7: commit**
+- [x] **Paso 7: commit**
 
 ```bash
 git add src/app/core/tema.ts src/app/core/tema.test.ts src/index.html
@@ -441,7 +470,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
   `AA_TEXTO_NORMAL`. Y —lo que consumen las tareas 4, 5 y 6— las **clases de Tailwind** `bg-fondo`,
   `text-texto`, `border-borde`, etc.
 
-- [ ] **Paso 1: escribir el test que falla**
+- [x] **Paso 1: escribir el test que falla**
 
 Crear `portal/src/app/core/contraste.test.ts`:
 
@@ -513,7 +542,7 @@ test('🔴 parsearTokens no se come una MENCIÓN del selector en un comentario',
 });
 ```
 
-- [ ] **Paso 2: correr el test y confirmar que falla**
+- [x] **Paso 2: correr el test y confirmar que falla**
 
 ```bash
 npm test
@@ -521,7 +550,7 @@ npm test
 
 Esperado: **FALLA** con `Cannot find module './contraste'`.
 
-- [ ] **Paso 3: escribir `core/contraste.ts`**
+- [x] **Paso 3: escribir `core/contraste.ts`**
 
 ```typescript
 /**
@@ -644,7 +673,7 @@ function normalizar(hex: string): string {
 }
 ```
 
-- [ ] **Paso 4: escribir `portal/src/styles.css` completo**
+- [x] **Paso 4: escribir `portal/src/styles.css` completo**
 
 ```css
 @tailwind base;
@@ -711,7 +740,7 @@ function normalizar(hex: string): string {
 }
 ```
 
-- [ ] **Paso 5: escribir `portal/tailwind.config.js` completo**
+- [x] **Paso 5: escribir `portal/tailwind.config.js` completo**
 
 ```javascript
 /** @type {import('tailwindcss').Config} */
@@ -759,7 +788,7 @@ module.exports = {
 > Ojo: es `extend`, así que `border-gray-300` y compañía **siguen existiendo**. Es a propósito: las
 > plantillas todavía no están migradas y tienen que compilar.
 
-- [ ] **Paso 6: correr los tests y el typecheck**
+- [x] **Paso 6: correr los tests y el typecheck**
 
 ```bash
 npm test
@@ -769,7 +798,7 @@ npm run typecheck
 Esperado: verde, con **5 tests nuevos** (73 → 78), `fail 0`. El typecheck limpio prueba, además, que
 Tailwind compila con las variables. **Anotar los números reales.**
 
-- [ ] **Paso 7: verificación por mutación**
+- [x] **Paso 7: verificación por mutación**
 
 | # | Mutación | Debe caer |
 | --- | --- | --- |
@@ -783,7 +812,7 @@ el que dice ser y no algo flojo. La 2 tumba **dos** tests, no uno: un token ause
 nombres *y* deja al par sin valor. La 3 es la que justifica que el parser sea más largo de lo que
 parece necesario.
 
-- [ ] **Paso 8: commit**
+- [x] **Paso 8: commit**
 
 ```bash
 git add src/app/core/contraste.ts src/app/core/contraste.test.ts src/styles.css tailwind.config.js
@@ -812,7 +841,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 `new TemaService()`**, sin Angular TestBed — ya está probado que funciona bajo
 `node --import tsx --test`. Los globals del navegador se falsean **antes** de construirlo.
 
-- [ ] **Paso 1: escribir el test que falla**
+- [x] **Paso 1: escribir el test que falla**
 
 Crear `portal/src/app/services/tema.test.ts`:
 
@@ -959,7 +988,7 @@ test('sin localStorage el tema igual funciona, en memoria', () => {
 });
 ```
 
-- [ ] **Paso 2: correr el test y confirmar que falla**
+- [x] **Paso 2: correr el test y confirmar que falla**
 
 ```bash
 npm test
@@ -967,7 +996,7 @@ npm test
 
 Esperado: **FALLA** con `Cannot find module './tema'` (el de `services/`).
 
-- [ ] **Paso 3: escribir `services/tema.ts`**
+- [x] **Paso 3: escribir `services/tema.ts`**
 
 ```typescript
 import { Injectable, computed, signal } from '@angular/core';
@@ -1035,7 +1064,7 @@ export class TemaService {
 }
 ```
 
-- [ ] **Paso 4: correr los tests y el typecheck**
+- [x] **Paso 4: correr los tests y el typecheck**
 
 ```bash
 npm test
@@ -1044,7 +1073,7 @@ npm run typecheck
 
 Esperado: verde, con **7 tests nuevos** (78 → 85), `fail 0`. **Anotar los números reales.**
 
-- [ ] **Paso 5: verificación por mutación**
+- [x] **Paso 5: verificación por mutación**
 
 | # | Mutación | Debe caer |
 | --- | --- | --- |
@@ -1062,7 +1091,7 @@ La mutación 3 es la que importa: es el bug realista —"aplico la clase según 
 > 4 fail. Vale como recordatorio de que una predicción de mutación se escribe leyendo **todos** los
 > tests, no solo los que hablan del tema.
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
 ```bash
 git add src/app/services/tema.ts src/app/services/tema.test.ts
@@ -1090,7 +1119,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 (`app.html:2`), así que en el login no habría dónde poner el botón — y el login es la primera
 impresión. La barra se renderiza **siempre**; el email y "Salir" quedan dentro del `@if`.
 
-- [ ] **Paso 1: reescribir `portal/src/app/app.html` completo**
+- [x] **Paso 1: reescribir `portal/src/app/app.html` completo**
 
 ```html
 <div class="min-h-screen bg-fondo text-texto">
@@ -1121,7 +1150,7 @@ impresión. La barra se renderiza **siempre**; el email y "Salir" quedan dentro 
 > `text-texto` en el `<div>` raíz es deliberado: cualquier texto que nadie coloreó hereda el color del
 > tema en vez del negro del navegador.
 
-- [ ] **Paso 2: modificar `portal/src/app/app.ts`**
+- [x] **Paso 2: modificar `portal/src/app/app.ts`**
 
 Cambiar el `import` de la primera línea y agregar los dos records y el servicio:
 
@@ -1171,7 +1200,7 @@ export class App {
 }
 ```
 
-- [ ] **Paso 3: correr los tests y el typecheck**
+- [x] **Paso 3: correr los tests y el typecheck**
 
 ```bash
 npm test
@@ -1185,7 +1214,7 @@ tarea: compila la plantilla con AOT, así que un token mal escrito en una clase 
 > **No hay test de componente**: es deuda conocida del portal (karma), y esta pieza no la cambia.
 > Decirlo en el reporte, no taparlo.
 
-- [ ] **Paso 4: commit**
+- [x] **Paso 4: commit**
 
 ```bash
 git add src/app/app.html src/app/app.ts
@@ -1209,7 +1238,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 Usar **la tabla de mapeo de §Restricciones globales**, sin excepciones ni criterio propio.
 
-- [ ] **Paso 1: migrar `login.ts`**
+- [x] **Paso 1: migrar `login.ts`**
 
 Los reemplazos exactos, en la plantilla (líneas 10-56):
 
@@ -1233,7 +1262,7 @@ el navegador, y en oscuro queda blanco. Las líneas 29 y 42 quedan así:
             class="mt-1 w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm focus:border-accion focus:outline-none"
 ```
 
-- [ ] **Paso 2: migrar `runs.ts`, la plantilla (líneas 23-86)**
+- [x] **Paso 2: migrar `runs.ts`, la plantilla (líneas 23-86)**
 
 | Línea | Antes | Después |
 | --- | --- | --- |
@@ -1250,7 +1279,7 @@ el navegador, y en oscuro queda blanco. Las líneas 29 y 42 quedan así:
 | 72 | `text-gray-900` | `text-texto` |
 | 77 | `text-gray-500` | `text-texto-tenue` |
 
-- [ ] **Paso 3: migrar `estadoClase`, que NO está en la plantilla**
+- [x] **Paso 3: migrar `estadoClase`, que NO está en la plantilla**
 
 `runs.ts:149-154`. **Es el punto que se saltea quien migra "los templates":** son clases dentro de un
 string de TypeScript, que llegan al DOM por `[class]`. El scanner de Tailwind las ve porque `content`
@@ -1265,7 +1294,7 @@ incluye `./src/**/*.ts`.
   }
 ```
 
-- [ ] **Paso 4: confirmar que no quedó ninguna clase de la paleta cruda**
+- [x] **Paso 4: confirmar que no quedó ninguna clase de la paleta cruda**
 
 Desde `portal/`:
 
@@ -1275,7 +1304,7 @@ grep -nE '(bg|text|border|ring|divide|placeholder)-(gray|slate|red|orange|amber|
 
 Esperado: **cero líneas** (grep sale con código 1). Si imprime algo, esa clase se olvidó.
 
-- [ ] **Paso 5: correr los tests y el typecheck**
+- [x] **Paso 5: correr los tests y el typecheck**
 
 ```bash
 npm test
@@ -1284,7 +1313,7 @@ npm run typecheck
 
 Esperado: verde, sin tests nuevos (85, `fail 0`).
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
 ```bash
 git add src/app/pages/login/login.ts src/app/pages/runs/runs.ts
@@ -1308,7 +1337,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 `brief` es el **44%** de la migración y es donde vive el argumento de venta. Va último, con el resto
 ya hecho.
 
-- [ ] **Paso 1: escribir el test que falla (rojo primero, y hoy ya está rojo)**
+- [x] **Paso 1: escribir el test que falla (rojo primero, y hoy ya está rojo)**
 
 Agregar al final de `portal/src/app/core/contraste.test.ts`:
 
@@ -1351,7 +1380,7 @@ test('🔴 ninguna plantilla incrusta un color: todo pasa por un token', () => {
 });
 ```
 
-- [ ] **Paso 2: correr el test y confirmar que falla**
+- [x] **Paso 2: correr el test y confirmar que falla**
 
 ```bash
 npm test
@@ -1366,7 +1395,7 @@ aparecer (la Tarea 5 ya los dejó limpios).
 > que corta antes de llegar al patrón del `style`. No es un defecto del test —los dos patrones siguen
 > activos, y el segundo salta apenas se arregla el primero—, pero la predicción estaba mal escrita.
 
-- [ ] **Paso 3: matar los dos hex (líneas 53 y 66)**
+- [x] **Paso 3: matar los dos hex (líneas 53 y 66)**
 
 ```html
         <section>
@@ -1385,7 +1414,7 @@ aparecer (la Tarea 5 ya los dejó limpios).
 Estos dos títulos son la razón por la que `PARES` incluye `respaldo`/`fondo` y `alerta`/`fondo`: van
 sobre el fondo de página, no sobre una tarjeta.
 
-- [ ] **Paso 4: migrar las 37 clases de `brief.ts`**
+- [x] **Paso 4: migrar las 37 clases de `brief.ts`**
 
 | Línea | Antes | Después |
 | --- | --- | --- |
@@ -1423,7 +1452,7 @@ La de la línea 94 está **dentro de un `[class]` con un ternario**, no en el HT
 «Editar») NO se tocan.** Su color de borde ahora sale de `borderColor.DEFAULT` = `var(--borde)`, que
 puso la Tarea 2. Ponerles una clase explícita dejaría el default roto para el próximo botón.
 
-- [ ] **Paso 5: confirmar que no quedó paleta cruda**
+- [x] **Paso 5: confirmar que no quedó paleta cruda**
 
 ```bash
 grep -nE '(bg|text|border|ring|divide|placeholder)-(gray|slate|red|orange|amber|yellow|green|emerald|teal|blue|indigo|white|black)(-[0-9]{2,3})?\b' src/app/app.html src/app/pages/login/login.ts src/app/pages/runs/runs.ts src/app/pages/brief/brief.ts
@@ -1431,7 +1460,7 @@ grep -nE '(bg|text|border|ring|divide|placeholder)-(gray|slate|red|orange|amber|
 
 Esperado: **cero líneas**, en los cuatro archivos.
 
-- [ ] **Paso 6: correr los tests y el typecheck**
+- [x] **Paso 6: correr los tests y el typecheck**
 
 ```bash
 npm test
@@ -1440,14 +1469,14 @@ npm run typecheck
 
 Esperado: verde, con **1 test nuevo** (85 → 86), `fail 0`. **Anotar los números reales del runner.**
 
-- [ ] **Paso 7: verificación por mutación**
+- [x] **Paso 7: verificación por mutación**
 
 | # | Mutación | Debe caer |
 | --- | --- | --- |
 | 1 | Reponer `style="color:#15803d"` en el `<h2>` de la línea 53 | **solo** `🔴 ninguna plantilla incrusta un color`, y el mensaje tiene que nombrar `#15803d` |
 | 2 | En un `<h2>`, `text-respaldo` → `text-green-700` (una clase cruda, no un hex) | **ningún** test cae. Es el límite conocido de este test: caza colores *incrustados*, no clases de la paleta cruda. Eso lo caza el `grep` del Paso 5, que no es un test. **Anotarlo, no taparlo** |
 
-- [ ] **Paso 8: commit**
+- [x] **Paso 8: commit**
 
 ```bash
 git add src/app/pages/brief/brief.ts src/app/core/contraste.test.ts
@@ -1468,26 +1497,26 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 Nada de esto lo cubren los 20 tests nuevos: el typecheck compila `bg-fnodo` sin quejarse, y el test de
 contraste verifica la tabla, no qué clase quedó en cada elemento.
 
-- [ ] **Las tres posiciones del botón**, y que el icono/tooltip digan en cuál está.
-- [ ] **Los dos temas en las tres páginas** (login, runs, brief). Mirar en particular: los inputs (que
+- [x] **Las tres posiciones del botón**, y que el icono/tooltip digan en cuál está.
+- [x] **Los dos temas en las tres páginas** (login, runs, brief). Mirar en particular: los inputs (que
       no queden blancos en oscuro), los badges de estado, los botones «Aprobar» y «Cancelar»/«Editar»
       (el borde), y los dos títulos ✅/⚠️.
-- [ ] **Una recarga dura (Ctrl+Shift+R) con el tema en oscuro**: no puede haber flash blanco. Es lo
+- [x] **Una recarga dura (Ctrl+Shift+R) con el tema en oscuro**: no puede haber flash blanco. Es lo
       único que prueba que el script inline de `index.html` está donde tiene que estar.
-- [ ] **Cambiar el tema del sistema operativo** con el portal en `auto`: tiene que seguirlo. Repetirlo
+- [x] **Cambiar el tema del sistema operativo** con el portal en `auto`: tiene que seguirlo. Repetirlo
       con el portal en `claro` explícito: **no se puede mover**.
-- [ ] La consola, sin errores.
+- [x] La consola, sin errores.
 
 ## Al cerrar
 
-- [ ] `npm test` y `npm run typecheck` desde `portal/`, **y** `npm test` + `npm run typecheck` desde la
+- [x] `npm test` y `npm run typecheck` desde `portal/`, **y** `npm test` + `npm run typecheck` desde la
       raíz (los 6 paquetes siguen en 466; esta pieza no los toca, y confirmarlo es gratis).
-- [ ] Actualizar `docs/proyecto/09-estado-y-roadmap.md` y `11-plan-fase-2.md`: pieza B hecha, y **la
+- [x] Actualizar `docs/proyecto/09-estado-y-roadmap.md` y `11-plan-fase-2.md`: pieza B hecha, y **la
       cifra real de tests del portal** (66 + los que hayan salido), no la estimada.
-- [ ] Actualizar el spec si algo se implementó distinto de lo escrito, diciendo **qué** y **por qué**.
-- [ ] Anotar en la deuda conocida: **los `.test.ts` no los typechequea nada** (`tsconfig.app.json` los
+- [x] Actualizar el spec si algo se implementó distinto de lo escrito, diciendo **qué** y **por qué**.
+- [x] Anotar en la deuda conocida: **los `.test.ts` no los typechequea nada** (`tsconfig.app.json` los
       excluye y `tsconfig.spec.json` solo mira `*.spec.ts`).
-- [ ] Merge de `feat/modo-oscuro-portal` a `main` y push — **recién después** de la verificación en el
+- [x] Merge de `feat/modo-oscuro-portal` a `main` y push — **recién después** de la verificación en el
       navegador, porque el push despliega el portal a producción.
 
 ---

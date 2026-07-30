@@ -2,9 +2,10 @@
 
 ## Resumen ejecutivo
 
-> Actualizado 2026-07-30: **pieza A cerrada.** El login **funciona en `bigballs.es`**, verificado en
-> el navegador por Juan — que era lo único que podía cerrarla, porque desde afuera no había señal que
-> distinguiera el código viejo del nuevo. En curso: **pieza B (modo oscuro del portal)**.
+> Actualizado 2026-07-30: **pieza A cerrada** (el login **funciona en `bigballs.es`**, verificado en
+> el navegador por Juan — lo único que podía cerrarla, porque desde afuera no había señal que
+> distinguiera el código viejo del nuevo) y **pieza B construida y verificada en el navegador**: el
+> portal tiene modo oscuro por tokens semánticos. **Sin mergear a `main` todavía**, a pedido.
 
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
@@ -45,7 +46,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **466** en el monorepo + **66** en el portal. Los de seguridad, contra Postgres real |
+| **Tests** | **466** en el monorepo + **87** en el portal. Los de seguridad, contra Postgres real |
 | **Migraciones** | 9 (`0001`..`0009`) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones |
@@ -178,7 +179,7 @@ panorama — son lo que las hace creíbles.
 | # | Pieza | Estado | Depende de |
 | --- | --- | --- | --- |
 | **A** | **Verificación JWT ES256 + logout que revoca** | ✅ **Cerrada** — mergeada, desplegada y el login **verificado en el navegador** (2026-07-30) | — |
-| **B** | Modo oscuro (**solo el portal**) | 🟡 **En curso** — [spec aprobado](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md), plan en marcha | — |
+| **B** | Modo oscuro (**solo el portal**) | 🟢 **Construida y verificada en el navegador**, en `feat/modo-oscuro-portal`. **Falta mergear** | — |
 | **C** | Dashboard de cartera + seed de 4-6 restaurantes | ⚪ Sin empezar | B (hereda los tokens) |
 | **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | la medición |
 
@@ -198,9 +199,25 @@ merge a `main`) y el login se verificó en el navegador. `SUPABASE_JWT_SECRET` *
 propósito, como red de rollback: `leerConfig` ya no la lee, y el código viejo la exige para arrancar.
 Ver [13-runbook-despliegue.md § Actualizar una instalación ya desplegada](13-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada).
 
-**B — modo oscuro:** solo el portal. El renderizador queda afuera a propósito: la web pública es la
-marca del restaurante, y ahí el tema lo decide su diseño. Va por **tokens semánticos**, no por
-variantes `dark:`, para que la pieza C herede el tema por construcción en vez de tener que acordarse.
+**B — modo oscuro:** solo el portal; el renderizador queda afuera a propósito (la web pública es la
+marca del restaurante). Va por **tokens semánticos**, no por variantes `dark:`, para que la pieza C
+herede el tema por construcción en vez de tener que acordarse
+([spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) ·
+[plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)).
+
+> **Lo que la hace exigible, y no un acuerdo de buena voluntad.** 21 tests nuevos (66 → 87). El
+> contraste WCAG AA de los **17 pares × 2 temas** se lee de `styles.css`, no de una copia. Los tres
+> lados del triángulo —`TOKENS`, `styles.css` y `tailwind.config.js`— están atados entre sí: borrar un
+> token de la config dejaba `text-respaldo` sin emitir (el título ✅ en gris) con toda la suite en
+> verde. Y un test recorre `src/app` y **falla si una plantilla incrusta un color o usa la paleta
+> cruda** — descubre los archivos en vez de listarlos, así que también cubre las pantallas que la
+> pieza C todavía no escribió.
+>
+> **Lo que solo apareció manejando la app** (cuatro cosas que ningún test veía): el `☀` se pintaba
+> como emoji naranja y no seguía al tema; el `placeholder` de todo input estaba clavado por el
+> preflight de Tailwind en `#9ca3af`, o sea **2.54:1** en claro, por debajo de AA; poner la barra
+> siempre visible dejó el login con 44 px de scroll; y el botón del tema tenía la mitad del área
+> táctil que pide WCAG. Las cuatro, corregidas.
 
 **C — el dashboard:** los datos para poblarlo **ya existen y están sin explotar** — cada página trae
 `volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `local`, `cluster_id`
@@ -234,7 +251,7 @@ Aparte de las cuatro piezas:
 
 ### 🟢 4. Deuda conocida, ninguna bloqueante
 
-- **Tests de componente del portal** (karma). El núcleo está cubierto (66 tests) y los componentes se
+- **Tests de componente del portal** (karma). El núcleo está cubierto (87 tests) y los componentes se
   verifican compilando con AOT y a mano. Es evidencia de que funciona hoy, **no una red contra
   regresiones**.
 - **El polling del brief (4 s) es a ojo**, y la lista de runs no pollea. Se calibra con la duración
@@ -301,7 +318,7 @@ reales, no solo contra tests.
 | **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **114 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **64 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
-| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **66 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
+| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **87 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
 | **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **94 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. **Falta:** desplegarlo en un dominio (5.3) y una CDN delante. |
 | **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Navegación entre páginas** (barra desde la Links API, enhancement no-fatal) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |

@@ -1,7 +1,35 @@
 # Modo oscuro del portal — diseño
 
-> **Estado:** aprobado el 2026-07-30. Es la **pieza B** de cuatro (ver §Contexto).
+> **Estado:** aprobado el 2026-07-30 e **implementado el mismo día** en `feat/modo-oscuro-portal`
+> (87 tests en el portal, verificado en el navegador). Es la **pieza B** de cuatro (ver §Contexto).
 > **No bloquea ni la bloquea nada:** se puede construir y verificar sin depender de las otras piezas.
+
+> ### Lo que se implementó distinto de lo escrito acá
+>
+> Cinco cosas, todas endureciendo el diseño, ninguna cambiándolo:
+>
+> 1. **El test del script anti-fogonazo no es "tosco a propósito".** Este spec pedía un test que solo
+>    atara los *nombres* (la clave y la clase), asumiendo que la lógica no se podía verificar. Sí se
+>    puede: el test **ejecuta el script** en un contexto de `node:vm` y lo compara con `temaEfectivo`
+>    en los 20 casos. Se hizo porque el script que este spec traía escrito **ya divergía** — fallaba
+>    en 5 de esos 20 (un valor basura en `localStorage` con el sistema en oscuro pintaba claro y
+>    después Angular pintaba oscuro: el fogonazo, invertido).
+> 2. **Los pares de contraste pasaron de 12 a 17** (§El test de contraste), al recorrer las clases una
+>    por una. Entre los cinco nuevos, los dos títulos de la evidencia.
+> 3. **El `placeholder` no estaba en la superficie de cambio y tenía que estar.** El preflight de
+>    Tailwind le clava `#9ca3af` a todo input: **2.54:1** en claro, por debajo de AA. Este spec ya
+>    asignaba `texto-tenue` a "metadatos, placeholders", pero no había dónde cablearlo. Se arregla en
+>    `styles.css`, no con `placeholderColor` en la config — esa clave genera utilidades y **no toca el
+>    preflight**, que lee `colors.gray.400`.
+> 4. **El test anti-color-incrustado descubre las plantillas**, no las lista, y también prohíbe la
+>    paleta cruda (`bg-gray-100`). Una lista fija cubría las cuatro pantallas de hoy y dejaba entrar
+>    la primera de la pieza C.
+> 5. **Hay un test que ata `tailwind.config.js`.** Los valores viven en `styles.css` y los nombres en
+>    `TOKENS`, pero la config era un tercer lado suelto: borrar `respaldo` de ahí dejaba
+>    `text-respaldo` sin emitir —el título ✅ en gris— con toda la suite en verde.
+>
+> Y una consecuencia de §Un ajuste de estructura: con la barra siempre visible, el login medía
+> viewport + barra y aparecía con scroll. La barra declara `h-11` y el login resta esa altura.
 
 ---
 
