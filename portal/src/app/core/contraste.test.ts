@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AA_TEXTO_NORMAL, PARES, TOKENS, luminancia, parsearTokens, ratio } from './contraste';
@@ -24,20 +23,19 @@ test('luminancia y ratio: los extremos conocidos de WCAG', () => {
   assert.equal(AA_TEXTO_NORMAL, 4.5, 'AA para texto normal es 4.5:1, y no se negocia acá');
 });
 
-test('🔴 tailwind.config.js expone exactamente los mismos 16 tokens', () => {
-  // El triángulo tiene tres lados: `TOKENS`, `styles.css` y la config de Tailwind. El test de abajo
-  // ata los dos primeros; sin este, el tercero queda suelto — y borrar `respaldo` de la config deja
-  // `text-respaldo` sin emitir, o sea el título "✅ Respaldadas por datos" en gris, con la suite en
-  // verde y el typecheck limpio (`ng build` nunca falla por una clase de Tailwind inexistente).
-  // `createRequire` porque `tailwind.config.js` es CommonJS (`module.exports`) y este test es ESM.
-  const cargar = createRequire(import.meta.url);
-  const config = cargar('../../../tailwind.config.js') as {
-    theme: { extend: { colors: Record<string, string> } };
-  };
+test('🔴 @theme inline expone exactamente los mismos 16 tokens', () => {
+  // El triángulo tiene tres lados: `TOKENS`, `styles.css` (:root/.oscuro) y el bloque `@theme
+  // inline` que Tailwind v4 usa para emitir las utilidades (bg-fondo, text-texto, etc). El test de
+  // abajo ata los dos primeros; sin este, el tercero queda suelto — y borrar `--color-respaldo` de
+  // @theme inline deja `text-respaldo` sin emitir, con la suite en verde y el typecheck limpio.
+  const tema = parsearTokens(css, '@theme inline');
+  const nombres = Object.keys(tema)
+    .filter((n) => n.startsWith('color-'))
+    .map((n) => n.slice('color-'.length));
   assert.deepEqual(
-    Object.keys(config.theme.extend.colors).sort(),
+    nombres.sort(),
     [...TOKENS].sort(),
-    'la paleta de tailwind.config.js y TOKENS se separaron',
+    'el bloque @theme inline de styles.css y TOKENS se separaron',
   );
 });
 
