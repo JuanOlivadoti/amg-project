@@ -22,15 +22,15 @@ const ETIQUETA: Record<RunStatus, string> = {
   template: `
     <div class="max-w-3xl mx-auto px-4 py-8 space-y-8">
       @if (puedeLanzar()) {
-        <section class="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 class="text-sm font-semibold text-gray-900 mb-3">Lanzar un research</h2>
+        <section class="bg-superficie rounded-xl border border-borde p-6">
+          <h2 class="text-sm font-semibold text-texto mb-3">Lanzar un research</h2>
           <form (ngSubmit)="lanzar()" class="space-y-3">
             <input
               [ngModel]="clientId()"
               (ngModelChange)="clientId.set($event)"
               name="clientId"
               placeholder="ID del cliente (uuid)"
-              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
             />
             <textarea
               [ngModel]="prompt()"
@@ -38,12 +38,12 @@ const ETIQUETA: Record<RunStatus, string> = {
               name="prompt"
               rows="2"
               placeholder="Prompt de negocio: ej. Restaurante italiano en Madrid centro…"
-              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
             ></textarea>
             <button
               type="submit"
               [disabled]="lanzando() || !clientId() || !prompt()"
-              class="rounded-md bg-gray-900 text-white px-4 py-2 text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+              class="rounded-md bg-accion text-texto-invertido px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50"
             >
               {{ lanzando() ? 'Lanzando…' : 'Lanzar research' }}
             </button>
@@ -52,29 +52,29 @@ const ETIQUETA: Record<RunStatus, string> = {
       }
 
       <section>
-        <h2 class="text-sm font-semibold text-gray-900 mb-3">Research</h2>
+        <h2 class="text-sm font-semibold text-texto mb-3">Research</h2>
 
         @if (cargando()) {
-          <p class="text-sm text-gray-500">Cargando…</p>
+          <p class="text-sm text-texto-tenue">Cargando…</p>
         } @else if (error()) {
-          <p class="text-sm text-red-600">{{ error() }}</p>
+          <p class="text-sm text-error">{{ error() }}</p>
         } @else if (runs().length === 0) {
-          <p class="text-sm text-gray-500">Todavía no hay research.</p>
+          <p class="text-sm text-texto-tenue">Todavía no hay research.</p>
         } @else {
           <ul class="space-y-2">
             @for (run of runs(); track run.id) {
               <li>
                 <a
                   [routerLink]="['/runs', run.id]"
-                  class="block bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-400"
+                  class="block bg-superficie rounded-lg border border-borde p-4 hover:border-borde-fuerte"
                 >
                   <div class="flex items-center justify-between gap-3">
-                    <p class="text-sm font-medium text-gray-900 truncate">{{ run.prompt }}</p>
+                    <p class="text-sm font-medium text-texto truncate">{{ run.prompt }}</p>
                     <span class="text-xs shrink-0 rounded-full px-2 py-0.5" [class]="estadoClase(run.status)">
                       {{ etiqueta(run.status) }}
                     </span>
                   </div>
-                  <p class="mt-1 text-xs text-gray-500">
+                  <p class="mt-1 text-xs text-texto-tenue">
                     {{ run.created_at | date: 'short' }} · \${{ usd(run.coste_micros_usd) }}
                   </p>
                 </a>
@@ -147,9 +147,9 @@ export class RunsPage implements OnInit {
   }
 
   estadoClase(s: RunStatus): string {
-    if (s === 'approved') return 'bg-green-100 text-green-800';
-    if (s === 'failed' || s === 'rejected') return 'bg-red-100 text-red-800';
-    if (s === 'pending_approval') return 'bg-amber-100 text-amber-800';
-    return 'bg-gray-100 text-gray-700';
+    if (s === 'approved') return 'bg-respaldo-suave text-respaldo';
+    if (s === 'failed' || s === 'rejected') return 'bg-error-suave text-error';
+    if (s === 'pending_approval') return 'bg-alerta-suave text-alerta';
+    return 'bg-superficie-2 text-texto-medio';
   }
 }
