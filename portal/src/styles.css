@@ -60,3 +60,20 @@
   --error: #fca5a5;
   --error-suave: #451a1a;
 }
+
+/*
+ * El preflight de Tailwind le clava `theme('colors.gray.400')` —#9ca3af— al placeholder de todo
+ * input. Es un color que el tema NO puede cambiar: en claro da **2.54:1** sobre `superficie`, muy por
+ * debajo del 4.5:1 de AA, y en oscuro pasa solo por casualidad (resulta ser el mismo hex que
+ * `--texto-tenue` oscuro).
+ *
+ * Se arregla acá y no con `placeholderColor` en la config: esa clave genera utilidades, **no toca el
+ * preflight**, que lee `colors.gray.400`. Y no se arregla poniéndole una clase a cada input, por lo
+ * mismo que `borderColor.DEFAULT`: parchar los cuatro de hoy deja roto al quinto.
+ *
+ * El spec ya asignaba `texto-tenue` a "metadatos, placeholders"; esto lo cablea.
+ */
+input::placeholder,
+textarea::placeholder {
+  color: var(--texto-tenue);
+}

@@ -1,6 +1,10 @@
 <div class="min-h-screen bg-fondo text-texto">
-  <header class="bg-superficie border-b border-borde">
-    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+  <!--
+    `h-11` (2.75rem) no es decorativo: `login` resta exactamente esa altura para no provocar scroll.
+    Antes la barra solo existía autenticado, así que el login podía pedir `min-h-screen` entero.
+  -->
+  <header class="h-11 bg-superficie border-b border-borde">
+    <div class="max-w-3xl mx-auto px-4 h-full flex items-center justify-between">
       <a routerLink="/runs" class="text-sm font-semibold text-texto">AMG OS</a>
       <div class="flex items-center gap-3 text-sm text-texto-tenue">
         @if (auth.autenticado()) {
@@ -12,7 +16,7 @@
           (click)="tema.alternar()"
           [attr.aria-label]="ETIQUETA[tema.tema()]"
           [title]="ETIQUETA[tema.tema()]"
-          class="text-base leading-none px-1 text-texto-tenue hover:text-texto"
+          class="h-11 w-11 -mr-2 flex items-center justify-center text-base leading-none text-texto-tenue hover:text-texto"
         >
           {{ ICONO[tema.tema()] }}
         </button>
