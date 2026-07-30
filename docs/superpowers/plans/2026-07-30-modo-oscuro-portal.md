@@ -1050,13 +1050,17 @@ Esperado: verde, con **7 tests nuevos** (78 → 85), `fail 0`. **Anotar los núm
 | --- | --- | --- |
 | 1 | Borrar el `localStorage.setItem` de `alternar` (dejando el `try/catch` vacío) | **solo** `🔴 alternar cicla, persiste y repinta` |
 | 2 | Borrar el bloque `consulta.addEventListener(...)` completo | **solo** `🔴 con el tema en auto, un cambio del sistema SÍ repinta` |
-| 3 | En `aplicar`, `toggle(CLASE_OSCURO, this._sistemaPrefiereOscuro())` (o sea: mirar el sistema en vez del tema efectivo) | **tres** tests: `lee la preferencia guardada, y esa manda sobre el sistema`, `🔴 alternar cicla, persiste y repinta` y `🔴 un cambio de tema del SISTEMA no mueve nada si el tema es explícito` |
+| 3 | En `aplicar`, `toggle(CLASE_OSCURO, this._sistemaPrefiereOscuro())` (o sea: mirar el sistema en vez del tema efectivo) | **cuatro** tests: `lee la preferencia guardada, y esa manda sobre el sistema`, `🔴 alternar cicla, persiste y repinta`, `🔴 un cambio de tema del SISTEMA no mueve nada si el tema es explícito` y `sin localStorage el tema igual funciona, en memoria` |
 | 4 | Quitar el `try/catch` de `leerGuardado` | **solo** `sin localStorage el tema igual funciona, en memoria` (el `throw` sale del constructor) |
 
-La mutación 3 es la que importa: es el bug realista —"aplico la clase según lo que dice el sistema"— y
-la predicción es de **tres** tests. Los dos obvios son los que hablan del sistema; el tercero es
-`alternar cicla`, porque con el sistema en claro, elegir `oscuro` a mano ya no pondría la clase. Si cae
-otra cantidad, **eso es el hallazgo**: reportarlo, no reescribir la predicción.
+La mutación 3 es la que importa: es el bug realista —"aplico la clase según lo que dice el sistema"—.
+
+> **Corregido durante la ejecución.** Este plan predecía **tres** tests y son **cuatro**: me olvidé de
+> que `sin localStorage el tema igual funciona, en memoria` también llega a un tema explícito
+> (`alternar()` dos veces, hasta `oscuro`) con el sistema en claro, así que también afirma la clase. Lo
+> reportó el subagente en vez de acomodar la predicción, y lo verifiqué corriendo la mutación: 81 pass,
+> 4 fail. Vale como recordatorio de que una predicción de mutación se escribe leyendo **todos** los
+> tests, no solo los que hablan del tema.
 
 - [ ] **Paso 6: commit**
 
