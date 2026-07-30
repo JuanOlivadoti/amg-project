@@ -27,7 +27,8 @@ export const TOKENS: readonly string[] = [
 ];
 
 /**
- * `[frente, fondo]` — los pares que **existen en la UI**, uno por uno.
+ * `[frente, fondo]` — los pares que existen en la UI, uno por uno, más los del texto principal sobre
+ * las tres superficies (que es la combinación que cualquier pantalla nueva va a usar primero).
  *
  * `borde` y `borde-fuerte` no están: no llevan texto. Su contraste contra la superficie es de 1.24:1
  * a 1.83:1, por debajo del 3:1 que WCAG 1.4.11 pide para el límite de un control — es **deuda
@@ -36,6 +37,8 @@ export const TOKENS: readonly string[] = [
 export const PARES: readonly (readonly [string, string])[] = [
   ['texto', 'fondo'],
   ['texto', 'superficie'],
+  // Todavía sin uso: hoy sobre `superficie-2` solo hay `texto-medio` (los badges). Se deja porque la
+  // pieza C (el dashboard) va a poner texto principal sobre zonas hundidas, y verificarlo es gratis.
   ['texto', 'superficie-2'],
   ['texto-medio', 'superficie'],
   ['texto-medio', 'superficie-2'], // el badge «Pendiente»
