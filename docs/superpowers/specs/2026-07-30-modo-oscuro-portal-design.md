@@ -202,20 +202,40 @@ y el ratio entre dos colores (~20 líneas). Al lado, la tabla de pares que **exi
 | Par (frente sobre fondo) | Dónde vive |
 | --- | --- |
 | `texto` sobre `fondo`, `superficie`, `superficie-2` | Todo el texto |
-| `texto-medio` sobre `superficie` | Secundarios |
+| `texto-medio` sobre `superficie`, `superficie-2` | Secundarios, y el badge «Pendiente» |
 | `texto-tenue` sobre `superficie`, `fondo` | Metadatos, placeholders |
 | `texto-invertido` sobre `accion`, `respaldo` | Botones primarios y "Aprobar" |
-| `respaldo` sobre `respaldo-suave` | El badge ✅ |
-| `alerta` sobre `alerta-suave` | El badge ⚠️ |
-| `error` sobre `error-suave`, `superficie` | Fallos |
+| `respaldo` sobre `respaldo-suave`, `fondo` | El badge ✅ y **el título ✅** |
+| `alerta` sobre `alerta-suave`, `superficie`, `fondo` | El badge ⚠️, el aviso de edición y **el título ⚠️** |
+| `error` sobre `error-suave`, `superficie`, `fondo` | Fallos (en tarjeta y sueltos en la página) |
 
-**12 pares × 2 temas = 24 aserciones**, todas ≥ **4.5:1** (WCAG AA, texto normal).
+**17 pares × 2 temas = 34 aserciones**, todas ≥ **4.5:1** (WCAG AA, texto normal).
+
+> **De dónde salen 17 y no 12.** La primera versión listaba 12. Al recorrer las 84 clases una por una
+> aparecieron **cinco pares más que la UI ya tiene**: `texto-medio`/`superficie-2` (el badge
+> «Pendiente»), `error`/`fondo` (el error de `runs`, que no está en una tarjeta), `alerta`/`superficie`
+> (el aviso «editar quita la aprobación»), y —los importantes— **`respaldo`/`fondo` y
+> `alerta`/`fondo`: los dos títulos de la evidencia**, que van sobre el fondo de página, no sobre una
+> tarjeta. Justamente los que hoy son un hex incrustado. Un par que existe en la UI y no está en esta
+> lista es un par que nadie verifica.
+
+Los cinco nuevos pasan con holgura (el más ajustado, `respaldo` sobre `fondo`, da 4.80:1 en claro).
+El punto pulsante de «corriendo» (`bg-alerta`, 8×8 px sin texto) **no** entra: no lleva texto, así que
+4.5:1 no es su criterio.
+
+### El test lee `styles.css`, no una copia
+
+Los valores **se parsean de `styles.css`** —de los bloques `:root` y `.oscuro`— en vez de vivir en una
+tabla TypeScript al lado. Una tabla duplicada puede pasar el test mientras la hoja de estilos que se
+despacha dice otra cosa; es la misma trampa de las dos fuentes de verdad que ya hay anotada entre M2 y
+M1. El test también afirma que **los dos bloques definen exactamente los mismos 16 nombres**: un token
+que falte en `.oscuro` no da error, **hereda el valor claro de `:root`** y se ve mal en silencio.
 
 ### Ya está validado
 
 Los valores de la tabla de tokens **se verificaron ejecutando el cálculo** antes de escribir este
-spec. Los 24 pares pasan. Los más ajustados, que son los que hay que cuidar si alguien retoca la
-paleta:
+spec, y se volvieron a verificar con los 17 pares. **Los 34 pasan.** Los más ajustados, que son los
+que hay que cuidar si alguien retoca la paleta:
 
 | Par | Claro | Oscuro |
 | --- | --- | --- |
@@ -246,7 +266,7 @@ como deuda anotada, no como olvido.
 | Qué | Dónde | Por qué |
 | --- | --- | --- |
 | `parseTema`, `siguienteTema`, `temaEfectivo` | `core/tema.test.ts` | Contrato puro: el ciclo, el default, y que un valor basura caiga en `auto` |
-| Los 24 pares de contraste | `core/contraste.test.ts` | La legibilidad del argumento de venta, impuesta |
+| Los 17 pares × 2 temas | `core/contraste.test.ts` | La legibilidad del argumento de venta, impuesta. Y que los dos temas definan los mismos 16 tokens |
 | El servicio | `services/tema.test.ts` | Persistencia, la clase en `documentElement`, y **que el listener del sistema no mueva nada si el tema es explícito** |
 | Que el script inline y `temaEfectivo` no se separen | `core/tema.test.ts` | Lee `index.html` y afirma que contiene la clave `amg.tema` y la clase `oscuro`. Es un test tosco a propósito: no puede probar que la lógica coincida, pero sí que nadie renombre una de las dos puntas sin ver la otra |
 | **Que ninguna plantilla incruste un color** | `core/contraste.test.ts` | Lee las 4 plantillas y falla si aparece un `#rrggbb` o un `style="…color…"`. Un color incrustado es un color que el tema **no puede** cambiar, y ya había dos (§Tres cosas). El test de contraste verifica la tabla de tokens; este verifica que la UI **use** la tabla |
@@ -275,7 +295,7 @@ bajar un color por debajo de 4.5:1, y **reponer uno de los dos hex incrustados**
 | `portal/tailwind.config.js` | Los 16 tokens mapeados a `var()`, más `borderColor.DEFAULT` |
 | `portal/src/styles.css` | `:root` y `.oscuro` con los dos temas |
 | `portal/src/index.html` | El script anti-fogonazo |
-| `portal/src/app/core/tema.ts` + `.test.ts` | **Nuevos** |
+| `portal/src/app/core/tema.ts` + `.test.ts` | **Nuevos**. Exportan también `CLAVE_TEMA` y `CLASE_OSCURO`, las dos puntas que el script inline repite |
 | `portal/src/app/core/contraste.ts` + `.test.ts` | **Nuevos** |
 | `portal/src/app/services/tema.ts` + `.test.ts` | **Nuevos** |
 | `portal/src/app/app.html` | La barra siempre visible + el botón |
