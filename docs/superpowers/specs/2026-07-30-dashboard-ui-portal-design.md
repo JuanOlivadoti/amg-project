@@ -162,10 +162,15 @@ portal/src/app/shared/
       line-chart-one/
 ```
 
-`tabs/` y `modal/` **salen del alcance inicial**: `/cartera` tal como está diseñada no los necesita
-(no hay pestañas ni diálogos modales en la composición de la sección "Página nueva"). Se agregan
+`tabs/`, `modal/`, `button/`, `badge/`, `avatar/`, `dropdown/`, `pagination/` **salen del alcance
+inicial**: `/cartera` tal como está diseñada no los necesita. El estado de evidencia (✅/⚠️) se
+resuelve igual que ya lo hace `brief.ts` — un `<span>` con clases de token, no un componente
+`Badge` genérico —, y el volumen de filas del seed (4-6 clientes) no justifica paginación. Se agregan
 cuando haya un consumidor concreto, no antes — portar una librería amplia sin uso real es superficie
-que hay que mantener y verificar sin necesidad.
+que hay que mantener y verificar sin necesidad. Lo único que se construye es: `app-shell`,
+`app-sidebar`, `app-header`, `backdrop` (shell), `stat-box`, `bar-chart-one`, `line-chart-one`
+(componentes con consumidor real en `/cartera`), más una tabla de portafolio específica de la página
+(no genérica, vive junto a `cartera.ts`).
 
 ## Componentes a portar (con su adaptación puntual)
 
