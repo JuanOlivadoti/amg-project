@@ -1,19 +1,4 @@
 {
-  "name": "Trattoria Bella Napoli",
-  "telephone": "+34 911 23 45 67",
-  "priceRange": "€€",
-  "url": "https://trattoriabellanapoli.es",
-  "image": "https://trattoriabellanapoli.es/img/fachada.jpg",
-  "address": {
-    "streetAddress": "Calle Mayor 12",
-    "addressLocality": "Madrid",
-    "postalCode": "28013",
-    "addressRegion": "Madrid",
-    "addressCountry": "ES"
-  },
-  "opening_hours": "Lun-Dom 13:00-16:00 y 20:00-23:30",
-  "brand": {
-    "color": "#0a7d34",
-    "font": "serif"
-  }
+  "name": "La Birra Bar",
+  "opening_hours": "Lun-Dom 11:00-01:00 (vie-sáb hasta las 02:00) · Local Centro, Carrera de San Jerónimo 3"
 }

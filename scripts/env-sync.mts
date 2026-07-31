@@ -33,6 +33,7 @@ export const MAPA = {
     "LLM_PROVIDER",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
+    "DATABASE_URL_CACHE",
   ],
   renderer: [
     "STORYBLOK_PUBLIC_TOKEN",
