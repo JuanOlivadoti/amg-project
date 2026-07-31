@@ -1,6 +1,20 @@
 # Navegación del sitio del cliente — diseño
 
-> **Estado:** aprobado el 2026-07-31, pendiente de implementación.
+> **Estado:** aprobado el 2026-07-31, pendiente de implementación. Plan en
+> [2026-07-31-navegacion-sitio-cliente.md](../plans/2026-07-31-navegacion-sitio-cliente.md).
+>
+> ## Tres cosas que aparecieron al planificar, y que este diseño no contemplaba
+>
+> 1. **`perfilValido` (renderer) descarta lo que no conoce.** Reconstruye el perfil campo por campo,
+>    así que `locations` y `menu` **se perderían en producción** aunque estuvieran en la base — es
+>    exactamente el bug que su propio comentario documenta sobre `brand`. Sin esa tarea, todo lo
+>    demás pasa los tests de `web-builder` y no funciona en la web real.
+> 2. **`postalCode` pasa a ser opcional en `PostalAddress`.** Hoy es obligatorio y `perfilValido`
+>    descarta la dirección entera si falta. La Birra Bar no tiene códigos postales confirmados, así
+>    que exigirlo obligaría a inventarlos — y un dato inventado en el JSON-LD es peor que uno
+>    ausente (la misma decisión que el `null` de las métricas en `kr.v0.4`).
+> 3. **El índice de la home excluye las páginas de blog.** Si no, un post aparecería en las tarjetas
+>    de la home *y* en `/blog` — la duplicación que este trabajo viene a evitar.
 
 ---
 
