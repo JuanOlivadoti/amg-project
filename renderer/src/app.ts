@@ -301,9 +301,9 @@ export function createApp(deps: RendererDeps) {
           return esPreview ? home.replace("</body>", `${scriptBridge()}</body>`) : home;
         }
 
-        // TODO(Task 4): `hayBlog` debe salir de si existen páginas /blog reales; el renderizador
-        // todavía no las sirve, así que por ahora nunca hay enlace al blog (antes esto pasaba
-        // `navVisible`, un NavItem[] incompatible con la firma que dejó la Task 2 — no compilaba).
+        // TODO(Task 8): `hayBlog` debe salir de si existen páginas /blog reales (`blogDe()`); el
+        // renderizador todavía no las sirve, así que por ahora nunca hay enlace al blog (antes esto
+        // pasaba `navVisible`, un NavItem[] incompatible con la firma que dejó la Task 2 — no compilaba).
         const salida = renderStory(story, perfil, sitio!.languageCode, false);
         return esPreview ? salida.replace("</body>", `${scriptBridge()}</body>`) : salida;
       }
