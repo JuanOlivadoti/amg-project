@@ -16,7 +16,7 @@ import { kpisDeCartera, topOportunidades, serieTemporalCoste } from '../../core/
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <app-stat-box titulo="Sitios activos" [valor]="kpis.sitiosActivos" />
         <app-stat-box titulo="Opportunity score promedio" [valor]="kpis.opportunityScorePromedio" />
-        <app-stat-box titulo="Coste del mes (USD)" [valor]="kpis.costeDelMesUsd" />
+        <app-stat-box titulo="Coste total (USD)" [valor]="kpis.costeTotalUsd" />
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">

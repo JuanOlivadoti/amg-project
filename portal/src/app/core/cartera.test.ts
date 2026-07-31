@@ -14,17 +14,11 @@ test('kpisDeCartera: opportunityScorePromedio es el promedio simple de todas las
   assert.equal(kpisDeCartera(d).opportunityScorePromedio, Math.round(esperado * 10) / 10);
 });
 
-test('kpisDeCartera: costeDelMesUsd solo suma runs de julio 2026 cuando se referencia ese mes', () => {
+test('kpisDeCartera: costeTotalUsd suma coste_micros_usd de todos los runs de la cartera', () => {
   const d = generarCarteraMock();
-  const kpis = kpisDeCartera(d, new Date(Date.UTC(2026, 6, 15)));
+  const kpis = kpisDeCartera(d);
   const esperadoMicros = d.clientes.flatMap((c) => c.runs).reduce((acc, r) => acc + r.coste_micros_usd, 0);
-  assert.equal(kpis.costeDelMesUsd, Math.round((esperadoMicros / 1_000_000) * 100) / 100);
-});
-
-test('kpisDeCartera: un mes sin runs da coste 0, no undefined ni NaN', () => {
-  const d = generarCarteraMock();
-  const kpis = kpisDeCartera(d, new Date(Date.UTC(2020, 0, 1)));
-  assert.equal(kpis.costeDelMesUsd, 0);
+  assert.equal(kpis.costeTotalUsd, Math.round((esperadoMicros / 1_000_000) * 100) / 100);
 });
 
 test('topOportunidades: devuelve las N páginas de mayor opportunity_score, ordenadas desc', () => {

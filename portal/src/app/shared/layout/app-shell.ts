@@ -8,7 +8,7 @@ import { BackdropComponent } from './backdrop';
   selector: 'app-shell',
   imports: [RouterOutlet, AppSidebarComponent, AppHeaderComponent, BackdropComponent],
   template: `
-    <div class="min-h-screen bg-fondo">
+    <div class="min-h-screen bg-fondo text-texto">
       <app-sidebar />
       <app-backdrop />
       <div class="lg:pl-64">

@@ -3,26 +3,27 @@ import type { CarteraDashboard } from './cartera-mock';
 export interface KpisCartera {
   readonly sitiosActivos: number;
   readonly opportunityScorePromedio: number;
-  readonly costeDelMesUsd: number;
+  readonly costeTotalUsd: number;
 }
 
-export function kpisDeCartera(dashboard: CarteraDashboard, mesReferencia: Date = new Date()): KpisCartera {
+// Suma TODO el coste de la cartera, sin filtrar por mes: el mock es un dataset estático (siempre
+// julio 2026, ver cartera-mock.ts), no una serie que rueda con el calendario real. Filtrar por
+// "mes actual" contra datos que nunca cambian de mes daba un KPI que dependía de `new Date()` en
+// producción y que ningún test ejercitaba (los tests siempre pasaban una fecha de referencia
+// explícita) — a partir de agosto de 2026 el tile leía 0 en silencio. Con datos reales del backend
+// (series que sí avanzan) este KPI se puede volver a acotar a un período, con su propio test.
+export function kpisDeCartera(dashboard: CarteraDashboard): KpisCartera {
   const scores = dashboard.pages.map((p) => p.opportunity_score);
   const promedio = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
-  const runsDelMes = dashboard.clientes.flatMap((c) => c.runs).filter((r) => {
-    const fecha = new Date(r.created_at);
-    return (
-      fecha.getUTCFullYear() === mesReferencia.getUTCFullYear() &&
-      fecha.getUTCMonth() === mesReferencia.getUTCMonth()
-    );
-  });
-  const costeMicros = runsDelMes.reduce((acc, r) => acc + r.coste_micros_usd, 0);
+  const costeMicros = dashboard.clientes
+    .flatMap((c) => c.runs)
+    .reduce((acc, r) => acc + r.coste_micros_usd, 0);
 
   return {
     sitiosActivos: dashboard.clientes.length,
     opportunityScorePromedio: Math.round(promedio * 10) / 10,
-    costeDelMesUsd: Math.round((costeMicros / 1_000_000) * 100) / 100,
+    costeTotalUsd: Math.round((costeMicros / 1_000_000) * 100) / 100,
   };
 }
 

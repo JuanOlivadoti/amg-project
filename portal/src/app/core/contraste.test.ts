@@ -23,7 +23,7 @@ test('luminancia y ratio: los extremos conocidos de WCAG', () => {
   assert.equal(AA_TEXTO_NORMAL, 4.5, 'AA para texto normal es 4.5:1, y no se negocia acá');
 });
 
-test('🔴 @theme inline expone exactamente los mismos 16 tokens', () => {
+test('🔴 @theme inline expone exactamente los mismos tokens', () => {
   // El triángulo tiene tres lados: `TOKENS`, `styles.css` (:root/.oscuro) y el bloque `@theme
   // inline` que Tailwind v4 usa para emitir las utilidades (bg-fondo, text-texto, etc). El test de
   // abajo ata los dos primeros; sin este, el tercero queda suelto — y borrar `--color-respaldo` de

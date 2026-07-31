@@ -7,12 +7,8 @@ import { AuthService } from '../../services/auth';
   selector: 'app-login',
   imports: [FormsModule],
   template: `
-    <!--
-      La altura restada es la de la barra (h-11 en app.html), que desde esta pieza se renderiza
-      SIEMPRE, también sin sesión. Con min-h-screen a secas, la página medía viewport + barra y el
-      login aparecía con scroll y descentrado.
-    -->
-    <div class="min-h-[calc(100vh-2.75rem)] flex items-center justify-center bg-fondo px-4">
+    <!-- /login vive fuera del AppShell (ruta hermana, sin header): min-h-screen a secas centra bien. -->
+    <div class="min-h-screen flex items-center justify-center bg-fondo px-4">
       <form
         (ngSubmit)="entrar()"
         class="w-full max-w-sm bg-superficie rounded-xl shadow-sm border border-borde p-8 space-y-5"
