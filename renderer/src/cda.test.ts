@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { CDA_BASE, ErrorCda, normalizarLinks, StoryblokCda, type FetchLike } from "./cda.js";
+import { CDA_BASE, ErrorCda, normalizarLinks, normalizarStories, StoryblokCda, type FetchLike } from "./cda.js";
 
 /** `fetch` de mentira que anota la URL pedida: es lo que hace testeable esto sin red ni credenciales. */
 function espia(respuesta: Partial<Response> & { json?: () => Promise<unknown> }) {
@@ -175,6 +175,30 @@ describe("StoryblokCda", () => {
     assert.deepEqual(await new StoryblokCda({ fetch }).traerNav({ token: "t", version: "published" }), []);
   });
 
+  it("traerBlog pide solo las Article y devuelve slug + nombre", async () => {
+    const { fetch, urls } = espia({
+      json: async () => ({ stories: [{ slug: "miami", name: "Premiados en Miami" }] }),
+    });
+    const items = await new StoryblokCda({ fetch }).traerBlog({ token: "t", version: "published" });
+
+    assert.deepEqual(items, [{ slug: "miami", name: "Premiados en Miami" }]);
+    assert.match(urls[0]!, /filter_query/);
+    assert.match(urls[0]!, /Article/);
+  });
+
+  it("traerBlog: un space sin artículos es una lista vacía, no un error", async () => {
+    const { fetch } = espia({ status: 404, ok: false });
+    assert.deepEqual(await new StoryblokCda({ fetch }).traerBlog({ token: "t", version: "published" }), []);
+  });
+
+  it("🔴 traerBlog: un fallo del origen LANZA (quien llama decide si degrada)", async () => {
+    const { fetch } = espia({ status: 500, ok: false, json: async () => ({}) });
+    await assert.rejects(
+      () => new StoryblokCda({ fetch }).traerBlog({ token: "t", version: "published" }),
+      (e: ErrorCda) => e.status === 500,
+    );
+  });
+
   it("🔴 convierte el contenido APLANADO de Storyblok a la forma de renderStory (demo)", async () => {
     // El bug que cazó la demo: Storyblok guarda `seo_title` plano, no un `seo` anidado. La CDA tiene
     // que deshacer el aplanado o `renderStory` explota (`c.seo.title` con `c.seo` undefined).
@@ -246,5 +270,21 @@ describe("normalizarLinks", () => {
   it("links ausente o no-objeto es lista vacía", () => {
     assert.deepEqual(normalizarLinks(undefined), []);
     assert.deepEqual(normalizarLinks("nope"), []);
+  });
+});
+
+describe("normalizarStories", () => {
+  it("🔴 descarta lo que no tiene slug string y acota la lista", () => {
+    const items = normalizarStories([
+      { slug: "ok", name: "Ok" },
+      { slug: 42, name: "número" },
+      null,
+      { name: "sin slug" },
+    ]);
+    assert.deepEqual(items, [{ slug: "ok", name: "Ok" }]);
+  });
+
+  it("sin nombre, el slug es el texto del enlace", () => {
+    assert.deepEqual(normalizarStories([{ slug: "miami" }]), [{ slug: "miami", name: "miami" }]);
   });
 });

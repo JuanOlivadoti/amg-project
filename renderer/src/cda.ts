@@ -50,6 +50,13 @@ export interface Cda {
    * implemente (o que falle al pedirla) deja el sitio sin barra, no caído. El renderizador lo trata así.
    */
   traerNav?(p: PeticionNav): Promise<NavItem[]>;
+  /**
+   * Las páginas de blog del space (las `Article`), para el índice de `/blog`. Un fallo LANZA, igual
+   * que `traerNav`: quien llama decide si degrada.
+   *
+   * **Opcional a propósito**, por la misma razón que `traerNav`: sin blog el sitio funciona entero.
+   */
+  traerBlog?(p: PeticionNav): Promise<NavItem[]>;
 }
 
 /** Tope de páginas que se guardan de la Links API. Una nav no necesita más; acota la memoria. */
@@ -89,6 +96,28 @@ export function normalizarLinks(links: unknown): NavItem[] {
 
 function posDe(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+/** Tope de artículos del índice del blog. Acota memoria y ancho de banda del camino anónimo. */
+const MAX_BLOG_ITEMS = 50;
+
+/**
+ * De la respuesta de `cdn/stories` a `NavItem[]`. Solo slug y nombre, validados como strings: en PROD
+ * esto llega de la red sin pasar por Zod, y los dos terminan en el HTML.
+ */
+export function normalizarStories(stories: unknown): NavItem[] {
+  if (!Array.isArray(stories)) return [];
+  return stories
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === "object" && !Array.isArray(s))
+    .filter((s) => typeof s["slug"] === "string" && (s["slug"] as string).length > 0)
+    .slice(0, MAX_BLOG_ITEMS)
+    .map((s) => ({
+      slug: s["slug"] as string,
+      name:
+        typeof s["name"] === "string" && (s["name"] as string).length > 0
+          ? (s["name"] as string)
+          : (s["slug"] as string),
+    }));
 }
 
 /** `fetch` inyectable: es lo que permite probar todo esto sin red ni credenciales. */
@@ -209,6 +238,38 @@ export class StoryblokCda implements Cda {
   }
 
   /**
+   * Las páginas `Article` del space, vía `cdn/stories` con un filtro por `schema_type`.
+   *
+   * **Por qué un filtro y no una carpeta `blog/` en Storyblok**: mover las stories a una carpeta les
+   * cambia el slug, y eso rompe las URLs ya publicadas e indexadas. El filtro no toca ninguna.
+   *
+   * `excluding_fields` deja fuera el cuerpo de cada story: para un índice hacen falta el slug y el
+   * nombre, no el contenido — es menos ancho de banda y menos superficie que validar.
+   */
+  async traerBlog({ token, version, cacheVersion }: PeticionNav): Promise<NavItem[]> {
+    const url = new URL(`${this.base}/stories`);
+    url.searchParams.set("token", token);
+    url.searchParams.set("version", version);
+    url.searchParams.set("filter_query[schema_type][in]", "Article");
+    url.searchParams.set("per_page", String(MAX_BLOG_ITEMS));
+    url.searchParams.set("excluding_fields", "body");
+    if (cacheVersion) url.searchParams.set("cv", cacheVersion);
+
+    return this.conPlazo(async (signal) => {
+      const res = await this.fetch(url.toString(), { signal });
+
+      if (res.status === 404) return [];
+      if (!res.ok) {
+        // El cuerpo NO se propaga: puede traer el token en un mensaje de error de Storyblok.
+        throw new ErrorCda(`Storyblok respondió ${res.status} para /stories (blog)`, res.status);
+      }
+
+      const cuerpo = (await this.leerAcotado(res)) as { stories?: unknown };
+      return normalizarStories(cuerpo.stories);
+    });
+  }
+
+  /**
    * Corre `fn` con un plazo que cubre **todo** lo que haga, no solo la primera promesa.
    *
    * El `AbortController` se aborta al vencer y el timer se limpia recién en el `finally` de afuera,
@@ -291,8 +352,11 @@ export class MockCda implements Cda {
   private readonly stories = new Map<string, Story>();
   /** Nav por `${token}:${version}`. La deriva de las stories puestas si no se fijó una explícita. */
   private readonly navs = new Map<string, NavItem[]>();
+  /** Blog por `${token}:${version}`. Sin uno explícito, el space no tiene artículos. */
+  private readonly blogs = new Map<string, NavItem[]>();
   readonly pedidos: PeticionStory[] = [];
   readonly pedidosNav: PeticionNav[] = [];
+  readonly pedidosBlog: PeticionNav[] = [];
 
   poner(token: string, version: Version, slug: string, story: Story): void {
     this.stories.set(`${token}:${version}:${slug}`, story);
@@ -301,6 +365,11 @@ export class MockCda implements Cda {
   /** Fija la nav de un space explícitamente (para probar el orden, el escape, el cap…). */
   ponerNav(token: string, version: Version, items: NavItem[]): void {
     this.navs.set(`${token}:${version}`, items);
+  }
+
+  /** Fija el blog de un space explícitamente (para probar el índice de `/blog`). */
+  ponerBlog(token: string, version: Version, items: NavItem[]): void {
+    this.blogs.set(`${token}:${version}`, items);
   }
 
   async traerStory(p: PeticionStory): Promise<Story | null> {
@@ -318,5 +387,10 @@ export class MockCda implements Cda {
       .filter(([k]) => k.startsWith(prefijo))
       .map(([k, s]) => ({ slug: k.slice(prefijo.length), name: s.name }))
       .filter((n) => n.slug !== "home");
+  }
+
+  async traerBlog(p: PeticionNav): Promise<NavItem[]> {
+    this.pedidosBlog.push(p);
+    return this.blogs.get(`${p.token}:${p.version}`) ?? [];
   }
 }
