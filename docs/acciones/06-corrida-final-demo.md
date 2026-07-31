@@ -1,6 +1,24 @@
-# Acción 06 — Corrida final + republicar la demo ⏳ PENDIENTE
+# Acción 06 — Corrida final + republicar la demo ✅ HECHA (2026-07-30)
 
-**Tiempo:** ~15 min · **Costo:** ~**$0.31** de saldo DataForSEO · **Cuándo:** antes de enseñárselo a Frank
+**Tiempo real:** 16 min 15 s (research) + publish · **Costo real:** $0.3097 · **Corrida:** La Birra
+Bar (hamburguesería gourmet, Madrid), no el restaurante italiano de ejemplo — es un cliente real de
+la agencia, así que **el caso de demo en el space de Storyblok ya no es "Bella Napoli"**: son las 14
+páginas de La Birra Bar, publicadas y verificadas en el navegador (contenido, marca y JSON-LD
+`LocalBusiness`/`Article`/`FAQPage` correctos, sin restos del perfil viejo). Detalle completo,
+incluida la duración medida y lo que implica para la pieza D, en
+[09-estado-y-roadmap.md](../proyecto/09-estado-y-roadmap.md#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás)
+y [11-plan-fase-2.md](../proyecto/11-plan-fase-2.md).
+
+> ## ⚠️ Esta guía tenía un paso desactualizado: falta `DATABASE_URL_CACHE`
+>
+> Desde la tanda 13 (ADR-14), `npm run spike` contra producción **exige** un registro durable de
+> idempotencia (rol `amg_cache`) o aborta antes de gastar. Esta guía no lo mencionaba. Además, si es
+> la **primera vez** que ese rol se conecta, el **session pooler (puerto 5432)** de Supabase puede
+> devolver `password authentication failed` con una password recién puesta y correcta — es un
+> problema del pooler (Supavisor), no de la credencial. La solución que funcionó: usar el
+> **transaction pooler (puerto 6543)** para `DATABASE_URL_CACHE`. `PgTaskLog` solo hace transacciones
+> autocontenidas (`pool.transaction()`, sin `SET LOCAL` de sesión ni `LISTEN`), así que el modo
+> transacción le sirve sin problema. Ver el paso 2 más abajo, ya corregido.
 
 ---
 
@@ -40,13 +58,30 @@ En **`kr-service/.env`**:
 + DATAFORSEO_BASE_URL=https://api.dataforseo.com
 ```
 
+### 1.5. Registro durable (`DATABASE_URL_CACHE`) — OBLIGATORIO, esta guía no lo tenía
+
+ADR-14 exige un registro de idempotencia durable para cualquier corrida `live`+producción: sin él,
+`npm run spike` aborta antes de gastar (ver `registroDurable()` en `kr-service/src/cli/spike.ts`).
+
+1. En Supabase → SQL Editor: `alter role amg_cache with password '...';` (password propia, distinta
+   de `amg_api`).
+2. Agregá a `docs/private/credenciales.env`, usando el **transaction pooler (puerto 6543)** — el
+   session pooler (5432) puede rechazar la primera conexión de un rol recién usado con
+   `password authentication failed` aunque la password sea correcta (Supavisor, no la credencial):
+   ```text
+   DATABASE_URL_CACHE=postgresql://amg_cache.<project-ref>:<password>@aws-1-eu-west-2.pooler.supabase.com:6543/postgres
+   ```
+3. `npm run env:sync`.
+
 ### 2. Correr con tope de gasto
 ```bash
 cd kr-service
 MAX_COST_USD=1.00 npm run spike "Restaurante italiano en Madrid centro. Especialidades: pizza napolitana, pasta fresca, menú del día, cenas para grupos y brunch de fin de semana."
 ```
 
-> Idealmente usá **un cliente real de la agencia**: es lo que después le mostrás a Frank.
+> Idealmente usá **un cliente real de la agencia**: es lo que después le mostrás a Frank. También
+> actualizá `web-builder/business-profile.json` con el NAP real de ese cliente ANTES de publicar —
+> si no, el sitio queda con el contenido del cliente nuevo pero la marca/NAP del cliente anterior.
 
 Comprobá en el log:
 - `[calidad] cobertura volumen XX%` → **mayor a 0**.

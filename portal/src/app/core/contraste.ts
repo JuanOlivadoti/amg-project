@@ -24,6 +24,7 @@ export const TOKENS: readonly string[] = [
   'alerta-suave',
   'error',
   'error-suave',
+  'velo',
 ];
 
 /**

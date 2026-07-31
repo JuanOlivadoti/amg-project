@@ -149,6 +149,15 @@ DATABASE_URL_RENDER=postgres://amg_render:...@host/db   # ← LA LEE EL CÓDIGO 
 > La API necesita además `SUPABASE_JWT_ISS` (obligatoria en producción): ver
 > [`api/README.md`](../../api/README.md).
 
+> ✅ **`DATABASE_URL_CACHE` ya se usa.** `kr-service/src/cli/spike.ts` (`registroDurable()`) la exige
+> para cualquier corrida `live`+producción (ADR-14): sin ella, aborta antes de gastar. **Usá el
+> transaction pooler (puerto 6543), no el session pooler (5432)**: la primera conexión de un rol
+> recién creado puede darte `password authentication failed` por el pooler (Supavisor), no por la
+> password — visto en vivo el 2026-07-30 con `amg_cache`, mientras `amg_api` seguía conectando bien
+> por el mismo host. El transaction pooler solo sirve para código que hace transacciones
+> autocontenidas (sin `SET LOCAL` de sesión ni `LISTEN` entre llamadas) — es el caso de `PgTaskLog`,
+> pero **no** asumas que también lo es para `amg_orquestador`/`amg_render` sin revisarlo primero.
+>
 > ✅ **`DATABASE_URL_RENDER` ya se usa.** El renderizador (etapa 6) la lee en `renderer/src/deps.ts`.
 > Necesita además **`STORYBLOK_WEBHOOK_SECRET`** (obligatoria: sin ella la invalidación de cache queda
 > cerrada y el Visual Editor solo *casi* funciona) y **`PREVIEW_SECRET`** (sin ella no se sirven

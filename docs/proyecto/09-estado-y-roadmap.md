@@ -6,6 +6,12 @@
 > el navegador por Juan — lo único que podía cerrarla, porque desde afuera no había señal que
 > distinguiera el código viejo del nuevo) y **pieza B construida y verificada en el navegador**: el
 > portal tiene modo oscuro por tokens semánticos. **Sin mergear a `main` todavía**, a pedido.
+>
+> **Acción 06 (corrida final) cerrada el mismo día**: research real contra producción para **La
+> Birra Bar** (14 páginas, $0.3097), republicado en Storyblok con `kr.v0.5` y verificado en el
+> navegador. Midió por primera vez cuánto tarda un research real —**16m15s**, por encima del umbral
+> de ~12 min que la pieza D necesitaba para mostrarse en vivo en la demo— así que **la pieza D queda
+> desaconsejada tal como se la había imaginado** (ver §2 más abajo).
 
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
@@ -179,8 +185,8 @@ panorama — son lo que las hace creíbles.
 | # | Pieza | Estado | Depende de |
 | --- | --- | --- | --- |
 | **A** | **Verificación JWT ES256 + logout que revoca** | ✅ **Cerrada** — mergeada, desplegada y el login **verificado en el navegador** (2026-07-30) | — |
-| **B** | Modo oscuro (**solo el portal**) | 🟢 **Construida y verificada en el navegador**, en `feat/modo-oscuro-portal`. **Falta mergear** | — |
-| **C** | Dashboard de cartera + seed de 4-6 restaurantes | ⚪ Sin empezar | B (hereda los tokens) |
+| **B** | Modo oscuro (**solo el portal**) | ✅ **Cerrada** — mergeada a `main` y migrada además a Tailwind v4 | — |
+| **C** | Dashboard de cartera + seed de 4-6 restaurantes | 🟡 **En curso** — esqueleto UI + shell del portal, Task 1/13 hecho en `feat/dashboard-ui-portal`. Detalle task-by-task en `.superpowers/sdd/progress.md` | B (hereda los tokens) ✅ |
 | **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | la medición |
 
 **Pieza A** ([spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
@@ -225,19 +231,50 @@ herede el tema por construcción en vez de tener que acordarse
 **C — el dashboard:** los datos para poblarlo **ya existen y están sin explotar** — cada página trae
 `volumen`, `dificultad`, `opportunity_score`, `score_confidence`, `intencion`, `local`, `cluster_id`
 y `evidencia`; cada run trae `coste_micros_usd` y `calidad_datos`. Se puede construir **sin tocar la
-API**.
+API**: la pantalla arranca con datos de muestra (misma forma que los DTOs reales), no contra un
+endpoint agregado nuevo — eso queda para más adelante, como trabajo de backend separado.
+
+**En curso.** Se trae el esqueleto de layout (sidebar + header) y una librería chica de componentes
+del `dashboard-project` (TailAdmin) de referencia, adaptados a los tokens semánticos de la pieza B —
+no una librería genérica sin uso, solo lo que `/cartera` necesita
+([spec](../superpowers/specs/2026-07-30-dashboard-ui-portal-design.md) ·
+[plan de Tailwind v4](../superpowers/plans/2026-07-30-tailwind-v4-migracion-portal.md), ya cerrado ·
+[plan del shell + dashboard](../superpowers/plans/2026-07-30-dashboard-ui-portal.md), en curso en
+`feat/dashboard-ui-portal`). El detalle de qué task está hecho, con SHAs y resultado de cada review,
+vive en `.superpowers/sdd/progress.md` — es la fuente de verdad para retomar el trabajo, no este
+párrafo.
 
 **D — research en vivo:** el orquestador **ya está construido** (Inngest, `workflow.ts`,
-`functions.ts`, 18 tests). Falta desplegarlo y conectarlo, no escribirlo. Pero **está condicionado a
-una medición**: cuánto tarda un research real nunca se midió (se conoce el coste, $0.31, no la
-duración). A ~90 segundos, mostrarlo en vivo es el mejor momento de la demo; a ~12 minutos, Frank
-mira un spinner y la demo se muere ahí. **Se decide con el número en la mano.**
+`functions.ts`, 18 tests). Falta desplegarlo y conectarlo, no escribirlo.
+
+> ### ✅ Medido (2026-07-30): **16 min 15 s**, contra el corte de ~12 minutos que mataba la demo
+>
+> Corrida real contra producción (La Birra Bar, 55 keywords → 14 páginas, $0.3097): **16m15s** de
+> punta a punta (`spike.ts`, sin el publish). Eso está **por encima** del umbral de ~12 minutos que
+> este mismo documento fijaba como el punto en que "Frank mira un spinner y la demo se muere ahí".
+> Parte del tiempo se fue en 3 tareas SERP que agotaron 60 sondeos de `task_get` cada una antes de
+> registrarse como recuperables (ver ADR-14) — el research **no abortó ni cobró de más** por eso,
+> pero sí sumó minutos.
+>
+> **Decisión que esto implica para la pieza D:** con este dato, mostrar el research **en vivo**
+> durante la demo con Frank es un riesgo alto de que la demo se estanque mirando un spinner. La
+> alternativa más segura es **correrlo antes** (como se hizo acá) y mostrar el resultado ya
+> publicado — que es exactamente lo que dejó lista la Acción 06. Pieza D, tal como se imaginó
+> originalmente (lanzar el research delante de Frank), queda **desaconsejada** hasta que haya una
+> optimización real de la duración (paralelizar más las tareas SERP, o mostrar progreso incremental
+> en vez de esperar el brief completo).
 
 Aparte de las cuatro piezas:
 
-- **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** (~$0.31) — lo publicado en
-  Storyblok es **anterior a `kr.v0.5`**: no muestra la evidencia etiquetada, que es *el argumento de
-  venta*. Acción humana.
+- ✅ **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** — **hecha (2026-07-30)**,
+  $0.3097. Publicado en Storyblok con `kr.v0.5`: 14 páginas de **La Birra Bar** (cliente real de la
+  agencia, reemplazó al caso de ejemplo "Bella Napoli" en el mismo space), verificado en el
+  navegador — evidencia separada (8 respaldadas / 6 sin validar), JSON-LD correcto por tipo de
+  página (`LocalBusiness` solo donde corresponde, `Article` en los blogs), marca consistente. De
+  paso se encontró y cerró un hueco real: `npm run spike` en producción exige `DATABASE_URL_CACHE`
+  desde ADR-14 y la guía no lo pedía — corregido en la guía y en `scripts/env-sync.mts` /
+  `kr-service/.env.example`. Detalle completo en la guía. Lo publicado en Storyblok **ya no es
+  anterior a `kr.v0.5`**: ahora sí muestra la evidencia etiquetada, que es *el argumento de venta*.
 - ✅ ~~Unificar el alcance (OBS-01)~~ — **hecho** (2026-07-19): manda `contexto-proyecto-frank.md`,
   alcance base = 3 módulos, ADR-04 se mantiene. Era la última observación abierta del proyecto.
 
@@ -280,15 +317,14 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 ### 🔴 Lo que depende de Juan
 
-**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Queda **una** (la corrida
-final); las otras tres se cerraron:
+**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Las cuatro se cerraron:
 
 | Tarea | Por qué | Costo |
 |---|---|---|
 | ~~Unificar el alcance (OBS-01)~~ | ✅ **Hecha (2026-07-19).** Manda ; alcance base = 3 módulos; ADR-04 se mantiene. | — |
 | ~~`SUPABASE_JWT_ISS` en Railway~~ | ✅ **Hecha (2026-07-27).** Cargada antes del merge; la API arrancó con ella. `SUPABASE_JWT_SECRET` se **deja** en Railway a propósito: es la red de rollback (el código viejo la exige para arrancar) y no molesta, porque `leerConfig` ya no la lee. | — |
 | ~~Verificar el login en el navegador~~ | ✅ **Hecha (2026-07-30).** Era lo único que podía cerrar la pieza A. Queda **sin verificar** el detalle del logout: que revoca en Supabase (Auth → Users → Sessions) y que es **local** (cerrar sesión en un dispositivo no cierra la del otro). Lo cubren 7 tests, pero no se miró en producción. | — |
-| **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** ⚠️ | **Lo publicado en Storyblok es de ANTES de la tanda 5**: no muestra la evidencia etiquetada y 7 de 8 páginas declaran `LocalBusiness` sin serlo. Hacerlo **antes de ver a Frank**. | ~$0.31 |
+| ~~**[Corrida final + republicar](../acciones/06-corrida-final-demo.md)**~~ | ✅ **Hecha (2026-07-30).** Publicado `kr.v0.5` para La Birra Bar (cliente real), verificado en el navegador. De paso: se midió la duración real del research (16m15s) y se cerró el gap de `DATABASE_URL_CACHE` que la guía no pedía. | $0.3097 |
 
 ### Tanda 3 — PROD-readiness ✅ COMPLETA
 
@@ -353,6 +389,7 @@ reales, no solo contra tests.
 | **Sin tests de integración** | — | El camino live ya **se ejecutó a mano** contra DataForSEO, OpenAI y Storyblok, pero no está **automatizado**. |
 | **Una rotación de Supabase a otro algoritmo daría 401, no 503** | `api/src/auth.ts` (`CODIGOS_DE_TOKEN`) | `ERR_JOSE_ALG_NOT_ALLOWED` es un código de token, así que si el proyecto pasara a RS256 todos los logins fallarían **y quemarían refresh tokens**. Hoy el JWKS sirve una sola clave ES256 (verificado). Si Supabase anuncia un cambio de algoritmo, hay que tocar `algorithms` antes, no después. |
 | **Durante una caída del JWKS, cada request paga el timeout de 5 s antes de su 503** | `api/src/auth.ts` (`jwksDeSupabase`, vía `crearDeps`) | El caché vence a los 10 minutos y `_local` solo se reemplaza cuando el fetch tiene éxito, así que cada petición secuencial reintenta. Falla cerrado y es correcto, pero se lee como un cuelgue. Si molesta, el lugar para afinar `timeoutDuration`/`cacheMaxAge` es `crearDeps` — con una medición, no a ojo. |
+| **El session pooler de Supabase (5432) puede rechazar la primera conexión de un rol recién usado** | `docs/private/credenciales.env` (`DATABASE_URL_*`) | Descubierto con `amg_cache`: password recién puesta y confirmada por `pg_roles`, y aun así `password authentication failed` por el session pooler — es Supavisor, no la credencial (`amg_api` seguía andando en paralelo por el mismo host). El **transaction pooler (6543)** conectó al toque. Si `amg_orquestador` o `amg_render` hacen su primera conexión real y da el mismo error, probar 6543 antes de sospechar de la password — siempre que el código solo use transacciones autocontenidas (`pool.transaction()`, sin `SET LOCAL` de sesión ni `LISTEN`, que es el caso de `PgTaskLog`). |
 
 ## Riesgos abiertos
 

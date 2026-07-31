@@ -3,16 +3,25 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-30** · **466 tests en verde** (monorepo) + **87** en el portal
+> Última actualización: **2026-07-30** · **466 tests en verde** (monorepo) + **120** en el portal
+> (103 `node:test` + 17 Karma)
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
 > JWKS y el logout que revoca están en `main`, desplegados, y **el login se verificó en el navegador**
 > (2026-07-30). Eso último es lo que la cerró: desde afuera no había señal que distinguiera el código
 > viejo del nuevo (`/health` responde igual y un token basura da 401 en ambos), así que "desplegado"
-> no era "arreglado". La **pieza B** (modo oscuro del portal por tokens semánticos) está
-> **construida y verificada en el navegador** en `feat/modo-oscuro-portal`, **sin mergear todavía**
+> no era "arreglado". La **pieza B** (modo oscuro del portal por tokens semánticos) está **cerrada:
+> mergeada a `main`**, y de paso el portal migró a Tailwind v4
 > ([spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) ·
-> [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)). Ver §5.3 y el
+> [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)). La **pieza C** (dashboard de
+> cartera) está **en curso** — esqueleto de shell + componentes sobre esos tokens, en
+> `feat/dashboard-ui-portal`
+> ([spec](../superpowers/specs/2026-07-30-dashboard-ui-portal-design.md) ·
+> [plan](../superpowers/plans/2026-07-30-dashboard-ui-portal.md)); el detalle task-by-task vive en
+> `.superpowers/sdd/progress.md`. La **Acción 06** (corrida final + republicar) también se cerró el
+> mismo día: research real contra producción, `kr.v0.5` publicado para La Birra Bar y **la duración
+> real medida por primera vez (16m15s)** — dato que desaconseja la pieza D tal como se había
+> imaginado (research en vivo durante la demo). Ver §5.3 y el
 > [estado y roadmap](09-estado-y-roadmap.md).
 
 ---
@@ -134,14 +143,14 @@ REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.us
 > página, editar —revoca—, aprobar run), **refresh del token** (401 → refresca y reintenta una vez;
 > si falla, al login), **polling** del research en curso (ADR-21) y las **carreras asincrónicas
 > cerradas** (`core/vigencia.ts`: una respuesta tardía no pisa la pantalla y no queda polling
-> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **87 tests
-> `node:test`**, sin navegador. La API ganó **CORS** para que el navegador pueda llamarla.
+> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **103 tests
+> `node:test`**, sin navegador, más **17 tests de componente (Karma)** para el DOM. La API ganó
+> **CORS** para que el navegador pueda llamarla.
 >
 > **Verificado en un navegador real** (`npm run dev:server -w api` levanta la API sobre PGlite):
 > el flujo entero, más la medición de que el polling **se detiene** al salir de la pantalla.
 >
-> **Falta:** tests de componente (karma) y calibrar el intervalo de polling (4 s, a ojo) con la
-> duración real de una corrida.
+> **Falta:** calibrar el intervalo de polling (4 s, a ojo) con la duración real de una corrida.
 
 **Stack cerrado en [ADR-21](../decisiones-arquitectura.md)** — las cuatro decisiones, para no
 reabrirlas a mitad de camino:
@@ -327,11 +336,11 @@ Todas con su ADR. Las que más condicionan lo que viene:
 
 | Qué | Dónde | Nota |
 |---|---|---|
-| **Acción 06 — corrida final** | [acciones/06](../acciones/06-corrida-final-demo.md) | ~$0.31. La demo publicada es anterior a kr.v0.5. |
+| ~~Acción 06 — corrida final~~ | [acciones/06](../acciones/06-corrida-final-demo.md) | ✅ **Hecha (2026-07-30)**, $0.3097. `kr.v0.5` publicado para La Birra Bar, verificado en el navegador. De paso midió la duración real del research (16m15s, ver fila siguiente) y cerró el gap de `DATABASE_URL_CACHE` (ADR-14) que la guía no pedía. |
 | ~~Migrar SERP + Search Volume a Standard~~ | `kr-service/src/dataforseo/` | ✅ **Hecho** (tandas 11-12): `task_post`/`task_get` con doble capa de recuperación. La 6ª review encontró 4 bugs en la primera versión; corregidos y mutation-tested. |
 | ~~Pieza A — verificación JWT ES256~~ | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | ✅ **Cerrada (2026-07-30).** Las 4 tareas, mergeadas y desplegadas, y el login verificado en el navegador. Ya no bloquea nada. |
 | ~~Pieza B — modo oscuro del portal~~ | [spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) · [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md) | ✅ **Mergeada a `main`** (Tarea 1 de la migración a Tailwind v4, esta misma sesión). Tokens semánticos (no `dark:`) para que la pieza C herede el tema por construcción. 21 tests nuevos: el contraste AA de 17 pares × 2 temas leído de `styles.css`, `TOKENS`/`styles.css` atados (incluido el bloque `@theme inline`, que reemplazó a `tailwind.config.js` cuando el portal migró a Tailwind v4), y un test que recorre `src/app` y prohíbe incrustar colores o usar la paleta cruda. |
-| **Cuánto tarda un research real** | — | **Nunca se midió.** Tengo el coste ($0.31), no la duración. Define la UX del portal **y decide si la pieza D (research en vivo en la demo) se hace**: a ~90 s es el mejor momento de la demo; a ~12 min, Frank mira un spinner. |
+| ~~Cuánto tarda un research real~~ | — | ✅ **Medido (2026-07-30): 16m15s** (55 keywords → 14 páginas, $0.3097), por encima del umbral de ~12 min. **Decisión:** la pieza D (research en vivo en la demo) queda desaconsejada tal como se imaginó — mostrarlo en vivo arriesga que Frank mire un spinner. Mejor correrlo antes (como acá) y mostrar el resultado publicado. El polling del portal (4s) sigue sin calibrar contra este número. |
 | Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
 | `is_local` se dispara de más | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo `LocalBusiness`. Ensucia el JSON-LD. |
 | `endpoints_degradados` incompleto | `meta_run` | Omite los fallos de suggestion/SERP. |
