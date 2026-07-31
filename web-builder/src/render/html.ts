@@ -5,6 +5,7 @@ import type {
   HeroBlok,
   Imagen,
   Location,
+  MenuItem,
   NavItem,
   PageContent,
   PostalAddress,
@@ -159,6 +160,115 @@ function homeLd(profile: BusinessProfile | null | undefined, url: string): unkno
   if (profile.image) entity.image = profile.image;
   if (profile.address) entity.address = postalAddressLd(profile.address);
   return entity;
+}
+
+/**
+ * La página `/menu`: la carta del negocio.
+ *
+ * **Sintetizada, igual que la home**: sale del perfil, no de una story ni del LLM. Un menú es una
+ * lista de producto con precio — no hay nada que "redactar", y generarlo por IA metería una fuente
+ * más de contenido que revisar en la compuerta humana (ADR-06). Si el cliente crea su propia story
+ * `menu` en Storyblok, esa gana: el renderizador la sirve y esta función no se invoca.
+ */
+export function renderMenu(
+  profile?: BusinessProfile | null,
+  languageCode = "es",
+  hayBlog = false,
+): string {
+  const lang = esc(languageCode);
+  const nombre = profile?.name ?? "Menú";
+  const items = profile?.menu ?? [];
+  const url = profile?.url ? `${profile.url.replace(/\/+$/, "")}/${SLUG_MENU}` : `/${SLUG_MENU}`;
+  const titulo = `Menú · ${nombre}`;
+
+  const grupos = agruparCarta(items);
+  const cuerpo = grupos.length
+    ? grupos.map(renderGrupoCarta).join("\n")
+    : `<p class="pending">La carta todavía no está cargada.</p>`;
+
+  return `<!doctype html>
+<html lang="${lang}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(titulo)}</title>
+<meta name="description" content="${esc(`La carta de ${nombre}.`)}">
+<link rel="canonical" href="${esc(url)}">
+<meta property="og:title" content="${esc(titulo)}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${esc(url)}">
+${items.length && profile ? `<script type="application/ld+json">\n${safeJson(menuLd(profile, url))}\n</script>` : ""}
+<style>${CSS}${themeCss(profile?.brand)}</style>
+</head>
+<body>
+${renderSiteHeader(profile, SLUG_MENU)}
+<main>
+<header class="hero">
+  <h1>${esc(titulo)}</h1>
+</header>
+${cuerpo}
+</main>
+${renderFooter(profile, "web.v0.1", "Menu", hayBlog)}
+</body>
+</html>`;
+}
+
+/** Agrupa la carta por categoría conservando el orden de aparición. Los sin categoría, al final. */
+function agruparCarta(items: MenuItem[]): Array<{ categoria: string | null; items: MenuItem[] }> {
+  const grupos = new Map<string, MenuItem[]>();
+  const sueltos: MenuItem[] = [];
+  for (const it of items) {
+    const cat = it.category?.trim();
+    if (!cat) {
+      sueltos.push(it);
+      continue;
+    }
+    const g = grupos.get(cat);
+    if (g) g.push(it);
+    else grupos.set(cat, [it]);
+  }
+  const salida: Array<{ categoria: string | null; items: MenuItem[] }> = [...grupos.entries()].map(
+    ([categoria, items]) => ({ categoria, items }),
+  );
+  if (sueltos.length) salida.push({ categoria: null, items: sueltos });
+  return salida;
+}
+
+function renderGrupoCarta(g: { categoria: string | null; items: MenuItem[] }): string {
+  const filas = g.items
+    .map((it) => {
+      const precio = it.price ? `<span class="precio">${esc(it.price)}</span>` : "";
+      const desc = it.description ? `<p class="desc">${esc(it.description)}</p>` : "";
+      return `  <li><div class="fila"><span class="nombre">${esc(it.name)}</span>${precio}</div>${desc}</li>`;
+    })
+    .join("\n");
+  return `<section class="carta">
+  ${g.categoria ? `<h2>${esc(g.categoria)}</h2>` : ""}
+  <ul class="items">
+${filas}
+  </ul>
+</section>`;
+}
+
+/** JSON-LD de la carta: `Menu` con una `MenuSection` por categoría. */
+function menuLd(profile: BusinessProfile, url: string): unknown {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Menu",
+    url,
+    name: `Menú · ${profile.name}`,
+    hasMenuSection: agruparCarta(profile.menu ?? []).map((g) => ({
+      "@type": "MenuSection",
+      ...(g.categoria ? { name: g.categoria } : {}),
+      hasMenuItem: g.items.map((it) => ({
+        "@type": "MenuItem",
+        name: it.name,
+        ...(it.description ? { description: it.description } : {}),
+        // `price` es texto libre: va como `Offer.price` sin inventar moneda ni parsear el número.
+        ...(it.price ? { offers: { "@type": "Offer", price: it.price } } : {}),
+      })),
+    })),
+  };
 }
 
 /** Los slugs de las páginas que sintetiza el renderizador (no viven en Storyblok salvo que el cliente las cree). */
@@ -539,6 +649,13 @@ img{max-width:100%;height:auto}
 .card{display:block;text-decoration:none;color:var(--fg);border:1px solid #e7e5e0;border-radius:12px;padding:20px;transition:border-color .15s,transform .15s}
 .card:hover{border-color:var(--accent);transform:translateY(-2px)}
 .card h3{margin:0;font-size:1.1rem;letter-spacing:-.01em}
+.carta{padding:24px 0;border-bottom:1px solid #f0f0f0}
+.carta .items{list-style:none;margin:0;padding:0}
+.carta li{padding:10px 0;border-bottom:1px solid #f5f4f2}
+.carta .fila{display:flex;justify-content:space-between;gap:16px;align-items:baseline}
+.carta .nombre{font-weight:600}
+.carta .precio{color:var(--accent);font-weight:600;white-space:nowrap}
+.carta .desc{margin:4px 0 0;color:var(--muted);font-size:.95rem}
 main{max-width:760px;margin:0 auto;padding:0 20px}
 .hero{padding:48px 0 40px;border-bottom:1px solid #eee}
 .hero.has-img{padding-top:24px}

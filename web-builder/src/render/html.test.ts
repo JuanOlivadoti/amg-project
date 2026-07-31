@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderHome, renderStory } from "./html.js";
+import { renderHome, renderMenu, renderStory } from "./html.js";
 import { pageToStory } from "../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../fixtures.js";
 import type { NavItem } from "../types.js";
@@ -159,7 +159,60 @@ test("nav: sin locales ni dirección no hay enlace a Ubicaciones", () => {
   assert.ok(!html.includes(">Ubicaciones<"));
 });
 
-// El test de aria-current con `renderMenu` llega en la Task 4 (ahí existe la función).
+test("nav: el link a Menú lleva aria-current en la propia página /menu", () => {
+  const perfil = validProfile({ menu: [{ name: "Golden Burger" }] });
+  const html = renderMenu(perfil, "es");
+  assert.match(html, /<a href="\/menu" class="activo" aria-current="page">Menú<\/a>/);
+});
+
+// ---------------------------------------------------------------- la página /menu
+
+test("menu: agrupa la carta por categoría, en orden de aparición", () => {
+  const perfil = validProfile({
+    menu: [
+      { category: "Hamburguesas", name: "Golden Burger", description: "La insignia", price: "12,50 €" },
+      { category: "Cervezas", name: "Ale" },
+      { category: "Hamburguesas", name: "Clásica" },
+    ],
+  });
+  const html = renderMenu(perfil, "es");
+  assert.match(html, /Hamburguesas/);
+  assert.match(html, /Golden Burger/);
+  assert.match(html, /12,50 €/);
+  assert.match(html, /Cervezas/);
+  assert.match(html, /Ale/);
+  // Las dos hamburguesas van juntas, antes de Cervezas.
+  assert.ok(html.indexOf("Clásica") < html.indexOf("Cervezas"));
+});
+
+test("menu: los ítems sin categoría van juntos al final", () => {
+  const perfil = validProfile({
+    menu: [{ name: "Suelto" }, { category: "Cervezas", name: "Ale" }],
+  });
+  const html = renderMenu(perfil, "es");
+  assert.ok(html.indexOf("Ale") < html.indexOf("Suelto"));
+});
+
+test("menu: JSON-LD Menu con sus secciones", () => {
+  const perfil = validProfile({ menu: [{ category: "Cervezas", name: "Ale", price: "5 €" }] });
+  const ld = JSON.parse(renderMenu(perfil, "es").split('<script type="application/ld+json">')[1]!.split("</script>")[0]!);
+  assert.equal(ld["@type"], "Menu");
+  assert.equal(ld.hasMenuSection[0]["@type"], "MenuSection");
+  assert.equal(ld.hasMenuSection[0].hasMenuItem[0].name, "Ale");
+});
+
+test("🔴 menu: el nombre y el precio de un ítem se escapan", () => {
+  const perfil = validProfile({ menu: [{ name: "<script>alert(1)</script>", price: '"><b>' }] });
+  const html = renderMenu(perfil, "es");
+  assert.ok(!html.includes("<script>alert(1)</script>"));
+  assert.ok(!html.includes('"><b>'));
+});
+
+test("menu: sin carta, la página no promete nada (no rompe)", () => {
+  const html = renderMenu(validProfile(), "es");
+  assert.match(html, /<h1>/);
+  assert.ok(!html.includes("<script type=\"application/ld+json\">\n{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"Menu\",\n  \"hasMenuSection\": []"));
+});
 
 // ---------------------------------------------------------------- home sintetizada
 
