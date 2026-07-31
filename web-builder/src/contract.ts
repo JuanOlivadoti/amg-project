@@ -97,9 +97,25 @@ export function parseBrief(raw: unknown): KrBrief {
 const postalAddressSchema = z.object({
   streetAddress: z.string(),
   addressLocality: z.string(),
-  postalCode: z.string(),
+  // Opcional: ver el comentario en `PostalAddress`. Un código postal inventado es peor que ninguno.
+  postalCode: z.string().optional(),
   addressRegion: z.string().optional(),
   addressCountry: z.string().optional(),
+});
+
+const locationSchema = z.object({
+  name: z.string().optional(),
+  address: postalAddressSchema.optional(),
+  telephone: z.string().optional(),
+  opening_hours: z.string().optional(),
+});
+
+/** `name` es lo único obligatorio: un ítem de carta sin nombre no se puede mostrar. */
+const menuItemSchema = z.object({
+  category: z.string().optional(),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  price: z.string().optional(),
 });
 
 /**
@@ -133,6 +149,8 @@ const businessProfileSchema = z.object({
   image: z.string().url().optional(),
   address: postalAddressSchema.optional(),
   opening_hours: z.string().optional(),
+  locations: z.array(locationSchema).optional(),
+  menu: z.array(menuItemSchema).optional(),
   brand: brandSchema.optional(),
 });
 

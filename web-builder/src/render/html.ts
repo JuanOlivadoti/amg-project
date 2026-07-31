@@ -298,7 +298,7 @@ function resolveCanonical(canonical: string, profile?: BusinessProfile | null): 
 
 function renderContact(p: BusinessProfile): string {
   const addr = p.address
-    ? `${esc(p.address.streetAddress)}, ${esc(p.address.postalCode)} ${esc(p.address.addressLocality)}`
+    ? `${esc(p.address.streetAddress)}${p.address.postalCode ? `, ${esc(p.address.postalCode)}` : ""} ${esc(p.address.addressLocality)}`
     : "";
   return `<section class="contacto" id="contacto">
   <h2>Contacto</h2>
@@ -397,7 +397,7 @@ function postalAddressLd(address: PostalAddress): Record<string, unknown> {
     "@type": "PostalAddress",
     streetAddress: address.streetAddress,
     addressLocality: address.addressLocality,
-    postalCode: address.postalCode,
+    ...(address.postalCode ? { postalCode: address.postalCode } : {}),
     ...(address.addressRegion ? { addressRegion: address.addressRegion } : {}),
     ...(address.addressCountry ? { addressCountry: address.addressCountry } : {}),
   };

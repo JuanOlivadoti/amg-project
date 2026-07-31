@@ -51,3 +51,36 @@ test("🔴 parseProfile: rechaza una fuente fuera de la allowlist", () => {
 test("🔴 parseProfile: rechaza un logo que no es URL", () => {
   assert.throws(() => parseProfile(validProfile({ brand: { logo: "javascript:alert(1)" } as never })), /inválido/);
 });
+
+test("perfil: acepta varios locales y una carta", () => {
+  const p = parseProfile({
+    name: "La Birra Bar",
+    locations: [
+      {
+        name: "Centro",
+        address: { streetAddress: "Carrera de San Jerónimo 3", addressLocality: "Madrid" },
+        opening_hours: "Lun-Dom 11:00-01:00",
+      },
+    ],
+    menu: [{ category: "Hamburguesas", name: "Golden Burger", price: "12,50 €" }],
+  });
+  assert.equal(p.locations?.length, 1);
+  assert.equal(p.locations?.[0]?.name, "Centro");
+  assert.equal(p.menu?.[0]?.name, "Golden Burger");
+});
+
+test("perfil: una dirección sin código postal es válida (no se inventa el dato)", () => {
+  const p = parseProfile({
+    name: "La Birra Bar",
+    address: { streetAddress: "Carrera de San Jerónimo 3", addressLocality: "Madrid" },
+  });
+  assert.equal(p.address?.postalCode, undefined);
+  assert.equal(p.address?.streetAddress, "Carrera de San Jerónimo 3");
+});
+
+test("🔴 perfil: un ítem de la carta sin nombre no pasa la puerta", () => {
+  assert.throws(
+    () => parseProfile({ name: "X", menu: [{ price: "10 €" }] }),
+    /business-profile\.json inválido/,
+  );
+});

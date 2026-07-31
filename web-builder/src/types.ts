@@ -170,9 +170,43 @@ export interface NavItem {
 export interface PostalAddress {
   streetAddress: string;
   addressLocality: string;
-  postalCode: string;
+  /**
+   * Opcional a propósito: muchos negocios publican calle y ciudad, y nada más. Exigirlo obligaba a
+   * inventarse un código postal para poder cargar el local — y un dato inventado en el JSON-LD es
+   * peor que un dato ausente (misma decisión que el `null` de las métricas en kr.v0.4).
+   */
+  postalCode?: string;
   addressRegion?: string;
   addressCountry?: string; // ISO-3166-1 alpha-2
+}
+
+/**
+ * Un local del negocio. Un restaurante puede tener varios y cada uno tiene su dirección y su horario.
+ *
+ * El perfil "clásico" (`address`/`telephone`/`opening_hours` sueltos en el `BusinessProfile`)
+ * describe UN local y se sigue soportando: si no hay `locations`, el footer sintetiza uno con esos
+ * campos. Por eso todo acá es opcional — un local que solo aporta horario sigue siendo útil.
+ */
+export interface Location {
+  /** Nombre del local ("Centro", "Salamanca"). Es lo que distingue uno de otro cuando hay varios. */
+  name?: string;
+  address?: PostalAddress;
+  telephone?: string;
+  opening_hours?: string;
+}
+
+/**
+ * Un ítem de la carta.
+ *
+ * `price` es **texto libre** a propósito ("12,50 €", "s/ mercado"): tipificarlo como número obligaría
+ * a decidir moneda y formato acá, y lo único que hace falta es imprimir lo que escribió el cliente.
+ */
+export interface MenuItem {
+  /** Agrupador ("Hamburguesas", "Cervezas"). Los ítems sin categoría se muestran juntos, al final. */
+  category?: string;
+  name: string;
+  description?: string;
+  price?: string;
 }
 
 /**
@@ -190,6 +224,13 @@ export interface BusinessProfile {
   address?: PostalAddress;
   /** Horario en texto libre (ej. "Lun-Dom 13:00-16:00, 20:00-23:30"). */
   opening_hours?: string;
+  /**
+   * Los locales del negocio. Si está presente, MANDA sobre `address`/`telephone`/`opening_hours`
+   * para el footer: un negocio multi-local no puede describirse con una sola dirección suelta.
+   */
+  locations?: Location[];
+  /** La carta. Si tiene ítems, el nav muestra "Menú" y `/menu` se sirve. */
+  menu?: MenuItem[];
   /** Marca del negocio: lo que hace que su web se vea PROPIA y no idéntica a la del vecino. */
   brand?: BrandTheme;
 }
