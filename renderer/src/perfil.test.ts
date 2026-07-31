@@ -41,10 +41,60 @@ describe("perfilValido", () => {
     assert.equal(p?.address, undefined, "media dirección es peor que ninguna");
   });
 
-  it("🔴 una dirección a la que le falta una parte se descarta entera", () => {
-    // `renderContact()` lee las tres SIN comprobar. Si falta una, imprime `undefined`, o lanza.
+  it("🔴 una dirección a la que le falta calle o ciudad se descarta entera", () => {
+    // Calle y ciudad siguen siendo obligatorias: `renderContact()` las da por hechas. El código
+    // postal ya no (ver `direccion()`), así que la parte que puede faltar acá es la ciudad.
     const p = perfilValido({ name: "N", address: { streetAddress: "Calle Mayor 1" } });
     assert.equal(p?.address, undefined);
+  });
+
+  it("una dirección sin código postal ya es válida (calle + ciudad alcanzan)", () => {
+    const p = perfilValido({
+      name: "X",
+      address: { streetAddress: "San Jerónimo 3", addressLocality: "Madrid" },
+    });
+    assert.equal(p?.address?.streetAddress, "San Jerónimo 3");
+    assert.equal(p?.address?.postalCode, undefined);
+  });
+
+  it("🔴 una dirección sin calle sigue descartándose entera", () => {
+    const p = perfilValido({ name: "X", address: { addressLocality: "Madrid" } });
+    assert.equal(p?.address, undefined);
+  });
+
+  it("🔴 los locales sobreviven al validador y llegan al render", () => {
+    const p = perfilValido({
+      name: "La Birra Bar",
+      locations: [
+        { name: "Centro", address: { streetAddress: "San Jerónimo 3", addressLocality: "Madrid" } },
+        { name: "Salamanca", opening_hours: "hasta la 01:00" },
+      ],
+    });
+    assert.equal(p?.locations?.length, 2);
+    assert.equal(p?.locations?.[0]?.name, "Centro");
+  });
+
+  it("🔴 la carta sobrevive al validador", () => {
+    const p = perfilValido({ name: "X", menu: [{ category: "Cervezas", name: "Ale", price: "5 €" }] });
+    assert.equal(p?.menu?.[0]?.name, "Ale");
+    assert.equal(p?.menu?.[0]?.price, "5 €");
+  });
+
+  it("🔴 un ítem de carta sin nombre se descarta (no se puede mostrar)", () => {
+    const p = perfilValido({ name: "X", menu: [{ price: "5 €" }, { name: "Ale" }] });
+    assert.equal(p?.menu?.length, 1);
+    assert.equal(p?.menu?.[0]?.name, "Ale");
+  });
+
+  it("🔴 un local sin ningún dato usable se descarta", () => {
+    const p = perfilValido({ name: "X", locations: [{ name: "Vacío" }, { opening_hours: "11:00" }] });
+    assert.equal(p?.locations?.length, 1);
+  });
+
+  it("🔴 una lista hostilmente larga se acota (la columna jsonb no la valida nadie)", () => {
+    const menu = Array.from({ length: 500 }, (_, i) => ({ name: `Item ${i}` }));
+    const p = perfilValido({ name: "X", menu });
+    assert.ok((p?.menu?.length ?? 0) <= 200);
   });
 });
 
