@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
 import { MemSitios, type Sitio } from "db";
-import type { Story } from "web-builder";
+import type { BusinessProfile, Story } from "web-builder";
 import { createApp } from "./app.js";
 import { CacheRender } from "./cache.js";
 import { ErrorCda, MockCda } from "./cda.js";
@@ -72,21 +72,38 @@ const sitioB: Sitio = {
   languageCode: "es",
 };
 
-function montar(over: Partial<Parameters<typeof createApp>[0]> = {}) {
+/**
+ * El perfil por defecto de `sitioA` en los tests: trae `menu`, así que `/menu` sintetiza sin que cada
+ * test tenga que fijar un perfil propio (Task 8: sin story real, se sintetiza desde el perfil).
+ *
+ * Las stories `menu`/`home` de `pub-111` YA NO vienen precargadas por defecto: con la síntesis, "hay
+ * una story real" es precisamente lo que cada test de contenido tiene que declarar explícito con
+ * `cda.poner(...)`, no algo que un fixture compartido decida por todos.
+ */
+const PERFIL_DEFECTO: BusinessProfile = {
+  name: "Trattoria Bella Napoli",
+  menu: [{ name: "Golden Burger", price: "9,50 €" }],
+};
+
+function montar(
+  over: Partial<Parameters<typeof createApp>[0]> & { perfil?: BusinessProfile | null } = {},
+) {
+  const { perfil, ...overDeps } = over;
   const cda = new MockCda();
-  cda.poner("pub-111", "published", "menu", story("La carta"));
-  cda.poner("pub-111", "published", "home", story("Trattoria Bella Napoli", { slug: "home" }));
   cda.poner("prv-111", "draft", "menu", story("La carta BORRADOR"));
   cda.poner("pub-222", "published", "menu", story("Sushi Zen"));
 
   const cache = new CacheRender();
   const app = createApp({
-    sitios: new MemSitios([sitioA, sitioB]),
+    sitios: new MemSitios([
+      { ...sitioA, businessProfile: perfil === undefined ? PERFIL_DEFECTO : perfil },
+      sitioB,
+    ]),
     cda,
     cache,
     webhookSecret: WEBHOOK_SECRET,
     previewSecret: PREVIEW_SECRET,
-    ...over,
+    ...overDeps,
   });
   return { app, cda, cache };
 }
@@ -98,7 +115,8 @@ const pedir = (app: ReturnType<typeof createApp>, path: string, host: string, he
 
 describe("renderizador — servir la web del cliente", () => {
   it("sirve la página del dominio, renderizada", async () => {
-    const { app } = montar();
+    const { app, cda } = montar();
+    cda.poner("pub-111", "published", "menu", story("La carta"));
     const res = await pedir(app, "/menu", "bellanapoli.es");
 
     assert.equal(res.status, 200);
@@ -119,6 +137,7 @@ describe("renderizador — servir la web del cliente", () => {
     // Es el corazón de "1 servicio, N dominios". Si esto se cruza, un restaurante muestra el menú
     // de otro — la fuga de 0006, del lado de la lectura.
     const { app, cda } = montar();
+    cda.poner("pub-111", "published", "menu", story("La carta"));
 
     const a = await (await pedir(app, "/menu", "bellanapoli.es")).text();
     const b = await (await pedir(app, "/menu", "sushizen.es")).text();
@@ -173,7 +192,8 @@ describe("renderizador — servir la web del cliente", () => {
   });
 
   it("🔴 no confía en X-Forwarded-Host por defecto", async () => {
-    const { app } = montar();
+    const { app, cda } = montar();
+    cda.poner("pub-111", "published", "menu", story("La carta"));
     const res = await pedir(app, "/menu", "bellanapoli.es", { "x-forwarded-host": "sushizen.es" });
 
     assert.match(await res.text(), /<h1>La carta<\/h1>/, "la cabecera del atacante no elige el sitio");
@@ -253,7 +273,8 @@ describe("renderizador — cache", () => {
   });
 
   it("🔴 un webhook del space 222 NO vacía la cache del 111", async () => {
-    const { app, cache } = montar();
+    const { app, cache, cda } = montar();
+    cda.poner("pub-111", "published", "menu", story("La carta"));
     await pedir(app, "/menu", "bellanapoli.es");
     await pedir(app, "/menu", "sushizen.es");
     assert.equal(cache.tamano, 2);
@@ -280,7 +301,9 @@ describe("renderizador — cache", () => {
         return d === "bellanapoli.es" ? sitioA : null;
       },
     };
-    const app = createApp({ sitios: sitiosLentos, cda: montar().cda, cache: new CacheRender() });
+    const cdaLenta = montar().cda;
+    cdaLenta.poner("pub-111", "published", "menu", story("La carta"));
+    const app = createApp({ sitios: sitiosLentos, cda: cdaLenta, cache: new CacheRender() });
 
     assert.equal((await pedir(app, "/menu", "bellanapoli.es")).status, 200);
     colgada = true;
@@ -412,15 +435,14 @@ describe("renderizador — cache", () => {
 
 describe("renderizador — navegación entre páginas", () => {
   it("una página normal sale con la barra de navegación del sitio", async () => {
-    const { app, cda } = montar();
-    cda.ponerNav("pub-111", "published", [
-      { slug: "menu", name: "La carta" },
-      { slug: "reservas", name: "Reservas" },
-    ]);
+    // La barra ya NO lista páginas publicadas (eso hacía `ponerNav`, Links API): son las SECCIONES
+    // del sitio derivadas del perfil (Task 2). `Inicio` y `Menú` salen del perfil, no de Storyblok.
+    const { app } = montar();
     const html = await (await pedir(app, "/menu", "bellanapoli.es")).text();
 
     assert.match(html, /<nav class="nav"/, "la página lleva la barra del sitio");
-    assert.match(html, /href="\/reservas"[^>]*>Reservas<\/a>/, "enlaza a las otras páginas");
+    assert.match(html, /href="\/"[^>]*>Inicio<\/a>/, "la sección Inicio");
+    assert.match(html, /href="\/menu"[^>]*>Menú<\/a>/, "la sección Menú, presente porque el perfil trae carta");
   });
 
   it("🔴 si la nav falla, la página se sirve igual — sin barra, no 503", async () => {
@@ -472,11 +494,69 @@ describe("renderizador — navegación entre páginas", () => {
   });
 });
 
+// ------------------------------------------------------------------ /menu y /blog sintetizados
+
+describe("renderizador — /menu y /blog", () => {
+  it("🔴 sirve /menu sintetizado desde el perfil cuando no hay story `menu`", async () => {
+    const { app, cda } = montar();
+    cda.poner("pub-111", "published", "carta-x", story("Otra"));
+    const res = await pedir(app, "/menu", "bellanapoli.es");
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.match(html, /Golden Burger/);
+  });
+
+  it("una story `menu` publicada GANA sobre la síntesis", async () => {
+    const { app, cda } = montar();
+    cda.poner("pub-111", "published", "menu", story("La carta del chef", { slug: "menu" }));
+    const res = await pedir(app, "/menu", "bellanapoli.es");
+    assert.match(await res.text(), /La carta del chef/);
+  });
+
+  it("🔴 sin carta en el perfil, /menu es 404 (no una página vacía)", async () => {
+    const { app } = montar({ perfil: { name: "Sin carta" } });
+    assert.equal((await pedir(app, "/menu", "bellanapoli.es")).status, 404);
+  });
+
+  it("🔴 sirve /blog con los artículos del space", async () => {
+    const { app, cda } = montar();
+    cda.ponerBlog("pub-111", "published", [{ slug: "miami", name: "Premiados en Miami" }]);
+    const res = await pedir(app, "/blog", "bellanapoli.es");
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /Premiados en Miami/);
+  });
+
+  it("🔴 sin artículos, /blog es 404", async () => {
+    const { app } = montar();
+    assert.equal((await pedir(app, "/blog", "bellanapoli.es")).status, 404);
+  });
+
+  it("🔴 si traerBlog falla, la página se sirve igual (sin enlace al blog), nunca 503", async () => {
+    const { app, cda } = montar();
+    cda.traerBlog = async () => {
+      throw new Error("Storyblok caído");
+    };
+    const res = await pedir(app, "/", "bellanapoli.es");
+    assert.equal(res.status, 200);
+    assert.ok(!(await res.text()).includes('href="/blog"'));
+  });
+
+  it("el índice de la home NO repite los artículos que ya están en /blog", async () => {
+    const { app, cda } = montar();
+    cda.poner("pub-111", "published", "miami", story("Premiados en Miami", { slug: "miami" }));
+    cda.ponerBlog("pub-111", "published", [{ slug: "miami", name: "Premiados en Miami" }]);
+    const html = await (await pedir(app, "/", "bellanapoli.es")).text();
+    const indice = html.slice(html.indexOf('class="indice"'), html.indexOf("</main>"));
+    assert.ok(!indice.includes('href="/miami"'));
+  });
+});
+
 // ------------------------------------------------------------------ la raíz del dominio (home)
 
 describe("renderizador — la home", () => {
   it("con story `home` publicada, la raíz sirve esa story", async () => {
     const { app, cda } = montar();
+    cda.poner("pub-111", "published", "home", story("Trattoria Bella Napoli", { slug: "home" }));
     const res = await pedir(app, "/", "bellanapoli.es");
 
     assert.equal(res.status, 200);
@@ -487,14 +567,17 @@ describe("renderizador — la home", () => {
   it("🔴 sin story `home`, la raíz sintetiza un índice — no da 404", async () => {
     // Las páginas del pipeline son landings aisladas: sin esto, la raíz de un dominio recién
     // publicado da 404. La home sintetizada cubre ese hueco con el índice de las páginas.
+    //
+    // `reservas` y no `menu`: desde Task 8 el índice EXCLUYE `menu` (y `blog`), porque esas dos ya
+    // tienen su propio lugar en la barra/el pie — listarlas también en el índice sería duplicarlas.
     const { app, cda } = montar();
-    cda.ponerNav("pub-222", "published", [{ slug: "menu", name: "La carta" }]);
+    cda.ponerNav("pub-222", "published", [{ slug: "reservas", name: "Reservas" }]);
     const res = await pedir(app, "/", "sushizen.es"); // sitioB no tiene story `home`
 
     assert.equal(res.status, 200, "la raíz de un dominio válido nunca es 404");
     const html = await res.text();
     assert.match(html, /^<!doctype html>/, "es una página completa");
-    assert.match(html, /class="card" href="\/menu"/, "con el índice de las páginas publicadas");
+    assert.match(html, /class="card" href="\/reservas"/, "con el índice de las páginas publicadas");
   });
 
   it("la home sintetizada se sirve desde cache en la segunda visita", async () => {

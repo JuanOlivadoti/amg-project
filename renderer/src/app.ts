@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { SitioResolver, Sitio } from "db";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { renderHome, renderStory } from "web-builder";
+import { renderBlogIndex, renderHome, renderMenu, renderStory } from "web-builder";
 import type { NavItem } from "web-builder";
 import { ErrorCda, type Cda } from "./cda.js";
 import { CacheRender } from "./cache.js";
@@ -51,6 +51,10 @@ export interface RendererDeps {
 /** El slug que se sirve cuando alguien entra a la raíz del dominio. */
 const SLUG_HOME = "home";
 
+/** Los otros dos slugs que el renderizador sabe sintetizar. Una story real con ese slug siempre gana. */
+const SLUG_MENU = "menu";
+const SLUG_BLOG = "blog";
+
 /**
  * Tope del cuerpo del webhook: 256 KB. Un evento de Storyblok pesa menos de 1 KB.
  *
@@ -93,6 +97,10 @@ export function createApp(deps: RendererDeps) {
   const navCache = new Map<string, { items: NavItem[]; hasta: number }>();
   const TTL_NAV_MS = 60_000;
 
+  /** Los artículos del space, cacheados como la nav: se hornean en el HTML, esto cubre el render. */
+  const blogCache = new Map<string, { items: NavItem[]; hasta: number }>();
+  const coalescerBlog = new Coalescedor<NavItem[]>();
+
   /**
    * La nav del sitio, con degradación a "sin barra" ante cualquier fallo.
    *
@@ -126,6 +134,38 @@ export function createApp(deps: RendererDeps) {
       return items;
     } catch (e) {
       console.warn(`[renderer] nav de ${sitio.domain}: ${(e as Error).message} — se sirve sin barra`);
+      return [];
+    }
+  }
+
+  /**
+   * Los artículos del sitio, con degradación a "sin blog" ante cualquier fallo.
+   *
+   * **Nunca 503 por el blog**, por la misma razón que la nav: es un enhancement. Si la CDA falla, se
+   * rompe o el `Cda` ni implementa `traerBlog`, la página se sirve sin el enlace del pie.
+   */
+  async function blogDe(sitio: Sitio, esPreview: boolean): Promise<NavItem[]> {
+    if (!deps.cda.traerBlog || !sitio.spaceId) return [];
+    const token = esPreview ? sitio.previewToken : sitio.publicToken;
+    if (!token) return [];
+
+    if (!esPreview) {
+      const guardado = blogCache.get(sitio.spaceId);
+      if (guardado && guardado.hasta > Date.now()) return guardado.items;
+    }
+
+    try {
+      const traer = () =>
+        deps.cda.traerBlog!({
+          token,
+          version: esPreview ? "draft" : "published",
+          ...(esPreview ? { cacheVersion: `${Date.now()}` } : {}),
+        });
+      const items = esPreview ? await traer() : await coalescerBlog.hacer(`blog:${sitio.spaceId}`, traer);
+      if (!esPreview) blogCache.set(sitio.spaceId, { items, hasta: Date.now() + TTL_NAV_MS });
+      return items;
+    } catch (e) {
+      console.warn(`[renderer] blog de ${sitio.domain}: ${(e as Error).message} — se sirve sin enlace`);
       return [];
     }
   }
@@ -222,6 +262,8 @@ export function createApp(deps: RendererDeps) {
     faltantes.olvidarTodo();
     // Y una página nueva tiene que aparecer en la barra: la nav cacheada del space ya no vale.
     navCache.delete(`${spaceId}`);
+    // Un artículo nuevo tiene que aparecer en /blog y en el enlace del pie.
+    blogCache.delete(`${spaceId}`);
     return c.json({ ok: true, invalidadas });
   });
 
@@ -277,9 +319,9 @@ export function createApp(deps: RendererDeps) {
       );
 
       async function traer(): Promise<string | null> {
-        // La story y la nav se piden en paralelo: la nav es no-fatal (navDe degrada a []), así que no
-        // suma un modo de fallo, solo trabajo simultáneo dentro del mismo cupo del semáforo.
-        const [story, nav] = await Promise.all([
+        // Story, nav y blog en paralelo: los dos últimos son no-fatales (degradan a []), así que no
+        // suman modos de fallo, solo trabajo simultáneo dentro del mismo cupo del semáforo.
+        const [story, nav, blog] = await Promise.all([
           deps.cda.traerStory({
             slug,
             token: token as string,
@@ -287,25 +329,34 @@ export function createApp(deps: RendererDeps) {
             ...(esPreview ? { cacheVersion: `${Date.now()}` } : {}),
           }),
           navDe(sitio!, esPreview),
+          blogDe(sitio!, esPreview),
         ]);
 
-        // La home es el logo, no una entrada de la barra: se saca de la nav visible.
-        const navVisible = nav.filter((n) => n.slug !== SLUG_HOME);
         const perfil = perfilValido(sitio!.businessProfile);
+        const hayBlog = blog.length > 0;
+        const conBridge = (html: string) =>
+          esPreview ? html.replace("</body>", `${scriptBridge()}</body>`) : html;
 
-        // La raíz de un dominio válido NUNCA es 404: si no hay story `home` publicada, se sintetiza un
-        // índice de las páginas (ver renderHome). Cualquier otro slug ausente sí es un 404 legítimo.
-        if (!story) {
-          if (slug !== SLUG_HOME) return null;
-          const home = renderHome(perfil, navVisible, sitio!.languageCode);
-          return esPreview ? home.replace("</body>", `${scriptBridge()}</body>`) : home;
+        if (story) return conBridge(renderStory(story, perfil, sitio!.languageCode, hayBlog));
+
+        // Sin story: las tres páginas que el renderizador sabe sintetizar. Cualquier otro slug
+        // ausente es un 404 legítimo.
+        if (slug === SLUG_HOME) {
+          // El índice de la home son las landings de research: la home no se lista a sí misma, y los
+          // artículos viven en /blog (si estuvieran también acá, cada post aparecería dos veces).
+          const slugsBlog = new Set(blog.map((b) => b.slug));
+          const indice = nav.filter(
+            (n) => n.slug !== SLUG_HOME && n.slug !== SLUG_BLOG && n.slug !== SLUG_MENU && !slugsBlog.has(n.slug),
+          );
+          return conBridge(renderHome(perfil, indice, sitio!.languageCode, hayBlog));
         }
-
-        // TODO(Task 8): `hayBlog` debe salir de si existen páginas /blog reales (`blogDe()`); el
-        // renderizador todavía no las sirve, así que por ahora nunca hay enlace al blog (antes esto
-        // pasaba `navVisible`, un NavItem[] incompatible con la firma que dejó la Task 2 — no compilaba).
-        const salida = renderStory(story, perfil, sitio!.languageCode, false);
-        return esPreview ? salida.replace("</body>", `${scriptBridge()}</body>`) : salida;
+        if (slug === SLUG_MENU && perfil?.menu?.length) {
+          return conBridge(renderMenu(perfil, sitio!.languageCode, hayBlog));
+        }
+        if (slug === SLUG_BLOG && hayBlog) {
+          return conBridge(renderBlogIndex(perfil, blog, sitio!.languageCode));
+        }
+        return null;
       }
     } catch (e) {
       if (e instanceof Saturado) {
