@@ -259,6 +259,94 @@ describe("Las garantías que estaban escritas y no impuestas (10ª review)", () 
     assert.equal(brand["logo"], "https://cdn.ej/l.png");
     assert.equal(brand["margen_secreto"], undefined, "un campo privado escondido en brand NO pasa");
   });
+
+  it("🔴 0010 — LOCATIONS y MENU pasan la allowlist, con su propia sub-allowlist", async () => {
+    // La navegación del sitio (footer NAP multi-local + /menu) necesita estas dos claves nuevas del
+    // perfil. Sin la 0010, Postgres las descarta ANTES de que renderer/perfil.ts (Task 6) las vea —
+    // el mismo modo de fallo que ya tuvo `brand` (0009). Cada location/item de menu trae además un
+    // campo privado propio, para probar que la sub-allowlist se aplica DENTRO de cada elemento del
+    // array, no solo al array en sí.
+    await db.asService(
+      `update clients set domain = 'ubicaciones.es', storyblok_space_id = 'SB-UBIC',
+                          business_profile = $2::jsonb where id = $1`,
+      [
+        s.clientA2,
+        JSON.stringify({
+          name: "La Birra Bar",
+          locations: [
+            {
+              name: "Centro",
+              address: { streetAddress: "San Jerónimo 3", addressLocality: "Madrid" },
+              telephone: "+34 910 111 222",
+              opening_hours: "L-D 12:00-00:00",
+              codigo_pos_interno: "no debería salir",
+            },
+          ],
+          menu: [
+            {
+              category: "Hamburguesas",
+              name: "Golden Burger",
+              description: "Con cheddar y bacon",
+              price: "12,50 €",
+              costo_interno: "4,10 €",
+            },
+          ],
+        }),
+      ],
+    );
+
+    const [fila] = await db.asRender<{
+      p: { locations?: Record<string, unknown>[]; menu?: Record<string, unknown>[] };
+    }>("select business_profile_publico as p from clients where domain = 'ubicaciones.es'");
+    const perfil = fila?.p ?? {};
+
+    assert.deepEqual(perfil.locations, [
+      {
+        name: "Centro",
+        address: { streetAddress: "San Jerónimo 3", addressLocality: "Madrid" },
+        telephone: "+34 910 111 222",
+        opening_hours: "L-D 12:00-00:00",
+      },
+    ]);
+    assert.deepEqual(perfil.menu, [
+      {
+        category: "Hamburguesas",
+        name: "Golden Burger",
+        description: "Con cheddar y bacon",
+        price: "12,50 €",
+      },
+    ]);
+  });
+
+  it("🔴 0010 — defensa en profundidad: una clave no listada NO pasa, ni junto a locations/menu", async () => {
+    // Mismo espíritu que el test de `notas_internas` (#8) y el de `margen_secreto` (0009), aplicado
+    // a este cambio: agregar `locations`/`menu` a la allowlist no puede abrir la puerta a cualquier
+    // otra clave del perfil.
+    await db.asService(
+      `update clients set domain = 'cartasecreta.es', storyblok_space_id = 'SB-CARTA',
+                          business_profile = $2::jsonb where id = $1`,
+      [
+        s.clientA2,
+        JSON.stringify({
+          name: "X",
+          secreto_interno: "no debería salir",
+          menu: [{ category: "Bebidas", name: "Agua", price: "2 €" }],
+        }),
+      ],
+    );
+
+    const [fila] = await db.asRender<{ p: Record<string, unknown> }>(
+      "select business_profile_publico as p from clients where domain = 'cartasecreta.es'",
+    );
+    const perfil = fila?.p ?? {};
+
+    assert.equal(
+      perfil["secreto_interno"],
+      undefined,
+      "una clave no listada no pasa aunque haya menu al lado",
+    );
+    assert.deepEqual(perfil["menu"], [{ category: "Bebidas", name: "Agua", price: "2 €" }]);
+  });
 });
 
 describe("MemSitios", () => {
