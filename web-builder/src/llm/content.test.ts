@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reconcile, type ProseInput } from "./content.js";
+import { reconcile, buildUserPrompt, type ProseInput } from "./content.js";
 
 const input = (): ProseInput => ({
   businessContext: "Trattoria",
@@ -48,4 +48,34 @@ test("#8 reconcile: siempre devuelve una entrada por cada heading/question de en
   );
   assert.equal(r.faqs.length, 1);
   assert.ok(r.faqs[0]!.answer.length > 0);
+});
+
+test("buildUserPrompt: con dirección sin postalCode, el prompt NO contiene 'undefined'", () => {
+  const inp = input();
+  inp.profile = {
+    name: "La Birra Bar",
+    address: { streetAddress: "Carrera de San Jerónimo 3", addressLocality: "Madrid" },
+  };
+  const prompt = buildUserPrompt(inp);
+  assert.ok(!prompt.includes("undefined"), "El prompt NO debe contener la palabra 'undefined'");
+  assert.ok(prompt.includes("Ubicación: Carrera de San Jerónimo 3, Madrid"), "Debe incluir calle y ciudad sin paréntesis");
+  assert.ok(!prompt.includes("Ubicación: Carrera de San Jerónimo 3, Madrid ("), "La ubicación NO debe tener paréntesis si no hay código postal");
+});
+
+test("buildUserPrompt: con dirección incluyendo postalCode, el prompt lo incluye entre paréntesis", () => {
+  const inp = input();
+  inp.profile = {
+    name: "La Birra Bar",
+    address: {
+      streetAddress: "Carrera de San Jerónimo 3",
+      addressLocality: "Madrid",
+      postalCode: "28014",
+    },
+  };
+  const prompt = buildUserPrompt(inp);
+  assert.ok(!prompt.includes("undefined"), "El prompt NO debe contener la palabra 'undefined'");
+  assert.ok(
+    prompt.includes("Ubicación: Carrera de San Jerónimo 3, Madrid (28014)"),
+    "Debe incluir calle, ciudad y código postal entre paréntesis",
+  );
 });

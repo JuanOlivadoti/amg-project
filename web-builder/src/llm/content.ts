@@ -69,13 +69,14 @@ class MockProseGen implements ProseGen {
 }
 
 // ---------------------------------------------------------------- helpers
-function buildUserPrompt(input: ProseInput): string {
+/** Genera el prompt de usuario que se envía al LLM. Exportado para test. */
+export function buildUserPrompt(input: ProseInput): string {
   const p = input.profile;
   const lines = [
     `Negocio: ${input.businessContext}`,
     p ? `Nombre comercial: ${p.name}` : "",
     p?.address
-      ? `Ubicación: ${p.address.streetAddress}, ${p.address.addressLocality} (${p.address.postalCode})`
+      ? `Ubicación: ${p.address.streetAddress}, ${p.address.addressLocality}${p.address.postalCode ? ` (${p.address.postalCode})` : ""}`
       : "",
     p?.telephone ? `Teléfono: ${p.telephone}` : "",
     p?.opening_hours ? `Horario: ${p.opening_hours}` : "",
