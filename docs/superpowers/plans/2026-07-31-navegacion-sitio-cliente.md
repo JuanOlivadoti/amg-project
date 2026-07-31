@@ -1226,6 +1226,205 @@ EOF
 
 ---
 
+### Task 6.5: `locations` y `menu` entran a la allowlist de Postgres
+
+> **Agregada durante la ejecución (no estaba en el plan original).** El revisor de la Task 6 encontró
+> que `renderer` nunca lee `clients.business_profile` crudo: lee `business_profile_publico`, una
+> columna **generada** por `app.nap_publico()` (migración `0009_marca_publica.sql`) que es una
+> allowlist explícita de claves. Esa función no incluye `locations` ni `menu` — así que aunque la
+> Task 6 ahora los preserva *si le llegan*, Postgres los descarta **antes** de que lleguen. Es
+> exactamente el modo de fallo que la propia 0009 documenta sobre `brand`, sin su equivalente acá.
+> Y no es solo un problema de producción: `renderer/src/demo-server.ts` corre `aplicarMigraciones()`
+> contra PGlite real, así que la verificación en el navegador de la Task 9 falla sin esto (footer sin
+> locales, `/menu` en 404).
+
+**Files:**
+- Create: `db/migrations/0010_ubicaciones_y_carta_publicas.sql`
+- Test: `db/src/sitios.test.ts` (o el archivo donde ya se prueba `business_profile_publico` — buscar
+  el test que cubre `brand` en la 0009 y replicar el patrón)
+
+**Interfaces:**
+- Consumes: nada nuevo (es una migración SQL).
+- Produces: `app.nap_publico()` devuelve `locations` y `menu` cuando el perfil los trae, con la misma
+  forma que valida `renderer/src/perfil.ts` (Task 6): `locations[].{name,address,telephone,opening_hours}`,
+  `menu[].{category,name,description,price}`.
+
+- [ ] **Step 1: Escribir el test que falla**
+
+Buscar en `db/src/sitios.test.ts` el test que verifica que `brand` sobrevive a
+`business_profile_publico` (de la migración 0009) y agregar el análogo:
+
+```ts
+test("🔴 business_profile_publico incluye locations y menu cuando el perfil los trae", async () => {
+  const perfil = {
+    name: "La Birra Bar",
+    locations: [
+      { name: "Centro", address: { streetAddress: "San Jerónimo 3", addressLocality: "Madrid" } },
+    ],
+    menu: [{ category: "Hamburguesas", name: "Golden Burger", price: "12,50 €" }],
+  };
+  // Insertar un client de prueba con este business_profile (seguir el patrón que ya usa el test de
+  // `brand`: mismo tenant/cliente de fixture, mismo cliente `pg` de PGlite con migraciones aplicadas).
+  const fila = await leerBusinessProfilePublico(pg, clientId); // adaptar al helper que ya exista
+  assert.deepEqual(fila.locations, perfil.locations);
+  assert.deepEqual(fila.menu, perfil.menu);
+});
+
+test("🔴 business_profile_publico descarta una clave NO listada en la allowlist (defensa en profundidad)", async () => {
+  const perfil = { name: "X", secreto_interno: "no debería salir" };
+  const fila = await leerBusinessProfilePublico(pg, clientId);
+  assert.equal((fila as Record<string, unknown>)["secreto_interno"], undefined);
+});
+```
+
+> Si `db/src/sitios.test.ts` no tiene un helper para leer `business_profile_publico` directo de la
+> fila, usar el mismo mecanismo que el test existente de `brand` — no inventar uno nuevo.
+
+- [ ] **Step 2: Correr el test para verlo fallar**
+
+Run: `npm test -w db 2>&1 | grep -A 8 "locations y menu"`
+Expected: FAIL — `fila.locations`/`fila.menu` son `undefined` (la allowlist actual no los conoce).
+
+- [ ] **Step 3: Escribir la migración**
+
+`db/migrations/0010_ubicaciones_y_carta_publicas.sql`, mismo patrón que la 0009 (reemplaza la
+función con `create or replace`, agrega las dos claves nuevas con su propia sub-allowlist, recrea la
+columna generada):
+
+```sql
+-- =============================================================================
+-- AMG OS — Los locales y la carta, dentro de la allowlist del renderizador
+--
+-- La navegación del sitio del cliente (footer NAP multi-local + página /menu) necesita `locations` y
+-- `menu` del business_profile. Pero el renderizador NO lee `business_profile` crudo: lee
+-- `business_profile_publico`, la columna generada con allowlist que introdujo la 0008. Esa allowlist
+-- enumera claves explícitas — y ni `locations` ni `menu` estaban, así que se filtrarían en silencio:
+-- el footer saldría sin locales y `/menu` daría 404, exactamente como le pasó a `brand` antes de la 0009.
+--
+-- Se REEMPLAZA `app.nap_publico` (mismo mecanismo que la 0009) y se re-materializa la columna.
+-- =============================================================================
+
+create or replace function app.nap_publico(perfil jsonb) returns jsonb
+language sql immutable as $$
+  select case
+    when perfil is null or jsonb_typeof(perfil) <> 'object' then null
+    else jsonb_strip_nulls(jsonb_build_object(
+      'name',          perfil -> 'name',
+      'telephone',     perfil -> 'telephone',
+      'priceRange',    perfil -> 'priceRange',
+      'url',           perfil -> 'url',
+      'image',         perfil -> 'image',
+      'opening_hours', perfil -> 'opening_hours',
+      'address', case
+        when jsonb_typeof(perfil -> 'address') = 'object' then jsonb_strip_nulls(jsonb_build_object(
+          'streetAddress',   perfil -> 'address' -> 'streetAddress',
+          'addressLocality', perfil -> 'address' -> 'addressLocality',
+          'postalCode',      perfil -> 'address' -> 'postalCode',
+          'addressRegion',   perfil -> 'address' -> 'addressRegion',
+          'addressCountry',  perfil -> 'address' -> 'addressCountry'
+        ))
+        else null
+      end,
+      'brand', case
+        when jsonb_typeof(perfil -> 'brand') = 'object' then jsonb_strip_nulls(jsonb_build_object(
+          'color', perfil -> 'brand' -> 'color',
+          'font',  perfil -> 'brand' -> 'font',
+          'logo',  perfil -> 'brand' -> 'logo'
+        ))
+        else null
+      end,
+      -- NUEVO: los locales. Un array de objetos, cada uno con su propia sub-allowlist — la misma
+      -- forma que ya exige `renderer/src/perfil.ts` (Task 6), para que lo que sobrevive acá sea
+      -- exactamente lo que ese validador espera recibir.
+      'locations', case
+        when jsonb_typeof(perfil -> 'locations') = 'array' then (
+          select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+            'name', loc -> 'name',
+            'address', case
+              when jsonb_typeof(loc -> 'address') = 'object' then jsonb_strip_nulls(jsonb_build_object(
+                'streetAddress',   loc -> 'address' -> 'streetAddress',
+                'addressLocality', loc -> 'address' -> 'addressLocality',
+                'postalCode',      loc -> 'address' -> 'postalCode',
+                'addressRegion',   loc -> 'address' -> 'addressRegion',
+                'addressCountry',  loc -> 'address' -> 'addressCountry'
+              ))
+              else null
+            end,
+            'telephone',     loc -> 'telephone',
+            'opening_hours', loc -> 'opening_hours'
+          )))
+          from jsonb_array_elements(perfil -> 'locations') as loc
+        )
+        else null
+      end,
+      -- NUEVO: la carta. `price` es texto libre a propósito (ver web-builder/src/types.ts) — no se
+      -- fuerza a número acá tampoco.
+      'menu', case
+        when jsonb_typeof(perfil -> 'menu') = 'array' then (
+          select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+            'category',    item -> 'category',
+            'name',        item -> 'name',
+            'description', item -> 'description',
+            'price',       item -> 'price'
+          )))
+          from jsonb_array_elements(perfil -> 'menu') as item
+        )
+        else null
+      end
+    ))
+  end
+$$;
+
+-- Re-materializar la columna generada: una columna STORED no se recalcula porque cambie la función.
+alter table clients drop column if exists business_profile_publico;
+
+alter table clients
+  add column business_profile_publico jsonb
+  generated always as (app.nap_publico(business_profile)) stored;
+
+comment on column clients.business_profile_publico is
+  'NAP público del negocio (allowlist): name, telephone, priceRange, url, image, opening_hours, '
+  'address, brand, locations, menu. Generada — nunca se escribe directo. Ver 0008/0009/0010.';
+
+grant select (business_profile_publico) on clients to app_render;
+```
+
+> **Ojo con el orden de los `grant`**: la 0009 ya le dio a `app_render` el `select` sobre la columna
+> completa (`business_profile_publico`), así que un `grant select (business_profile_publico)` repetido
+> acá es redundante pero inofensivo (Postgres no se queja de un grant repetido). No hace falta un
+> `revoke` — la columna es la misma, solo cambia lo que la función genera dentro de ella.
+
+- [ ] **Step 4: Correr las migraciones y el test**
+
+Run: `npm run migrate:deploy -w db` (o el comando que use el proyecto para aplicar migraciones sobre
+el PGlite de test — revisar `db/package.json`) `&& npm test -w db`
+Expected: `+ 0010_ubicaciones_y_carta_publicas.sql` aplicada; los dos tests del Step 1 en verde.
+
+- [ ] **Step 5: Correr toda la suite del paquete `db` y el typecheck**
+
+Run: `npm test -w db && npm run typecheck -w db`
+Expected: PASS. Ningún test viejo de `brand`/`address` debería romperse — la función solo agrega
+claves, no quita ni cambia el comportamiento de las que ya validaba la 0009.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add db/migrations/0010_ubicaciones_y_carta_publicas.sql db/src/sitios.test.ts
+git commit -m "$(cat <<'EOF'
+Db: locations y menu entran a la allowlist de business_profile_publico
+
+Sin esto, Postgres descartaba los locales y la carta ANTES de que
+renderer/perfil.ts (Task 6) pudiera preservarlos — el mismo modo de fallo que
+ya tuvo `brand` (0009). Mismo patrón: sub-allowlist propia, columna
+regenerada.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
 ### Task 7: La CDA sabe pedir las páginas de blog
 
 **Files:**
