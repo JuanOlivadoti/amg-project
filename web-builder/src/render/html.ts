@@ -213,6 +213,55 @@ ${renderFooter(profile, "web.v0.1", "Menu", hayBlog)}
 </html>`;
 }
 
+/**
+ * El índice `/blog`: las páginas de research que son artículos (`schema_type: Article`).
+ *
+ * Existe para que los posts no queden como enlaces sueltos en el pie ni compitiendo con las landings
+ * comerciales en el índice de la home. Solo entran las `Article` — las `landing_local`/`servicio` son
+ * páginas de producto, no editoriales, y siguen viviendo en el índice de la home.
+ */
+export function renderBlogIndex(
+  profile: BusinessProfile | null | undefined,
+  posts: NavItem[],
+  languageCode = "es",
+): string {
+  const lang = esc(languageCode);
+  const nombre = profile?.name ?? "Blog";
+  const titulo = `Blog · ${nombre}`;
+  const url = profile?.url ? `${profile.url.replace(/\/+$/, "")}/${SLUG_BLOG}` : `/${SLUG_BLOG}`;
+
+  const tarjetas = posts.length
+    ? `<div class="cards">\n${posts.map(tarjetaIndice).join("\n")}\n</div>`
+    : `<p class="pending">Todavía no hay artículos publicados.</p>`;
+
+  return `<!doctype html>
+<html lang="${lang}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(titulo)}</title>
+<meta name="description" content="${esc(`Artículos de ${nombre}.`)}">
+<link rel="canonical" href="${esc(url)}">
+<meta property="og:title" content="${esc(titulo)}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="${esc(url)}">
+<style>${CSS}${themeCss(profile?.brand)}</style>
+</head>
+<body>
+${renderSiteHeader(profile, SLUG_BLOG)}
+<main>
+<header class="hero">
+  <h1>${esc(titulo)}</h1>
+</header>
+<section class="indice">
+  ${tarjetas}
+</section>
+</main>
+${renderFooter(profile, "web.v0.1", "WebPage", posts.length > 0)}
+</body>
+</html>`;
+}
+
 /** Agrupa la carta por categoría conservando el orden de aparición. Los sin categoría, al final. */
 function agruparCarta(items: MenuItem[]): Array<{ categoria: string | null; items: MenuItem[] }> {
   const grupos = new Map<string, MenuItem[]>();

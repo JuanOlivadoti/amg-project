@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderHome, renderMenu, renderStory } from "./html.js";
+import { renderBlogIndex, renderHome, renderMenu, renderStory } from "./html.js";
 import { pageToStory } from "../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../fixtures.js";
 import type { NavItem } from "../types.js";
@@ -305,4 +305,29 @@ test("footer: sin perfil queda solo la línea técnica (falla suave)", () => {
   const html = renderStory(pageToStory(validPage(), validBrief()), null, "es");
   assert.match(html, /contrato web\.v0\.1/);
   assert.ok(!html.includes('id="contacto"'));
+});
+
+// ---------------------------------------------------------------- el índice /blog
+
+test("blog: lista los posts como tarjetas enlazadas", () => {
+  const posts: NavItem[] = [
+    { slug: "mejor-hamburguesa-dubai", name: "La mejor hamburguesa del mundo" },
+    { slug: "burger-bash-miami", name: "Premiados en Miami" },
+  ];
+  const html = renderBlogIndex(validProfile(), posts, "es");
+  assert.match(html, /href="\/mejor-hamburguesa-dubai"/);
+  assert.match(html, /La mejor hamburguesa del mundo/);
+  assert.match(html, /href="\/burger-bash-miami"/);
+});
+
+test("🔴 blog: el nombre y el slug de un post se escapan/sanean", () => {
+  const posts: NavItem[] = [{ slug: "javascript:alert(1)", name: "<img src=x onerror=alert(1)>" }];
+  const html = renderBlogIndex(validProfile(), posts, "es");
+  assert.ok(!html.includes("<img src=x onerror=alert(1)>"));
+  assert.ok(!html.includes('href="javascript:alert(1)"'));
+});
+
+test("blog: en el índice del blog el pie no vuelve a ofrecer el blog vacío", () => {
+  const html = renderBlogIndex(validProfile(), [], "es");
+  assert.match(html, /<h1>/);
 });

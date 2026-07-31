@@ -6,7 +6,7 @@
  */
 export { parseBrief, parseProfile, SUPPORTED_SCHEMA_VERSIONS } from "./contract.js";
 export { briefToStories, pageToStory } from "./handoff/adapter.js";
-export { renderStory, renderHome, renderMenu } from "./render/html.js";
+export { renderStory, renderHome, renderMenu, renderBlogIndex } from "./render/html.js";
 export { fromStoryblokContent } from "./storyblok/content.js";
 export { getPublisher } from "./publish/publisher.js";
 export type { Publisher, PublishResult } from "./publish/publisher.js";
