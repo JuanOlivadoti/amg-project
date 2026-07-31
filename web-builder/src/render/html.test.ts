@@ -136,55 +136,30 @@ const nav: NavItem[] = [
   { slug: "reservas", name: "Reservas" },
 ];
 
-test("nav: renderStory pinta una barra con enlace a cada página", () => {
-  const html = renderStory(story(), validProfile(), "es", nav);
-  assert.match(html, /<nav class="nav"/, "hay barra de navegación");
-  assert.match(html, /href="\/menu"[^>]*>La carta<\/a>/);
-  assert.match(html, /href="\/reservas"[^>]*>Reservas<\/a>/);
+test("nav: la barra son las secciones del sitio, no las páginas de research", () => {
+  const perfil = validProfile({ menu: [{ name: "Golden Burger" }] });
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  assert.match(html, /<a href="\/"[^>]*>Inicio<\/a>/);
+  assert.match(html, /<a href="\/menu"[^>]*>Menú<\/a>/);
+  assert.match(html, /<a href="#ubicaciones"[^>]*>Ubicaciones<\/a>/);
+  assert.match(html, /<a href="#contacto"[^>]*>Contacto<\/a>/);
+  // Y NO el título SEO de la página, que es lo que la hacía parecer un blog.
+  assert.ok(!/<nav[^>]*>[\s\S]*?Menú del día[\s\S]*?<\/nav>/.test(html));
 });
 
-test("nav: la página actual se marca como activa y no se pierde el resto", () => {
-  // La story de fixture tiene slug 'restaurante-italiano-madrid-centro'; incluímos esa entrada.
-  const conActual: NavItem[] = [...nav, { slug: story().slug, name: "Inicio real" }];
-  const html = renderStory(story(), validProfile(), "es", conActual);
-  assert.match(html, /href="\/restaurante-italiano-madrid-centro"[^>]*aria-current="page"/);
+test("nav: sin carta cargada no hay enlace a Menú (un enlace a una sección vacía es peor que ninguno)", () => {
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es");
+  assert.ok(!html.includes(">Menú<"));
+  assert.match(html, /<a href="\/"[^>]*>Inicio<\/a>/);
 });
 
-test("🔴 nav: el nombre de una página se escapa (no inyecta markup)", () => {
-  // El `name` viene del space (Storyblok) → superficie de inyección en el texto del enlace.
-  const veneno: NavItem[] = [{ slug: "x", name: "</a><script>alert(1)</script>" }];
-  const html = renderStory(story(), validProfile(), "es", veneno);
-  assert.doesNotMatch(html, /<\/a><script>alert/, "el markup del nombre no puede salir crudo");
-  assert.match(html, /&lt;script&gt;/, "el nombre queda escapado");
+test("nav: sin locales ni dirección no hay enlace a Ubicaciones", () => {
+  const perfil = validProfile({ address: undefined, opening_hours: undefined, telephone: undefined });
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  assert.ok(!html.includes(">Ubicaciones<"));
 });
 
-test("🔴 nav: un slug hostil sale como ruta, nunca como esquema ni con salto de atributo", () => {
-  // El `slug` va dentro de un href. `javascript:` no puede quedar como esquema; unas comillas no
-  // pueden cerrar el atributo; un `..` no puede escalar la ruta.
-  const veneno: NavItem[] = [
-    { slug: 'javascript:alert(1)', name: "js" },
-    { slug: '"><script>alert(1)</script>', name: "quote" },
-    { slug: "../../secreto", name: "escape" },
-  ];
-  const html = renderStory(story(), validProfile(), "es", veneno);
-  assert.doesNotMatch(html, /href="javascript:/i, "nunca un esquema ejecutable en el href");
-  assert.doesNotMatch(html, /"><script>/, "las comillas no cierran el atributo");
-  assert.doesNotMatch(html, /href="\/\.\.\//, "los segmentos de navegación se descartan");
-});
-
-test("nav: se limita el número de enlaces (una nav no son 200 páginas)", () => {
-  const muchas: NavItem[] = Array.from({ length: 30 }, (_, i) => ({
-    slug: `p-${i}`,
-    name: `Página ${i}`,
-  }));
-  const html = renderStory(story(), validProfile(), "es", muchas);
-  const enlaces = html.match(/class="nav"[^>]*>([\s\S]*?)<\/nav>/)![1]!.match(/<a /g) ?? [];
-  assert.ok(enlaces.length <= 8, `la barra no debe pintar 30 enlaces, pintó ${enlaces.length}`);
-});
-
-test("sin nav (y sin cambio de firma) el render sigue igual: no hay barra", () => {
-  assert.doesNotMatch(renderStory(story(), validProfile()), /<nav class="nav"/);
-});
+// El test de aria-current con `renderMenu` llega en la Task 4 (ahí existe la función).
 
 // ---------------------------------------------------------------- home sintetizada
 

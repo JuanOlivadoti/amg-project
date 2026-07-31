@@ -27,7 +27,7 @@ export function renderStory(
   story: Story,
   profile?: BusinessProfile | null,
   languageCode = "es",
-  nav: NavItem[] = [],
+  hayBlog = false,
 ): string {
   const c = story.content;
   const lang = esc(languageCode);
@@ -58,7 +58,7 @@ ${researchTrace(c)}
 <style>${CSS}${themeCss(profile?.brand)}</style>
 </head>
 <body>
-${renderSiteHeader(profile, nav, story.slug)}
+${renderSiteHeader(profile, story.slug)}
 <main>
 ${hero ? renderHero(hero, ctaHref) : ""}
 ${sections.map(renderSection).join("\n")}
@@ -121,7 +121,7 @@ ${safeJson(homeLd(profile, url))}
 <style>${CSS}${themeCss(profile?.brand)}</style>
 </head>
 <body>
-${renderSiteHeader(profile, nav, SLUG_HOME)}
+${renderSiteHeader(profile, SLUG_HOME)}
 <main>
 <header class="hero">
   <h1>${esc(nombre)}</h1>
@@ -161,32 +161,56 @@ function homeLd(profile: BusinessProfile | null | undefined, url: string): unkno
   return entity;
 }
 
-/**
- * La barra de navegación del sitio: enlaces a las páginas publicadas.
- *
- * - **Cap de ítems** (`MAX_NAV`): la lista viene de la Links API y podría traer decenas de páginas;
- *   una nav con 200 enlaces no es una nav. Se muestran las primeras.
- * - El `name` va escapado (texto de enlace) y el `href` se arma con `hrefDeSlug` (segmentos
- *   escapados) — la misma defensa que la CDA aplica al slug de la petición.
- * - La página actual se marca con `aria-current` y no enlaza a sí misma.
- */
-function renderNav(nav: NavItem[], activeSlug: string): string {
-  if (nav.length === 0) return "";
-  const items = nav
-    .slice(0, MAX_NAV)
-    .map((item) => {
-      const activo = item.slug === activeSlug;
-      const attrs = activo ? ` class="activo" aria-current="page"` : "";
-      // `title` con el nombre completo: la barra trunca por CSS (los títulos SEO son largos), pero el
-      // texto entero sigue disponible al hover y para lectores de pantalla. También va escapado.
-      return `<a href="${esc(hrefDeSlug(item.slug))}" title="${esc(item.name)}"${attrs}>${esc(item.name)}</a>`;
-    })
-    .join("");
-  return `<nav class="nav" aria-label="Páginas del sitio">${items}</nav>`;
+/** Los slugs de las páginas que sintetiza el renderizador (no viven en Storyblok salvo que el cliente las cree). */
+const SLUG_MENU = "menu";
+const SLUG_BLOG = "blog";
+
+/** Un ítem del nav de arriba. `slug` solo lo tienen las secciones que SON una página (para `aria-current`). */
+interface ItemNav {
+  href: string;
+  label: string;
+  slug?: string;
 }
 
-/** Tope de enlaces en la barra de navegación. */
-const MAX_NAV = 8;
+/**
+ * El nav de arriba: las **secciones del sitio**, derivadas del perfil.
+ *
+ * Antes se armaba con la lista de páginas publicadas (Links API), así que un sitio con 14 landings de
+ * research mostraba 14 títulos SEO larguísimos: parecía el índice de un blog y no el sitio de un
+ * restaurante. Las landings siguen publicadas y enlazadas —desde el índice de la home—, pero ya no
+ * ocupan la barra.
+ *
+ * Cada ítem es **condicional al dato que lo hace útil**: sin carta no hay "Menú", sin locales ni
+ * dirección no hay "Ubicaciones". Un enlace a una sección vacía es peor que no tener el enlace.
+ */
+function navPrincipal(profile: BusinessProfile): ItemNav[] {
+  const items: ItemNav[] = [{ href: "/", label: "Inicio", slug: SLUG_HOME }];
+  if (profile.menu && profile.menu.length > 0) {
+    items.push({ href: `/${SLUG_MENU}`, label: "Menú", slug: SLUG_MENU });
+  }
+  // Ubicaciones y Contacto son ANCLAS al footer, no páginas: el footer está en todas las páginas, así
+  // que el enlace funciona desde cualquiera sin cargar nada.
+  if (hayUbicaciones(profile)) items.push({ href: "#ubicaciones", label: "Ubicaciones" });
+  items.push({ href: "#contacto", label: "Contacto" });
+  return items;
+}
+
+/** ¿Hay algo que mostrar en "Ubicaciones"? Locales explícitos, o los campos sueltos del perfil clásico. */
+function hayUbicaciones(p: BusinessProfile): boolean {
+  if (p.locations && p.locations.length > 0) return true;
+  return Boolean(p.address || p.telephone || p.opening_hours);
+}
+
+function renderNav(items: ItemNav[], activeSlug: string): string {
+  const html = items
+    .map((it) => {
+      const activo = it.slug !== undefined && it.slug === activeSlug;
+      const attrs = activo ? ` class="activo" aria-current="page"` : "";
+      return `<a href="${esc(it.href)}"${attrs}>${esc(it.label)}</a>`;
+    })
+    .join("");
+  return `<nav class="nav" aria-label="Secciones del sitio">${html}</nav>`;
+}
 
 /**
  * Un slug de Storyblok → un `href` seguro. Mismo criterio que la CDA con el slug de la petición: los
@@ -236,24 +260,21 @@ function themeCss(brand?: BrandTheme | null): string {
  * Cabecera del sitio: marca (logo o nombre) + la barra de navegación. Es lo que hace que la página se
  * sienta DE alguien y, con la nav, lo que impide que un visitante quede varado en una landing aislada.
  *
- * Se omite entera solo si no hay NI perfil NI navegación: una página suelta sin contexto de sitio
- * (el caso de `renderStory(story)` a secas en un test) no lleva cabecera. En PROD el renderizador
- * siempre pasa la nav del sitio, así que la cabecera está.
+ * Se omite entera si no hay perfil: una página suelta sin contexto de sitio (el caso de
+ * `renderStory(story)` a secas en un test) no lleva cabecera.
  */
-function renderSiteHeader(
-  profile: BusinessProfile | null | undefined,
-  nav: NavItem[],
-  activeSlug: string,
-): string {
-  const navHtml = renderNav(nav, activeSlug);
-  if (!profile && !navHtml) return "";
+function renderSiteHeader(profile: BusinessProfile | null | undefined, activeSlug: string): string {
+  // Sin perfil no hay sitio del que ser cabecera: una story renderizada suelta (un test, un preview
+  // sin ficha cargada) sale sin barra, como hasta ahora.
+  if (!profile) return "";
+  const navHtml = renderNav(navPrincipal(profile), activeSlug);
   // El logo va a un `<img src>`: se exige http(s) acá también, no solo en Zod (en PROD el perfil
   // puede venir de Storyblok sin validar). Un logo dudoso cae al nombre, no rompe la cabecera.
-  const logo = profile?.brand?.logo;
+  const logo = profile.brand?.logo;
   const logoOk = typeof logo === "string" && /^https?:\/\//i.test(logo);
   const marca = logoOk
-    ? `<img class="logo" src="${esc(logo)}" alt="${esc(profile!.name)}" height="40">`
-    : `<span class="marca">${esc(profile?.name ?? "Inicio")}</span>`;
+    ? `<img class="logo" src="${esc(logo)}" alt="${esc(profile.name)}" height="40">`
+    : `<span class="marca">${esc(profile.name)}</span>`;
   return `<header class="sitebar"><a href="/" class="brand">${marca}</a>${navHtml}</header>`;
 }
 
