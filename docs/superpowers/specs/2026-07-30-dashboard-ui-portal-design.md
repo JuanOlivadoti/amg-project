@@ -210,6 +210,14 @@ componente: `kpisDeCartera(dashboard)` → `{ sitiosActivos, opportunityScorePro
 `topOportunidades(pages, n)`, `serieTemporalCoste(runs)`. El componente de página queda presentacional,
 consumiendo estas funciones.
 
+### Licencia de ApexCharts
+
+`apexcharts@^5` (y `ng-apexcharts`) es dual-licencia: Apache 2.0 salvo que la organización facture
+más de $2M USD anuales, caso en el que aplica la licencia comercial (OEM/redistribución). AMG es una
+agencia chica, muy por debajo de ese umbral, así que usar la v5 tal cual es válido — no hace falta
+bajar a la v3/v4 (MIT). Punto a revisar si cambia la facturación de AMG, o si AMG OS se vende/licencia
+a un cliente mucho más grande cuyo uso pueda entrar en la cláusula OEM.
+
 ## Página nueva: Dashboard de cartera
 
 - Ruta `/cartera`, dentro del `AppShell` (`authGuard`), agregada al `app-sidebar`.
