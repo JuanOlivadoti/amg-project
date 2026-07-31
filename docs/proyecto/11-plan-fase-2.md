@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-30** · **466 tests en verde** (monorepo) + **120** en el portal
+> Última actualización: **2026-07-31** · **466 tests en verde** (monorepo) + **120** en el portal
 > (103 `node:test` + 17 Karma)
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
@@ -14,15 +14,16 @@
 > mergeada a `main`**, y de paso el portal migró a Tailwind v4
 > ([spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) ·
 > [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)). La **pieza C** (dashboard de
-> cartera) está **en curso** — esqueleto de shell + componentes sobre esos tokens, en
-> `feat/dashboard-ui-portal`
+> cartera) también está **cerrada: mergeada a `main`** (2026-07-31) — esqueleto de shell + `/cartera`
+> sobre datos de muestra, 13/13 tasks del plan más el review final de rama aplicado
 > ([spec](../superpowers/specs/2026-07-30-dashboard-ui-portal-design.md) ·
 > [plan](../superpowers/plans/2026-07-30-dashboard-ui-portal.md)); el detalle task-by-task vive en
-> `.superpowers/sdd/progress.md`. La **Acción 06** (corrida final + republicar) también se cerró el
-> mismo día: research real contra producción, `kr.v0.5` publicado para La Birra Bar y **la duración
-> real medida por primera vez (16m15s)** — dato que desaconseja la pieza D tal como se había
-> imaginado (research en vivo durante la demo). Ver §5.3 y el
-> [estado y roadmap](09-estado-y-roadmap.md).
+> `.superpowers/sdd/progress.md`. Pendiente sin bloquear el cierre: verificación manual en navegador
+> de `/cartera` y del drawer mobile (el MCP de chrome-devtools no conectó durante la implementación).
+> La **Acción 06** (corrida final + republicar) también se cerró el mismo día: research real contra
+> producción, `kr.v0.5` publicado para La Birra Bar y **la duración real medida por primera vez
+> (16m15s)** — dato que desaconseja la pieza D tal como se había imaginado (research en vivo durante
+> la demo). Ver §5.3 y el [estado y roadmap](09-estado-y-roadmap.md).
 
 ---
 

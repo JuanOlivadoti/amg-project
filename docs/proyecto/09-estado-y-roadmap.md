@@ -186,7 +186,7 @@ panorama — son lo que las hace creíbles.
 | --- | --- | --- | --- |
 | **A** | **Verificación JWT ES256 + logout que revoca** | ✅ **Cerrada** — mergeada, desplegada y el login **verificado en el navegador** (2026-07-30) | — |
 | **B** | Modo oscuro (**solo el portal**) | ✅ **Cerrada** — mergeada a `main` y migrada además a Tailwind v4 | — |
-| **C** | Dashboard de cartera + seed de 4-6 restaurantes | 🟡 **En curso** — esqueleto UI + shell del portal, Task 1/13 hecho en `feat/dashboard-ui-portal`. Detalle task-by-task en `.superpowers/sdd/progress.md` | B (hereda los tokens) ✅ |
+| **C** | Dashboard de cartera + seed de 4-6 restaurantes | ✅ **Cerrada** — esqueleto UI + shell + `/cartera` sobre datos de muestra, mergeada a `main` (2026-07-31) | B (hereda los tokens) ✅ |
 | **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | la medición |
 
 **Pieza A** ([spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
@@ -234,15 +234,21 @@ y `evidencia`; cada run trae `coste_micros_usd` y `calidad_datos`. Se puede cons
 API**: la pantalla arranca con datos de muestra (misma forma que los DTOs reales), no contra un
 endpoint agregado nuevo — eso queda para más adelante, como trabajo de backend separado.
 
-**En curso.** Se trae el esqueleto de layout (sidebar + header) y una librería chica de componentes
-del `dashboard-project` (TailAdmin) de referencia, adaptados a los tokens semánticos de la pieza B —
-no una librería genérica sin uso, solo lo que `/cartera` necesita
+**Cerrada (2026-07-31).** Se trajo el esqueleto de layout (sidebar + header + backdrop) y una
+librería chica de componentes del `dashboard-project` (TailAdmin) de referencia, adaptados a los
+tokens semánticos de la pieza B — no una librería genérica sin uso, solo lo que `/cartera` necesita
 ([spec](../superpowers/specs/2026-07-30-dashboard-ui-portal-design.md) ·
-[plan de Tailwind v4](../superpowers/plans/2026-07-30-tailwind-v4-migracion-portal.md), ya cerrado ·
-[plan del shell + dashboard](../superpowers/plans/2026-07-30-dashboard-ui-portal.md), en curso en
-`feat/dashboard-ui-portal`). El detalle de qué task está hecho, con SHAs y resultado de cada review,
-vive en `.superpowers/sdd/progress.md` — es la fuente de verdad para retomar el trabajo, no este
-párrafo.
+[plan de Tailwind v4](../superpowers/plans/2026-07-30-tailwind-v4-migracion-portal.md), cerrado y
+mergeado ·
+[plan del shell + dashboard](../superpowers/plans/2026-07-30-dashboard-ui-portal.md), 13/13 tasks,
+review final de rama aplicado). Las dos ramas (`feat/modo-oscuro-portal` y `feat/dashboard-ui-portal`)
+están mergeadas a `main` (`d670c23`). 103 tests `node:test` + 17 Karma + build de producción, todo en
+verde tras el merge. El detalle task-by-task, con SHAs y resultado de cada review, vive en
+`.superpowers/sdd/progress.md`.
+
+Pendiente real, sin bloquear el cierre: la verificación manual en navegador de `/cartera` y del
+drawer mobile todavía no se hizo (el MCP de chrome-devtools no conectó durante toda la sesión de
+implementación) — conviene un vistazo rápido la próxima vez que alguien abra el portal.
 
 **D — research en vivo:** el orquestador **ya está construido** (Inngest, `workflow.ts`,
 `functions.ts`, 18 tests). Falta desplegarlo y conectarlo, no escribirlo.
