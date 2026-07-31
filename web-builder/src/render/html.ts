@@ -4,6 +4,7 @@ import type {
   FaqBlok,
   HeroBlok,
   Imagen,
+  Location,
   NavItem,
   PageContent,
   PostalAddress,
@@ -63,9 +64,8 @@ ${renderSiteHeader(profile, story.slug)}
 ${hero ? renderHero(hero, ctaHref) : ""}
 ${sections.map(renderSection).join("\n")}
 ${faq ? renderFaq(faq) : ""}
-${profile ? renderContact(profile) : ""}
 </main>
-${footer(c.meta.contract_version, c.schema_type)}
+${renderFooter(profile, c.meta.contract_version, c.schema_type, hayBlog)}
 </body>
 </html>`;
 }
@@ -89,6 +89,7 @@ export function renderHome(
   profile?: BusinessProfile | null,
   nav: NavItem[] = [],
   languageCode = "es",
+  hayBlog = false,
 ): string {
   const lang = esc(languageCode);
   const nombre = profile?.name ?? "Inicio";
@@ -131,9 +132,8 @@ ${renderSiteHeader(profile, SLUG_HOME)}
   <h2>Páginas</h2>
   ${tarjetas}
 </section>
-${profile ? renderContact(profile) : ""}
 </main>
-${footer("web.v0.1", "WebPage")}
+${renderFooter(profile, "web.v0.1", "WebPage", hayBlog)}
 </body>
 </html>`;
 }
@@ -226,9 +226,78 @@ function hrefDeSlug(slug: string): string {
   return `/${ruta}`;
 }
 
-/** El pie, común a las páginas y a la home. */
-function footer(contractVersion: string, schemaType: string): string {
-  return `<footer><p>Página generada por AMG OS · contrato ${esc(contractVersion)} · schema ${esc(schemaType)}</p></footer>`;
+/**
+ * El pie, común a TODAS las páginas: contacto + locales + blog + la línea técnica.
+ *
+ * Antes el contacto era una `<section id="contacto">` dentro de `<main>`, repetida en cada landing y
+ * ausente de la home sintetizada. En el pie está en todas por construcción —incluidas `/menu` y
+ * `/blog`— y deja de competir con el contenido. Los `id` no cambian, así que el nav de arriba ancla acá.
+ */
+function renderFooter(
+  profile: BusinessProfile | null | undefined,
+  contractVersion: string,
+  schemaType: string,
+  hayBlog: boolean,
+): string {
+  const tecnica = `<p class="tecnica">Página generada por AMG OS · contrato ${esc(contractVersion)} · schema ${esc(schemaType)}</p>`;
+  if (!profile) return `<footer>${tecnica}</footer>`;
+
+  const locales = localesDe(profile);
+  const tel = profile.telephone
+    ? `<p>Tel: <a href="tel:${esc(profile.telephone.replace(/\s/g, ""))}">${esc(profile.telephone)}</a></p>`
+    : "";
+
+  return `<footer>
+<section class="contacto" id="contacto">
+  <h2>Contacto</h2>
+  <p><strong>${esc(profile.name)}</strong></p>
+  ${tel}
+</section>
+${locales.length ? renderUbicaciones(locales) : ""}
+${hayBlog ? `<p class="mas"><a href="/${SLUG_BLOG}">Blog</a></p>` : ""}
+${tecnica}
+</footer>`;
+}
+
+/**
+ * Los locales del negocio, normalizados.
+ *
+ * Con `locations` explícito manda esa lista. Sin ella se sintetiza UNO con los campos clásicos
+ * (`address`/`telephone`/`opening_hours`), que es como se describía un negocio de un solo local antes
+ * de que existiera `locations` — así un perfil viejo no pierde su dirección cuando el footer pasa a
+ * ser multi-local.
+ */
+function localesDe(p: BusinessProfile): Location[] {
+  if (p.locations && p.locations.length > 0) return p.locations;
+  if (!p.address && !p.telephone && !p.opening_hours) return [];
+  return [
+    {
+      ...(p.address ? { address: p.address } : {}),
+      ...(p.telephone ? { telephone: p.telephone } : {}),
+      ...(p.opening_hours ? { opening_hours: p.opening_hours } : {}),
+    },
+  ];
+}
+
+function renderUbicaciones(locales: Location[]): string {
+  const bloques = locales
+    .map((l) => {
+      const titulo = l.name ? `<h3>${esc(l.name)}</h3>` : "";
+      // `postalCode` es opcional: se imprime solo si está, nunca un hueco ni un "undefined".
+      const dir = l.address
+        ? `<p>${esc(l.address.streetAddress)}${l.address.postalCode ? `, ${esc(l.address.postalCode)}` : ""} ${esc(l.address.addressLocality)}</p>`
+        : "";
+      const tel = l.telephone
+        ? `<p>Tel: <a href="tel:${esc(l.telephone.replace(/\s/g, ""))}">${esc(l.telephone)}</a></p>`
+        : "";
+      const horas = l.opening_hours ? `<p>${esc(l.opening_hours)}</p>` : "";
+      return `  <div class="local">${titulo}${dir}${tel}${horas}</div>`;
+    })
+    .join("\n");
+  return `<section class="ubicaciones" id="ubicaciones">
+  <h2>${locales.length > 1 ? "Nuestros locales" : "Dónde estamos"}</h2>
+${bloques}
+</section>`;
 }
 
 /** Familias tipográficas seguras, por nombre. La marca elige un nombre, NUNCA escribe el stack. */
@@ -315,19 +384,6 @@ function resolveCanonical(canonical: string, profile?: BusinessProfile | null): 
   const path = canonical.startsWith("/") ? canonical : `/${canonical}`;
   if (profile?.url) return `${profile.url.replace(/\/+$/, "")}${path}`;
   return path;
-}
-
-function renderContact(p: BusinessProfile): string {
-  const addr = p.address
-    ? `${esc(p.address.streetAddress)}${p.address.postalCode ? `, ${esc(p.address.postalCode)}` : ""} ${esc(p.address.addressLocality)}`
-    : "";
-  return `<section class="contacto" id="contacto">
-  <h2>Contacto</h2>
-  <p><strong>${esc(p.name)}</strong></p>
-  ${addr ? `<p>${addr}</p>` : ""}
-  ${p.telephone ? `<p>Tel: <a href="tel:${esc(p.telephone.replace(/\s/g, ""))}">${esc(p.telephone)}</a></p>` : ""}
-  ${p.opening_hours ? `<p>Horario: ${esc(p.opening_hours)}</p>` : ""}
-</section>`;
 }
 
 function renderHero(h: HeroBlok, ctaHref: string | null): string {
@@ -497,6 +553,14 @@ section h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em}
 .faq{background:var(--soft);border-radius:12px;padding:24px;margin:32px 0}
 details{padding:12px 0;border-bottom:1px solid #e7e5e0}
 summary{font-weight:600;cursor:pointer}
-footer{max-width:760px;margin:24px auto 48px;padding:0 20px;color:var(--muted);font-size:.85rem}
-@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}.sitebar,.hero{border-color:#222}section{border-color:#1e1e1e}.card{border-color:#2a2a2a}}
+footer{max-width:760px;margin:40px auto 48px;padding:24px 20px 0;border-top:1px solid #eee;color:var(--fg)}
+footer h2{font-size:1.15rem;margin:0 0 10px}
+footer h3{font-size:.95rem;margin:0 0 4px;color:var(--fg)}
+footer p{margin:0 0 6px}
+footer .local{margin:0 0 16px;color:var(--muted)}
+footer .ubicaciones{border:0;padding:16px 0 0}
+footer .contacto{border:0;padding:0}
+footer .tecnica{color:var(--muted);font-size:.85rem;margin-top:20px}
+footer .mas{margin-top:12px}
+@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}.sitebar,.hero,footer{border-color:#222}section{border-color:#1e1e1e}.card{border-color:#2a2a2a}}
 `;

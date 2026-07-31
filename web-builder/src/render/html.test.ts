@@ -192,3 +192,64 @@ test("home: sin perfil cae a un WebSite y un título neutro (falla suave)", () =
   assert.match(html, /<h1>Inicio<\/h1>/);
   assert.match(html, /"@type": "WebSite"/);
 });
+
+// ---------------------------------------------------------------- footer compartido (contacto + ubicaciones + blog)
+
+test("footer: el contacto vive en el pie y está en todas las páginas", () => {
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es");
+  const pie = html.slice(html.indexOf("<footer"));
+  assert.match(pie, /id="contacto"/);
+  assert.match(pie, /Trattoria Bella Napoli/);
+  // Y ya NO está dentro de <main>: era una sección repetida en cada landing.
+  const main = html.slice(html.indexOf("<main>"), html.indexOf("</main>"));
+  assert.ok(!main.includes('id="contacto"'));
+});
+
+test("footer: lista todos los locales, cada uno con su dirección y horario", () => {
+  const perfil = validProfile({
+    locations: [
+      { name: "Centro", address: { streetAddress: "San Jerónimo 3", addressLocality: "Madrid" }, opening_hours: "11:00-01:00" },
+      { name: "Salamanca", address: { streetAddress: "Ortega y Gasset 79", addressLocality: "Madrid" }, opening_hours: "hasta la 01:00" },
+    ],
+  });
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  assert.match(html, /id="ubicaciones"/);
+  assert.match(html, /Centro/);
+  assert.match(html, /San Jerónimo 3/);
+  assert.match(html, /Salamanca/);
+  assert.match(html, /Ortega y Gasset 79/);
+});
+
+test("footer: un perfil clásico (sin locations) sigue mostrando su dirección", () => {
+  // Compatibilidad hacia atrás: el negocio de un solo local no tiene que tocar su JSON.
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es");
+  assert.match(html, /id="ubicaciones"/);
+  assert.match(html, /Calle Mayor 12/);
+});
+
+test("footer: sin páginas de blog no hay enlace al blog", () => {
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es", false);
+  assert.ok(!/href="\/blog"/.test(html));
+});
+
+test("footer: con páginas de blog aparece el enlace, solo en el pie", () => {
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es", true);
+  assert.match(html.slice(html.indexOf("<footer")), /href="\/blog"/);
+  const cabecera = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+  assert.ok(!cabecera.includes('href="/blog"'));
+});
+
+test("🔴 footer: el nombre de un local se escapa (viene de la base, sin Zod)", () => {
+  const perfil = validProfile({
+    locations: [{ name: '</p><script>alert(1)</script>', opening_hours: "11:00" }],
+  });
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  assert.ok(!html.includes("<script>alert(1)</script>"));
+  assert.match(html, /&lt;script&gt;/);
+});
+
+test("footer: sin perfil queda solo la línea técnica (falla suave)", () => {
+  const html = renderStory(pageToStory(validPage(), validBrief()), null, "es");
+  assert.match(html, /contrato web\.v0\.1/);
+  assert.ok(!html.includes('id="contacto"'));
+});
