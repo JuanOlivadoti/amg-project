@@ -2,6 +2,9 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { TestDb, seed } from "./testdb.js";
 import type { Seed } from "./testdb.js";
+import { PgClientes } from "./clientes.js";
+import type { NuevoCliente } from "./clientes.js";
+import { PglitePool } from "./pool.js";
 
 /**
  * Etapa 1 del CRM de clientes (SOLO esquema, ver `docs/proyecto/11-plan-fase-2.md`): las columnas
@@ -16,10 +19,14 @@ import type { Seed } from "./testdb.js";
 
 let db: TestDb;
 let s: Seed;
+let clientes: PgClientes;
 
 before(async () => {
   db = await TestDb.create();
   s = await seed(db);
+  // PGlite y TestDb comparten instancia; el pool de PgClientes va contra la misma base sembrada
+  // (mismo criterio que sitios.test.ts para PgSitios).
+  clientes = new PgClientes(new PglitePool(db.pglite));
 });
 
 after(async () => {
@@ -324,4 +331,131 @@ test("RLS de clients sigue aislando por tenant con las columnas nuevas puestas",
   const rows = await db.asUser({ tenantId: s.tenantB, userId: s.equipoB }, "select id from clients");
   const ids = rows.map((r) => (r as { id: string }).id);
   assert.ok(!ids.includes(s.clientA1), "el tenant B sigue sin ver el cliente del tenant A");
+});
+
+// ================================================================== Etapa 2: PgClientes (TypeScript)
+//
+// Lo de arriba prueba el ESQUEMA con SQL crudo bajo `db.asUser` (que hace rollback por llamada). Lo
+// de acá abajo prueba la CAPA DE DATOS (`clientes.ts`), que escribe de verdad (commit real, vía
+// `PglitePool`) — por eso cada test da de alta sus propios clientes con `crearCliente` en vez de
+// mutar los clientes sembrados (`s.clientA1`/`clientA2`/`clientB1`), que las secciones de arriba
+// siguen usando en su estado original.
+
+test("listarClientes devuelve solo los clientes del tenant del contexto", async () => {
+  const comoA = await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA });
+  const comoB = await clientes.listarClientes({ tenantId: s.tenantB, userId: s.equipoB });
+
+  const idsA = comoA.map((c) => c.id);
+  const idsB = comoB.map((c) => c.id);
+
+  assert.ok(idsA.includes(s.clientA1), "el tenant A ve su propio cliente A1");
+  assert.ok(idsA.includes(s.clientA2), "el tenant A ve su propio cliente A2");
+  assert.ok(!idsA.includes(s.clientB1), "el tenant A NO ve el cliente del tenant B");
+
+  assert.ok(idsB.includes(s.clientB1), "el tenant B ve su propio cliente");
+  assert.ok(!idsB.includes(s.clientA1) && !idsB.includes(s.clientA2), "el tenant B NO ve los clientes del tenant A");
+});
+
+test("crearCliente usa el tenant_id del CONTEXTO, aunque el payload traiga uno de otro tenant", async () => {
+  // `NuevoCliente` no tiene una clave `tenantId` (ver clientes.ts) -- pero un handler HTTP real
+  // (Etapa 3) parsea JSON sin tipos, así que un payload real SÍ podría traer una clave extra. El
+  // cast simula justo eso: la garantía tiene que ser de RUNTIME (qué columnas lee el insert), no
+  // solo del compilador negándose a compilar un objeto literal con una clave de más.
+  const payloadConFuga = {
+    nombre: "Intento de fuga de tenant",
+    tenantId: s.tenantB,
+  } as unknown as NuevoCliente;
+
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, payloadConFuga);
+
+  const comoA = await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA });
+  const comoB = await clientes.listarClientes({ tenantId: s.tenantB, userId: s.equipoB });
+
+  assert.ok(comoA.some((c) => c.id === id), "el cliente nace en el tenant del CONTEXTO");
+  assert.ok(!comoB.some((c) => c.id === id), "no en el tenant que venía (de más) en el payload");
+});
+
+test("crearCliente sin campos opcionales respeta los defaults del esquema (0011)", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Nuevo Negocio TS" },
+  );
+
+  const fila = (await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })).find(
+    (c) => c.id === id,
+  );
+  assert.equal(fila?.estado_contrato, "sin_contrato", "sin_contrato: el alta no implica contrato firmado");
+  assert.deepEqual(fila?.etiquetas, []);
+  assert.deepEqual(fila?.contacto, {});
+  assert.equal(fila?.score, null);
+  assert.equal(fila?.tipo, null);
+});
+
+test("actualizarCliente de un cliente de OTRO tenant no afecta ninguna fila (0, no una excepción)", async () => {
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Solo de A" });
+
+  const resultado = await clientes.actualizarCliente(
+    { tenantId: s.tenantB, userId: s.equipoB },
+    id,
+    { score: 99 },
+  );
+  assert.equal(resultado, false, "el tenant B no puede tocar un cliente del tenant A");
+
+  const fila = (await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })).find(
+    (c) => c.id === id,
+  );
+  assert.equal(fila?.score, null, "el score NO cambió");
+});
+
+test("actualizarCliente del MISMO tenant sí aplica los cambios", async () => {
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Editable" });
+
+  const ok = await clientes.actualizarCliente({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    score: 55,
+    industria: "restauracion",
+    contacto: { email: "editable@test.es" },
+  });
+  assert.equal(ok, true);
+
+  const fila = (await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })).find(
+    (c) => c.id === id,
+  );
+  assert.equal(fila?.score, 55);
+  assert.equal(fila?.industria, "restauracion");
+  assert.deepEqual(fila?.contacto, { email: "editable@test.es" });
+});
+
+test("archivarCliente / desarchivarCliente cambian archived_at", async () => {
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Para archivar" });
+
+  const antes = (await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })).find(
+    (c) => c.id === id,
+  );
+  assert.equal(antes?.archived_at, null);
+
+  const archivado = await clientes.archivarCliente({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.equal(archivado, true);
+  const despues = (await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })).find(
+    (c) => c.id === id,
+  );
+  assert.ok(despues?.archived_at, "archived_at quedó seteado");
+
+  const reabierto = await clientes.desarchivarCliente({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.equal(reabierto, true);
+  const final = (await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })).find(
+    (c) => c.id === id,
+  );
+  assert.equal(final?.archived_at, null, "desarchivarCliente vuelve a dejarlo en null");
+});
+
+test("archivarCliente de un cliente de OTRO tenant no afecta ninguna fila", async () => {
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Protegido" });
+
+  const resultado = await clientes.archivarCliente({ tenantId: s.tenantB, userId: s.equipoB }, id);
+  assert.equal(resultado, false);
+
+  const fila = (await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })).find(
+    (c) => c.id === id,
+  );
+  assert.equal(fila?.archived_at, null, "sigue sin archivar: el tenant B no pudo tocarlo");
 });

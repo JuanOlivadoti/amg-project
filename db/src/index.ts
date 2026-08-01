@@ -19,6 +19,9 @@ export type {
 export { PgSitios, MemSitios } from "./sitios.js";
 export type { Sitio, SitioResolver } from "./sitios.js";
 
+export { PgClientes } from "./clientes.js";
+export type { ClienteCRM, NuevoCliente, CambiosCliente } from "./clientes.js";
+
 export { NodePgPool, PglitePool, ejecutorDe } from "./pool.js";
 export type { DbPool, Tx, SqlExecutor, NodePgPoolLike, NodePgClientLike } from "./pool.js";
 
