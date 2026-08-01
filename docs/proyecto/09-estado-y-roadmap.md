@@ -55,6 +55,18 @@
 > hoy (el renderizador no está desplegado), pero **desplegarlo así daría el footer sin locales y
 > `/menu` en 404**. Ver 0.b en próximos pasos.
 >
+> **Nuevo (2026-08-01, cierre del día): tres arreglos que salieron de manejar la app, no de la suite.**
+> Verificar el re-seed **en el portal** (y no solo por consulta) destapó que la primera siembra había
+> corrido doce minutos antes de `f0c1387`: en producción, **Cartera y Research mostraban las mismas
+> métricas con nombres distintos**, a dos clics. El re-seed desde `HEAD` lo cerró, y ahora
+> `db/src/cartera-portal.test.ts` ata las dos copias campo por campo — el comentario que declaraba esa
+> atadura *imposible* («el portal vive fuera del monorepo») era falso: eso impide importar el paquete,
+> no leer el archivo. Además, **el contraste de los ejes en oscuro** pasó de **1.53:1 a 11.49:1** (31
+> etiquetas que ApexCharts pintaba con su gris, invisible para `contraste.test.ts` porque no sale de
+> `styles.css`), y **`npm run typecheck` dejó de pisar `dist/portal`** con el bundle de desarrollo.
+> Los tres, con rojo primero y verificación por mutación. **539 tests** (536 → 539) y **130 en el
+> portal** (113 `node:test` + 17 Karma). Ver los puntos 0.c, 7 y 8 de próximos pasos.
+>
 > **Acción 06 (corrida final) cerrada el 2026-07-30**: research real contra producción para **La
 > Birra Bar** (14 páginas, $0.3097), republicado en Storyblok con `kr.v0.5` y verificado en el
 > navegador. Midió por primera vez cuánto tarda un research real —**16m15s**, por encima del umbral
@@ -100,7 +112,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **536** en el monorepo + **124** en el portal (107 `node:test` + 17 Karma). Los de seguridad, contra Postgres real |
+| **Tests** | **539** en el monorepo + **130** en el portal (113 `node:test` + 17 Karma). Los de seguridad, contra Postgres real |
 | **Migraciones** | 10 en el repo (`0001`..`0010`) · **9 aplicadas en producción** — la `0010` está pendiente (ver abajo) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
@@ -123,7 +135,8 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **536 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **539 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **El dashboard y el brief no pueden divergir en silencio**: un test ata las 14 páginas de `cartera-mock.ts` (portal) a `PAGINAS_DEMO` (seed), campo por campo y en orden. Estar fuera del monorepo impedía importar el paquete, no leer el archivo. |
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
 | ✅ | **Doce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
@@ -157,6 +170,19 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
    ```bash
    npm run migrate:deploy -w db   # idempotente: lee db/.env y aplica solo lo pendiente
    ```
+
+0.c **✅ El re-seed, verificado también EN EL PORTAL** (2026-08-01, después de la consulta a la base).
+   Consultar Supabase prueba que las filas están bien, no que el recorrido de la demo cierre — y esa
+   distinción ya costó tres días una vez. Manejando `bigballs.es` con sesión real: los **14 slugs del
+   brief coinciden uno a uno, y en el mismo orden**, con las keywords que grafica el dashboard; el
+   split 8/6 y los `n/d` se ven donde deben; consola limpia en las tres pantallas.
+
+   > **Lo que esta verificación destapó, y la consulta a la base no podía ver.** Entre la primera
+   > siembra (11:55) y `f0c1387` (12:07) pasaron doce minutos, así que la primera corrida sembró los
+   > **slugs inventados**: en producción, Cartera y Research mostraban **las mismas métricas con
+   > nombres distintos** —"cerveza Ale Ogham Madrid — 74" contra "hamburgueseria barrio salamanca —
+   > 74"—, a dos clics de distancia. El re-seed desde `HEAD` lo cerró, y ahora un test impide que
+   > vuelva a pasar (ver `db/src/cartera-portal.test.ts` en «Qué funciona hoy»).
 
 1. **Mostrarle la demo a Frank.** Depende de Juan, no de código. Tres cosas que conviene tener
    decididas antes, porque son del guion y no del software (ninguna bloquea, todas se notan):
@@ -201,12 +227,24 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
    sobre un frontend que ya no existe, y — de la revisión de Codex a la navegación del sitio — dos
    huecos de test documentados (falta un test positivo de que `/blog` muestra su link en una story
    normal, y la validación de forma de la allowlist de Postgres solo tiene test en un campo de ~20).
-7. **Contraste del gráfico de barras en modo oscuro** (encontrado en el navegador el 2026-08-01, sin
-   arreglar). Las etiquetas de los ejes las pinta **ApexCharts** con su gris por defecto (`#373d3f`),
-   no un token nuestro: en claro se leen bien y **en oscuro quedan casi ilegibles**. Los tests de
-   contraste no pueden verlo porque leen `styles.css`, y ese color no sale de ahí. El arreglo es
-   pasarle `xaxis`/`yaxis` `labels.style.colors` desde el token, con el mismo patrón que ya usa
-   `colores()` en `bar-chart.ts` — con su test, como el resto de los pares.
+7. ✅ **Contraste de los ejes en modo oscuro** — **arreglado y desplegado (2026-08-01, `521daaf`).**
+   Las etiquetas las pintaba **ApexCharts** con su gris por defecto, que no sale de `styles.css`, así
+   que `contraste.test.ts` no podía verlo por construcción. Medido en producción antes de tocar nada:
+   **1.53:1** sobre `--superficie` en oscuro, contra el 4.5:1 de AA, en **31 etiquetas**. Ahora salen
+   de `--texto-medio` vía `estiloEjes()`, que recibe el lector del token en vez de tocar `document`
+   —así el contrato se prueba en `node:test`, sin navegador—. **Los dos ejes**, no uno: en la barra
+   horizontal las categorías van en el Y, y fijar solo el X dejaba las keywords con el gris viejo.
+   El test **descubre** los componentes con `<apx-chart>` en vez de listarlos, así que el próximo
+   gráfico que alguien agregue sin el token también falla. Verificado en el navegador y en producción:
+   **oscuro 11.49:1, claro 10.31:1**, y repinta en vivo al cambiar de tema.
+8. ✅ **`npm run typecheck` ya no escribe donde escribe el build de producción** (2026-08-01,
+   `9b7b7f4`). `typecheck` es `ng build --configuration development` y, sin `outputPath` propio,
+   dejaba en `dist/portal` un bundle con los valores-plantilla y `lanzarResearch: true`, **sin pasar
+   por el `prebuild`** que verifica la config. Comprobado: tras un typecheck, `dist/portal/browser/`
+   contenía `TU-PROYECTO`. No llegaba a producción porque Hostinger autodespliega desde `main` y no
+   sube `dist/`, pero el runbook ya listaba el síntoma ("Frank SÍ ve el botón lanzar research") sin
+   nombrar esta causa. Ahora va a `dist/portal-dev`, con un test que lee `angular.json` y cae si
+   alguien le quita la salida propia.
 
 ## El número para la propuesta comercial
 

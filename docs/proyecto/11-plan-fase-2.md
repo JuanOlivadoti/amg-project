@@ -3,8 +3,8 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-01** · **536 tests en verde** (monorepo) + **124** en el portal
-> (107 `node:test` + 17 Karma)
+> Última actualización: **2026-08-01** · **539 tests en verde** (monorepo) + **130** en el portal
+> (113 `node:test` + 17 Karma)
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
 > JWKS y el logout que revoca están en `main`, desplegados, y **el login se verificó en el navegador**
@@ -54,6 +54,16 @@
 > carta se filtran en silencio. No afecta la demo del portal, pero **bloquea el despliegue del
 > renderizador** (§4). Ver 0.b en
 > [próximos pasos](09-estado-y-roadmap.md#próximos-pasos).
+>
+> ✅ **Y verificado también en el portal, que es donde apareció lo que la consulta no veía.** La
+> primera siembra corrió doce minutos antes de `f0c1387`, así que producción quedó con los slugs
+> inventados: **Cartera y Research mostraban las mismas métricas con nombres distintos**, a dos clics.
+> Re-sembrado desde `HEAD`, los 14 slugs coinciden uno a uno y en orden. Un test nuevo
+> (`db/src/cartera-portal.test.ts`) ata las dos copias para que no vuelva: el comentario que decía que
+> era imposible porque el portal está fuera del monorepo era falso —eso impide importar el paquete, no
+> leer el archivo—. En la misma pasada, **el contraste de los ejes en oscuro** (1.53:1 → **11.49:1**,
+> 31 etiquetas) y **el typecheck que pisaba `dist/portal`** con el bundle de desarrollo. **539 tests**,
+> 130 en el portal.
 >
 > **Nuevo (2026-08-01): la demo del módulo de Keyword Research, decidida.** Hasta acá "la demo" quería
 > decir la de la *plataforma* (el recorrido de tres golpes). La del **módulo KR** es otra y ahora está
