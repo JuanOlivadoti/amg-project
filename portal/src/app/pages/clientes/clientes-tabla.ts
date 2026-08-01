@@ -79,14 +79,14 @@ const ETIQUETA_ESTADO: Record<EstadoContrato, string> = {
                       [routerLink]="['/clientes', c.id]"
                       class="rounded-md px-3 py-1.5 text-texto hover:bg-superficie-2"
                     >
-                      Ver
+                      Editar
                     </a>
                     <a
                       menu
-                      [routerLink]="['/clientes', c.id, 'editar']"
+                      [routerLink]="['/clientes', c.id, 'ver']"
                       class="rounded-md px-3 py-1.5 text-texto hover:bg-superficie-2"
                     >
-                      Editar
+                      Ver
                     </a>
                     @if (c.archived_at) {
                       <button
