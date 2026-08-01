@@ -141,6 +141,12 @@ const brandSchema = z.object({
     .optional(),
 });
 
+// Mismo tope que MAX_LOCALES/MAX_ITEMS_CARTA en renderer/src/perfil.ts y en la migración 0010 —
+// tienen que coincidir en las tres capas (Zod en la puerta, Postgres, el validador del renderer),
+// si uno se cambia hay que cambiar los tres.
+const MAX_LOCALES = 20;
+const MAX_ITEMS_CARTA = 200;
+
 const businessProfileSchema = z.object({
   name: z.string().min(1),
   telephone: z.string().optional(),
@@ -149,8 +155,8 @@ const businessProfileSchema = z.object({
   image: z.string().url().optional(),
   address: postalAddressSchema.optional(),
   opening_hours: z.string().optional(),
-  locations: z.array(locationSchema).optional(),
-  menu: z.array(menuItemSchema).optional(),
+  locations: z.array(locationSchema).max(MAX_LOCALES).optional(),
+  menu: z.array(menuItemSchema).max(MAX_ITEMS_CARTA).optional(),
   brand: brandSchema.optional(),
 });
 

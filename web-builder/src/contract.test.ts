@@ -84,3 +84,27 @@ test("🔴 perfil: un ítem de la carta sin nombre no pasa la puerta", () => {
     /business-profile\.json inválido/,
   );
 });
+
+test("🔴 revisión externa #3 — más de 20 locations se rechaza EN LA PUERTA (no llega nunca a Postgres)", () => {
+  const locations = Array.from({ length: 21 }, (_, i) => ({ name: `Local ${i}` }));
+  assert.throws(
+    () => parseProfile({ name: "X", locations }),
+    /business-profile\.json inválido/,
+  );
+});
+
+test("🔴 revisión externa #3 — más de 200 items de menu se rechaza EN LA PUERTA", () => {
+  const menu = Array.from({ length: 201 }, (_, i) => ({ name: `Item ${i}` }));
+  assert.throws(
+    () => parseProfile({ name: "X", menu }),
+    /business-profile\.json inválido/,
+  );
+});
+
+test("perfil: exactamente 20 locations / 200 items de menu SÍ pasa (el límite es el tope, no menos)", () => {
+  const locations = Array.from({ length: 20 }, (_, i) => ({ name: `Local ${i}` }));
+  const menu = Array.from({ length: 200 }, (_, i) => ({ name: `Item ${i}` }));
+  const p = parseProfile({ name: "X", locations, menu });
+  assert.equal(p.locations?.length, 20);
+  assert.equal(p.menu?.length, 200);
+});
