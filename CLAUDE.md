@@ -104,6 +104,7 @@ implementar, discrepar con razón técnica).
 ## Cómo correr
 
 ```bash
+npm install         # primero, o `npm test` falla con "Cannot find package 'tsx'" — no es un bug
 npm test            # los 6 paquetes + los tests de scripts/
 npm run typecheck   # tsc --noEmit en todos, incluido scripts/
 npm run env:sync    # reparte docs/private/credenciales.env a los .env de cada paquete

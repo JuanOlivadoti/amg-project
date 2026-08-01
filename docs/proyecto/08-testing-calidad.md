@@ -17,7 +17,7 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 516 tests (monorepo) + 87 (portal)
+## Cobertura actual: 516 tests (monorepo) + 120 (portal)
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
@@ -28,7 +28,7 @@ sin cuenta.
 | `api` | **66** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
 | `renderer` | **114** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web; **`locations`/`menu` sobreviven al validador y llegan al render**), **los límites del camino anónimo** (10ª review), y **navegación + home** (barra desde la Links API con las mismas defensas; **la nav falla → sin barra, no 503**; nav de preview en draft sin cachear; la raíz sin `home` **sintetiza un índice**, no 404; `/blog` no se autoenlaza aunque exista una story real con ese slug). |
 | `scripts` | **16** | El reparto de credenciales (`env-sync`). No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
-| `portal` | **45** | *(fuera del monorepo)* El núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, y **la separación por evidencia** (✅/⚠️). Más el guard de config de producción: que `environment.prod.ts` esté **listo para desplegar** (sin placeholders, todo HTTPS) — importa porque el portal se despliega solo en cada push. Con `node:test` y `fetch` de mentira — sin navegador. |
+| `portal` | **120** | *(fuera del monorepo)* **103 con `node:test`** — el núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, **la separación por evidencia** (✅/⚠️), las **carreras asincrónicas** (`Vigencia`) y el **contraste WCAG AA** de los 17 pares × 2 temas leído de `styles.css`, más un test que recorre `src/app` y **falla si una plantilla incrusta un color**. Más el guard de config de producción: que `environment.prod.ts` esté **listo para desplegar** (sin placeholders, todo HTTPS) — importa porque el portal se despliega solo en cada push. Y **17 de componente con Karma** (`ng test`) para el DOM: tema y shell. Con `fetch` de mentira — los 103 corren sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
 
@@ -64,14 +64,22 @@ comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la
 
 ## Revisiones externas (Codex) — qué encontraron y qué se corrigió
 
-**Diez rondas de revisión adversarial**, en 17 tandas de correcciones. Todos los hallazgos están
+**Doce rondas de revisión adversarial**, en 18 tandas de correcciones. Todos los hallazgos están
 corregidos y **los tests los fijan como contrato** para que no reaparezcan.
 
 El patrón que se repite —y por eso las reviews están en el proceso— es que **casi siempre encuentran
-algo que yo ya había declarado hecho**. Las cuatro últimas: el aislamiento multi-tenant se perdía al
+algo que yo ya había declarado hecho**. Las últimas: el aislamiento multi-tenant se perdía al
 salir por la puerta (Storyblok), el CLI de producción corría **sin registro de idempotencia**, el
-verificador de JWT **no lo tocaba ningún test**, y el portal tenía **carreras asincrónicas**. En
+verificador de JWT **no lo tocaba ningún test**, el portal tenía **carreras asincrónicas**, y la
+allowlist de Postgres restringía el **nombre** de la clave pero no la **forma** del valor. En
 varios casos la documentación afirmaba una garantía que el código desmentía.
+
+**Cómo se cuenta.** Una *ronda* es una revisión externa de código; una *tanda* es el bloque de
+correcciones que salió de ella (más las que salieron de autorevisiones y de manejar la app). No
+coinciden: la tanda 14 se partió en dos (14a autorevisión, 14b review externa) y la 11ª ronda —la de
+`fix/jwt-es256`— se corrigió dentro de la propia rama, sin tanda numerada aparte. Aparte de estas
+doce hubo revisiones de Codex sobre **specs y planes** (piezas A y C) que no cuentan acá: corrigieron
+el diseño antes de escribir código, no el código.
 
 > **Las lecciones, en una línea cada una:** probar el contrato y no la implementación · el
 > *mutation testing* es lo que distingue un test de un adorno · leer el código y manejar la app
@@ -190,7 +198,7 @@ exactamente los tres tests del rechazo.
 > composition root real (el CLI) no lo probaba nadie**. El test de la tanda 12 instanciaba
 > `MemTaskLog` a mano — nunca pasaba por `getProvider()`/`runResearch()` como lo hace producción.
 
-### Tanda 14 — la API (etapa 5.1), y esta vez la revisión la hice yo ✅
+### Tanda 14a — la API (etapa 5.1), y esta vez la revisión la hice yo ✅
 
 Se construyó la API REST (`api/`, Hono, ADR-22). El foco de los 20 tests es el **contrato de
 seguridad**, no la mecánica de Hono:
@@ -214,7 +222,7 @@ ejercita sin red y sin Supabase, igual que RLS se prueba sin Docker.
 > `approveRun` sin booleano— y las dos quedaron con test + mutación. El registro queda acá para que
 > la próxima review (externa o no) tenga dónde empezar a dudar.
 
-### Tanda 14 — 8ª review: la etapa 5 (API + portal) ✅
+### Tanda 14b — 8ª review: la etapa 5 (API + portal) ✅
 
 Codex revisó la etapa 5 completa. Confirmó cerrado lo que más importaba —ningún camino toca tablas de
 tenant fuera de `PgStore.withTenant`; el comando compuesto emite el evento **solo** después del
@@ -359,10 +367,34 @@ negativa anotando el 404, el webhook firmado invalidando (`invalidadas: 2`) y el
 devolviendo `repetido: true`, un cuerpo de 300 KB rechazado con 413, el preview con `no-store` +
 `noindex, nofollow` + Bridge, y la firma alterada cayendo a contenido público.
 
-### 🔑 Pendiente de acción humana
+### Tanda 18 — 12ª review: la allowlist validaba el nombre, no la forma ✅
 
-**#2 — Secretos:** la misma API key de OpenAI está duplicada en los dos `.env` (gitignoreados,
-nunca commiteados). **Requiere rotar la key** y separar por servicio. Ver [Configuración](07-configuracion.md).
+Codex revisó la rama de **navegación del sitio del cliente** ya cerrada (2026-08-01), con el encargo
+explícito de **no tocar código: solo reportar**. Cuatro hallazgos, los cuatro reales, los cuatro
+corregidos **y verificados por mutación**:
+
+| Hallazgo | Por qué importaba |
+|---|---|
+| **`app.nap_publico` restringía los nombres de clave, pero no la forma de los valores** | Un objeto podía colarse donde se esperaba un string (`menu[].price = {"secreto":"x"}`) y **sobrevivir intacto hasta el rol `app_render`**. La allowlist parecía una frontera y era media frontera. Se agregó `app.texto_publico()` —solo deja pasar `jsonb_typeof(v) = 'string'`— aplicado a **los ~20 campos de texto**, no solo a los nuevos. |
+| **`locations` tenía la precedencia invertida contra su propio comentario** | `profile.telephone ?? principal?.telephone` le daba prioridad al campo clásico, justo al revés de lo que el comentario prometía. En `homeLd`, `primaryEntity` y el footer: los tres corregidos. |
+| **Los topes de tamaño se aplicaban tarde** | 20 locales / 200 ítems se chequeaban en `renderer/perfilValido`, **después** de que Postgres ya materializó el array completo con `jsonb_agg`. Se agregó el tope en la fuente (`with ordinality ... where i <= N`) y en la puerta de escritura (`.max()` en el Zod de `web-builder`). |
+| **`/blog` se autoenlazaba** | El fix anterior solo cubría el `/blog` sintetizado; una story **real** con slug `blog` seguía enlazándose a sí misma. |
+
+> **La lección de esta ronda es la de siempre, en su forma más cara:** *una garantía en un comentario
+> es una intención, no una garantía.* Las cuatro son sitios donde el código decía una cosa (en un
+> comentario, en un nombre de función, en una validación que parecía completa) y hacía otra. La
+> primera es la que más duele: la allowlist es **la** frontera de ADR-19 hacia internet anónimo, y
+> llevaba desde la `0008` validando media cosa.
+
+**Deuda dicha, no bloqueante:** falta un test positivo de que `/blog` **sí** muestra su link en una
+story normal (solo hay test de que no se autoenlaza), y la validación de forma tiene test en **un**
+campo de los ~20 que ahora protege.
+
+### 🔑 Acción humana — ✅ cerrada
+
+**#2 — Secretos:** la misma API key de OpenAI estaba duplicada en los dos `.env`. **Rotada el
+2026-07-13**: dos keys distintas, una por servicio, cada una con límite de gasto. Ver
+[acción 01](../acciones/01-rotar-key-openai.md) y [Configuración](07-configuracion.md).
 
 ## Qué NO está cubierto por tests
 
@@ -371,7 +403,9 @@ Honestidad sobre los límites de la suite actual:
 - **No hay tests de integración**: nada ejercita las llamadas reales a DataForSEO, OpenAI o Storyblok.
   *(El helper HTTP sí está testeado con `fetch` stubeado, pero no contra los servicios reales.)*
 - **No hay tests del orquestador** (`run.ts` / `build.ts` end-to-end); se verifican corriendo los CLIs a mano.
-- **El camino live de Storyblok nunca se probó** contra un space real (solo dry-run) → [acción C](10-acciones-pendientes.md).
+- **El camino live de Storyblok no está automatizado.** Sí se ejecutó a mano contra un space real
+  —14 páginas de La Birra Bar publicadas con `kr.v0.5`, y el renderizador leyéndolas por la CDA con
+  `npm run demo -w renderer`— pero ningún test lo ejercita.
 - **No hay tests de concurrencia real**: la idempotencia está implementada y el determinismo de los
   `_uid` sí está testeado, pero la carrera de creación (dos publicaciones simultáneas) solo se
   puede ejercitar contra un Storyblok real.

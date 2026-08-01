@@ -1065,10 +1065,11 @@ update no tocó ninguna fila, la API responde 403 y no emite. Probado (y mutatio
 | `PATCH /pages/:id` | Corrige una página; editar **revoca** la aprobación (ADR-06). |
 | `POST /runs/:id/approve` | Aprueba el run bajo RLS y emite `research/aprobado`. |
 
-**Lo que queda fuera a propósito:** el rechazo del run (el workflow aún no escucha `research/rechazado`;
-hoy la compuerta vence por timeout) y un `/health` (se agrega al definir el deploy, etapa 5.3).
+**Lo que queda fuera a propósito:** el rechazo del run — el workflow aún no escucha
+`research/rechazado`; hoy la compuerta vence por timeout. *(El `/health` sí se agregó, al desplegar
+la Fase 1: no toca dependencias, para que un fallo de base no se lea como servicio caído.)*
 
-### ADR-23 — La API verifica identidad contra el JWKS del emisor, no contra un secreto compartido
+## ADR-23 — La API verifica identidad contra el JWKS del emisor, no contra un secreto compartido
 
 **Contexto.** El verificador se escribió cuando Supabase firmaba en HS256 con un secreto de proyecto.
 Supabase migró a claves asimétricas; el proyecto de producción, creado el 2026-07-25, firma **ES256**.
@@ -1158,5 +1159,5 @@ mantiene así a propósito — la alternativa (401) le costaría la sesión a un
 esa ventana con una credencial perfectamente buena, y ese costo es peor.
 
 **Descartado.** Volver el proyecto a HS256 (deuda a seis meses, y conserva el secreto) y aceptar
-ambos algoritmos (dos caminos en el borde de seguridad más crítico, justo donde diez reviews vinieron
-eliminando opcionalidad).
+ambos algoritmos (dos caminos en el borde de seguridad más crítico, justo donde las reviews vinieron
+eliminando opcionalidad, una tras otra).

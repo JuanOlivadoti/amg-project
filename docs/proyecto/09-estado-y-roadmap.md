@@ -66,10 +66,10 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **516** en el monorepo + **87** en el portal. Los de seguridad, contra Postgres real |
-| **Migraciones** | 10 (`0001`..`0010`) |
+| **Tests** | **516** en el monorepo + **120** en el portal (103 `node:test` + 17 Karma). Los de seguridad, contra Postgres real |
+| **Migraciones** | 10 en el repo (`0001`..`0010`) · **9 aplicadas en producción** — la `0010` está pendiente (ver abajo) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
-| **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones |
+| **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
 
 ## Qué funciona hoy
@@ -91,7 +91,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
 | ✅ | **516 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
-| ✅ | **Diez reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las tres últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, y carreras asincrónicas en el portal. Ver [ADR-13..22 y el registro de correcciones](../decisiones-arquitectura.md). |
+| ✅ | **Doce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## Próximos pasos
 
@@ -108,7 +108,9 @@ bloquee mostrarle esto a Frank.** Lo que sigue es elegir en qué seguir invirtie
    volumen por percentiles, hub & spoke, enlazado interno vacío. Ver la tabla de mejoras más abajo.
 4. **Desplegar la Fase 2** (`orchestrator` + `renderer`, hoy solo en `localhost`) — servicio Node de
    larga duración, no serverless. Sin esto, `/menu`, `/blog` y todo lo que se acaba de construir
-   siguen sin un dominio real.
+   siguen sin un dominio real. **Incluye aplicar la migración `0010` a la base de producción**, que
+   hoy está en el repo pero no en Supabase (ver §1) — sin ella el footer sale sin locales y `/menu`
+   da 404 en cuanto el renderizador esté arriba.
 5. **Cerrar lo que ADR-19 dejó a medias antes de un SLA**: CDN en el borde, invalidación con más de
    una instancia, punto único de disponibilidad (ver §3 más abajo).
 6. **Deuda técnica menor, sin apuro**: esquema Zod duplicado M2/M1, ADR-11 (offboarding) reescrito
@@ -170,9 +172,15 @@ Runbook paso a paso, con los tropiezos reales, en
 
 **Lo verificado en producción** (no "el deploy dio verde", sino comprobado desde afuera):
 
-- **C.1 — las 9 migraciones**, verificadas por **introspección de la base**: 9 tablas con RLS
-  **forzada** (`relforcerowsecurity`), `clients.business_profile_publico` como columna generada (la
-  allowlist de ADR-19 vive en la base), runner idempotente confirmado con una segunda corrida.
+- **C.1 — las 9 migraciones** *(las que existían el 2026-07-25)*, verificadas por **introspección de
+  la base**: 9 tablas con RLS **forzada** (`relforcerowsecurity`),
+  `clients.business_profile_publico` como columna generada (la allowlist de ADR-19 vive en la base),
+  runner idempotente confirmado con una segunda corrida.
+  > ⚠️ **La `0010` no está aplicada en producción.** Es del 2026-08-01 (allowlist de
+  > `locations`/`menu`), posterior a esta verificación. Hoy no rompe nada porque su único lector —el
+  > renderizador— no está desplegado; cuando se despliegue, sin ella el footer sale **sin locales** y
+  > `/menu` da **404**. Aplicarla es parte del despliegue de Fase 2: ver
+  > [runbook § migraciones sobre una base ya desplegada](13-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
 - **C.2 — los 4 logins con contraseña** y los 4 **conectando de verdad** por el pooler, con
   `INHERIT=false` intacto tras el `alter role` (ADR-17 sigue en pie).
 - **C.4 — seed verificado**: 2 `memberships` con `user_id` distintos, Frank `maestro` / Juan
@@ -352,9 +360,10 @@ Aparte de las cuatro piezas:
 
 ### 🟢 4. Deuda conocida, ninguna bloqueante
 
-- **Tests de componente del portal** (karma). El núcleo está cubierto (87 tests) y los componentes se
-  verifican compilando con AOT y a mano. Es evidencia de que funciona hoy, **no una red contra
-  regresiones**.
+- **Tests de componente del portal** (Karma). El núcleo está cubierto (**103** tests `node:test`) y
+  hay **17** de componente en Karma, traídos con la pieza B/C — pero cubren el tema y el shell, no
+  las pantallas de research. Esas se siguen verificando compilando con AOT y a mano: es evidencia de
+  que funcionan hoy, **no una red contra regresiones**.
 - **El polling del brief (4 s) es a ojo**, y la lista de runs no pollea. Se calibra con la duración
   real de una corrida.
 - **ADR-11 (offboarding) sigue sin poder firmarse.** Ahora *hay* qué entregar (el space + el
@@ -382,7 +391,7 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 | Tarea | Por qué | Costo |
 |---|---|---|
-| ~~Unificar el alcance (OBS-01)~~ | ✅ **Hecha (2026-07-19).** Manda ; alcance base = 3 módulos; ADR-04 se mantiene. | — |
+| ~~Unificar el alcance (OBS-01)~~ | ✅ **Hecha (2026-07-19).** Manda [`contexto-proyecto-frank.md`](../contexto-proyecto-frank.md); alcance base = 3 módulos; ADR-04 se mantiene. | — |
 | ~~`SUPABASE_JWT_ISS` en Railway~~ | ✅ **Hecha (2026-07-27).** Cargada antes del merge; la API arrancó con ella. `SUPABASE_JWT_SECRET` se **deja** en Railway a propósito: es la red de rollback (el código viejo la exige para arrancar) y no molesta, porque `leerConfig` ya no la lee. | — |
 | ~~Verificar el login en el navegador~~ | ✅ **Hecha (2026-07-30).** Era lo único que podía cerrar la pieza A. Queda **sin verificar** el detalle del logout: que revoca en Supabase (Auth → Users → Sessions) y que es **local** (cerrar sesión en un dispositivo no cierra la del otro). Lo cubren 7 tests, pero no se miró en producción. | — |
 | ~~**[Corrida final + republicar](../acciones/06-corrida-final-demo.md)**~~ | ✅ **Hecha (2026-07-30).** Publicado `kr.v0.5` para La Birra Bar (cliente real), verificado en el navegador. De paso: se midió la duración real del research (16m15s) y se cerró el gap de `DATABASE_URL_CACHE` que la guía no pedía. | $0.3097 |
@@ -418,7 +427,7 @@ reales, no solo contra tests.
 | **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **118 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **66 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
-| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **87 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
+| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **120 tests** (103 de núcleo `node:test` + 17 de componente Karma); el flujo, verificado en un navegador real. **Falta:** tests de componente de las pantallas de research, y calibrar el polling contra los 16m15s medidos. |
 | **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **114 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. **Falta:** desplegarlo en un dominio (5.3) y una CDN delante. |
 | **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Nav fijo de 4 secciones** (Inicio/Menú/Ubicaciones/Contacto, cada una condicionada a que el perfil tenga el dato — reemplaza a la barra vieja derivada de las páginas SEO publicadas) + **footer compartido** con NAP multi-local (`locations`) y link a Blog + `/menu`/`/blog` sintetizados desde el perfil (allowlist en `0010`, ver [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md)) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav y en NAP/carta. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente — **el nav/footer/menú/blog YA NO dependen del brief**: se calculan en vivo desde `business_profile` en cada request, así que republicar no los toca. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |
