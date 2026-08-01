@@ -23,7 +23,12 @@
 > La **Acción 06** (corrida final + republicar) también se cerró el mismo día: research real contra
 > producción, `kr.v0.5` publicado para La Birra Bar y **la duración real medida por primera vez
 > (16m15s)** — dato que desaconseja la pieza D tal como se había imaginado (research en vivo durante
-> la demo). Ver §5.3 y el [estado y roadmap](09-estado-y-roadmap.md).
+> la demo). **Con A/B/C cerradas, D desaconsejada y la Acción 06 hecha, la demo está lista para
+> mostrarle a Frank.**
+>
+> **Nuevo (2026-08-01): la navegación del sitio del cliente, mergeada a `main`.** 10 tareas (ver
+> §6.1 más abajo), una revisión de rama y una revisión externa (Codex) con 4 hallazgos reales
+> corregidos. 516 tests (subió de 466). Ver §5.3 y el [estado y roadmap](09-estado-y-roadmap.md).
 
 ---
 
@@ -42,7 +47,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
 | 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal) · falta desplegar (5.3) |
-| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 113 tests (nav fija + footer NAP + `/menu` + `/blog` + home incluidas) |
+| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 114 tests (nav fija + footer NAP + `/menu` + `/blog` + home incluidas) |
 
 Después de la **5** el sistema es **usable por una persona que no sea yo**: la compuerta de
 aprobación (ADR-06) ya no se ejecuta editando un JSON a mano — se aprueba desde el portal, página por
@@ -224,7 +229,7 @@ LLM, y probablemente no entra en el timeout de una función (60-300 s).
 
 **Un único servicio Node, multi-tenant** (1 servicio, N dominios) que lee la Content Delivery API de
 Storyblok y sirve la web **en vivo**, reutilizando `renderStory()`, que ya existía y estaba probado.
-**113 tests**, verificado en un navegador real.
+**114 tests**, verificado en un navegador real.
 
 ```
 Editor toca Storyblok ──▶ (contenido)
@@ -313,14 +318,39 @@ un blog, no como el sitio de un restaurante. Reemplazada por:
   carta de 4 productos). Sin código postal ni teléfono: no confirmados por el cliente, no se
   inventan (`postalCode` es opcional en `PostalAddress` por esta misma razón).
 
-**9 tasks** (1-8 más la 6.5), **516 tests** en el monorepo tras el cierre (incluye el fix wave de la
-revisión final: JSON-LD con `locations` sin `address`/`telephone` de nivel superior, coma en la
-dirección del footer, y que `/blog` no se autoenlace), verificado en un
-navegador real: nav/footer en home y en una landing, `/menu` agrupado por categoría, `/blog` con
-solo los dos artículos (sin duplicarlos en la home), `?_host=noexiste.es` sigue en 404, footer
+**10 tasks** (1-9 más la 6.5), **516 tests** en el monorepo tras el cierre (subió de 466), verificado
+en un navegador real: nav/footer en home y en una landing, `/menu` agrupado por categoría, `/blog`
+con solo los dos artículos (sin duplicarlos en la home), `?_host=noexiste.es` sigue en 404, footer
 legible en modo oscuro. El dry-run de republicación en Storyblok no mostró diferencias de contenido
 (el perfil no se hornea en las stories: lo inyecta el renderizador en cada request), así que **no
 se republicó** — no había nada que cambiar en el space.
+
+Dos rondas de fix wave sobre la rama ya cerrada, antes de mergear:
+
+- **Revisión final de rama** (interna): JSON-LD con `locations` sin `address`/`telephone` de nivel
+  superior, coma faltante en la dirección del footer, y que `/blog` no se autoenlace en su propio
+  índice sintetizado.
+- **Revisión externa (Codex)**, pedida aparte sobre toda la rama ya cerrada: 4 hallazgos reales,
+  los 4 corregidos y verificados por mutación —
+  1. la allowlist de Postgres (`app.nap_publico`) restringía **nombres** de clave pero no la
+     **forma** de los valores (un objeto podía colarse donde se esperaba un string, ej.
+     `menu[].price = {"secreto":"x"}`, y sobrevivir intacto hasta el rol `app_render`); se agregó
+     `app.texto_publico()`, un helper que solo deja pasar `jsonb_typeof(v) = 'string'`, aplicado a
+     **los ~20 campos de texto** de la función, no solo a los nuevos;
+  2. `locations` tenía la precedencia **invertida** contra su propio comentario (`profile.telephone
+     ?? principal?.telephone` le daba prioridad al campo clásico en vez de a `locations`) en
+     `homeLd`, `primaryEntity` y el footer — corregido en los tres lugares;
+  3. los topes de tamaño (20 locales / 200 ítems de carta) se aplicaban solo en
+     `renderer/perfilValido`, **después** de que Postgres ya materializó el array completo vía
+     `jsonb_agg` — se agregó el mismo tope en la fuente de la migración (`with ordinality ... where
+     i <= N`) y en la puerta de escritura (`.max()` en el Zod de `web-builder/contract.ts`);
+  4. `/blog` se autoenlazaba en su propio pie cuando la página servida era una **story real** con
+     slug `blog` (el fix anterior solo cubría la síntesis).
+
+**Mergeada a `main` el 2026-08-01** (fast-forward, `9e8c896..297e3f8`, 21 commits). 516/516 tests,
+typecheck limpio. Deuda documentada, no bloqueante: falta un test positivo de que `/blog` muestra su
+link en una story normal (solo hay test de que NO se autoenlaza), y la validación de forma de la
+allowlist solo tiene test en un campo de los ~20 que ahora protege.
 
 ---
 
@@ -378,7 +408,7 @@ Todas con su ADR. Las que más condicionan lo que viene:
 | ~~Pieza A — verificación JWT ES256~~ | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | ✅ **Cerrada (2026-07-30).** Las 4 tareas, mergeadas y desplegadas, y el login verificado en el navegador. Ya no bloquea nada. |
 | ~~Pieza B — modo oscuro del portal~~ | [spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) · [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md) | ✅ **Mergeada a `main`** (Tarea 1 de la migración a Tailwind v4, esta misma sesión). Tokens semánticos (no `dark:`) para que la pieza C herede el tema por construcción. 21 tests nuevos: el contraste AA de 17 pares × 2 temas leído de `styles.css`, `TOKENS`/`styles.css` atados (incluido el bloque `@theme inline`, que reemplazó a `tailwind.config.js` cuando el portal migró a Tailwind v4), y un test que recorre `src/app` y prohíbe incrustar colores o usar la paleta cruda. |
 | ~~Cuánto tarda un research real~~ | — | ✅ **Medido (2026-07-30): 16m15s** (55 keywords → 14 páginas, $0.3097), por encima del umbral de ~12 min. **Decisión:** la pieza D (research en vivo en la demo) queda desaconsejada tal como se imaginó — mostrarlo en vivo arriesga que Frank mire un spinner. Mejor correrlo antes (como acá) y mostrar el resultado publicado. El polling del portal (4s) sigue sin calibrar contra este número. |
-| ~~Navegación fija del sitio del cliente~~ | [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md) · [plan](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md) | ✅ **Cerrada (2026-08-01).** 9 tasks (1-8 más la 6.5, migración `0010` no prevista en el plan original). Nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados, datos reales de La Birra Bar cargados. Ver §6.1 más arriba. |
+| ~~Navegación fija del sitio del cliente~~ | [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md) · [plan](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md) | ✅ **Mergeada a `main` (2026-08-01).** 10 tasks (1-9 más la 6.5, migración `0010` no prevista en el plan original). Nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados, datos reales de La Birra Bar cargados. Revisión final de rama + revisión externa (Codex, 4 hallazgos reales corregidos). 516 tests. Ver §6.1 más arriba. |
 | Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
 | `is_local` se dispara de más | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo `LocalBusiness`. Ensucia el JSON-LD. |
 | `endpoints_degradados` incompleto | `meta_run` | Omite los fallos de suggestion/SERP. |

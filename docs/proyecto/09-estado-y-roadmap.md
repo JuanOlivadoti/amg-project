@@ -2,12 +2,26 @@
 
 ## Resumen ejecutivo
 
-> Actualizado 2026-07-30: **pieza A cerrada** (el login **funciona en `bigballs.es`**, verificado en
-> el navegador por Juan — lo único que podía cerrarla, porque desde afuera no había señal que
-> distinguiera el código viejo del nuevo) y **pieza B construida y verificada en el navegador**: el
-> portal tiene modo oscuro por tokens semánticos. **Sin mergear a `main` todavía**, a pedido.
+> Actualizado 2026-08-01: **las cuatro piezas de la demo con Frank están resueltas.** Pieza A (login
+> ES256), pieza B (modo oscuro del portal) y pieza C (dashboard de cartera) están **mergeadas a
+> `main`**; la pieza D (research en vivo durante la demo) quedó **desaconsejada** con datos reales
+> (ver más abajo). La Acción 06 (corrida final con La Birra Bar) también está cerrada. **La demo está
+> lista para mostrarle a Frank** — lo que sigue es trabajo de producto, no de preparación de demo (ver
+> [Próximos pasos](#próximos-pasos) más abajo).
 >
-> **Acción 06 (corrida final) cerrada el mismo día**: research real contra producción para **La
+> **Nuevo (2026-08-01): la navegación del sitio del cliente, mergeada a `main`.** El sitio público
+> mostraba una barra armada con los títulos SEO de todas las páginas de investigación — parecía un
+> blog, no el sitio de un restaurante. Reemplazada por Inicio/Menú/Ubicaciones/Contacto fijos, un
+> footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. 10 tareas (9 planeadas + una
+> migración de Postgres que apareció como gap real durante la ejecución), revisadas una por una más
+> una revisión final de rama, más una revisión externa (Codex) que encontró 4 hallazgos reales
+> (la allowlist de Postgres no validaba la *forma* de los valores, solo el nombre de la clave;
+> `locations` tenía la precedencia invertida contra su propio comentario; los topes de tamaño se
+> aplicaban tarde; `/blog` se autoenlazaba con una story real) — los 4 corregidos y verificados por
+> mutación. **516 tests** (subió de 466). Detalle en [§2](#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás)
+> y en el [plan](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md).
+>
+> **Acción 06 (corrida final) cerrada el 2026-07-30**: research real contra producción para **La
 > Birra Bar** (14 páginas, $0.3097), republicado en Storyblok con `kr.v0.5` y verificado en el
 > navegador. Midió por primera vez cuánto tarda un research real —**16m15s**, por encima del umbral
 > de ~12 min que la pieza D necesitaba para mostrarse en vivo en la demo— así que **la pieza D queda
@@ -78,6 +92,29 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | ✅ | **516 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
 | ✅ | **Diez reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las tres últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, y carreras asincrónicas en el portal. Ver [ADR-13..22 y el registro de correcciones](../decisiones-arquitectura.md). |
+
+## Próximos pasos
+
+*Actualizado 2026-08-01, tras cerrar la navegación del sitio del cliente. Con las cuatro piezas de
+la demo resueltas (A/B/C cerradas, D desaconsejada) y la Acción 06 hecha, **no queda nada que
+bloquee mostrarle esto a Frank.** Lo que sigue es elegir en qué seguir invirtiendo:*
+
+1. **Mostrarle la demo a Frank.** Es la única tarea que depende de Juan y no de código — todo lo
+   demás de abajo es continuar construyendo, no una condición para la reunión.
+2. **Módulo 3 — respondedor de reseñas de Google (GBP).** Lo único del alcance base (OBS-01) sin
+   ni una línea escrita. Es la pieza de producto más grande que falta.
+3. **Calidad del research** (`kr-service`): `is_local` se dispara de más (53/60 keywords salen
+   `LocalBusiness`), `score_confidence` se calcula pero no se usa para priorizar, normalización de
+   volumen por percentiles, hub & spoke, enlazado interno vacío. Ver la tabla de mejoras más abajo.
+4. **Desplegar la Fase 2** (`orchestrator` + `renderer`, hoy solo en `localhost`) — servicio Node de
+   larga duración, no serverless. Sin esto, `/menu`, `/blog` y todo lo que se acaba de construir
+   siguen sin un dominio real.
+5. **Cerrar lo que ADR-19 dejó a medias antes de un SLA**: CDN en el borde, invalidación con más de
+   una instancia, punto único de disponibilidad (ver §3 más abajo).
+6. **Deuda técnica menor, sin apuro**: esquema Zod duplicado M2/M1, ADR-11 (offboarding) reescrito
+   sobre un frontend que ya no existe, y — de la revisión de Codex a la navegación del sitio — dos
+   huecos de test documentados (falta un test positivo de que `/blog` muestra su link en una story
+   normal, y la validación de forma de la allowlist de Postgres solo tiene test en un campo de ~20).
 
 ## El número para la propuesta comercial
 
@@ -273,6 +310,23 @@ implementación) — conviene un vistazo rápido la próxima vez que alguien abr
 
 Aparte de las cuatro piezas:
 
+- ✅ **Navegación del sitio del cliente** — **hecha y mergeada a `main` (2026-08-01)**
+  ([spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md) ·
+  [plan](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md)). El sitio público mostraba
+  una barra con los títulos SEO de las 14 páginas de research — parecía un blog. Reemplazada por
+  **Inicio · Menú · Ubicaciones · Contacto** fijos (condicionales a que haya datos), un **footer
+  compartido** con NAP multi-local, y dos páginas sintetizadas nuevas: `/menu` (la carta, agrupada
+  por categoría, JSON-LD `Menu`) y `/blog` (solo los artículos, separados de las landings
+  comerciales). 10 tareas — 9 planeadas más una migración de Postgres (`0010`) que apareció como gap
+  real durante la ejecución: la allowlist de `business_profile_publico` no incluía `locations`/
+  `menu`, así que se hubieran filtrado en silencio en producción, el mismo bug que ya le había
+  pasado a `brand`. Una revisión final de rama y una revisión externa (Codex) encontraron y
+  corrigieron 4 hallazgos reales, verificados por mutación: la allowlist de Postgres no validaba la
+  **forma** de los valores (un objeto podía colarse donde se esperaba un string), la precedencia de
+  `locations` estaba invertida contra su propio comentario, los topes de tamaño se aplicaban después
+  de que Postgres ya había materializado el array completo, y `/blog` se autoenlazaba con una story
+  real. **516 tests** (subió de 466), typecheck limpio, verificado en el navegador dos veces (una
+  vez por el implementador de la última tarea, otra por el controlador, con capturas).
 - ✅ **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** — **hecha (2026-07-30)**,
   $0.3097. Publicado en Storyblok con `kr.v0.5`: 14 páginas de **La Birra Bar** (cliente real de la
   agencia, reemplazó al caso de ejemplo "Bella Napoli" en el mismo space), verificado en el
@@ -361,11 +415,11 @@ reales, no solo contra tests.
 
 | Pieza | ADR | Estado |
 |---|---|---|
-| **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **116 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
+| **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **118 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **66 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
 | **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **87 tests** de núcleo; el flujo, verificado en un navegador real. **Falta:** tests de componente y calibrar el polling con la duración real. |
-| **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **113 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. **Falta:** desplegarlo en un dominio (5.3) y una CDN delante. |
+| **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **114 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. **Falta:** desplegarlo en un dominio (5.3) y una CDN delante. |
 | **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Nav fijo de 4 secciones** (Inicio/Menú/Ubicaciones/Contacto, cada una condicionada a que el perfil tenga el dato — reemplaza a la barra vieja derivada de las páginas SEO publicadas) + **footer compartido** con NAP multi-local (`locations`) y link a Blog + `/menu`/`/blog` sintetizados desde el perfil (allowlist en `0010`, ver [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md)) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav y en NAP/carta. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente — **el nav/footer/menú/blog YA NO dependen del brief**: se calculan en vivo desde `business_profile` en cada request, así que republicar no los toca. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |
 | **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |

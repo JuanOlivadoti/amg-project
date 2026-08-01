@@ -48,15 +48,15 @@ comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la
 | `lib/budget.test.ts` | El **preflight bloquea ANTES de gastar** si la estimación no entra; tiene en cuenta lo ya gastado; sin tope nunca bloquea; corte post-fase si la estimación se quedó corta. |
 | `lib/http.test.ts` | Clasificación de errores (429/5xx reintentables, 4xx no); backoff dentro del tope; `Retry-After` en segundos y fecha HTTP; **un 500 se reintenta y termina bien**; **un 400 NO se reintenta**; se propaga `HttpError` con el status al agotar reintentos; fallos de red. *(Con `fetch` stubeado: sin red.)* |
 
-### `web-builder` (70 tests)
+### `web-builder` (96 tests)
 
 | Archivo | Qué fija |
 |---|---|
-| `contract.test.ts` | Brief válido; **rechazo** de `schema_version` no soportada, de página malformada (`content_brief: null`) y de enum inválido. Perfil válido; rechazo de URL inválida y de `name` faltante. |
+| `contract.test.ts` | Brief válido; **rechazo** de `schema_version` no soportada, de página malformada (`content_brief: null`) y de enum inválido. Perfil válido; rechazo de URL inválida y de `name` faltante; `locations`/`menu` con varios locales/ítems; **`.max()` rechaza más de 20 locales o 200 ítems de carta** (tope en la puerta, antes de que llegue a Postgres). |
 | `handoff/adapter.test.ts` | Mapeo `hero + section* + faq`, slugs, preservación de SEO / intención / contrato editorial. |
 | `storyblok/content.test.ts` | `_uid` en el page raíz y en **todos** los bloks; FAQs como bloks **`faq_item`**; preservación de canonical / OG / claims / `source_keyword`; SEO aplanado. |
-| `render/html.test.ts` | **XSS neutralizado** (un título con `</script><script>` no puede cerrar la etiqueta); `<html lang>` desde el brief; ids `contacto`/`faq` **sin duplicar**; canonical resuelto (absoluto con perfil, relativo sin él); JSON-LD `@graph` con `LocalBusiness` + `FAQPage`; `telephone` y `address` en el `LocalBusiness`. |
-| `llm/content.test.ts` | `reconcile` ante respuestas LLM parciales: respuesta completa, **`sections` como string (no-array)**, **elemento sin `heading`**, y que siempre devuelva una entrada por cada sección/pregunta de entrada. |
+| `render/html.test.ts` | **XSS neutralizado** (un título con `</script><script>` no puede cerrar la etiqueta); `<html lang>` desde el brief; ids `contacto`/`faq` **sin duplicar**; canonical resuelto (absoluto con perfil, relativo sin él); JSON-LD `@graph` con `LocalBusiness` + `FAQPage`; **nav fijo de 4 secciones** (condicional a que haya datos); **footer compartido multi-local**, con **`locations` mandando** sobre `telephone`/`address` de nivel superior (JSON-LD y HTML); `/menu` agrupado por categoría con JSON-LD `Menu`; `/blog` con solo las páginas `Article`, sin autoenlazarse en su propio pie. |
+| `llm/content.test.ts` | `reconcile` ante respuestas LLM parciales: respuesta completa, **`sections` como string (no-array)**, **elemento sin `heading`**, y que siempre devuelva una entrada por cada sección/pregunta de entrada; `buildUserPrompt` no filtra la palabra `undefined` cuando falta el código postal. |
 | `lib/uid.test.ts` | `stableUid`: determinista, claves distintas dan uids distintos, forma de UUID v5 válida. |
 | (en `storyblok/content.test.ts`) | **Republicar el mismo contenido produce los MISMOS `_uid`**; los `_uid` dependen de la identidad del blok, **no del orden** (agregar una sección no cambia los uids de las existentes). |
 

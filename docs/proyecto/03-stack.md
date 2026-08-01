@@ -64,7 +64,7 @@ paquetes transitivos.
 
 **PGlite es la decisión de testing que más rindió.** Las políticas RLS son la frontera de
 seguridad del producto, y un *mock* de Postgres no puede probarlas: lo que hay que verificar es
-que **Postgres las hace cumplir**. Con PGlite, los 116 tests de `db/` corren las migraciones
+que **Postgres las hace cumplir**. Con PGlite, los 118 tests de `db/` corren las migraciones
 reales contra un Postgres real —**sin Docker, sin cuenta, sin red**— y se ejecutan en CI como
 cualquier test unitario. Sin esto, los agujeros multi-tenant que encontraron las reviews externas
 no se habrían podido cerrar con una prueba, solo con un argumento.
@@ -95,7 +95,7 @@ promesas.
 | **Portal** | **Angular + Tailwind**, mobile-first · standalone + signals · **Tailwind puro** (sin librería de componentes) · **polling**, no Realtime | **ADR-16** (*reemplaza ADR-02*), **ADR-20**, **ADR-21** | ✅ **Construido** (`portal/`, 87 tests) | El portal es un **SPA privado y autenticado**: SSR/RSC/SEO —todo lo que justificaba Next— no aporta nada acá. Sirve al **equipo** (aprueba) y al **cliente** (solo lectura). |
 | **API** | REST sobre Node (**Hono**), login `amg_api` | ADR-15, ADR-17, ADR-18, **ADR-22** | ✅ **Construida** (`api/`, 66 tests) | Verifica el JWT, afirma **quién eres**, y deja que **Postgres decida qué podés**. **El portal habla solo con ella** — nunca con PostgREST. |
 | **CMS del Módulo 1** | **Storyblok** (headless + Visual Editor) | ADR-04 | ✅ Publica el contenido | Creación programática vía Management API + edición visual para no-técnicos. Se descartó WordPress/Elementor (JSON opaco) y Payload (sin edición visual sobre el lienzo). |
-| **Render de las webs de cliente** | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | **ADR-19** (*cierra OBS-03*) | ✅ **Construido** (`renderer/`, 113 tests) — falta desplegar | Lee la Content Delivery API de Storyblok y sirve la web en vivo. Elegido sobre "estático + rebuild" porque el **Visual Editor necesita una URL de preview en vivo** — y el Visual Editor es *la razón por la que se eligió Storyblok*. |
+| **Render de las webs de cliente** | **Renderizador propio en runtime**, multi-tenant (1 servicio, N dominios) | **ADR-19** (*cierra OBS-03*) | ✅ **Construido** (`renderer/`, 114 tests) — falta desplegar | Lee la Content Delivery API de Storyblok y sirve la web en vivo. Elegido sobre "estático + rebuild" porque el **Visual Editor necesita una URL de preview en vivo** — y el Visual Editor es *la razón por la que se eligió Storyblok*. |
 | **Motor de keyword research** | **DataForSEO** | ADR-05 | ✅ En el código | Pay-as-you-go barato. Se descartó SEMrush (~450€/mes) y Google Ads API (developer token, volúmenes en rangos). |
 | **LLM** | **Proveedor abstracto** (OpenAI / Anthropic); embeddings con OpenAI | ADR-09 | ✅ En el código | No quedar casados con un proveedor. Embeddings van con OpenAI porque **Anthropic no tiene API de embeddings propia**. |
 
