@@ -1,8 +1,14 @@
-# Las páginas de clientes en el portal — plan de implementación
+# Pieza 1 — Las páginas de clientes en el portal
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
+>
+> **Es la pieza 1 de cuatro.** Leé primero el
+> [programa](2026-08-01-portal-agencia-programa.md): orden de las piezas, reserva de números de
+> migración, qué queda fuera de alcance y las reglas para no interrumpir la demo. Las otras tres son
+> [usuarios](2026-08-01-paginas-usuarios-portal.md), [ideas](2026-08-01-modulo-ideas-portal.md) y
+> [dashboard](2026-08-01-dashboard-home-portal.md).
 
 **Goal:** Llevar las cuatro pantallas de gestión de clientes de
 `/Users/juan.olivadoti/jp/dashboard-project/` (listado, crear, perfil, vista) al portal de AMG OS,
@@ -142,12 +148,13 @@ necesitar tocar algo de acá, **paren y pregunten** — probablemente hay otra f
 | `renderer/**`, `web-builder/**`, `orchestrator/**` | Fuera del alcance |
 | `db/src/cartera-portal.test.ts` | Ata el brief del seed con lo que muestra el portal; no debe cambiar |
 
-**Dependencia de orden con producción:** la migración `0010` **todavía no está aplicada** en Supabase
-(van `0001`..`0009`; ver 0.b en [próximos pasos](../../proyecto/09-estado-y-roadmap.md)). Cuando esta
-rama agregue la `0011`, un `migrate:deploy` en producción aplicará **las dos**, y la `0010`
-re-materializa `business_profile_publico`. No es un problema —es idempotente y ese es exactamente su
-trabajo— pero **hay que saberlo antes de desplegar, no descubrirlo**. Lo sano: aplicar la `0010`
-por su cuenta primero (es un pendiente propio del roadmap) y dejar que la `0011` viaje sola.
+**Estado de las migraciones en producción (verificado el 2026-08-01):** las **10** están aplicadas,
+`0001`..`0010`, así que la `0011` de este plan **viaja sola** y no arrastra nada pendiente. Confirmado
+por consulta a `app.migraciones_aplicadas`, no por el doc. Antes de escribir la `0011`, volvé a
+comprobarlo —el registro es la fuente de verdad, no este párrafo.
+
+Hoy la allowlist expone exactamente `brand, locations, menu, name, priceRange` (comprobable con
+`jsonb_object_keys(business_profile_publico)`). **Esa lista no debe crecer con este plan.**
 
 ---
 
@@ -302,5 +309,5 @@ Una tarea por pantalla; cada una se cierra con su test de componente y su revisi
 | Los locales terminan en dos lugares (`branches` y `business_profile.locations`) y el sitio del cliente muestra uno | Decisión de arquitectura: no hay `branches`. El formulario escribe en `locations` |
 | El `PATCH` deja escalar privilegios aceptando `tenant_id` o `asignado_a` del body | Tests de la etapa 3, uno por vector |
 | Conflictos con el roadmap de la demo | La lista [Qué no se toca](#qué-no-se-toca) + rebase al cerrar |
-| `migrate:deploy` en producción aplica `0010` y `0011` juntas sin que nadie lo espere | Documentado arriba: aplicar la `0010` por su cuenta primero |
+| `migrate:deploy` en producción arrastra una migración pendiente que nadie esperaba | Ya no aplica: las 10 están aplicadas (verificado). Igual, **comprobá el registro antes**, no este plan |
 | Angular 19 → 20: APIs cambiadas en el código portado | Las páginas se reescriben con el estilo del portal (standalone + signals + control flow `@if`/`@for`), no se copian |
