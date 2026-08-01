@@ -5,12 +5,13 @@ import { SidebarService } from '../services/sidebar';
 interface ItemNav {
   readonly etiqueta: string;
   readonly ruta: string;
-  readonly icono: 'research' | 'cartera';
+  readonly icono: 'research' | 'cartera' | 'clientes';
 }
 
 const ITEMS_NAV: readonly ItemNav[] = [
   { etiqueta: 'Research', ruta: '/runs', icono: 'research' },
   { etiqueta: 'Cartera', ruta: '/cartera', icono: 'cartera' },
+  { etiqueta: 'Clientes', ruta: '/clientes', icono: 'clientes' },
 ];
 
 @Component({
@@ -41,6 +42,11 @@ const ITEMS_NAV: readonly ItemNav[] = [
               @case ('cartera') {
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3 13h4v7H3zM10 8h4v12h-4zM17 3h4v17h-4z" />
+                </svg>
+              }
+              @case ('clientes') {
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M17 20v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M10 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8 10v-2a4 4 0 0 0-3-3.87M15 3.13a4 4 0 0 1 0 7.75" />
                 </svg>
               }
             }

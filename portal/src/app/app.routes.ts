@@ -20,6 +20,25 @@ export const routes: Routes = [
         path: 'cartera',
         loadComponent: () => import('./pages/cartera/cartera').then((m) => m.CarteraPage),
       },
+      {
+        path: 'clientes',
+        loadComponent: () => import('./pages/clientes/clientes').then((m) => m.ClientesPage),
+      },
+      {
+        path: 'clientes/nuevo',
+        loadComponent: () =>
+          import('./pages/clientes/cliente-crear').then((m) => m.ClienteCrearPage),
+      },
+      {
+        path: 'clientes/:id',
+        loadComponent: () =>
+          import('./pages/clientes/cliente-perfil').then((m) => m.ClientePerfilPage),
+      },
+      {
+        path: 'clientes/:id/ver',
+        loadComponent: () =>
+          import('./pages/clientes/cliente-vista').then((m) => m.ClienteVistaPage),
+      },
       { path: '', pathMatch: 'full', redirectTo: 'runs' },
     ],
   },
