@@ -2,7 +2,6 @@ import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular
 import { ActivatedRoute, Router } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { ClientesService } from '../../services/clientes';
-import type { ClienteAgencia } from '../../core/models';
 import { PageBreadcrumbComponent } from '../../shared/components/page-breadcrumb';
 import {
   generarIdeasMock,
@@ -68,15 +67,11 @@ const CLASE_ESTADO_POST: Record<EstadoPost, string> = {
         <app-page-breadcrumb [titulo]="cliente.nombre" [rutaAtras]="'/clientes/' + cliente.id" etiquetaAtras="Volver al perfil" />
 
         <div class="flex items-center gap-4">
-          @if (logoUrl(cliente)) {
-            <img [src]="logoUrl(cliente)" [alt]="cliente.nombre" class="w-16 h-16 rounded-lg object-cover" />
-          } @else {
-            <div
-              class="w-16 h-16 rounded-lg bg-superficie-2 flex items-center justify-center text-2xl font-bold text-texto-medio"
-            >
-              {{ cliente.nombre.charAt(0).toUpperCase() }}
-            </div>
-          }
+          <div
+            class="w-16 h-16 rounded-lg bg-superficie-2 flex items-center justify-center text-2xl font-bold text-texto-medio"
+          >
+            {{ cliente.nombre.charAt(0).toUpperCase() }}
+          </div>
           <div>
             <h1 class="text-2xl font-bold text-texto">{{ cliente.nombre }}</h1>
             @if (cliente.industria) {
@@ -277,12 +272,6 @@ export class ClienteVistaPage implements OnInit, OnDestroy {
     if (!this.clientesService.cliente()) {
       await this.router.navigate(['/clientes']);
     }
-  }
-
-  /** `contacto.logo_url`, el mismo campo que edita `cliente-meta-card.ts` — solo si es un string no vacío. */
-  logoUrl(cliente: ClienteAgencia): string | null {
-    const v = cliente.contacto?.['logo_url'];
-    return typeof v === 'string' && v.length > 0 ? v : null;
   }
 
   formatoFecha(iso: string): string {
