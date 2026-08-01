@@ -73,7 +73,10 @@ export type TipoCliente = 'empresa' | 'autonomo' | 'particular';
 /** Los tres valores que acepta `clients.nivel_actividad`. `null` = sin medir todavía. */
 export type NivelActividad = 'bajo' | 'medio' | 'alto';
 
-/** Los tres valores que acepta `clients.estado_contrato`. Nunca `null` — la columna tiene default. */
+/** Los tres valores que acepta `clients.estado_contrato`. La columna tiene default (nunca `null` a
+ *  nivel de esquema), pero `null` SÍ es un valor real de esta API: `db/src/clientes.ts` enmascara
+ *  las columnas de CRM a `null` cuando quien lee es el rol `cliente` (fix de seguridad, Etapa 7) —
+ *  ver el comentario de `ClienteAgencia` más abajo. */
 export type EstadoContrato = 'sin_contrato' | 'vigente' | 'vencido';
 
 /**
@@ -85,19 +88,24 @@ export type EstadoContrato = 'sin_contrato' | 'vigente' | 'vencido';
  *
  * Sin ningún campo del módulo de ideas (`ideasByStatus`, `totalIdeas`, etc.) — AMG OS no tiene ese
  * módulo, no hay ceros que inventar.
+ *
+ * `etiquetas`, `estado_contrato` y `contacto` son `| null` porque son justamente las columnas de CRM
+ * interno que la base ENMASCARA a `null` cuando el que pide los datos tiene rol `cliente` — el dueño
+ * de un negocio no tiene que ver las notas internas de la agencia sobre su propia cuenta. Cualquier
+ * pantalla que los muestre tiene que tratarlos como opcionales, no asumir que siempre traen algo.
  */
 export interface ClienteAgencia {
   id: string;
   nombre: string;
   tipo: TipoCliente | null;
   industria: string | null;
-  etiquetas: string[];
+  etiquetas: string[] | null;
   nivel_actividad: NivelActividad | null;
-  estado_contrato: EstadoContrato;
+  estado_contrato: EstadoContrato | null;
   contrato_vence_en: string | null;
   score: number | null;
   asignado_a: string | null;
-  contacto: Record<string, unknown>;
+  contacto: Record<string, unknown> | null;
   origen: string | null;
   archived_at: string | null;
   created_at: string;

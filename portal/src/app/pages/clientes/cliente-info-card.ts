@@ -84,11 +84,13 @@ function formularioDesde(c: ClienteAgencia): FormularioInfo {
     nombre: c.nombre,
     tipo: c.tipo ?? '',
     industria: c.industria ?? '',
-    etiquetas: c.etiquetas.join(', '),
+    // `etiquetas` puede llegar `null`: el rol `cliente` la ve enmascarada junto con el resto del CRM
+    // interno (fix de seguridad de la Etapa 7 — `db/src/clientes.ts`).
+    etiquetas: (c.etiquetas ?? []).join(', '),
     origen: c.origen ?? '',
     nivelActividad: c.nivel_actividad ?? '',
     asignadoA: c.asignado_a ?? '',
-    estadoContrato: c.estado_contrato,
+    estadoContrato: c.estado_contrato ?? '',
     contratoVenceEn: c.contrato_vence_en ?? '',
     score: c.score === null ? '' : String(c.score),
     empresa: texto('empresa'),

@@ -42,7 +42,7 @@ import { ClienteRecursosCardComponent } from './cliente-recursos-card';
       @if (clientesService.cliente(); as cliente) {
         <app-page-breadcrumb [titulo]="cliente.nombre" rutaAtras="/clientes" etiquetaAtras="Clientes" />
 
-        @if (cliente.etiquetas.length > 0) {
+        @if (cliente.etiquetas && cliente.etiquetas.length > 0) {
           <div class="flex flex-wrap gap-2 -mt-4">
             @for (etiqueta of cliente.etiquetas; track etiqueta) {
               <span class="rounded-full bg-superficie-2 text-texto-medio px-3 py-1 text-xs font-medium">

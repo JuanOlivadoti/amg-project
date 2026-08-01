@@ -133,11 +133,13 @@ export class ClientesTablaComponent {
     return ETIQUETA_TIPO[t];
   }
 
-  etiquetaEstado(e: EstadoContrato): string {
-    return ETIQUETA_ESTADO[e];
+  /** `null` = la base lo enmascaró para el rol `cliente` (fix de seguridad, Etapa 7) — se muestra
+   *  un guion, no el estado real de nadie más. */
+  etiquetaEstado(e: EstadoContrato | null): string {
+    return e === null ? '—' : ETIQUETA_ESTADO[e];
   }
 
-  claseEstado(e: EstadoContrato): string {
+  claseEstado(e: EstadoContrato | null): string {
     if (e === 'vigente') return 'bg-respaldo-suave text-respaldo';
     if (e === 'vencido') return 'bg-error-suave text-error';
     return 'bg-superficie-2 text-texto-medio';
