@@ -1,7 +1,8 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { TestDb } from "./testdb.js";
-import { sembrarBellaNapoli, type ResultadoSeed } from "./seed-demo.js";
+import { sembrarDemo, PERFIL_DEMO, type ResultadoSeed } from "./seed-demo.js";
 import { ConexionReservada } from "./deploy.js";
 
 /**
@@ -29,14 +30,14 @@ let r: ResultadoSeed;
 
 before(async () => {
   db = await TestDb.create();
-  r = await sembrarBellaNapoli(con(db), { frankUserId: FRANK, juanUserId: JUAN });
+  r = await sembrarDemo(con(db), { frankUserId: FRANK, juanUserId: JUAN });
 });
 
 after(async () => {
   await db.close();
 });
 
-test("Frank (maestro) ve el run de Bella Napoli en su lista, en pending_approval", async () => {
+test("Frank (maestro) ve el run de La Birra Bar en su lista, en pending_approval", async () => {
   const runs = await db.asUser<{ id: string; status: string; prompt: string }>(
     { tenantId: r.tenantId, userId: FRANK },
     "select id, status, prompt from kr_runs",
@@ -65,7 +66,7 @@ test("Juan (equipo) también ve el cliente y el run (staff ve toda la cartera de
     "select nombre from clients",
   );
   assert.ok(
-    clientes.some((c) => c.nombre.includes("Bella Napoli")),
+    clientes.some((c) => c.nombre.includes("La Birra Bar")),
     "ve el cliente de demo",
   );
   const runs = await db.asUser({ tenantId: r.tenantId, userId: JUAN }, "select id from kr_runs");
@@ -79,28 +80,28 @@ test("un intruso sin membresía no ve NADA (ni cliente, ni run, ni páginas)", a
   assert.equal((await db.asUser(ctx, "select id from kr_pages")).length, 0);
 });
 
-test("el brief tiene 8 páginas, TODAS sin aprobar (la compuerta certifica que un humano miró)", async () => {
+test("el brief tiene 14 páginas, TODAS sin aprobar (la compuerta certifica que un humano miró)", async () => {
   const pages = await db.asUser<{ approved: boolean }>(
     { tenantId: r.tenantId, userId: FRANK },
     "select approved from kr_pages where run_id = $1",
     [r.runId],
   );
-  assert.equal(pages.length, 8, "las 8 páginas de la corrida de la acción 06");
+  assert.equal(pages.length, 14, "las 14 páginas de la corrida de la acción 06");
   assert.ok(
     pages.every((p) => p.approved === false),
     "ninguna nace aprobada: la aprueba Frank en el portal",
   );
 });
 
-test("el split de honestidad: exactamente 3 respaldadas por datos y 5 sin validar", async () => {
+test("el split de honestidad: exactamente 8 respaldadas por datos y 6 sin validar", async () => {
   const rows = await db.asUser<{ evidencia: string; n: string }>(
     { tenantId: r.tenantId, userId: FRANK },
     `select evidencia, count(*)::text as n from kr_pages where run_id = $1 group by evidencia`,
     [r.runId],
   );
   const porEvidencia = Object.fromEntries(rows.map((x) => [x.evidencia, Number(x.n)]));
-  assert.equal(porEvidencia["datos_mercado"], 3, "3 respaldadas por datos de mercado");
-  assert.equal(porEvidencia["sin_validar"], 5, "5 sin datos que las validen");
+  assert.equal(porEvidencia["datos_mercado"], 8, "8 respaldadas por datos de mercado");
+  assert.equal(porEvidencia["sin_validar"], 6, "6 sin datos que las validen");
 });
 
 test("las respaldadas tienen volumen y las sin validar no (el dato honesto)", async () => {
@@ -115,8 +116,74 @@ test("las respaldadas tienen volumen y las sin validar no (el dato honesto)", as
   }
 });
 
+/**
+ * El renderizador NO lee `business_profile` crudo: lee `business_profile_publico`, la columna
+ * generada con allowlist (0008/0009/0010). Un perfil sembrado con campos fuera de esa allowlist se
+ * filtra **en silencio** —le pasó a `brand` antes de la 0009 y a `locations`/`menu` antes de la
+ * 0010—. Este test cierra el círculo del seed: no que el insert corrió, sino que lo sembrado
+ * SOBREVIVE hasta la única forma que la web del cliente puede leer.
+ */
+test("lo sembrado sobrevive la allowlist: el perfil público trae los 2 locales y la carta", async () => {
+  const [row] = await db.asService<{ perfil: Record<string, unknown> }>(
+    "select business_profile_publico as perfil from clients where id = $1",
+    [r.clientId],
+  );
+  const perfil = row?.perfil as {
+    name?: string;
+    brand?: { color?: string };
+    locations?: { name?: string; opening_hours?: string; address?: { streetAddress?: string } }[];
+    menu?: { category?: string; name?: string }[];
+  };
+
+  assert.equal(perfil?.name, "La Birra Bar");
+  assert.ok(perfil?.brand?.color, "sin brand la web sale con el rojo por defecto, no con marca propia");
+
+  // `font` NO es texto libre: el renderizador solo acepta tres valores (`renderer/src/perfil.ts`,
+  // `FUENTES`) y el Zod de escritura los mismos (`web-builder/src/contract.ts`). El seed anterior
+  // ponía "Fraunces", que no está en la lista: se descartaba EN SILENCIO y la web salía con la fuente
+  // por defecto. Límite conocido de este test: la lista está copiada, no importada (`db` no depende de
+  // `renderer`); si la allowlist cambia, hay que tocar los dos lados.
+  assert.ok(
+    ["sistema", "serif", "moderna"].includes((perfil?.brand as { font?: string })?.font ?? ""),
+    "la fuente de marca tiene que ser una de las que la allowlist del renderizador acepta",
+  );
+
+  // Los locales alimentan el footer NAP multi-local y la sección "Ubicaciones" de la nav fija.
+  assert.equal(perfil?.locations?.length, 2, "los dos locales de Madrid (Centro y Salamanca)");
+  assert.ok(
+    perfil.locations?.every((l) => l.name && l.address?.streetAddress && l.opening_hours),
+    "cada local necesita nombre, calle y horario para que el footer no salga a medias",
+  );
+
+  // La carta alimenta `/menu` (JSON-LD `Menu`). Sin esto, la nav muestra "Menú" y la página da 404.
+  assert.ok((perfil?.menu?.length ?? 0) >= 4, "la carta real de La Birra Bar");
+  assert.ok(
+    perfil.menu?.some((i) => i.name === "Golden Burger"),
+    "el producto insignia tiene que estar en la carta pública",
+  );
+});
+
+/**
+ * El ancla contra la deriva que causó todo esto: el seed decía "Bella Napoli" mientras Storyblok ya
+ * servía "La Birra Bar", porque el perfil vivía DOS veces sin nada que atara las copias. Este test
+ * ata el perfil del seed (lo que el portal muestra) a `web-builder/business-profile.json` (lo que se
+ * publica). Cambiar uno sin el otro cae acá, no en la demo delante de Frank.
+ */
+test("el perfil del seed y el de web-builder describen el MISMO negocio (anti-deriva)", async () => {
+  const ruta = new URL("../../web-builder/business-profile.json", import.meta.url);
+  const publicado = JSON.parse(await readFile(ruta, "utf8")) as {
+    name: string;
+    locations: unknown[];
+    menu: unknown[];
+  };
+
+  assert.equal(PERFIL_DEMO.name, publicado.name, "el nombre del cliente sembrado ≠ el publicado");
+  assert.deepEqual(PERFIL_DEMO.locations, publicado.locations, "los locales divergieron");
+  assert.deepEqual(PERFIL_DEMO.menu, publicado.menu, "la carta divergió");
+});
+
 test("sembrar dos veces es idempotente: no duplica tenant, cliente, run ni páginas", async () => {
-  const r2 = await sembrarBellaNapoli(con(db), { frankUserId: FRANK, juanUserId: JUAN });
+  const r2 = await sembrarDemo(con(db), { frankUserId: FRANK, juanUserId: JUAN });
   assert.equal(r2.tenantId, r.tenantId, "el mismo tenant (upsert por slug)");
   assert.equal(r2.clientId, r.clientId, "el mismo cliente (id fijo)");
   assert.equal(r2.runId, r.runId, "el mismo run de demo (id fijo)");
@@ -139,7 +206,7 @@ test("sembrar dos veces es idempotente: no duplica tenant, cliente, run ni pági
   );
   assert.equal(tenants?.n, "1", "un solo tenant");
   assert.equal(clientes?.n, "1", "un solo cliente");
-  assert.equal(pages?.n, "8", "las 8 páginas del run de demo, sin duplicar");
+  assert.equal(pages?.n, "14", "las 14 páginas del run de demo, sin duplicar");
   // Puede haber MÁS de un run del cliente (ver el test de abajo); acá basta con que el de demo no se
   // duplique. La cuenta exacta de runs se afirma en el test de no-destrucción.
 });
@@ -155,7 +222,7 @@ test("re-sembrar NO destruye un run ajeno del mismo cliente (no es un delete por
   );
 
   // Re-sembrar: solo debe tocar el run de demo.
-  await sembrarBellaNapoli(con(db), { frankUserId: FRANK, juanUserId: JUAN });
+  await sembrarDemo(con(db), { frankUserId: FRANK, juanUserId: JUAN });
 
   const [ajeno] = await db.asService<{ n: string }>(
     "select count(*)::text as n from kr_runs where id = $1",

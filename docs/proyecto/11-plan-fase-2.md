@@ -3,8 +3,8 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-01** · **516 tests en verde** (monorepo) + **120** en el portal
-> (103 `node:test` + 17 Karma)
+> Última actualización: **2026-08-01** · **518 tests en verde** (monorepo) + **124** en el portal
+> (107 `node:test` + 17 Karma)
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
 > JWKS y el logout que revoca están en `main`, desplegados, y **el login se verificó en el navegador**
@@ -29,6 +29,20 @@
 > **Nuevo (2026-08-01): la navegación del sitio del cliente, mergeada a `main`.** 10 tareas (ver
 > §6.1 más abajo), una revisión de rama y una revisión externa (Codex) con 4 hallazgos reales
 > corregidos. 516 tests (subió de 466). Ver §5.3 y el [estado y roadmap](09-estado-y-roadmap.md).
+>
+> **Nuevo (2026-08-01, más tarde): el cliente de la demo, unificado.** Las tres pantallas del
+> recorrido hablaban de tres negocios distintos —dashboard con seis restaurantes inventados, brief con
+> el italiano de ejemplo, web con La Birra Bar—, así que la demo se contradecía a sí misma en tres
+> clics. Ahora el seed (`sembrarDemo`, antes `sembrarBellaNapoli`), el dashboard y el `dev-server` de
+> la API son **el mismo cliente**, con el perfil del seed **atado por test** a
+> `web-builder/business-profile.json`. De paso destapó que el perfil sembrado no tenía `locations` ni
+> `menu` (la web habría salido sin Ubicaciones y con `/menu` en 404) y que su `font` no estaba en la
+> allowlist. **518 tests**, 124 en el portal, y `/cartera` + el drawer mobile **verificados en el
+> navegador** —el pendiente que había quedado abierto—. Ver
+> [estado y roadmap § la demo](09-estado-y-roadmap.md).
+>
+> ⚠️ **Falta un paso operativo:** re-sembrar producción (`npm run seed:demo -w db`). Hasta entonces
+> `bigballs.es` sigue mostrando el italiano.
 
 ---
 
@@ -158,7 +172,7 @@ REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.us
 > página, editar —revoca—, aprobar run), **refresh del token** (401 → refresca y reintenta una vez;
 > si falla, al login), **polling** del research en curso (ADR-21) y las **carreras asincrónicas
 > cerradas** (`core/vigencia.ts`: una respuesta tardía no pisa la pantalla y no queda polling
-> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **103 tests
+> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **107 tests
 > `node:test`**, sin navegador, más **17 tests de componente (Karma)** para el DOM. La API ganó
 > **CORS** para que el navegador pueda llamarla.
 >

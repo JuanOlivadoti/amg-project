@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { PglitePool, PgStore, ConexionReservada, sembrarBellaNapoli, migrarConRegistro } from "db";
+import { PglitePool, PgStore, ConexionReservada, sembrarDemo, migrarConRegistro } from "db";
 import type { ResultadoSeed } from "db";
 import { createApp } from "./app.js";
 import type { EmisorEventos } from "./solicitar.js";
@@ -32,7 +32,7 @@ beforeEach(async () => {
   const con = ConexionReservada.desdePglite(pg);
   // Migraciones con el runner REAL del deploy (no `aplicarMigraciones`): el mismo camino que producción.
   await migrarConRegistro(con);
-  r = await sembrarBellaNapoli(con, { frankUserId: FRANK, juanUserId: JUAN });
+  r = await sembrarDemo(con, { frankUserId: FRANK, juanUserId: JUAN });
 
   const store = new PgStore(new PglitePool(pg)); // amg_api → app_user
   const emisor: EmisorEventos = { send: async () => ({}) };
@@ -49,7 +49,7 @@ async function get(path: string, user: string, tenant: string): Promise<Response
   });
 }
 
-test("GET /runs como Frank devuelve el run de Bella Napoli en pending_approval", async () => {
+test("GET /runs como Frank devuelve el run de La Birra Bar en pending_approval", async () => {
   const res = await get("/runs", FRANK, r.tenantId);
   assert.equal(res.status, 200);
   const { runs } = (await res.json()) as { runs: Array<{ id: string; status: string }> };
@@ -58,13 +58,13 @@ test("GET /runs como Frank devuelve el run de Bella Napoli en pending_approval",
   assert.equal(runs[0]?.status, "pending_approval");
 });
 
-test("GET /runs/:id como Frank devuelve las 8 páginas con el split 3/5", async () => {
+test("GET /runs/:id como Frank devuelve las 14 páginas con el split 8/6", async () => {
   const res = await get(`/runs/${r.runId}`, FRANK, r.tenantId);
   assert.equal(res.status, 200);
   const { pages } = (await res.json()) as { pages: Array<{ evidencia: string; approved: boolean }> };
-  assert.equal(pages.length, 8);
-  assert.equal(pages.filter((p) => p.evidencia === "datos_mercado").length, 3);
-  assert.equal(pages.filter((p) => p.evidencia === "sin_validar").length, 5);
+  assert.equal(pages.length, 14);
+  assert.equal(pages.filter((p) => p.evidencia === "datos_mercado").length, 8);
+  assert.equal(pages.filter((p) => p.evidencia === "sin_validar").length, 6);
   assert.ok(pages.every((p) => p.approved === false), "ninguna nace aprobada");
 });
 

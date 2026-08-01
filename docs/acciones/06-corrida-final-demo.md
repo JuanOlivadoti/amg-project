@@ -9,6 +9,19 @@ incluida la duración medida y lo que implica para la pieza D, en
 [09-estado-y-roadmap.md](../proyecto/09-estado-y-roadmap.md#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás)
 y [11-plan-fase-2.md](../proyecto/11-plan-fase-2.md).
 
+## ✅ El seed del portal ya refleja esta corrida (2026-08-01)
+
+Storyblok pasó a La Birra Bar acá, pero `db/src/seed-demo.ts` se quedó sembrando el italiano: el
+portal contaba un caso y la web servía otro. **Corregido**: el seed (`sembrarDemo`) siembra las 14
+páginas de La Birra Bar con **el split real de esta corrida (8 respaldadas / 6 sin validar)** y su
+coste (`309700` micros = $0.3097). Un test ata el perfil del seed a
+`web-builder/business-profile.json` para que no vuelva a divergir. **Los 14 slugs del seed son
+representativos**, no los exactos publicados acá: hacían falta credenciales de la CDA para leerlos.
+Ver [09-estado-y-roadmap.md § la demo](../proyecto/09-estado-y-roadmap.md#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás).
+
+Falta el paso operativo: **re-sembrar producción** (`npm run seed:demo -w db`). Hasta entonces,
+`bigballs.es` sigue mostrando el italiano.
+
 > ## ⚠️ Esta guía tenía un paso desactualizado: falta `DATABASE_URL_CACHE`
 >
 > Desde la tanda 13 (ADR-14), `npm run spike` contra producción **exige** un registro durable de

@@ -21,6 +21,16 @@
 > mutación. **516 tests** (subió de 466). Detalle en [§2](#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás)
 > y en el [plan](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md).
 >
+> **Nuevo (2026-08-01, más tarde): el cliente de la demo, unificado.** Se preguntó qué le faltaba al
+> portal para una demo completa y la respuesta no fue una funcionalidad: **las tres pantallas hablaban
+> de tres negocios distintos**. El dashboard listaba seis restaurantes inventados, el brief mostraba
+> el italiano de ejemplo (`db/src/seed-demo.ts` seguía sembrando "Bella Napoli") y la web servía **La
+> Birra Bar** — el recorrido de tres golpes contaba tres historias sin relación en tres clics. Ahora
+> el seed, el dashboard y el `dev-server` de la API son el mismo cliente, y **un test ata el perfil del
+> seed a `web-builder/business-profile.json`** para que la deriva no pueda repetirse en silencio.
+> Detalle en [§2](#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás). **518 tests**
+> (516 → 518) y **124 en el portal** (107 `node:test` + 17 Karma).
+>
 > **Acción 06 (corrida final) cerrada el 2026-07-30**: research real contra producción para **La
 > Birra Bar** (14 páginas, $0.3097), republicado en Storyblok con `kr.v0.5` y verificado en el
 > navegador. Midió por primera vez cuánto tarda un research real —**16m15s**, por encima del umbral
@@ -66,7 +76,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **516** en el monorepo + **120** en el portal (103 `node:test` + 17 Karma). Los de seguridad, contra Postgres real |
+| **Tests** | **518** en el monorepo + **124** en el portal (107 `node:test` + 17 Karma). Los de seguridad, contra Postgres real |
 | **Migraciones** | 10 en el repo (`0001`..`0010`) · **9 aplicadas en producción** — la `0010` está pendiente (ver abajo) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
@@ -89,18 +99,33 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **516 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **518 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
 | ✅ | **Doce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
 
 ## Próximos pasos
 
-*Actualizado 2026-08-01, tras cerrar la navegación del sitio del cliente. Con las cuatro piezas de
-la demo resueltas (A/B/C cerradas, D desaconsejada) y la Acción 06 hecha, **no queda nada que
-bloquee mostrarle esto a Frank.** Lo que sigue es elegir en qué seguir invirtiendo:*
+*Actualizado 2026-08-01, tras unificar el cliente de la demo. Con las cuatro piezas resueltas (A/B/C
+cerradas, D desaconsejada), la Acción 06 hecha y el hilo del recorrido unificado, lo que queda antes
+de la reunión es **un paso operativo**, no código:*
 
-1. **Mostrarle la demo a Frank.** Es la única tarea que depende de Juan y no de código — todo lo
-   demás de abajo es continuar construyendo, no una condición para la reunión.
+0. **🔴 Re-sembrar producción.** El cambio del seed **no llega solo** a Supabase: hasta que se corra
+   `npm run seed:demo -w db` contra la base desplegada, `bigballs.es` **sigue mostrando "Trattoria
+   Bella Napoli"** con sus 8 páginas. El seed es idempotente y conserva los UUID fijos, así que
+   reemplaza ese cliente y ese run **en su lugar** (no deja los dos). Necesita `DATABASE_URL_ADMIN`,
+   `SEED_FRANK_USER_ID` y `SEED_JUAN_USER_ID` — los mismos de la primera siembra.
+1. **Mostrarle la demo a Frank.** Depende de Juan, no de código. Tres cosas que conviene tener
+   decididas antes, porque son del guion y no del software (ninguna bloquea, todas se notan):
+   - **La puerta de entrada es `/runs`, no el dashboard** (`app.routes.ts` redirige `''` a `runs`):
+     el primer golpe del recorrido queda a un clic en el sidebar.
+   - **`aprobarRun` está apagado en producción** (decisión de Fase 1: no hay orquestador detrás), así
+     que el cierre del ciclo —"aprobar y publicar"— **no se puede mostrar en `bigballs.es`**. O se
+     enseña en local, o se narra.
+   - **No hay link del portal a la web del cliente**, porque el renderizador no está desplegado (§4):
+     el salto "esto es lo que se publica" es cambiar de ventana a `localhost:8080`.
+   - **El dashboard sigue siendo una maqueta**: los KPIs y la serie de coste incluyen cinco clientes
+     de muestra. La fila y las keywords de La Birra Bar sí son reales.
 2. **Módulo 3 — respondedor de reseñas de Google (GBP).** Lo único del alcance base (OBS-01) sin
    ni una línea escrita. Es la pieza de producto más grande que falta.
 3. **Calidad del research** (`kr-service`): `is_local` se dispara de más (53/60 keywords salen
@@ -117,6 +142,12 @@ bloquee mostrarle esto a Frank.** Lo que sigue es elegir en qué seguir invirtie
    sobre un frontend que ya no existe, y — de la revisión de Codex a la navegación del sitio — dos
    huecos de test documentados (falta un test positivo de que `/blog` muestra su link en una story
    normal, y la validación de forma de la allowlist de Postgres solo tiene test en un campo de ~20).
+7. **Contraste del gráfico de barras en modo oscuro** (encontrado en el navegador el 2026-08-01, sin
+   arreglar). Las etiquetas de los ejes las pinta **ApexCharts** con su gris por defecto (`#373d3f`),
+   no un token nuestro: en claro se leen bien y **en oscuro quedan casi ilegibles**. Los tests de
+   contraste no pueden verlo porque leen `styles.css`, y ese color no sale de ahí. El arreglo es
+   pasarle `xaxis`/`yaxis` `labels.style.colors` desde el token, con el mismo patrón que ya usa
+   `colores()` en `bar-chart.ts` — con su test, como el resto de los pares.
 
 ## El número para la propuesta comercial
 
@@ -292,9 +323,48 @@ están mergeadas a `main` (`d670c23`). 103 tests `node:test` + 17 Karma + build 
 verde tras el merge. El detalle task-by-task, con SHAs y resultado de cada review, vive en
 `.superpowers/sdd/progress.md`.
 
-Pendiente real, sin bloquear el cierre: la verificación manual en navegador de `/cartera` y del
-drawer mobile todavía no se hizo (el MCP de chrome-devtools no conectó durante toda la sesión de
-implementación) — conviene un vistazo rápido la próxima vez que alguien abra el portal.
+**Verificado en el navegador el 2026-08-01** (era el pendiente que quedó abierto porque el MCP de
+chrome-devtools no conectó durante la implementación): `/cartera` en oscuro y en claro, el drawer
+mobile a 390 px —abre, el backdrop lo cierra, `aria-expanded` acompaña y el `aside` vuelve a
+`-translate-x-full`—, y cero mensajes de consola. Y encontró lo que los tests no veían: ver el bloque
+de abajo.
+
+> ### 🔗 El cliente de la demo, unificado (2026-08-01)
+>
+> **El problema no era una funcionalidad que faltara: era que las tres pantallas hablaban de tres
+> negocios distintos.** El dashboard listaba seis restaurantes inventados, el brief mostraba el
+> italiano de ejemplo (el seed seguía sembrando "Trattoria Bella Napoli") y la web servía La Birra Bar
+> desde la acción 06. El recorrido de tres golpes contaba tres historias sin relación.
+>
+> Qué se hizo, con test primero y verificación por mutación en cada paso:
+>
+> - **`db/src/seed-demo.ts`** siembra **La Birra Bar**: 14 páginas (8 respaldadas / 6 sin validar,
+>   el split real de la acción 06), coste `309700` micros (**$0.3097**, el real), perfil con los **dos
+>   locales** y la **carta**. `sembrarBellaNapoli` pasó a llamarse **`sembrarDemo`** para que el nombre
+>   no vuelva a envejecer con el cliente. Los UUID fijos del cliente y del run **no cambian**: re-sembrar
+>   la instalación desplegada reemplaza esas dos filas en su lugar, no deja las dos.
+> - **Un test ata el perfil del seed a `web-builder/business-profile.json`** (nombre, `locations`,
+>   `menu`). Es el ancla contra la deriva que causó todo esto: el perfil vivía dos veces sin nada que
+>   atara las copias.
+> - **Otro test comprueba que lo sembrado sobrevive la allowlist** (`business_profile_publico`). Ahí
+>   apareció un bug real que nadie había visto: el perfil viejo no tenía **ni `locations` ni `menu`**,
+>   así que la web del cliente sembrado se habría servido **sin Ubicaciones y con `/menu` en 404** —la
+>   navegación que se acababa de construir— y además ponía `font: "Fraunces"`, que **no está en la
+>   allowlist de fuentes** (`sistema | serif | moderna`) y se descartaba **en silencio**.
+> - **El `dev-server` de la API usa `sembrarDemo`** en vez de inventar su propio dataset (era la cuarta
+>   copia): verificar el portal en local ahora es ver lo que verá Frank.
+> - **El dashboard abre con el cliente real**, con sus IDs, su coste y sus keywords.
+>
+> **Lo que solo apareció manejando la app** (y que ningún test veía): al mezclar un cliente real con
+> cinco de muestra, el generador de muestra sacaba scores de hasta 98 y **el gráfico "Top
+> oportunidades" quedaba dominado por relleno** (`keyword run-5-1 0`), con solo 2 de 8 barras reales —
+> el primer golpe de la demo mostraba basura. Y la tabla listaba las 44 páginas: 14 reales seguidas de
+> 30 de relleno. Corregido: la muestra tiene un techo de score por debajo del más bajo real, y la tabla
+> lista solo las páginas del cliente principal. Los dos, con su test.
+>
+> **Límite honesto:** los 14 slugs del seed son *representativos*, no un volcado del space — este clon
+> no tiene la credencial de lectura de la CDA, así que no se pudieron leer los que quedaron publicados
+> en Storyblok. Lo que está atado por test es el negocio (perfil, locales, carta, split y coste).
 
 **D — research en vivo:** el orquestador **ya está construido** (Inngest, `workflow.ts`,
 `functions.ts`, 18 tests). Falta desplegarlo y conectarlo, no escribirlo.
