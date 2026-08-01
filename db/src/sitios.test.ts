@@ -347,6 +347,52 @@ describe("Las garantías que estaban escritas y no impuestas (10ª review)", () 
     );
     assert.deepEqual(perfil["menu"], [{ category: "Bebidas", name: "Agua", price: "2 €" }]);
   });
+
+  it("🔴 revisión externa #1 — la allowlist restringe NOMBRES de clave, no FORMA de valor: un objeto disfrazado de texto sobrevivía", async () => {
+    // `perfil -> 'campo'` (operador `->`) trae el valor tal cual, sea el tipo que sea. Si alguien
+    // logra escribir `menu[0].price` como un objeto en vez de un string, ese objeto entero pasaba
+    // intacto — la allowlist solo miraba que la CLAVE `price` estuviera permitida, nunca que el
+    // VALOR fuera el texto libre que se supone que es. `app.texto_publico` cierra esa puerta.
+    await db.asService(
+      `update clients set domain = 'formaequivocada.es', storyblok_space_id = 'SB-FORMA',
+                          business_profile = $2::jsonb where id = $1`,
+      [
+        s.clientA2,
+        JSON.stringify({
+          name: "La Birra Bar",
+          menu: [{ name: "Ale", price: { costo_interno: "4,10 €" } }],
+        }),
+      ],
+    );
+
+    const [fila] = await db.asRender<{ p: { menu?: Record<string, unknown>[] } }>(
+      "select business_profile_publico as p from clients where domain = 'formaequivocada.es'",
+    );
+    const item = fila?.p.menu?.[0] ?? {};
+
+    assert.equal(item["name"], "Ale");
+    assert.equal(item["price"], undefined, "un objeto no sobrevive un campo declarado como texto");
+  });
+
+  it("🔴 revisión externa #3 — el tope de `locations` se aplica en Postgres (la fuente), no solo después en el validador del renderer", async () => {
+    // Sin el `where i <= 20` en la fuente, `jsonb_agg` materializaría los 25 antes de que nada los
+    // recorte: el tope tiene que cortar ACÁ, no confiar en que `perfilValido` (renderer) lo haga.
+    const muchosLocales = Array.from({ length: 25 }, (_, i) => ({ name: `Local ${i}` }));
+    await db.asService(
+      `update clients set domain = 'muchoslocales.es', storyblok_space_id = 'SB-MUCHOS',
+                          business_profile = $2::jsonb where id = $1`,
+      [s.clientA2, JSON.stringify({ name: "X", locations: muchosLocales })],
+    );
+
+    const [fila] = await db.asRender<{ p: { locations?: Record<string, unknown>[] } }>(
+      "select business_profile_publico as p from clients where domain = 'muchoslocales.es'",
+    );
+    const locations = fila?.p.locations ?? [];
+
+    assert.equal(locations.length, 20, "el tope corta en 20");
+    assert.equal(locations[0]?.["name"], "Local 0", "se quedan los PRIMEROS 20");
+    assert.equal(locations[19]?.["name"], "Local 19");
+  });
 });
 
 describe("MemSitios", () => {
