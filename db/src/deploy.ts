@@ -8,7 +8,7 @@ import { MIGRATIONS_DIR } from "./migrate.js";
  *
  * ## Por qué no alcanza `aplicarMigraciones`
  *
- * `aplicarMigraciones` corre las 9 migraciones sobre una base NUEVA cada vez (PGlite en tests): no
+ * `aplicarMigraciones` corre las 10 migraciones sobre una base NUEVA cada vez (PGlite en tests): no
  * necesita registro porque nunca re-aplica. Una base desplegada es al revés —persiste—, y correr las
  * migraciones dos veces revienta: `create table`, `create type`, `create policy` y `add constraint`
  * NO son idempotentes. El propio `migrate.ts` lo anticipaba: "cuando haya base desplegada, acá va el

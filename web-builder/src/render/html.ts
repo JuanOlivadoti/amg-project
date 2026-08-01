@@ -155,10 +155,15 @@ function homeLd(profile: BusinessProfile | null | undefined, url: string): unkno
     name: profile.name,
     url,
   };
-  if (profile.telephone) entity.telephone = profile.telephone;
+  // Mismo fallback que `primaryEntity`: sin address/telephone de nivel superior, el primer local
+  // (vía `localesDe`) los provee — `locations` MANDA para el JSON-LD (spec).
+  const principal = localesDe(profile)[0];
+  const telephone = profile.telephone ?? principal?.telephone;
+  const address = profile.address ?? principal?.address;
+  if (telephone) entity.telephone = telephone;
   if (profile.priceRange) entity.priceRange = profile.priceRange;
   if (profile.image) entity.image = profile.image;
-  if (profile.address) entity.address = postalAddressLd(profile.address);
+  if (address) entity.address = postalAddressLd(address);
   return entity;
 }
 
@@ -257,7 +262,7 @@ ${renderSiteHeader(profile, SLUG_BLOG)}
   ${tarjetas}
 </section>
 </main>
-${renderFooter(profile, "web.v0.1", "WebPage", posts.length > 0)}
+${renderFooter(profile, "web.v0.1", "WebPage", false)}
 </body>
 </html>`;
 }
@@ -444,7 +449,7 @@ function renderUbicaciones(locales: Location[]): string {
       const titulo = l.name ? `<h3>${esc(l.name)}</h3>` : "";
       // `postalCode` es opcional: se imprime solo si está, nunca un hueco ni un "undefined".
       const dir = l.address
-        ? `<p>${esc(l.address.streetAddress)}${l.address.postalCode ? `, ${esc(l.address.postalCode)}` : ""} ${esc(l.address.addressLocality)}</p>`
+        ? `<p>${esc(l.address.streetAddress)}, ${l.address.postalCode ? `${esc(l.address.postalCode)} ` : ""}${esc(l.address.addressLocality)}</p>`
         : "";
       const tel = l.telephone
         ? `<p>Tel: <a href="tel:${esc(l.telephone.replace(/\s/g, ""))}">${esc(l.telephone)}</a></p>`
@@ -619,10 +624,16 @@ function primaryEntity(c: PageContent, url: string, profile?: BusinessProfile | 
 
   // Enriquecimiento con datos NAP del negocio (cierra los warnings de LocalBusiness).
   if (c.schema_type === "LocalBusiness" && profile) {
-    if (profile.telephone) entity.telephone = profile.telephone;
+    // `locations` MANDA (spec): sin address/telephone de nivel superior (el caso real, un perfil
+    // multi-local sin campos clásicos), el primer local los provee. Los locales adicionales no
+    // entran al @graph primario — alcanza con que el primero no se pierda.
+    const principal = localesDe(profile)[0];
+    const telephone = profile.telephone ?? principal?.telephone;
+    const address = profile.address ?? principal?.address;
+    if (telephone) entity.telephone = telephone;
     if (profile.priceRange) entity.priceRange = profile.priceRange;
     if (profile.image) entity.image = profile.image;
-    if (profile.address) entity.address = postalAddressLd(profile.address);
+    if (address) entity.address = postalAddressLd(address);
   }
   return entity;
 }

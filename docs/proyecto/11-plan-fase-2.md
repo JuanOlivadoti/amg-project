@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-01** · **505 tests en verde** (monorepo) + **120** en el portal
+> Última actualización: **2026-08-01** · **508 tests en verde** (monorepo) + **120** en el portal
 > (103 `node:test` + 17 Karma)
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
@@ -84,7 +84,7 @@ OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `loc
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **505 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **508 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -224,7 +224,7 @@ LLM, y probablemente no entra en el timeout de una función (60-300 s).
 
 **Un único servicio Node, multi-tenant** (1 servicio, N dominios) que lee la Content Delivery API de
 Storyblok y sirve la web **en vivo**, reutilizando `renderStory()`, que ya existía y estaba probado.
-**94 tests**, verificado en un navegador real.
+**113 tests**, verificado en un navegador real.
 
 ```
 Editor toca Storyblok ──▶ (contenido)
@@ -313,7 +313,9 @@ un blog, no como el sitio de un restaurante. Reemplazada por:
   carta de 4 productos). Sin código postal ni teléfono: no confirmados por el cliente, no se
   inventan (`postalCode` es opcional en `PostalAddress` por esta misma razón).
 
-**9 tasks** (1-8 más la 6.5), **505 tests** en el monorepo tras el cierre, verificado en un
+**9 tasks** (1-8 más la 6.5), **508 tests** en el monorepo tras el cierre (incluye el fix wave de la
+revisión final: JSON-LD con `locations` sin `address`/`telephone` de nivel superior, coma en la
+dirección del footer, y que `/blog` no se autoenlace), verificado en un
 navegador real: nav/footer en home y en una landing, `/menu` agrupado por categoría, `/blog` con
 solo los dos artículos (sin duplicarlos en la home), `?_host=noexiste.es` sigue en 404, footer
 legible en modo oscuro. El dry-run de republicación en Storyblok no mostró diferencias de contenido

@@ -17,13 +17,13 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 505 tests (monorepo) + 87 (portal)
+## Cobertura actual: 508 tests (monorepo) + 87 (portal)
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
 | `db` | **116** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto, **allowlist de `locations`/`menu` en `business_profile_publico`** (`0010`). |
 | `kr-service` | **88** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). |
-| `web-builder` | **88** | Contrato, handoff, render, XSS, idempotencia de publicación, marca por tenant, imágenes, **nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados** (con escape de `name`/`slug`/`price`). |
+| `web-builder` | **91** | Contrato, handoff, render, XSS, idempotencia de publicación, marca por tenant, imágenes, **nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados** (con escape de `name`/`slug`/`price`), y que **`locations` alimente también el JSON-LD** (no solo el footer) cuando no hay `address`/`telephone` de nivel superior. |
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **66** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
 | `renderer` | **113** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web; **`locations`/`menu` sobreviven al validador y llegan al render**), **los límites del camino anónimo** (10ª review), y **navegación + home** (barra desde la Links API con las mismas defensas; **la nav falla → sin barra, no 503**; nav de preview en draft sin cachear; la raíz sin `home` **sintetiza un índice**, no 404). |

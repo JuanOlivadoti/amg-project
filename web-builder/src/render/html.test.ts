@@ -66,6 +66,32 @@ test("#13 render: con perfil, LocalBusiness incluye telephone y address", () => 
   assert.equal(lb.address["@type"], "PostalAddress");
 });
 
+test("JSON-LD: con solo `locations` (sin address/telephone de nivel superior, como el perfil real de La Birra Bar), el LocalBusiness toma el primer local", () => {
+  const perfil = validProfile({
+    address: undefined,
+    telephone: undefined,
+    opening_hours: undefined,
+    locations: [
+      {
+        name: "Centro",
+        address: { streetAddress: "Carrera de San Jerónimo 3", addressLocality: "Madrid" },
+        telephone: "+34 900 000 000",
+      },
+      {
+        name: "Salamanca",
+        address: { streetAddress: "Ortega y Gasset 79", addressLocality: "Madrid" },
+      },
+    ],
+  });
+  const graph = extractLd(renderStory(story(), perfil))["@graph"];
+  const lb = graph.find((n) => n["@type"] === "LocalBusiness") as unknown as {
+    telephone?: string;
+    address?: { "@type": string; streetAddress: string };
+  };
+  assert.equal(lb.address?.streetAddress, "Carrera de San Jerónimo 3", "toma la dirección del PRIMER local");
+  assert.equal(lb.telephone, "+34 900 000 000", "toma el teléfono del PRIMER local");
+});
+
 // ---------------------------------------------------------------- marca por tenant (tema)
 
 test("tema: un color de marca válido pinta el acento", () => {
@@ -240,6 +266,25 @@ test("🔴 home: el nombre y el slug de una tarjeta se escapan/sanean como en la
   assert.doesNotMatch(html, /href="javascript:/i, "el slug de la tarjeta tampoco es un esquema");
 });
 
+test("home JSON-LD: con solo `locations` (sin address/telephone de nivel superior), el LocalBusiness de la home toma el primer local", () => {
+  const perfil = validProfile({
+    address: undefined,
+    telephone: undefined,
+    opening_hours: undefined,
+    locations: [
+      {
+        name: "Centro",
+        address: { streetAddress: "Carrera de San Jerónimo 3", addressLocality: "Madrid" },
+        telephone: "+34 900 000 000",
+      },
+    ],
+  });
+  const html = renderHome(perfil, nav, "es");
+  const ld = JSON.parse(html.split('<script type="application/ld+json">')[1]!.split("</script>")[0]!);
+  assert.equal(ld.address?.streetAddress, "Carrera de San Jerónimo 3", "toma la dirección del PRIMER local");
+  assert.equal(ld.telephone, "+34 900 000 000", "toma el teléfono del PRIMER local");
+});
+
 test("home: sin perfil cae a un WebSite y un título neutro (falla suave)", () => {
   const html = renderHome(null, nav, "es");
   assert.match(html, /<h1>Inicio<\/h1>/);
@@ -271,6 +316,22 @@ test("footer: lista todos los locales, cada uno con su dirección y horario", ()
   assert.match(html, /San Jerónimo 3/);
   assert.match(html, /Salamanca/);
   assert.match(html, /Ortega y Gasset 79/);
+});
+
+test("footer: la dirección de un local lleva coma entre la calle y la ciudad, con o sin código postal", () => {
+  const perfil = validProfile({
+    locations: [
+      { name: "Sin CP", address: { streetAddress: "Carrera de San Jerónimo 3", addressLocality: "Madrid" } },
+      {
+        name: "Con CP",
+        address: { streetAddress: "Ortega y Gasset 79", addressLocality: "Madrid", postalCode: "28006" },
+      },
+    ],
+  });
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  assert.match(html, /Carrera de San Jerónimo 3, Madrid/, "sin código postal, la coma va después de la calle");
+  assert.match(html, /Ortega y Gasset 79, 28006 Madrid/, "con código postal, la coma sigue yendo después de la calle");
+  assert.ok(!html.includes("Carrera de San Jerónimo 3 Madrid"), "nunca sin coma entre calle y ciudad");
 });
 
 test("footer: un perfil clásico (sin locations) sigue mostrando su dirección", () => {
@@ -327,7 +388,13 @@ test("🔴 blog: el nombre y el slug de un post se escapan/sanean", () => {
   assert.ok(!html.includes('href="javascript:alert(1)"'));
 });
 
-test("blog: en el índice del blog el pie no vuelve a ofrecer el blog vacío", () => {
-  const html = renderBlogIndex(validProfile(), [], "es");
-  assert.match(html, /<h1>/);
+test("blog: en el índice del blog el pie no se autoenlaza (con o sin artículos)", () => {
+  const posts: NavItem[] = [{ slug: "mejor-hamburguesa-dubai", name: "La mejor hamburguesa del mundo" }];
+
+  const sinPosts = renderBlogIndex(validProfile(), [], "es");
+  assert.match(sinPosts, /<h1>/);
+  assert.ok(!sinPosts.includes('href="/blog"'), "sin artículos, el pie tampoco ofrece /blog");
+
+  const conPosts = renderBlogIndex(validProfile(), posts, "es");
+  assert.ok(!conPosts.includes('href="/blog"'), "con artículos, el pie de /blog no se enlaza a sí mismo");
 });

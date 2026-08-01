@@ -93,7 +93,7 @@ npm run migrate:deploy -w db
 > sus claves — el mapa está en `scripts/env-sync.mts` y lo verifica su test (el renderizador, por
 > ejemplo, no puede recibir el token de escritura de Storyblok ni una credencial de base).
 
-**Verificá:** imprime `+ 0001_init.sql … + 0009_marca_publica.sql` y `✔ Aplicadas 9 migración(es)`.
+**Verificá:** imprime `+ 0001_init.sql … + 0010_ubicaciones_y_carta_publicas.sql` y `✔ Aplicadas 10 migración(es)`.
 Es idempotente: si lo corrés de nuevo, dice "ya estaba al día".
 
 ### C.2 — Poner contraseña a los roles
