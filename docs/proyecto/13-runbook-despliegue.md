@@ -512,6 +512,110 @@ que no sea string en un campo de texto **no** sobreviva (`app.texto_publico`, ta
 
 ---
 
+## Desplegar el renderizador (Fase 2)
+
+> **Hecho el 2026-08-01.** El renderizador sirve
+> [`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app). Lo que
+> sigue es el procedimiento tal como salió, con los cuatro tropiezos reales — que es la parte que
+> ahorra tiempo la próxima vez (y la próxima es el **orquestador**, que va igual).
+
+**Es aditivo, y por eso se pudo hacer con una demo el mismo día:** es un **servicio nuevo**, no toca
+`main`, ni el portal, ni la API. El peor caso es que no arranque y todo lo demás siga igual.
+
+### Los pasos
+
+1. **Aplicá la `0010` primero** si no está (ver la sección anterior). Es el bloqueante **silencioso**
+   de este despliegue: sin ella la web sale sin locales y con `/menu` en 404, con el perfil bien
+   cargado y **sin un error en los logs**.
+
+2. **Poné password a `amg_render`** si nunca se usó (las migraciones crean los logins sin ella):
+
+   ```sql
+   alter role amg_render with password 'UNA-ALFANUMÉRICA-LARGA';
+   ```
+
+   **Alfanumérica a propósito:** un `@`, `:` o `/` obliga a percent-encodear el DSN, y el caso típico
+   de "DSN ilegible" es justamente ese.
+
+3. **Armá `DATABASE_URL_RENDER`** copiando `DATABASE_URL_API` y cambiando **usuario y password**:
+
+   ```
+   postgresql://amg_render.<project-ref>:LA-PASS@aws-1-eu-west-2.pooler.supabase.com:6543/postgres
+   ```
+
+4. **Servicio nuevo en Railway**, en el mismo proyecto:
+
+   | Campo | Valor |
+   | --- | --- |
+   | Root Directory | **vacío** (la raíz del repo) |
+   | Start command | `npm run serve -w renderer` |
+   | Healthcheck path | `/_health` |
+   | Variables | `DATABASE_URL_RENDER`, `STORYBLOK_WEBHOOK_SECRET`, `PREVIEW_SECRET`, `TRUST_PROXY=1`, `NPM_CONFIG_PRODUCTION=false` |
+
+   **No pongas `PORT`**: lo inyecta Railway y `server.ts` ya lo lee.
+
+5. **Poné el dominio en la fila del cliente.** El mapa dominio→space **no es una tabla aparte**: es
+   `clients.domain`, y el renderizador resuelve por cabecera `Host` (`db/src/sitios.ts`). El seed
+   **no** puebla `domain` ni los tokens, así que hay que hacerlo a mano:
+
+   ```sql
+   update clients
+      set domain = 'el-dominio-del-servicio',
+          storyblok_space_id = '…', storyblok_public_token = '…', storyblok_preview_token = '…'
+    where id = '…';
+   ```
+
+   Los tokens son los de **lectura** (CDA). El de Management **nunca** va acá: el renderizador es el
+   proceso expuesto a internet anónimo.
+
+6. **Verificá en el navegador**, no por el `/_health`: `/`, `/menu`, `/blog`, una landing, y un
+   dominio desconocido (tiene que dar **404**: el dominio es la autorización, ADR-19).
+
+### Los cuatro tropiezos, y qué enseñan
+
+> #### 1. El DSN quedó con el usuario `amg_api`
+>
+> Al copiar `DATABASE_URL_API` se cambió la password pero **no el usuario**. No es un typo: le habría
+> dado al proceso expuesto a internet la credencial de la API, que es exactamente lo que ADR-17 evita
+> con un login por proceso y `NOINHERIT`. Encima **no habría arrancado** (password de otro rol), así
+> que se habría leído como "problema de credencial" y no como "estás usando el rol equivocado".
+>
+> **Comprobalo antes de desplegar:** conectá con ese DSN y corré `select current_user`.
+
+> #### 2. El session pooler (5432) aceptó una conexión y rechazó la siguiente
+>
+> Con la **misma password**, en dos corridas seguidas. Es el fenómeno que ya le había pasado a
+> `amg_cache`. La forma de distinguirlo de una credencial mala: **probar los dos puertos**. Si 5432
+> falla y 6543 anda, es Supavisor; si fallan los dos, es la password.
+>
+> **Usá 6543 (transaction pooler)** para el renderizador: es lo estable y además lo correcto, porque
+> solo hace transacciones autocontenidas (`pool.transaction()` con `set local role`).
+
+> #### 3. El dominio se agregó al servicio de la API
+>
+> Los custom domains se agregan **dentro de un servicio**. Puesto en el de la API, al validarse habría
+> servido la API REST en el dominio del cliente. Y ocupa cupo: **el plan tiene un límite de custom
+> domains** (se alcanzó con dos), así que hay que liberarlo antes de moverlo.
+>
+> Los dominios `*.up.railway.app` **no cuentan** contra ese límite: sirven para desplegar y verificar
+> sin tocar DNS.
+
+> #### 4. Los primeros 404 eran caché negativa del propio renderizador
+>
+> Si el servicio consulta el dominio **antes** de que exista la fila, cachea el "no existe". Los
+> siguientes pedidos dan 404 aunque la fila ya esté. Vence solo; el modo de verlo es
+> `x-amg-cache: miss` en la respuesta buena. No es un error del despliegue y no hay que tocar nada.
+
+### Lo que quedó pendiente
+
+- **El dominio propio del cliente.** `labirrabar.bigballs.es` tiene el CNAME puesto en Hostinger, pero
+  apuntando al servicio de la API. Moverlo exige agregarlo como custom domain del servicio del
+  renderizador, actualizar el CNAME con el target **nuevo** que dé Railway, y esperar propagación.
+- **`/favicon.ico` da 404** — cosmético, deja el icono genérico en la pestaña.
+- **Una CDN delante** y la invalidación con más de una instancia (ADR-19, ver el roadmap §3).
+
+---
+
 ## Troubleshooting (los errores que más probablemente veas)
 
 | Síntoma                                                                                                    | Causa probable                                          | Fix                                                                                                                                                |
@@ -520,6 +624,10 @@ que no sea string en un campo de texto **no** sobreviva (`app.texto_publico`, ta
 | El login falla con `Token inválido o expirado` y las credenciales son correctas                            | El proyecto firma con un algoritmo que la API no acepta | Mirá `curl -s https://<ref>.supabase.co/auth/v1/.well-known/jwks.json`: el `alg` que declare es el que `api/src/auth.ts` tiene que exigir.         |
 | La API responde `503` con `No se puede verificar el token`                                                 | No puede bajar el JWKS de Supabase                      | No es un problema de credenciales. Comprobá que `SUPABASE_JWT_ISS` sea exactamente `https://<ref>.supabase.co/auth/v1` y que Supabase esté arriba. |
 | Rotaste la clave de firma **por sospecha de compromiso** y la vieja sigue funcionando                      | La API cachea el JWKS 10 minutos                        | Rotar en Supabase no alcanza: **reiniciá el servicio de la API en Railway** para vaciar el caché. En una rotación planificada no hace falta.       |
+| El renderizador da `Application not found` (JSON de Railway)                                               | Railway no tiene app sirviendo ese host                 | El deploy no está "Active", o el dominio está en otro servicio. Mirá Deployments y en qué servicio agregaste el dominio.                            |
+| El renderizador da 404 en `/` pero `/_health` responde                                                     | El `Host` no está en `clients.domain`, o es caché negativa | Comprobá la fila (`select domain from clients`). Si acabás de ponerla, esperá un minuto: el renderizador cachea el "no existe" y vence solo.      |
+| El renderizador arranca y muere: `Faltan variables de entorno del renderizador`                            | `leerConfig` falla cerrado a propósito                  | Cargá la que nombre el error. No hay defaults: sin `DATABASE_URL_RENDER` y `STORYBLOK_WEBHOOK_SECRET` no levanta.                                    |
+| El renderizador no conecta: `password authentication failed` con la password recién puesta                 | El session pooler, o el usuario del DSN                 | Probá 6543. Si fallan los dos puertos, es la password. Y verificá `select current_user`: el DSN tiene que decir `amg_render`, no `amg_api`.          |
 | La API no arranca, `tsx: not found`                                                                        | Railway instaló sin devDependencies                     | Agregá la variable `NPM_CONFIG_PRODUCTION=false` y redesplegá.                                                                                     |
 | La API no arranca, error sobre `CORS_ORIGINS`                                                              | Pusiste `*`, vacío, o una URL sin esquema               | Poné el origen completo, ej. `https://bigballs.es`.                                                                                                |
 | `/health` da 404                                                                                           | La URL o el service están mal                           | Es `GET /health` en la raíz de la API, sin `/api` adelante.                                                                                        |

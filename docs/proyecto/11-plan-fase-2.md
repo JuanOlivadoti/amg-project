@@ -66,6 +66,15 @@
 > 31 etiquetas) y **el typecheck que pisaba `dist/portal`** con el bundle de desarrollo. **539 tests**,
 > 130 en el portal.
 >
+> 🚀 **Nuevo (2026-08-01): el renderizador, DESPLEGADO.** La etapa 6 deja de estar solo en
+> `localhost`: [`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app)
+> sirve la web de La Birra Bar desde internet, leyendo de Supabase con `amg_render` → `app_render`.
+> Se hizo la mañana de la demo porque el riesgo estaba acotado —un servicio nuevo, sin tocar `main`,
+> ni el portal, ni la API— y verificado en el navegador: 5 rutas en 200, 14 páginas, `/menu`, `/blog`,
+> footer con los 2 locales y JSON-LD por tipo. El aislamiento, comprobado con savepoints contra
+> producción. **De Fase 2 ya solo falta el orquestador.** Procedimiento y los cuatro tropiezos reales,
+> en el [runbook](13-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
+>
 > **Nuevo (2026-08-01): la demo del módulo de Keyword Research, decidida.** Hasta acá "la demo" quería
 > decir la de la *plataforma* (el recorrido de tres golpes). La del **módulo KR** es otra y ahora está
 > escrita: entregable primero y pipeline después, **sin correr research en vivo** (confirma los
@@ -92,7 +101,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
 | 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal · **5.3 desplegada** el 2026-07-25, login verificado el 2026-07-30) |
-| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 114 tests (nav fija + footer NAP + `/menu` + `/blog` + home incluidas) |
+| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha y DESPLEGADA** (2026-08-01) — `renderer/`, 114 tests (nav fija + footer NAP + `/menu` + `/blog` + home), sirviendo en `amg-renderer-production.up.railway.app` |
 
 Después de la **5** el sistema es **usable por una persona que no sea yo**: la compuerta de
 aprobación (ADR-06) ya no se ejecuta editando un JSON a mano — se aprueba desde el portal, página por
@@ -101,8 +110,9 @@ página, y el evento despierta al workflow. *(Falta desplegarlo en algún lado: 
 Después de la **6** el cliente **tiene una web**, no "una web generada": `renderer/` la sirve en vivo
 desde Storyblok, con la URL de preview y el Bridge que el Visual Editor necesita —o sea que *la razón
 por la que se eligió Storyblok* por fin se cobra ([ADR-19](../decisiones-arquitectura.md), cierra
-OBS-03). **Lo que sigue faltando es el despliegue del renderizador y del orquestador**: esas dos
-piezas corren solo en `localhost`. *(La API y el portal sí están desplegados — etapa 5.3, Fase 1.)*
+OBS-03). Y desde el **2026-08-01 está desplegado**: la web del cliente se sirve desde internet, no
+desde `localhost`. **Lo que sigue faltando es el orquestador**, que es la única pieza que todavía
+corre solo en local. *(La API y el portal están desplegados desde la etapa 5.3, Fase 1.)*
 
 ---
 
@@ -145,16 +155,19 @@ piezas corren solo en `localhost`. *(La API y el portal sí están desplegados �
 - ~~**Un despliegue.**~~ ✅ **Fase 1 está en producción** desde el 2026-07-25: portal en
   [`bigballs.es`](https://bigballs.es) (Hostinger), API en `api.bigballs.es` (Railway), base en
   Supabase (`eu-west-2`) con RLS forzada. Ver [13-runbook-despliegue.md](13-runbook-despliegue.md).
-  **Lo que falta es desplegar la Fase 2**: el orquestador y el renderizador siguen en `localhost`.
+  **De Fase 2 ya está el renderizador** (2026-08-01, Railway); **falta el orquestador**.
 - ~~**La migración `0010` en la base de producción.**~~ ✅ **Aplicada el 2026-08-01.** Producción va
   con las **10** y la allowlist de `business_profile_publico` ya deja pasar `locations` y `menu`
   (verificado por consulta: 2 locales, 4 items de carta). Se adelantó al despliegue de Fase 2 a
   propósito: era el ítem con más chances de olvidarse, porque su fallo es silencioso —footer **sin
   locales** y `/menu` en **404**, sin ningún error—. Ver
   [runbook § migraciones sobre una base ya desplegada](13-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
-- ~~**La web del cliente.**~~ ✅ Existe: `renderer/` (etapa 6, ADR-19) la sirve en vivo desde
-  Storyblok, con preview firmado para el Visual Editor e invalidación por webhook. **Pero solo corre
-  en `localhost`**: lo que falta para que el cliente *tenga* una web es desplegarlo.
+- ~~**La web del cliente.**~~ ✅ **Existe y está en internet** (2026-08-01): `renderer/` (etapa 6,
+  ADR-19) la sirve en vivo desde Storyblok, con preview firmado e invalidación por webhook, desplegado
+  en Railway como servicio aparte del de la API. **Lo que falta ya no es el despliegue, es el dominio
+  propio del cliente**: hoy responde por `amg-renderer-production.up.railway.app`, y mover
+  `labirrabar.bigballs.es` choca con el **límite de custom domains del plan de Railway**, que ya se
+  alcanzó con dos.
 - **Una CDN delante del renderizador.** ADR-19 dice "cache en el borde"; lo construido es una cache
   **en proceso**. El borde es decisión de despliegue. Con más de una instancia, el webhook invalida
   solo una: antes de escalar hay que resolverlo (ver `renderer/README.md`).
@@ -275,9 +288,11 @@ Paso a paso, con los tropiezos reales, en [13-runbook-despliegue.md](13-runbook-
 > migrar antes el portal, porque el `anon key` es un JWT legacy firmado con ella. Ver
 > [12-credenciales.md](12-credenciales.md).
 
-El orquestador y el renderizador siguen **sin desplegar** (son Fase 2). Van como **servicio Node de
-larga duración**, no serverless: el research encadena llamadas live a DataForSEO y generación por
-LLM, y probablemente no entra en el timeout de una función (60-300 s).
+**El renderizador ya está desplegado** (2026-08-01, Railway); **el orquestador no**. Los dos van como
+**servicio Node de larga duración**, no serverless: el research encadena llamadas live a DataForSEO y
+generación por LLM, y probablemente no entra en el timeout de una función (60-300 s). El del
+renderizador confirmó que el modelo funciona —un proceso Hono con `tsx`, sin paso de build, leyendo la
+base con su propio login— y dejó el procedimiento escrito para el del orquestador.
 
 > ✅ **Medido en la Acción 06 (2026-07-30): un research real tarda 16m15s.** (55 keywords → 14
 > páginas, $0.3097, `spike.ts` sin el publish.) Confirma el diseño —el orquestador tiene que ser un

@@ -163,13 +163,29 @@ DATABASE_URL_RENDER=postgres://amg_render:...@host/db   # ← LA LEE EL CÓDIGO 
 > recién creado puede darte `password authentication failed` por el pooler (Supavisor), no por la
 > password — visto en vivo el 2026-07-30 con `amg_cache`, mientras `amg_api` seguía conectando bien
 > por el mismo host. El transaction pooler solo sirve para código que hace transacciones
-> autocontenidas (sin `SET LOCAL` de sesión ni `LISTEN` entre llamadas) — es el caso de `PgTaskLog`,
-> pero **no** asumas que también lo es para `amg_orquestador`/`amg_render` sin revisarlo primero.
+> autocontenidas (sin `SET LOCAL` de sesión ni `LISTEN` entre llamadas) — es el caso de `PgTaskLog`.
 >
-> ✅ **`DATABASE_URL_RENDER` ya se usa.** El renderizador (etapa 6) la lee en `renderer/src/deps.ts`.
-> Necesita además **`STORYBLOK_WEBHOOK_SECRET`** (obligatoria: sin ella la invalidación de cache queda
-> cerrada y el Visual Editor solo *casi* funciona) y **`PREVIEW_SECRET`** (sin ella no se sirven
-> borradores, ni con firma). Ver [`renderer/README.md`](../../renderer/README.md).
+> ✅ **Resuelto para `amg_render` (2026-08-01): va por el 6543, y no es opcional.** Al desplegar el
+> renderizador, el session pooler (5432) **aceptó una conexión y rechazó la siguiente con la misma
+> password**. El transaction pooler fue estable, y además es el correcto: el renderizador solo hace
+> `pool.transaction()` con `set local role`, que es autocontenido. Para `amg_orquestador` sigue sin
+> verificarse. La forma de distinguir el pooler de una credencial mala: **probar los dos puertos** —
+> si fallan los dos, es la password.
+>
+> ✅ **`DATABASE_URL_RENDER` ya se usa, y está en producción.** El renderizador (etapa 6) la lee en
+> `renderer/src/deps.ts`, y desde el 2026-08-01 corre en Railway con ella. Necesita además
+> **`STORYBLOK_WEBHOOK_SECRET`** (obligatoria: sin ella la invalidación de cache queda cerrada y el
+> Visual Editor solo *casi* funciona) y **`PREVIEW_SECRET`** (sin ella no se sirven borradores, ni con
+> firma). Las dos se generaron con `openssl rand -hex 32` y viven en la fuente única.
+> Ver [`renderer/README.md`](../../renderer/README.md) y el
+> [runbook](13-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
+>
+> ⚠️ **Hueco conocido del reparto:** `env:sync` **no** le pasa estas tres al `renderer/.env` — su
+> `.env.example` solo declara las de la demo local (tokens de Storyblok y `DEMO_DOMAIN`). En
+> producción no molesta, porque las variables se cargan en Railway; pero para correr el servidor
+> **real** en local hay que pasarlas a mano
+> (`npx tsx --env-file=docs/private/credenciales.env renderer/src/server.ts`). Si alguna vez se quiere
+> que `env:sync` las reparta, hay que tocar el MAPA y el `.env.example` juntos: un test los ata.
 >
 > Ojo con una que **no** es de Postgres: los tokens de la Content Delivery API viven **por cliente en
 > la base** (`clients.storyblok_public_token` / `storyblok_preview_token`), no en el entorno. Tienen

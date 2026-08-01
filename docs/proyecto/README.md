@@ -7,16 +7,21 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 > Última revisión: 2026-08-01 · Estado: **Fase 1 desplegada; Fase 2 construida, sin desplegar.** La
 > cadena completa —research → compuerta humana → publicación → **la web servida en vivo**— funciona de
 > punta a punta. API, portal y renderizador existen y se manejaron en un navegador real.
-> **516 tests en verde** en el monorepo (+**120** en el portal: 103 `node:test` + 17 Karma).
+> **539 tests en verde** en el monorepo (+**130** en el portal: 113 `node:test` + 17 Karma).
 >
 > ✅ **Fase 1 está en producción** desde el 2026-07-25: el portal en [`bigballs.es`](https://bigballs.es)
 > (Hostinger), la API en `api.bigballs.es` (Railway) y la base con RLS forzada en Supabase. El login
 > se verificó en el navegador el 2026-07-30.
 >
-> ⚠️ **El orquestador y el renderizador siguen sin desplegar** (son Fase 2): hoy corren solo en
-> `localhost`. Eso es lo que separa a *la web del cliente* de que un cliente la pueda ver — y hay una
-> **migración (`0010`) aplicada en el repo pero no en la base de producción**, que va junto con ese
-> despliegue (ver [runbook § migraciones sobre una base ya desplegada](13-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada)).
+> ✅ **Y el renderizador, desde el 2026-08-01**: la web del cliente se sirve en
+> [`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app), leyendo
+> de Supabase con el rol más pobre del sistema. Las **10** migraciones están aplicadas en producción.
+> Procedimiento y tropiezos en el
+> [runbook § desplegar el renderizador](13-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
+>
+> ⚠️ **Falta el orquestador** (la última pieza de Fase 2 sin desplegar), el **dominio propio del
+> cliente** —el plan de Railway está en su límite de custom domains— y una **CDN delante** del
+> renderizador.
 >
 > 👉 Si venís a **retomar el proyecto**, empezá por
 > [**Estado y roadmap**](09-estado-y-roadmap.md): qué hay construido, dónde estamos y qué queda por

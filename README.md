@@ -5,7 +5,7 @@ Convierte el conocimiento operativo de la agencia en software con agentes de IA
 supervisados, RBAC y multi-tenancy. Este repositorio contiene la documentación de
 producto y arquitectura, y el código de los dos primeros módulos.
 
-## 🚦 Estado actual — Fase 2 construida, sin desplegar
+## 🚦 Estado actual — en producción, salvo el orquestador
 
 **La cadena completa funciona de punta a punta**, con orquestación durable y aislamiento
 multi-tenant impuesto por Postgres:
@@ -15,17 +15,17 @@ prompt → research → persistencia (RLS) → COMPUERTA HUMANA → contenido �
        → publicación en Storyblok → la web del cliente, servida en vivo
 ```
 
-| Paquete | Qué es | Estado |
-|---|---|---|
-| **[kr-service/](kr-service/)** | Módulo 2 — Keyword Research (`prompt → brief SEO`) | ✅ |
-| **[web-builder/](web-builder/)** | Módulo 1 — Creador de Webs (`brief → Storyblok`) | ✅ |
-| **[db/](db/)** | Esquema, RLS multi-tenant, cache, registro de tareas | ✅ |
-| **[orchestrator/](orchestrator/)** | Inngest: steps durables + compuerta humana | ✅ |
-| **[api/](api/)** | REST autenticada (Hono): JWT verificado, RLS decide | ✅ |
-| **[renderer/](renderer/)** | Sirve las webs de cliente: 1 servicio, N dominios (ADR-19) | ✅ |
-| **[portal/](portal/)** | SPA Angular — donde se aprueba la compuerta *(fuera del monorepo)* | ✅ |
+| Paquete | Qué es | Construido | En producción |
+|---|---|---|---|
+| **[kr-service/](kr-service/)** | Módulo 2 — Keyword Research (`prompt → brief SEO`) | ✅ | — *(CLI)* |
+| **[web-builder/](web-builder/)** | Módulo 1 — Creador de Webs (`brief → Storyblok`) | ✅ | — *(CLI)* |
+| **[db/](db/)** | Esquema, RLS multi-tenant, cache, registro de tareas | ✅ | ✅ Supabase, 10 migraciones |
+| **[orchestrator/](orchestrator/)** | Inngest: steps durables + compuerta humana | ✅ | ⚪ **lo único sin desplegar** |
+| **[api/](api/)** | REST autenticada (Hono): JWT verificado, RLS decide | ✅ | ✅ `api.bigballs.es` |
+| **[renderer/](renderer/)** | Sirve las webs de cliente: 1 servicio, N dominios (ADR-19) | ✅ | ✅ Railway *(2026-08-01)* |
+| **[portal/](portal/)** | SPA Angular — donde se aprueba la compuerta *(fuera del monorepo)* | ✅ | ✅ `bigballs.es` |
 
-- **464 tests en verde** (+60 en el portal) · typecheck limpio en los 6 paquetes · `npm test` desde
+- **539 tests en verde** (+130 en el portal) · typecheck limpio en los 6 paquetes · `npm test` desde
   la raíz.
 - Los tests de seguridad corren contra **Postgres real** (PGlite en WASM): sin Docker, sin cuenta.
 - Todo corre **sin una sola credencial**: providers mock + base en memoria.
