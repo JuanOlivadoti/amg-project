@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-07-31** · **466 tests en verde** (monorepo) + **120** en el portal
+> Última actualización: **2026-08-01** · **505 tests en verde** (monorepo) + **120** en el portal
 > (103 `node:test` + 17 Karma)
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
@@ -42,7 +42,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
 | 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal) · falta desplegar (5.3) |
-| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 94 tests (nav + home incluidas) |
+| 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 113 tests (nav fija + footer NAP + `/menu` + `/blog` + home incluidas) |
 
 Después de la **5** el sistema es **usable por una persona que no sea yo**: la compuerta de
 aprobación (ADR-06) ya no se ejecuta editando un JSON a mano — se aprueba desde el portal, página por
@@ -84,7 +84,7 @@ OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `loc
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **466 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **505 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -284,7 +284,41 @@ veían. Se documentan acá para que el plan no mienta por omisión:
   Verificado contra el space real (la barra lista las 8 páginas borrador, ordenadas y escapadas).
 
 > **Deuda de diseño, dicha:** republicar desde un brief **pisa** las imágenes que el cliente haya
-> subido en el Visual Editor. No bloquea; se resuelve cuando se vuelva real.
+> subido en el Visual Editor. No bloquea; se resuelve cuando se vuelva real. **Ya no aplica al
+> nav/footer/menú/blog**: se calculan en vivo desde `business_profile` en cada request, no desde el
+> brief — republicar los deja intactos.
+
+**✅ Navegación fija del sitio del cliente (cierra el plan
+[`2026-07-31-navegacion-sitio-cliente`](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md),
+[spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md)).** La barra de arriba
+("Navegación + home" del bullet anterior) mostraba los 14 títulos SEO de La Birra Bar — se leía como
+un blog, no como el sitio de un restaurante. Reemplazada por:
+
+- **Nav fijo de 4 ítems** (Inicio/Menú/Ubicaciones/Contacto), cada uno condicionado a que el perfil
+  tenga el dato — ya no deriva de la lista de páginas publicadas.
+- **Footer compartido** en toda página (landings, home, `/menu`, `/blog`): NAP general + un bloque
+  por cada `Location` (nombre, dirección, horario — La Birra Bar tiene dos: Centro y Salamanca) +
+  link a Blog si hay artículos. Reemplaza a la sección de contacto que antes se repetía dentro de
+  `<main>` en cada landing.
+- **`/menu` y `/blog` sintetizados** desde el perfil (mismo patrón que la home cuando no hay story
+  real): `/menu` agrupa la carta por categoría con JSON-LD `Menu`; `/blog` lista solo las páginas
+  `schema_type: Article` — la home ya no las repite en su índice general.
+- **Tarea no prevista en el plan original (Task 6.5): migración `0010_ubicaciones_y_carta_publicas.sql`.**
+  El renderizador lee `business_profile_publico` (la columna generada con allowlist, `0008`/`0009`),
+  no `business_profile` crudo — y ni `locations` ni `menu` estaban en esa allowlist. Sin esta
+  migración, el footer saldría sin locales y `/menu` daría 404 en producción aunque el perfil
+  estuviera cargado (el mismo bug de silencio que ya le había pasado a `brand` antes de la `0009`).
+  Se detectó al planificar, no en producción — de ahí que se agregara como tarea intermedia del plan.
+- **Datos reales de La Birra Bar cargados** en `web-builder/business-profile.json` (dos locales, la
+  carta de 4 productos). Sin código postal ni teléfono: no confirmados por el cliente, no se
+  inventan (`postalCode` es opcional en `PostalAddress` por esta misma razón).
+
+**9 tasks** (1-8 más la 6.5), **505 tests** en el monorepo tras el cierre, verificado en un
+navegador real: nav/footer en home y en una landing, `/menu` agrupado por categoría, `/blog` con
+solo los dos artículos (sin duplicarlos en la home), `?_host=noexiste.es` sigue en 404, footer
+legible en modo oscuro. El dry-run de republicación en Storyblok no mostró diferencias de contenido
+(el perfil no se hornea en las stories: lo inyecta el renderizador en cada request), así que **no
+se republicó** — no había nada que cambiar en el space.
 
 ---
 
@@ -342,6 +376,7 @@ Todas con su ADR. Las que más condicionan lo que viene:
 | ~~Pieza A — verificación JWT ES256~~ | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | ✅ **Cerrada (2026-07-30).** Las 4 tareas, mergeadas y desplegadas, y el login verificado en el navegador. Ya no bloquea nada. |
 | ~~Pieza B — modo oscuro del portal~~ | [spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) · [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md) | ✅ **Mergeada a `main`** (Tarea 1 de la migración a Tailwind v4, esta misma sesión). Tokens semánticos (no `dark:`) para que la pieza C herede el tema por construcción. 21 tests nuevos: el contraste AA de 17 pares × 2 temas leído de `styles.css`, `TOKENS`/`styles.css` atados (incluido el bloque `@theme inline`, que reemplazó a `tailwind.config.js` cuando el portal migró a Tailwind v4), y un test que recorre `src/app` y prohíbe incrustar colores o usar la paleta cruda. |
 | ~~Cuánto tarda un research real~~ | — | ✅ **Medido (2026-07-30): 16m15s** (55 keywords → 14 páginas, $0.3097), por encima del umbral de ~12 min. **Decisión:** la pieza D (research en vivo en la demo) queda desaconsejada tal como se imaginó — mostrarlo en vivo arriesga que Frank mire un spinner. Mejor correrlo antes (como acá) y mostrar el resultado publicado. El polling del portal (4s) sigue sin calibrar contra este número. |
+| ~~Navegación fija del sitio del cliente~~ | [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md) · [plan](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md) | ✅ **Cerrada (2026-08-01).** 9 tasks (1-8 más la 6.5, migración `0010` no prevista en el plan original). Nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados, datos reales de La Birra Bar cargados. Ver §6.1 más arriba. |
 | Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
 | `is_local` se dispara de más | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo `LocalBusiness`. Ensucia el JSON-LD. |
 | `endpoints_degradados` incompleto | `meta_run` | Omite los fallos de suggestion/SERP. |

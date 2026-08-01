@@ -1,7 +1,12 @@
 # Navegación del sitio del cliente — diseño
 
-> **Estado:** aprobado el 2026-07-31, pendiente de implementación. Plan en
-> [2026-07-31-navegacion-sitio-cliente.md](../plans/2026-07-31-navegacion-sitio-cliente.md).
+> **Estado:** ✅ **implementado y cerrado (2026-08-01).** 9 tasks (1-8 más la 6.5, agregada durante
+> la ejecución). Plan en
+> [2026-07-31-navegacion-sitio-cliente.md](../plans/2026-07-31-navegacion-sitio-cliente.md). Datos
+> reales de La Birra Bar cargados, verificado en un navegador real (nav, footer, `/menu`, `/blog`,
+> una landing, 404, modo oscuro). Detalle en
+> [09-estado-y-roadmap.md](../../proyecto/09-estado-y-roadmap.md) y
+> [11-plan-fase-2.md](../../proyecto/11-plan-fase-2.md).
 >
 > ## Tres cosas que aparecieron al planificar, y que este diseño no contemplaba
 >
@@ -15,6 +20,28 @@
 >    ausente (la misma decisión que el `null` de las métricas en `kr.v0.4`).
 > 3. **El índice de la home excluye las páginas de blog.** Si no, un post aparecería en las tarjetas
 >    de la home *y* en `/blog` — la duplicación que este trabajo viene a evitar.
+>
+> ## Lo que se implementó distinto de lo escrito acá
+>
+> Las tres enmiendas de arriba se implementaron tal como quedaron dichas (Tasks 1, 3 y 5-8) — no
+> hubo que revisarlas de nuevo al ejecutar. Lo único que este diseño **no anticipó** apareció recién
+> al ejecutar el plan, no al escribirlo:
+>
+> - **Task 6.5 (no prevista en el plan original): migración de Postgres
+>   `0010_ubicaciones_y_carta_publicas.sql`.** Este documento describe `locations`/`menu` como
+>   campos nuevos de `BusinessProfile` (§Modelo de datos) y asume que `perfilValido` los deja pasar
+>   (enmienda 1), pero no menciona que el renderizador en producción **no lee `business_profile`
+>   crudo**: lee `business_profile_publico`, la columna generada con allowlist de la `0008`/`0009`
+>   (ver [`decisiones-arquitectura.md`](../../decisiones-arquitectura.md), ADR-19). Esa allowlist
+>   enumeraba campos explícitos, y ni `locations` ni `menu` estaban — se habrían filtrado en
+>   silencio en producción (footer sin locales, `/menu` en 404) aunque el perfil estuviera cargado
+>   y `perfilValido` los aceptara. Se detectó al planificar la ejecución, se agregó como tarea
+>   intermedia (`0010`, mismo mecanismo que la `0009` con `brand`) y quedó cubierta por los tests de
+>   `db` antes de tocar el renderizador.
+> - **La republicación en Storyblok no hizo falta.** El brief lo dejaba como paso condicional
+>   (dry-run primero); el dry-run final no mostró diferencias de contenido — el perfil no se
+>   hornea en las stories, lo inyecta el renderizador en cada request — así que no se gastaron
+>   llamadas de más a la Management API.
 
 ---
 
@@ -176,6 +203,13 @@ Storyblok, sin traer contenido de más.
 ---
 
 ## Contenido real para La Birra Bar
+
+> **Implementado con una variante menor respecto al JSON de abajo** (Task 9): el nombre del local
+> "Centro" quedó como **"Centro (Puerta del Sol)"** y las cervezas como **"Ale de Ogham"** /
+> **"Honey de Ogham"** (no solo "Ale" / "Honey (Ogham)") — es el mismo dato, redactado con el nombre
+> completo del producto/local en vez de la forma corta que se había puesto acá al escribir el
+> diseño. También se omitieron los precios del menú (el campo `price` queda vacío, es opcional) por
+> la misma razón que el código postal: no confirmados por el cliente.
 
 Una vez implementado, se actualiza `web-builder/business-profile.json` con datos reales (no
 inventados — de lo que el usuario ya pasó en esta conversación):

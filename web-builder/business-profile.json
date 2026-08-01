@@ -1,4 +1,29 @@
 {
   "name": "La Birra Bar",
-  "opening_hours": "Lun-Dom 11:00-01:00 (vie-sáb hasta las 02:00) · Local Centro, Carrera de San Jerónimo 3"
+  "locations": [
+    {
+      "name": "Centro (Puerta del Sol)",
+      "address": { "streetAddress": "Carrera de San Jerónimo 3", "addressLocality": "Madrid" },
+      "opening_hours": "Lun-Dom 11:00-01:00 · Vie-Sáb hasta las 02:00"
+    },
+    {
+      "name": "Salamanca",
+      "address": { "streetAddress": "Calle de José Ortega y Gasset 79", "addressLocality": "Madrid" },
+      "opening_hours": "Dom-Mié hasta 00:30 · Vie-Sáb hasta la 01:00"
+    }
+  ],
+  "menu": [
+    {
+      "category": "Hamburguesas",
+      "name": "Golden Burger",
+      "description": "La hamburguesa insignia de la casa, la que los lanzó a la fama mundial."
+    },
+    { "category": "Cervezas artesanales", "name": "Ale de Ogham", "description": "De barril, bien fría." },
+    { "category": "Cervezas artesanales", "name": "Honey de Ogham", "description": "De barril, bien fría." },
+    {
+      "category": "Acompañamientos",
+      "name": "Patatas fritas especiales",
+      "description": "Con un toque crocante único y salsas de la casa."
+    }
+  ]
 }
