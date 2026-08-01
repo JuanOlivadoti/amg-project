@@ -6,7 +6,8 @@ propone a un cliente ("Frank").
 
 **Antes de trabajar, leé el estado real** (no lo asumas): `docs/proyecto/09-estado-y-roadmap.md` (qué
 hay, qué falta) y `docs/proyecto/11-plan-fase-2.md` (el plan). Las decisiones viven en
-`docs/decisiones-arquitectura.md` (ADR-01..23 + OBS-01/02/03, las tres cerradas).
+`docs/decisiones-arquitectura.md` (ADR-01..23 + OBS-01..04; las tres primeras OBS están cerradas y
+**OBS-04 está abierta**: quién edita la web no lo gobierna nuestro RBAC).
 
 ---
 

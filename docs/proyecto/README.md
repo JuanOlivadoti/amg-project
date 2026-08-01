@@ -51,6 +51,6 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 
 ## Contexto adicional
 
-- **Decisiones de arquitectura (ADR-01..23 + OBS-01/02/03):** [`../decisiones-arquitectura.md`](../decisiones-arquitectura.md) — el *porqué* de cada elección técnica, con las alternativas descartadas **y las decisiones que hubo que corregir**. Esta documentación las referencia constantemente.
+- **Decisiones de arquitectura (ADR-01..23 + OBS-01..04):** [`../decisiones-arquitectura.md`](../decisiones-arquitectura.md) — el *porqué* de cada elección técnica, con las alternativas descartadas **y las decisiones que hubo que corregir**. Esta documentación las referencia constantemente. 🔴 **OBS-04 está abierta** (2026-08-01): quién edita la web no lo gobierna nuestro RBAC.
 - **Producto:** [`../contexto-proyecto-frank.md`](../contexto-proyecto-frank.md) y [`../A_PRD_AMG_Madrid_v1_Ilustrado.md`](../A_PRD_AMG_Madrid_v1_Ilustrado.md).
 - **READMEs de código:** [`kr-service`](../../kr-service/README.md) · [`web-builder`](../../web-builder/README.md) · [`api`](../../api/README.md) · [`renderer`](../../renderer/README.md) · [`portal`](../../portal/README.md) — cómo correr cada pieza.

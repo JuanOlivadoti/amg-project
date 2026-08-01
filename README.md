@@ -34,8 +34,8 @@ prompt → research → persistencia (RLS) → COMPUERTA HUMANA → contenido �
 > [**Estado y roadmap**](docs/proyecto/09-estado-y-roadmap.md): qué hay construido, dónde estamos y
 > qué queda por delante, ordenado por lo que realmente bloquea.
 
-⚠️ **Nada está desplegado.** El sistema funciona entero, pero en `localhost`: el hosting sigue sin
-decidirse (etapa 5.3), y **eso es lo único que lo separa de que lo use un cliente**.
+⚠️ **Falta desplegar el orquestador**, la última pieza en `localhost`. Hasta que esté, el portal en
+producción tiene apagados los botones de *lanzar research* y *aprobar* (`environment.prod.ts`).
 
 ⚠️ **El research corre contra el *sandbox* de DataForSEO** → volúmenes y costo **ficticios**. La
 corrida real cuesta **~$0.31** ([guía](docs/acciones/06-corrida-final-demo.md)).
@@ -97,9 +97,12 @@ Detalle en [**Estado y roadmap**](docs/proyecto/09-estado-y-roadmap.md). En cort
 
 ### 🔴 Decisiones abiertas
 
+- **OBS-04 — ¿quién edita la web?** El portal y Storyblok son **dos identidades que no se cruzan**:
+  nuestro RBAC sale de `memberships` dentro de Postgres, pero quién puede editar un sitio lo deciden
+  los seats del space. De esto dependen el **costo por cartera** y la cláusula de *handoff editable*.
 - **Reescribir ADR-11** (offboarding). Ya **hay qué entregar** —el space de Storyblok **más** el
   renderizador—, pero el ADR sigue redactado sobre "el frontend Next.js", que no existe. De ahí sale
-  una cláusula de contrato, así que no puede firmarse como está.
+  una cláusula de contrato, así que no puede firmarse como está — y ahora **espera a OBS-04**.
 - **Dimensionar el riesgo de disponibilidad antes de vender un SLA.** El renderizador es un punto
   único: si se cae, **se caen todas las webs de cliente a la vez**. Está mitigado, no eliminado.
 

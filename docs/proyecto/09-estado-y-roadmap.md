@@ -647,8 +647,17 @@ se guarda con el run.
 - **El polling del brief (4 s) es a ojo**, y la lista de runs no pollea. Se calibra con la duración
   real de una corrida.
 - **ADR-11 (offboarding) sigue sin poder firmarse.** Ahora *hay* qué entregar (el space + el
-  renderizador), pero falta **verificar el snapshot estático como entregable** y ponerle precio a la
-  "salida gestionada". Es redacción comercial, no código.
+  renderizador), pero falta **verificar el snapshot estático como entregable**, ponerle precio a la
+  "salida gestionada" y **cerrar OBS-04** (quién edita durante el servicio, del que depende qué
+  significa "editable" en la baja). Es redacción comercial, no código.
+- **El enlace de preview del Visual Editor se emite a mano.** `firmarPreview()` existe y está
+  probado, pero solo lo usan `dev-server` y `demo-server`: en producción el enlace se genera con un
+  script fuera del repo y se pega en la configuración del space. Funciona, y **la firma vence** — así
+  que hoy se compensa con un vencimiento largo. Parte de OBS-04.
+- **El clic-para-editar del Visual Editor no funciona.** `desShapeBlok()`
+  (`web-builder/src/storyblok/content.ts`) descarta el atributo `_editable` al normalizar el blok, y
+  es de ahí de donde el Bridge saca el resaltado y el salto al campo. Se edita desde el panel de
+  campos. Pesa poco si edita la agencia, y bastante si el día de mañana edita el cliente.
 - **Esquema Zod duplicado** entre M2 y M1: dos fuentes de verdad del contrato.
 - **Sin tests de integración**: el camino live se ejecutó a mano contra DataForSEO, OpenAI y
   Storyblok, pero no está automatizado.
@@ -747,6 +756,25 @@ dependen de **KR-1**: sin el dataset crudo no hay contra qué calibrarlas.
 
 ## Riesgos abiertos
 
+### 🔴 OBS-04 — Quién edita la web no lo gobierna nuestro RBAC · **ABIERTA (2026-08-01)**
+
+Con el Visual Editor ya funcionando en producción, quedó a la vista una frontera que ningún ADR
+había nombrado: **el portal y Storyblok son dos sistemas de identidad que no se cruzan.** Nuestro
+RBAC se deriva de `memberships` dentro de Postgres (ADR-15); el de Storyblok son seats y permisos
+por space. Nada los sincroniza, así que **quién puede reescribir la carta de un restaurante lo
+decide la lista de colaboradores del space**, no `memberships`.
+
+ADR-04 ya respondió esto entre líneas —eligió Storyblok *"para que community managers/creadoras
+editen sin devs"*— pero quedó implícito, y de ahí cuelgan dos cosas que no pueden colgar de un
+implícito: **el número de seats** (fijos si edita solo la agencia; uno por cliente si no) y la
+cláusula de *handoff editable* de **ADR-11**, que no se puede redactar sin saber qué acceso tenía el
+cliente **durante** el servicio.
+
+Las tres salidas y la decisión adyacente —un botón *"Editar la web"* en el portal que firme el
+enlace de preview al vuelo— están en
+[OBS-04](../decisiones-arquitectura.md). **No urge decidirlo hoy**, pero bloquea llevar ADR-11 a un
+contrato.
+
 ### ✅ OBS-01 — Solapamiento de alcance · **CERRADA (2026-07-19)**
 
 Era el último riesgo de producto abierto. Los dos documentos describían alcances distintos
@@ -774,3 +802,6 @@ Registrado en [decisiones de arquitectura](../decisiones-arquitectura.md).
 El precio por space/seat crece con la cartera de clientes (ADR-04 exige **un space por cliente**
 para un offboarding limpio). Hay que contemplarlo en la propuesta: lo absorbe la agencia o se
 traslada al cliente.
+
+**El número de seats no se puede estimar hasta cerrar OBS-04** (arriba): si edita solo la agencia
+son unos pocos y fijos; si edita cada cliente, crece con la cartera igual que los spaces.
