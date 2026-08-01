@@ -41,11 +41,18 @@
 > navegador** —el pendiente que había quedado abierto—. Ver
 > [estado y roadmap § la demo](09-estado-y-roadmap.md).
 >
-> ⚠️ **Falta un paso operativo:** re-sembrar producción. Hasta entonces `bigballs.es` sigue mostrando
-> el italiano. Desde el 2026-08-01 es un solo comando —`npm run reseed:demo`, o `-- --dry-run` para
-> ver a qué base iría sin tocarla—: lee las tres variables de `docs/private/credenciales.env`, valida
-> antes de conectar y pide confirmación, así la password de admin no pasa por la línea de comandos.
-> **536 tests** (+17 del script). Ver el paso 0 de
+> ✅ **El paso operativo que faltaba está hecho: producción re-sembrada el 2026-08-01.** Se hizo con
+> `npm run reseed:demo`, el comando nuevo que lee las tres variables de
+> `docs/private/credenciales.env`, valida antes de conectar y muestra a qué base va con la password
+> tapada (así no pasa por la línea de comandos ni por el historial de la shell). **536 tests** (+17 del
+> script). El resultado está **verificado por consulta contra Supabase**: 1 cliente (La Birra Bar; el
+> italiano ya no está), 14 páginas con el split 8/6, 0 aprobadas, y el `app_metadata` de los usuarios
+> ya apuntaba al tenant correcto.
+>
+> 🟡 **Pendiente que destapó esa verificación:** la migración `0010` **no está aplicada en
+> producción**, así que la allowlist pública expone solo `brand, name, priceRange` y los locales y la
+> carta se filtran en silencio. No afecta la demo del portal, pero **bloquea el despliegue del
+> renderizador** (§4). Ver 0.b en
 > [próximos pasos](09-estado-y-roadmap.md#próximos-pasos).
 >
 > **Nuevo (2026-08-01): la demo del módulo de Keyword Research, decidida.** Hasta acá "la demo" quería

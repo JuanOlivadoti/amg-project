@@ -45,6 +45,16 @@
 > redactado del DSN, no-filtración en los mensajes de error, Frank≠Juan con y sin normalizar la caja,
 > y que el comando no cargue ningún `.env`).
 >
+> **Y se corrió: producción quedó re-sembrada el 2026-08-01.** 1 cliente (La Birra Bar; el italiano
+> ya no está), 14 páginas con el split 8/6 intacto, 0 aprobadas, run en `pending_approval`, y el
+> `app_metadata` de los dos usuarios ya apuntaba al tenant correcto — todo **verificado por consulta
+> contra Supabase**, no por el "✔" del comando. Con eso el paso 0 de
+> [próximos pasos](#próximos-pasos) está cerrado. La consulta destapó un pendiente que el re-seed no
+> toca: **la migración `0010` no está aplicada en producción**, así que `business_profile_publico`
+> expone solo `brand, name, priceRange` y los locales y la carta se filtran en silencio. No rompe nada
+> hoy (el renderizador no está desplegado), pero **desplegarlo así daría el footer sin locales y
+> `/menu` en 404**. Ver 0.b en próximos pasos.
+>
 > **Acción 06 (corrida final) cerrada el 2026-07-30**: research real contra producción para **La
 > Birra Bar** (14 páginas, $0.3097), republicado en Storyblok con `kr.v0.5` y verificado en el
 > navegador. Midió por primera vez cuánto tarda un research real —**16m15s**, por encima del umbral
@@ -120,25 +130,34 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 
 ## Próximos pasos
 
-*Actualizado 2026-08-01, tras unificar el cliente de la demo. Con las cuatro piezas resueltas (A/B/C
-cerradas, D desaconsejada), la Acción 06 hecha y el hilo del recorrido unificado, lo que queda antes
-de la reunión es **un paso operativo**, no código:*
+*Actualizado 2026-08-01, tras re-sembrar producción. El paso operativo que quedaba (0) **está hecho**;
+lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es de despliegue (0.b).*
 
-0. **🔴 Re-sembrar producción.** El cambio del seed **no llega solo** a Supabase: hasta que se
-   re-siembre la base desplegada, `bigballs.es` **sigue mostrando "Trattoria Bella Napoli"** con sus 8
-   páginas. El seed es idempotente y conserva los UUID fijos, así que reemplaza ese cliente y ese run
-   **en su lugar** (no deja los dos). Un solo comando, desde la raíz del monorepo:
+0. **✅ Producción re-sembrada** (2026-08-01, con `npm run reseed:demo`). Verificado por consulta
+   contra Supabase, no por el "✔" del comando:
+
+   | | |
+   |---|---|
+   | Clientes | **1**: La Birra Bar. El italiano **ya no está** — el id fijo lo reemplazó en su lugar, no dejó los dos |
+   | Páginas | **14**: 8 `datos_mercado` (todas con volumen) + 6 `sin_validar` (ninguna con volumen), **0 aprobadas** — la compuerta la cruza Frank en vivo |
+   | Run | `pending_approval`, `kr.v0.5`, coste 309 700 micros (\$0.3097) |
+   | Perfil | 2 locales y 4 items de carta en `business_profile` |
+   | Membresías | Frank `maestro`, Juan `equipo`, las dos con `client_id` NULL |
+   | `app_metadata` | **Ya estaba bien**: el `tenant_id` de los dos usuarios coincide con el tenant sembrado y el `rol` con `memberships`. No hubo que tocar Supabase Auth (el tenant se upsertó por slug, así que el UUID no cambió) |
+
+0.b **🟡 La migración `0010` sigue pendiente en producción** (aplicadas: `0001`..`0009`). El re-seed
+   **no la necesitaba** —sembró los 14 registros sin problema— pero sí cambia lo que el renderizador
+   podría leer: hoy `business_profile_publico` expone solo `brand, name, priceRange`, así que
+   **`locations` y `menu` se filtran en silencio** aunque el perfil sembrado los tenga. No rompe nada
+   *ahora* porque el renderizador no está desplegado (§4) y el portal no lee esa columna; **pero
+   desplegarlo sin aplicar la `0010` daría el footer sin locales y `/menu` en 404** — exactamente el
+   fallo que la migración existe para arreglar. Es DDL (reemplaza `app.nap_publico` y re-materializa
+   una columna generada), así que va con la decisión de alguien, no de paso:
 
    ```bash
-   npm run reseed:demo -- --dry-run   # valida y muestra a qué base iría; no toca nada
-   npm run reseed:demo                # siembra, tras confirmar escribiendo `sembrar`
+   npm run migrate:deploy -w db   # idempotente: lee db/.env y aplica solo lo pendiente
    ```
 
-   Toma `DATABASE_URL_ADMIN`, `SEED_FRANK_USER_ID` y `SEED_JUAN_USER_ID` de
-   `docs/private/credenciales.env` —los mismos de la primera siembra— y **no hace falta exportar
-   nada**: pasarlas por la línea de comandos dejaría la password de admin en el historial de la shell.
-   Si el seed se queja de una columna o una tabla que no existe, la base está atrasada: `npm run
-   migrate:deploy -w db` y de nuevo. Detalle en [12-credenciales](12-credenciales.md).
 1. **Mostrarle la demo a Frank.** Depende de Juan, no de código. Tres cosas que conviene tener
    decididas antes, porque son del guion y no del software (ninguna bloquea, todas se notan):
    - **La puerta de entrada es `/runs`, no el dashboard** (`app.routes.ts` redirige `''` a `runs`):
