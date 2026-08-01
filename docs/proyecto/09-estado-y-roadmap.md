@@ -73,6 +73,48 @@
 > navegador. Midió por primera vez cuánto tarda un research real —**16m15s**, por encima del umbral
 > de ~12 min que la pieza D necesitaba para mostrarse en vivo en la demo— así que **la pieza D queda
 > desaconsejada tal como se la había imaginado** (ver §2 más abajo).
+>
+> **Nuevo (2026-08-02): pieza 1 del portal de la agencia — gestión de clientes (CRM), en
+> `feature/paginas-clientes`, sin mergear a `main`.** Primera de cuatro piezas del
+> [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md):
+> lleva las cuatro pantallas de clientes del Angular viejo (`dashboard-project`, Firestore + NgRx) al
+> portal de AMG OS, con Postgres bajo RLS y API propia. Ejecutada con
+> `superpowers:subagent-driven-development` en un worktree aparte — `main` no se tocó ni una vez.
+>
+> **Qué hay:** migración `0011_clientes_crm.sql` (tipo, industria, etiquetas, nivel de actividad,
+> estado de contrato, score, asignado a, contacto en jsonb, origen — **ningún grant nuevo a
+> `app_render`, la allowlist pública sigue exponiendo exactamente `brand, locations, menu, name,
+> priceRange`**); la clase `PgClientes` (`db/src/clientes.ts`); los endpoints `GET/POST /clients`,
+> `GET/PATCH /clients/:id`, `POST /clients/:id/archive` y `/desarchivar`; la capa de datos del portal
+> (`ClienteApi`, `ClienteAgencia`, `ClientesService` con signals); y las cuatro pantallas —listado,
+> alta, perfil (cuatro cards editables inline: info, dirección, redes/imágenes, recursos) y una vista
+> con tres pestañas de **datos de ejemplo** (ideas, Instagram, reseñas de Google — ninguno de los tres
+> tiene backend en AMG OS todavía; decisión explícita del usuario, portar la pantalla con mocks y
+> decidir el cableado real después). **Sin sucursales/`business_profile.locations`**: se difirió a
+> propósito (toca el pipeline público del renderizador, ADR-19, y merece su propio plan con tests de
+> seguridad dedicados, no una decisión de último momento).
+>
+> **Lo que encontró la revisión final de rama, y no cualquier revisión por etapa:** la política
+> `client_select` (existente, `0001_init.sql`, sin tocar por esta pieza) es RLS **por fila**, no por
+> columna — un usuario con rol `cliente` ya podía leer su propia fila de `clients` entera. Antes de
+> esta pieza eso era inofensivo; la `0011` le agregó a esa misma fila columnas que son **notas
+> internas de la agencia sobre ese cliente** (`contacto.notas`, `score`, `estado_contrato`,
+> `asignado_a`). Cada revisión por etapa preguntó "¿puede escribir el rol cliente?" (no) y "¿lo lee
+> `app_render`?" (no) — ninguna preguntó "¿qué más puede LEER el rol cliente de su propia fila, ahora
+> que hay más ahí?". **Cerrado el mismo día**: `db/src/clientes.ts` enmascara las 10 columnas de CRM a
+> `null` para quien no sea staff, con un `case when app.es_staff() then <col> else null end` — la
+> MISMA función que ya usan las políticas RLS, evaluada dentro de Postgres, no un `if` de TypeScript.
+> La primera versión usaba la forma denylist (`= 'cliente'`), que un rol NULL/desconocido dejaba pasar
+> sin enmascarar — corregido a la allowlist positiva (`app.es_staff()`) que el propio `0001_init.sql`
+> ya exige para este tipo de chequeo. Verificado por mutación (sacar el `case`: caen exactamente los
+> tests del rol `cliente`, el de `equipo` sigue verde) y con un fix de tipos en el portal para que las
+> pantallas no rompan cuando esos campos llegan `null`.
+>
+> **Cifras:** **766 tests** (584 en el monorepo + 182 en el portal: 146 `node:test` + 36 Karma), subió
+> de 669 (539 + 130). **11 migraciones** (`0001`..`0011`, la `0011` es esta pieza — las 10 anteriores
+> siguen aplicadas en producción, sin tocar). En Windows, 3 de los 584 caen por un bug preexistente de
+> rutas en `cartera-portal.test.ts` (`import()` con ruta absoluta sin `file://`), ajeno a esta pieza y
+> presente igual en `main`.
 
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
@@ -113,8 +155,8 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **539** en el monorepo + **130** en el portal (113 `node:test` + 17 Karma). Los de seguridad, contra Postgres real |
-| **Migraciones** | 10 en el repo (`0001`..`0010`) · **las 10 aplicadas en producción** (la `0010`, el 2026-08-01) |
+| **Tests** | **766** — 584 en el monorepo + 182 en el portal (146 `node:test` + 36 Karma). Los de seguridad, contra Postgres real. (En `feature/paginas-clientes`, sin mergear — sobre `main` siguen siendo 539 + 130) |
+| **Migraciones** | 11 en `feature/paginas-clientes` (`0001`..`0011`, la `0011` sin mergear) · **las 10 de `main` (`0001`..`0010`) aplicadas en producción** (la `0010`, el 2026-08-01) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
@@ -141,6 +183,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
 | ✅ | **Doce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
+| 🔵 | **Gestión de clientes (CRM) en el portal — pieza 1 de 4, en `feature/paginas-clientes`, sin mergear.** Listado, alta, perfil editable y vista con datos de ejemplo, sobre Postgres/RLS. La revisión final de la rama encontró y cerró una fuga real (el rol `cliente` podía leer notas internas de la agencia sobre sí mismo) antes de cerrar la pieza. Detalle arriba y en [11-plan-fase-2.md](11-plan-fase-2.md). |
 
 ## Próximos pasos
 

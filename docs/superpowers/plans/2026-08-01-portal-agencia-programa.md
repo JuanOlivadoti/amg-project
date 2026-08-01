@@ -34,7 +34,7 @@ re-litigarlas**:
 
 | # | Pieza | Plan | Depende de | Tamaño del origen | Estado |
 |---|---|---|---|---|---|
-| 1 | **Clientes** — listado, crear, perfil, vista | [plan](2026-08-01-paginas-clientes-portal.md) | — | 1 407 líneas | 🔵 Planificada |
+| 1 | **Clientes** — listado, crear, perfil, vista | [plan](2026-08-01-paginas-clientes-portal.md) | — | 1 407 líneas | ✅ Cerrada, en `feature/paginas-clientes` (sin mergear) |
 | 2 | **Usuarios** — listado, perfil, membresías | [plan](2026-08-01-paginas-usuarios-portal.md) | Pieza 1 (asignar cliente a un rol `cliente`) | 570 líneas | 🔵 Planificada |
 | 3 | **Ideas** — módulo nuevo completo | [plan](2026-08-01-modulo-ideas-portal.md) | Pieza 1 (una idea pertenece a un cliente) | 104 líneas + modelo | 🔵 Planificada |
 | 4 | **Dashboard** — la home con métricas | [plan](2026-08-01-dashboard-home-portal.md) | **Pieza 3** (el dashboard del origen ES stats de ideas + tabla de ideas) | 181 líneas | 🔵 Planificada |

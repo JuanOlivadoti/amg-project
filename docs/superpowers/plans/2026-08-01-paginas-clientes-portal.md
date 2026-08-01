@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
 > (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> checkbox (`- [x]`) syntax for tracking.
 >
 > **Es la pieza 1 de cuatro.** Leé primero el
 > [programa](2026-08-01-portal-agencia-programa.md): orden de las piezas, reserva de números de
@@ -19,6 +19,12 @@ segundo backend y sin salir del modelo multi-tenant.
 **Se trabaja en una rama aparte (`feature/paginas-clientes`) y no se toca nada del recorrido de la
 demo.** Ver [Qué no se toca](#qué-no-se-toca) — es la restricción que hace que este trabajo pueda
 correr en paralelo al roadmap.
+
+> **Nota de ejecución (2026-08-01):** esta corrida vive en un worktree local
+> (`.claude/worktrees/feature+paginas-clientes`) sobre la rama `feature/paginas-clientes`, ramificada
+> de `main`. **No se pushea a `main` ni se mergea nada sin aprobación explícita del usuario** — al
+> cerrar el plan, la rama queda lista (rebaseada, verde) y se avisa para que el usuario decida cuándo
+> y cómo integrarla.
 
 ## Punto de partida: qué hay a cada lado
 
@@ -160,19 +166,19 @@ Hoy la allowlist expone exactamente `brand, locations, menu, name, priceRange` (
 
 ## Etapa 0 — Preparar la rama
 
-- [ ] Desde `main` al día (`git pull`), crear `feature/paginas-clientes`.
-- [ ] `npm install` y confirmar el verde de partida: `npm test` y `npm run typecheck` desde la raíz,
+- [x] Desde `main` al día (`git pull`), crear `feature/paginas-clientes`.
+- [x] `npm install` y confirmar el verde de partida: `npm test` y `npm run typecheck` desde la raíz,
       `npm test -w portal`. Anotar los números — son la línea base contra la que se compara al cerrar.
-- [ ] Leer `docs/proyecto/09-estado-y-roadmap.md` y `docs/decisiones-arquitectura.md`
+- [x] Leer `docs/proyecto/09-estado-y-roadmap.md` y `docs/decisiones-arquitectura.md`
       (ADR-13, ADR-15, ADR-17, ADR-18, ADR-19), y este plan entero antes de escribir código.
 
 ## Etapa 1 — El esquema (`db`)
 
-- [ ] **Rojo primero.** En `db/src/clientes.test.ts` (nuevo), escribir los tests que fallan porque
+- [x] **Rojo primero.** En `db/src/clientes.test.ts` (nuevo), escribir los tests que fallan porque
       las columnas no existen todavía: un cliente con todos los campos de CRM se guarda y se lee
       igual; `etiquetas` acepta un array vacío; `score` fuera de 0–100 se rechaza; `asignado_a`
       apuntando a un usuario de OTRO tenant se rechaza.
-- [ ] Escribir `db/migrations/0011_clientes_crm.sql`:
+- [x] Escribir `db/migrations/0011_clientes_crm.sql`:
       - `alter table clients add column` para `tipo` (`empresa|autonomo|particular`, enum o check),
         `industria text`, `etiquetas text[] not null default '{}'`, `nivel_actividad`
         (`bajo|medio|alto`), `estado_contrato` (`sin_contrato|vigente|vencido`, default
@@ -187,34 +193,34 @@ Hoy la allowlist expone exactamente `brand, locations, menu, name, priceRange` (
         10ª review externa).
       - Índices para lo que la tabla filtra: `(tenant_id, estado_contrato)`, `(tenant_id, asignado_a)`.
       - **Ningún `grant` a `app_render`, ningún cambio en `app.nap_publico`.**
-- [ ] Correr los tests: deben pasar. Verificar por mutación cada `check` y la FK (quitarlos de la
+- [x] Correr los tests: deben pasar. Verificar por mutación cada `check` y la FK (quitarlos de la
       migración y confirmar que cae su test).
-- [ ] **El test de seguridad de la allowlist:** cargar un cliente con teléfono, email, notas,
+- [x] **El test de seguridad de la allowlist:** cargar un cliente con teléfono, email, notas,
       contrato y score; leer `business_profile_publico` **como `app_render`** y afirmar que no
       aparece ninguno. Mutación: agregar `'contacto', perfil -> 'contacto'` a `app.nap_publico` en
       una copia local y confirmar que el test cae.
-- [ ] Confirmar que los tests de RLS existentes (`db/src/rls.test.ts`) siguen verdes: las columnas
+- [x] Confirmar que los tests de RLS existentes (`db/src/rls.test.ts`) siguen verdes: las columnas
       nuevas no deben cambiar quién ve qué.
 
 ## Etapa 2 — La capa de datos (`db`)
 
-- [ ] **Rojo primero** en `db/src/clientes.test.ts`: `listarClientes` devuelve solo los del tenant
+- [x] **Rojo primero** en `db/src/clientes.test.ts`: `listarClientes` devuelve solo los del tenant
       del contexto; `crearCliente` ignora un `tenant_id` que venga en el payload y usa el del
       contexto; `actualizarCliente` de un cliente de otro tenant no encuentra la fila (0 filas
       afectadas, no un error genérico); archivar/desarchivar cambia `archived_at`.
-- [ ] Implementar `db/src/clientes.ts` siguiendo el patrón de **`db/src/store.ts`** (`PgStore`): el
+- [x] Implementar `db/src/clientes.ts` siguiendo el patrón de **`db/src/store.ts`** (`PgStore`): el
       acceso va por `withTenant(ctx, (tx) => …)`, que reserva la conexión y pone el `set local` — no
       hay ningún `query()` suelto y el `tenant_id` no es un parámetro de las funciones, sale del
       contexto. *(Ojo: `db/src/sitios.ts` NO es el patrón a copiar — es el resolver por dominio del
       renderizador, que trabaja con un pool y sin contexto de tenant, porque ahí el dominio ES la
       autorización.)*
-- [ ] Exportar desde `db/src/index.ts`.
-- [ ] Verificación por mutación del aislamiento: quitar el `set local` del helper de test y confirmar
+- [x] Exportar desde `db/src/index.ts`.
+- [x] Verificación por mutación del aislamiento: quitar el `set local` del helper de test y confirmar
       que los tests de tenant caen.
 
 ## Etapa 3 — Los endpoints (`api`)
 
-- [ ] **Rojo primero** en `api/src/app.test.ts` (o el archivo de tests de la API que corresponda):
+- [x] **Rojo primero** en `api/src/app.test.ts` (o el archivo de tests de la API que corresponda):
       - `GET /clients` sin token → 401; con token de otro tenant → no ve los clientes del primero.
       - `POST /clients` con `tenant_id` en el body → el cliente se crea en el tenant del token, no
         en el del body.
@@ -223,79 +229,79 @@ Hoy la allowlist expone exactamente `brand, locations, menu, name, priceRange` (
       - Un usuario con rol `cliente` no puede crear ni modificar clientes (403, no 500).
       - `PATCH /clients/:id` con un id de otro tenant → 404, y **no** revela que existe.
       - `POST /clients` con un `asignado_a` que no es miembro del tenant → 400.
-- [ ] Implementar en `api/src/app.ts` siguiendo el patrón de las rutas existentes (`/runs`,
+- [x] Implementar en `api/src/app.ts` siguiendo el patrón de las rutas existentes (`/runs`,
       `/pages/:id`): validación del payload, contexto de tenant desde el token, todo dentro de una
       transacción.
-- [ ] Si algún endpoint tiene que emitir un evento, **fila primero, evento después** (ADR-18): un
+- [x] Si algún endpoint tiene que emitir un evento, **fila primero, evento después** (ADR-18): un
       evento no porta autoridad. Si no hace falta evento, no se inventa uno.
-- [ ] Actualizar `api/src/dev-server.ts` para que los endpoints nuevos funcionen sobre PGlite sin
+- [x] Actualizar `api/src/dev-server.ts` para que los endpoints nuevos funcionen sobre PGlite sin
       credenciales — es lo que permite manejar el portal en un navegador en la etapa 6.
 
 ## Etapa 4 — La capa de datos del portal
 
-- [ ] **Rojo primero** en `portal/src/app/core/*.test.ts`: el cliente de API nuevo manda
+- [x] **Rojo primero** en `portal/src/app/core/*.test.ts`: el cliente de API nuevo manda
       `Authorization` y `x-amg-tenant`, reintenta UNA vez ante 401 tras refrescar, y propaga el error
       con mensaje legible (mismo contrato que `crearApi` ya cumple).
-- [ ] Extender `portal/src/app/core/api-core.ts`: agregar al interfaz `ClienteApi` los métodos
+- [x] Extender `portal/src/app/core/api-core.ts`: agregar al interfaz `ClienteApi` los métodos
       `listarClientes`, `verCliente`, `crearCliente`, `actualizarCliente`. **Ojo con el nombre:**
       `ClienteApi` en el portal significa "el cliente HTTP de la API", no "el cliente de la agencia".
       Los tipos nuevos van como `ClienteAgencia` (o `Cuenta`) para que la ambigüedad no se propague.
-- [ ] Definir los tipos en `portal/src/app/core/models.ts`, con los nombres del dominio en español y
+- [x] Definir los tipos en `portal/src/app/core/models.ts`, con los nombres del dominio en español y
       **sin** los campos del módulo de ideas.
-- [ ] Escribir `portal/src/app/services/clientes.ts`: servicio con signals
+- [x] Escribir `portal/src/app/services/clientes.ts`: servicio con signals
       (`#clientes = signal<...>([])`, `filtrados = computed(...)`), sin NgRx. El filtrado y el
       ordenamiento son `computed`, no `effect` — el valor es derivado.
-- [ ] Tests de la lógica de filtros y orden en `node:test` (sin Angular, como el resto del portal).
+- [x] Tests de la lógica de filtros y orden en `node:test` (sin Angular, como el resto del portal).
 
 ## Etapa 5 — Las cuatro pantallas
 
 Una tarea por pantalla; cada una se cierra con su test de componente y su revisión en los dos temas.
 
-- [ ] **`/clientes` (listado).** Portar `clients.page.ts` + `clients-table` + `clients-filter`.
+- [x] **`/clientes` (listado).** Portar `clients.page.ts` + `clients-table` + `clients-filter`.
       Reescribir el HTML con los tokens semánticos del portal. Los KPIs que dependan de "ideas" se
       omiten (no se rellenan con ceros).
-- [ ] **`/clientes/nuevo` (crear).** Portar `client-create.component` (236 + 442 líneas — es la más
+- [x] **`/clientes/nuevo` (crear).** Portar `client-create.component` (236 + 442 líneas — es la más
       grande). El formulario de sucursales (`client-branches`) escribe en
       `business_profile.locations`, no en una tabla nueva. Validación del lado del cliente **y** del
       servidor: la del cliente es UX, la del servidor es la que vale.
-- [ ] **`/clientes/:id` (perfil).** Portar `client-profile.component` y sus cuatro cards. La
+- [x] **`/clientes/:id` (perfil).** Portar `client-profile.component` y sus cuatro cards. La
       `client-resources-card` guarda recursos gráficos: decidir si el campo `resources` viaja como
       texto en `contacto` o queda fuera de esta tanda (no hay almacenamiento de archivos en AMG OS
       todavía — si hace falta subir imágenes, es otro plan).
-- [ ] **`/clientes/:id/ver` (vista).** Portar `client-view.component`. Si se solapa con el perfil más
+- [x] **`/clientes/:id/ver` (vista).** Portar `client-view.component`. Si se solapa con el perfil más
       de lo que aporta, decirlo en el informe de cierre en vez de portar dos pantallas que hacen lo
       mismo.
-- [ ] Tests de componente en Karma para el listado y el formulario de creación (los dos que tienen
+- [x] Tests de componente en Karma para el listado y el formulario de creación (los dos que tienen
       lógica de interacción real).
 
 ## Etapa 6 — Rutas, navegación y verificación en navegador
 
-- [ ] Agregar las rutas en `portal/src/app/app.routes.ts` como `loadComponent` (lazy, igual que las
+- [x] Agregar las rutas en `portal/src/app/app.routes.ts` como `loadComponent` (lazy, igual que las
       existentes), bajo el `authGuard` y dentro del `AppShellComponent`. **No** cambiar el
       `redirectTo: 'runs'`: la puerta de entrada de la demo no se mueve.
-- [ ] Agregar la entrada en `portal/src/app/shared/layout/app-sidebar.ts` y actualizar su
+- [x] Agregar la entrada en `portal/src/app/shared/layout/app-sidebar.ts` y actualizar su
       `app-sidebar.spec.ts`.
-- [ ] **Manejar la app en un navegador** (MCP chrome-devtools) contra `npm run dev:server -w api`:
+- [x] **Manejar la app en un navegador** (MCP chrome-devtools) contra `npm run dev:server -w api`:
       crear un cliente, verlo en el listado, editarlo, archivarlo. **En tema claro y en oscuro.**
       Revisar la consola: cero errores. Esto encuentra lo que los tests no ven — ya pasó varias veces
       en este proyecto.
-- [ ] Confirmar que `/runs`, `/runs/:id` y `/cartera` siguen funcionando igual (son la demo).
+- [x] Confirmar que `/runs`, `/runs/:id` y `/cartera` siguen funcionando igual (son la demo).
 
 ## Etapa 7 — Cierre
 
-- [ ] `npm test` y `npm run typecheck` desde la raíz, `npm test -w portal`,
+- [x] `npm test` y `npm run typecheck` desde la raíz, `npm test -w portal`,
       `npm run test:components -w portal`. Comparar con la línea base de la etapa 0: **los tests que
       ya existían siguen todos verdes**.
-- [ ] Auto-revisión adversarial del diff completo: ¿qué afirmé que no verifiqué? ¿qué test prueba la
+- [x] Auto-revisión adversarial del diff completo: ¿qué afirmé que no verifiqué? ¿qué test prueba la
       implementación en vez del contrato? ¿qué default no tiene test? ¿qué garantía quedó en un
       comentario en vez de en una constraint?
-- [ ] Actualizar `docs/proyecto/09-estado-y-roadmap.md` y `docs/proyecto/11-plan-fase-2.md`: qué se
+- [x] Actualizar `docs/proyecto/09-estado-y-roadmap.md` y `docs/proyecto/11-plan-fase-2.md`: qué se
       hizo, dónde estamos, qué falta. Sincronizar las cifras de tests y de migraciones **en todos los
       lugares donde aparecen**. Si hace falta un ADR nuevo (p. ej. "los datos de CRM no son
       públicos"), escribirlo.
-- [ ] Rebase sobre `main` (que va a haber avanzado con el roadmap de la demo), resolver conflictos, y
+- [x] Rebase sobre `main` (que va a haber avanzado con el roadmap de la demo), resolver conflictos, y
       volver a correr todo.
-- [ ] Informe de cierre: qué quedó fuera del alcance y por qué (el módulo de ideas, los recursos
+- [x] Informe de cierre: qué quedó fuera del alcance y por qué (el módulo de ideas, los recursos
       gráficos si se dejaron, `client-view` si resultó redundante).
 
 ---

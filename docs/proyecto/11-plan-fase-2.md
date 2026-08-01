@@ -3,8 +3,9 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-01** · **539 tests en verde** (monorepo) + **130** en el portal
-> (113 `node:test` + 17 Karma)
+> Última actualización: **2026-08-02** · **539 tests en verde** (monorepo) + **130** en el portal
+> (113 `node:test` + 17 Karma) en `main`. En `feature/paginas-clientes` (pieza 1 del portal de la
+> agencia, sin mergear): **766** — 584 monorepo + 182 portal (146 `node:test` + 36 Karma).
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
 > JWKS y el logout que revoca están en `main`, desplegados, y **el login se verificó en el navegador**
@@ -74,6 +75,22 @@
 > (`out/keywords.json`) no está** —vive en un directorio ignorado por git—, así que la promesa de
 > "calibrar es offline y gratis" no se puede cobrar hasta recuperarlo o regenerarlo (~$0.31). Piezas
 > KR-1..KR-4 en [§2.b del estado](09-estado-y-roadmap.md#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01).
+>
+> **Nuevo (2026-08-02): pieza 1 del portal de la agencia — gestión de clientes, en
+> `feature/paginas-clientes`, sin mergear a `main`.** Es la primera de las cuatro piezas del
+> [programa del portal](../superpowers/plans/2026-08-01-portal-agencia-programa.md) (clientes →
+> usuarios → ideas → dashboard). Migración `0011`, la clase `PgClientes`, seis endpoints HTTP, la
+> capa de datos del portal y las cuatro pantallas (listado, alta, perfil, vista con datos de ejemplo).
+> Sucursales (`business_profile.locations`) quedaron **explícitamente fuera de esta tanda** — tocan el
+> pipeline público del renderizador y merecen su propio plan de seguridad.
+>
+> La revisión final de la rama —la que mira el diff entero, no etapa por etapa— encontró un hallazgo
+> real que ninguna revisión parcial podía ver: la política `client_select` (existente, sin tocar) deja
+> ver la fila propia por completo, y esta pieza le agregó a esa fila columnas que son notas internas
+> de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
+> consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
+> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **766 tests** en la rama (584 monorepo + 182
+> portal), **11 migraciones** (`0011` sin mergear).
 
 ---
 
