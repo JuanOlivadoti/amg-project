@@ -49,11 +49,12 @@
 > italiano ya no está), 14 páginas con el split 8/6, 0 aprobadas, y el `app_metadata` de los usuarios
 > ya apuntaba al tenant correcto.
 >
-> 🟡 **Pendiente que destapó esa verificación:** la migración `0010` **no está aplicada en
-> producción**, así que la allowlist pública expone solo `brand, name, priceRange` y los locales y la
-> carta se filtran en silencio. No afecta la demo del portal, pero **bloquea el despliegue del
-> renderizador** (§4). Ver 0.b en
-> [próximos pasos](09-estado-y-roadmap.md#próximos-pasos).
+> ✅ **Lo que destapó esa verificación, ya cerrado:** la migración `0010` no estaba aplicada en
+> producción —la allowlist pública exponía solo `brand, name, priceRange` y los locales y la carta se
+> filtraban en silencio—. **Aplicada el 2026-08-01** y verificada por consulta: las 10 migraciones en
+> el registro y `locations`/`menu` sobreviviendo la allowlist (2 locales, 4 items de carta). Era el
+> ítem del despliegue del renderizador con más chances de olvidarse, porque **no da error**: la web
+> simplemente habría salido sin Ubicaciones y con `/menu` en 404.
 >
 > ✅ **Y verificado también en el portal, que es donde apareció lo que la consulta no veía.** La
 > primera siembra corrió doce minutos antes de `f0c1387`, así que producción quedó con los slugs
@@ -467,6 +468,7 @@ Todas con su ADR. Las que más condicionan lo que viene:
 
 | Qué | Dónde | Nota |
 |---|---|---|
+| Páginas de clientes en el portal | [plan](../superpowers/plans/2026-08-01-paginas-clientes-portal.md) | 🔵 **Planificada, sin empezar.** Se trabaja en `feature/paginas-clientes`, **en paralelo** al roadmap de la demo: las 4 pantallas de gestión de clientes de `dashboard-project` (listado, crear, perfil, vista) con los datos en Postgres bajo RLS y endpoints propios en `api/` — no en Firestore. `/cartera`, `/runs` y `/brief` no se tocan (el plan tiene una lista explícita de qué no tocar). Migración `0011` que **no** toca la allowlist del renderizador: los datos de CRM son internos. |
 | ~~Acción 06 — corrida final~~ | [acciones/06](../acciones/06-corrida-final-demo.md) | ✅ **Hecha (2026-07-30)**, $0.3097. `kr.v0.5` publicado para La Birra Bar, verificado en el navegador. De paso midió la duración real del research (16m15s, ver fila siguiente) y cerró el gap de `DATABASE_URL_CACHE` (ADR-14) que la guía no pedía. |
 | ~~Migrar SERP + Search Volume a Standard~~ | `kr-service/src/dataforseo/` | ✅ **Hecho** (tandas 11-12): `task_post`/`task_get` con doble capa de recuperación. La 6ª review encontró 4 bugs en la primera versión; corregidos y mutation-tested. |
 | ~~Pieza A — verificación JWT ES256~~ | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | ✅ **Cerrada (2026-07-30).** Las 4 tareas, mergeadas y desplegadas, y el login verificado en el navegador. Ya no bloquea nada. |
