@@ -1,7 +1,8 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { NgApexchartsModule } from 'ng-apexcharts';
-import type { ApexAxisChartSeries, ApexChart, ApexXAxis } from 'ng-apexcharts';
+import type { ApexAxisChartSeries, ApexChart, ApexXAxis, ApexYAxis } from 'ng-apexcharts';
 import { TemaService } from '../../services/tema';
+import { estiloEjes, tokenDelDocumento } from './ejes';
 
 export interface BarraDatos {
   readonly etiqueta: string;
@@ -16,6 +17,7 @@ export interface BarraDatos {
       [series]="series()"
       [chart]="chart"
       [xaxis]="xaxis()"
+      [yaxis]="yaxis()"
       [colors]="colores()"
       [plotOptions]="plotOptions"
       [dataLabels]="dataLabels"
@@ -36,7 +38,26 @@ export class BarChartComponent {
     { name: this.titulo(), data: this.datos().map((d) => d.valor) },
   ]);
 
-  readonly xaxis = computed<ApexXAxis>(() => ({ categories: this.datos().map((d) => d.etiqueta) }));
+  readonly xaxis = computed<ApexXAxis>(() => ({
+    categories: this.datos().map((d) => d.etiqueta),
+    labels: this.estiloDeEjes().labels,
+  }));
+
+  /**
+   * En la barra HORIZONTAL las categorías se dibujan en el eje Y (los nombres de keyword) y los
+   * valores en el X. Por eso hacen falta los dos: fijar solo `xaxis` dejaba las 14 etiquetas que
+   * más se leen —las keywords— con el gris por defecto.
+   */
+  readonly yaxis = computed<ApexYAxis>(() => ({ labels: this.estiloDeEjes().labels }));
+
+  /**
+   * `tema.efectivo()` se lee acá adentro por la misma razón que en `colores()`: es lo que hace que
+   * el color se recalcule al cambiar de tema (Angular invalida el `computed` por las signals que lee).
+   */
+  private readonly estiloDeEjes = computed(() => {
+    this.tema.efectivo();
+    return estiloEjes(tokenDelDocumento);
+  });
 
   /**
    * Lee el token `--accion` ya resuelto por el navegador — nunca un hex fijo en el código fuente:

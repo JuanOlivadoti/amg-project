@@ -1,7 +1,8 @@
 import { Component, computed, inject, input } from '@angular/core';
 import { NgApexchartsModule } from 'ng-apexcharts';
-import type { ApexAxisChartSeries, ApexChart, ApexStroke, ApexXAxis } from 'ng-apexcharts';
+import type { ApexAxisChartSeries, ApexChart, ApexStroke, ApexXAxis, ApexYAxis } from 'ng-apexcharts';
 import { TemaService } from '../../services/tema';
+import { estiloEjes, tokenDelDocumento } from './ejes';
 
 export interface PuntoSerie {
   readonly fecha: string;
@@ -16,6 +17,7 @@ export interface PuntoSerie {
       [series]="series()"
       [chart]="chart"
       [xaxis]="xaxis()"
+      [yaxis]="yaxis()"
       [colors]="colores()"
       [stroke]="stroke"
       [dataLabels]="dataLabels"
@@ -36,7 +38,19 @@ export class LineChartComponent {
     { name: this.titulo(), data: this.puntos().map((p) => p.valor) },
   ]);
 
-  readonly xaxis = computed<ApexXAxis>(() => ({ categories: this.puntos().map((p) => p.fecha) }));
+  readonly xaxis = computed<ApexXAxis>(() => ({
+    categories: this.puntos().map((p) => p.fecha),
+    labels: this.estiloDeEjes().labels,
+  }));
+
+  /** Acá el eje Y son los importes en USD; el X, las fechas. Los dos se leen. */
+  readonly yaxis = computed<ApexYAxis>(() => ({ labels: this.estiloDeEjes().labels }));
+
+  /** Ver `BarChartComponent.estiloDeEjes`: `tema.efectivo()` es lo que dispara el recálculo. */
+  private readonly estiloDeEjes = computed(() => {
+    this.tema.efectivo();
+    return estiloEjes(tokenDelDocumento);
+  });
 
   /**
    * Lee el token `--respaldo` ya resuelto por el navegador — mismo patrón que `BarChartComponent`.
