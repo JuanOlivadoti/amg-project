@@ -62,8 +62,10 @@ implementar, discrepar con razón técnica).
 - Rama por defecto: `main`. Commit + push a `main` al cerrar cada etapa. *(Hubo un período con `main`
   protegida que exigía PR; hoy está sin protección — si vuelve a estarlo y no hay `gh`, dejá la rama
   pusheada y pasá el link de compare.)*
-- Mensajes de commit en español, y terminan con:
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
+- Mensajes de commit en español, y terminan con un `Co-Authored-By:` que nombra al **modelo que
+  escribió el commit**, no una versión fija — la regla decía `Opus 4.8` hasta el 2026-08-01 y quedó
+  vieja sola, así que la firma se toma de la sesión (el harness la indica). Hoy:
+  `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`
 
 ## Stack y estilo de código
 
