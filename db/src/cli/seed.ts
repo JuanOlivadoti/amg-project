@@ -1,5 +1,5 @@
 /**
- * CLI del seed de la demo (Fase 1). Carga el caso de Bella Napoli para el portal de Frank.
+ * CLI del seed de la demo (Fase 1). Carga el caso de La Birra Bar para el portal de Frank.
  *
  *   DATABASE_URL_ADMIN="postgres://…" \
  *   SEED_FRANK_USER_ID="<uuid de Frank en Supabase Auth>" \
@@ -16,7 +16,7 @@
  * Usa la conexión de ADMIN igual que las migraciones: sembrar crea datos de varios "dueños" y no es
  * una petición de usuario (no pasa por RLS). Lo sembrado se lee después bajo RLS.
  */
-import { sembrarBellaNapoli, type OpcionesSeed } from "../seed-demo.js";
+import { sembrarDemo, type OpcionesSeed } from "../seed-demo.js";
 import { ConexionReservada } from "../deploy.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,8 +60,8 @@ await client.connect();
 const con = ConexionReservada.desdeClientePg(client);
 
 try {
-  const r = await sembrarBellaNapoli(con, opts);
-  console.log("\n✔ Sembrado el caso de Bella Napoli.\n");
+  const r = await sembrarDemo(con, opts);
+  console.log("\n✔ Sembrado el caso de La Birra Bar.\n");
   console.log("  tenant_id:", r.tenantId);
   console.log("  client_id:", r.clientId);
   console.log("  run_id:   ", r.runId);

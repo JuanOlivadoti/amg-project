@@ -3,8 +3,8 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-01** · **516 tests en verde** (monorepo) + **120** en el portal
-> (103 `node:test` + 17 Karma)
+> Última actualización: **2026-08-01** · **518 tests en verde** (monorepo) + **124** en el portal
+> (107 `node:test` + 17 Karma)
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
 > JWKS y el logout que revoca están en `main`, desplegados, y **el login se verificó en el navegador**
@@ -29,6 +29,20 @@
 > **Nuevo (2026-08-01): la navegación del sitio del cliente, mergeada a `main`.** 10 tareas (ver
 > §6.1 más abajo), una revisión de rama y una revisión externa (Codex) con 4 hallazgos reales
 > corregidos. 516 tests (subió de 466). Ver §5.3 y el [estado y roadmap](09-estado-y-roadmap.md).
+>
+> **Nuevo (2026-08-01, más tarde): el cliente de la demo, unificado.** Las tres pantallas del
+> recorrido hablaban de tres negocios distintos —dashboard con seis restaurantes inventados, brief con
+> el italiano de ejemplo, web con La Birra Bar—, así que la demo se contradecía a sí misma en tres
+> clics. Ahora el seed (`sembrarDemo`, antes `sembrarBellaNapoli`), el dashboard y el `dev-server` de
+> la API son **el mismo cliente**, con el perfil del seed **atado por test** a
+> `web-builder/business-profile.json`. De paso destapó que el perfil sembrado no tenía `locations` ni
+> `menu` (la web habría salido sin Ubicaciones y con `/menu` en 404) y que su `font` no estaba en la
+> allowlist. **518 tests**, 124 en el portal, y `/cartera` + el drawer mobile **verificados en el
+> navegador** —el pendiente que había quedado abierto—. Ver
+> [estado y roadmap § la demo](09-estado-y-roadmap.md).
+>
+> ⚠️ **Falta un paso operativo:** re-sembrar producción (`npm run seed:demo -w db`). Hasta entonces
+> `bigballs.es` sigue mostrando el italiano.
 
 ---
 
@@ -46,7 +60,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | 2 | **Orquestador durable** — Inngest: steps, reintentos, compuerta humana con `waitForEvent` | ✅ Hecha |
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
-| 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal) · falta desplegar (5.3) |
+| 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal · **5.3 desplegada** el 2026-07-25, login verificado el 2026-07-30) |
 | 6 | **El renderizador** — servir la web del cliente en un dominio (ADR-19) | ✅ **Hecha** — `renderer/`, 114 tests (nav fija + footer NAP + `/menu` + `/blog` + home incluidas) |
 
 Después de la **5** el sistema es **usable por una persona que no sea yo**: la compuerta de
@@ -56,7 +70,8 @@ página, y el evento despierta al workflow. *(Falta desplegarlo en algún lado: 
 Después de la **6** el cliente **tiene una web**, no "una web generada": `renderer/` la sirve en vivo
 desde Storyblok, con la URL de preview y el Bridge que el Visual Editor necesita —o sea que *la razón
 por la que se eligió Storyblok* por fin se cobra ([ADR-19](../decisiones-arquitectura.md), cierra
-OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `localhost`.
+OBS-03). **Lo que sigue faltando es el despliegue del renderizador y del orquestador**: esas dos
+piezas corren solo en `localhost`. *(La API y el portal sí están desplegados — etapa 5.3, Fase 1.)*
 
 ---
 
@@ -96,10 +111,18 @@ OBS-03). **Lo que sigue faltando es el despliegue**: hoy todo esto corre en `loc
 
 ### Lo que NO existe todavía
 
-- **Un despliegue.** Nada corre en ningún servidor (etapa 5.3; dónde se hostea, sin decidir).
+- ~~**Un despliegue.**~~ ✅ **Fase 1 está en producción** desde el 2026-07-25: portal en
+  [`bigballs.es`](https://bigballs.es) (Hostinger), API en `api.bigballs.es` (Railway), base en
+  Supabase (`eu-west-2`) con RLS forzada. Ver [13-runbook-despliegue.md](13-runbook-despliegue.md).
+  **Lo que falta es desplegar la Fase 2**: el orquestador y el renderizador siguen en `localhost`.
+- **La migración `0010` en la base de producción.** Está en el repo y mergeada a `main`, pero
+  producción se verificó con **9** migraciones (2026-07-25) y la `0010` es del 2026-08-01. Hoy no
+  rompe nada —el renderizador, único lector de `business_profile_publico`, no está desplegado— pero
+  sin ella el footer saldría **sin locales** y `/menu` daría **404**. Va junto con el despliegue de
+  Fase 2: ver [runbook § migraciones sobre una base ya desplegada](13-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
 - ~~**La web del cliente.**~~ ✅ Existe: `renderer/` (etapa 6, ADR-19) la sirve en vivo desde
   Storyblok, con preview firmado para el Visual Editor e invalidación por webhook. **Pero solo corre
-  en `localhost`**: lo que falta para que el cliente *tenga* una web es el despliegue de arriba.
+  en `localhost`**: lo que falta para que el cliente *tenga* una web es desplegarlo.
 - **Una CDN delante del renderizador.** ADR-19 dice "cache en el borde"; lo construido es una cache
   **en proceso**. El borde es decisión de despliegue. Con más de una instancia, el webhook invalida
   solo una: antes de escalar hay que resolverlo (ver `renderer/README.md`).
@@ -149,7 +172,7 @@ REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.us
 > página, editar —revoca—, aprobar run), **refresh del token** (401 → refresca y reintenta una vez;
 > si falla, al login), **polling** del research en curso (ADR-21) y las **carreras asincrónicas
 > cerradas** (`core/vigencia.ts`: una respuesta tardía no pisa la pantalla y no queda polling
-> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **103 tests
+> huérfano). Angular 20 standalone + signals + Tailwind; la lógica en TS puro con **107 tests
 > `node:test`**, sin navegador, más **17 tests de componente (Karma)** para el DOM. La API ganó
 > **CORS** para que el navegador pueda llamarla.
 >
@@ -188,20 +211,26 @@ Las pantallas:
    justamente lo que el cliente entra a ver.
 4. **Aprobar página por página**, y después el run. Publicar *(solo equipo)*.
 
-### 5.3 — Desplegar 🟡 HECHA para Fase 1, con el login roto
+### 5.3 — Desplegar ✅ HECHA para Fase 1 (y el login, arreglado y verificado)
 
 **Desplegado el 2026-07-25:** portal en [`bigballs.es`](https://bigballs.es) (Hostinger, autodeploy
 desde `main`), API en `api.bigballs.es` (Railway, `europe-west4`), base en Supabase (`eu-west-2`).
 Paso a paso, con los tropiezos reales, en [13-runbook-despliegue.md](13-runbook-despliegue.md).
 
-> ### 🔴 Y sin embargo, ningún login funciona
+> ### ✅ Al desplegar, ningún login funcionaba — arreglado el 2026-07-30
 >
-> El proyecto de Supabase se creó el 2026-07-25, ya con **claves asimétricas**: firma `ES256`. La API
-> solo aceptaba `HS256` con un secreto compartido, así que todo login termina en `401`.
+> **Lo que pasó:** el proyecto de Supabase se creó el 2026-07-25, ya con **claves asimétricas**: firma
+> `ES256`. La API solo aceptaba `HS256` con un secreto compartido, así que **todo login terminaba en
+> `401`**.
 >
 > Lo destapó **manejar la app**, no la verificación desde afuera — que daba verde en las siete
 > comprobaciones. Es la misma lección de siempre: leer el código y manejar la app encuentran cosas
 > distintas.
+>
+> Se deja escrito porque el modo de fallo importa más que el arreglo: **no había ninguna señal externa
+> que distinguiera "arreglado" de "roto"** (`/health` responde igual con los dos códigos, y un token
+> basura da 401 en ambos). Entre el merge y la verificación pasaron tres días en que el código
+> correcto ya estaba desplegado y el estado seguía siendo 🟡, a propósito.
 >
 > **Pieza A** (rama `fix/jwt-es256`): la API verifica contra el **JWKS público** del emisor,
 > `SUPABASE_JWT_SECRET` desaparece y `SUPABASE_JWT_ISS` pasa a obligatoria. De paso se arregla el
@@ -218,10 +247,15 @@ El orquestador y el renderizador siguen **sin desplegar** (son Fase 2). Van como
 larga duración**, no serverless: el research encadena llamadas live a DataForSEO y generación por
 LLM, y probablemente no entra en el timeout de una función (60-300 s).
 
-> ⚠️ **Dato que no tengo: cuánto tarda un research real.** Tengo el coste ($0.31), nunca medí la
-> duración. Ya no bloquea el diseño (el orquestador es un proceso largo), pero **define la UX del
-> portal**: ¿el usuario espera mirando una barra, o se va y vuelve? **Se mide en la corrida real
-> (acción 06)** — y si el dato contradice la decisión del polling, se revisa.
+> ✅ **Medido en la Acción 06 (2026-07-30): un research real tarda 16m15s.** (55 keywords → 14
+> páginas, $0.3097, `spike.ts` sin el publish.) Confirma el diseño —el orquestador tiene que ser un
+> proceso largo, no una función serverless— y **define la UX del portal**: a 16 minutos el usuario no
+> espera mirando una barra, se va y vuelve.
+>
+> Dos consecuencias que siguen abiertas: la **pieza D** (lanzar el research en vivo delante de Frank)
+> queda **desaconsejada**, porque está por encima del umbral de ~12 min que este mismo documento fijó
+> como el punto en que la demo se muere mirando un spinner; y el **polling del portal (4 s) sigue sin
+> calibrar** contra este número.
 
 ---
 

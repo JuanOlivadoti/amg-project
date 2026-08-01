@@ -32,5 +32,5 @@ export { aplicarMigraciones, MIGRATIONS_DIR } from "./migrate.js";
 
 export { migrarConRegistro, ConexionReservada } from "./deploy.js";
 
-export { sembrarBellaNapoli } from "./seed-demo.js";
+export { sembrarDemo } from "./seed-demo.js";
 export type { OpcionesSeed, ResultadoSeed } from "./seed-demo.js";

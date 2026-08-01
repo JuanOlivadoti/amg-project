@@ -30,7 +30,10 @@ import { kpisDeCartera, topOportunidades, serieTemporalCoste } from '../../core/
         </div>
       </div>
 
-      <app-cartera-tabla [paginas]="paginas" />
+      <section class="space-y-2">
+        <h2 class="text-sm font-semibold text-texto">Oportunidades de {{ clientePrincipal }}</h2>
+        <app-cartera-tabla [paginas]="paginas" />
+      </section>
     </div>
   `,
 })
@@ -46,5 +49,8 @@ export class CarteraPage {
     fecha: p.fecha,
     valor: p.costeUsd,
   }));
-  readonly paginas = this.dashboard.pages;
+  /** El nombre sale del dato, no del template: si mañana el cliente principal cambia, el título sigue. */
+  readonly clientePrincipal = this.dashboard.clientes[0]?.nombre ?? 'la cartera';
+  /** Solo las del cliente real: ver `CarteraDashboard.paginasDelClientePrincipal`. */
+  readonly paginas = this.dashboard.paginasDelClientePrincipal;
 }

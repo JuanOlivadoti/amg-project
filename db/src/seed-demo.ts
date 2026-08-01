@@ -1,13 +1,21 @@
 import type { ConexionReservada } from "./deploy.js";
 
 /**
- * Seed de la demo de Fase 1: el caso de **Bella Napoli** pre-cargado para que el portal de Frank
+ * Seed de la demo de Fase 1: el caso de **La Birra Bar** pre-cargado para que el portal de Frank
  * tenga qué mostrar SIN el orquestador (que es Fase 2).
  *
  * Reproduce la corrida de la acción 06 (`docs/acciones/06-corrida-final-demo.md`): un run en
- * `pending_approval` con 8 páginas, **3 respaldadas por datos de mercado** y **5 `sin_validar`**. Ese
+ * `pending_approval` con 14 páginas, **8 respaldadas por datos de mercado** y **6 `sin_validar`**. Ese
  * split es el argumento de venta del sistema —dice lo que NO sabe—, y es lo que el portal muestra en
  * ✅/⚠️. Las páginas nacen `approved = false`: la compuerta (ADR-06) la cruza Frank en vivo.
+ *
+ * ## Por qué La Birra Bar y no "Bella Napoli"
+ *
+ * La acción 06 republicó el space real con **La Birra Bar** (cliente real de la agencia) y este seed
+ * se quedó con el italiano de ejemplo. Resultado: el portal contaba un caso y la web servía otro, y
+ * la demo se contradecía a sí misma en el salto de la pantalla al sitio. El perfil de acá está atado
+ * por test a `web-builder/business-profile.json` —la misma fuente que se publica— para que la deriva
+ * no pueda volver a pasar en silencio.
  *
  * ## Se corre como superusuario (salta RLS), a propósito
  *
@@ -57,40 +65,145 @@ interface PaginaSeed {
 }
 
 /**
- * Las 8 páginas de la corrida de la acción 06. El orden y los números están elegidos para que la
- * demo cuente la historia honesta: 3 con demanda demostrable arriba, 5 sin validar debajo.
+ * Las 14 páginas de la corrida de la acción 06. El orden y los números están elegidos para que la
+ * demo cuente la historia honesta: 8 con demanda demostrable arriba, 6 sin validar debajo.
+ *
+ * **Los slugs son representativos, no un volcado del space.** Este clon no tiene la credencial de
+ * lectura de la CDA, así que no se pudieron leer los slugs exactos que quedaron publicados en
+ * Storyblok; lo que está atado por test es el NEGOCIO (perfil, locales, carta, split de evidencia y
+ * coste). Si algún día hace falta que coincidan uno a uno, se leen con `npm run demo -w renderer`.
  */
 const PAGINAS: PaginaSeed[] = [
   // --- Respaldadas por datos de mercado (tienen volumen real) ---
   {
-    slug: "/restaurante-italiano-madrid-centro",
-    keyword: "restaurante italiano madrid centro",
-    secundarias: ["restaurante italiano centro madrid", "italiano madrid centro"],
+    slug: "/mejor-hamburguesa-madrid",
+    keyword: "mejor hamburguesa madrid",
+    secundarias: ["mejores hamburguesas madrid", "donde comer la mejor hamburguesa madrid"],
     tipo: "landing_local",
     estrategia: "hub",
     intencion: "transaccional",
     local: true,
-    volumen: 480,
-    dificultad: 12,
+    volumen: 2400,
+    dificultad: 34,
     evidencia: "datos_mercado",
-    score: 91.2,
-    confianza: 0.86,
+    score: 94.5,
+    confianza: 0.9,
     seo: {
-      title: "Restaurante italiano en Madrid centro | Trattoria Bella Napoli",
+      title: "La mejor hamburguesa de Madrid | La Birra Bar",
       description:
-        "Cocina napolitana en el corazón de Madrid: pizza al horno de leña, pasta fresca y menú del día. Reservá tu mesa.",
+        "La Golden Burger que hizo famosa a La Birra Bar, ahora en Madrid. Dos locales: Puerta del Sol y Salamanca.",
     },
     brief: {
-      objetivo: "Página principal (hub) que capta la búsqueda genérica y reparte hacia los servicios.",
-      tono: "cercano, auténtico, napolitano",
-      secciones: ["Quiénes somos", "La carta en 3 platos estrella", "Ubicación y reservas"],
+      objetivo: "Página principal (hub) que capta la búsqueda genérica y reparte hacia los dos locales.",
+      tono: "porteño, directo, orgulloso del producto",
+      secciones: ["La Golden Burger", "Nuestros dos locales en Madrid", "Cómo llegar"],
     },
-    faqs: ["¿Hacen falta reservas?", "¿Dónde están exactamente?", "¿Tienen menú del día?"],
+    faqs: ["¿Hace falta reservar?", "¿Dónde están los locales?", "¿Cuál es la hamburguesa insignia?"],
   },
   {
-    slug: "/pizza-napolitana-madrid",
-    keyword: "pizza napolitana madrid",
-    secundarias: ["pizza al horno de leña madrid", "auténtica pizza napolitana"],
+    slug: "/la-birra-bar-madrid",
+    keyword: "la birra bar madrid",
+    secundarias: ["la birra bar españa", "la birra bar sol"],
+    tipo: "landing_local",
+    estrategia: "spoke",
+    intencion: "navegacional",
+    local: true,
+    volumen: 1900,
+    dificultad: 8,
+    evidencia: "datos_mercado",
+    score: 92.0,
+    confianza: 0.88,
+    seo: {
+      title: "La Birra Bar Madrid | horarios, direcciones y carta",
+      description:
+        "La Birra Bar en Madrid: horarios, direcciones de los dos locales y la carta completa. De Buenos Aires a Madrid.",
+    },
+    brief: {
+      objetivo: "Captar la búsqueda de MARCA: quien ya nos conoce y busca horario, dirección o carta.",
+      tono: "informativo, sin vender lo que ya está vendido",
+      secciones: ["Horarios de los dos locales", "Direcciones", "La carta"],
+    },
+    faqs: ["¿En qué horario abren?", "¿Tienen delivery?"],
+  },
+  {
+    slug: "/hamburgueseria-madrid-centro",
+    keyword: "hamburgueseria madrid centro",
+    secundarias: ["hamburguesas centro madrid", "hamburgueseria sol madrid"],
+    tipo: "landing_local",
+    estrategia: "spoke",
+    intencion: "transaccional",
+    local: true,
+    volumen: 1300,
+    dificultad: 28,
+    evidencia: "datos_mercado",
+    score: 86.4,
+    confianza: 0.85,
+    seo: {
+      title: "Hamburguesería en Madrid centro | La Birra Bar Puerta del Sol",
+      description:
+        "A un paso de la Puerta del Sol: hamburguesas de autor y cerveza artesanal de barril. Abierto todos los días.",
+    },
+    brief: {
+      objetivo: "Captar la intención local del centro y llevarla al local de Carrera de San Jerónimo.",
+      tono: "cercano, urbano",
+      secciones: ["Dónde estamos", "Qué pedir la primera vez", "Horario"],
+    },
+    faqs: ["¿Están cerca del metro Sol?", "¿Hasta qué hora abren los fines de semana?"],
+  },
+  {
+    slug: "/cerveza-artesanal-madrid",
+    keyword: "cerveza artesanal madrid",
+    secundarias: ["cerveza de barril madrid", "cervecería artesanal madrid centro"],
+    tipo: "servicio",
+    estrategia: "spoke",
+    intencion: "comercial",
+    local: true,
+    volumen: 880,
+    dificultad: 31,
+    evidencia: "datos_mercado",
+    score: 79.8,
+    confianza: 0.81,
+    seo: {
+      title: "Cerveza artesanal de barril en Madrid | La Birra Bar",
+      description:
+        "Ale y Honey de Ogham, de barril y bien frías. La cerveza que acompaña a la Golden Burger.",
+    },
+    brief: {
+      objetivo: "Aprovechar que la marca es 'la birra': la cerveza es producto, no acompañamiento.",
+      tono: "cervecero, sin snobismo",
+      secciones: ["Nuestras cervezas de barril", "Maridaje con la carta"],
+    },
+    faqs: ["¿Qué cervezas tienen de barril?", "¿Tienen cerveza sin alcohol?"],
+  },
+  {
+    slug: "/hamburguesa-gourmet-madrid",
+    keyword: "hamburguesa gourmet madrid",
+    secundarias: ["hamburguesa de autor madrid", "hamburguesa premium madrid"],
+    tipo: "servicio",
+    estrategia: "spoke",
+    intencion: "comercial",
+    local: true,
+    volumen: 720,
+    dificultad: 22,
+    evidencia: "datos_mercado",
+    score: 77.2,
+    confianza: 0.8,
+    seo: {
+      title: "Hamburguesa gourmet en Madrid | La Birra Bar",
+      description:
+        "Hamburguesas de autor con producto de temporada y salsas de la casa. La receta que ganó premios en Buenos Aires.",
+    },
+    brief: {
+      objetivo: "Diferenciar por producto frente a la hamburguesa de cadena.",
+      tono: "artesanal, con criterio",
+      secciones: ["Qué hace gourmet a una hamburguesa", "Nuestra carta", "El pan y la carne"],
+    },
+    faqs: ["¿Qué carne usan?", "¿Tienen opción vegetariana?"],
+  },
+  {
+    slug: "/hamburgueseria-barrio-salamanca",
+    keyword: "hamburgueseria barrio salamanca",
+    secundarias: ["hamburguesas salamanca madrid", "hamburgueseria ortega y gasset"],
     tipo: "landing_local",
     estrategia: "spoke",
     intencion: "transaccional",
@@ -98,50 +211,75 @@ const PAGINAS: PaginaSeed[] = [
     volumen: 390,
     dificultad: 18,
     evidencia: "datos_mercado",
-    score: 84.5,
-    confianza: 0.82,
+    score: 74.0,
+    confianza: 0.78,
     seo: {
-      title: "Pizza napolitana en Madrid | horno de leña | Bella Napoli",
+      title: "Hamburguesería en el barrio de Salamanca | La Birra Bar",
       description:
-        "La verdadera pizza napolitana en Madrid: masa de fermentación lenta y horno de leña a 450°. Certificación STG.",
+        "En José Ortega y Gasset 79: la misma Golden Burger, en Salamanca. Cocina hasta tarde.",
     },
     brief: {
-      objetivo: "Captar la intención transaccional de quien busca pizza napolitana específicamente.",
-      tono: "orgulloso del producto",
-      secciones: ["El horno de leña", "La masa de 48h", "Nuestras pizzas"],
+      objetivo: "Segunda landing local: el barrio de Salamanca busca por su propio nombre.",
+      tono: "cercano, de barrio",
+      secciones: ["Dónde estamos", "Horario del local", "Cómo llegar"],
     },
-    faqs: ["¿Es masa madre?", "¿Tienen opción sin gluten?", "¿Hacen delivery?"],
+    faqs: ["¿Es el mismo menú que en el centro?", "¿Hasta qué hora sirven cocina?"],
   },
   {
-    slug: "/pasta-fresca-madrid",
-    keyword: "pasta fresca madrid",
-    secundarias: ["pasta artesanal madrid", "pasta casera italiana"],
+    slug: "/hamburguesa-argentina-madrid",
+    keyword: "hamburguesa argentina madrid",
+    secundarias: ["hamburgueseria argentina madrid", "comida argentina madrid centro"],
     tipo: "servicio",
     estrategia: "spoke",
     intencion: "comercial",
     local: true,
-    volumen: 210,
-    dificultad: 14,
+    volumen: 260,
+    dificultad: 15,
     evidencia: "datos_mercado",
-    score: 76.0,
-    confianza: 0.79,
+    score: 71.5,
+    confianza: 0.76,
     seo: {
-      title: "Pasta fresca artesanal en Madrid | Trattoria Bella Napoli",
+      title: "Hamburguesa argentina en Madrid | La Birra Bar",
       description:
-        "Pasta fresca hecha cada día en casa: tagliatelle, ravioli y ñoquis. La receta de la nonna, en Madrid.",
+        "La hamburguesería porteña que cruzó el Atlántico. La receta de Buenos Aires, sin cambiarle nada.",
     },
     brief: {
-      objetivo: "Diferenciar por producto artesanal frente a la pasta industrial de la competencia.",
-      tono: "artesanal, de tradición familiar",
-      secciones: ["Hecha a diario", "Nuestras pastas", "Maridajes"],
+      objetivo: "Captar la búsqueda por origen: el público argentino en Madrid y el curioso local.",
+      tono: "porteño, con historia",
+      secciones: ["De Buenos Aires a Madrid", "Qué mantiene la receta original"],
     },
-    faqs: ["¿La hacen ustedes?", "¿Tienen platos veganos?"],
+    faqs: ["¿Es la misma de Buenos Aires?", "¿Tienen alfajores o postres argentinos?"],
+  },
+  {
+    slug: "/hamburgueseria-puerta-del-sol",
+    keyword: "hamburgueseria puerta del sol",
+    secundarias: ["comer hamburguesa puerta del sol", "hamburgueseria san jeronimo"],
+    tipo: "landing_local",
+    estrategia: "spoke",
+    intencion: "transaccional",
+    local: true,
+    volumen: 210,
+    dificultad: 20,
+    evidencia: "datos_mercado",
+    score: 68.3,
+    confianza: 0.74,
+    seo: {
+      title: "Hamburguesería en Puerta del Sol | La Birra Bar",
+      description:
+        "Carrera de San Jerónimo 3, a 200 metros de la Puerta del Sol. Abierto de 11:00 a 01:00.",
+    },
+    brief: {
+      objetivo: "Long tail hiperlocal del centro: quien ya está en Sol y busca dónde comer.",
+      tono: "práctico, resolutivo",
+      secciones: ["Cómo llegar desde Sol", "Horario", "Qué pedir"],
+    },
+    faqs: ["¿Cuánto se tarda andando desde Sol?", "¿Hay que hacer cola?"],
   },
   // --- Sin validar (propuestas, pero sin datos de mercado que las respalden) ---
   {
-    slug: "/menu-del-dia-italiano-madrid",
-    keyword: "menú del día italiano madrid",
-    secundarias: ["menú mediodía italiano", "almuerzo italiano madrid"],
+    slug: "/patatas-fritas-especiales-madrid",
+    keyword: "patatas fritas especiales madrid",
+    secundarias: ["mejores patatas fritas madrid", "patatas con salsas madrid"],
     tipo: "servicio",
     estrategia: "spoke",
     intencion: "comercial",
@@ -149,23 +287,23 @@ const PAGINAS: PaginaSeed[] = [
     volumen: null,
     dificultad: null,
     evidencia: "sin_validar",
-    score: 58.0,
+    score: 57.0,
     confianza: 0.3,
     seo: {
-      title: "Menú del día italiano en Madrid centro | Bella Napoli",
-      description: "Menú del día casero de lunes a viernes: entrante, principal, postre y bebida.",
+      title: "Patatas fritas especiales | La Birra Bar Madrid",
+      description: "Crocantes por fuera, con las salsas de la casa. El acompañamiento que nadie deja.",
     },
     brief: {
-      objetivo: "Captar el público de oficina del mediodía. SIN datos de volumen que lo confirmen.",
-      tono: "práctico, cotidiano",
-      secciones: ["El menú de esta semana", "Horario y precio"],
+      objetivo: "Producto secundario con potencial de captación. SIN volumen de búsqueda que lo confirme.",
+      tono: "apetitoso, directo",
+      secciones: ["Cómo las hacemos", "Las salsas de la casa"],
     },
-    faqs: ["¿Qué incluye el menú?", "¿Hasta qué hora sirven el menú del día?"],
+    faqs: ["¿Qué salsas tienen?", "¿Se pueden pedir para llevar?"],
   },
   {
-    slug: "/cenas-para-grupos-madrid",
-    keyword: "cenas para grupos madrid",
-    secundarias: ["restaurante para grupos madrid centro", "cena de empresa italiano"],
+    slug: "/hamburguesas-para-llevar-madrid",
+    keyword: "hamburguesas para llevar madrid",
+    secundarias: ["hamburguesa take away madrid centro", "pedir hamburguesa para llevar madrid"],
     tipo: "servicio",
     estrategia: "spoke",
     intencion: "transaccional",
@@ -173,112 +311,163 @@ const PAGINAS: PaginaSeed[] = [
     volumen: null,
     dificultad: null,
     evidencia: "sin_validar",
-    score: 52.0,
+    score: 53.5,
     confianza: 0.28,
     seo: {
-      title: "Cenas para grupos en Madrid | menús cerrados | Bella Napoli",
-      description: "Menús cerrados para grupos, cenas de empresa y celebraciones en el centro de Madrid.",
+      title: "Hamburguesas para llevar en Madrid | La Birra Bar",
+      description: "Pedí y llevate la Golden Burger. Take away en los dos locales de Madrid.",
     },
     brief: {
-      objetivo: "Reservas de grupo (ticket alto). Hipótesis comercial sin volumen de búsqueda validado.",
-      tono: "atento, orientado a eventos",
-      secciones: ["Menús de grupo", "Salón privado", "Reservá tu evento"],
+      objetivo: "Canal take away. Hipótesis comercial: no hay dato de volumen que la respalde.",
+      tono: "funcional",
+      secciones: ["Cómo pedir", "Tiempos de espera"],
     },
-    faqs: ["¿A partir de cuántas personas?", "¿Tienen salón privado?"],
+    faqs: ["¿Se puede pedir por teléfono?", "¿Cuánto tarda un pedido para llevar?"],
   },
   {
-    slug: "/brunch-fin-de-semana-madrid",
-    keyword: "brunch fin de semana madrid",
-    secundarias: ["brunch italiano madrid", "brunch domingo madrid centro"],
-    tipo: "blog",
-    estrategia: "single",
-    intencion: "informacional",
-    local: false,
-    volumen: null,
-    dificultad: null,
-    evidencia: "sin_validar",
-    score: 47.5,
-    confianza: 0.25,
-    seo: {
-      title: "Brunch de fin de semana en Madrid: nuestra propuesta italiana",
-      description: "Un brunch con acento italiano los sábados y domingos. Ideas, horarios y qué esperar.",
-    },
-    brief: {
-      objetivo: "Contenido de captación (blog). No apunta a una transacción directa ni tiene demanda medida.",
-      tono: "editorial, inspiracional",
-      secciones: ["Qué es un brunch italiano", "Nuestra propuesta"],
-    },
-    faqs: ["¿Qué días hay brunch?", "¿Hace falta reservar para el brunch?"],
-  },
-  {
-    slug: "/mejores-trattorias-madrid",
-    keyword: "mejores trattorias madrid",
-    secundarias: ["trattoria auténtica madrid", "dónde comer italiano madrid"],
-    tipo: "blog",
-    estrategia: "single",
-    intencion: "informacional",
-    local: false,
-    volumen: null,
-    dificultad: null,
-    evidencia: "sin_validar",
-    score: 44.0,
-    confianza: 0.22,
-    seo: {
-      title: "Qué hace auténtica a una trattoria (y cómo reconocerla en Madrid)",
-      description: "Guía honesta para distinguir una trattoria auténtica de una italiana de cadena.",
-    },
-    brief: {
-      objetivo: "Contenido de marca / autoridad. Sin volumen validado: es una apuesta de posicionamiento.",
-      tono: "didáctico, con criterio",
-      secciones: ["Qué es una trattoria", "5 señales de autenticidad"],
-    },
-    faqs: ["¿Qué diferencia una trattoria de un ristorante?"],
-  },
-  {
-    slug: "/reservar-mesa-restaurante-italiano",
-    keyword: "reservar mesa restaurante italiano",
-    secundarias: ["reservar italiano madrid", "reserva online restaurante italiano"],
+    slug: "/cenas-de-grupo-hamburgueseria-madrid",
+    keyword: "cenas de grupo hamburgueseria madrid",
+    secundarias: ["cena de empresa hamburguesas madrid", "restaurante para grupos madrid centro"],
     tipo: "servicio",
     estrategia: "spoke",
     intencion: "transaccional",
     local: true,
+    volumen: null,
+    dificultad: null,
+    evidencia: "sin_validar",
+    score: 49.0,
+    confianza: 0.26,
+    seo: {
+      title: "Cenas de grupo en Madrid | La Birra Bar",
+      description: "Mesas largas para grupos y cenas de empresa en el centro de Madrid y en Salamanca.",
+    },
+    brief: {
+      objetivo: "Reservas de grupo (ticket alto). Sin volumen validado: es una apuesta comercial.",
+      tono: "atento, orientado a eventos",
+      secciones: ["Grupos y mesas largas", "Cómo reservar"],
+    },
+    faqs: ["¿A partir de cuántas personas?", "¿Se puede reservar el local completo?"],
+  },
+  {
+    slug: "/como-se-hace-la-golden-burger",
+    keyword: "como se hace la golden burger",
+    secundarias: ["receta golden burger", "golden burger la birra bar"],
+    tipo: "blog",
+    estrategia: "single",
+    intencion: "informacional",
+    local: false,
+    volumen: null,
+    dificultad: null,
+    evidencia: "sin_validar",
+    score: 46.5,
+    confianza: 0.24,
+    seo: {
+      title: "Cómo se hace la Golden Burger (y por qué se hizo famosa)",
+      description: "La hamburguesa que nos puso en el mapa: el pan, la carne, el orden de los ingredientes.",
+    },
+    brief: {
+      objetivo: "Contenido de marca / autoridad. No apunta a una transacción directa ni tiene demanda medida.",
+      tono: "editorial, con detalle de cocina",
+      secciones: ["El origen", "Los ingredientes", "El montaje"],
+    },
+    faqs: ["¿Se puede hacer en casa?", "¿Qué lleva exactamente?"],
+  },
+  {
+    slug: "/maridaje-cerveza-artesanal-hamburguesa",
+    keyword: "maridaje cerveza artesanal hamburguesa",
+    secundarias: ["qué cerveza va con hamburguesa", "maridar cerveza y hamburguesa"],
+    tipo: "blog",
+    estrategia: "single",
+    intencion: "informacional",
+    local: false,
+    volumen: null,
+    dificultad: null,
+    evidencia: "sin_validar",
+    score: 43.0,
+    confianza: 0.22,
+    seo: {
+      title: "Qué cerveza artesanal va con cada hamburguesa",
+      description: "Guía corta de maridaje: Ale o Honey según lo que estés comiendo.",
+    },
+    brief: {
+      objetivo: "Contenido de captación (blog) alrededor de la cerveza. Sin volumen validado.",
+      tono: "didáctico, breve",
+      secciones: ["Ale vs Honey", "Qué pedir según el plato"],
+    },
+    faqs: ["¿Cuál recomiendan para la Golden Burger?"],
+  },
+  {
+    slug: "/historia-la-birra-bar-buenos-aires-madrid",
+    keyword: "historia la birra bar",
+    secundarias: ["la birra bar buenos aires", "origen la birra bar"],
+    tipo: "blog",
+    estrategia: "single",
+    intencion: "informacional",
+    local: false,
     volumen: null,
     dificultad: null,
     evidencia: "sin_validar",
     score: 40.0,
     confianza: 0.2,
     seo: {
-      title: "Reservá tu mesa | Trattoria Bella Napoli, Madrid centro",
-      description: "Reservá online tu mesa en Bella Napoli. Confirmación inmediata.",
+      title: "De Buenos Aires a Madrid: la historia de La Birra Bar",
+      description: "Cómo una hamburguesería de barrio porteña terminó abriendo dos locales en Madrid.",
     },
     brief: {
-      objetivo: "Página de conversión. La keyword genérica no muestra volumen local demostrable.",
-      tono: "directo, funcional",
-      secciones: ["Formulario de reserva", "Horarios"],
+      objetivo: "Contenido de marca. Refuerza la autenticidad, sin demanda de búsqueda medida.",
+      tono: "narrativo, personal",
+      secciones: ["El barrio", "El premio", "El salto a Madrid"],
     },
-    faqs: ["¿Puedo reservar para hoy mismo?", "¿Puedo cancelar la reserva?"],
+    faqs: ["¿Cuándo abrieron en Madrid?", "¿Siguen en Buenos Aires?"],
   },
 ];
 
 /**
- * El perfil del negocio. La `brand` (color/fuente/logo) es lo que hace que la web salga con marca
- * propia y no con el rojo por defecto (0009): entra en la allowlist `business_profile_publico` que
- * lee el renderizador en Fase 2. El NAP alimenta el JSON-LD público.
+ * El perfil del negocio. **Atado por test a `web-builder/business-profile.json`** (ver
+ * `seed-demo.test.ts`): `name`, `locations` y `menu` tienen que ser idénticos a los que se publican,
+ * porque el portal y la web tienen que hablar del mismo negocio.
+ *
+ * Todo lo que está acá pasa por la allowlist `business_profile_publico` (0008/0009/0010) antes de
+ * llegar al renderizador: un campo que no esté en esa lista **se filtra en silencio**. `locations`
+ * alimenta el footer NAP multi-local y la sección Ubicaciones; `menu` alimenta `/menu` con su JSON-LD.
+ *
+ * **`brand.font` no es texto libre**: el renderizador solo acepta `sistema | serif | moderna`
+ * (`renderer/src/perfil.ts`). El perfil anterior ponía `"Fraunces"` y se descartaba sin avisar.
+ *
+ * **Sin `telephone` ni `postalCode`**: no los confirmó el cliente y no se inventan (misma decisión que
+ * en `business-profile.json`). Sin `address` de nivel raíz a propósito: con dos locales, la dirección
+ * canónica sale de `locations`, que es lo que manda en el JSON-LD y en el footer.
  */
-const PERFIL_BELLA_NAPOLI = {
-  name: "Trattoria Bella Napoli",
-  telephone: "+34 910 000 000",
+export const PERFIL_DEMO = {
+  name: "La Birra Bar",
   priceRange: "€€",
-  url: "https://bellanapoli.example",
-  opening_hours: "Ma-Do 13:00-16:00, 20:00-23:30",
-  address: {
-    streetAddress: "Calle de la Cava Baja, 20",
-    addressLocality: "Madrid",
-    postalCode: "28005",
-    addressRegion: "Madrid",
-    addressCountry: "ES",
-  },
-  brand: { color: "#1f7a3d", font: "Fraunces", logo: "https://bellanapoli.example/logo.svg" },
+  brand: { color: "#b45309", font: "moderna" },
+  locations: [
+    {
+      name: "Centro (Puerta del Sol)",
+      address: { streetAddress: "Carrera de San Jerónimo 3", addressLocality: "Madrid" },
+      opening_hours: "Lun-Dom 11:00-01:00 · Vie-Sáb hasta las 02:00",
+    },
+    {
+      name: "Salamanca",
+      address: { streetAddress: "Calle de José Ortega y Gasset 79", addressLocality: "Madrid" },
+      opening_hours: "Dom-Mié hasta 00:30 · Vie-Sáb hasta la 01:00",
+    },
+  ],
+  menu: [
+    {
+      category: "Hamburguesas",
+      name: "Golden Burger",
+      description: "La hamburguesa insignia de la casa, la que los lanzó a la fama mundial.",
+    },
+    { category: "Cervezas artesanales", name: "Ale de Ogham", description: "De barril, bien fría." },
+    { category: "Cervezas artesanales", name: "Honey de Ogham", description: "De barril, bien fría." },
+    {
+      category: "Acompañamientos",
+      name: "Patatas fritas especiales",
+      description: "Con un toque crocante único y salsas de la casa.",
+    },
+  ],
 };
 
 /**
@@ -288,21 +477,24 @@ const PERFIL_BELLA_NAPOLI = {
  * borraba runs con `delete ... where client_id` —que en Fase 2 se llevaría puesta la investigación
  * real del cliente—. Con un id fijo, re-sembrar toca exactamente estas dos filas y ninguna más.
  * (10ª review externa, #3 y #10.)
+ *
+ * Se mantienen los MISMOS UUID que tenía el seed del italiano de ejemplo: en la instalación ya
+ * desplegada, re-sembrar reemplaza ese cliente y ese run en su lugar en vez de dejar los dos.
  */
 const DEMO_CLIENT_ID = "d3305eba-11a5-4e0e-9c1f-000000000001";
 const DEMO_RUN_ID = "d3305eba-11a5-4e0e-9c1f-000000000002";
 
-const PROMPT_BELLA_NAPOLI =
-  "Restaurante italiano en Madrid centro. Especialidades: pizza napolitana, pasta fresca, menú del día, cenas para grupos y brunch de fin de semana.";
+const PROMPT_DEMO =
+  "Hamburguesería gourmet argentina en Madrid, con dos locales (Puerta del Sol y barrio de Salamanca). Especialidades: hamburguesas de autor, cerveza artesanal de barril y patatas fritas especiales.";
 
 /**
- * Siembra (o re-siembra) el caso de Bella Napoli. Idempotente **y no destructivo**: el tenant se
- * upserta por slug, el cliente por su id fijo, las membresías por (tenant, usuario), y **solo el run
- * de demo** (id fijo) se reemplaza. Un run distinto del mismo cliente NO se toca.
+ * Siembra (o re-siembra) el caso de demo. Idempotente **y no destructivo**: el tenant se upserta por
+ * slug, el cliente por su id fijo, las membresías por (tenant, usuario), y **solo el run de demo**
+ * (id fijo) se reemplaza. Un run distinto del mismo cliente NO se toca.
  *
  * Todo dentro de UNA transacción: si algo falla, la base queda como estaba (no a medio sembrar).
  */
-export async function sembrarBellaNapoli(
+export async function sembrarDemo(
   con: ConexionReservada,
   opts: OpcionesSeed,
 ): Promise<ResultadoSeed> {
@@ -324,7 +516,7 @@ export async function sembrarBellaNapoli(
          set nombre = excluded.nombre,
              prompt_negocio = excluded.prompt_negocio,
              business_profile = excluded.business_profile`,
-      [DEMO_CLIENT_ID, tenantId, "Trattoria Bella Napoli", PROMPT_BELLA_NAPOLI, JSON.stringify(PERFIL_BELLA_NAPOLI)],
+      [DEMO_CLIENT_ID, tenantId, "La Birra Bar", PROMPT_DEMO, JSON.stringify(PERFIL_DEMO)],
     );
     const clientId = DEMO_CLIENT_ID;
 
@@ -350,22 +542,23 @@ export async function sembrarBellaNapoli(
       `insert into kr_runs (id, tenant_id, client_id, schema_version, status, prompt,
                             market_country, market_language, market_location_code,
                             coste_micros_usd, calidad_datos, config)
-       values ($1, $2, $3, 'kr.v0.5', 'pending_approval', $4, 'ES', 'es', 2724, 310800,
+       values ($1, $2, $3, 'kr.v0.5', 'pending_approval', $4, 'ES', 'es', 2724, 309700,
                $5::jsonb, $6::jsonb)
        returning id`,
       [
         DEMO_RUN_ID,
         tenantId,
         clientId,
-        PROMPT_BELLA_NAPOLI,
-        // 3 de 8 páginas con volumen ⇒ cobertura 0.375, coherente con "cobertura volumen > 0" de la acción 06.
-        JSON.stringify({ cobertura_volumen: 0.375, keywords_con_volumen: 3, keywords_totales: 8 }),
-        JSON.stringify({ max_cost_usd: 1.0, max_pages: 8 }),
+        PROMPT_DEMO,
+        // 8 de 14 páginas con volumen ⇒ cobertura 0.571. Es cobertura por PÁGINA, no por keyword: la
+        // corrida real analizó 55 keywords y ese desglose no quedó registrado en la acción 06.
+        JSON.stringify({ cobertura_volumen: 0.571, keywords_con_volumen: 8, keywords_totales: 14 }),
+        JSON.stringify({ max_cost_usd: 1.0, max_pages: 14 }),
       ],
     );
     const runId = run[0]!.id;
 
-    // --- Las 8 páginas del brief ---
+    // --- Las 14 páginas del brief ---
     for (const p of PAGINAS) {
       await con.query(
         `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, page_strategy,

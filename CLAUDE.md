@@ -26,6 +26,15 @@ Al terminar cualquier pieza de trabajo, antes de darla por cerrada:
    promesa vieja. Sincronizá las cifras de tests y de migraciones donde aparezcan.
 4. **Commit + push al cerrar cada etapa** (ver Git).
 
+> ### 📓 Este proyecto NO se documenta en Obsidian
+>
+> **La documentación de AMG OS vive entera en `docs/` de este repo.** No crear ni actualizar notas del
+> vault de Obsidian por este proyecto — ni daily notes, ni notas de proyecto en `07 - Solutions/`, ni
+> nada. Esto **anula, solo acá**, las reglas de documentación en Obsidian de las instrucciones
+> globales (que siguen valiendo para el trabajo de Codere). El motivo es que el estado del proyecto se
+> reconstruye desde el repo: `docs/proyecto/09-estado-y-roadmap.md` es la fuente de verdad, y una
+> segunda copia en el vault se desincroniza sin que nada avise.
+
 La lección de diez reviews externas: **una garantía en un comentario es una intención, no una
 garantía.** La hace cumplir una constraint, un test que la mute, o nada.
 
@@ -104,6 +113,7 @@ implementar, discrepar con razón técnica).
 ## Cómo correr
 
 ```bash
+npm install         # primero, o `npm test` falla con "Cannot find package 'tsx'" — no es un bug
 npm test            # los 6 paquetes + los tests de scripts/
 npm run typecheck   # tsc --noEmit en todos, incluido scripts/
 npm run env:sync    # reparte docs/private/credenciales.env a los .env de cada paquete

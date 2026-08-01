@@ -462,6 +462,51 @@ falta algo obligatorio, así que el orden importa dos veces:
 > código viejo la ignora); **quitar** una solo lo es después de que el código que ya no la necesita
 > esté sirviendo.
 
+### Aplicar migraciones nuevas a una base ya desplegada
+
+Todo lo de arriba es sobre **variables de entorno**. Cuando lo que cambia es el **esquema**, el
+procedimiento es otro — y hoy hace falta: **la `0010` está en `main` pero no en producción.**
+
+> ### ⚠️ Estado actual: producción va una migración atrás
+>
+> La base se verificó con **9** migraciones el 2026-07-25. La `0010`
+> (`0010_ubicaciones_y_carta_publicas.sql`, allowlist de `locations`/`menu`) es del 2026-08-01.
+>
+> **Hoy no rompe nada** porque su único lector —el renderizador— no está desplegado. **Cuando lo
+> esté, sin esta migración el footer sale sin locales y `/menu` da 404**, con el perfil correctamente
+> cargado y sin ningún error en los logs: es el mismo bug de silencio que ya le había pasado a
+> `brand` antes de la `0009`. Aplicarla es parte del despliegue de Fase 2.
+
+**El procedimiento:**
+
+```bash
+npm run env:sync              # DATABASE_URL_ADMIN sale de docs/private/credenciales.env
+npm run migrate:deploy -w db
+```
+
+**Verificá:** imprime `+ 0010_ubicaciones_y_carta_publicas.sql` y `✔ Aplicadas 1 migración(es)`. Si
+ya estaba, dice `✔ La base ya estaba al día`.
+
+Cuatro cosas que conviene saber antes de correrlo contra producción:
+
+- **Usa `DATABASE_URL_ADMIN`, no `amg_api`.** Las migraciones crean roles y son dueñas del esquema:
+  eso exige el superusuario del proyecto (`postgres` en Supabase). Es la **única** pieza que toca esa
+  credencial. Si falta la variable, el runner **falla cerrado** en vez de tocar otra base por las
+  dudas (`db/src/cli/deploy.ts`).
+- **Aplica solo las pendientes, en orden, y lleva registro.** Es idempotente: correrlo dos veces no
+  duplica nada. No hay que elegir a mano qué archivo correr.
+- **No hace falta parar la API.** Al revés que con las variables, acá el orden seguro es **esquema
+  primero, código después**: una migración aditiva (una columna nueva, un campo más en una allowlist)
+  la ignora el código viejo. La regla espejo de la de arriba: **agregar** es seguro en cualquier
+  momento; **quitar** una columna solo lo es después de que el código que ya no la usa esté sirviendo.
+- **La `0010` en concreto** redefine la columna generada `business_profile_publico`, así que Postgres
+  la recalcula para cada fila de `clients`. Con la cartera actual es instantáneo; con miles de
+  clientes habría que mirarlo con más cuidado.
+
+Después de aplicarla, verificá por introspección (no "el comando dio verde"): que
+`business_profile_publico` de un cliente con `locations` cargadas **traiga** el array, y que un valor
+que no sea string en un campo de texto **no** sobreviva (`app.texto_publico`, tanda 18).
+
 ---
 
 ## Troubleshooting (los errores que más probablemente veas)

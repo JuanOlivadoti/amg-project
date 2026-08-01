@@ -37,7 +37,7 @@ const ETIQUETA: Record<RunStatus, string> = {
               (ngModelChange)="prompt.set($event)"
               name="prompt"
               rows="2"
-              placeholder="Prompt de negocio: ej. Restaurante italiano en Madrid centro…"
+              placeholder="Prompt de negocio: ej. Hamburguesería gourmet en Madrid centro…"
               class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
             ></textarea>
             <button
