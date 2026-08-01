@@ -50,10 +50,11 @@
 > `app_metadata` de los dos usuarios ya apuntaba al tenant correcto — todo **verificado por consulta
 > contra Supabase**, no por el "✔" del comando. Con eso el paso 0 de
 > [próximos pasos](#próximos-pasos) está cerrado. La consulta destapó un pendiente que el re-seed no
-> toca: **la migración `0010` no está aplicada en producción**, así que `business_profile_publico`
-> expone solo `brand, name, priceRange` y los locales y la carta se filtran en silencio. No rompe nada
-> hoy (el renderizador no está desplegado), pero **desplegarlo así daría el footer sin locales y
-> `/menu` en 404**. Ver 0.b en próximos pasos.
+> toca: **la migración `0010` no estaba aplicada en producción**, así que `business_profile_publico`
+> exponía solo `brand, name, priceRange` y los locales y la carta se filtraban en silencio. **Aplicada
+> el 2026-08-01** (`npm run migrate:deploy -w db`) y verificada por consulta: las **10** migraciones en
+> el registro, y la allowlist ahora deja pasar `brand, locations, menu, name, priceRange` — **2 locales
+> y 4 items de carta** públicos. Con eso, desplegar el renderizador ya no arrastra ese fallo silencioso.
 >
 > **Nuevo (2026-08-01, cierre del día): tres arreglos que salieron de manejar la app, no de la suite.**
 > Verificar el re-seed **en el portal** (y no solo por consulta) destapó que la primera siembra había
@@ -113,7 +114,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
 | **Tests** | **539** en el monorepo + **130** en el portal (113 `node:test` + 17 Karma). Los de seguridad, contra Postgres real |
-| **Migraciones** | 10 en el repo (`0001`..`0010`) · **9 aplicadas en producción** — la `0010` está pendiente (ver abajo) |
+| **Migraciones** | 10 en el repo (`0001`..`0010`) · **las 10 aplicadas en producción** (la `0010`, el 2026-08-01) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
@@ -158,18 +159,22 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
    | Membresías | Frank `maestro`, Juan `equipo`, las dos con `client_id` NULL |
    | `app_metadata` | **Ya estaba bien**: el `tenant_id` de los dos usuarios coincide con el tenant sembrado y el `rol` con `memberships`. No hubo que tocar Supabase Auth (el tenant se upsertó por slug, así que el UUID no cambió) |
 
-0.b **🟡 La migración `0010` sigue pendiente en producción** (aplicadas: `0001`..`0009`). El re-seed
-   **no la necesitaba** —sembró los 14 registros sin problema— pero sí cambia lo que el renderizador
-   podría leer: hoy `business_profile_publico` expone solo `brand, name, priceRange`, así que
-   **`locations` y `menu` se filtran en silencio** aunque el perfil sembrado los tenga. No rompe nada
-   *ahora* porque el renderizador no está desplegado (§4) y el portal no lee esa columna; **pero
-   desplegarlo sin aplicar la `0010` daría el footer sin locales y `/menu` en 404** — exactamente el
-   fallo que la migración existe para arreglar. Es DDL (reemplaza `app.nap_publico` y re-materializa
-   una columna generada), así que va con la decisión de alguien, no de paso:
+0.b **✅ La migración `0010`, aplicada a producción** (2026-08-01, `npm run migrate:deploy -w db`).
+   El re-seed **no la necesitaba** —sembró los 14 registros sin problema— pero sí cambiaba lo que el
+   renderizador podrá leer: `business_profile_publico` exponía solo `brand, name, priceRange`, así que
+   **`locations` y `menu` se filtraban en silencio** aunque el perfil sembrado los tuviera. No rompía
+   nada *entonces* (el renderizador no está desplegado y el portal no lee esa columna), pero
+   **desplegarlo sin la `0010` habría dado el footer sin locales y `/menu` en 404** — el fallo que la
+   migración existe para arreglar, y que no da error: simplemente no muestra los datos.
 
-   ```bash
-   npm run migrate:deploy -w db   # idempotente: lee db/.env y aplica solo lo pendiente
-   ```
+   Se aplicó con `db/.env` recién sincronizado desde la fuente única (`npm run env:sync`), porque el
+   CLI lo lee y es un archivo generado. **Verificado por consulta, no por el "✔"**:
+
+   | | |
+   |---|---|
+   | Registro | las **10** migraciones (`0001`..`0010`) |
+   | Allowlist efectiva | `brand, locations, menu, name, priceRange` (antes: `brand, name, priceRange`) |
+   | Datos que ahora sobreviven | **2 locales** y **4 items de carta** |
 
 0.c **✅ El re-seed, verificado también EN EL PORTAL** (2026-08-01, después de la consulta a la base).
    Consultar Supabase prueba que las filas están bien, no que el recorrido de la demo cierre — y esa
@@ -207,13 +212,10 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
    larga duración, no serverless. Sin esto, `/menu`, `/blog` y todo lo que se acaba de construir
    siguen sin un dominio real. Tres cosas que van **dentro** de este paso y es fácil que se olviden,
    porque el código ya está y nada avisa de que faltan:
-   - **Aplicar la migración `0010` a la base de producción** — **confirmado empíricamente el
-     2026-08-01**, no es una sospecha: `app.migraciones_aplicadas` en producción tiene `0001..0009`, y
-     `app.nap_publico` **no conoce `locations`**. El seed escribió el perfil bien (2 locales y 4 ítems
-     de carta en `business_profile`), pero la columna generada devuelve `locations: 0, menu: 0`: la
-     allowlist vieja **los descarta en silencio**, que es exactamente el bug que la `0010` existe para
-     cerrar. Hoy no se nota porque el renderizador no está desplegado; el día que suba, el footer sale
-     sin locales y `/menu` da 404.
+   - ~~**Aplicar la migración `0010` a la base de producción**~~ — ✅ **hecha el 2026-08-01, fuera de
+     este paso** (ver 0.b). Se adelantó justamente porque era el ítem con más chances de olvidarse: no
+     da error, solo deja de mostrar los datos. La allowlist efectiva ya incluye `locations` y `menu`,
+     verificado por consulta.
    - **Encender `lanzarResearch` y `aprobarRun`** en `portal/src/environments/environment.prod.ts`.
      Se apagaron *porque no había orquestador detrás* (decisión de Fase 1, con test que lo fija). Si
      se despliega el orquestador y nadie los toca, **el portal sigue capado**: no se puede lanzar
@@ -304,10 +306,9 @@ Runbook paso a paso, con los tropiezos reales, en
   la base**: 9 tablas con RLS **forzada** (`relforcerowsecurity`),
   `clients.business_profile_publico` como columna generada (la allowlist de ADR-19 vive en la base),
   runner idempotente confirmado con una segunda corrida.
-  > ⚠️ **La `0010` no está aplicada en producción.** Es del 2026-08-01 (allowlist de
-  > `locations`/`menu`), posterior a esta verificación. Hoy no rompe nada porque su único lector —el
-  > renderizador— no está desplegado; cuando se despliegue, sin ella el footer sale **sin locales** y
-  > `/menu` da **404**. Aplicarla es parte del despliegue de Fase 2: ver
+  > ✅ **La `0010` también está aplicada** (2026-08-01, posterior a esta verificación). Producción va
+  > con las **10**, y la allowlist de `business_profile_publico` ya deja pasar `locations` y `menu`.
+  > Ver 0.b en [próximos pasos](#próximos-pasos) y el
   > [runbook § migraciones sobre una base ya desplegada](13-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
 - **C.2 — los 4 logins con contraseña** y los 4 **conectando de verdad** por el pooler, con
   `INHERIT=false` intacto tras el `alter role` (ADR-17 sigue en pie).

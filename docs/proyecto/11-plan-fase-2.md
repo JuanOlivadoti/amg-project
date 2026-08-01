@@ -146,11 +146,12 @@ piezas corren solo en `localhost`. *(La API y el portal sí están desplegados �
   [`bigballs.es`](https://bigballs.es) (Hostinger), API en `api.bigballs.es` (Railway), base en
   Supabase (`eu-west-2`) con RLS forzada. Ver [13-runbook-despliegue.md](13-runbook-despliegue.md).
   **Lo que falta es desplegar la Fase 2**: el orquestador y el renderizador siguen en `localhost`.
-- **La migración `0010` en la base de producción.** Está en el repo y mergeada a `main`, pero
-  producción se verificó con **9** migraciones (2026-07-25) y la `0010` es del 2026-08-01. Hoy no
-  rompe nada —el renderizador, único lector de `business_profile_publico`, no está desplegado— pero
-  sin ella el footer saldría **sin locales** y `/menu` daría **404**. Va junto con el despliegue de
-  Fase 2: ver [runbook § migraciones sobre una base ya desplegada](13-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
+- ~~**La migración `0010` en la base de producción.**~~ ✅ **Aplicada el 2026-08-01.** Producción va
+  con las **10** y la allowlist de `business_profile_publico` ya deja pasar `locations` y `menu`
+  (verificado por consulta: 2 locales, 4 items de carta). Se adelantó al despliegue de Fase 2 a
+  propósito: era el ítem con más chances de olvidarse, porque su fallo es silencioso —footer **sin
+  locales** y `/menu` en **404**, sin ningún error—. Ver
+  [runbook § migraciones sobre una base ya desplegada](13-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
 - ~~**La web del cliente.**~~ ✅ Existe: `renderer/` (etapa 6, ADR-19) la sirve en vivo desde
   Storyblok, con preview firmado para el Visual Editor e invalidación por webhook. **Pero solo corre
   en `localhost`**: lo que falta para que el cliente *tenga* una web es desplegarlo.

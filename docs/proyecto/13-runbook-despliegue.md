@@ -467,15 +467,18 @@ falta algo obligatorio, así que el orden importa dos veces:
 Todo lo de arriba es sobre **variables de entorno**. Cuando lo que cambia es el **esquema**, el
 procedimiento es otro — y hoy hace falta: **la `0010` está en `main` pero no en producción.**
 
-> ### ⚠️ Estado actual: producción va una migración atrás
+> ### ✅ Estado actual: producción va al día (las 10 migraciones)
 >
-> La base se verificó con **9** migraciones el 2026-07-25. La `0010`
-> (`0010_ubicaciones_y_carta_publicas.sql`, allowlist de `locations`/`menu`) es del 2026-08-01.
+> La base se había verificado con **9** el 2026-07-25; la `0010`
+> (`0010_ubicaciones_y_carta_publicas.sql`, allowlist de `locations`/`menu`) es del 2026-08-01 y se
+> **aplicó el mismo día**. Comprobado por consulta: las 10 en `app.migraciones_aplicadas`, y
+> `business_profile_publico` exponiendo `brand, locations, menu, name, priceRange`.
 >
-> **Hoy no rompe nada** porque su único lector —el renderizador— no está desplegado. **Cuando lo
-> esté, sin esta migración el footer sale sin locales y `/menu` da 404**, con el perfil correctamente
-> cargado y sin ningún error en los logs: es el mismo bug de silencio que ya le había pasado a
-> `brand` antes de la `0009`. Aplicarla es parte del despliegue de Fase 2.
+> Se adelantó al despliegue de Fase 2 a propósito, porque su fallo es **silencioso**: sin ella el
+> footer sale sin locales y `/menu` da 404, con el perfil correctamente cargado y **sin ningún error
+> en los logs** — el mismo bug que ya le había pasado a `brand` antes de la `0009`.
+>
+> El procedimiento de abajo sigue valiendo para la próxima migración.
 
 **El procedimiento:**
 
