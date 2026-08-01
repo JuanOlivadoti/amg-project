@@ -92,6 +92,33 @@ test("JSON-LD: con solo `locations` (sin address/telephone de nivel superior, co
   assert.equal(lb.telephone, "+34 900 000 000", "toma el teléfono del PRIMER local");
 });
 
+test("🔴 revisión externa #2 — con AMBOS (telephone/address clásicos Y locations con datos distintos), LOCATIONS manda — el comentario ya lo decía, el código hacía lo contrario", () => {
+  const perfil = validProfile({
+    telephone: "+34 000",
+    address: { streetAddress: "Calle Vieja 1", addressLocality: "Madrid" },
+    locations: [
+      {
+        name: "Centro",
+        telephone: "+34 111",
+        address: { streetAddress: "Calle Nueva 5", addressLocality: "Madrid" },
+      },
+    ],
+  });
+
+  const graphStory = extractLd(renderStory(story(), perfil))["@graph"];
+  const lbStory = graphStory.find((n) => n["@type"] === "LocalBusiness") as unknown as {
+    telephone?: string;
+    address?: { streetAddress: string };
+  };
+  assert.equal(lbStory.telephone, "+34 111", "renderStory: locations manda sobre el teléfono clásico");
+  assert.equal(lbStory.address?.streetAddress, "Calle Nueva 5", "renderStory: locations manda sobre la dirección clásica");
+
+  const htmlHome = renderHome(perfil, [], "es");
+  const ldHome = JSON.parse(htmlHome.split('<script type="application/ld+json">')[1]!.split("</script>")[0]!);
+  assert.equal(ldHome.telephone, "+34 111", "renderHome: locations manda también acá");
+  assert.equal(ldHome.address?.streetAddress, "Calle Nueva 5", "renderHome: idem para la dirección");
+});
+
 // ---------------------------------------------------------------- marca por tenant (tema)
 
 test("tema: un color de marca válido pinta el acento", () => {
@@ -339,6 +366,18 @@ test("footer: un perfil clásico (sin locations) sigue mostrando su dirección",
   const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es");
   assert.match(html, /id="ubicaciones"/);
   assert.match(html, /Calle Mayor 12/);
+});
+
+test("🔴 revisión externa #2 — el footer 'Contacto' también respeta la precedencia de locations sobre el teléfono clásico", () => {
+  const perfil = validProfile({
+    telephone: "+34 000",
+    locations: [{ name: "Centro", telephone: "+34 111" }],
+  });
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  const inicio = html.indexOf('id="contacto"');
+  const contacto = html.slice(inicio, html.indexOf("</section>", inicio));
+  assert.match(contacto, /\+34 111/, "el Contacto muestra el teléfono de locations");
+  assert.ok(!contacto.includes("+34 000"), "no el teléfono clásico de nivel superior, que quedó viejo");
 });
 
 test("footer: sin páginas de blog no hay enlace al blog", () => {

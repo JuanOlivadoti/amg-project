@@ -156,10 +156,11 @@ function homeLd(profile: BusinessProfile | null | undefined, url: string): unkno
     url,
   };
   // Mismo fallback que `primaryEntity`: sin address/telephone de nivel superior, el primer local
-  // (vía `localesDe`) los provee — `locations` MANDA para el JSON-LD (spec).
+  // (vía `localesDe`) los provee — `locations` MANDA para el JSON-LD (spec). Por eso el primer
+  // operando es `principal`, no `profile`: si un perfil trae AMBOS, gana el local.
   const principal = localesDe(profile)[0];
-  const telephone = profile.telephone ?? principal?.telephone;
-  const address = profile.address ?? principal?.address;
+  const telephone = principal?.telephone ?? profile.telephone;
+  const address = principal?.address ?? profile.address;
   if (telephone) entity.telephone = telephone;
   if (profile.priceRange) entity.priceRange = profile.priceRange;
   if (profile.image) entity.image = profile.image;
@@ -407,15 +408,20 @@ function renderFooter(
   if (!profile) return `<footer>${tecnica}</footer>`;
 
   const locales = localesDe(profile);
-  const tel = profile.telephone
-    ? `<p>Tel: <a href="tel:${esc(profile.telephone.replace(/\s/g, ""))}">${esc(profile.telephone)}</a></p>`
+  // Mismo fallback que el JSON-LD (`homeLd`/`primaryEntity`): sin esto, un perfil con
+  // `locations[0].telephone` pero sin `telephone` clásico de nivel superior no mostraba nada en
+  // "Contacto", aunque "Nuestros locales" sí tuviera el teléfono un poco más abajo. Y con ambos,
+  // gana `locations`, igual que en el JSON-LD.
+  const tel = locales[0]?.telephone ?? profile.telephone;
+  const telHtml = tel
+    ? `<p>Tel: <a href="tel:${esc(tel.replace(/\s/g, ""))}">${esc(tel)}</a></p>`
     : "";
 
   return `<footer>
 <section class="contacto" id="contacto">
   <h2>Contacto</h2>
   <p><strong>${esc(profile.name)}</strong></p>
-  ${tel}
+  ${telHtml}
 </section>
 ${locales.length ? renderUbicaciones(locales) : ""}
 ${hayBlog ? `<p class="mas"><a href="/${SLUG_BLOG}">Blog</a></p>` : ""}
@@ -626,10 +632,12 @@ function primaryEntity(c: PageContent, url: string, profile?: BusinessProfile | 
   if (c.schema_type === "LocalBusiness" && profile) {
     // `locations` MANDA (spec): sin address/telephone de nivel superior (el caso real, un perfil
     // multi-local sin campos clásicos), el primer local los provee. Los locales adicionales no
-    // entran al @graph primario — alcanza con que el primero no se pierda.
+    // entran al @graph primario — alcanza con que el primero no se pierda. Y si el perfil trae
+    // AMBOS (un `telephone` clásico viejo Y `locations` con uno distinto), gana `locations`: por
+    // eso `principal` va primero en el `??`, no `profile`.
     const principal = localesDe(profile)[0];
-    const telephone = profile.telephone ?? principal?.telephone;
-    const address = profile.address ?? principal?.address;
+    const telephone = principal?.telephone ?? profile.telephone;
+    const address = principal?.address ?? profile.address;
     if (telephone) entity.telephone = telephone;
     if (profile.priceRange) entity.priceRange = profile.priceRange;
     if (profile.image) entity.image = profile.image;
