@@ -56,7 +56,22 @@ const opts: OpcionesSeed = { frankUserId: frankUserId!, juanUserId: juanUserId! 
 
 const { Client } = await import("pg");
 const client = new Client({ connectionString: databaseUrl });
-await client.connect();
+
+// El `connect()` va con su propio catch: si se deja escapar, un DSN mal escrito (el caso típico: la
+// password sin percent-encodear) sale como excepción no capturada de Node —stack trace y todo— y no
+// dice qué revisar. Y no imprimimos el DSN: lleva la password de admin adentro.
+try {
+  await client.connect();
+} catch (e) {
+  console.error(
+    `\n✖ No pude conectar a la base: ${(e as Error).message}\n\n` +
+      "Revisá DATABASE_URL_ADMIN (en docs/private/credenciales.env, la fuente única): host, puerto y\n" +
+      "password percent-encodeada. Es la conexión de ADMIN de Supabase → botón «Connect» → «Session\n" +
+      "pooler», donde el usuario es `postgres.<project-ref>`, no `postgres` a secas.",
+  );
+  process.exit(1);
+}
+
 const con = ConexionReservada.desdeClientePg(client);
 
 try {

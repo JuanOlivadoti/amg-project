@@ -31,6 +31,20 @@
 > Detalle en [§2](#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás). **518 tests**
 > (516 → 518) y **124 en el portal** (107 `node:test` + 17 Karma).
 >
+> **Nuevo (2026-08-01, más tarde): el re-seed de producción, en un comando.** El paso 0 de los
+> próximos pasos (re-sembrar Supabase) pedía exportar tres variables a mano, y la forma obvia de
+> hacerlo —`DATABASE_URL_ADMIN=… npm run seed:demo -w db`— deja la password de ADMIN en el historial
+> de la shell, justo lo que `db/.env.example` advierte. Ahora hay `npm run reseed:demo`: lee las tres
+> de `docs/private/credenciales.env` (la fuente única), **valida antes de conectar**, muestra a qué
+> base va con la password tapada y pide confirmación. Invoca el CLI del seed **sin `--env-file`** a
+> propósito: `db/.env` es generado y puede estar desincronizado de la fuente, y no se apuesta una
+> escritura en producción a la precedencia entorno-vs-`--env-file`. De paso caza un fallo silencioso
+> que el CLI no veía —si los UUID de Frank y Juan son el mismo, la segunda membresía upserta sobre la
+> primera y Frank pierde `maestro` sin que nada avise— y el CLI ya no escupe un stack de Node cuando
+> el DSN está mal. **536 tests** (+17, con verificación por mutación de los cinco invariantes:
+> redactado del DSN, no-filtración en los mensajes de error, Frank≠Juan con y sin normalizar la caja,
+> y que el comando no cargue ningún `.env`).
+>
 > **Acción 06 (corrida final) cerrada el 2026-07-30**: research real contra producción para **La
 > Birra Bar** (14 páginas, $0.3097), republicado en Storyblok con `kr.v0.5` y verificado en el
 > navegador. Midió por primera vez cuánto tarda un research real —**16m15s**, por encima del umbral
@@ -76,7 +90,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **518** en el monorepo + **124** en el portal (107 `node:test` + 17 Karma). Los de seguridad, contra Postgres real |
+| **Tests** | **536** en el monorepo + **124** en el portal (107 `node:test` + 17 Karma). Los de seguridad, contra Postgres real |
 | **Migraciones** | 10 en el repo (`0001`..`0010`) · **9 aplicadas en producción** — la `0010` está pendiente (ver abajo) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
@@ -99,7 +113,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **518 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **536 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
 | ✅ | **Doce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
@@ -110,11 +124,21 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 cerradas, D desaconsejada), la Acción 06 hecha y el hilo del recorrido unificado, lo que queda antes
 de la reunión es **un paso operativo**, no código:*
 
-0. **🔴 Re-sembrar producción.** El cambio del seed **no llega solo** a Supabase: hasta que se corra
-   `npm run seed:demo -w db` contra la base desplegada, `bigballs.es` **sigue mostrando "Trattoria
-   Bella Napoli"** con sus 8 páginas. El seed es idempotente y conserva los UUID fijos, así que
-   reemplaza ese cliente y ese run **en su lugar** (no deja los dos). Necesita `DATABASE_URL_ADMIN`,
-   `SEED_FRANK_USER_ID` y `SEED_JUAN_USER_ID` — los mismos de la primera siembra.
+0. **🔴 Re-sembrar producción.** El cambio del seed **no llega solo** a Supabase: hasta que se
+   re-siembre la base desplegada, `bigballs.es` **sigue mostrando "Trattoria Bella Napoli"** con sus 8
+   páginas. El seed es idempotente y conserva los UUID fijos, así que reemplaza ese cliente y ese run
+   **en su lugar** (no deja los dos). Un solo comando, desde la raíz del monorepo:
+
+   ```bash
+   npm run reseed:demo -- --dry-run   # valida y muestra a qué base iría; no toca nada
+   npm run reseed:demo                # siembra, tras confirmar escribiendo `sembrar`
+   ```
+
+   Toma `DATABASE_URL_ADMIN`, `SEED_FRANK_USER_ID` y `SEED_JUAN_USER_ID` de
+   `docs/private/credenciales.env` —los mismos de la primera siembra— y **no hace falta exportar
+   nada**: pasarlas por la línea de comandos dejaría la password de admin en el historial de la shell.
+   Si el seed se queja de una columna o una tabla que no existe, la base está atrasada: `npm run
+   migrate:deploy -w db` y de nuevo. Detalle en [12-credenciales](12-credenciales.md).
 1. **Mostrarle la demo a Frank.** Depende de Juan, no de código. Tres cosas que conviene tener
    decididas antes, porque son del guion y no del software (ninguna bloquea, todas se notan):
    - **La puerta de entrada es `/runs`, no el dashboard** (`app.routes.ts` redirige `''` a `runs`):

@@ -117,6 +117,7 @@ npm install         # primero, o `npm test` falla con "Cannot find package 'tsx'
 npm test            # los 6 paquetes + los tests de scripts/
 npm run typecheck   # tsc --noEmit en todos, incluido scripts/
 npm run env:sync    # reparte docs/private/credenciales.env a los .env de cada paquete
+npm run reseed:demo -- --dry-run  # re-siembra la demo en Supabase (sin --dry-run, siembra de verdad)
 npm run dev:server -w api        # la API real sobre PGlite (verificar el portal)
 npm run demo -w renderer         # el renderizador sobre el Storyblok REAL (demo)
 ```

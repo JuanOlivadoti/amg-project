@@ -77,7 +77,15 @@ aparte— se usa un override `PAQUETE__CLAVE` (`WEB_BUILDER__OPENAI_API_KEY`), q
 global. El override tampoco se filtra a otro paquete: hay un test de eso.
 
 > **`DATABASE_URL_ADMIN` es la excepción de todo esto.** No es de ningún proceso: la usan solo
-> `migrate:deploy` y `seed:demo`, a mano, una vez. Vive en `db/.env` y **nunca** se carga en Railway.
+> `migrate:deploy` y el seed, a mano, una vez. Vive en `db/.env` y **nunca** se carga en Railway.
+>
+> **Nunca la pases por la línea de comandos**: el comando queda en el historial de la shell con la
+> password de admin adentro. `migrate:deploy` lee `db/.env` solo (`tsx --env-file-if-exists=.env`), y
+> para sembrar hay `npm run reseed:demo` desde la raíz, que lee las tres variables del seed
+> **directamente de este archivo** y las pasa al proceso hijo por su entorno. Es a propósito que no
+> use `db/.env`: ese archivo es GENERADO y puede estar desincronizado de la fuente si alguien editó
+> acá y no corrió `env:sync` — y una escritura en producción no se apuesta a eso. Con `--dry-run`
+> valida y muestra a qué base iría (usuario y host, password tapada) sin tocar nada.
 
 > **La API no tiene ningún secreto de Supabase.** Verifica los tokens contra el **JWKS público** del
 > proyecto (`<iss>/.well-known/jwks.json`), derivado de `SUPABASE_JWT_ISS`. La clave privada de la

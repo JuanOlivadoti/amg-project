@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-01** · **518 tests en verde** (monorepo) + **124** en el portal
+> Última actualización: **2026-08-01** · **536 tests en verde** (monorepo) + **124** en el portal
 > (107 `node:test` + 17 Karma)
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
@@ -41,8 +41,12 @@
 > navegador** —el pendiente que había quedado abierto—. Ver
 > [estado y roadmap § la demo](09-estado-y-roadmap.md).
 >
-> ⚠️ **Falta un paso operativo:** re-sembrar producción (`npm run seed:demo -w db`). Hasta entonces
-> `bigballs.es` sigue mostrando el italiano.
+> ⚠️ **Falta un paso operativo:** re-sembrar producción. Hasta entonces `bigballs.es` sigue mostrando
+> el italiano. Desde el 2026-08-01 es un solo comando —`npm run reseed:demo`, o `-- --dry-run` para
+> ver a qué base iría sin tocarla—: lee las tres variables de `docs/private/credenciales.env`, valida
+> antes de conectar y pide confirmación, así la password de admin no pasa por la línea de comandos.
+> **536 tests** (+17 del script). Ver el paso 0 de
+> [próximos pasos](09-estado-y-roadmap.md#próximos-pasos).
 >
 > **Nuevo (2026-08-01): la demo del módulo de Keyword Research, decidida.** Hasta acá "la demo" quería
 > decir la de la *plataforma* (el recorrido de tres golpes). La del **módulo KR** es otra y ahora está
