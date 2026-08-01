@@ -337,7 +337,13 @@ export function createApp(deps: RendererDeps) {
         const conBridge = (html: string) =>
           esPreview ? html.replace("</body>", `${scriptBridge()}</body>`) : html;
 
-        if (story) return conBridge(renderStory(story, perfil, sitio!.languageCode, hayBlog));
+        if (story) {
+          // No autoenlazar `/blog` cuando la story que se está sirviendo ES `/blog`: el fix anterior
+          // solo cubrió `renderBlogIndex` (la síntesis) — una story REAL con ese slug se sirve por
+          // acá, y sin este chequeo no sabía que el slug activo ya es el destino del enlace.
+          const blogAquí = slug === SLUG_BLOG;
+          return conBridge(renderStory(story, perfil, sitio!.languageCode, hayBlog && !blogAquí));
+        }
 
         // Sin story: las tres páginas que el renderizador sabe sintetizar. Cualquier otro slug
         // ausente es un 404 legítimo.

@@ -531,6 +531,22 @@ describe("renderizador — /menu y /blog", () => {
     assert.equal((await pedir(app, "/blog", "bellanapoli.es")).status, 404);
   });
 
+  it("🔴 revisión externa #4 — una story REAL con slug `blog` no se autoenlaza en su propio pie", async () => {
+    // El fix anterior solo cubrió `renderBlogIndex` (la síntesis). Si el cliente creó su propia
+    // story con slug `blog` en Storyblok, se sirve vía `renderStory`, que hasta ahora no sabía que
+    // el slug activo YA ES `/blog` al decidir si mostrar el enlace del pie — el resultado era un
+    // enlace "Blog" que apunta a la página que se está viendo.
+    const { app, cda } = montar();
+    cda.poner("pub-111", "published", "blog", story("El blog de la casa", { slug: "blog" }));
+    cda.ponerBlog("pub-111", "published", [{ slug: "miami", name: "Premiados en Miami" }]);
+    const res = await pedir(app, "/blog", "bellanapoli.es");
+
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.match(html, /El blog de la casa/, "sirvió la story real, no la síntesis");
+    assert.ok(!html.includes('href="/blog"'), "no se autoenlaza en su propio pie");
+  });
+
   it("🔴 si traerBlog falla, la página se sirve igual (sin enlace al blog), nunca 503", async () => {
     const { app, cda } = montar();
     cda.traerBlog = async () => {
