@@ -29,9 +29,11 @@
 | ADR-20 | El portal **también sirve al cliente, en modo lectura** (amplía ADR-16) | Aceptada |
 | ADR-21 | **El stack del portal, cerrado**: solo habla con nuestra API · polling · Tailwind puro · standalone+signals | Aceptada (completa ADR-16) |
 | ADR-22 | **La API en Hono**: comandos compuestos (fila bajo RLS → después el evento), auth = JWT + RLS | Aceptada (implementa 5.1) |
+| ADR-23 | La API verifica identidad contra el **JWKS del emisor**, no contra un secreto compartido | Aceptada (endurece ADR-22) |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | ✅ **CERRADA** (2026-07-19) — manda `contexto-proyecto-frank.md`; el PRD queda como visión |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 | OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
+| OBS-04 | **Quién edita la web no lo gobierna nuestro RBAC**: el portal y Storyblok son dos identidades que no se cruzan | 🔴 **ABIERTA** (2026-08-01) — bloquea reescribir ADR-11 |
 
 ---
 
@@ -218,6 +220,11 @@
 > Lo que **sigue pendiente y es trabajo humano, no de código**: verificar el *snapshot estático* como
 > entregable real (se puede sacar de `renderStory()`, nadie lo ha hecho) y poner precio a la "salida
 > gestionada". El ADR sigue sin poder llevarse a un contrato tal como está redactado arriba.
+>
+> **Bloqueo nuevo (2026-08-01): OBS-04.** "Handoff **editable**" no se puede redactar sin
+> antes decidir **quién edita durante el servicio**. Si el cliente nunca tuvo acceso al Visual Editor,
+> "editable" nombra dos cosas distintas —una capacidad que gana en la baja, o una que ya tenía— y el
+> precio de la salida no es el mismo en cada caso.
 
 ---
 
@@ -629,7 +636,7 @@ puede tocar `memberships`.
 
 ## OBS-03 — Nadie publica la web del cliente ✅ CERRADA por ADR-19
 
-> **Cerrada el 2026-07-14 con [ADR-19](#adr-19): un renderizador propio en runtime, multi-tenant.**
+> **Cerrada el 2026-07-14 con ADR-19: un renderizador propio en runtime, multi-tenant.**
 > Se conserva el diagnóstico porque explica *por qué* el renderizador existe — y porque es el ejemplo
 > más claro de la clase de error que busco: **una decisión que invalida a otra sin reemplazarla.**
 > ADR-16 quitó Next del stack en una línea, y esa línea dejó un agujero que ningún test podía
@@ -1161,3 +1168,63 @@ esa ventana con una credencial perfectamente buena, y ese costo es peor.
 **Descartado.** Volver el proyecto a HS256 (deuda a seis meses, y conserva el secreto) y aceptar
 ambos algoritmos (dos caminos en el borde de seguridad más crítico, justo donde las reviews vinieron
 eliminando opcionalidad, una tras otra).
+
+---
+
+## OBS-04 — Quién edita la web no lo gobierna nuestro RBAC 🔴 ABIERTA
+
+**Observación (2026-08-01).** Con el Visual Editor ya operativo en producción, aparece una frontera
+que ningún ADR nombró: **hay dos sistemas de identidad y no se cruzan.** El nuestro —Supabase Auth +
+`memberships` + RLS, con los roles Maestro/Equipo/Cliente que pide el PRD (RF-007) y que **ADR-15**
+hace cumplir *dentro de Postgres*— y el de Storyblok, que tiene sus propios usuarios, seats y
+permisos por space. Nada los sincroniza. **Un usuario del portal no es un usuario de Storyblok**, y
+quién puede reescribir la carta de un restaurante no lo decide `memberships`: lo decide la lista de
+colaboradores del space.
+
+Es el mismo patrón que OBS-03 y por eso se anota igual: no es un bug, es una **ausencia**. ADR-04
+eligió Storyblok *"para que community managers/creadoras editen sin devs"* y con eso **ya respondió
+implícitamente** quién edita. Pero quedó implícito, y de ahí cuelga una cláusula de contrato.
+
+**El estado real, verificado hoy contra producción:**
+
+| Pieza | Estado |
+|---|---|
+| Preview firmado + Bridge en el Visual Editor | ✅ verificado en Railway (bridge presente con firma, ausente sin ella) |
+| Quién emite el enlace de preview | ⛔ **nadie**: `firmarPreview()` solo se usa en `dev-server` y `demo-server` |
+| Alcance del `PREVIEW_SECRET` | uno **del servicio**, no por cliente → *quien emite enlaces es la agencia* (`renderer/src/preview.ts`) |
+| Vencimiento vs. Storyblok | la firma vence; Storyblok guarda una URL **fija** → hoy se compensa con un vencimiento largo, elegido por conveniencia operativa |
+| Clic-para-editar en el Visual Editor | ⛔ `desShapeBlok()` descarta `_editable` (`web-builder/src/storyblok/content.ts`) — deuda aparte, pero pesa distinto según qué se decida acá |
+
+**Por qué importa, y no es un detalle de permisos:**
+
+1. **Cambia el costo por cartera.** ADR-04 anotó *"precio por space/seat crece con la cartera"* como
+   nota de costo, no como decisión. Si edita solo la agencia son **seats fijos**; si edita cada
+   cliente, es **un seat por cliente** y el número entra en la propuesta a Frank.
+2. **ADR-11 no se puede reescribir sin esto.** Ya hay que reescribirla en términos de ADR-19, y vende
+   *"handoff editable"*. Si el cliente nunca tuvo acceso de edición, "editable" significa otra cosa
+   en la baja que durante el servicio.
+3. **Contradice el criterio que el proyecto viene aplicando.** ADR-15 y ADR-17 sacaron las garantías
+   de la aplicación y las metieron en Postgres, porque un `if` no es un control. Dar acceso de
+   edición a alguien de fuera de la agencia mueve esa garantía a **los permisos por space de
+   Storyblok**, que no controlamos ni podemos testear.
+
+**Lo que hay que decidir** (tiene consecuencias de costo y de venta, no lo resuelvo por mi cuenta):
+
+- **(a) Edita solo la agencia.** Seats pocos y fijos; el cliente ve su web y aprueba desde el portal
+  en modo lectura (**ADR-20**). Es lo que ADR-04 ya dice entre líneas y lo que el precio por seat
+  favorece. El costo: el cliente depende de la agencia para cambiar un precio de la carta.
+- **(b) El cliente también edita, en Storyblok.** Un seat por cliente, y alguien externo entra a un
+  sistema donde nuestro RBAC no manda. Exige confiar el aislamiento entre clientes a Storyblok —
+  mitigado en parte porque **ADR-04/ADR-11 ya obligan a un space por cliente**.
+- **(c) El cliente edita, pero desde el portal**, contra la Management API. Nuestro RBAC vuelve a
+  mandar y no hay seats extra, pero es construir un CMS encima de un CMS, y el Visual Editor —la
+  razón por la que se eligió Storyblok— queda solo para la agencia.
+
+**Decisión adyacente, más barata y compatible con (a) y (c):** un botón **"Editar la web"** en el
+portal que **firme el enlace de preview al vuelo**. Hace que sea *nuestro* RBAC el que decide quién
+obtiene acceso a los borradores, y elimina la URL de larga duración pegada en la configuración del
+space — que hoy es el eslabón débil. No sustituye el seat: Storyblok pide su propio login igual.
+
+**Riesgo si no se decide:** el vencimiento largo se queda por inercia y se convierte en el diseño; y
+la cláusula de offboarding se firma sin que nadie haya dicho qué compra el cliente cuando compra
+"editable".

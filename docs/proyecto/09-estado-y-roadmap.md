@@ -56,6 +56,30 @@
 > el registro, y la allowlist ahora deja pasar `brand, locations, menu, name, priceRange` — **2 locales
 > y 4 items de carta** públicos. Con eso, desplegar el renderizador ya no arrastra ese fallo silencioso.
 >
+> ### 🚀 Nuevo (2026-08-01, la mañana de la demo): **el renderizador está desplegado**
+>
+> La web del cliente dejó de vivir en `localhost`:
+> [`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app) sirve **La
+> Birra Bar** desde internet, leyendo de Supabase con `app_render`. Es medio Fase 2 en producción, y
+> se hizo **con la reunión encima** porque el riesgo estaba acotado: un **servicio nuevo**, sin tocar
+> `main`, ni el portal, ni la API — el peor caso era no llegar y seguir con `localhost`.
+>
+> Verificado en el navegador, no por el "✔" del deploy: las 5 rutas en 200, 14 páginas enlazadas,
+> `/menu` con 3 categorías, `/blog` con los 2 artículos, footer con los 2 locales, y JSON-LD por tipo
+> (`LocalBusiness` en landings, `Article` en blogs). Y el aislamiento comprobado **con savepoints**:
+> `app_render` no puede leer `business_profile` crudo, ni `kr_runs`, ni `memberships`.
+>
+> **Cuatro tropiezos que dejaron enseñanza** (todos en el
+> [runbook](13-runbook-despliegue.md#desplegar-el-renderizador-fase-2)): el DSN quedó con el usuario
+> `amg_api` al copiarlo —lo que habría dado al proceso anónimo la credencial de la API, no un typo
+> sino ADR-17 roto—; el **session pooler (5432) aceptó una conexión y rechazó la siguiente con la
+> misma password**, así que el DSN va por **6543**; el dominio se agregó primero al servicio **de la
+> API**, donde habría servido la API en vez de la web; y los primeros 404 eran **caché negativa** del
+> propio renderizador, que vence sola.
+>
+> **Lo que falta:** el orquestador, el dominio propio del cliente (el plan de Railway está en su
+> límite de custom domains) y el favicon, que da 404.
+>
 > **Nuevo (2026-08-01, cierre del día): tres arreglos que salieron de manejar la app, no de la suite.**
 > Verificar el re-seed **en el portal** (y no solo por consulta) destapó que la primera siembra había
 > corrido doce minutos antes de `f0c1387`: en producción, **Cartera y Research mostraban las mismas
@@ -130,7 +154,9 @@ web pública del cliente— **existen y se manejaron en un navegador real**.
 
 **Fase 1 está desplegada** (2026-07-25): el portal en [`bigballs.es`](https://bigballs.es)
 (Hostinger, autodeploy desde `main`), la API en `api.bigballs.es` (Railway, `europe-west4`) y la base
-con RLS forzada en Supabase (`eu-west-2`).
+con RLS forzada en Supabase (`eu-west-2`). **Y desde el 2026-08-01, también el renderizador**
+([`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app), Railway,
+servicio aparte): la web del cliente se sirve desde internet.
 
 > ### ✅ El login estaba roto; la pieza A lo arregló y **está verificado en producción**
 >
@@ -150,7 +176,9 @@ con RLS forzada en Supabase (`eu-west-2`).
 > código viejo, y un token basura da 401 con los dos. **No había ninguna señal externa que
 > distinguiera "arreglado" de "roto"** — solo entrar y loguearse.
 
-Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
+De Fase 2, **el renderizador ya está desplegado** (2026-08-01, Railway):
+[`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app) sirve la web
+de La Birra Bar leyendo de Supabase con `app_render`. **Falta el orquestador.**
 
 | | |
 |---|---|
@@ -206,9 +234,10 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
    El re-seed **no la necesitaba** —sembró los 14 registros sin problema— pero sí cambiaba lo que el
    renderizador podrá leer: `business_profile_publico` exponía solo `brand, name, priceRange`, así que
    **`locations` y `menu` se filtraban en silencio** aunque el perfil sembrado los tuviera. No rompía
-   nada *entonces* (el renderizador no está desplegado y el portal no lee esa columna), pero
-   **desplegarlo sin la `0010` habría dado el footer sin locales y `/menu` en 404** — el fallo que la
-   migración existe para arreglar, y que no da error: simplemente no muestra los datos.
+   nada *en ese momento* (el renderizador todavía no estaba desplegado y el portal no lee esa
+   columna), y **esa misma tarde se desplegó el renderizador**: sin la `0010`, la web habría salido
+   con el footer sin locales y `/menu` en 404 — el fallo que la migración existe para arreglar, y que
+   **no da error**. Se adelantó por si acaso, y el "por si acaso" llegó a las pocas horas.
 
    Se aplicó con `db/.env` recién sincronizado desde la fuente única (`npm run env:sync`), porque el
    CLI lo lee y es un archivo generado. **Verificado por consulta, no por el "✔"**:
@@ -239,8 +268,10 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
    - **`aprobarRun` está apagado en producción** (decisión de Fase 1: no hay orquestador detrás), así
      que el cierre del ciclo —"aprobar y publicar"— **no se puede mostrar en `bigballs.es`**. O se
      enseña en local, o se narra.
-   - **No hay link del portal a la web del cliente**, porque el renderizador no está desplegado (§4):
-     el salto "esto es lo que se publica" es cambiar de ventana a `localhost:8080`.
+   - **La web del cliente ya está en internet** (2026-08-01):
+     `amg-renderer-production.up.railway.app`. El salto "esto es lo que se publica" dejó de ser un
+     `localhost`. **Sigue sin haber un link desde el portal** —eso es código y no se tocó antes de la
+     demo—, así que el salto es cambiar de pestaña, pero a una URL real.
    - **El dashboard sigue siendo una maqueta**: los KPIs y la serie de coste incluyen cinco clientes
      de muestra. La fila y las keywords de La Birra Bar sí son reales.
 2. **Módulo 3 — respondedor de reseñas de Google (GBP).** Lo único del alcance base (OBS-01) sin
@@ -251,21 +282,34 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
    volumen por percentiles), que pasaron de "algún día" a **pre-demo**. Guion de dos niveles:
    entregable primero, pipeline después. Detalle en [§2.b](#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01).
    *(Hub & spoke y el enlazado interno vacío siguen fuera de la demo: ver la tabla de mejoras.)*
-4. **Desplegar la Fase 2** (`orchestrator` + `renderer`, hoy solo en `localhost`) — servicio Node de
-   larga duración, no serverless. Sin esto, `/menu`, `/blog` y todo lo que se acaba de construir
-   siguen sin un dominio real. Tres cosas que van **dentro** de este paso y es fácil que se olviden,
-   porque el código ya está y nada avisa de que faltan:
-   - ~~**Aplicar la migración `0010` a la base de producción**~~ — ✅ **hecha el 2026-08-01, fuera de
-     este paso** (ver 0.b). Se adelantó justamente porque era el ítem con más chances de olvidarse: no
-     da error, solo deja de mostrar los datos. La allowlist efectiva ya incluye `locations` y `menu`,
-     verificado por consulta.
-   - **Encender `lanzarResearch` y `aprobarRun`** en `portal/src/environments/environment.prod.ts`.
-     Se apagaron *porque no había orquestador detrás* (decisión de Fase 1, con test que lo fija). Si
-     se despliega el orquestador y nadie los toca, **el portal sigue capado**: no se puede lanzar
-     research ni cerrar la compuerta desde producción. Los dos tests de `environment.prod.test.ts`
-     que hoy exigen `false` hay que **invertirlos** en el mismo cambio, no borrarlos.
-   - **Un link del portal a la web del cliente.** Hoy no existe ninguno (§2.b): mientras el
-     renderizador no tenga dominio, el salto "esto es lo que se publica" es cambiar de ventana.
+4. **Desplegar la Fase 2** — **el renderizador ya está** (2026-08-01); queda el **orquestador**.
+
+   ✅ **Renderizador desplegado en Railway**, servicio aparte del de la API, sirviendo
+   [`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app).
+   Verificado en el navegador contra la base de producción: las 5 rutas en 200, las 14 páginas
+   enlazadas, `/menu` con sus 3 categorías, `/blog` con los 2 artículos, footer con los 2 locales y
+   JSON-LD correcto por tipo. El aislamiento del rol, comprobado con savepoints: `app_render` **no**
+   puede leer `business_profile` crudo, ni `kr_runs`, ni `memberships`. Procedimiento y tropiezos
+   reales en el [runbook](13-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
+
+   Lo que sigue faltando de este paso:
+   - **El orquestador** (Inngest). Sin él, `lanzarResearch` y `aprobarRun` no tienen consumidor.
+   - **Encender `lanzarResearch` y `aprobarRun`** en `portal/src/environments/environment.prod.ts`,
+     **cuando el orquestador esté**. Se apagaron *porque no había nada detrás* (decisión de Fase 1,
+     con test que lo fija). Si se despliega el orquestador y nadie los toca, **el portal sigue
+     capado**. Los dos tests de `environment.prod.test.ts` que hoy exigen `false` hay que
+     **invertirlos** en el mismo cambio, no borrarlos.
+   - **Un link del portal a la web del cliente.** Ahora sí hay adónde apuntar, pero el link no existe:
+     el salto sigue siendo cambiar de pestaña a mano.
+   - **El dominio propio del cliente.** Hoy sirve por el dominio de Railway.
+     `labirrabar.bigballs.es` ya tiene el CNAME puesto en Hostinger, pero apunta al servicio **de la
+     API** (se agregó ahí por error y se quitó). Moverlo exige agregarlo como custom domain del
+     servicio nuevo, actualizar el CNAME con el target que dé Railway y esperar propagación — y
+     **el plan actual está en su límite de custom domains**, así que hay que liberar uno o subir de
+     plan.
+   - ~~Aplicar la migración `0010`~~ — ✅ hecha el 2026-08-01 (ver 0.b). Era el bloqueante silencioso
+     de este despliegue: sin ella la web habría salido **sin locales y con `/menu` en 404**, sin un
+     solo error en los logs.
 5. **Cerrar lo que ADR-19 dejó a medias antes de un SLA**: CDN en el borde, invalidación con más de
    una instancia, punto único de disponibilidad (ver §3 más abajo).
 6. **Deuda técnica menor, sin apuro**: esquema Zod duplicado M2/M1, ADR-11 (offboarding) reescrito
@@ -374,21 +418,22 @@ comprueban que la infraestructura está bien, no que el producto sirva. Es exact
 C.8 existe para cubrir. **Arreglado por la pieza A y verificado el 2026-07-30** (ver el recuadro del
 resumen): el login funciona.
 
-Son **tres procesos** de larga duración más una SPA estática (el orquestador y el renderizador son
-de Fase 2 y **aún no están desplegados**):
+Son **tres procesos** de larga duración más una SPA estática. **Dos están desplegados** (API y
+renderizador, los dos en Railway y en servicios separados); falta el orquestador:
 
-| Qué | Puerto dev | Necesita |
-|---|---|---|
-| `api/` | 3000 | `DATABASE_URL_API`, `SUPABASE_JWT_ISS`, `CORS_ORIGINS` |
-| `orchestrator/` | — | `DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, Inngest |
-| `renderer/` | 8080 | `DATABASE_URL_RENDER`, `STORYBLOK_WEBHOOK_SECRET`, `PREVIEW_SECRET` |
-| `portal/` | 4200 | estático, se compila con AOT |
+| Qué | Puerto dev | Necesita | Desplegado |
+|---|---|---|---|
+| `api/` | 3000 | `DATABASE_URL_API`, `SUPABASE_JWT_ISS`, `CORS_ORIGINS` | ✅ `api.bigballs.es` |
+| `orchestrator/` | — | `DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, Inngest | ⚪ no |
+| `renderer/` | 8080 | `DATABASE_URL_RENDER`, `STORYBLOK_WEBHOOK_SECRET`, `PREVIEW_SECRET`, `TRUST_PROXY` | ✅ `amg-renderer-production.up.railway.app` |
+| `portal/` | 4200 | estático, se compila con AOT | ✅ `bigballs.es` |
 
-La restricción que queda viva es del **renderizador** (Fase 2, aún sin desplegar): necesita **DNS por
+La restricción del **renderizador** sigue viva y ahora está a medio resolver: necesita **DNS por
 cliente apuntando al mismo servicio** (es un `Host` → dominio → space), más certificados TLS por
-dominio. Eso descarta cualquier hosting que no permita dominios personalizados arbitrarios, y hace
-que "una CDN delante" deje de ser opcional (ver §3). Railway sí admite dominios personalizados, así
-que la elección de Fase 1 no cierra esa puerta.
+dominio. Railway lo admite —el despliegue lo confirmó—, pero **el plan actual tiene un límite de
+custom domains que ya se alcanzó con dos**. Con una cartera de clientes eso deja de ser un detalle:
+o se sube de plan, o la CDN de §3 pasa a ser también quien termina el TLS. La elección de Fase 1 no
+cierra la puerta, pero el costo por dominio ahora tiene un número.
 
 ### 🟡 2. La demo con Frank — cuatro piezas, la A **ya no bloquea** a las demás
 
@@ -645,8 +690,17 @@ se guarda con el run.
 - **El polling del brief (4 s) es a ojo**, y la lista de runs no pollea. Se calibra con la duración
   real de una corrida.
 - **ADR-11 (offboarding) sigue sin poder firmarse.** Ahora *hay* qué entregar (el space + el
-  renderizador), pero falta **verificar el snapshot estático como entregable** y ponerle precio a la
-  "salida gestionada". Es redacción comercial, no código.
+  renderizador), pero falta **verificar el snapshot estático como entregable**, ponerle precio a la
+  "salida gestionada" y **cerrar OBS-04** (quién edita durante el servicio, del que depende qué
+  significa "editable" en la baja). Es redacción comercial, no código.
+- **El enlace de preview del Visual Editor se emite a mano.** `firmarPreview()` existe y está
+  probado, pero solo lo usan `dev-server` y `demo-server`: en producción el enlace se genera con un
+  script fuera del repo y se pega en la configuración del space. Funciona, y **la firma vence** — así
+  que hoy se compensa con un vencimiento largo. Parte de OBS-04.
+- **El clic-para-editar del Visual Editor no funciona.** `desShapeBlok()`
+  (`web-builder/src/storyblok/content.ts`) descarta el atributo `_editable` al normalizar el blok, y
+  es de ahí de donde el Bridge saca el resaltado y el salto al campo. Se edita desde el panel de
+  campos. Pesa poco si edita la agencia, y bastante si el día de mañana edita el cliente.
 - **Esquema Zod duplicado** entre M2 y M1: dos fuentes de verdad del contrato.
 - **Sin tests de integración**: el camino live se ejecutó a mano contra DataForSEO, OpenAI y
   Storyblok, pero no está automatizado.
@@ -706,7 +760,7 @@ reales, no solo contra tests.
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **66 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
 | **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **120 tests** (103 de núcleo `node:test` + 17 de componente Karma); el flujo, verificado en un navegador real. **Falta:** tests de componente de las pantallas de research, y calibrar el polling contra los 16m15s medidos. |
-| **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **114 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. **Falta:** desplegarlo en un dominio (5.3) y una CDN delante. |
+| **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **114 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. ✅ **Desplegado el 2026-08-01** en Railway (servicio aparte del de la API): sirve `amg-renderer-production.up.railway.app` leyendo de Supabase con `amg_render` → `app_render`, verificado en el navegador. **Falta:** el dominio propio del cliente (el plan de Railway está en su límite de custom domains) y una CDN delante. |
 | **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Nav fijo de 4 secciones** (Inicio/Menú/Ubicaciones/Contacto, cada una condicionada a que el perfil tenga el dato — reemplaza a la barra vieja derivada de las páginas SEO publicadas) + **footer compartido** con NAP multi-local (`locations`) y link a Blog + `/menu`/`/blog` sintetizados desde el perfil (allowlist en `0010`, ver [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md)) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav y en NAP/carta. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente — **el nav/footer/menú/blog YA NO dependen del brief**: se calculan en vivo desde `business_profile` en cada request, así que republicar no los toca. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |
 | **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
@@ -745,6 +799,25 @@ dependen de **KR-1**: sin el dataset crudo no hay contra qué calibrarlas.
 
 ## Riesgos abiertos
 
+### 🔴 OBS-04 — Quién edita la web no lo gobierna nuestro RBAC · **ABIERTA (2026-08-01)**
+
+Con el Visual Editor ya funcionando en producción, quedó a la vista una frontera que ningún ADR
+había nombrado: **el portal y Storyblok son dos sistemas de identidad que no se cruzan.** Nuestro
+RBAC se deriva de `memberships` dentro de Postgres (ADR-15); el de Storyblok son seats y permisos
+por space. Nada los sincroniza, así que **quién puede reescribir la carta de un restaurante lo
+decide la lista de colaboradores del space**, no `memberships`.
+
+ADR-04 ya respondió esto entre líneas —eligió Storyblok *"para que community managers/creadoras
+editen sin devs"*— pero quedó implícito, y de ahí cuelgan dos cosas que no pueden colgar de un
+implícito: **el número de seats** (fijos si edita solo la agencia; uno por cliente si no) y la
+cláusula de *handoff editable* de **ADR-11**, que no se puede redactar sin saber qué acceso tenía el
+cliente **durante** el servicio.
+
+Las tres salidas y la decisión adyacente —un botón *"Editar la web"* en el portal que firme el
+enlace de preview al vuelo— están en
+[OBS-04](../decisiones-arquitectura.md). **No urge decidirlo hoy**, pero bloquea llevar ADR-11 a un
+contrato.
+
 ### ✅ OBS-01 — Solapamiento de alcance · **CERRADA (2026-07-19)**
 
 Era el último riesgo de producto abierto. Los dos documentos describían alcances distintos
@@ -772,3 +845,6 @@ Registrado en [decisiones de arquitectura](../decisiones-arquitectura.md).
 El precio por space/seat crece con la cartera de clientes (ADR-04 exige **un space por cliente**
 para un offboarding limpio). Hay que contemplarlo en la propuesta: lo absorbe la agencia o se
 traslada al cliente.
+
+**El número de seats no se puede estimar hasta cerrar OBS-04** (arriba): si edita solo la agencia
+son unos pocos y fijos; si edita cada cliente, crece con la cartera igual que los spaces.

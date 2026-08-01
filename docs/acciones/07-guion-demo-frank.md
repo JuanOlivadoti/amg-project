@@ -21,8 +21,22 @@ es la demo muerta. Lo que se muestra es la corrida ya hecha, que es real y cost�
 | # | Pieza | Dónde | Estado |
 |---|---|---|---|
 | 1 | **El portal** (panorama + compuerta + evidencia) | `https://bigballs.es` — producción, TLS, login real | ✅ Verificado hoy |
-| 2 | **La web del cliente**, viva | `localhost:8080` — el renderizador real contra el Storyblok real | ✅ Verificado hoy |
+| 2 | **La web del cliente**, viva | `https://amg-renderer-production.up.railway.app` — **en internet** | ✅ Desplegado y verificado hoy |
 | 3 | **Aprobar y publicar** (el gesto completo) | `localhost:4200` — en producción ese botón está apagado | ✅ Verificado hoy |
+
+> ### 🚀 Cambio de última hora: la web del cliente ya no está en `localhost`
+>
+> Se desplegó el renderizador en Railway **la misma mañana de la demo**. El golpe 4 pasa de "cambiar
+> de ventana a mi máquina" a **una URL de internet**, que es una diferencia grande en una venta.
+>
+> Lo que lo hizo posible sin riesgo: es un **servicio nuevo**. No tocó `main`, ni el portal, ni la
+> API — el peor caso era "no llegó" y seguir con `localhost`. Y la migración `0010`, aplicada esa
+> misma mañana, era justo su bloqueante silencioso: sin ella el footer habría salido sin locales y
+> `/menu` en 404, **sin un solo error en los logs**.
+>
+> El renderizador lee de Supabase con `amg_render` → `app_render`, el rol más pobre del sistema.
+> Comprobado contra la base de producción: **no** puede leer `business_profile` crudo, ni `kr_runs`,
+> ni `memberships`. Si te toman esa web, se llevan los cinco campos públicos del perfil.
 
 La regla para elegir entre producción y local, en cada momento:
 
@@ -35,45 +49,27 @@ La regla para elegir entre producción y local, en cada momento:
 
 ## Preparación — 30 minutos antes
 
-### 1. Levantar el renderizador (la web del cliente)
+### 1. Comprobar que la web del cliente responde
+
+Ya no hay que levantar nada: está desplegada. Un `curl` antes de empezar:
 
 ```bash
-cd /Users/juan.olivadoti/jp/amg-project
-npm run demo -w renderer
+curl -s -o /dev/null -w "%{http_code}\n" https://amg-renderer-production.up.railway.app/
 ```
 
-Abre en `http://localhost:8080`. **Se navega con `?_host=`**, porque en local `localhost` no es el
-dominio del cliente:
+Tiene que decir `200`. Si dijera `404`, es la **caché negativa** del renderizador: pasó durante el
+despliegue, se resuelve sola en un minuto y el segundo intento va bien.
 
-```
-http://localhost:8080/?_host=bellanapoli.es
-```
-
-> ### ⚠️ El dominio de la demo todavía se llama `bellanapoli.es`
->
-> Es el nombre del italiano de ejemplo, que ya no existe en ningún otro lado. La web que sirve **es
-> La Birra Bar** —el `?_host=` solo elige qué space de Storyblok leer—, pero si Frank mira la barra
-> de direcciones, ve el nombre de otro negocio.
->
-> **Arreglo de un minuto, sin riesgo** (es una variable de configuración, no un secreto):
-> cambiar `DEMO_DOMAIN` en `docs/private/credenciales.env` a `labirrabar.es`, y después:
+> **Plan B, si Railway se cayera justo hoy.** El `demo-server` local sigue funcionando y está
+> verificado:
 >
 > ```bash
-> npm run env:sync          # reparte a renderer/.env
-> npm run demo -w renderer  # reiniciar
+> npm run demo -w renderer     # http://localhost:8080/?_host=bellanapoli.es
 > ```
 >
-> **Alternativa a cero riesgo:** dejarlo como está y usar el navegador en pantalla completa (`F11`),
-> que oculta la barra de direcciones. Es lo que yo haría si no querés tocar nada.
-
-También verás este aviso al arrancar, y **es inofensivo**:
-
-```
-⚠️ No leí un brief en ../kr-service/out/brief.approved.json; no puedo anunciar slugs.
-```
-
-Solo significa que no puede imprimirte la lista de URLs en la consola. La web funciona: las páginas
-las lee de Storyblok, no de ese archivo. (Es el dataset perdido de KR-1, que no afecta a nada de hoy.)
+> Ojo con dos cosas si tenés que recurrir a él: el `?_host=` dice `bellanapoli.es` (el italiano que
+> ya no existe; la web que sirve **es** La Birra Bar, el host solo elige el space), y avisa que no
+> encuentra `brief.approved.json`, que es **inofensivo** — las páginas las lee de Storyblok.
 
 ### 2. Levantar el portal local (solo para el gesto de aprobar)
 
@@ -109,7 +105,7 @@ no por el dashboard: el primer golpe está a un clic en «Cartera», en la barra
 |---|---|---|
 | 1 | `https://bigballs.es/cartera` | Golpe 1 — el panorama |
 | 2 | `https://bigballs.es/runs/d3305eba-11a5-4e0e-9c1f-000000000002` | Golpes 2 y 3 — la compuerta y la evidencia |
-| 3 | `http://localhost:8080/?_host=bellanapoli.es` | Golpe 4 — la web viva |
+| 3 | `https://amg-renderer-production.up.railway.app` | Golpe 4 — la web viva, **en internet** |
 | 4 | `http://localhost:4200/runs/d3305eba-11a5-4e0e-9c1f-000000000002` | El cierre — aprobar y publicar |
 
 Dejalas cargadas antes de que entre Frank. Cambiar de pestaña es instantáneo; cargar una página
@@ -181,10 +177,16 @@ descripción y sus preguntas frecuentes escritas."*
 
 ### Golpe 4 — La web viva (pestaña 3, ~4 min · el que cierra)
 
-Acá el salto es de "una herramienta de SEO" a "un producto". Pasá a `localhost:8080`.
+Acá el salto es de "una herramienta de SEO" a "un producto". Pasá a
+`https://amg-renderer-production.up.railway.app`.
 
-**Qué decir:** *"Y esto es lo que se publica. No es una maqueta: es la web, servida en vivo desde el
-CMS, con las catorce páginas que acabás de ver aprobadas en el panel."*
+**Qué decir:** *"Y esto es lo que se publica. No es una maqueta ni corre en mi máquina: está en
+internet, servida en vivo desde el CMS, con las catorce páginas que acabás de ver en el panel."*
+
+> **La URL es fea a propósito, y conviene adelantarse.** `amg-renderer-production.up.railway.app` es
+> el dominio que da el hosting. *"El dominio del cliente se apunta acá y listo; de hecho el DNS de
+> `labirrabar.bigballs.es` ya está puesto, falta solo terminar de enchufarlo."* Es verdad y convierte
+> una URL provisional en una demostración de que el sistema sirve **N dominios desde un servicio**.
 
 El recorrido dentro de la web, en este orden (todo verificado hoy):
 
@@ -246,7 +248,7 @@ API: lo limita el valor del entregable."* No es un argumento para bajar el preci
 
 | Si pregunta… | Respuesta |
 |---|---|
-| **"¿Por qué la web está en `localhost`?"** | *"El renderizador está construido y probado; falta ponerle dominio y certificado, que es despliegue, no desarrollo."* Es la verdad y es una tarea acotada. No lo escondas: si lo notás vos primero, no es una debilidad. |
+| **"¿Por qué esa URL rara?"** | *"Es el dominio del hosting. El del cliente se apunta ahí; el DNS de `labirrabar.bigballs.es` ya está configurado, falta terminar de enchufarlo."* Y el argumento fuerte: **un servicio sirve N dominios**, uno por cliente, resolviendo por el nombre con el que entra la visita. |
 | **"¿Puedo lanzar un research ahora?"** | *"Tarda dieciséis minutos: es research real contra datos de mercado de pago, no una simulación. Te lo dejo corriendo y lo vemos, o mirás el resultado ya hecho."* Los dieciséis minutos son un argumento de que es real. |
 | **"¿Estos seis clientes son tuyos?"** | Ya lo dijiste en el golpe 1. Si vuelve: *"cinco son de muestra, uno es real."* |
 | **"¿Y si publica una barbaridad?"** | Es el golpe 4. Compuerta por página, editar quita la aprobación, y el equipo revisa antes. |
@@ -279,8 +281,15 @@ más que cualquier cosa que digan estos documentos sobre qué construir después
   las keywords del dashboard.
 - Contraste de los ejes en oscuro: **11.49:1** (era 1.53:1 esta mañana temprano). Si tu portátil está
   en modo oscuro, el dashboard se lee.
-- Renderizador contra el Storyblok real: portada, nav de 4 secciones, `/menu` con 3 categorías,
-  `/blog` con exactamente los 2 artículos, footer con los 2 locales, y JSON-LD correcto por tipo.
+- Renderizador **desplegado en Railway** y verificado en el navegador contra la base de producción:
+  portada, nav de 4 secciones, `/menu` con 3 categorías, `/blog` con exactamente los 2 artículos,
+  footer con los 2 locales, 14 páginas enlazadas, y JSON-LD correcto por tipo (`LocalBusiness` en las
+  landings, `Article` en los blogs). Las 5 rutas en 200.
+- Aislamiento del rol del renderizador, comprobado contra producción con savepoints (sin ellos la
+  comprobación era vacua: la transacción abortada hacía "fallar" todo lo siguiente). `app_render`
+  **no** puede leer `business_profile` crudo, ni `kr_runs`, ni `memberships`.
+- **Detalle cosmético conocido:** `/favicon.ico` da 404, así que la pestaña muestra el icono genérico.
+  No afecta a nada y arreglarlo obligaba a redesplegar; se hace después de la demo.
 - Compuerta: aprobar una página funciona y da feedback inmediato, sin errores en consola.
 - Consola del navegador **limpia** en las tres pantallas del portal.
 
