@@ -163,7 +163,7 @@ function formularioDesde(c: ClienteAgencia): FormularioInfo {
             </div>
             <div>
               <p class="text-sm text-texto-tenue">Estado del contrato</p>
-              <p class="text-base font-medium text-texto">{{ cliente().estado_contrato }}</p>
+              <p class="text-base font-medium text-texto">{{ cliente().estado_contrato ?? '—' }}</p>
             </div>
             <div>
               <p class="text-sm text-texto-tenue">Contrato vence</p>

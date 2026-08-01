@@ -126,18 +126,25 @@ const CLIENTE_CRM_MASKED_COLS: Record<string, string> = {
  * Las columnas de `ClienteCRM`. Una sola definición: el select no puede quedar desalineado, y no se
  * duplica entre `listarClientes` y `obtenerCliente`.
  *
- * Cada columna de `CLIENTE_CRM_MASKED_COLS` se envuelve en `case when app.current_role() = 'cliente'
- * then null else <col> end`: la MISMA función `app.current_role()` que ya usan las políticas RLS
+ * Cada columna de `CLIENTE_CRM_MASKED_COLS` se envuelve en `case when app.es_staff() then <col> else
+ * null end`: la MISMA función que ya usan las políticas RLS (`app.puede_escribir()`/`client_write`)
  * decide, dentro de Postgres, qué valor vuelve — no un `if` de TypeScript sobre `ctx`. Es a propósito
  * que la garantía viva en la consulta SQL, evaluada por una función `stable` de sesión (por eso no
  * puede ser una columna generada: esas exigen una expresión INMUTABLE) y no en un rol de conexión
  * distinto (violaría ADR-17: un solo login `app_user` para `equipo`/`maestro`/`cliente`).
+ *
+ * ALLOWLIST POSITIVA (`app.es_staff()`), no denylist (`current_role() = 'cliente'`): un rol NULL o
+ * desconocido tiene que dar `null` acá, igual que ya hace `app.ve_cliente` (0001_init.sql) para no
+ * repetir el error que esa función ya documenta ("`current_role() is distinct from 'cliente'` es
+ * FALLA ABIERTO — un rol ausente concede en vez de negar"). Con `= 'cliente'`, un rol NULL caía en el
+ * `else` y mostraba el CRM entero sin enmascarar — inofensivo hoy porque `client_select` ya bloquea
+ * la fila para un rol NULL, pero es la mitad de una garantía que debería sostenerse sola.
  */
 const CLIENTE_CRM_COLS = [
   "id",
   "nombre",
   ...Object.entries(CLIENTE_CRM_MASKED_COLS).map(
-    ([alias, expr]) => `case when app.current_role() = 'cliente' then null else ${expr} end as ${alias}`,
+    ([alias, expr]) => `case when app.es_staff() then ${expr} else null end as ${alias}`,
   ),
   "archived_at",
   "created_at",
