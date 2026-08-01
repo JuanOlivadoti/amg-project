@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { PglitePool, PgStore, ConexionReservada, sembrarDemo, migrarConRegistro } from "db";
+import { PglitePool, PgStore, PgClientes, ConexionReservada, sembrarDemo, migrarConRegistro } from "db";
 import type { ResultadoSeed } from "db";
 import { createApp } from "./app.js";
 import type { EmisorEventos } from "./solicitar.js";
@@ -35,8 +35,9 @@ beforeEach(async () => {
   r = await sembrarDemo(con, { frankUserId: FRANK, juanUserId: JUAN });
 
   const store = new PgStore(new PglitePool(pg)); // amg_api → app_user
+  const clientes = new PgClientes(new PglitePool(pg));
   const emisor: EmisorEventos = { send: async () => ({}) };
-  app = createApp({ store, emisor, verificar });
+  app = createApp({ store, clientes, emisor, verificar });
 });
 
 afterEach(async () => {

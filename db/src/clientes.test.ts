@@ -459,3 +459,37 @@ test("archivarCliente de un cliente de OTRO tenant no afecta ninguna fila", asyn
   );
   assert.equal(fila?.archived_at, null, "sigue sin archivar: el tenant B no pudo tocarlo");
 });
+
+// ================================================================== Etapa 3: obtenerCliente
+//
+// El "traer uno solo" que le faltaba a PgClientes para que GET /clients/:id (api) pueda existir.
+// Mismo patrón que store.ts's getRun/getClient: `rows[0] ?? null`, nunca un throw.
+
+test("obtenerCliente devuelve el cliente por id, con las mismas columnas que listarClientes", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Uno Solo", industria: "restauracion", score: 42 },
+  );
+
+  const cliente = await clientes.obtenerCliente({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.ok(cliente, "el cliente existe y es del tenant del contexto");
+  assert.equal(cliente?.id, id);
+  assert.equal(cliente?.nombre, "Uno Solo");
+  assert.equal(cliente?.industria, "restauracion");
+  assert.equal(cliente?.score, 42);
+});
+
+test("obtenerCliente de un id de OTRO tenant devuelve null (no lanza)", async () => {
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Solo de A" });
+
+  const comoB = await clientes.obtenerCliente({ tenantId: s.tenantB, userId: s.equipoB }, id);
+  assert.equal(comoB, null, "bajo RLS, un id de otro tenant no matchea: null, no un error");
+});
+
+test("obtenerCliente de un id inexistente devuelve null", async () => {
+  const cliente = await clientes.obtenerCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    "00000000-0000-4000-8000-000000000000",
+  );
+  assert.equal(cliente, null);
+});

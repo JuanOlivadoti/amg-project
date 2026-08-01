@@ -1,4 +1,4 @@
-import { NodePgPool, PgStore } from "db";
+import { NodePgPool, PgStore, PgClientes } from "db";
 import { Inngest } from "inngest";
 import {
   verificadorDeEmisor,
@@ -105,6 +105,8 @@ export async function crearDeps(
   // amg_api → app_user. Si este login intentara asumir `app_service`, Postgres rechaza el `set role`
   // (0003_credenciales.sql): la frontera es una credencial, no un `if` (ADR-17).
   const store = new PgStore(new NodePgPool(pool), "app_user");
+  // Mismo pool, mismo login/rol: el CRM de clientes no es un dominio distinto de seguridad.
+  const clientes = new PgClientes(new NodePgPool(pool), "app_user");
 
   // Inngest como emisor. La API solo ENVÍA (`research/solicitado`, `research/aprobado`); las funciones
   // suscritas viven en el orquestador. `send({name, data})` ya cumple la interfaz `EmisorEventos`.
@@ -122,7 +124,7 @@ export async function crearDeps(
   });
 
   return {
-    deps: { store, emisor, verificar, ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}) },
+    deps: { store, clientes, emisor, verificar, ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}) },
     cerrar: () => pool.end(),
   };
 }

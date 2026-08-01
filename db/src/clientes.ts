@@ -142,6 +142,18 @@ export class PgClientes {
     });
   }
 
+  /** Un solo cliente por id. Mismo patrón que `getRun`/`getClient` en store.ts: `rows[0] ?? null`,
+   *  nunca lanza. Bajo RLS, un id de OTRO tenant no matchea ninguna fila → `null`, no un error. */
+  async obtenerCliente(ctx: TenantContext, id: string): Promise<ClienteCRM | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<ClienteCRM>(
+        `select ${CLIENTE_CRM_COLS} from clients where id = $1`,
+        [id],
+      );
+      return rows[0] ?? null;
+    });
+  }
+
   /**
    * Da de alta un cliente. El `tenant_id` sale de `ctx`, nunca de `datos` (ver `NuevoCliente`).
    *

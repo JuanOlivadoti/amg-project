@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { PgStore, CambiosPagina } from "db";
+import type { PgStore, CambiosPagina, PgClientes, NuevoCliente, CambiosCliente } from "db";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
 
@@ -12,6 +12,8 @@ import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
 export interface ApiDeps {
   /** Store atado al login `amg_api` → rol `app_user`. NO puede asumir `app_service` (ADR-17). */
   store: PgStore;
+  /** CRM de clientes, mismo login/rol que `store` (ADR-17) — ver `db/src/clientes.ts`. */
+  clientes: PgClientes;
   emisor: EmisorEventos;
   verificar: VerificadorToken;
   /**
@@ -130,6 +132,54 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return c.json({ ok: true });
   });
 
+  /*
+   * Los cuatro endpoints de clientes son COMANDOS SIMPLES (no compuestos, ADR-18 no aplica): no hay
+   * ningún workflow que despertar al crear/editar un cliente, así que no emiten ningún evento — solo
+   * escritura bajo RLS. El rol NO se chequea acá (ADR-15): la política `client_write` de `clients`
+   * (0001_init.sql) ya bloquea insert/update para el rol `cliente`, y el `onError` de abajo ya mapea
+   * el 42501 resultante a 403. Lo mismo con `asignado_a`: la FK compuesta de la 0011 lo rechaza con
+   * 23503, que el `onError` ya traduce a 400 — no se valida a mano acá.
+   */
+
+  /** GET /clients — todos los clientes del tenant del contexto. RLS ya aísla. */
+  app.get("/clients", async (c) => {
+    const ctx = c.get("ctx");
+    const clientes = await deps.clientes.listarClientes(ctx);
+    return c.json({ clientes });
+  });
+
+  /** POST /clients — alta. El `tenant_id` sale del contexto (header/token), nunca del body. */
+  app.post("/clients", async (c) => {
+    const ctx = c.get("ctx");
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return c.json({ error: "Body inválido." }, 400);
+    const campos = filtrarCamposCliente(body);
+    if (typeof campos.nombre !== "string") {
+      return c.json({ error: "Se requiere nombre (string)." }, 400);
+    }
+    const id = await deps.clientes.crearCliente(ctx, { ...campos, nombre: campos.nombre });
+    return c.json({ id }, 201);
+  });
+
+  /** GET /clients/:id — un cliente. 404 genérico si no existe o es de otro tenant (no distingue). */
+  app.get("/clients/:id", async (c) => {
+    const ctx = c.get("ctx");
+    const cliente = await deps.clientes.obtenerCliente(ctx, c.req.param("id"));
+    if (!cliente) return c.json({ error: "Cliente no encontrado." }, 404);
+    return c.json({ cliente });
+  });
+
+  /** PATCH /clients/:id — allowlist de campos en el borde HTTP, mismo criterio que PATCH /pages/:id. */
+  app.patch("/clients/:id", async (c) => {
+    const ctx = c.get("ctx");
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return c.json({ error: "Body inválido." }, 400);
+    const ok = await deps.clientes.actualizarCliente(ctx, c.req.param("id"), filtrarCamposCliente(body));
+    return ok
+      ? c.json({ ok: true })
+      : c.json({ error: "Cliente no encontrado, o sin cambios válidos." }, 404);
+  });
+
   app.onError((err, c) => {
     const code = (err as { code?: string }).code;
 
@@ -184,4 +234,37 @@ function filtrarCambios(body: Record<string, unknown>): CambiosPagina {
 
 function esObjeto(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Allowlist de la edición/alta de clientes, en el borde HTTP (defensa en profundidad: `PgClientes`
+ * ya tiene la suya). Se comparte entre POST y PATCH porque ambos leen exactamente las mismas
+ * columnas de `NuevoCliente`/`CambiosCliente` — la única diferencia es que POST exige `nombre`
+ * después de llamar a esto. `tenant_id`, `rol`, `id` no están en esta lista: un body que los traiga
+ * nunca los toca, no hace falta ignorarlos explícitamente.
+ */
+function filtrarCamposCliente(body: Record<string, unknown>): CambiosCliente {
+  const campos: CambiosCliente = {};
+  if (typeof body["nombre"] === "string") campos.nombre = body["nombre"];
+  if (typeof body["tipo"] === "string" || body["tipo"] === null) campos.tipo = body["tipo"] as string | null;
+  if (typeof body["industria"] === "string" || body["industria"] === null) {
+    campos.industria = body["industria"] as string | null;
+  }
+  if (Array.isArray(body["etiquetas"])) {
+    campos.etiquetas = body["etiquetas"].filter((x): x is string => typeof x === "string");
+  }
+  if (typeof body["nivel_actividad"] === "string" || body["nivel_actividad"] === null) {
+    campos.nivel_actividad = body["nivel_actividad"] as string | null;
+  }
+  if (typeof body["estado_contrato"] === "string") campos.estado_contrato = body["estado_contrato"];
+  if (typeof body["contrato_vence_en"] === "string" || body["contrato_vence_en"] === null) {
+    campos.contrato_vence_en = body["contrato_vence_en"] as string | null;
+  }
+  if (typeof body["score"] === "number" || body["score"] === null) campos.score = body["score"] as number | null;
+  if (typeof body["asignado_a"] === "string" || body["asignado_a"] === null) {
+    campos.asignado_a = body["asignado_a"] as string | null;
+  }
+  if (esObjeto(body["contacto"])) campos.contacto = body["contacto"];
+  if (typeof body["origen"] === "string" || body["origen"] === null) campos.origen = body["origen"] as string | null;
+  return campos;
 }

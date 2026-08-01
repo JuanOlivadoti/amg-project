@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore } from "db";
+import { aplicarMigraciones, PglitePool, PgStore, PgClientes } from "db";
 import type { TenantContext } from "db";
 import { createApp } from "./app.js";
 import type { EmisorEventos } from "./solicitar.js";
@@ -23,6 +23,7 @@ import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
 
 let pg: PGlite;
 let store: PgStore;
+let clientes: PgClientes;
 let eventos: Array<{ name: string; data: Record<string, unknown> }>;
 let app: ReturnType<typeof createApp>;
 
@@ -51,6 +52,7 @@ beforeEach(async () => {
   await aplicarMigraciones(pg);
   const pool = new PglitePool(pg);
   store = new PgStore(pool); // amg_api → app_user
+  clientes = new PgClientes(pool); // mismo login/rol
   eventos = [];
   const emisor: EmisorEventos = {
     send: async (e) => {
@@ -58,7 +60,7 @@ beforeEach(async () => {
       return {};
     },
   };
-  app = createApp({ store, emisor, verificar });
+  app = createApp({ store, clientes, emisor, verificar });
 
   // --- seed (superusuario) ---
   [tenantA, tenantB] = (
@@ -351,12 +353,184 @@ test("sanity: el store de servicio ve la fila sembrada", async () => {
   assert.equal(run?.id, runA1);
 });
 
+// ---------------------------------------------------------------- clientes (CRM)
+
+test("GET /clients sin token → 401", async () => {
+  const res = await req("GET", "/clients", { tenant: tenantA });
+  assert.equal(res.status, 401);
+});
+
+test("GET /clients: cada tenant ve solo los suyos — B no ve el cliente de A", async () => {
+  const propios = (await (await req("GET", "/clients", { user: equipoA, tenant: tenantA })).json()) as {
+    clientes: Array<{ id: string }>;
+  };
+  assert.ok(propios.clientes.some((cl) => cl.id === clientA1), "A ve su cliente");
+
+  const ajenos = (await (await req("GET", "/clients", { user: equipoB, tenant: tenantB })).json()) as {
+    clientes: Array<{ id: string }>;
+  };
+  assert.equal(ajenos.clientes.some((cl) => cl.id === clientA1), false, "B no ve el cliente de A");
+});
+
+test("POST /clients: el equipo crea el cliente en su tenant", async () => {
+  const res = await req("POST", "/clients", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { nombre: "Nuevo Cliente" },
+  });
+  assert.equal(res.status, 201);
+  const { id } = (await res.json()) as { id: string };
+  const filas = await sql<{ tenant_id: string; nombre: string }>(
+    "select tenant_id, nombre from clients where id = $1",
+    [id],
+  );
+  assert.equal(filas.length, 1);
+  assert.equal(filas[0]!.tenant_id, tenantA);
+  assert.equal(filas[0]!.nombre, "Nuevo Cliente");
+});
+
+test("🔴 POST /clients con tenant_id en el body: el cliente nace en el tenant del TOKEN, no del body", async () => {
+  const res = await req("POST", "/clients", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { nombre: "Intento de fuga de tenant", tenant_id: tenantB },
+  });
+  assert.equal(res.status, 201);
+  const { id } = (await res.json()) as { id: string };
+
+  // La fila real, no solo el status: confirma que el tenant_id de la BASE es el del header/token.
+  const filas = await sql<{ tenant_id: string }>("select tenant_id from clients where id = $1", [id]);
+  assert.equal(filas.length, 1);
+  assert.equal(filas[0]!.tenant_id, tenantA, "nace en el tenant del contexto, no en el que venía en el body");
+
+  const comoB = (await (await req("GET", "/clients", { user: equipoB, tenant: tenantB })).json()) as {
+    clientes: Array<{ id: string }>;
+  };
+  assert.equal(comoB.clientes.some((cl) => cl.id === id), false, "el tenant B no lo ve: no nació ahí");
+});
+
+test("POST /clients con rol en el body: no tiene ningún efecto, el cliente se crea igual", async () => {
+  const res = await req("POST", "/clients", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { nombre: "Con rol colado", rol: "maestro" },
+  });
+  assert.equal(res.status, 201);
+  const { id } = (await res.json()) as { id: string };
+  const filas = await sql<{ nombre: string }>("select nombre from clients where id = $1", [id]);
+  assert.equal(filas.length, 1, "el rol colado no impidió ni cambió el alta");
+  assert.equal(filas[0]!.nombre, "Con rol colado");
+});
+
+test("POST /clients sin nombre → 400 (no 500)", async () => {
+  const res = await req("POST", "/clients", { user: equipoA, tenant: tenantA, body: { tipo: "empresa" } });
+  assert.equal(res.status, 400);
+});
+
+test("🔴 un CLIENTE (rol) no puede crear clientes → 403, no 500", async () => {
+  const res = await req("POST", "/clients", {
+    user: duenoA1,
+    tenant: tenantA,
+    body: { nombre: "El cliente no da de alta" },
+  });
+  assert.equal(res.status, 403);
+  const filas = await sql("select id from clients where nombre = 'El cliente no da de alta'");
+  assert.equal(filas.length, 0, "no se creó ninguna fila");
+});
+
+test("🔴 un CLIENTE (rol) no puede modificar clientes → 404 bajo RLS, sin efecto (mismo patrón que approvePage)", async () => {
+  // El `using` de `client_write` filtra la fila para el rol `cliente` (puede_escribir() es falso):
+  // el UPDATE no matchea ninguna fila (0 rows, sin excepción de Postgres) → actualizarCliente
+  // devuelve false → 404. Es el MISMO mecanismo, ya probado arriba, de "un CLIENTE no puede aprobar
+  // una página" (línea ~331): para un UPDATE, RLS deniega filtrando filas, no lanzando 42501 — eso
+  // solo pasa en el INSERT (ver el test de arriba, "no puede crear clientes" → 403).
+  const res = await req("PATCH", `/clients/${clientA1}`, {
+    user: duenoA1,
+    tenant: tenantA,
+    body: { score: 10 },
+  });
+  assert.equal(res.status, 404);
+  const filas = await sql<{ score: number | null }>("select score from clients where id = $1", [clientA1]);
+  assert.equal(filas[0]!.score, null, "el cliente-rol no pudo cambiar el score");
+});
+
+test("GET /clients/:id: el equipo ve su cliente", async () => {
+  const res = await req("GET", `/clients/${clientA1}`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { cliente: { id: string; nombre: string } };
+  assert.equal(body.cliente.id, clientA1);
+  assert.equal(body.cliente.nombre, "Bella Napoli");
+});
+
+test("🔴 GET /clients/:id de OTRO tenant → 404", async () => {
+  const res = await req("GET", `/clients/${clientA1}`, { user: equipoB, tenant: tenantB });
+  assert.equal(res.status, 404);
+});
+
+test("GET /clients/:id inexistente → 404", async () => {
+  const res = await req("GET", "/clients/00000000-0000-4000-8000-000000000000", {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(res.status, 404);
+});
+
+test("PATCH /clients/:id del mismo tenant aplica los cambios de verdad", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { score: 77, industria: "restauracion" },
+  });
+  assert.equal(res.status, 200);
+  const filas = await sql<{ score: number; industria: string }>(
+    "select score, industria from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(filas[0]!.score, 77);
+  assert.equal(filas[0]!.industria, "restauracion");
+});
+
+test("🔴 PATCH /clients/:id de OTRO tenant → 404 con el MISMO mensaje que un id inexistente (no revela existencia)", async () => {
+  const resOtroTenant = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoB,
+    tenant: tenantB,
+    body: { score: 5 },
+  });
+  assert.equal(resOtroTenant.status, 404);
+  const cuerpoOtroTenant = await resOtroTenant.json();
+
+  const resInexistente = await req("PATCH", "/clients/00000000-0000-4000-8000-000000000000", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { score: 5 },
+  });
+  assert.equal(resInexistente.status, 404);
+  const cuerpoInexistente = await resInexistente.json();
+
+  assert.deepEqual(cuerpoOtroTenant, cuerpoInexistente, "el 404 no distingue 'de otro tenant' de 'no existe'");
+
+  // Y de verdad no cambió nada en la fila de A: el 404 no es solo apariencia.
+  const filas = await sql<{ score: number | null }>("select score from clients where id = $1", [clientA1]);
+  assert.equal(filas[0]!.score, null, "el tenant B no pudo tocar el cliente de A");
+});
+
+test("🔴 POST /clients con asignado_a que no es miembro del tenant → 400 (no 500)", async () => {
+  const res = await req("POST", "/clients", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { nombre: "Con asignado ajeno", asignado_a: equipoB },
+  });
+  assert.equal(res.status, 400);
+  const filas = await sql("select id from clients where nombre = 'Con asignado ajeno'");
+  assert.equal(filas.length, 0, "no se creó ninguna fila con un asignado_a inválido");
+});
+
 test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", async () => {
   // Un 401 acá haría que el portal dé la sesión por muerta y queme el refresh token por una caída
   // de Supabase. Sigue sin dejar pasar a nadie.
   const caido: VerificadorToken = async () => NO_DISPONIBLE;
   const emisorInerte: EmisorEventos = { send: async () => ({}) };
-  const appCaida = createApp({ store, emisor: emisorInerte, verificar: caido });
+  const appCaida = createApp({ store, clientes, emisor: emisorInerte, verificar: caido });
   const res = await appCaida.request("/runs", {
     headers: { authorization: "Bearer lo-que-sea", "x-amg-tenant": tenantA },
   });

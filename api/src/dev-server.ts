@@ -13,7 +13,7 @@
  */
 import { PGlite } from "@electric-sql/pglite";
 import { serve } from "@hono/node-server";
-import { aplicarMigraciones, ConexionReservada, PglitePool, PgStore, sembrarDemo } from "db";
+import { aplicarMigraciones, ConexionReservada, PglitePool, PgStore, PgClientes, sembrarDemo } from "db";
 import { createApp } from "./app.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { VerificadorToken } from "./auth.js";
@@ -25,6 +25,7 @@ if (process.env["NODE_ENV"] === "production") {
 const pg = new PGlite();
 await aplicarMigraciones(pg);
 const store = new PgStore(new PglitePool(pg));
+const clientes = new PgClientes(new PglitePool(pg));
 
 const sql = async <T = Record<string, unknown>>(q: string, p: unknown[] = []): Promise<T[]> =>
   (await pg.query<T>(q, p)).rows;
@@ -70,7 +71,7 @@ const emisor: EmisorEventos = {
 /** FALSO a propósito: `valid:<uuid>` identifica a ese usuario. Ver el aviso de arriba. */
 const verificar: VerificadorToken = async (t) => (t.startsWith("valid:") ? { userId: t.slice(6) } : null);
 
-const app = createApp({ store, emisor, verificar, corsOrigins: ["http://localhost:4200"] });
+const app = createApp({ store, clientes, emisor, verificar, corsOrigins: ["http://localhost:4200"] });
 
 // Un run EN CURSO: es el que dispara el polling del brief (y con el que se comprueba que no quede
 // un intervalo huérfano al salir de la pantalla).
