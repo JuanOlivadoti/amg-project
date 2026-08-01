@@ -35,13 +35,19 @@ export interface ClienteCRM {
   nombre: string;
   tipo: string | null;
   industria: string | null;
-  etiquetas: string[];
+  /** `| null`: además del array vacío del default, un rol `cliente` la ve enmascarada (ver
+   *  `CLIENTE_CRM_MASKED_COLS`) — no solo el equipo puede recibir `null` acá. */
+  etiquetas: string[] | null;
   nivel_actividad: string | null;
-  estado_contrato: string;
+  /** `| null` por el mismo motivo que `etiquetas`: enmascarada para el rol `cliente`, aunque el
+   *  esquema (0011) le dé un default `not null` (`sin_contrato`). */
+  estado_contrato: string | null;
   contrato_vence_en: string | null;
   score: number | null;
   asignado_a: string | null;
-  contacto: Record<string, unknown>;
+  /** `| null` por el mismo motivo: enmascarada para el rol `cliente`, aunque el default de columna
+   *  sea `{}`, no `null`. */
+  contacto: Record<string, unknown> | null;
   origen: string | null;
   archived_at: string | null;
   created_at: string;
@@ -91,10 +97,51 @@ export interface CambiosCliente {
   origen?: string | null;
 }
 
-/** Las columnas de `ClienteCRM`. Una sola definición: el select no puede quedar desalineado. */
-const CLIENTE_CRM_COLS = `id, nombre, tipo, industria, etiquetas, nivel_actividad, estado_contrato,
-  contrato_vence_en::text as contrato_vence_en, score, asignado_a, contacto, origen,
-  archived_at, created_at`;
+/**
+ * Las 10 columnas de `clients` que agregó la 0011 y que son notas INTERNAS de la agencia sobre el
+ * cliente — nunca deben llegar sin enmascarar a un usuario con rol `cliente` leyendo su PROPIA fila.
+ *
+ * `client_select` (0001) es RLS **por fila**: `app.ve_cliente(id)` deja pasar la fila entera a su
+ * dueño, no columna por columna. Antes de la 0011 eso era inofensivo (nombre, perfil de negocio);
+ * ahora la misma fila carga además `score`, `estado_contrato`, `contacto` (que en la práctica guarda
+ * notas de la agencia), etc. — fuga CRÍTICA si no se enmascara acá.
+ *
+ * `expr` es la expresión de columna tal cual se lee (con el cast que ya tenía `contrato_vence_en`);
+ * la clave es el alias con el que sale en `ClienteCRM`.
+ */
+const CLIENTE_CRM_MASKED_COLS: Record<string, string> = {
+  tipo: "tipo",
+  industria: "industria",
+  etiquetas: "etiquetas",
+  nivel_actividad: "nivel_actividad",
+  estado_contrato: "estado_contrato",
+  contrato_vence_en: "contrato_vence_en::text",
+  score: "score",
+  asignado_a: "asignado_a",
+  contacto: "contacto",
+  origen: "origen",
+};
+
+/**
+ * Las columnas de `ClienteCRM`. Una sola definición: el select no puede quedar desalineado, y no se
+ * duplica entre `listarClientes` y `obtenerCliente`.
+ *
+ * Cada columna de `CLIENTE_CRM_MASKED_COLS` se envuelve en `case when app.current_role() = 'cliente'
+ * then null else <col> end`: la MISMA función `app.current_role()` que ya usan las políticas RLS
+ * decide, dentro de Postgres, qué valor vuelve — no un `if` de TypeScript sobre `ctx`. Es a propósito
+ * que la garantía viva en la consulta SQL, evaluada por una función `stable` de sesión (por eso no
+ * puede ser una columna generada: esas exigen una expresión INMUTABLE) y no en un rol de conexión
+ * distinto (violaría ADR-17: un solo login `app_user` para `equipo`/`maestro`/`cliente`).
+ */
+const CLIENTE_CRM_COLS = [
+  "id",
+  "nombre",
+  ...Object.entries(CLIENTE_CRM_MASKED_COLS).map(
+    ([alias, expr]) => `case when app.current_role() = 'cliente' then null else ${expr} end as ${alias}`,
+  ),
+  "archived_at",
+  "created_at",
+].join(", ");
 
 /** Columnas editables por `actualizarCliente`, en el orden en que se evalúan. `contacto` es la
  *  única jsonb: necesita el cast explícito al armar el `set`. */

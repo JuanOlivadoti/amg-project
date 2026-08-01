@@ -493,3 +493,112 @@ test("obtenerCliente de un id inexistente devuelve null", async () => {
   );
   assert.equal(cliente, null);
 });
+
+// ================================================================== Etapa 4: enmascarado del CRM
+//
+// Fix CRÍTICO de la revisión final de la rama: `client_select` (0001) es RLS POR FILA, no por
+// columna — un usuario con rol `cliente` YA podía ver su propia fila completa de `clients`
+// (`app.ve_cliente` se lo permite). Antes de la 0011 eso era inofensivo (nombre, perfil de negocio);
+// ahora esa misma fila carga además notas INTERNAS de la agencia sobre ese cliente (contacto, score,
+// estado del contrato, etc.). El fix envuelve esas 10 columnas en un `case when app.current_role() =
+// 'cliente' then null else <col> end` dentro de la consulta (`CLIENTE_CRM_COLS`, clientes.ts) — la
+// misma función `app.current_role()` que ya usan las políticas RLS decide, en Postgres, qué vuelve.
+//
+// `s.duenoA1` es la membresía rol `cliente` atada a `s.clientA1` (ver seed en testdb.ts). Antes de
+// este bloque `clientA1` sigue en sus defaults (los únicos intentos previos de escribirle CRM fueron
+// vía `db.asUser`, que hace rollback) — así que acá lo sembramos de verdad con `actualizarCliente`
+// (que sí commitea, vía `PglitePool`), como `equipoA` (el único rol que puede escribir).
+
+const CRM_SEMBRADO = {
+  tipo: "empresa",
+  industria: "restauracion",
+  etiquetas: ["vip"],
+  nivel_actividad: "alto",
+  estado_contrato: "vigente",
+  contrato_vence_en: "2027-01-01",
+  score: 87,
+  asignado_a: undefined as string | undefined, // se completa abajo con s.equipoA
+  contacto: { email: "dueno@bellanapoli.es", notas: "cliente conflictivo, revisar antes de renovar" },
+  origen: "referido",
+};
+
+test("🔴 duenoA1 (rol cliente) NO ve las columnas de CRM de su propio cliente: listarClientes", async () => {
+  CRM_SEMBRADO.asignado_a = s.equipoA;
+  const ok = await clientes.actualizarCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    s.clientA1,
+    CRM_SEMBRADO,
+  );
+  assert.equal(ok, true, "el seed de este bloque se aplicó (equipoA sí puede escribir)");
+
+  const comoDueno = (
+    await clientes.listarClientes({ tenantId: s.tenantA, userId: s.duenoA1 })
+  ).find((c) => c.id === s.clientA1);
+
+  assert.ok(comoDueno, "duenoA1 sigue viendo su propia fila (RLS por fila no cambia)");
+  assert.equal(comoDueno?.tipo, null, "tipo enmascarado para el rol cliente");
+  assert.equal(comoDueno?.industria, null, "industria enmascarada para el rol cliente");
+  assert.equal(comoDueno?.etiquetas, null, "etiquetas enmascaradas para el rol cliente");
+  assert.equal(comoDueno?.nivel_actividad, null, "nivel_actividad enmascarado para el rol cliente");
+  assert.equal(comoDueno?.estado_contrato, null, "estado_contrato enmascarado para el rol cliente");
+  assert.equal(comoDueno?.contrato_vence_en, null, "contrato_vence_en enmascarado para el rol cliente");
+  assert.equal(comoDueno?.score, null, "score enmascarado para el rol cliente");
+  assert.equal(comoDueno?.asignado_a, null, "asignado_a enmascarado para el rol cliente");
+  assert.equal(comoDueno?.contacto, null, "contacto (notas internas) enmascarado para el rol cliente");
+  assert.equal(comoDueno?.origen, null, "origen enmascarado para el rol cliente");
+
+  // Lo que NO es CRM sigue visible: la máscara es de columna, no de fila.
+  assert.equal(comoDueno?.id, s.clientA1);
+  assert.equal(comoDueno?.nombre, "Trattoria Bella Napoli");
+  assert.equal(comoDueno?.archived_at, null);
+  assert.ok(comoDueno?.created_at, "created_at sigue presente");
+});
+
+test("🔴 duenoA1 (rol cliente) NO ve las columnas de CRM de su propio cliente: obtenerCliente", async () => {
+  const cliente = await clientes.obtenerCliente({ tenantId: s.tenantA, userId: s.duenoA1 }, s.clientA1);
+
+  assert.ok(cliente, "duenoA1 sigue pudiendo traer su propia fila por id");
+  assert.equal(cliente?.tipo, null);
+  assert.equal(cliente?.industria, null);
+  assert.equal(cliente?.etiquetas, null);
+  assert.equal(cliente?.nivel_actividad, null);
+  assert.equal(cliente?.estado_contrato, null);
+  assert.equal(cliente?.contrato_vence_en, null);
+  assert.equal(cliente?.score, null);
+  assert.equal(cliente?.asignado_a, null);
+  assert.equal(cliente?.contacto, null);
+  assert.equal(cliente?.origen, null);
+
+  assert.equal(cliente?.id, s.clientA1);
+  assert.equal(cliente?.nombre, "Trattoria Bella Napoli", "lo que no es CRM sigue visible");
+  assert.equal(cliente?.archived_at, null);
+  assert.ok(cliente?.created_at);
+});
+
+test("equipoA (rol equipo, mismo tenant) SÍ ve todas las columnas de CRM sin cambios — el fix no rompe el uso legítimo del staff", async () => {
+  const comoEquipo = (
+    await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })
+  ).find((c) => c.id === s.clientA1);
+
+  assert.ok(comoEquipo);
+  assert.equal(comoEquipo?.tipo, "empresa");
+  assert.equal(comoEquipo?.industria, "restauracion");
+  assert.deepEqual(comoEquipo?.etiquetas, ["vip"]);
+  assert.equal(comoEquipo?.nivel_actividad, "alto");
+  assert.equal(comoEquipo?.estado_contrato, "vigente");
+  assert.equal(comoEquipo?.contrato_vence_en, "2027-01-01");
+  assert.equal(comoEquipo?.score, 87);
+  assert.equal(comoEquipo?.asignado_a, s.equipoA);
+  assert.deepEqual(comoEquipo?.contacto, {
+    email: "dueno@bellanapoli.es",
+    notas: "cliente conflictivo, revisar antes de renovar",
+  });
+  assert.equal(comoEquipo?.origen, "referido");
+
+  const viaObtener = await clientes.obtenerCliente({ tenantId: s.tenantA, userId: s.equipoA }, s.clientA1);
+  assert.equal(viaObtener?.score, 87, "obtenerCliente tampoco enmascara para equipo");
+  assert.deepEqual(viaObtener?.contacto, {
+    email: "dueno@bellanapoli.es",
+    notas: "cliente conflictivo, revisar antes de renovar",
+  });
+});
