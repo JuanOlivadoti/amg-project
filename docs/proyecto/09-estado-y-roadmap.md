@@ -52,7 +52,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **508** en el monorepo + **87** en el portal. Los de seguridad, contra Postgres real |
+| **Tests** | **516** en el monorepo + **87** en el portal. Los de seguridad, contra Postgres real |
 | **Migraciones** | 10 (`0001`..`0010`) |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones |
@@ -75,7 +75,7 @@ Lo de Fase 2 —orquestador y renderizador— **no está desplegado** todavía.
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **508 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **516 tests en verde** + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
 | ✅ | **Diez reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las tres últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, y carreras asincrónicas en el portal. Ver [ADR-13..22 y el registro de correcciones](../decisiones-arquitectura.md). |
 
