@@ -483,7 +483,11 @@ export class ClienteInfoCardComponent {
       await this.clientesService.actualizar(id, cambios);
       if (!this.clientesService.error()) {
         await this.clientesService.verCliente(id);
-        this.editando.set(false);
+        // Reviso `error()` DE NUEVO acá: `verCliente` nunca relanza, solo lo setea si el GET de
+        // refresco falla. Si cerrara el modo edición sin este segundo chequeo, un PATCH exitoso
+        // seguido de un GET fallido cerraría la card en silencio — el error existe en el signal
+        // pero nadie lo muestra porque el mensaje de error vive solo en la vista de edición.
+        if (!this.clientesService.error()) this.editando.set(false);
       }
     } finally {
       this.guardando.set(false);

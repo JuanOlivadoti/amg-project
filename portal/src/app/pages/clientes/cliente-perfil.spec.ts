@@ -187,4 +187,83 @@ describe('ClientePerfilPage', () => {
     expect(contacto['facebook']).toBe('https://facebook.com/pizzanonna');
     expect(contacto['direccion']).toEqual({ ciudad: 'Barcelona', calle: 'Gran Vía' });
   });
+
+  it('el card de Meta guarda facebook sin borrar email/dirección de los otros cards', async () => {
+    const { fixture, mocks } = crear(clienteDePrueba());
+    const el = await estabilizar(fixture);
+
+    const botonesEditar = Array.from(el.querySelectorAll('button')).filter(
+      (b) => b.textContent?.trim() === 'Editar',
+    );
+    // Info, Dirección, Meta, Recursos: el de Meta es el tercer botón "Editar" en el DOM.
+    expect(botonesEditar.length).toBe(4);
+    botonesEditar[2]!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const facebook = el.querySelector<HTMLInputElement>('#meta-facebook');
+    expect(facebook).withContext('no encontré #meta-facebook en modo edición').not.toBeNull();
+    facebook!.value = 'https://facebook.com/pizzanonna-nueva';
+    facebook!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // Solo Meta quedó en modo edición: es el único `<form>` presente en este momento.
+    const formMeta = el.querySelector('form');
+    expect(formMeta).withContext('no encontré el form de Meta').not.toBeNull();
+    formMeta!.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(mocks.actualizarSpy).toHaveBeenCalledTimes(1);
+    const [, cambios] = mocks.actualizarSpy.calls.mostRecent().args as [string, CambiosClienteAgencia];
+    // Solo `contacto` — nada de campos propios del cliente.
+    expect(Object.keys(cambios)).toEqual(['contacto']);
+    const contacto = cambios.contacto as Record<string, unknown>;
+    expect(contacto['facebook']).toBe('https://facebook.com/pizzanonna-nueva');
+    // El riesgo del brief: el card de Meta NO edita email/dirección, pero como parte del `contacto`
+    // COMPLETO ya cargado, esas claves tienen que seguir ahí en el PATCH.
+    expect(contacto['email']).toBe('hola@pizzanonna.es');
+    expect(contacto['direccion']).toEqual({ ciudad: 'Madrid', calle: 'Gran Vía' });
+  });
+
+  it('el card de Recursos guarda el texto sin borrar email/facebook/dirección de los otros cards', async () => {
+    const { fixture, mocks } = crear(clienteDePrueba());
+    const el = await estabilizar(fixture);
+
+    const botonesEditar = Array.from(el.querySelectorAll('button')).filter(
+      (b) => b.textContent?.trim() === 'Editar',
+    );
+    // Info, Dirección, Meta, Recursos: el de Recursos es el cuarto botón "Editar" en el DOM.
+    expect(botonesEditar.length).toBe(4);
+    botonesEditar[3]!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const recursos = el.querySelector<HTMLTextAreaElement>('#recursos-texto');
+    expect(recursos).withContext('no encontré #recursos-texto en modo edición').not.toBeNull();
+    recursos!.value = 'Nuevo texto de recursos.';
+    recursos!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    // Solo Recursos quedó en modo edición: es el único `<form>` presente en este momento.
+    const formRecursos = el.querySelector('form');
+    expect(formRecursos).withContext('no encontré el form de Recursos').not.toBeNull();
+    formRecursos!.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(mocks.actualizarSpy).toHaveBeenCalledTimes(1);
+    const [, cambios] = mocks.actualizarSpy.calls.mostRecent().args as [string, CambiosClienteAgencia];
+    // Solo `contacto` — nada de campos propios del cliente.
+    expect(Object.keys(cambios)).toEqual(['contacto']);
+    const contacto = cambios.contacto as Record<string, unknown>;
+    expect(contacto['recursos']).toBe('Nuevo texto de recursos.');
+    // El riesgo del brief: el card de Recursos NO edita email/facebook/dirección, pero como parte
+    // del `contacto` COMPLETO ya cargado, esas claves tienen que seguir ahí en el PATCH.
+    expect(contacto['email']).toBe('hola@pizzanonna.es');
+    expect(contacto['facebook']).toBe('https://facebook.com/pizzanonna');
+    expect(contacto['direccion']).toEqual({ ciudad: 'Madrid', calle: 'Gran Vía' });
+  });
 });
