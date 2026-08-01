@@ -117,6 +117,25 @@ test("las respaldadas tienen volumen y las sin validar no (el dato honesto)", as
 });
 
 /**
+ * El invariante que protege el JSON-LD, que es el argumento de venta: **un artículo no es un negocio
+ * local**. `local` decide si la página se declara `LocalBusiness` ante Google, y declarar un blog como
+ * negocio local es exactamente el ruido que la corrida real destapó (53 de 60 keywords salían
+ * `is_local`). Si alguien vuelve a tocar los datos del brief, esto cae antes que la demo.
+ */
+test("ninguna página de tipo blog se marca como local (o el JSON-LD miente)", async () => {
+  const pages = await db.asUser<{ tipo: string; local: boolean; url_slug: string }>(
+    { tenantId: r.tenantId, userId: FRANK },
+    "select tipo, local, url_slug from kr_pages where run_id = $1",
+    [r.runId],
+  );
+  const blogs = pages.filter((p) => p.tipo === "blog");
+  assert.ok(blogs.length > 0, "el brief tiene que traer artículos: es parte del split de la demo");
+  for (const b of blogs) {
+    assert.equal(b.local, false, `"${b.url_slug}" es un blog declarado como negocio local`);
+  }
+});
+
+/**
  * El renderizador NO lee `business_profile` crudo: lee `business_profile_publico`, la columna
  * generada con allowlist (0008/0009/0010). Un perfil sembrado con campos fuera de esa allowlist se
  * filtra **en silencio** —le pasó a `brand` antes de la 0009 y a `locations`/`menu` antes de la

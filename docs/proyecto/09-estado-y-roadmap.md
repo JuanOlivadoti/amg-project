@@ -138,8 +138,13 @@ de la reunión es **un paso operativo**, no código:*
    larga duración, no serverless. Sin esto, `/menu`, `/blog` y todo lo que se acaba de construir
    siguen sin un dominio real. Tres cosas que van **dentro** de este paso y es fácil que se olviden,
    porque el código ya está y nada avisa de que faltan:
-   - **Aplicar la migración `0010` a la base de producción** (está en el repo, no en Supabase, ver
-     §1): sin ella el footer sale sin locales y `/menu` da 404 en cuanto el renderizador esté arriba.
+   - **Aplicar la migración `0010` a la base de producción** — **confirmado empíricamente el
+     2026-08-01**, no es una sospecha: `app.migraciones_aplicadas` en producción tiene `0001..0009`, y
+     `app.nap_publico` **no conoce `locations`**. El seed escribió el perfil bien (2 locales y 4 ítems
+     de carta en `business_profile`), pero la columna generada devuelve `locations: 0, menu: 0`: la
+     allowlist vieja **los descarta en silencio**, que es exactamente el bug que la `0010` existe para
+     cerrar. Hoy no se nota porque el renderizador no está desplegado; el día que suba, el footer sale
+     sin locales y `/menu` da 404.
    - **Encender `lanzarResearch` y `aprobarRun`** en `portal/src/environments/environment.prod.ts`.
      Se apagaron *porque no había orquestador detrás* (decisión de Fase 1, con test que lo fija). Si
      se despliega el orquestador y nadie los toca, **el portal sigue capado**: no se puede lanzar
@@ -373,9 +378,19 @@ de abajo.
 > 30 de relleno. Corregido: la muestra tiene un techo de score por debajo del más bajo real, y la tabla
 > lista solo las páginas del cliente principal. Los dos, con su test.
 >
-> **Límite honesto:** los 14 slugs del seed son *representativos*, no un volcado del space — este clon
-> no tiene la credencial de lectura de la CDA, así que no se pudieron leer los que quedaron publicados
-> en Storyblok. Lo que está atado por test es el negocio (perfil, locales, carta, split y coste).
+> **✅ Cerrado el mismo día: los slugs ahora salen de Storyblok.** Con las credenciales disponibles se
+> leyeron las 14 stories publicadas por la **Content Delivery API**, y el seed usa sus **slugs,
+> keywords (`source_keyword`), títulos y descripciones SEO, tipo de página, intención y FAQs reales**.
+> El brief que Frank aprueba en el portal lista **exactamente** las páginas vivas en la web, con sus
+> mismos textos. Solo dos de los 14 slugs inventados coincidían con los reales, así que sin esto el
+> hilo seguía roto en el último salto.
+>
+> **Lo único que queda reconstruido son las métricas** (volumen, dificultad, score, confianza): vivían
+> en `out/brief.json`, perdido con el directorio `out/` (KR-1). Están asignadas por demanda plausible
+> y **respetan el split real 8/6**; se reemplazan por las medidas cuando se regenere el dataset.
+>
+> Y un invariante nuevo, con test: **ninguna página de tipo `blog` puede marcarse `local`** — `local`
+> decide si la página se declara `LocalBusiness` ante Google, y un artículo no es un negocio local.
 
 **D — research en vivo:** el orquestador **ya está construido** (Inngest, `workflow.ts`,
 `functions.ts`, 18 tests). Falta desplegarlo y conectarlo, no escribirlo.

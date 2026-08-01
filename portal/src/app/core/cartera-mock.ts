@@ -54,23 +54,38 @@ const CLIENTE_REAL = {
  * validar. Son las que el dashboard grafica en "Top oportunidades", así que tienen que ser las
  * keywords que Frank va a reconocer, no relleno.
  *
- * `[keyword, slug, score, volumen, dificultad]` — volumen `null` = sin validar (≠ 0, ver `kr.v0.4`).
+ * **Copiadas de `db/src/seed-demo.ts`**, que a su vez las leyó de Storyblok: son los slugs, keywords
+ * y tipos que están publicados de verdad. `volumen: null` = sin validar (≠ 0, ver `kr.v0.4`).
+ * El portal vive fuera del monorepo (ADR-16/21), así que esto es una copia que ningún test puede atar
+ * al seed: si cambia el brief sembrado, hay que traerlo acá.
  */
-const PAGINAS_REALES: readonly [string, string, number, number | null, number | null][] = [
-  ['mejor hamburguesa madrid', '/mejor-hamburguesa-madrid', 94.5, 2400, 34],
-  ['la birra bar madrid', '/la-birra-bar-madrid', 92.0, 1900, 8],
-  ['hamburgueseria madrid centro', '/hamburgueseria-madrid-centro', 86.4, 1300, 28],
-  ['cerveza artesanal madrid', '/cerveza-artesanal-madrid', 79.8, 880, 31],
-  ['hamburguesa gourmet madrid', '/hamburguesa-gourmet-madrid', 77.2, 720, 22],
-  ['hamburgueseria barrio salamanca', '/hamburgueseria-barrio-salamanca', 74.0, 390, 18],
-  ['hamburguesa argentina madrid', '/hamburguesa-argentina-madrid', 71.5, 260, 15],
-  ['hamburgueseria puerta del sol', '/hamburgueseria-puerta-del-sol', 68.3, 210, 20],
-  ['patatas fritas especiales madrid', '/patatas-fritas-especiales-madrid', 57.0, null, null],
-  ['hamburguesas para llevar madrid', '/hamburguesas-para-llevar-madrid', 53.5, null, null],
-  ['cenas de grupo hamburgueseria madrid', '/cenas-de-grupo-hamburgueseria-madrid', 49.0, null, null],
-  ['como se hace la golden burger', '/como-se-hace-la-golden-burger', 46.5, null, null],
-  ['maridaje cerveza artesanal hamburguesa', '/maridaje-cerveza-artesanal-hamburguesa', 43.0, null, null],
-  ['historia la birra bar', '/historia-la-birra-bar-buenos-aires-madrid', 40.0, null, null],
+interface PaginaReal {
+  readonly keyword: string;
+  readonly slug: string;
+  readonly tipo: string;
+  readonly intencion: string;
+  readonly local: boolean;
+  readonly volumen: number | null;
+  readonly dificultad: number | null;
+  readonly score: number;
+  readonly confianza: number;
+}
+
+const PAGINAS_REALES: readonly PaginaReal[] = [
+  { keyword: 'mejor hamburguesa del mundo Madrid', slug: '/mejor-hamburguesa-del-mundo-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 2400, dificultad: 34, score: 94.5, confianza: 0.9 },
+  { keyword: 'La Birra Bar Madrid', slug: '/la-birra-bar-madrid', tipo: 'landing_local', intencion: 'navegacional', local: true, volumen: 1900, dificultad: 8, score: 92, confianza: 0.88 },
+  { keyword: 'hamburguesería gourmet Madrid', slug: '/hamburgueseria-gourmet-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 1300, dificultad: 28, score: 86.4, confianza: 0.85 },
+  { keyword: 'restaurante argentino en Madrid', slug: '/restaurante-argentino-en-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 880, dificultad: 31, score: 79.8, confianza: 0.81 },
+  { keyword: 'cervezas artesanales Madrid', slug: '/cervezas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 720, dificultad: 22, score: 77.2, confianza: 0.8 },
+  { keyword: 'cerveza Ale Ogham Madrid', slug: '/cerveza-ale-ogham-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 390, dificultad: 18, score: 74, confianza: 0.78 },
+  { keyword: 'tienda de cervezas artesanales madrid', slug: '/tienda-de-cervezas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 260, dificultad: 15, score: 71.5, confianza: 0.76 },
+  { keyword: 'patatas fritas especiales Madrid', slug: '/patatas-fritas-especiales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 210, dificultad: 20, score: 68.3, confianza: 0.74 },
+  { keyword: 'opiniones de la birra bar hamburguesas artesanales madrid', slug: '/opiniones-de-la-birra-bar-hamburguesas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: null, dificultad: null, score: 57, confianza: 0.25 },
+  { keyword: 'hamburguesas con salsas de la casa', slug: '/hamburguesas-con-salsas-de-la-casa', tipo: 'servicio', intencion: 'comercial', local: false, volumen: null, dificultad: null, score: 53.5, confianza: 0.25 },
+  { keyword: 'hamburguesas de carne vacuna española', slug: '/hamburguesas-de-carne-vacuna-espanola', tipo: 'servicio', intencion: 'comercial', local: false, volumen: null, dificultad: null, score: 49, confianza: 0.25 },
+  { keyword: 'hamburguesas con pan artesanal', slug: '/hamburguesas-con-pan-artesanal', tipo: 'servicio', intencion: 'comercial', local: false, volumen: null, dificultad: null, score: 46.5, confianza: 0.25 },
+  { keyword: 'mejor hamburguesa Dubai Burger Championship', slug: '/mejor-hamburguesa-dubai-burger-championship', tipo: 'blog', intencion: 'informacional', local: false, volumen: null, dificultad: null, score: 43, confianza: 0.25 },
+  { keyword: 'People\'s Choice Award Burger Bash Miami', slug: '/people-s-choice-award-burger-bash-miami', tipo: 'blog', intencion: 'informacional', local: false, volumen: null, dificultad: null, score: 40, confianza: 0.25 },
 ];
 
 /** Los otros cinco: cartera de muestra, para que el panorama se lea como un panorama. */
@@ -102,25 +117,25 @@ function runReal(): RunSummary {
 }
 
 function paginasReales(): PaginaPropuesta[] {
-  return PAGINAS_REALES.map(([keyword, slug, score, volumen, dificultad], i) => ({
+  return PAGINAS_REALES.map((p, i) => ({
     id: `${CLIENTE_REAL.runId}-pagina-${i}`,
     // Ninguna nace aprobada: la compuerta certifica que un humano miró (ADR-06).
     approved: false,
     cluster_id: `cluster-real-${i % 4}`,
-    tipo: volumen === null && i >= 11 ? 'blog' : 'landing_local',
-    page_strategy: i === 0 ? 'hub' : 'spoke',
-    url_slug: slug,
-    keyword_principal: keyword,
+    // `tipo`, `intencion` y `local` salen del dato, no del índice: derivarlos de la posición hacía
+    // que el dashboard contradijera al brief que muestra la pantalla de al lado.
+    tipo: p.tipo,
+    page_strategy: i === 0 ? 'hub' : p.tipo === 'blog' ? 'single' : 'spoke',
+    url_slug: p.slug,
+    keyword_principal: p.keyword,
     keywords_secundarias: [],
-    intencion: i % 2 === 0 ? 'transaccional' : 'comercial',
-    local: i < 11,
-    volumen,
-    dificultad,
-    evidencia: volumen === null ? 'sin_datos' : EVIDENCIA_RESPALDADA,
-    opportunity_score: score,
-    // Las respaldadas tienen confianza alta; las que no tienen volumen, baja — es el dato que
-    // `score_confidence` existe para decir.
-    score_confidence: volumen === null ? 0.25 : 0.8,
+    intencion: p.intencion,
+    local: p.local,
+    volumen: p.volumen,
+    dificultad: p.dificultad,
+    evidencia: p.volumen === null ? 'sin_datos' : EVIDENCIA_RESPALDADA,
+    opportunity_score: p.score,
+    score_confidence: p.confianza,
     seo: {},
     content_brief: {},
     preguntas_frecuentes: [],

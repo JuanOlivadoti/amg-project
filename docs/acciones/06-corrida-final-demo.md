@@ -15,12 +15,16 @@ Storyblok pasó a La Birra Bar acá, pero `db/src/seed-demo.ts` se quedó sembra
 portal contaba un caso y la web servía otro. **Corregido**: el seed (`sembrarDemo`) siembra las 14
 páginas de La Birra Bar con **el split real de esta corrida (8 respaldadas / 6 sin validar)** y su
 coste (`309700` micros = $0.3097). Un test ata el perfil del seed a
-`web-builder/business-profile.json` para que no vuelva a divergir. **Los 14 slugs del seed son
-representativos**, no los exactos publicados acá: hacían falta credenciales de la CDA para leerlos.
-Ver [09-estado-y-roadmap.md § la demo](../proyecto/09-estado-y-roadmap.md#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás).
+`web-builder/business-profile.json` para que no vuelva a divergir.
 
-Falta el paso operativo: **re-sembrar producción** (`npm run seed:demo -w db`). Hasta entonces,
-`bigballs.es` sigue mostrando el italiano.
+**Los slugs del seed son los de esta corrida, leídos de Storyblok** (CDA, 2026-08-01): slug, keyword
+(`source_keyword`), título y descripción SEO, tipo de página, intención y FAQs salen de las 14 stories
+publicadas acá. El brief del portal y la web dicen lo mismo, palabra por palabra. Lo único
+reconstruido son las **métricas** (volumen, dificultad, score), que vivían en `out/brief.json` y se
+perdieron con el directorio `out/` — respetan el split real 8/6 y se reemplazan cuando se regenere el
+dataset. Ver [09-estado-y-roadmap.md § la demo](../proyecto/09-estado-y-roadmap.md#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás).
+
+**Paso operativo:** re-sembrar producción (`npm run seed:demo -w db`) cada vez que cambie este brief.
 
 > ## ⚠️ Esta guía tenía un paso desactualizado: falta `DATABASE_URL_CACHE`
 >
