@@ -27,4 +27,11 @@ export class ApiService {
   readonly aprobarPagina = this.cliente.aprobarPagina;
   readonly editarPagina = this.cliente.editarPagina;
   readonly aprobarRun = this.cliente.aprobarRun;
+
+  readonly listarClientes = this.cliente.listarClientes;
+  readonly verCliente = this.cliente.verCliente;
+  readonly crearCliente = this.cliente.crearCliente;
+  readonly actualizarCliente = this.cliente.actualizarCliente;
+  readonly archivarCliente = this.cliente.archivarCliente;
+  readonly desarchivarCliente = this.cliente.desarchivarCliente;
 }

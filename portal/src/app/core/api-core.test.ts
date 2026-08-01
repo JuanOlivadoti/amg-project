@@ -124,6 +124,70 @@ test('sin token no se manda el header Authorization (la API responderá 401)', a
   assert.equal(capturado.headers!['authorization'], undefined);
 });
 
+test('listarClientes pega a GET /clients y desenvuelve { clientes }', async () => {
+  const clientes = [{ id: 'c1', nombre: 'Pizzería Roma' }];
+  const { fn, capturado } = fakeFetch({ body: { clientes } });
+  const res = await crearApi(opts(fn)).listarClientes();
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/clients');
+  assert.equal(capturado.headers!['authorization'], 'Bearer tok-123');
+  assert.equal(capturado.headers!['x-amg-tenant'], 'tenant-abc');
+  assert.deepEqual(res, clientes);
+});
+
+test('verCliente pega a GET /clients/:id y desenvuelve { cliente }', async () => {
+  const cliente = { id: 'c1', nombre: 'Pizzería Roma' };
+  const { fn, capturado } = fakeFetch({ body: { cliente } });
+  const res = await crearApi(opts(fn)).verCliente('c1');
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/clients/c1');
+  assert.deepEqual(res, cliente);
+});
+
+test('crearCliente postea el cuerpo a POST /clients y devuelve el id', async () => {
+  const { fn, capturado } = fakeFetch({ status: 201, body: { id: 'c9' } });
+  const id = await crearApi(opts(fn)).crearCliente({ nombre: 'Nuevo Cliente' });
+  assert.equal(capturado.method, 'POST');
+  assert.equal(capturado.url, 'http://api.test/clients');
+  assert.deepEqual(JSON.parse(capturado.body!), { nombre: 'Nuevo Cliente' });
+  assert.equal(id, 'c9');
+});
+
+test('actualizarCliente usa PATCH /clients/:id con los cambios', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).actualizarCliente('c1', { score: 80 });
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/clients/c1');
+  assert.deepEqual(JSON.parse(capturado.body!), { score: 80 });
+});
+
+test('archivarCliente / desarchivarCliente usan POST y la ruta correcta', async () => {
+  {
+    const { fn, capturado } = fakeFetch({ body: { ok: true } });
+    await crearApi(opts(fn)).archivarCliente('c1');
+    assert.equal(capturado.method, 'POST');
+    assert.equal(capturado.url, 'http://api.test/clients/c1/archive');
+  }
+  {
+    const { fn, capturado } = fakeFetch({ body: { ok: true } });
+    await crearApi(opts(fn)).desarchivarCliente('c1');
+    assert.equal(capturado.method, 'POST');
+    assert.equal(capturado.url, 'http://api.test/clients/c1/desarchivar');
+  }
+});
+
+test('un error de /clients se propaga como ApiError con status y mensaje legible', async () => {
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Cliente no encontrado.' } });
+  await assert.rejects(
+    () => crearApi(opts(fn)).verCliente('inexistente'),
+    (e: ApiError) => {
+      assert.equal(e.status, 404);
+      assert.equal(e.message, 'Cliente no encontrado.');
+      return true;
+    },
+  );
+});
+
 /** fetch que devuelve una secuencia de respuestas, una por llamada. */
 function fakeSecuencia(respuestas: Array<{ status: number; body?: unknown }>) {
   let i = 0;

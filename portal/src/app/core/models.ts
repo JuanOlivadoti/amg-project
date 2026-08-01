@@ -67,6 +67,63 @@ export interface NuevoRun {
   maxPages?: number;
 }
 
+/** Los tres valores que acepta `clients.tipo` (0011_clientes_crm.sql). `null` = sin clasificar. */
+export type TipoCliente = 'empresa' | 'autonomo' | 'particular';
+
+/** Los tres valores que acepta `clients.nivel_actividad`. `null` = sin medir todavía. */
+export type NivelActividad = 'bajo' | 'medio' | 'alto';
+
+/** Los tres valores que acepta `clients.estado_contrato`. Nunca `null` — la columna tiene default. */
+export type EstadoContrato = 'sin_contrato' | 'vigente' | 'vencido';
+
+/**
+ * Un cliente de la agencia (el CRM), tal como lo devuelve `GET /clients` y `GET /clients/:id`.
+ * Espeja `ClienteCRM` de `db/src/clientes.ts` campo por campo — el portal NO importa ese tipo
+ * (ADR-21), así que lo duplica a propósito. Nombrado `ClienteAgencia` y no `Cliente` a secas para no
+ * confundirse con `ClienteApi` (el cliente HTTP en `api-core.ts`): son dos cosas completamente
+ * distintas que un nombre corto haría indistinguibles a simple vista.
+ *
+ * Sin ningún campo del módulo de ideas (`ideasByStatus`, `totalIdeas`, etc.) — AMG OS no tiene ese
+ * módulo, no hay ceros que inventar.
+ */
+export interface ClienteAgencia {
+  id: string;
+  nombre: string;
+  tipo: TipoCliente | null;
+  industria: string | null;
+  etiquetas: string[];
+  nivel_actividad: NivelActividad | null;
+  estado_contrato: EstadoContrato;
+  contrato_vence_en: string | null;
+  score: number | null;
+  asignado_a: string | null;
+  contacto: Record<string, unknown>;
+  origen: string | null;
+  archived_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Lo que hace falta para dar de alta un cliente. Sin `id`, sin `tenant_id` — mismo criterio que en
+ * la API: el tenant nunca lo manda el llamador, sale de la sesión (ADR-15).
+ */
+export interface NuevoClienteAgencia {
+  nombre: string;
+  tipo?: TipoCliente | null;
+  industria?: string | null;
+  etiquetas?: string[];
+  nivel_actividad?: NivelActividad | null;
+  estado_contrato?: EstadoContrato;
+  contrato_vence_en?: string | null;
+  score?: number | null;
+  asignado_a?: string | null;
+  contacto?: Record<string, unknown>;
+  origen?: string | null;
+}
+
+/** Lo editable de un cliente existente. Mismos campos que `NuevoClienteAgencia`, todos opcionales. */
+export type CambiosClienteAgencia = Partial<NuevoClienteAgencia>;
+
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */
 export interface Sesion {
   accessToken: string;

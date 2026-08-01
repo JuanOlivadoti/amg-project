@@ -1,4 +1,12 @@
-import type { Brief, CambiosPagina, NuevoRun, RunSummary } from './models';
+import type {
+  Brief,
+  CambiosClienteAgencia,
+  CambiosPagina,
+  ClienteAgencia,
+  NuevoClienteAgencia,
+  NuevoRun,
+  RunSummary,
+} from './models';
 
 /** Error de la API con el status HTTP, para que la UI distinga 401 (relogin) de 403/409/500. */
 export interface ApiError extends Error {
@@ -35,6 +43,13 @@ export interface ClienteApi {
   aprobarPagina(pageId: string): Promise<void>;
   editarPagina(pageId: string, cambios: CambiosPagina): Promise<void>;
   aprobarRun(runId: string): Promise<void>;
+
+  listarClientes(): Promise<ClienteAgencia[]>;
+  verCliente(id: string): Promise<ClienteAgencia>;
+  crearCliente(datos: NuevoClienteAgencia): Promise<string>;
+  actualizarCliente(id: string, cambios: CambiosClienteAgencia): Promise<void>;
+  archivarCliente(id: string): Promise<void>;
+  desarchivarCliente(id: string): Promise<void>;
 }
 
 export function crearApi(opts: ApiOpts): ClienteApi {
@@ -98,6 +113,28 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     },
     async aprobarRun(runId) {
       await pedir('POST', `/runs/${encodeURIComponent(runId)}/approve`);
+    },
+
+    async listarClientes() {
+      const { clientes } = await pedir<{ clientes: ClienteAgencia[] }>('GET', '/clients');
+      return clientes;
+    },
+    async verCliente(id) {
+      const { cliente } = await pedir<{ cliente: ClienteAgencia }>('GET', `/clients/${encodeURIComponent(id)}`);
+      return cliente;
+    },
+    async crearCliente(datos) {
+      const { id } = await pedir<{ id: string }>('POST', '/clients', datos);
+      return id;
+    },
+    async actualizarCliente(id, cambios) {
+      await pedir('PATCH', `/clients/${encodeURIComponent(id)}`, cambios);
+    },
+    async archivarCliente(id) {
+      await pedir('POST', `/clients/${encodeURIComponent(id)}/archive`);
+    },
+    async desarchivarCliente(id) {
+      await pedir('POST', `/clients/${encodeURIComponent(id)}/desarchivar`);
     },
   };
 }
