@@ -3,6 +3,9 @@
 > **Índice de un trabajo de cuatro piezas.** Cada pieza tiene su plan ejecutable; este documento dice
 > **en qué orden**, **de qué depende cada una**, **qué NO se toca** y **qué queda fuera de alcance**.
 > Empezá por acá antes de abrir cualquiera de los planes.
+>
+> 👉 **¿Venís a ejecutar esto en otra máquina?** El prompt de arranque, listo para copiar, está al
+> final: [Prompt para arrancar en otra máquina](#prompt-para-arrancar-en-otra-máquina).
 
 **Objetivo:** llevar al portal de AMG OS la gestión de agencia que hoy vive en
 `/Users/juan.olivadoti/jp/dashboard-project/` (Angular 19 + NgRx + Firestore): **clientes**,
@@ -178,3 +181,89 @@ lo echa de menos, es un plan nuevo y no una tarea suelta:
   `docs/proyecto/11-plan-fase-2.md`, sincronizar las cifras de tests **en todos los lugares donde
   aparecen**, y marcar la pieza en la tabla de este documento.
 - Commits en español, terminando con un `Co-Authored-By:` que nombre al modelo de la sesión.
+
+---
+
+## Prompt para arrancar en otra máquina
+
+Copiá el bloque de abajo tal cual en una sesión nueva de Claude Code, dentro del repo. Está escrito
+para la **pieza 1 (clientes)**; para las siguientes, cambiá las dos líneas marcadas — el plan a leer y
+el nombre de la rama — y respetá el orden de la
+[tabla de piezas](#las-cuatro-piezas-en-orden).
+
+````markdown
+# AMG OS — ejecutar el programa del portal de la agencia (pieza 1: clientes)
+
+Repo: `/Users/juan.olivadoti/jp/amg-project`. Hacé `git pull` de `main` antes de empezar: esta
+máquina no es la que trabaja la demo, y `main` avanza en paralelo.
+
+## Leé esto antes de escribir una línea de código
+
+1. `CLAUDE.md` del repo — el ritual de cada iteración, la disciplina de tests y los invariantes de
+   arquitectura. No es opcional.
+2. `docs/superpowers/plans/2026-08-01-portal-agencia-programa.md` — el programa: las cuatro piezas,
+   el orden, qué NO se toca, la reserva de números de migración, qué queda fuera de alcance.
+3. `docs/superpowers/plans/2026-08-01-paginas-clientes-portal.md` — **la pieza que ejecutás**.
+   ← cambiá esta línea para las piezas 2, 3 o 4.
+4. `docs/proyecto/09-estado-y-roadmap.md` y `docs/decisiones-arquitectura.md` (ADR-13, 15, 17, 18, 19).
+
+## Qué hay que hacer
+
+Ejecutá el plan task-by-task con `superpowers:subagent-driven-development` (o
+`superpowers:executing-plans`). Rama `feature/paginas-clientes`, desde `main` al día.
+← cambiá el nombre de la rama para las piezas 2, 3 o 4.
+
+Las cuatro pantallas de gestión de clientes de `/Users/juan.olivadoti/jp/dashboard-project/`
+(listado, crear, perfil, vista) al portal de AMG OS, con los datos en **Postgres bajo RLS** y
+endpoints propios en `api/`. El plan tiene siete etapas con checkboxes; seguilas en orden.
+
+## Decisiones ya cerradas — no las re-litigues
+
+- **Postgres es la fuente de datos.** Firestore se abandona; nada de `@angular/fire` en el portal.
+- **Estado con signals**, no NgRx. Los 4 archivos de NgRx del origen se reescriben como un servicio.
+- **Las 4 pantallas van bajo `/clientes`**; `/cartera` no se toca.
+- **No se migran datos** desde Firestore (son de prueba).
+- Sin storage en AMG OS: los recursos gráficos son **URLs a donde ya viven**; no se sube nada.
+
+## Las tres reglas que no se rompen
+
+1. **La demo no se interrumpe.** El programa tiene la lista explícita de qué no tocar: `/runs`,
+   `/brief`, `/cartera`, el `redirectTo: 'runs'`, `db/src/seed-demo.ts` y sus dos tests
+   (`seed-demo.test.ts`, `cartera-portal.test.ts`), las migraciones `0001..0010`, y
+   `renderer/` / `web-builder/` / `orchestrator/`. Si una tarea parece necesitar tocar algo de ahí,
+   **pará y preguntá**.
+2. **Ningún dato nuevo entra en la allowlist pública.** `clients.business_profile_publico` es lo
+   único que el rol `app_render` puede leer, y `app_render` es el proceso expuesto a internet
+   anónimo (ADR-19). Hoy expone exactamente `brand, locations, menu, name, priceRange`. La migración
+   de tu pieza **no** toca `app.nap_publico`, no re-materializa la columna generada y no concede
+   grants nuevos. Va con un test que lo fija **por mutación**.
+3. **Rojo primero, y verificación por mutación.** Reintroducí el bug y confirmá que cae
+   *exactamente* su test. Un test de seguridad que siempre pasa es peor que no tenerlo: al escribir
+   estos planes, un test resultó vacuo (comparaba mayúsculas de un UUID que era todo dígitos) y solo
+   la mutación lo destapó.
+
+## Cómo verificar (cada plan lo detalla por etapa)
+
+```bash
+npm install
+npm test                        # los 6 paquetes + scripts/
+npm run typecheck
+npm test -w portal
+npm run test:components -w portal
+npm run dev:server -w api       # la API real sobre PGlite, sin credenciales
+```
+
+Anotá los números del verde **antes** de empezar: son la línea base contra la que se compara al
+cerrar. Y **manejá la app en un navegador** (MCP chrome-devtools) en tema **claro y oscuro** — el
+HTML de TailAdmin trae colores fijos y el modo oscuro del portal depende de tokens semánticos, así
+que pegarlo sin traducir se ve bien en claro y blanco sobre blanco en oscuro.
+`portal/src/app/core/contraste.test.ts:124` atrapa los colores incrustados, pero no atrapa una
+pantalla ilegible por otras razones: leer el código y manejar la app encuentran cosas distintas.
+
+## Al cerrar
+
+Rebase sobre `main` (habrá avanzado), todo verde otra vez, auto-revisión adversarial del diff,
+actualizar `docs/proyecto/09-estado-y-roadmap.md` y `docs/proyecto/11-plan-fase-2.md` con las cifras
+sincronizadas, y marcar la pieza en la tabla del programa. Commits en español, terminando con un
+`Co-Authored-By:` que nombre al modelo de la sesión.
+````
