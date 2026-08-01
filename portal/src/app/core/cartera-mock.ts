@@ -34,12 +34,16 @@ export interface CarteraDashboard {
  * abre es la que después ve por dentro. Los otros cinco siguen siendo muestra: hacen falta para que
  * un *panorama de cartera* se lea como un panorama y no como una sola fila.
  *
- * **Límite conocido:** los UUID y los números están copiados del seed, no importados — `portal/` vive
- * fuera del monorepo a propósito (ADR-16/21), así que no hay forma de que un test ate las dos copias.
- * Si cambian los IDs fijos del seed, hay que tocar los dos lados. Lo que sí está atado por test es el
- * perfil del negocio, entre el seed y `web-builder/business-profile.json`.
+ * **Copiado del seed, pero ATADO por test.** Los UUID y los números siguen escritos acá porque
+ * `portal/` vive fuera del monorepo a propósito (ADR-16/21) y no puede importar `db`. Lo que antes
+ * decía este comentario —que por eso *ningún test podía atar las dos copias*— resultó falso, y caro:
+ * el 2026-08-01 el seed trajo sus keywords de Storyblok, esta copia se quedó con las viejas, y
+ * producción mostró las mismas métricas con nombres distintos en dos pantallas a dos clics.
+ * Estar fuera del monorepo impide importar el paquete, no leer el archivo:
+ * `db/src/cartera-portal.test.ts` carga este módulo y compara las 14 páginas campo por campo.
+ * Si cambia el brief sembrado, ese test falla y dice exactamente qué fila difiere.
  */
-const CLIENTE_REAL = {
+export const CLIENTE_REAL = {
   clientId: 'd3305eba-11a5-4e0e-9c1f-000000000001',
   runId: 'd3305eba-11a5-4e0e-9c1f-000000000002',
   nombre: 'La Birra Bar',
@@ -56,8 +60,8 @@ const CLIENTE_REAL = {
  *
  * **Copiadas de `db/src/seed-demo.ts`**, que a su vez las leyó de Storyblok: son los slugs, keywords
  * y tipos que están publicados de verdad. `volumen: null` = sin validar (≠ 0, ver `kr.v0.4`).
- * El portal vive fuera del monorepo (ADR-16/21), así que esto es una copia que ningún test puede atar
- * al seed: si cambia el brief sembrado, hay que traerlo acá.
+ * `db/src/cartera-portal.test.ts` compara esta lista contra `PAGINAS_DEMO` campo por campo y en
+ * orden — si cambia el brief sembrado y esta copia no, la suite lo dice antes que un cliente.
  */
 interface PaginaReal {
   readonly keyword: string;
@@ -71,7 +75,7 @@ interface PaginaReal {
   readonly confianza: number;
 }
 
-const PAGINAS_REALES: readonly PaginaReal[] = [
+export const PAGINAS_REALES: readonly PaginaReal[] = [
   { keyword: 'mejor hamburguesa del mundo Madrid', slug: '/mejor-hamburguesa-del-mundo-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 2400, dificultad: 34, score: 94.5, confianza: 0.9 },
   { keyword: 'La Birra Bar Madrid', slug: '/la-birra-bar-madrid', tipo: 'landing_local', intencion: 'navegacional', local: true, volumen: 1900, dificultad: 8, score: 92, confianza: 0.88 },
   { keyword: 'hamburguesería gourmet Madrid', slug: '/hamburgueseria-gourmet-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 1300, dificultad: 28, score: 86.4, confianza: 0.85 },

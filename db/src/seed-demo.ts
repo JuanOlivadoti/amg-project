@@ -77,7 +77,7 @@ interface PaginaSeed {
  * por demanda plausible y **respetan el split real 8/6**; cuando se regenere el dataset crudo, se
  * reemplazan por las medidas. Ninguna otra parte del seed es inventada.
  */
-const PAGINAS: PaginaSeed[] = [
+export const PAGINAS_DEMO: PaginaSeed[] = [
   {
     slug: "/mejor-hamburguesa-del-mundo-madrid",
     keyword: "mejor hamburguesa del mundo Madrid",
@@ -419,8 +419,17 @@ export const PERFIL_DEMO = {
  * Se mantienen los MISMOS UUID que tenía el seed del italiano de ejemplo: en la instalación ya
  * desplegada, re-sembrar reemplaza ese cliente y ese run en su lugar en vez de dejar los dos.
  */
-const DEMO_CLIENT_ID = "d3305eba-11a5-4e0e-9c1f-000000000001";
-const DEMO_RUN_ID = "d3305eba-11a5-4e0e-9c1f-000000000002";
+export const DEMO_CLIENT_ID = "d3305eba-11a5-4e0e-9c1f-000000000001";
+export const DEMO_RUN_ID = "d3305eba-11a5-4e0e-9c1f-000000000002";
+
+/**
+ * $0.3097 — lo que costó de verdad la corrida de la acción 06 (2026-07-30).
+ *
+ * Es una constante y no un literal en el `insert` porque el dashboard del portal muestra ese mismo
+ * número, y `cartera-portal.test.ts` ata las dos copias: un literal suelto en el SQL no se puede
+ * comparar contra nada.
+ */
+export const COSTE_MICROS_DEMO = 309_700;
 
 const PROMPT_DEMO =
   "Hamburguesería gourmet argentina en Madrid, con dos locales (Puerta del Sol y barrio de Salamanca). Especialidades: hamburguesas de autor, cerveza artesanal de barril y patatas fritas especiales.";
@@ -480,14 +489,15 @@ export async function sembrarDemo(
       `insert into kr_runs (id, tenant_id, client_id, schema_version, status, prompt,
                             market_country, market_language, market_location_code,
                             coste_micros_usd, calidad_datos, config)
-       values ($1, $2, $3, 'kr.v0.5', 'pending_approval', $4, 'ES', 'es', 2724, 309700,
-               $5::jsonb, $6::jsonb)
+       values ($1, $2, $3, 'kr.v0.5', 'pending_approval', $4, 'ES', 'es', 2724, $5,
+               $6::jsonb, $7::jsonb)
        returning id`,
       [
         DEMO_RUN_ID,
         tenantId,
         clientId,
         PROMPT_DEMO,
+        COSTE_MICROS_DEMO,
         // 8 de 14 páginas con volumen ⇒ cobertura 0.571. Es cobertura por PÁGINA, no por keyword: la
         // corrida real analizó 55 keywords y ese desglose no quedó registrado en la acción 06.
         JSON.stringify({ cobertura_volumen: 0.571, keywords_con_volumen: 8, keywords_totales: 14 }),
@@ -497,7 +507,7 @@ export async function sembrarDemo(
     const runId = run[0]!.id;
 
     // --- Las 14 páginas del brief ---
-    for (const p of PAGINAS) {
+    for (const p of PAGINAS_DEMO) {
       await con.query(
         `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, page_strategy,
                                url_slug, keyword_principal, keywords_secundarias, intencion, local,
