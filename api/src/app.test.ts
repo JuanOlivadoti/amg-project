@@ -525,6 +525,40 @@ test("🔴 POST /clients con asignado_a que no es miembro del tenant → 400 (no
   assert.equal(filas.length, 0, "no se creó ninguna fila con un asignado_a inválido");
 });
 
+test("POST /clients/:id/archive: el equipo archiva su cliente (archived_at pasa a no-null)", async () => {
+  const res = await req("POST", `/clients/${clientA1}/archive`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
+
+  const filas = await sql<{ archived_at: string | null }>("select archived_at from clients where id = $1", [
+    clientA1,
+  ]);
+  assert.notEqual(filas[0]!.archived_at, null, "archived_at tiene que quedar seteado");
+});
+
+test("POST /clients/:id/desarchivar: reabre un cliente ya archivado (archived_at vuelve a null)", async () => {
+  await req("POST", `/clients/${clientA1}/archive`, { user: equipoA, tenant: tenantA });
+
+  const res = await req("POST", `/clients/${clientA1}/desarchivar`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
+
+  const filas = await sql<{ archived_at: string | null }>("select archived_at from clients where id = $1", [
+    clientA1,
+  ]);
+  assert.equal(filas[0]!.archived_at, null, "archived_at tiene que volver a null");
+});
+
+test("🔴 POST /clients/:id/archive de OTRO tenant → 404 (no revela que existe)", async () => {
+  const res = await req("POST", `/clients/${clientA1}/archive`, { user: equipoB, tenant: tenantB });
+  assert.equal(res.status, 404);
+
+  const filas = await sql<{ archived_at: string | null }>("select archived_at from clients where id = $1", [
+    clientA1,
+  ]);
+  assert.equal(filas[0]!.archived_at, null, "el tenant B no pudo archivar el cliente de A");
+});
+
 test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", async () => {
   // Un 401 acá haría que el portal dé la sesión por muerta y queme el refresh token por una caída
   // de Supabase. Sigue sin dejar pasar a nadie.

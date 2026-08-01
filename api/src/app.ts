@@ -180,6 +180,20 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       : c.json({ error: "Cliente no encontrado, o sin cambios válidos." }, 404);
   });
 
+  /** POST /clients/:id/archive — archiva (soft-delete). Mismo criterio de 404 que PATCH /clients/:id. */
+  app.post("/clients/:id/archive", async (c) => {
+    const ctx = c.get("ctx");
+    const ok = await deps.clientes.archivarCliente(ctx, c.req.param("id"));
+    return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
+  });
+
+  /** POST /clients/:id/desarchivar — reabre un cliente archivado. */
+  app.post("/clients/:id/desarchivar", async (c) => {
+    const ctx = c.get("ctx");
+    const ok = await deps.clientes.desarchivarCliente(ctx, c.req.param("id"));
+    return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
+  });
+
   app.onError((err, c) => {
     const code = (err as { code?: string }).code;
 
