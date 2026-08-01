@@ -43,6 +43,15 @@
 >
 > ⚠️ **Falta un paso operativo:** re-sembrar producción (`npm run seed:demo -w db`). Hasta entonces
 > `bigballs.es` sigue mostrando el italiano.
+>
+> **Nuevo (2026-08-01): la demo del módulo de Keyword Research, decidida.** Hasta acá "la demo" quería
+> decir la de la *plataforma* (el recorrido de tres golpes). La del **módulo KR** es otra y ahora está
+> escrita: entregable primero y pipeline después, **sin correr research en vivo** (confirma los
+> 16m15s), con el **informe legible llevado al portal** y las **tres mejoras de calidad como
+> pre-demo**. La bloquea una precondición que nadie había visto: **el dataset crudo
+> (`out/keywords.json`) no está** —vive en un directorio ignorado por git—, así que la promesa de
+> "calibrar es offline y gratis" no se puede cobrar hasta recuperarlo o regenerarlo (~$0.31). Piezas
+> KR-1..KR-4 en [§2.b del estado](09-estado-y-roadmap.md#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01).
 
 ---
 

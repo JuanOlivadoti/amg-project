@@ -128,14 +128,25 @@ de la reunión es **un paso operativo**, no código:*
      de muestra. La fila y las keywords de La Birra Bar sí son reales.
 2. **Módulo 3 — respondedor de reseñas de Google (GBP).** Lo único del alcance base (OBS-01) sin
    ni una línea escrita. Es la pieza de producto más grande que falta.
-3. **Calidad del research** (`kr-service`): `is_local` se dispara de más (53/60 keywords salen
-   `LocalBusiness`), `score_confidence` se calcula pero no se usa para priorizar, normalización de
-   volumen por percentiles, hub & spoke, enlazado interno vacío. Ver la tabla de mejoras más abajo.
+3. **🟠 La demo del módulo de Keyword Research** — decidida el 2026-08-01 y con trabajo por delante:
+   recuperar o regenerar el **dataset crudo** (bloquea todo lo demás), llevar el **informe legible al
+   portal**, y las **tres mejoras de calidad** (`is_local` por SERP, `score_confidence` que ordene,
+   volumen por percentiles), que pasaron de "algún día" a **pre-demo**. Guion de dos niveles:
+   entregable primero, pipeline después. Detalle en [§2.b](#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01).
+   *(Hub & spoke y el enlazado interno vacío siguen fuera de la demo: ver la tabla de mejoras.)*
 4. **Desplegar la Fase 2** (`orchestrator` + `renderer`, hoy solo en `localhost`) — servicio Node de
    larga duración, no serverless. Sin esto, `/menu`, `/blog` y todo lo que se acaba de construir
-   siguen sin un dominio real. **Incluye aplicar la migración `0010` a la base de producción**, que
-   hoy está en el repo pero no en Supabase (ver §1) — sin ella el footer sale sin locales y `/menu`
-   da 404 en cuanto el renderizador esté arriba.
+   siguen sin un dominio real. Tres cosas que van **dentro** de este paso y es fácil que se olviden,
+   porque el código ya está y nada avisa de que faltan:
+   - **Aplicar la migración `0010` a la base de producción** (está en el repo, no en Supabase, ver
+     §1): sin ella el footer sale sin locales y `/menu` da 404 en cuanto el renderizador esté arriba.
+   - **Encender `lanzarResearch` y `aprobarRun`** en `portal/src/environments/environment.prod.ts`.
+     Se apagaron *porque no había orquestador detrás* (decisión de Fase 1, con test que lo fija). Si
+     se despliega el orquestador y nadie los toca, **el portal sigue capado**: no se puede lanzar
+     research ni cerrar la compuerta desde producción. Los dos tests de `environment.prod.test.ts`
+     que hoy exigen `false` hay que **invertirlos** en el mismo cambio, no borrarlos.
+   - **Un link del portal a la web del cliente.** Hoy no existe ninguno (§2.b): mientras el
+     renderizador no tenga dominio, el salto "esto es lo que se publica" es cambiar de ventana.
 5. **Cerrar lo que ADR-19 dejó a medias antes de un SLA**: CDN en el borde, invalidación con más de
    una instancia, punto único de disponibilidad (ver §3 más abajo).
 6. **Deuda técnica menor, sin apuro**: esquema Zod duplicado M2/M1, ADR-11 (offboarding) reescrito
@@ -417,6 +428,63 @@ Aparte de las cuatro piezas:
 - ✅ ~~Unificar el alcance (OBS-01)~~ — **hecho** (2026-07-19): manda `contexto-proyecto-frank.md`,
   alcance base = 3 módulos, ADR-04 se mantiene. Era la última observación abierta del proyecto.
 
+### 🟠 2.b La demo del **módulo de Keyword Research** (decidido 2026-08-01)
+
+Hasta acá, "la demo" quería decir *la demo de la plataforma*: el recorrido de tres golpes de §2, que
+vende multi-tenancy, compuerta humana y web viva. **La demo del módulo KR es otra cosa** y no estaba
+escrita en ninguna parte — este bloque la fija.
+
+#### Las cuatro decisiones
+
+| Decisión | Elegido | Qué implica |
+|---|---|---|
+| **Objetivo** | **Entregable primero, pipeline después** | Abre con lo que el restaurante recibe (informe + evidencia + precio) y, si hay interés técnico, se baja al recorrido `prompt → keywords → clustering → páginas`. Hay que preparar **dos guiones** y decidir dónde se corta. |
+| **¿En vivo?** | **No: se muestra el ya corrido** | Confirma lo que midió la acción 06 (16m15s). La **pieza D queda cerrada, no pendiente**: paralelizar SERP y el progreso incremental **salen del alcance de la demo** y quedan como mejora de producto (§4). |
+| **El informe** | **Se ve en el portal** | `out/informe.md` es el mejor entregable del módulo y hoy **solo existe como archivo local** tras correr el CLI. Pieza de trabajo nueva (ver abajo). |
+| **Calidad del research** | **Las tres, antes de la demo** | `is_local` por señales del SERP, `score_confidence` que ordene, y volumen normalizado por percentiles. Dejan de ser "mejoras algún día": son **pre-demo**. |
+
+#### 🔴 La precondición que hay que resolver primero: **falta el dataset crudo**
+
+La tanda 4 dejó escrito que el dataset se persiste en `out/keywords.json` y que por eso *"el tuning es
+offline y gratis"*. **Ese archivo no está en el repo** (`out/` está gitignoreado y no existe en el
+clon actual). Sin él, las tres mejoras de calidad **no tienen contra qué calibrarse**, y la promesa de
+tuning gratis no se puede cobrar. Tres salidas, en orden de preferencia:
+
+1. **Aparece el `out/` de la corrida del 2026-07-30** en la máquina donde se corrió → coste **$0**.
+2. **Regenerar el dataset** con una corrida real contra producción → **~$0.31** y ~16 min. Barato, y
+   de paso vuelve a ejercitar el camino live.
+3. ~~Calibrar contra sandbox~~ — **no sirve**: los datos son ficticios, y `is_local` depende
+   justamente de señales reales del SERP (presencia de *map pack*).
+
+> **Y guardar el dataset donde sobreviva.** Que el tuning sea gratis depende de que el archivo exista;
+> hoy vive en un directorio ignorado por git, que es exactamente donde se pierde. Decidir dónde va
+> (`docs/private/`, un bucket, o commitearlo si no lleva nada sensible) es parte de esta tarea.
+
+#### Las piezas de trabajo
+
+| # | Pieza | Estado | Nota |
+|---|---|---|---|
+| **KR-1** | **El dataset crudo, recuperado o regenerado** | ⚪ Sin empezar | **Bloquea a KR-3.** Ver arriba. |
+| **KR-2** | **El informe legible, en el portal** | ⚪ Sin empezar | Diseño abierto (ver abajo). |
+| **KR-3** | **Las tres mejoras de calidad** | ⚪ Sin empezar | Depende de KR-1. Detalle en [Mejoras de calidad](#mejoras-de-calidad-del-research-priorizadas-con-los-datos-reales). |
+| **KR-4** | **El guion de dos niveles, escrito** | ⚪ Sin empezar | Qué se muestra, en qué orden, y dónde se corta si no hay interés técnico. |
+
+**KR-2 — la decisión técnica que hay que tomar antes de escribir código.** `renderReport()` vive en
+`kr-service`, y `api/package.json` **hoy solo depende de `db`**. Tres caminos:
+
+- **(a) La API importa `kr-service`** y `GET /runs/:id` devuelve el informe ya renderizado. Lo más
+  rápido, pero mete el pipeline de research entero como dependencia de la API — que es la superficie
+  autenticada, y hasta ahora solo depende de la base.
+- **(b) Extraer el contrato + `renderReport` a un paquete compartido.** Más trabajo, pero **cierra de
+  paso la deuda del esquema Zod duplicado M2/M1**, que ya está anotada como deuda técnica. Es la que
+  recomiendo.
+- **(c) El portal renderiza el informe desde el `brief` JSON que ya recibe.** Cero cambios en el
+  backend, pero **duplica la lógica del informe** en un tercer lugar y en otro lenguaje de plantilla:
+  la misma clase de deriva que acaba de costar la unificación del cliente.
+
+Falta decidir además si es **pantalla** o **descarga** (`.md`), y si el informe se genera al vuelo o
+se guarda con el run.
+
 ### 🟡 3. Lo que ADR-19 dejó a medias y hay que cerrar antes de un SLA
 
 - **Una CDN delante del renderizador.** ADR-19 dice "cache en el borde"; lo construido es una cache
@@ -507,13 +575,16 @@ reales, no solo contra tests.
 
 ### Mejoras de calidad del research (priorizadas con los datos reales)
 
-| Mejora | Evidencia de la corrida real |
-|---|---|
-| **`is_local` por señales del SERP** (presencia de *map pack*) en vez de inferirlo por LLM | **53 de 60** keywords salieron `is_local` → 7 de 8 páginas como `LocalBusiness`. Algunas deberían ser `Article`. Es el que más ensucia el JSON-LD. |
-| **Usar `score_confidence` al ordenar páginas** | 5 de 8 páginas no tienen volumen. El 40% del score (intención + relevancia) no depende de datos de mercado, así que una keyword de la que no sabemos nada arranca en ~50 puntos. La confianza lo detecta (0.3) pero **no se usa** para priorizar. |
-| **Normalizar el volumen por percentiles del mercado** en vez del máximo del run; winsorizar outliers | Con un solo pico (1300) el resto se aplasta. |
-| **Estrategia hub & spoke** en el mapeo cluster→página | Hoy todo es `single`. |
-| **Enlazado interno** entre las páginas propuestas | Hoy `enlazado_interno` sale vacío. |
+**Las tres primeras son pre-demo** desde el 2026-08-01 (ver [§2.b](#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01)); las dos últimas quedan fuera. Todas
+dependen de **KR-1**: sin el dataset crudo no hay contra qué calibrarlas.
+
+| Mejora | ¿Pre-demo? | Evidencia de la corrida real |
+|---|---|---|
+| **`is_local` por señales del SERP** (presencia de *map pack*) en vez de inferirlo por LLM | 🟠 **Sí** | **53 de 60** keywords salieron `is_local` → 7 de 8 páginas como `LocalBusiness`. Algunas deberían ser `Article`. Es el que más ensucia el JSON-LD, y en la demo se ve. |
+| **Usar `score_confidence` al ordenar páginas** | 🟠 **Sí** | 5 de 8 páginas no tienen volumen. El 40% del score (intención + relevancia) no depende de datos de mercado, así que una keyword de la que no sabemos nada arranca en ~50 puntos. La confianza lo detecta (0.3) pero **no ordena nada** — y el dashboard **ya la muestra** como columna "Confianza": exhibir una confianza que no hace nada invita a la pregunta *"¿y entonces qué hago con esto?"* justo en la demo. |
+| **Normalizar el volumen por percentiles del mercado** en vez del máximo del run; winsorizar outliers | 🟠 **Sí** | Con un solo pico (1300) el resto se aplasta, y eso cambia **qué páginas parecen valiosas** en el brief que se enseña. |
+| **Estrategia hub & spoke** en el mapeo cluster→página | ⚪ No | Hoy todo es `single`. |
+| **Enlazado interno** entre las páginas propuestas | ⚪ No | Hoy `enlazado_interno` sale vacío. |
 
 ---
 
@@ -523,7 +594,8 @@ reales, no solo contra tests.
 |---|---|---|
 | **El secreto legacy de Supabase sigue vivo, y no se puede revocar sin migrar antes el portal** | Supabase (Project Settings → API) · `portal/src/environments/environment.prod.ts` | Con ese secreto se puede acuñar un token `service_role` que **bypassea RLS por completo** — el radio de daño no depende de que nuestra API ya no lo acepte. Pero **no se puede revocar sin más**: el `anon key` del portal es un JWT legacy firmado con él (`alg: HS256`, verificado), así que revocarlo rompe el login. Hay que migrar el portal a las claves nuevas (*publishable*), desplegar, verificar, y recién ahí revocar. Ver [12-credenciales.md](12-credenciales.md). |
 | **Esquema Zod duplicado** entre M2 y M1 | `kr-service/src/validation/` y `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. Extraer a paquete compartido. |
-| **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos están verificadas** ✅ y ahora **hay datos reales** para calibrar las estimaciones por fase, pero todavía **no se aplicaron**: siguen a ojo. Se calibran con `out/keywords.json`, gratis. |
+| **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos están verificadas** ✅, pero las estimaciones por fase **siguen a ojo**. Se calibran con `out/keywords.json` — **que hoy no está** (ver KR-1 en §2.b): la promesa de "calibrar es gratis" depende de recuperar o regenerar ese dataset. |
+| **🔴 El dataset crudo del research no sobrevive** | `out/keywords.json` (gitignoreado) | La tanda 4 lo persistió para que *"ajustar scoring/clustering sea offline y gratis"*, pero vive en un directorio que git ignora y **no está en el clon actual**. Bloquea las tres mejoras de calidad pre-demo (§2.b) y la calibración del presupuesto. Hay que decidir dónde se guarda para que dure. |
 | **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son 2-3× más baratos. **Pero la corrida real bajó la urgencia**: el LLM es solo el **19%** del costo, así que el ahorro total sería de ~10%. Ver [guía 02](../acciones/02-precios-modelos.md). |
 | **`is_local` se dispara de más** | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo sale `LocalBusiness`. Ensucia el JSON-LD. |
 | **Sin tests de integración** | — | El camino live ya **se ejecutó a mano** contra DataForSEO, OpenAI y Storyblok, pero no está **automatizado**. |
