@@ -12,7 +12,10 @@
 > se aplicaron a este documento; el detalle de qué se verificó, qué se aceptó por juicio y qué se
 > refutó está en §Qué cambió tras la revisión externa.
 >
-> **La migración de este spec es la `0012`.** La `0011` la tomó el CRM de clientes del portal.
+> **La migración de este spec es la `0014`.** El programa del portal reserva `0011` (clientes,
+> aplicada), `0012` (usuarios) y `0013` (ideas); el dashboard no lleva. Este spec toma el primer
+> número libre después de esa reserva. Si al implementar alguna de esas piezas dejó su número sin
+> usar, **el hueco se queda** — renumerar rompe `app.migraciones_aplicadas`.
 
 ---
 
@@ -267,7 +270,7 @@ spec enumeraba tres y se olvidaba de Zod — el mismo tipo de omisión que caus�
    que **descarta claves desconocidas**, y `parseProfile` devuelve `parsed.data`. Sin ampliarlo, las
    fotos desaparecen en el preview del CLI aunque estén en el JSON. El propio código ya lo dice:
    *"tienen que coincidir en las tres capas (Zod en la puerta, Postgres, el validador del renderer)"*.
-2. **La allowlist de Postgres** (`app.nap_publico`, migración **`0012`**). Reconstruye el perfil campo
+2. **La allowlist de Postgres** (`app.nap_publico`, migración **`0014`**). Reconstruye el perfil campo
    por campo, incluso dentro de `locations` y `menu`. Y `app.texto_publico` **solo deja pasar
    strings**: `Foto` es un objeto, así que necesita su propia sub-allowlist (`src`, `alt`), como
    `address` y `brand`.
@@ -295,7 +298,7 @@ en el tipo y no aparece en ningún lado:
 
 ---
 
-## La migración `0012`
+## La migración `0014`
 
 Reemplaza `app.nap_publico` y **re-materializa** la columna generada (`drop column` + `add column …
 generated always as … stored`), porque una columna `stored` no se recalcula porque cambie la función.
@@ -304,7 +307,7 @@ Mismo mecanismo que la `0009` y la `0010`.
 **El `grant` es obligatorio y es el riesgo real de esta migración.** `drop column` **borra el grant
 de columna**. Está documentado en el repo con esas palabras
 ([`0009_marca_publica.sql`](../../../db/migrations/0009_marca_publica.sql): *"El grant se perdió al
-hacer drop column: se vuelve a conceder sobre la columna recreada"*). Si la `0012` lo olvida,
+hacer drop column: se vuelve a conceder sobre la columna recreada"*). Si la `0014` lo olvida,
 `app_render` pierde el `select` sobre `business_profile_publico` y **caen las webs de todos los
 clientes a la vez**. No es un riesgo operativo: es una línea de SQL que falta.
 
@@ -312,7 +315,7 @@ clientes a la vez**. No es un riesgo operativo: es una línea de SQL que falta.
 grant select (business_profile_publico) on clients to app_render;
 ```
 
-Un test lo verifica **después** de aplicar la `0012`, conectando como `app_render`: no basta con que
+Un test lo verifica **después** de aplicar la `0014`, conectando como `app_render`: no basta con que
 la línea esté escrita.
 
 `lock_timeout` explícito al inicio de la migración, que es barato y evita que un lock inesperado
@@ -370,11 +373,11 @@ una pérdida de datos de una regresión de refactor y de un defecto visual.
 
 ### Entrega 1 — Contrato y recorrido de datos
 
-Tipos, Zod, migración `0012`, `perfilValido`, fixtures, seed y servidores de dev/demo.
+Tipos, Zod, migración `0014`, `perfilValido`, fixtures, seed y servidores de dev/demo.
 **Sin tocar el render.**
 
 *Gate:* un test por cada una de las cuatro fronteras, más el del `grant` conectando como
-`app_render`. Verificación por mutación: quitar `portada` de la allowlist de la `0012` debe hacer
+`app_render`. Verificación por mutación: quitar `portada` de la allowlist de la `0014` debe hacer
 caer *exactamente* el test de la frontera 2, no un test de render.
 
 ### Entrega 2 — Ensamblado y piezas existentes, con paridad
@@ -515,7 +518,7 @@ Codex revisó el commit `253ef47` y devolvió ocho findings. Cómo se procesó c
 | 3 | Son cuatro validaciones, no tres | **Verificado**: `z.object` descarta claves desconocidas y `parseProfile` devuelve `parsed.data`. Aplicado: §Las cuatro fronteras + matriz de productores. |
 | 4 | "Sin HTML no viaja CSS" necesita propiedad del CSS | **Verificado** contra el media query oscuro único. Aplicado: §3, reglas 5 y 6. |
 | 5 | Hosts arbitrarios y fuga de tráfico | **Verificado**: el validador acepta cualquier host y el renderizador no emite `Referrer-Policy` ni CSP. Aplicado: §Política de imágenes. |
-| 6 | La `0012` no tiene estrategia operativa | **Parcialmente refutado.** Ventana de despliegue, medición y presupuesto de WAL son desproporcionados para una tabla de decenas de filas. Se aceptó `lock_timeout`, y se **elevó a crítico** un punto que el finding mencionaba de pasada: el `grant` que borra `drop column`. |
+| 6 | La `0014` no tiene estrategia operativa | **Parcialmente refutado.** Ventana de despliegue, medición y presupuesto de WAL son desproporcionados para una tabla de decenas de filas. Se aceptó `lock_timeout`, y se **elevó a crítico** un punto que el finding mencionaba de pasada: el `grant` que borra `drop column`. |
 | 7 | Hacen falta fases con gates | **Aceptado por juicio** (recomendación de proceso, no verificable). Aplicado: §Las tres entregas. |
 | 8 | La espera del portal es más amplia que la dependencia real | **Verificado en los hechos, no aplicado**: contradecía una decisión del usuario, que la confirmó. Anotado en §Punto de unión. |
 
