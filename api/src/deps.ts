@@ -1,4 +1,4 @@
-import { NodePgPool, PgStore, PgClientes } from "db";
+import { NodePgPool, PgStore, PgClientes, PgMembresias } from "db";
 import { Inngest } from "inngest";
 import {
   verificadorDeEmisor,
@@ -107,6 +107,8 @@ export async function crearDeps(
   const store = new PgStore(new NodePgPool(pool), "app_user");
   // Mismo pool, mismo login/rol: el CRM de clientes no es un dominio distinto de seguridad.
   const clientes = new PgClientes(new NodePgPool(pool), "app_user");
+  // Mismo pool, mismo login/rol: los miembros tampoco lo son (pieza 2 — Usuarios).
+  const membresias = new PgMembresias(new NodePgPool(pool), "app_user");
 
   // Inngest como emisor. La API solo ENVÍA (`research/solicitado`, `research/aprobado`); las funciones
   // suscritas viven en el orquestador. `send({name, data})` ya cumple la interfaz `EmisorEventos`.
@@ -124,7 +126,14 @@ export async function crearDeps(
   });
 
   return {
-    deps: { store, clientes, emisor, verificar, ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}) },
+    deps: {
+      store,
+      clientes,
+      membresias,
+      emisor,
+      verificar,
+      ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}),
+    },
     cerrar: () => pool.end(),
   };
 }

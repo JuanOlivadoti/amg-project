@@ -140,6 +140,45 @@
 > rutas en `cartera-portal.test.ts` (`import()` con ruta absoluta sin `file://`), ajeno a esta pieza y
 > presente igual en `main`.
 
+> **Nuevo (2026-08-02): pieza 2 del portal de la agencia — usuarios, Etapas 1 y 2, en
+> `feature/paginas-usuarios`, sin mergear a `main`.** Segunda pieza del
+> [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md):
+> quién tiene acceso al tenant, con qué rol, y cambiarlo — sin crear usuarios nuevos (eso lo sigue
+> haciendo Supabase Auth, la API nunca recibe esa credencial).
+>
+> **Etapa 1** (ya commiteada, `9614489`) agrega la vista `membresias_perfil` (0012) — `memberships`
+> cruzada con `auth.users` para traer el email, ya filtrada por tenant y por rol (staff ve el tenant
+> entero, un rol `cliente` ve solo su propia fila) — y `PgMembresias.listarMiembros`.
+>
+> **Etapa 2** (esta entrada) agrega `GET /members` y `PATCH /members/:userId` y extiende la MISMA
+> migración (`0012`, todavía sin desplegar) en vez de abrir una `0013` — reservada para la pieza 3
+> (Ideas) — para no colisionar la numeración entre piezas del mismo programa. Tres piezas nuevas en la
+> base:
+>
+> - **`memberships` deja de ser solo lectura para `app_user`**, por primera vez desde `0001_init.sql`
+>   — pero solo para `UPDATE`, y solo lo que la política `membership_update` deja pasar.
+> - **La garantía "siempre queda un `maestro`" vive en un trigger**, no en un `check`: un `check` mira
+>   una fila, y esto depende del conjunto. Verificado por mutación (sacar el trigger hace caer
+>   exactamente el test del último maestro; puesto de nuevo, pasa).
+> - **`using` vs `with check` decide 403 contra 404**, y con una vuelta de tuerca que el brief no
+>   anticipaba: `membership_select` (0003, cierra la FUGA 1) ya restringe la lectura de `memberships`
+>   a "propia fila" — sin ampliarla, ni el propio `maestro` podría ver la fila de otro para
+>   cambiarla. La ampliación (`membership_select_staff`, staff ve todo el tenant) no puede llamar a
+>   `app.current_role()`: esa función lee `memberships`, y una política de `memberships` que la
+>   llamara se re-evalúa a sí misma sin parar — **medido**: cuelga el proceso de Postgres, no lanza un
+>   error. La resuelve `app.rol_propio_sin_recursion()`, la misma pregunta con una bandera de sesión
+>   que corta la segunda entrada. Con esa visibilidad ya puesta, `membership_update.using` solo exige
+>   tenant (un `equipo` SÍ ve la fila que intenta tocar) y `with check` exige `maestro` **y** que no
+>   sea su propia fila (auto-degradación bloqueada en la base, no solo en la API) — así un `equipo`
+>   que intenta repartir roles cae con 403 real de RLS, no un 404 silencioso, y un `cliente` (que ni
+>   siquiera es staff) sigue dando 404, porque no llega a "ver" la fila ajena por ningún lado.
+>
+> **Cifras de esta etapa:** `db` pasó de 155 a **167 tests** (164 pasan; los 3 que fallan son el
+> mismo bug preexistente de Windows de siempre, sin tocar); `api` subió a **95 tests**, todos verdes.
+> `npm run typecheck` limpio en los 6 paquetes + `scripts/`. Sin ADR nuevo: el diseño sigue
+> exactamente ADR-15 (el rol se deriva, nunca se declara) y ADR-17 (un solo login `app_user`, sin
+> asumir otro rol) — lo nuevo es una política RLS más, no una excepción a ninguna de las dos.
+
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
 ```

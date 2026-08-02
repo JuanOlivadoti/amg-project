@@ -39,6 +39,21 @@ export interface Miembro {
 /** Las columnas de `Miembro`. Una sola definición: el select no puede quedar desalineado. */
 const MIEMBRO_COLS = "id, tenant_id, user_id, rol, client_id, created_at, email, raw_app_meta_data";
 
+/**
+ * Lo que hace falta para cambiar el rol de un miembro (Etapa 2 de la pieza).
+ *
+ * A propósito NO valida `rol` contra una allowlist -- esa allowlist (`maestro | equipo | cliente`,
+ * rechazando `servicio`) vive en el borde HTTP (`api/src/app.ts`, mismo criterio que
+ * `filtrarCamposCliente`). Acá abajo, el `::user_role` del `update` es la última red: un valor que no
+ * sea un `user_role` válido revienta con 22P02, y `servicio` puntual choca con la constraint
+ * `membresia_no_es_servicio` (0003) -- 23514. Las dos, el `onError` de la API ya las mapea a 400.
+ */
+export interface CambioRol {
+  rol: string;
+  /** Solo tiene efecto si `rol === 'cliente'` -- ver el comentario de `cambiarRol`. */
+  clientId?: string | null;
+}
+
 export class PgMembresias {
   constructor(
     private readonly pool: DbPool,
@@ -73,6 +88,35 @@ export class PgMembresias {
         `select ${MIEMBRO_COLS} from membresias_perfil order by created_at asc`,
       );
       return rows;
+    });
+  }
+
+  /**
+   * Cambia el rol de un miembro. Devuelve `false` si el `update` no tocó ninguna fila -- nunca
+   * lanza un error genérico (mismo patrón que `actualizarCliente`/`approvePage`). Bajo RLS, un
+   * `userId` de OTRO tenant no matchea ninguna fila (`membership_update.using` lo filtra): 0 filas
+   * es la respuesta correcta, no una excepción.
+   *
+   * Quién puede llegar a que esto devuelva `true` lo decide LA MIGRACIÓN (0012, política
+   * `membership_update`), no esta clase: `using` deja "ver" la fila a cualquiera del mismo tenant,
+   * pero `with check` exige `app.rol_propio_sin_recursion() = 'maestro'` -- un `equipo` que llame
+   * esto para otro usuario dispara un 42501 real (Postgres lo lanza, no lo silencia), que el
+   * `onError` de la API mapea a 403. Ver el comentario de esa política para el porqué exacto de
+   * `using` vs `with check`.
+   *
+   * `client_id` se fuerza a `null` en TypeScript cuando `datos.rol !== 'cliente'` -- si no, cambiar
+   * de `cliente` a `equipo` sin tocar `client_id` dejaría la fila violando
+   * `cliente_exige_client_id` (0001: `rol <> 'cliente' and client_id is not null`). Es la misma
+   * columna, un único `update`: no hay una segunda escritura que alguien pueda olvidar.
+   */
+  async cambiarRol(ctx: TenantContext, userId: string, datos: CambioRol): Promise<boolean> {
+    const clientId = datos.rol === "cliente" ? (datos.clientId ?? null) : null;
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update memberships set rol = $1::user_role, client_id = $2 where user_id = $3 returning id`,
+        [datos.rol, clientId, userId],
+      );
+      return rows.length > 0;
     });
   }
 }

@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes } from "db";
+import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias } from "db";
 import type { TenantContext } from "db";
 import { createApp } from "./app.js";
 import type { EmisorEventos } from "./solicitar.js";
@@ -24,6 +24,7 @@ import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
 let pg: PGlite;
 let store: PgStore;
 let clientes: PgClientes;
+let membresias: PgMembresias;
 let eventos: Array<{ name: string; data: Record<string, unknown> }>;
 let app: ReturnType<typeof createApp>;
 
@@ -34,6 +35,7 @@ let clientA1: string;
 let equipoA: string; // rol equipo en A: puede escribir
 let duenoA1: string; // rol cliente en A, atado a clientA1: SOLO lectura
 let equipoB: string; // rol equipo en B
+let maestroA: string; // rol maestro en A: el único que puede cambiar roles (pieza 2 — Usuarios)
 let intruso: string; // uuid sin ninguna membresía
 let runA1: string;
 let pageA1: string;
@@ -53,6 +55,7 @@ beforeEach(async () => {
   const pool = new PglitePool(pg);
   store = new PgStore(pool); // amg_api → app_user
   clientes = new PgClientes(pool); // mismo login/rol
+  membresias = new PgMembresias(pool); // mismo login/rol
   eventos = [];
   const emisor: EmisorEventos = {
     send: async (e) => {
@@ -60,7 +63,7 @@ beforeEach(async () => {
       return {};
     },
   };
-  app = createApp({ store, clientes, emisor, verificar });
+  app = createApp({ store, clientes, membresias, emisor, verificar });
 
   // --- seed (superusuario) ---
   [tenantA, tenantB] = (
@@ -87,8 +90,21 @@ beforeEach(async () => {
 
   equipoA = await mkMembresia(tenantA, "equipo", null);
   duenoA1 = await mkMembresia(tenantA, "cliente", clientA1);
+  maestroA = await mkMembresia(tenantA, "maestro", null);
   equipoB = await mkMembresia(tenantB, "equipo", null);
   intruso = (await sql<{ id: string }>("select gen_random_uuid() as id"))[0]!.id;
+
+  // `membresias_perfil` (0012) cruza `memberships` con `auth.users` por INNER JOIN -- sin una fila
+  // acá, GET /members los dejaría afuera aunque la membresía exista. `auth.users` no es nuestra
+  // tabla (stand-in de `migrate.ts`), así que se completa a mano, mismo criterio que
+  // `membresias.test.ts` (Etapa 1).
+  await sql(
+    `insert into auth.users (id, email, raw_app_meta_data) values
+       ($1, 'equipoA@agencia-a.test', '{}'::jsonb),
+       ($2, 'dueno.a1@bellanapoli.test', '{}'::jsonb),
+       ($3, 'maestroA@agencia-a.test', '{}'::jsonb)`,
+    [equipoA, duenoA1, maestroA],
+  );
 
   runA1 = (
     await sql<{ id: string }>(
@@ -559,12 +575,148 @@ test("🔴 POST /clients/:id/archive de OTRO tenant → 404 (no revela que exist
   assert.equal(filas[0]!.archived_at, null, "el tenant B no pudo archivar el cliente de A");
 });
 
+// ---------------------------------------------------------------- miembros (pieza 2 — Usuarios, Etapa 2)
+
+test("GET /members sin token → 401", async () => {
+  const res = await req("GET", "/members", { tenant: tenantA });
+  assert.equal(res.status, 401);
+});
+
+test("GET /members: equipoA (staff) ve TODAS las membresías de su tenant", async () => {
+  const res = await req("GET", "/members", { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { miembros: Array<{ user_id: string }> };
+  const userIds = body.miembros.map((m) => m.user_id);
+  assert.ok(userIds.includes(equipoA));
+  assert.ok(userIds.includes(duenoA1));
+  assert.ok(userIds.includes(maestroA));
+  assert.ok(!userIds.includes(equipoB), "no ve al equipo de OTRO tenant");
+});
+
+test("GET /members: duenoA1 (rol cliente) ve SOLO su propia fila", async () => {
+  const res = await req("GET", "/members", { user: duenoA1, tenant: tenantA });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { miembros: Array<{ user_id: string }> };
+  assert.equal(body.miembros.length, 1);
+  assert.equal(body.miembros[0]!.user_id, duenoA1);
+});
+
+test("PATCH /members/:userId: el maestro cambia el rol de equipoA a cliente, con un client_id del mismo tenant", async () => {
+  const res = await req("PATCH", `/members/${equipoA}`, {
+    user: maestroA,
+    tenant: tenantA,
+    body: { rol: "cliente", client_id: clientA1 },
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
+
+  const filas = await sql<{ rol: string; client_id: string }>("select rol, client_id from memberships where user_id = $1", [
+    equipoA,
+  ]);
+  assert.equal(filas[0]!.rol, "cliente");
+  assert.equal(filas[0]!.client_id, clientA1);
+});
+
+test("🔴 PATCH /members/:userId: rol 'servicio' → 400, sin tocar la base", async () => {
+  const res = await req("PATCH", `/members/${equipoA}`, {
+    user: maestroA,
+    tenant: tenantA,
+    body: { rol: "servicio" },
+  });
+  assert.equal(res.status, 400);
+  const filas = await sql<{ rol: string }>("select rol from memberships where user_id = $1", [equipoA]);
+  assert.equal(filas[0]!.rol, "equipo", "servicio no tuvo ningún efecto");
+});
+
+test("🔴 PATCH /members/:userId: rol inválido/desconocido → 400", async () => {
+  const res = await req("PATCH", `/members/${equipoA}`, {
+    user: maestroA,
+    tenant: tenantA,
+    body: { rol: "superadmin" },
+  });
+  assert.equal(res.status, 400);
+});
+
+test("🔴 PATCH /members/:userId: auto-degradación (el maestro cambiando SU PROPIO rol) → 403", async () => {
+  const res = await req("PATCH", `/members/${maestroA}`, {
+    user: maestroA,
+    tenant: tenantA,
+    body: { rol: "equipo" },
+  });
+  assert.equal(res.status, 403);
+  const filas = await sql<{ rol: string }>("select rol from memberships where user_id = $1", [maestroA]);
+  assert.equal(filas[0]!.rol, "maestro", "no se pudo auto-degradar");
+});
+
+test("🔴 PATCH /members/:userId: un 'equipo' (no maestro) intentando cambiar el rol de otro → 403, sin efecto", async () => {
+  const res = await req("PATCH", `/members/${duenoA1}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { rol: "equipo" },
+  });
+  assert.equal(res.status, 403);
+  const filas = await sql<{ rol: string }>("select rol from memberships where user_id = $1", [duenoA1]);
+  assert.equal(filas[0]!.rol, "cliente", "equipoA no pudo repartir roles");
+});
+
+test("🔴 PATCH /members/:userId: un rol 'cliente' intentando cambiar un rol → 404 (ni siquiera VE la fila ajena)", async () => {
+  // Distinto del 403 de "equipo" de arriba, y a propósito: `membership_select_staff` (0012) le da a
+  // maestro/equipo/servicio visibilidad de TODO el tenant sobre `memberships` (por eso un equipo
+  // "ve" la fila y el rechazo es un 403 real de RLS) -- un `cliente` NO está en esa lista, así que
+  // ni siquiera pasa el `using` combinado: la fila de otro se filtra en silencio, 0 filas, 404. Es
+  // el mismo mecanismo, ya probado en este archivo, de "un CLIENTE no puede aprobar una página".
+  const res = await req("PATCH", `/members/${equipoA}`, {
+    user: duenoA1,
+    tenant: tenantA,
+    body: { rol: "maestro" },
+  });
+  assert.equal(res.status, 404);
+  const filas = await sql<{ rol: string }>("select rol from memberships where user_id = $1", [equipoA]);
+  assert.equal(filas[0]!.rol, "equipo", "duenoA1 no pudo tocar la membresía de equipoA");
+});
+
+test("🔴 PATCH /members/:userId: client_id de OTRO tenant → 400 (FK compuesta), sin efecto", async () => {
+  const [clientB1] = await sql<{ id: string }>("insert into clients (tenant_id, nombre) values ($1,'Sushi Zen') returning id", [
+    tenantB,
+  ]);
+  const res = await req("PATCH", `/members/${equipoA}`, {
+    user: maestroA,
+    tenant: tenantA,
+    body: { rol: "cliente", client_id: clientB1!.id },
+  });
+  assert.equal(res.status, 400);
+  const filas = await sql<{ rol: string }>("select rol from memberships where user_id = $1", [equipoA]);
+  assert.equal(filas[0]!.rol, "equipo", "el intento con un client_id ajeno no tuvo ningún efecto");
+});
+
+test("🔴 PATCH /members/:userId: token de OTRO tenant no ve ni modifica (404, silencioso)", async () => {
+  // equipoB (tenantB) intenta cambiar el rol de equipoA (tenantA) — membership_update.using filtra
+  // por tenant ANTES de mirar el rol: 0 filas, sin excepción, la API lo traduce como 404.
+  const res = await req("PATCH", `/members/${equipoA}`, {
+    user: equipoB,
+    tenant: tenantB,
+    body: { rol: "maestro" },
+  });
+  assert.equal(res.status, 404);
+  const filas = await sql<{ rol: string }>("select rol from memberships where user_id = $1", [equipoA]);
+  assert.equal(filas[0]!.rol, "equipo", "el tenant B no pudo tocar la membresía de A");
+});
+
+test("PATCH /members/:userId de un userId inexistente → 404", async () => {
+  const res = await req("PATCH", "/members/00000000-0000-4000-8000-000000000000", {
+    user: maestroA,
+    tenant: tenantA,
+    body: { rol: "equipo" },
+  });
+  assert.equal(res.status, 404);
+});
+
 test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", async () => {
   // Un 401 acá haría que el portal dé la sesión por muerta y queme el refresh token por una caída
   // de Supabase. Sigue sin dejar pasar a nadie.
   const caido: VerificadorToken = async () => NO_DISPONIBLE;
   const emisorInerte: EmisorEventos = { send: async () => ({}) };
-  const appCaida = createApp({ store, clientes, emisor: emisorInerte, verificar: caido });
+  const appCaida = createApp({ store, clientes, membresias, emisor: emisorInerte, verificar: caido });
   const res = await appCaida.request("/runs", {
     headers: { authorization: "Bearer lo-que-sea", "x-amg-tenant": tenantA },
   });
