@@ -24,9 +24,9 @@
 > 2. **Cambiar el rol desde `app_user` contradecía la `0001`**, que dice que las membresías no se
 >    escriben desde la app y que eso va "por el backend con service-role". Ese backend nunca existió
 >    —la API no recibe credenciales de Supabase, a propósito—, así que hoy no hay ningún camino.
->    Resuelto por **[ADR-24](../../decisiones-arquitectura.md)** 🟡 *propuesta*: se escriben desde
->    `app_user` bajo RLS, con grant por columna y policy de `maestro`. **Esta pieza no se ejecuta
->    hasta que ADR-24 esté aceptada.**
+>    Resuelto por **[ADR-24](../../decisiones-arquitectura.md)**, **aceptada el 2026-08-02**: se
+>    escriben desde `app_user` bajo RLS, con grant por columna y policy de `maestro`. La Etapa 2
+>    implementa las cinco condiciones que ese ADR pone; ninguna es opcional.
 > 3. **La UI toma el rol de `app_metadata`, no de `memberships`.** `Sesion.rol`
 >    (`portal/src/app/core/models.ts`) lo lee del token. Como la API no puede escribir ese metadata,
 >    cambiar una membresía dejaría la UI mostrando el rol viejo para siempre. No es escalada (RLS
@@ -165,9 +165,10 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 
 ## Etapa 2 — Cambiar el rol (`db` + `api`)
 
-> **Precondición: [ADR-24](../../decisiones-arquitectura.md) aceptada.** Hoy `app_user` tiene solo
-> `grant select on memberships` (`0001_init.sql`), y esa migración declara por escrito que los roles
-> se cambian "por el backend con service-role". Esta etapa **cambia esa decisión**; no la ignora.
+> **Autorizada por [ADR-24](../../decisiones-arquitectura.md), aceptada el 2026-08-02.** Hoy
+> `app_user` tiene solo `grant select on memberships` (`0001_init.sql`), y esa migración declara por
+> escrito que los roles se cambian "por el backend con service-role". Esta etapa **cambia esa
+> decisión**; no la ignora — y por eso una de sus tareas es dejar el comentario corregido.
 
 - [ ] **Rojo primero**: `cambiarRol` de un usuario de otro tenant no afecta filas; poner `cliente` sin
       `client_id` falla por la constraint; poner `cliente` con un `client_id` de **otro** tenant falla;

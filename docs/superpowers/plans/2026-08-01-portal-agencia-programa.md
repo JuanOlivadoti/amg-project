@@ -87,7 +87,7 @@ fijada acá, de una vez:
 | Pieza / trabajo | Migración | Propietario | Estado |
 |---|---|---|---|
 | 1 Clientes | `0011_clientes_crm.sql` | pieza 1 | ✅ **aplicada** (mergeada 2026-08-01) |
-| 2 Usuarios | `0012_membresias_perfil.sql` | pieza 2 | 🔵 reservada — **bloqueada por ADR-24** |
+| 2 Usuarios | `0012_membresias_perfil.sql` | pieza 2 | 🔵 reservada — autorizada por **ADR-24** (aceptada 2026-08-02) |
 | 3 Ideas | `0013_ideas.sql` | pieza 3 | 🔵 reservada |
 | 4 Dashboard | ninguna (solo lee) | — | — |
 | [Plantillas de landing](../specs/2026-08-01-plantillas-landings-design.md) | `0014_fotos_publicas.sql` | spec de landings | 🔵 reservada |

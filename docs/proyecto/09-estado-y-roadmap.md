@@ -185,7 +185,7 @@ de La Birra Bar leyendo de Supabase con `app_render`. **Falta el orquestador.**
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
 | **Tests** | **766** en `main` — 584 en el monorepo + 182 en el portal (146 `node:test` + 36 Karma). Los de seguridad, contra Postgres real. Verificado el 2026-08-02 sobre `main`. |
 | **Migraciones** | 11 en `main` (`0001`..`0011`) · **las 10 primeras aplicadas en producción** (la `0010`, el 2026-08-01); la `0011` (CRM de clientes) mergeada, pendiente de aplicar en producción |
-| **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
+| **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
 

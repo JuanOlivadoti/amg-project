@@ -30,7 +30,7 @@
 | ADR-21 | **El stack del portal, cerrado**: solo habla con nuestra API · polling · Tailwind puro · standalone+signals | Aceptada (completa ADR-16) |
 | ADR-22 | **La API en Hono**: comandos compuestos (fila bajo RLS → después el evento), auth = JWT + RLS | Aceptada (implementa 5.1) |
 | ADR-23 | La API verifica identidad contra el **JWKS del emisor**, no contra un secreto compartido | Aceptada (endurece ADR-22) |
-| ADR-24 | Las **membresías se escriben desde `app_user` bajo RLS**, no con service-role (enmienda la `0001`) | 🟡 **Propuesta** (2026-08-02) — bloquea la pieza 2 del portal |
+| ADR-24 | Las **membresías se escriben desde `app_user` bajo RLS**, no con service-role (enmienda la `0001`) | **Aceptada** (2026-08-02) · desbloquea la pieza 2 del portal |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | ✅ **CERRADA** (2026-07-19) — manda `contexto-proyecto-frank.md`; el PRD queda como visión |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 | OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
@@ -1232,7 +1232,10 @@ la cláusula de offboarding se firma sin que nadie haya dicho qué compra el cli
 
 ---
 
-## ADR-24 — Las membresías se escriben desde `app_user` bajo RLS 🟡 PROPUESTA
+## ADR-24 — Las membresías se escriben desde `app_user` bajo RLS
+
+> **Aceptada el 2026-08-02.** Desbloquea la pieza 2 del portal de la agencia, que no podía escribirse
+> sin resolver esto.
 
 **Contexto.** La `0001_init.sql` decidió, con estas palabras, que las membresías **no se escriben
 desde la aplicación**:
