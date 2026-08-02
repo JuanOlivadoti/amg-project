@@ -98,8 +98,8 @@
 > de ~12 min que la pieza D necesitaba para mostrarse en vivo en la demo— así que **la pieza D queda
 > desaconsejada tal como se la había imaginado** (ver §2 más abajo).
 >
-> **Nuevo (2026-08-02): pieza 1 del portal de la agencia — gestión de clientes (CRM), en
-> `feature/paginas-clientes`, sin mergear a `main`.** Primera de cuatro piezas del
+> **Nuevo (2026-08-02): pieza 1 del portal de la agencia — gestión de clientes (CRM), **mergeada a
+> `main`** (la `0011` incluida).** Primera de cuatro piezas del
 > [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md):
 > lleva las cuatro pantallas de clientes del Angular viejo (`dashboard-project`, Firestore + NgRx) al
 > portal de AMG OS, con Postgres bajo RLS y API propia. Ejecutada con
@@ -183,8 +183,8 @@ de La Birra Bar leyendo de Supabase con `app_render`. **Falta el orquestador.**
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **766** — 584 en el monorepo + 182 en el portal (146 `node:test` + 36 Karma). Los de seguridad, contra Postgres real. (En `feature/paginas-clientes`, sin mergear — sobre `main` siguen siendo 539 + 130) |
-| **Migraciones** | 11 en `feature/paginas-clientes` (`0001`..`0011`, la `0011` sin mergear) · **las 10 de `main` (`0001`..`0010`) aplicadas en producción** (la `0010`, el 2026-08-01) |
+| **Tests** | **766** en `main` — 584 en el monorepo + 182 en el portal (146 `node:test` + 36 Karma). Los de seguridad, contra Postgres real. Verificado el 2026-08-02 sobre `main`. |
+| **Migraciones** | 11 en `main` (`0001`..`0011`) · **las 10 primeras aplicadas en producción** (la `0010`, el 2026-08-01); la `0011` (CRM de clientes) mergeada, pendiente de aplicar en producción |
 | **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
@@ -211,7 +211,7 @@ de La Birra Bar leyendo de Supabase con `app_render`. **Falta el orquestador.**
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
 | ✅ | **Doce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
-| 🔵 | **Gestión de clientes (CRM) en el portal — pieza 1 de 4, en `feature/paginas-clientes`, sin mergear.** Listado, alta, perfil editable y vista con datos de ejemplo, sobre Postgres/RLS. La revisión final de la rama encontró y cerró una fuga real (el rol `cliente` podía leer notas internas de la agencia sobre sí mismo) antes de cerrar la pieza. Detalle arriba y en [11-plan-fase-2.md](11-plan-fase-2.md). |
+| ✅ | **Gestión de clientes (CRM) en el portal — pieza 1 de 4, mergeada a `main` el 2026-08-01.** Listado, alta, perfil editable y vista con datos de ejemplo, sobre Postgres/RLS. La revisión final de la rama encontró y cerró una fuga real (el rol `cliente` podía leer notas internas de la agencia sobre sí mismo) antes de cerrar la pieza. Detalle arriba y en [11-plan-fase-2.md](11-plan-fase-2.md). |
 
 ## Próximos pasos
 

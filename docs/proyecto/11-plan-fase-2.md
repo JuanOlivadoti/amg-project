@@ -3,9 +3,9 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-02** · **539 tests en verde** (monorepo) + **130** en el portal
-> (113 `node:test` + 17 Karma) en `main`. En `feature/paginas-clientes` (pieza 1 del portal de la
-> agencia, sin mergear): **766** — 584 monorepo + 182 portal (146 `node:test` + 36 Karma).
+> Última actualización: **2026-08-02** · **766 tests en verde en `main`** — **584** en el monorepo +
+> **182** en el portal (146 `node:test` + 36 Karma). Subió de 669 (539 + 130) al mergear la pieza 1
+> del portal de la agencia. Verificado el 2026-08-02 corriendo los tres suites sobre `main`.
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
 > JWKS y el logout que revoca están en `main`, desplegados, y **el login se verificó en el navegador**
@@ -86,7 +86,7 @@
 > KR-1..KR-4 en [§2.b del estado](09-estado-y-roadmap.md#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01).
 >
 > **Nuevo (2026-08-02): pieza 1 del portal de la agencia — gestión de clientes, en
-> `feature/paginas-clientes`, sin mergear a `main`.** Es la primera de las cuatro piezas del
+> `main` (mergeada el 2026-08-01).** Es la primera de las cuatro piezas del
 > [programa del portal](../superpowers/plans/2026-08-01-portal-agencia-programa.md) (clientes →
 > usuarios → ideas → dashboard). Migración `0011`, la clase `PgClientes`, seis endpoints HTTP, la
 > capa de datos del portal y las cuatro pantallas (listado, alta, perfil, vista con datos de ejemplo).
@@ -99,7 +99,7 @@
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
 > [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **766 tests** en la rama (584 monorepo + 182
-> portal), **11 migraciones** (`0011` sin mergear).
+> portal), **11 migraciones** (la `0011` mergeada; pendiente de aplicar en producción).
 
 ---
 
@@ -501,7 +501,7 @@ Todas con su ADR. Las que más condicionan lo que viene:
 
 | Qué | Dónde | Nota |
 |---|---|---|
-| **El portal de la agencia** — 4 piezas desde `dashboard-project` | [**programa**](../superpowers/plans/2026-08-01-portal-agencia-programa.md) · piezas: [clientes](../superpowers/plans/2026-08-01-paginas-clientes-portal.md) · [usuarios](../superpowers/plans/2026-08-01-paginas-usuarios-portal.md) · [ideas](../superpowers/plans/2026-08-01-modulo-ideas-portal.md) · [dashboard](../superpowers/plans/2026-08-01-dashboard-home-portal.md) | 🔵 **Planificado, sin empezar.** Se ejecuta **en otra máquina/sesión y una rama por pieza**, en paralelo a la demo: `main` sigue siendo del roadmap. Orden **clientes → usuarios → ideas → dashboard** (el dashboard del origen *es* stats de ideas + tabla de ideas, así que va último). Datos en Postgres bajo RLS con API propia; Firestore se abandona; estado con signals, sin NgRx. Migraciones reservadas `0011`/`0012`/`0013` para que las ramas no choquen. Decisiones cerradas al planificar: **usuarios gestiona membresías, no altas** (la API no recibe ninguna credencial de Supabase, verificado en `scripts/env-sync.mts:26`), **los permisos son derivados del rol y read-only** (preserva ADR-15), e **ideas construye modelo+pantallas+seed, no el ingreso por n8n**. La allowlist del renderizador **no crece**: lo que traen estas piezas es interno (teléfonos, notas, contratos, transcripciones). |
+| **El portal de la agencia** — 4 piezas desde `dashboard-project` | [**programa**](../superpowers/plans/2026-08-01-portal-agencia-programa.md) · piezas: [clientes](../superpowers/plans/2026-08-01-paginas-clientes-portal.md) · [usuarios](../superpowers/plans/2026-08-01-paginas-usuarios-portal.md) · [ideas](../superpowers/plans/2026-08-01-modulo-ideas-portal.md) · [dashboard](../superpowers/plans/2026-08-01-dashboard-home-portal.md) | 🟡 **En curso: 1 de 4.** La pieza **clientes está mergeada a `main`** (2026-08-01, migración `0011`); usuarios, ideas y dashboard siguen sin empezar. Se ejecutan **en otra máquina/sesión y una rama por pieza**. Orden **clientes → usuarios → ideas → dashboard** (el dashboard del origen *es* stats de ideas + tabla de ideas, así que va último). Datos en Postgres bajo RLS con API propia; Firestore se abandona; estado con signals, sin NgRx. Migraciones reservadas `0011`/`0012`/`0013` para que las ramas no choquen. Decisiones cerradas al planificar: **usuarios gestiona membresías, no altas** (la API no recibe ninguna credencial de Supabase, verificado en `scripts/env-sync.mts:26`), **los permisos son derivados del rol y read-only** (preserva ADR-15), e **ideas construye modelo+pantallas+seed, no el ingreso por n8n**. La allowlist del renderizador **no crece**: lo que traen estas piezas es interno (teléfonos, notas, contratos, transcripciones). |
 | ~~Acción 06 — corrida final~~ | [acciones/06](../acciones/06-corrida-final-demo.md) | ✅ **Hecha (2026-07-30)**, $0.3097. `kr.v0.5` publicado para La Birra Bar, verificado en el navegador. De paso midió la duración real del research (16m15s, ver fila siguiente) y cerró el gap de `DATABASE_URL_CACHE` (ADR-14) que la guía no pedía. |
 | ~~Migrar SERP + Search Volume a Standard~~ | `kr-service/src/dataforseo/` | ✅ **Hecho** (tandas 11-12): `task_post`/`task_get` con doble capa de recuperación. La 6ª review encontró 4 bugs en la primera versión; corregidos y mutation-tested. |
 | ~~Pieza A — verificación JWT ES256~~ | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | ✅ **Cerrada (2026-07-30).** Las 4 tareas, mergeadas y desplegadas, y el login verificado en el navegador. Ya no bloquea nada. |
