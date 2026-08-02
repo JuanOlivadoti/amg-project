@@ -269,7 +269,7 @@ máquina no es la que trabaja la demo, y `main` avanza en paralelo.
 
 ## Leé esto antes de escribir una línea de código
 
-1. `CLAUDE.md` del repo — el ritual de cada iteración, la disciplina de tests y los invariantes de
+1. `AGENTS.md` del repo — el ritual de cada iteración, la disciplina de tests y los invariantes de
    arquitectura. No es opcional.
 2. `docs/superpowers/plans/2026-08-01-portal-agencia-programa.md` — el programa: las cuatro piezas,
    el orden, qué NO se toca, la reserva de números de migración, qué queda fuera de alcance.

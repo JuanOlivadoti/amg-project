@@ -4,7 +4,7 @@ import { leerConfig } from "./deps.js";
 
 /**
  * `leerConfig` es el borde donde la API decide su postura de seguridad de despliegue. Estaba SIN
- * test (el "default de producción sin dueño" que CLAUDE.md marca): en particular, si faltaba
+ * test (el "default de producción sin dueño" que AGENTS.md marca): en particular, si faltaba
  * `CORS_ORIGINS`, la API arrancaba con `origin: *` sin que nadie lo decidiera. La API está expuesta a
  * internet, así que en producción **no queremos `*`**: mejor no arrancar que arrancar abierto.
  *

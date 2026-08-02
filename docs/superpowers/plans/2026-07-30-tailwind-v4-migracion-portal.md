@@ -13,7 +13,7 @@
 - El portal **no** está en los `workspaces` del `package.json` raíz — todos los comandos de este plan usan `npm --prefix portal ...`, nunca `npm test`/`npm run typecheck` de la raíz.
 - Ningún cambio de este plan puede alterar cómo se ve `login`/`runs`/`brief` — es una migración de tooling, no de diseño. Se verifica visualmente al final.
 - `contraste.test.ts` es la garantía real (no un comentario) de que ninguna pantalla incrusta un color fuera del sistema de tokens — no se toca su intención, solo su mecanismo de lectura de Tailwind.
-- Mensajes de commit en español, terminan con `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` (ver `CLAUDE.md`).
+- Mensajes de commit en español, terminan con `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` (ver `AGENTS.md`).
 
 ---
 

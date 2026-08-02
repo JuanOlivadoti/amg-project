@@ -1592,7 +1592,7 @@ Run: `cd portal && npm test 2>&1 | grep -E "^. (tests|pass|fail) " | tail -20`
 
 Buscá las cifras viejas y actualizalas:
 
-Run: `cd "$(git rev-parse --show-toplevel)" && grep -rnE "[0-9]+ tests?\b" --include=*.md docs/ CLAUDE.md README.md`
+Run: `cd "$(git rev-parse --show-toplevel)" && grep -rnE "[0-9]+ tests?\b" --include=*.md docs/ AGENTS.md README.md`
 
 Expected: los documentos con cifras viejas quedan sincronizados con la salida real.
 

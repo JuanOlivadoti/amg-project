@@ -1491,7 +1491,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ## Lo que ningún test de acá ve: manejar la app en el navegador
 
-**No es opcional** (`CLAUDE.md`), y en la pieza A se cobró dos veces. Con MCP chrome-devtools, sobre
+**No es opcional** (`AGENTS.md`), y en la pieza A se cobró dos veces. Con MCP chrome-devtools, sobre
 `npm start` desde `portal/`.
 
 Nada de esto lo cubren los 20 tests nuevos: el typecheck compila `bg-fnodo` sin quejarse, y el test de

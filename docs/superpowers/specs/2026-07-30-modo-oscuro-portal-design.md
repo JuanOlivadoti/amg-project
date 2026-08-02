@@ -70,7 +70,7 @@ Las dos razones que deciden, y son de este proyecto:
 el modo oscuro sin hacer nada. Con `dark:`, C duplica el trabajo y **puede olvidarse en silencio** —
 que es el modo de falla que ya costó dos rondas de revisión en la pieza A.
 
-**Una garantía en la disciplina no es una garantía.** Es la regla del proyecto (CLAUDE.md): la impone
+**Una garantía en la disciplina no es una garantía.** Es la regla del proyecto (AGENTS.md): la impone
 una constraint, un test que la mute, o nada. `dark:` la deja en "acordate".
 
 > **Dato que motiva esto:** `respaldo` y `alerta` **ya están definidos** en `tailwind.config.js` y
@@ -305,7 +305,7 @@ bajar un color por debajo de 4.5:1, y **reponer uno de los dos hex incrustados**
 
 ### Lo que ningún test ve, y hay que manejar en el navegador
 
-`CLAUDE.md` lo exige y en la pieza A se cobró dos veces. Concretamente:
+`AGENTS.md` lo exige y en la pieza A se cobró dos veces. Concretamente:
 
 1. Las **tres posiciones** del botón, y que el icono comunique en cuál está.
 2. Los dos temas en **las tres páginas** (login, runs, brief) — la migración de 130 clases es mecánica

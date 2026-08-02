@@ -280,7 +280,7 @@ click": siguen el Bloque B (cuentas de Juan) y el C (deploy).
 
 ### 2026-07-23 (cont.) — Ronda de review de Codex: 12 hallazgos ✅
 
-Codex revisó el Bloque A (solo revisa, no toca código — ver `CLAUDE.md`). Se corrigieron todos los
+Codex revisó el Bloque A (solo revisa, no toca código — ver `AGENTS.md`). Se corrigieron todos los
 hallazgos válidos; con TDD y verificación por mutación donde aplicaba:
 
 - **#9 (registro auto-bloqueante):** el registro de migraciones ya **no** usa `force RLS` (se
