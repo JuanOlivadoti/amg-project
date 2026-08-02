@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { SelectorMiembroComponent } from '../../shared/components/selector-miembro';
 import { Router, RouterLink } from '@angular/router';
 import { ClientesService } from '../../services/clientes';
 import { PageBreadcrumbComponent } from '../../shared/components/page-breadcrumb';
@@ -120,7 +121,7 @@ const OPCIONES_ESTADO_CONTRATO: ReadonlyArray<{ valor: EstadoContrato | ''; etiq
  */
 @Component({
   selector: 'app-cliente-crear',
-  imports: [FormsModule, RouterLink, PageBreadcrumbComponent, ComponentCardComponent],
+  imports: [FormsModule, RouterLink, PageBreadcrumbComponent, ComponentCardComponent, SelectorMiembroComponent],
   template: `
     <div class="max-w-4xl mx-auto px-4 py-8 space-y-6">
       <app-page-breadcrumb titulo="Nuevo cliente" rutaAtras="/clientes" etiquetaAtras="Clientes" />
@@ -369,14 +370,10 @@ const OPCIONES_ESTADO_CONTRATO: ReadonlyArray<{ valor: EstadoContrato | ''; etiq
 
             <div class="flex flex-col gap-1">
               <label class="text-sm font-medium text-texto-medio" for="cliente-asignado-a">Asignado a</label>
-              <input
-                id="cliente-asignado-a"
-                name="asignadoA"
-                type="text"
-                [ngModel]="form().asignadoA"
-                (ngModelChange)="actualizar('asignadoA', $event)"
-                placeholder="uuid del usuario responsable"
-                class="rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+              <app-selector-miembro
+                idCampo="cliente-asignado-a"
+                [valor]="form().asignadoA"
+                (cambio)="actualizar('asignadoA', $event)"
               />
             </div>
           </div>

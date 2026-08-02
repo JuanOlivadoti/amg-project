@@ -12,6 +12,7 @@ describe('AppSidebarComponent', () => {
           { path: 'runs', children: [] },
           { path: 'cartera', children: [] },
           { path: 'clientes', children: [] },
+          { path: 'usuarios', children: [] },
         ]),
       ],
     });
@@ -25,6 +26,17 @@ describe('AppSidebarComponent', () => {
     expect(el.textContent).toContain('Research');
     expect(el.textContent).toContain('Cartera');
     expect(el.textContent).toContain('Clientes');
+    expect(el.textContent).toContain('Usuarios');
+  });
+
+  it('el ítem de Usuarios apunta a /usuarios y NO se oculta por rol', () => {
+    // Ocultar un link no es autorización, y mostrarlo no filtra nada: la pantalla se defiende sola
+    // (un rol `cliente` que entre ve una sola fila, la suya, porque eso deja pasar la vista
+    // `membresias_perfil`). Si algún día se decide ocultarlo, tiene que ser ADEMÁS de proteger la
+    // ruta en el servidor, nunca en vez de.
+    const el = render().nativeElement as HTMLElement;
+    const enlaces = [...el.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    expect(enlaces).toContain('/usuarios');
   });
 
   it('clickear un ítem cierra el drawer mobile', () => {

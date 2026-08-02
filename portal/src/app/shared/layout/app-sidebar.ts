@@ -5,13 +5,17 @@ import { SidebarService } from '../services/sidebar';
 interface ItemNav {
   readonly etiqueta: string;
   readonly ruta: string;
-  readonly icono: 'research' | 'cartera' | 'clientes';
+  readonly icono: 'research' | 'cartera' | 'clientes' | 'usuarios';
 }
 
 const ITEMS_NAV: readonly ItemNav[] = [
   { etiqueta: 'Research', ruta: '/runs', icono: 'research' },
   { etiqueta: 'Cartera', ruta: '/cartera', icono: 'cartera' },
   { etiqueta: 'Clientes', ruta: '/clientes', icono: 'clientes' },
+  // Aditivo, y visible para todos: la pantalla se defiende sola. Un rol `cliente` que entre ve una
+  // sola fila (la suya) porque eso es lo que la vista `membresias_perfil` le deja ver — ocultar el
+  // link no autorizaría nada, y mostrarlo tampoco filtra nada.
+  { etiqueta: 'Usuarios', ruta: '/usuarios', icono: 'usuarios' },
 ];
 
 @Component({
@@ -47,6 +51,11 @@ const ITEMS_NAV: readonly ItemNav[] = [
               @case ('clientes') {
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M17 20v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2M10 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8 10v-2a4 4 0 0 0-3-3.87M15 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              }
+              @case ('usuarios') {
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM12 14c-4 0-7 2-7 4.5V21h14v-2.5C19 16 16 14 12 14Z" />
                 </svg>
               }
             }

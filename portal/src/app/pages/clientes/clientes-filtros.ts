@@ -1,6 +1,7 @@
 import { Component, input, output } from '@angular/core';
 import type { FiltroClientes } from '../../core/clientes-filtro';
 import type { EstadoContrato, TipoCliente } from '../../core/models';
+import { SelectorMiembroComponent } from '../../shared/components/selector-miembro';
 
 const OPCIONES_TIPO: ReadonlyArray<{ valor: TipoCliente | ''; etiqueta: string }> = [
   { valor: '', etiqueta: 'Todos los tipos' },
@@ -23,16 +24,15 @@ const OPCIONES_ESTADO: ReadonlyArray<{ valor: EstadoContrato | ''; etiqueta: str
  * `shared/components/filters/clients-filter` del origen: sin el dropdown de `ideaStatus` (módulo
  * de ideas, no se porta) y sin `category` (no existe `clients.category` en el esquema nuevo).
  *
- * "Asignado a" es un campo de texto libre (un uuid pegado a mano), NO un selector de usuarios: en
- * este portal todavía no hay ningún servicio/endpoint que liste membresías del tenant (se buscó
- * `memberships` en `api/src/app.ts` y en `portal/src/app/services/` — no aparece nada). Construir
- * ese selector es trabajo aparte, fuera del alcance de esta tarea (reportado como concern en
- * `.superpowers/sdd/task-5a-report.md`). El checkbox "Solo sin asignar" cubre el caso de
- * `asignadoA === ''` (que en `FiltroClientes` significa "sin asignar", distinto de `null` =
- * "cualquiera") sin necesitar esa lista.
+ * "Asignado a" **era** un campo de texto libre (un uuid pegado a mano) porque cuando se construyó
+ * esta pantalla el portal no tenía forma de listar las membresías del tenant. La pieza 2 (Usuarios)
+ * la construyó, así que ahora es un `<app-selector-miembro>` con nombre y email. El checkbox "Solo
+ * sin asignar" sigue cubriendo `asignadoA === ''` (que en `FiltroClientes` significa "sin asignar",
+ * distinto de `null` = "cualquiera"), un caso que ninguna lista de personas puede expresar.
  */
 @Component({
   selector: 'app-clientes-filtros',
+  imports: [SelectorMiembroComponent],
   template: `
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <div class="flex flex-col gap-1">
@@ -82,16 +82,24 @@ const OPCIONES_ESTADO: ReadonlyArray<{ valor: EstadoContrato | ''; etiqueta: str
 
       <div class="flex flex-col gap-1">
         <label class="text-sm font-medium text-texto-medio" for="clientes-filtro-asignado">Asignado a</label>
-        <input
-          id="clientes-filtro-asignado"
-          type="text"
-          [value]="filtro().asignadoA ?? ''"
-          (input)="actualizarAsignadoA(campoAsignado.value)"
-          [disabled]="soloSinAsignar()"
-          #campoAsignado
-          placeholder="uuid del usuario"
-          class="rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm disabled:opacity-50"
-        />
+        @if (soloSinAsignar()) {
+          <!-- Con "solo sin asignar" marcado, el filtro por persona no aplica: se muestra
+               deshabilitado en vez de desaparecer, para que no parezca que el campo se perdió. -->
+          <select
+            id="clientes-filtro-asignado"
+            disabled
+            class="rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm opacity-50"
+          >
+            <option value="">— Cualquiera —</option>
+          </select>
+        } @else {
+          <app-selector-miembro
+            idCampo="clientes-filtro-asignado"
+            etiquetaVacio="— Cualquiera —"
+            [valor]="filtro().asignadoA ?? ''"
+            (cambio)="actualizarAsignadoA($event)"
+          />
+        }
         <label class="inline-flex items-center gap-2 text-xs text-texto-tenue">
           <input
             type="checkbox"
@@ -135,6 +143,8 @@ export class ClientesFiltrosComponent {
   }
 
   actualizarAsignadoA(valor: string): void {
+    // `''` del selector significa "cualquiera" (`null`), no "sin asignar" (`''` en el filtro): esa
+    // distinción la sigue haciendo el checkbox de abajo, y confundirlas invertiría el filtro.
     const limpio = valor.trim();
     this.actualizar({ asignadoA: limpio === '' ? null : limpio });
   }

@@ -3,6 +3,7 @@ import { Router, provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { ClienteCrearPage } from './cliente-crear';
 import { ClientesService } from '../../services/clientes';
+import { MembresiaService } from '../../services/membresia';
 import type { NuevoClienteAgencia } from '../../core/models';
 
 /**
@@ -115,5 +116,46 @@ describe('ClienteCrearPage', () => {
     expect(crearSpy).toHaveBeenCalledTimes(1);
     expect(router.navigate).not.toHaveBeenCalled();
     expect(el.textContent).toContain('ya existe un cliente con ese nombre');
+  });
+});
+
+describe('ClienteCrearPage — responsable (integración con la pieza 2)', () => {
+  it('🔴 ya no se pide un uuid a mano: el responsable se elige de una lista', async () => {
+    // Cierra el pendiente con el que se cerró la pieza 1. Si alguien vuelve a poner un `<input>` de
+    // texto acá, este test cae: pegar uuids a mano es exactamente el problema que la pieza 2 resolvió.
+    TestBed.configureTestingModule({
+      imports: [ClienteCrearPage],
+      providers: [
+        provideRouter([]),
+        { provide: ClientesService, useValue: { crear: jasmine.createSpy('crear'), error: signal('') } },
+        {
+          provide: MembresiaService,
+          useValue: {
+            miembros: signal([
+              {
+                id: 'm1',
+                tenant_id: 't1',
+                user_id: 'u-1',
+                rol: 'equipo',
+                client_id: null,
+                created_at: '2026-08-02T00:00:00Z',
+                email: 'ana@agencia.test',
+                raw_app_meta_data: { name: 'Ana' },
+              },
+            ]),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(ClienteCrearPage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    const campo = el.querySelector('#cliente-asignado-a')!;
+    expect(campo.tagName).toBe('SELECT');
+    expect(campo.textContent).toContain('Ana');
+    expect(el.innerHTML).not.toContain('uuid del usuario responsable');
   });
 });

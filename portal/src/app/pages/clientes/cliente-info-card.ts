@@ -10,6 +10,9 @@ import type {
   TipoCliente,
 } from '../../core/models';
 import { limpio, mergearContacto, pisarTexto } from './contacto-utils';
+import { SelectorMiembroComponent } from '../../shared/components/selector-miembro';
+import { MembresiaService } from '../../services/membresia';
+import { nombreDe } from '../../core/miembros';
 
 /** Mismas tres listas que `cliente-crear.ts` (Etapa 5b) — se duplican porque ese archivo está cerrado. */
 const OPCIONES_TIPO: ReadonlyArray<{ valor: TipoCliente | ''; etiqueta: string }> = [
@@ -115,7 +118,7 @@ function formularioDesde(c: ClienteAgencia): FormularioInfo {
  */
 @Component({
   selector: 'app-cliente-info-card',
-  imports: [FormsModule, ComponentCardComponent],
+  imports: [FormsModule, ComponentCardComponent, SelectorMiembroComponent],
   template: `
     <app-component-card titulo="Información">
       @if (!editando()) {
@@ -175,7 +178,7 @@ function formularioDesde(c: ClienteAgencia): FormularioInfo {
             </div>
             <div>
               <p class="text-sm text-texto-tenue">Asignado a</p>
-              <p class="text-base font-medium text-texto">{{ cliente().asignado_a || '—' }}</p>
+              <p class="text-base font-medium text-texto">{{ nombreAsignado() }}</p>
             </div>
           </div>
           @if (notas()) {
@@ -367,14 +370,10 @@ function formularioDesde(c: ClienteAgencia): FormularioInfo {
             </div>
             <div class="flex flex-col gap-1">
               <label class="text-sm font-medium text-texto-medio" for="info-asignado-a">Asignado a</label>
-              <input
-                id="info-asignado-a"
-                name="asignadoA"
-                type="text"
-                [ngModel]="form().asignadoA"
-                (ngModelChange)="actualizar('asignadoA', $event)"
-                placeholder="uuid del usuario responsable"
-                class="rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+              <app-selector-miembro
+                idCampo="info-asignado-a"
+                [valor]="form().asignadoA"
+                (cambio)="actualizar('asignadoA', $event)"
               />
             </div>
             <div class="flex flex-col gap-1 md:col-span-2">
@@ -419,6 +418,19 @@ function formularioDesde(c: ClienteAgencia): FormularioInfo {
 export class ClienteInfoCardComponent {
   readonly cliente = input.required<ClienteAgencia>();
   readonly clientesService = inject(ClientesService);
+  private readonly membresia = inject(MembresiaService);
+
+  /**
+   * El responsable, por nombre. Si no está en la lista de miembros visibles —una membresía que se
+   * quitó, o un rol `cliente` que solo se ve a sí mismo— se muestra el uuid tal cual: es feo, pero
+   * es el dato real. Inventar "Sin asignar" ahí ocultaría que sí hay alguien asignado.
+   */
+  readonly nombreAsignado = computed(() => {
+    const id = this.cliente().asignado_a;
+    if (!id) return '—';
+    const m = this.membresia.miembros().find((x) => x.user_id === id);
+    return m ? nombreDe(m) : id;
+  });
 
   readonly OPCIONES_TIPO = OPCIONES_TIPO;
   readonly OPCIONES_NIVEL_ACTIVIDAD = OPCIONES_NIVEL_ACTIVIDAD;
