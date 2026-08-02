@@ -11,7 +11,9 @@
 #   npm run verificar -- --con-portal   fuerza los tests del portal aunque no haya cambios
 #
 # Bash y no tsx a propósito: esto tiene que poder correr ANTES de que exista node_modules, que es
-# justo el fallo que más veces arruinó un arranque de sesión ("Cannot find package 'tsx'").
+# justo el fallo que más veces arruinó un arranque de sesión ("Cannot find package 'tsx'"). La lógica
+# que SÍ necesita tests —qué ruta es un secreto— vive en scripts/secretos.mts y se invoca desde acá,
+# después de haber comprobado que node_modules existe.
 
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -20,6 +22,12 @@ VERDE='\033[0;32m'; ROJO='\033[0;31m'; AMARILLO='\033[0;33m'; NC='\033[0m'
 ok()   { printf "${VERDE}[OK]${NC}    %s\n" "$1"; }
 warn() { printf "${AMARILLO}[AVISO]${NC} %s\n" "$1"; }
 fail() { printf "${ROJO}[FALLA]${NC} %s\n" "$1"; }
+
+LOG_TYPECHECK=$(mktemp -t amg-verificar-typecheck)
+LOG_TEST=$(mktemp -t amg-verificar-test)
+LOG_PORTAL=$(mktemp -t amg-verificar-portal)
+LOG_SECRETOS=$(mktemp -t amg-verificar-secretos)
+trap 'rm -f "$LOG_TYPECHECK" "$LOG_TEST" "$LOG_PORTAL" "$LOG_SECRETOS"' EXIT
 
 SALIDA=0
 RAPIDO=0
@@ -31,6 +39,9 @@ for arg in "$@"; do
     *) warn "opción desconocida: $arg" ;;
   esac
 done
+if [ "$RAPIDO" = "1" ] && [ "$CON_PORTAL" = "1" ]; then
+  warn "--rapido y --con-portal juntos: gana --rapido, no se corre ningún test"
+fi
 
 echo "── 1. Entorno ────────────────────────────────────────────"
 
@@ -66,36 +77,49 @@ for f in AGENTS.md CLAUDE.md CHECKPOINTS.md \
   if [ -f "$f" ]; then ok "$f"; else fail "falta $f"; SALIDA=1; fi
 done
 
+# Con piso: un `find` que no encuentra nada no puede reportar [OK]. Es el mismo motivo por el que
+# contraste.test.ts afirma `archivos.length >= 4` antes de recorrer las plantillas.
 AGENTES=$(find .claude/agents -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
 SKILLS=$(find .claude/skills -name 'SKILL.md' 2>/dev/null | wc -l | tr -d ' ')
-ok "$AGENTES agente(s) y $SKILLS skill(s) en .claude/"
+if [ "$AGENTES" -lt 1 ] || [ "$SKILLS" -lt 1 ]; then
+  fail "$AGENTES agente(s) y $SKILLS skill(s): el arnés de .claude/ no está donde debería"
+  SALIDA=1
+else
+  ok "$AGENTES agente(s) y $SKILLS skill(s) en .claude/"
+fi
 
 echo ""
 echo "── 3. Higiene: nada de secretos en git ───────────────────"
 
-# Trackeado. Un .env versionado es un incidente, no un aviso.
-FILTRADOS=$(git ls-files 2>/dev/null | grep -E '(^|/)\.env$|(^|/)\.env\.|^docs/private/' | grep -v '\.env\.example$')
-if [ -n "$FILTRADOS" ]; then
-  fail "hay secretos TRACKEADOS en git:"; echo "$FILTRADOS" | sed 's/^/          /'; SALIDA=1
+# "No pude mirar" y "está limpio" NO pueden dar la misma salida verde: esta casilla es la única
+# comprobación automática de la regla más dura del proyecto.
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+  fail "esto no es un repositorio git: NO pude comprobar si hay secretos versionados"
+  SALIDA=1
 else
-  ok "ningún .env ni docs/private/ trackeado"
-fi
-
-# En el índice, a punto de entrar en el próximo commit.
-STAGEADOS=$(git diff --cached --name-only 2>/dev/null | grep -E '(^|/)\.env$|^docs/private/|^node_modules/|(^|/)out/|(^|/)\.cache/' | grep -v '\.env\.example$')
-if [ -n "$STAGEADOS" ]; then
-  fail "hay archivos prohibidos en el índice:"; echo "$STAGEADOS" | sed 's/^/          /'; SALIDA=1
-else
-  ok "el índice está limpio"
+  PROHIBIDAS=$( { git ls-files; git diff --cached --name-only; } 2>/dev/null | sort -u \
+                | node --import tsx scripts/secretos.mts 2>"$LOG_SECRETOS" )
+  CODIGO=$?
+  if [ -n "$PROHIBIDAS" ]; then
+    fail "hay rutas prohibidas en git (trackeadas o en el índice):"
+    echo "$PROHIBIDAS" | sed 's/^/          /'
+    SALIDA=1
+  elif [ $CODIGO -ne 0 ]; then
+    fail "el detector de secretos no pudo correr (exit $CODIGO):"
+    tail -5 "$LOG_SECRETOS" | sed 's/^/          /'
+    SALIDA=1
+  else
+    ok "sin secretos entre los $(git ls-files | wc -l | tr -d ' ') archivos versionados ni en el índice"
+  fi
 fi
 
 echo ""
 echo "── 4. Typecheck ──────────────────────────────────────────"
 
-if npm run typecheck --silent > /tmp/amg-verificar-typecheck.log 2>&1; then
+if npm run typecheck --silent > "$LOG_TYPECHECK" 2>&1; then
   ok "typecheck limpio (6 paquetes + scripts/)"
 else
-  fail "typecheck en rojo — últimas líneas:"; tail -15 /tmp/amg-verificar-typecheck.log | sed 's/^/          /'; SALIDA=1
+  fail "typecheck en rojo — últimas líneas:"; tail -15 "$LOG_TYPECHECK" | sed 's/^/          /'; SALIDA=1
 fi
 
 if [ "$RAPIDO" = "1" ]; then
@@ -109,32 +133,34 @@ fi
 echo ""
 echo "── 5. Tests del monorepo ─────────────────────────────────"
 
-if npm test --silent > /tmp/amg-verificar-test.log 2>&1; then
+if npm test --silent > "$LOG_TEST" 2>&1; then
   # Esta es LA cifra de tests del monorepo, medida. Si no coincide con la que declara la
   # documentación, la que está mal es la documentación: sincronizala (09-estado-y-roadmap.md,
   # 08-testing-calidad.md y el README de docs/proyecto/ la repiten).
-  ok "$(grep -hE '^# pass' /tmp/amg-verificar-test.log | awk '{s+=$3} END {print s+0}') tests en verde (6 paquetes + scripts/)"
+  ok "$(grep -hE '^# pass' "$LOG_TEST" | awk '{s+=$3} END {print s+0}') tests en verde (6 paquetes + scripts/)"
 else
-  fail "tests en rojo — últimas líneas:"; tail -25 /tmp/amg-verificar-test.log | sed 's/^/          /'; SALIDA=1
+  fail "tests en rojo — últimas líneas:"; tail -25 "$LOG_TEST" | sed 's/^/          /'; SALIDA=1
 fi
 
 echo ""
 echo "── 6. Portal ─────────────────────────────────────────────"
 
 # `npm test` de la raíz corre --workspaces, y portal/ NO es workspace: sus tests quedan afuera del
-# verde de arriba. Por eso se corren aparte, y solo cuando el portal cambió (o si se piden).
-PORTAL_CAMBIO=$(git status --porcelain portal/ 2>/dev/null | head -1)
-if [ "$CON_PORTAL" = "1" ] || [ -n "$PORTAL_CAMBIO" ]; then
+# verde de arriba. Se corren aparte cuando el portal cambió — y "cambió" incluye lo ya commiteado y
+# todavía sin pushear, porque el momento de recorrer CHECKPOINTS.md es justo DESPUÉS del commit.
+PORTAL_SIN_COMMITEAR=$(git status --porcelain -- portal/ 2>/dev/null | head -1)
+PORTAL_SIN_PUSHEAR=$(git diff --name-only '@{upstream}..HEAD' -- portal/ 2>/dev/null | head -1)
+if [ "$CON_PORTAL" = "1" ] || [ -n "$PORTAL_SIN_COMMITEAR" ] || [ -n "$PORTAL_SIN_PUSHEAR" ]; then
   if [ ! -d portal/node_modules ]; then
     fail "el portal cambió pero no tiene node_modules — 'npm --prefix portal install'"; SALIDA=1
-  elif npm --prefix portal test --silent > /tmp/amg-verificar-portal.log 2>&1; then
-    ok "tests del portal en verde (node:test)"
+  elif npm --prefix portal test --silent > "$LOG_PORTAL" 2>&1; then
+    ok "$(grep -hE '^# pass' "$LOG_PORTAL" | awk '{s+=$3} END {print s+0}') tests del portal en verde (node:test)"
     warn "los *.spec.ts de componentes van aparte: 'npm --prefix portal run test:components' (Karma)"
   else
-    fail "tests del portal en rojo — últimas líneas:"; tail -20 /tmp/amg-verificar-portal.log | sed 's/^/          /'; SALIDA=1
+    fail "tests del portal en rojo — últimas líneas:"; tail -20 "$LOG_PORTAL" | sed 's/^/          /'; SALIDA=1
   fi
 else
-  ok "el portal no cambió: sus tests no hacían falta (--con-portal los fuerza)"
+  ok "el portal no cambió ni en el árbol ni en los commits sin pushear (--con-portal los fuerza igual)"
 fi
 
 echo ""

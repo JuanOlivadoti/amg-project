@@ -3,9 +3,9 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-02** · **766 tests en verde en `main`** — **584** en el monorepo +
-> **182** en el portal (146 `node:test` + 36 Karma). Subió de 669 (539 + 130) al mergear la pieza 1
-> del portal de la agencia. Verificado el 2026-08-02 corriendo los tres suites sobre `main`.
+> Última actualización: **2026-08-02** · **859 tests en verde en `main`** — **624** en el monorepo +
+> **235** en el portal (169 `node:test` + 66 Karma). Subió de 766 al mergear la pieza 2 (usuarios).
+> Medido el 2026-08-02 con `npm run verificar` más los dos suites del portal.
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
 > JWKS y el logout que revoca están en `main`, desplegados, y **el login se verificó en el navegador**
@@ -98,8 +98,8 @@
 > ver la fila propia por completo, y esta pieza le agregó a esa fila columnas que son notas internas
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
-> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **766 tests** en la rama (584 monorepo + 182
-> portal), **11 migraciones** (la `0011` mergeada; pendiente de aplicar en producción).
+> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **859 tests** (624 monorepo + 235
+> portal), **12 migraciones** (la `0011` y la `0012` mergeadas; pendientes de aplicar en producción).
 
 ---
 
@@ -162,7 +162,7 @@ corre solo en local. *(La API y el portal están desplegados desde la etapa 5.3,
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **516 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **624 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -205,7 +205,7 @@ El orden **no es negociable**, y el motivo es de seguridad:
 ### 5.1 — La API (`api/`) ✅ HECHA
 
 REST autenticada en **Hono** (ADR-22). Verifica el JWT de Supabase, pone `app.user_id` y deja que
-**Postgres decida el resto** (ADR-15). 66 tests contra PGlite, sin red ni Supabase.
+**Postgres decida el resto** (ADR-15). 95 tests contra PGlite, sin red ni Supabase.
 
 | Endpoint | Qué hace |
 |---|---|

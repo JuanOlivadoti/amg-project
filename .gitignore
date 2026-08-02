@@ -26,6 +26,10 @@ out/
 .env
 .env.local
 *.env
+# direnv: exporta variables al entrar al directorio, así que su contenido es el mismo que un .env.
+# Era el único de la familia que no estaba acá, y por eso el detector de scripts/secretos.mts es su
+# única red — mejor tener las dos.
+.envrc
 
 # Notas de despliegue con valores reales (connection strings, uids, refs). El runbook del repo lleva
 # placeholders; lo que tiene valores vive acá y NO se commitea.

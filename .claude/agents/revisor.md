@@ -64,7 +64,7 @@ Escribí el informe en `progress/informes/revision-<tema>.md` con esta forma:
 <qué diff miraste: rango de commits o working tree, y archivos>
 
 ## Checkpoints
-- C1 Verde real: [x] — verificado ejecutando `npm run verificar` (exit 0, 516 tests)
+- C1 Verde real: [x] — verificado ejecutando `npm run verificar` (exit 0, con la cifra que devolvió)
 - C2 Los tests muerden: [ ] — la mutación de `api/src/rutas.ts:42` no tumbó ningún test
 - C3 Invariantes: [x] — n/a, el cambio no toca autorización
 - …

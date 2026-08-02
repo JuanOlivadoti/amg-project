@@ -81,7 +81,7 @@ tokens, y en un cambio de un archivo cuesta más que hacerlo.
 
 **Los subagentes escriben en disco, no en el chat.** Un informe que se recuenta se degrada, y el
 chat no queda auditable. Al lanzar un subagente, pedile explícitamente que escriba su resultado en
-`progress/<rol>-<tema>.md` y que **su respuesta sea una sola línea con la referencia**:
+`progress/informes/<rol>-<tema>.md` y que **su respuesta sea una sola línea con la referencia**:
 
 ```text
 done -> progress/informes/impl-selector-miembro.md
@@ -98,9 +98,13 @@ CAMBIOS_PEDIDOS (2 bloqueantes) -> progress/informes/revision-etapa-8.md
 | `progress/informes/` | Lo que escriben los subagentes en una sesión. Basura de trabajo | **no** |
 
 La regla que las separa: el `09` responde *qué falta*, la bitácora responde *por qué terminó así*.
-Mezclarlas es lo que infló el `09` a 930 líneas. Y **ningún otro archivo puede decir qué falta** — un
-segundo lugar que lo diga se desincroniza sin que nada avise, que es por lo que este proyecto no tiene
-un `feature_list.json`.
+Mezclarlas es lo que infló el `09` a 930 líneas.
+
+El `11-plan-fase-2.md` también habla de lo que falta, y eso está bien: dice **el orden y el detalle de
+la fase en curso**, mientras el `09` dice **el estado global**. Los dos se actualizan (paso 3 del
+ritual) y **cuando se contradigan, gana el `09`**. Lo que no puede aparecer es un *tercer* lugar —un
+`feature_list.json`, un tablero paralelo— que repita el estado sin que nada avise cuando se
+desincronice.
 
 **Cuando el trabajo cruza áreas** —una feature que toca la API y el portal, que va a ser lo normal—:
 

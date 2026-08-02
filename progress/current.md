@@ -7,17 +7,24 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** —
-**En curso:** nada. La última etapa (el arnés de trabajo con agentes) quedó cerrada y commiteada;
-está en [`history.md`](history.md).
+**En curso:** nada. El arnés y las dos rondas de revisión quedaron cerrados y commiteados; está en
+[`history.md`](history.md).
 **Estado:** —
 
-**Pendiente inmediato:** sincronizar la cifra de tests de
-[`docs/proyecto/08-testing-calidad.md`](../docs/proyecto/08-testing-calidad.md), que sigue diciendo
-516 en su tabla de cobertura cuando el conteo real es 614 en el monorepo.
+**Pendiente inmediato:**
+
+- `portal/package-lock.json` tiene 102 borrados que **no son de este trabajo**: campos `libc` de
+  dependencias opcionales por plataforma, churn de haber corrido `npm install` con otra versión de
+  npm. Ninguna versión de paquete cambia. Hay que decidir: revertirlo, o commitearlo aparte diciendo
+  qué es. Quedó fuera de los commits del arnés a propósito.
+
+**Anotado como decisión consciente, no como olvido:** `docs/proyecto/11-plan-fase-2.md:237` dice "107
+tests" dentro del bloque de la etapa 5.2 ya cerrada. Es un registro de lo que entregó esa etapa, de la
+misma familia que el resto de los registros fechados, así que no se sincroniza.
 
 ---
 
-## Plantilla
+## Plantilla (dejar así al cerrar)
 
 ```markdown
 **Sesión:** YYYY-MM-DD

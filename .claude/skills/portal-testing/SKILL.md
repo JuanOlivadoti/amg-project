@@ -11,7 +11,7 @@ necesita levantar Chrome.
 | Archivo | Runner | Comando | Para qué |
 |---|---|---|---|
 | `*.test.ts` | `node:test` + `tsx` | `npm test` | Lógica pura de `core/`, servicios instanciables con `new`, y tests estructurales |
-| `*.spec.ts` | Karma + ChromeHeadless | `npm run test:components` | Solo lo que necesita DOM de verdad: componentes y plantillas |
+| `*.spec.ts` | Karma + ChromeHeadless | `npm run test:components` | Lo que necesita el DOM (componentes y plantillas) o el **inyector** de Angular (`services/membresia.spec.ts` usa `TestBed.inject` sin tocar el DOM) |
 
 **La regla: si se puede probar con `node:test`, se prueba con `node:test`.** Eso se consigue sacando
 la lógica a `core/` (ver `portal-angular`), que es la misma decisión de arquitectura vista desde el

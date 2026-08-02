@@ -29,6 +29,11 @@ Standalone —Angular 20 ya no necesita `standalone: true`—, **template inline
 **sin `styleUrls`**: el portal tiene un único `styles.css` global y todo lo demás son utilidades de
 Tailwind (ver `portal-estilos`).
 
+Dos precisiones honestas: la única excepción al template inline es el componente raíz
+(`app.ts` usa `templateUrl: './app.html'`), y **nada impone estas dos reglas con un test** — a
+diferencia de las de color, que sí tienen uno. Son convención sostenida por la costumbre: si escribís
+un componente nuevo con `styleUrls`, no se va a poner nada rojo.
+
 ```ts
 @Component({
   selector: 'app-clientes-tabla',

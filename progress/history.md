@@ -33,9 +33,30 @@ roadmap desincronizándose), el hook que corre toda la suite tras cada edición,
 toca código. En el mismo movimiento, la revisión de Codex pasó de ser un párrafo de `AGENTS.md` a la
 skill `codex-review`, con la política de no-escritura como lista cerrada de prohibido/permitido.
 
-**Un hallazgo del camino:** la documentación se contradecía en las cifras de tests (584 contra 614
-contra 539 según el archivo). Sincronizado en 849, medido. `docs/proyecto/08-testing-calidad.md` sigue
-diciendo 516 en su tabla de cobertura — **queda pendiente**.
+**La primera revisión del `revisor`, sobre el arnés mismo.** Devolvió CAMBIOS_PEDIDOS con 4
+bloqueantes, y los 4 eran reales (verificados uno por uno antes de aplicar nada). El más serio: la
+detección de secretos de `verificar.sh` —la única comprobación automática de la regla más dura del
+repo— **daba `[OK]` sin haber mirado** cuando `git` no respondía, y su patrón dejaba pasar
+`credenciales.env`, `.envrc`, `docs/private/*.env.example` y `portal/node_modules/`. Los cuatro
+huecos, medidos. Ahora la lógica vive en `scripts/secretos.mts` con 10 tests y **verificación por
+mutación**: cada arreglo hace caer exactamente su test, ninguno de más. El chequeo además falla —en
+vez de aprobar— cuando no hay repositorio git.
+
+**La segunda ronda aprobó, y encontró un quinto hueco.** Se le pidió al revisor que verificara el
+arreglo y no la explicación (la lección de la tanda 12). Rehízo las cuatro mutaciones por su cuenta,
+sondeó 33 rutas raras —espacios, `..`, un `.env` dentro de un directorio llamado `.env.example`— y
+encontró una que faltaba: **el detector distinguía mayúsculas**, y `.envrc` era el único de la familia
+que `.gitignore` no cubría, así que ahí era la única defensa y se apagaba con Bloq Mayús. Cerrado en
+las dos capas: comparación en minúsculas (con su test y su mutación) y `.envrc` agregado al
+`.gitignore`.
+
+Los otros tres: dos documentos mandaban escribir los informes a `progress/` (versionado) en vez de
+`progress/informes/`; el `09` afirmaba como deuda unos tests de componente de research que **ya
+existen** (`runs.spec.ts`, `brief.spec.ts`); y quedaban **quince** cifras de tests viejas repartidas
+en ocho archivos, con el `09` contradiciéndose a sí mismo a veintitrés líneas de distancia.
+
+**Cifras, medidas al cierre:** 859 = 624 en el monorepo (los 10 nuevos incluidos) + 235 en el portal
+(169 `node:test` + 66 Karma). 12 migraciones, 24 ADRs.
 
 ## 2026-08-02 — Pieza 2 del portal de la agencia: usuarios (6 etapas), mergeada a `main`
 

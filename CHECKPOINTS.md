@@ -73,5 +73,6 @@ Uno por uno, y solo si el cambio los toca:
 ---
 
 **Cómo se usa.** El agente `revisor` recorre C1–C7, marca cada casilla y escribe su veredicto en
-`progress/revision-<tema>.md`. **Ninguna casilla vacía se puede dar por buena en silencio**: o está
+`progress/informes/revision-<tema>.md` (ahí, y no en la raíz de `progress/`: los informes no se
+versionan). **Ninguna casilla vacía se puede dar por buena en silencio**: o está
 marcada, o está justificada como `n/a`, o la etapa no está cerrada.
