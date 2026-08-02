@@ -131,12 +131,43 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 
 ## Etapa 1 — Acceso de lectura a los miembros (`db`)
 
+> ## ✅ Ya implementada en `feature/paginas-usuarios` (`9614489` + `6ce7f7f`) — con una VISTA, y está bien así
+>
+> Esta etapa se ejecutó **antes** de la enmienda de abajo, y resolvió el filtrado con una **vista**
+> (`membresias_perfil`) en vez de la función que la enmienda propone. **No hay que reescribirla.** El
+> objetivo era que `app_user` no pudiera leer `auth.users` esquivando el filtro por tenant, y una
+> vista lo cumple igual: sin `security_invoker = true` corre con los permisos de su *owner*, así que
+> el invocador no necesita permiso sobre la tabla.
+>
+> **Lo único que falta corregir de esa implementación es borrar una línea:**
+>
+> ```sql
+> grant select (id, email, raw_app_meta_data) on auth.users to app_user;  -- ← ESTA es la fuga
+> ```
+>
+> Verificado empíricamente el 2026-08-02 sobre esa rama, con PGlite:
+>
+> - **Con** el grant, un miembro del tenant A que consulta `select email from auth.users` **sin pasar
+>   por la vista** obtiene también el email de un usuario **de otro tenant** (2 filas, la vista
+>   devuelve 1). Es una fuga cross-tenant, no solo "columnas de más".
+> - **Sin** el grant, la vista sigue devolviendo su fila correcta y el acceso directo pasa a dar
+>   `permission denied for table users`.
+>
+> El `grant usage on schema auth` **sí hace falta** y se queda: permite nombrar el esquema, no leer
+> nada. La confusión de origen está en el comentario de la propia migración, que justifica el grant
+> por columna como defensa de `encrypted_password` — cierto, pero eso protege *qué columnas*, no *qué
+> filas*, y el filtrado de filas es de la vista.
+>
+> Los bullets de abajo describen la alternativa con función; quedan como referencia de lo que hay que
+> garantizar, no como trabajo pendiente.
+
 - [ ] **Rojo primero** en `db/src/membresias.test.ts` (nuevo): `listarMiembros` devuelve solo los del
       tenant del contexto; un `equipo` los ve; un `cliente` **no** ve la lista de miembros (o ve solo
       su propia fila — decidir y fijarlo con un test, no dejarlo implícito).
-- [ ] Escribir `db/migrations/0012_membresias_perfil.sql`. **Sin ningún `grant` sobre `auth.users`**
-      (ver la enmienda del 2026-08-02 arriba: el grant es independiente de la vista y sería una fuga
-      cross-tenant). En su lugar, **un único accessor de privilegio mínimo**:
+- [ ] Escribir `db/migrations/0012_membresias_perfil.sql`. **Sin ningún `grant select` sobre
+      `auth.users`** (ver la enmienda del 2026-08-02 arriba: el grant es independiente de la vista y
+      es una fuga cross-tenant, verificada). Con **una vista o una función** que filtre por tenant y
+      por rol — cualquiera de las dos sirve mientras el invocador no tenga acceso directo a la tabla:
       - `create function app.miembros_del_tenant() returns table (user_id uuid, email text, nombre
         text, rol text, client_id uuid)`, **`security definer`**, que deriva el tenant del contexto,
         une `memberships` con `auth.users` y **devuelve columnas escalares explícitas** — nunca
