@@ -1,8 +1,9 @@
 # Plantillas de landing — diseño
 
-> **Estado:** 🟡 **diseñado, sin empezar.** La implementación **espera a que aterricen las cuatro
-> piezas del portal de la agencia** (planificadas, sin empezar, en otra máquina y una rama por pieza
-> — ver [11-plan-fase-2.md](../../proyecto/11-plan-fase-2.md)). Ver §Punto de unión con el portal.
+> **Estado:** 🟡 **diseñado, sin empezar.** La implementación **espera a las cuatro piezas del portal
+> de la agencia**; la **pieza 1 (clientes) aterrizó el 2026-08-01** y quedan tres — ver
+> [11-plan-fase-2.md](../../proyecto/11-plan-fase-2.md) y §Punto de unión con el portal, donde está
+> la **colisión de contrato que trajo esa pieza y que hay que cerrar antes de implementar**.
 >
 > Enfoque: **shell fijo + catálogo de piezas + la plantilla como receta de contenido**. Una sola
 > plantilla implementada (`base`); ampliar a varias es escribir una receta, no CSS.
@@ -10,6 +11,8 @@
 > **Revisado por Codex el 2026-08-01** (revisión de diseño, commit `253ef47`). Siete de ocho findings
 > se aplicaron a este documento; el detalle de qué se verificó, qué se aceptó por juicio y qué se
 > refutó está en §Qué cambió tras la revisión externa.
+>
+> **La migración de este spec es la `0012`.** La `0011` la tomó el CRM de clientes del portal.
 
 ---
 
@@ -257,7 +260,7 @@ spec enumeraba tres y se olvidaba de Zod — el mismo tipo de omisión que caus�
    que **descarta claves desconocidas**, y `parseProfile` devuelve `parsed.data`. Sin ampliarlo, las
    fotos desaparecen en el preview del CLI aunque estén en el JSON. El propio código ya lo dice:
    *"tienen que coincidir en las tres capas (Zod en la puerta, Postgres, el validador del renderer)"*.
-2. **La allowlist de Postgres** (`app.nap_publico`, migración **`0011`**). Reconstruye el perfil campo
+2. **La allowlist de Postgres** (`app.nap_publico`, migración **`0012`**). Reconstruye el perfil campo
    por campo, incluso dentro de `locations` y `menu`. Y `app.texto_publico` **solo deja pasar
    strings**: `Foto` es un objeto, así que necesita su propia sub-allowlist (`src`, `alt`), como
    `address` y `brand`.
@@ -285,7 +288,7 @@ en el tipo y no aparece en ningún lado:
 
 ---
 
-## La migración `0011`
+## La migración `0012`
 
 Reemplaza `app.nap_publico` y **re-materializa** la columna generada (`drop column` + `add column …
 generated always as … stored`), porque una columna `stored` no se recalcula porque cambie la función.
@@ -294,7 +297,7 @@ Mismo mecanismo que la `0009` y la `0010`.
 **El `grant` es obligatorio y es el riesgo real de esta migración.** `drop column` **borra el grant
 de columna**. Está documentado en el repo con esas palabras
 ([`0009_marca_publica.sql`](../../../db/migrations/0009_marca_publica.sql): *"El grant se perdió al
-hacer drop column: se vuelve a conceder sobre la columna recreada"*). Si la `0011` lo olvida,
+hacer drop column: se vuelve a conceder sobre la columna recreada"*). Si la `0012` lo olvida,
 `app_render` pierde el `select` sobre `business_profile_publico` y **caen las webs de todos los
 clientes a la vez**. No es un riesgo operativo: es una línea de SQL que falta.
 
@@ -302,7 +305,7 @@ clientes a la vez**. No es un riesgo operativo: es una línea de SQL que falta.
 grant select (business_profile_publico) on clients to app_render;
 ```
 
-Un test lo verifica **después** de aplicar la `0011`, conectando como `app_render`: no basta con que
+Un test lo verifica **después** de aplicar la `0012`, conectando como `app_render`: no basta con que
 la línea esté escrita.
 
 `lock_timeout` explícito al inicio de la migración, que es barato y evita que un lock inesperado
@@ -359,11 +362,11 @@ una pérdida de datos de una regresión de refactor y de un defecto visual.
 
 ### Entrega 1 — Contrato y recorrido de datos
 
-Tipos, Zod, migración `0011`, `perfilValido`, fixtures, seed y servidores de dev/demo.
+Tipos, Zod, migración `0012`, `perfilValido`, fixtures, seed y servidores de dev/demo.
 **Sin tocar el render.**
 
 *Gate:* un test por cada una de las cuatro fronteras, más el del `grant` conectando como
-`app_render`. Verificación por mutación: quitar `portada` de la allowlist de la `0011` debe hacer
+`app_render`. Verificación por mutación: quitar `portada` de la allowlist de la `0012` debe hacer
 caer *exactamente* el test de la frontera 2, no un test de render.
 
 ### Entrega 2 — Ensamblado y piezas existentes, con paridad
@@ -388,14 +391,14 @@ donde se descubre qué selectores globales del CSS actual no tienen dueño claro
 
 *Gate:* tests por pieza, y **el sitio manejado en un navegador** en claro y oscuro, escritorio y
 móvil, con fotos y sin fotos. Los seis problemas que abren este spec los encontró un navegador, no
-los 539 tests del monorepo.
+los 584 tests del monorepo.
 
 *Orden de despliegue:* entrega 1 primero (la capa de datos tolera campos que nadie lee todavía);
 render después.
 
 ## Testing
 
-Contra los **539 tests del monorepo** que hoy están en verde. Lo nuevo, además de los gates:
+Contra los **584 tests del monorepo** que hoy están en verde. Lo nuevo, además de los gates:
 
 - **Por pieza**: con datos → renderiza; sin datos → `""`; con datos hostiles (`<script>`,
   `javascript:`, host fuera de allowlist, `http:`) → escapado o descartado.
@@ -418,19 +421,49 @@ Contra los **539 tests del monorepo** que hoy están en verde. Lo nuevo, además
 ## Punto de unión con el portal
 
 La implementación **espera a las cuatro piezas del portal** (clientes → usuarios → ideas →
-dashboard), que se ejecutan en otra máquina y una rama por pieza.
+dashboard). **La pieza 1 (clientes) aterrizó en `main` el 2026-08-01**; quedan tres.
 
 Codex observó —con razón en los hechos— que solo la pieza **clientes** podría mover el contrato del
-perfil, y que la entrega 1 y el refactor de la entrega 2 no dependen de ninguna de las cuatro. **Se
-mantiene igual la espera completa, por decisión del usuario**: un solo frente de trabajo sobre `main`
-en vez de dos ramas que después hay que unir. La observación queda anotada acá por si el calendario
-cambia — destrabar la entrega 1 antes que el resto es una opción disponible, no una que se descartó
-por técnica.
+perfil, y que la entrega 1 y el refactor de la entrega 2 no dependen de ninguna de las cuatro. Se
+mantuvo la espera completa por decisión del usuario. **La espera se justificó sola**: la pieza 1
+trajo una colisión de contrato que no era visible desde el renderizador (ver abajo).
 
-Cuando el portal aterrice, lo que hay que revisar es si la pieza *clientes* define su propia forma de
-`business_profile` (tipos del portal, DTO de la API). Si lo hace, los campos de foto entran ahí
-también. Si propone otra representación, debe adaptarse **en su frontera**, sin redefinir en silencio
-el contrato público del renderizador.
+### Lo que la pieza 1 no cambió (verificado)
+
+- La `0011_clientes_crm.sql` **no toca** `app.nap_publico`, no re-materializa
+  `business_profile_publico` y no concede ningún grant nuevo a `app_render`. Está declarado en la
+  cabecera del archivo y cumplido en el cuerpo.
+- El enmascarado de las columnas de CRM para el rol `cliente` usa **allowlist positiva**
+  (`app.es_staff()`), evaluada dentro de Postgres. No afecta a `app_render`, que sigue con
+  `select (business_profile_publico)` a secas.
+- El CRM no lee `business_profile`: sus columnas no están en `CLIENTE_CRM_COLS`.
+
+### La colisión: dos portadas, dos destinos
+
+El portal ya tiene un formulario donde **la agencia carga `logo_url` y `portada_url`**
+(`cliente-crear.ts`, `cliente-meta-card.ts`). Esas URLs se guardan en `clients.contacto`, el jsonb
+que la `0011` declara **interno y que "NUNCA entra en `business_profile_publico`"**.
+
+Este spec, en cambio, propone `business_profile.portada` y `business_profile.fotos` como campos
+**públicos**, que el renderizador lee por la allowlist.
+
+Son el mismo dato de negocio con dos destinos incompatibles. Sin resolverlo: la agencia carga la
+portada en la pantalla del portal, la web nunca la muestra, y no hay nada que explique por qué.
+
+Lo notable es que el portal **dejó el hueco a propósito**: `cliente-meta-card.ts` documenta que no
+renderiza esas URLs como `<img>` porque *"este portal reserva la validación de imágenes públicas para
+`business_profile_publico` (ADR-19, allowlist del renderizador)"*. Está esperando esta pieza. Lo que
+falta es el puente, y el propio plan del portal ya fijó hacia dónde va: *"el formulario de sucursales
+escribe en `business_profile.locations`"* — los datos públicos se escriben en el perfil público, los
+internos en `contacto`. `logo_url`/`portada_url` quedaron del lado interno por herencia del CRM viejo
+de Firestore, donde `contacto` era el saco de todo, no por una decisión de frontera.
+
+**Lo que NO se debe hacer, y queda escrito acá antes de que a alguien le parezca lo obvio:** ampliar
+`app.nap_publico` para que `contacto.logo_url` / `contacto.portada_url` salgan a
+`business_profile_publico`. Ese jsonb guarda además notas de la agencia, teléfonos de contacto
+interno y datos de Google Places. Abrirlo campo por campo es hacer un agujero en la pared que la
+`0011` acaba de levantar, y del otro lado está el rol anónimo. El plan del portal ya lo prohíbe con
+un test de mutación propio.
 
 ---
 
@@ -445,7 +478,7 @@ Codex revisó el commit `253ef47` y devolvió ocho findings. Cómo se procesó c
 | 3 | Son cuatro validaciones, no tres | **Verificado**: `z.object` descarta claves desconocidas y `parseProfile` devuelve `parsed.data`. Aplicado: §Las cuatro fronteras + matriz de productores. |
 | 4 | "Sin HTML no viaja CSS" necesita propiedad del CSS | **Verificado** contra el media query oscuro único. Aplicado: §3, reglas 5 y 6. |
 | 5 | Hosts arbitrarios y fuga de tráfico | **Verificado**: el validador acepta cualquier host y el renderizador no emite `Referrer-Policy` ni CSP. Aplicado: §Política de imágenes. |
-| 6 | La `0011` no tiene estrategia operativa | **Parcialmente refutado.** Ventana de despliegue, medición y presupuesto de WAL son desproporcionados para una tabla de decenas de filas. Se aceptó `lock_timeout`, y se **elevó a crítico** un punto que el finding mencionaba de pasada: el `grant` que borra `drop column`. |
+| 6 | La `0012` no tiene estrategia operativa | **Parcialmente refutado.** Ventana de despliegue, medición y presupuesto de WAL son desproporcionados para una tabla de decenas de filas. Se aceptó `lock_timeout`, y se **elevó a crítico** un punto que el finding mencionaba de pasada: el `grant` que borra `drop column`. |
 | 7 | Hacen falta fases con gates | **Aceptado por juicio** (recomendación de proceso, no verificable). Aplicado: §Las tres entregas. |
 | 8 | La espera del portal es más amplia que la dependencia real | **Verificado en los hechos, no aplicado**: contradecía una decisión del usuario, que la confirmó. Anotado en §Punto de unión. |
 
