@@ -16,6 +16,12 @@
 > aplicada), `0012` (usuarios) y `0013` (ideas); el dashboard no lleva. Este spec toma el primer
 > número libre después de esa reserva. Si al implementar alguna de esas piezas dejó su número sin
 > usar, **el hueco se queda** — renumerar rompe `app.migraciones_aplicadas`.
+>
+> **Enmendado el 2026-08-02** — ver §Enmienda 2026-08-02. La enmienda añade el **manual de marca**
+> (tokens de color y roles tipográficos, en vez de los tres campos actuales) y **rediseña la carta**
+> tomando como referencia visual un template real. **No crea una migración nueva: amplía la `0014`**,
+> que todavía no se escribió. Las secciones afectadas de este documento están editadas en línea y
+> marcadas *(enmienda 2026-08-02)*; el razonamiento completo vive en la sección de la enmienda.
 
 ---
 
@@ -113,6 +119,7 @@ huecos: un perfil sin `locations` no dibuja `locales`.
 | `barraDatos` | contenido | `telephone`, `opening_hours`, `address`/`locations[0]` | Franja bajo el hero: teléfono clicable, horario, "Cómo llegar". |
 | `seccionProsa` | contenido | bloks `section` | La sección actual, con ritmo alterno (las pares cambian fondo y ancho de medida). |
 | `platosDestacados` | contenido | `profile.menu` | Hasta 6 ítems con foto, nombre, descripción y precio. Enlaza a `/menu`. |
+| `cartaCategorias` | contenido | `profile.menu` + `profile.menu_categorias` | *(enmienda 2026-08-02)* La carta completa: un bloque por categoría, con su foto y sus platos. La usa la receta de `/menu`. |
 | `galeria` | contenido | `profile.fotos` | Rejilla de fotos. |
 | `faq` | contenido | blok `faq` | La `renderFaq` actual, trasladada. |
 | `ctaFinal` | contenido | perfil | Cierre con la acción real (llamar / cómo llegar). |
@@ -203,6 +210,9 @@ Van con este trabajo porque tocan el mismo CSS que se reorganiza:
 - **Reseñas, reservas, pedidos.** No hay integración; inventarlos sería inventar datos.
 - **Usar `page_type` para elegir plantilla.** El mecanismo queda listo, pero con una sola plantilla
   no hay nada que elegir.
+- *(enmienda 2026-08-02)* **Las secciones restantes del template de referencia** — barra superior,
+  contadores, "por qué elegirnos", franja de vídeo, testimonios, newsletter. Inventariadas en
+  §Enmienda 2026-08-02 › El resto del catálogo. Los testimonios están **descartados**, no aplazados.
 
 ---
 
@@ -235,6 +245,42 @@ interface Location  { foto?: Foto; }
 interface BrandTheme { plantilla?: string; }   // desconocido → "base"
 ```
 
+*(enmienda 2026-08-02)* — el manual de marca y la carta con categorías. Todo opcional, igual que
+arriba; el detalle y el porqué están en §Enmienda 2026-08-02.
+
+```ts
+/** Nombres de ROL, no familias. El código mapea cada uno a una familia self-hosted o a un stack
+ *  del sistema — cambiar qué hay detrás es un cambio de código, no una edición de fichas. */
+type FuenteNombre =
+  | "sistema" | "serif" | "moderna"          // las tres actuales, se mantienen
+  | "condensada" | "geometrica" | "humanista" | "script";
+
+interface BrandTheme {
+  logo?: string;
+  plantilla?: string;
+  colores?: {                     // cada uno hex (#rgb o #rrggbb); lo que no valida, se descarta
+    primario?: string;  secundario?: string;
+    titulo?: string;    texto?: string;
+    fondo?: string;     fondoAlt?: string;
+  };
+  fuentes?: {                     // nombres de una allowlist del código, NUNCA un stack CSS
+    titulo?: FuenteNombre;  texto?: FuenteNombre;  decorativa?: FuenteNombre;
+  };
+  color?: string;                          // legacy → colores.primario
+  font?: "sistema" | "serif" | "moderna";  // legacy → fuentes.texto
+}
+
+interface MenuItem {
+  precios?: Array<{ etiqueta: string; importe: string }>;  // máx 3 — "Media" / "Ración"
+  nota?: string;                                           // "Sin gluten", "Picante"
+}
+
+/** Opcional: sin esto la carta se agrupa como hoy, sin foto de categoría. */
+interface MenuCategoria { nombre: string; foto?: Foto; orden?: number; }  // máx 20
+
+interface BusinessProfile { menu_categorias?: MenuCategoria[]; }
+```
+
 **Tope de la galería: 30 fotos**, aplicado en las cuatro fronteras — mismo criterio que
 `MAX_LOCALES` (20) y `MAX_ITEMS_CARTA` (200): sin tope, una ficha con 50.000 entradas se renderiza
 entera en cada visita fría, y no hace falta mala intención — alcanza un import mal hecho.
@@ -254,9 +300,9 @@ un host arbitrario, que así obtiene IP, user-agent y patrón de tráfico de los
    y un test los prueba nominalmente.
 4. **`referrerpolicy="no-referrer"`** en cada `<img>`, para que el host del asset no reciba la URL de
    la página del cliente.
-5. **Presupuesto por página**, no solo por campo: el tope de 30 cubre `fotos`, pero `menu` (200) y
-   `locations` (20) pueden aportar 220 imágenes más. Tope global de **60 imágenes por documento**,
-   aplicado en el ensamblado.
+5. **Presupuesto por página**, no solo por campo: el tope de 30 cubre `fotos`, pero `menu` (200),
+   `locations` (20) y `menu_categorias` (20, *enmienda 2026-08-02*) pueden aportar 240 imágenes más.
+   Tope global de **60 imágenes por documento**, aplicado en el ensamblado.
 6. **El renderizador NUNCA descarga, inspecciona ni proxifica estas URLs.** Hoy no hay SSRF porque
    `dimsDeStoryblok` solo parsea el string de la URL. Queda escrito acá para que un futuro "optimizá
    las imágenes" o "leé las dimensiones reales" tenga que romper una regla explícita, no descubrirla.
@@ -295,6 +341,11 @@ en el tipo y no aparece en ningún lado:
 | `db/src/seed-demo.ts` | El perfil sembrado en Supabase (hoy sin fotos). |
 | `renderer/src/dev-server.ts` | Los perfiles mock, para poder verlo en un navegador sin credenciales. |
 | `renderer/src/demo-server.ts` | Ídem contra el Storyblok real. |
+
+*(enmienda 2026-08-02)* Los mismos cinco productores tienen que aprender también el manual de marca y
+los campos de carta. Y hacen falta **dos perfiles de fixture, no uno**: uno con el manual completo y
+otro con el legacy `{color, font}` — sin el segundo, nada prueba que las webs ya sembradas sigan
+funcionando, que es la única regresión que esta enmienda puede causar.
 
 ---
 
@@ -376,15 +427,26 @@ una pérdida de datos de una regresión de refactor y de un defecto visual.
 Tipos, Zod, migración `0014`, `perfilValido`, fixtures, seed y servidores de dev/demo.
 **Sin tocar el render.**
 
+*(enmienda 2026-08-02)* Incluye también `brand.colores`, `brand.fuentes`, `MenuItem.precios`,
+`MenuItem.nota` y `menu_categorias`, **en la misma `0014`**: son campos del mismo perfil que cruzan
+las mismas cuatro fronteras, y partirlos en dos migraciones significaría re-materializar la columna
+generada dos veces —con su `drop column` y su `grant`— por nada.
+
 *Gate:* un test por cada una de las cuatro fronteras, más el del `grant` conectando como
 `app_render`. Verificación por mutación: quitar `portada` de la allowlist de la `0014` debe hacer
-caer *exactamente* el test de la frontera 2, no un test de render.
+caer *exactamente* el test de la frontera 2, no un test de render. La mutación se repite con un
+token de marca (`colores.primario`) y con `precios`: son sub-objetos anidados dentro de `brand` y de
+`menu`, que es donde la allowlist es más fácil de escribir mal sin que nada se queje.
 
 ### Entrega 2 — Ensamblado y piezas existentes, con paridad
 
 Shell, catálogo, receta, ensamblador de CSS y traslado de las piezas que ya existen
 (`cabecera`, `seccionProsa`, `faq`, `contacto`, `locales`). **Sin diseño nuevo y sin los arreglos
 visuales**: esta entrega no debe cambiar cómo se ve el sitio.
+
+*(enmienda 2026-08-02)* El CSS base pasa a emitir los tokens del manual de marca, **con los valores
+actuales como default**. Es deliberado que esta entrega los emita sin usarlos para nada nuevo: así
+la paridad visual del gate sigue siendo exigible. Las fuentes y el rediseño van en la entrega 3.
 
 *Gate:* **paridad de contenido** contra fixtures del HTML actual capturadas antes de empezar. Paridad
 de contenido significa: el texto visible, los `href`, los `id` de ancla y el JSON-LD son idénticos.
@@ -400,9 +462,15 @@ donde se descubre qué selectores globales del CSS actual no tienen dueño claro
 `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`, `ctaFinal`, más los arreglos de
 §Arreglos incluidos.
 
+*(enmienda 2026-08-02)* Suma `cartaCategorias`, las tipografías self-hosted y el uso real de los
+tokens de marca en el CSS de las piezas. **Es la entrega donde el sitio cambia de aspecto**, y por
+eso se hace después de que la 2 haya demostrado paridad: si el rediseño y el refactor entran juntos,
+un cambio inesperado no se puede atribuir a ninguno de los dos.
+
 *Gate:* tests por pieza, y **el sitio manejado en un navegador** en claro y oscuro, escritorio y
 móvil, con fotos y sin fotos. Los seis problemas que abren este spec los encontró un navegador, no
-los 584 tests del monorepo.
+los 584 tests del monorepo. *(enmienda)* Añadir al recorrido: un cliente con manual de marca completo
+y otro con el perfil legacy `{color, font}`, para ver con los ojos que la web vieja no se rompió.
 
 *Orden de despliegue:* entrega 1 primero (la capa de datos tolera campos que nadie lee todavía);
 render después.
@@ -426,6 +494,8 @@ Contra los **584 tests del monorepo** que hoy están en verde. Lo nuevo, además
 - **Presupuesto**: un perfil con 200 fotos repartidas entre galería, carta y locales emite como mucho
   60 `<img>`.
 - **Regresión de los arreglos**: un test que falle si el modo oscuro de una pieza queda incompleto.
+- *(enmienda 2026-08-02)* Tokens de marca, tipografías, `cartaCategorias` y la ruta de fuentes: ver
+  §Enmienda 2026-08-02 › Testing que añade esta enmienda.
 
 ---
 
@@ -487,14 +557,22 @@ sucursales; `logo_url`/`portada_url` son la excepción heredada, no la regla.
 | "URL del logo" | `contacto.logo_url` | `business_profile.brand.logo` — **ya existe**, ya es público, ya lo pinta la cabecera del sitio |
 | "URL de imagen de portada" | `contacto.portada_url` | `business_profile.portada.src` — nuevo, lo agrega este spec |
 
-**Este cambio es de la pieza del portal, no de este spec** (que llega hasta contrato y render). Queda
-especificado acá para que quien lo implemente no tenga que re-deducirlo:
+**Este cambio es de la pieza del portal, no de este spec** (que llega hasta contrato y render). Ya
+tiene dueño explícito: **[Trabajo E del programa del
+portal](../plans/2026-08-01-portal-agencia-programa.md)**, con la entrega 1 de este spec como
+precondición. Antes de asignarlo, el cambio no era de nadie — el spec lo excluía por alcance y la
+pieza 1 ya estaba cerrada. Queda especificado acá para que quien lo implemente no tenga que
+re-deducirlo:
 
 1. `business_profile` **no está en `COLUMNAS_EDITABLES`** (`db/src/clientes.ts`): hoy la API del CRM
-   no puede escribir el perfil público. Hay que agregarlo, y con eso aparece una vía de escritura
-   hacia el dato que consume el rol anónimo. Las cuatro fronteras siguen protegiendo la **lectura**,
-   así que el riesgo está acotado por diseño — pero la API debería validar forma y hosts al escribir
-   en vez de apoyarse solo en que el renderizador descarte después.
+   no puede escribir el perfil público. Pero **no basta con agregarlo a esa lista**:
+   `actualizarCliente` escribe la columna **entera** (`contacto = $n::jsonb`), así que un `PATCH` que
+   solo trajera la portada **borraría `locations`, `menu`, `brand` y `name`** — pérdida silenciosa en
+   el dato que alimenta la web pública. Hace falta una operación estrecha con **merge anidado en el
+   servidor**, que toque solo los paths del formulario, y un test que verifique que el resto del
+   perfil sobrevive. Con eso aparece además una vía de escritura hacia el dato que consume el rol
+   anónimo: las cuatro fronteras siguen protegiendo la **lectura**, pero la escritura debe validar
+   forma, HTTPS y host en vez de apoyarse solo en que el renderizador descarte después.
 2. **No hay migración de datos.** `logo_url`/`portada_url` no están cargados en ningún seed, fixture
    ni JSON del repo: el campo está vacío en todas partes. Mover el destino ahora cuesta cero; después
    de dar de alta el primer cliente real con la pantalla actual, cada uno es un dato que hay que
@@ -504,6 +582,189 @@ especificado acá para que quien lo implemente no tenga que re-deducirlo:
 4. **`alt`:** el formulario captura una URL y nada más. Por eso `Foto.alt` es **opcional** con default
    `""` (decorativa) — ver §Modelo de datos. Exigir un `alt` que la pantalla no pide dejaría el campo
    inválido siempre.
+
+---
+
+## Enmienda 2026-08-02 — manual de marca y carta con categorías
+
+Sesión de diseño con el usuario partiendo de un template real de restaurante
+(`foodu-react.vercel.app/home-6`). Dos cosas que este spec no cubría: **el manual de marca** y **la
+carta**. El resto del catálogo de ese template queda inventariado al final, para las piezas
+siguientes.
+
+### Por qué esto no contradice "piezas y no un template de terceros"
+
+§Decisiones que quedan dichas rechaza adoptar un tema de terceros, y sigue vigente: el template **no
+se instala, no se importa y no aporta un byte** al repositorio. No entran su HTML, su CSS, su JS, sus
+iconos ni sus fotos.
+
+Lo que sí se toma es lo que no tiene dueño: **saber qué secciones tiene la home de un restaurante que
+funciona, y en qué orden**. Eso se catalogó mirando el DOM renderizado, y de ahí salen dos
+conclusiones que ninguna revisión del código propio habría dado: que nuestro modelo de carta es más
+pobre de lo que un restaurante necesita, y que un manual de marca son ocho decisiones, no tres.
+
+El template usa Bootstrap, Swiper, Font Awesome y tres fuentes de Google en 930 KB de CSS. Nada de
+eso entra: sigue valiendo la página autocontenida de ADR-19.
+
+### El manual de marca
+
+Hoy la marca son tres campos (`color`, `font` de tres opciones, `logo`) y el CSS los usa como
+`--accent` y `--font` ([`html.ts`](../../../web-builder/src/render/html.ts), `themeCss`). Con eso, dos
+restaurantes distintos se distinguen por un color de acento. El modelo nuevo está en §Modelo de
+datos; lo que importa es cómo se hace cumplir:
+
+**Emisión.** Los tokens se emiten como custom properties en el `<style>` del documento, dentro del
+CSS base — nunca desde una pieza (§3, regla 6). Un token ausente no emite nada y el default del base
+gana. Es lo que permite que una ficha a medio llenar produzca una web coherente en vez de una web
+rota a trozos.
+
+**Validación: las mismas cuatro fronteras.** Un token es un valor de cliente que termina literalmente
+dentro de un `<style>`; es la superficie de inyección más directa del sistema. Cada color se valida
+como hex (`#rgb` o `#rrggbb`) en las cuatro capas, y cada fuente contra la allowlist de nombres. **Lo
+que no valida se descarta y cae al default** — nunca rompe la página, la deja sobria. Es la regla que
+ya aplica `themeCss` hoy, extendida token a token.
+
+**Compatibilidad con lo sembrado.** Las fichas existentes tienen `{color, font}`. El legacy se sigue
+leyendo y mapea a `colores.primario` y `fuentes.texto`. Si una ficha trae las dos formas, **gana la
+específica** (`colores.primario` sobre `color`): la nueva es una decisión explícita, la vieja es
+herencia. Un test lo fija en los dos sentidos.
+
+**Lo que no se hace: derivar colores.** Nada de calcular un hover un 12% más oscuro ni un contraste
+automático en TypeScript. Las variantes que hagan falta se derivan en CSS (`color-mix`), donde el
+navegador se encarga y no hay una segunda copia de la paleta que se desincronice. El único derivado
+que este spec ya contemplaba —la variante de acento para modo oscuro (§Arreglos incluidos)— sigue
+resolviéndose así.
+
+### Las tipografías, self-hosted
+
+El template carga Jost, Oswald y Dancing Script desde `fonts.googleapis.com`. **Eso no entra**: mete
+un tercero en el path de render del proceso anónimo, añade una conexión bloqueante antes del LCP y
+manda la IP de cada visitante a Google. Es exactamente lo que §Política de imágenes prohíbe para las
+fotos; sería incoherente permitirlo para las fuentes.
+
+Se sirven desde nuestro propio dominio. Consecuencias, dichas antes de implementarlas:
+
+1. **El renderizador gana una ruta pública nueva** (`/_assets/fonts/…`). Hasta hoy solo emite HTML.
+   La pregunta del proyecto es *"si me lo toman, ¿qué se llevan?"*: la respuesta tiene que ser "unos
+   archivos de fuente que ya son públicos". Para que sea cierto, **la ruta sirve desde un mapa fijo
+   compilado en el código** (nombre lógico → bytes), no desde el filesystem por la ruta que pida
+   quien llama. Así no hay path traversal que buscar: no hay path. Un test pide
+   `/_assets/fonts/../../etc/passwd` y espera 404.
+2. **Cache inmutable** (`cache-control: public, max-age=31536000, immutable`) con el hash en el
+   nombre. Con la CDN que ADR-19 ya exige delante, el origen las sirve una vez.
+3. **Subset latino, `woff2`, `font-display: swap`**, y `preload` **solo** de la fuente de titulares.
+   Precargar tres familias es competir contra el propio LCP.
+4. **Solo entran familias con licencia que permita self-host** (las tres del template son SIL OFL,
+   pero eso **se verifica al implementar**, familia por familia, y la licencia se commitea junto al
+   archivo). Una fuente sin su licencia en el repo no se sirve.
+
+**La ficha elige un nombre de rol, nunca una familia ni un stack.** La allowlist crece con nombres
+neutros —`condensada`, `geometrica`, `humanista`, `script`, más los tres actuales— y el código mapea
+nombre → familia self-hosted o stack del sistema. Cambiar qué familia concreta hay detrás de
+`condensada` es entonces un cambio de código revisado, no una edición de fichas de clientes.
+
+### La carta
+
+La sección de menú del template pinta, por cada categoría, una foto grande y una lista de platos con
+miniatura, **dos precios** (media ración / ración) y una nota corta. Nuestro `MenuItem` tiene
+`{category, name, description, price}`: un solo precio y ningún sitio donde poner lo demás.
+
+**`cartaCategorias`** es la pieza nueva (§2). La receta de `/menu` la usa; la home sigue usando
+`platosDestacados`, que ya estaba especificada. Son dos piezas y no una con dos modos porque el
+contrato `Pieza` no recibe parámetros de receta — y forzarlo sería abrir la puerta a piezas
+configurables, que es justo lo que §4 evita. **La fila de plato es común a las dos**, así que su
+markup se genera con una función compartida y su CSS vive en el base, como manda §3 regla 6.
+
+**Reglas de omisión** (el `""` de §2, aplicado al detalle):
+
+- Sin `menu` no hay pieza, y `/menu` sigue dando 404 como hoy.
+- Sin `menu_categorias`, la carta se agrupa por el `category` de cada plato y no muestra fotos de
+  categoría. Un cliente que solo tiene la lista de platos conserva su carta entera.
+- Categoría sin foto → el bloque ocupa el ancho completo. No queda un hueco esperando una imagen.
+- Plato sin foto → fila sin miniatura. Nunca una foto genérica de otro restaurante.
+
+**Precios.** `precios` manda sobre `price`; `price` es el atajo para el caso de un solo importe. El
+`importe` sigue siendo **texto libre** por la misma razón que hoy (`"12,50 €"`, `"s/ mercado"`):
+tipificarlo obligaría a decidir moneda y formato en el modelo, y lo único que hace falta es imprimir
+lo que escribió el cliente. En el JSON-LD, `offers` toma **el primero** de `precios` — decidido acá y
+con su test, para que no lo decida por accidente el orden de un `Object.keys`.
+
+`platosDestacados` (el extracto de la home) muestra **solo el primer precio**, sin etiqueta. Es un
+gancho hacia `/menu`, no la carta: repetir ahí "Media 9 € / Ración 15 €" convierte un extracto en una
+tabla y le quita la razón de existir al enlace.
+
+**Topes**, en las cuatro fronteras como el resto: `precios` máx 3, `menu_categorias` máx 20. En la
+`0014` se aplican cortando la fuente (`where i <= N`), igual que la `0010` con los 200 platos.
+
+> **Ambigüedad del documento base que hay que cerrar al implementar** (no la introduce esta enmienda,
+> pero esta enmienda tropieza con ella): §4 define `Plantilla` como **una** receta y `brand.plantilla`
+> como el campo que la elige, mientras que §Arquitectura de render dice que `renderStory`,
+> `renderHome`, `renderMenu` y `renderBlogIndex` son **cuatro** recetas distintas. Las dos frases no
+> pueden ser ciertas a la vez con un solo campo. La lectura que asume esta enmienda —y que hay que
+> confirmar o corregir en el plan— es que **`brand.plantilla` elige un juego de cuatro recetas**, una
+> por tipo de documento, y que `base` es el único juego que existe hoy. Con la otra lectura,
+> `cartaCategorias` no tendría dónde vivir.
+
+### Casos borde que añade esta enmienda
+
+| Caso | Comportamiento |
+| --- | --- |
+| Color con `</style>`, `;}` o `url(…)` | No es hex: se descarta, cae al default. La página sale sobria, nunca rota. |
+| Fuente fuera de la allowlist | Cae al default del rol. |
+| Ficha con `color` legacy **y** `colores.primario` | Gana `colores.primario`. |
+| Ficha solo con `{color, font}` legacy | Se mapea y renderiza como hoy. **Ninguna web sembrada cambia de aspecto por esta enmienda.** |
+| `precios` con 5 entradas | Se cortan en 3. |
+| Una entrada de `precios` sin `etiqueta` o sin `importe` | Se descarta esa entrada, no el plato. Si no queda ninguna, cae a `price`. |
+| Categoría en `menu_categorias` sin platos en `menu` | No se dibuja: un bloque con foto y sin carta es un hueco. |
+| Plato con `category` que no está en `menu_categorias` | Se dibuja en su grupo, sin foto de categoría. |
+| `menu_categorias` sin `orden` | Orden de aparición en `menu`. |
+| Perfil con manual de marca y sin ninguna foto | Web con la marca del cliente y sin secciones de imagen. Es el caso normal al dar de alta. |
+
+### Testing que añade esta enmienda
+
+- **Por token**: hex válido emite; hex inválido, `</style>`, `url(javascript:…)` y un objeto en vez de
+  un string no emiten nada. Uno por token, no uno de muestra.
+- **Mutación de la allowlist SQL**, repetida en `brand.colores` y en `menu[].precios`: quitar un campo
+  debe hacer caer *exactamente* su test de frontera 2.
+- **Legacy**: una ficha `{color, font}` produce el mismo CSS que antes de la enmienda; y con las dos
+  formas presentes, gana la específica.
+- **Cero terceros en el CSS emitido**: un test que recorra el `<style>` del documento y falle ante
+  cualquier host externo (`fonts.googleapis.com`, `cdn.`, `//`). Es la garantía de ADR-19 convertida
+  en test en vez de en costumbre.
+- **La ruta de fuentes**: sirve lo que está en el mapa; 404 para todo lo demás, incluido
+  `../../etc/passwd`; y `cache-control` inmutable.
+- **`cartaCategorias`**: con categorías y fotos, con categorías sin fotos, sin `menu_categorias`, y
+  sin `menu` → `""`.
+- **JSON-LD**: un plato con tres precios emite `offers` con el primero.
+
+### El resto del catálogo, para las piezas siguientes
+
+Inventario de la home-6 del template, con de dónde saldría el dato en nuestro modelo. **Nada de esto
+entra en este spec**; se anota para no volver a levantarlo desde cero.
+
+| Sección | Dato | Estado |
+| --- | --- | --- |
+| Barra superior (teléfono, email) | Perfil — **falta `email`** | Pendiente |
+| Hero con oferta y precio | Blok `hero` + campo de oferta | Pendiente. `heroPortada` ya cubre lo básico |
+| Categorías con contador ("Fast food · 80+") | Derivable de `menu` | Pendiente |
+| "Por qué elegirnos" (3 bullets + contador) | LLM con `claims_permitidos` | Pendiente. Roza el límite de §Fuera de alcance: el LLM no debe inventar cifras |
+| Franja con vídeo de fondo y CTA | Solo copy | Pendiente |
+| Testimonios | **Nadie** | **Descartado mientras no haya reseñas reales.** Generarlas sería inventar clientes, y en el JSON-LD son *fake reviews* penalizadas |
+| Últimas entradas del blog | Ya existe (`/blog`) | Solo rediseño |
+| Newsletter en el pie | No hay integración | Pendiente, y exige decidir dónde acaban esos correos (RGPD) |
+
+**Lo que falta antes de que un cliente pueda tocar nada de esto:** hoy `business_profile` **no se
+escribe desde ninguna parte** — ni la API ni el portal lo tocan (`db/src/store.ts` solo lo lee, y
+`COLUMNAS_EDITABLES` no lo incluye). Se siembra desde `seed-demo.ts`. Esta enmienda **no cambia eso a
+propósito**: llega hasta contrato y render, igual que el spec que enmienda, y la vía de escritura
+está especificada en §Punto de unión con el portal como trabajo de la pieza del portal.
+
+### Doc drift corregido
+
+[`types.ts`](../../../web-builder/src/types.ts) dice, sobre `BusinessProfile`, que *"en PROD esto es
+un datasource global del space de Storyblok; en la PoC, un JSON"*. No es cierto desde la `0008`: en
+producción el renderizador lo lee de `clients.business_profile_publico`, la columna generada con
+allowlist. Ese comentario se corrige al implementar la entrega 1.
 
 ---
 
@@ -545,3 +806,17 @@ Codex revisó el commit `253ef47` y devolvió ocho findings. Cómo se procesó c
 - **Por qué una sola plantilla.** El pedido fue "mismo esqueleto, distinta marca, ampliable después".
   El mecanismo de ampliación se construye ahora porque después sale caro; las plantillas concretas,
   cuando haya un cliente que las necesite.
+- *(enmienda 2026-08-02)* **Por qué mirar un template de terceros si no se usa ninguno.** Porque
+  responde una pregunta que el código propio no responde: qué secciones espera encontrar alguien que
+  entra a la web de un restaurante. De ahí salieron los dos huecos de esta enmienda. Mirar es gratis
+  y no crea dependencia; instalar sí.
+- *(enmienda 2026-08-02)* **Por qué el manual de marca son tokens y no presets con nombre.** Un preset
+  hace que dos clientes de la misma agencia tengan la misma web con distinto logo, que es justo el
+  reproche que abre este spec. Los tokens cuestan una allowlist más larga y un test por token; los
+  presets cuestan clientes que se reconocen entre sí.
+- *(enmienda 2026-08-02)* **Por qué las fuentes se sirven desde casa y no desde Google.** La misma
+  razón que la allowlist de hosts de §Política de imágenes: cada request a un tercero desde la web de
+  un cliente le regala a ese tercero el tráfico del cliente. Que sea gratis y cómodo no lo cambia.
+- *(enmienda 2026-08-02)* **Por qué no hay testimonios.** No hay de dónde sacarlos. Pedírselos al LLM
+  es inventar clientes que no existen y firmarlo con `Review` en el JSON-LD. Es la misma línea que el
+  `postalCode` opcional y el `null` de las métricas: **antes ausente que inventado**.

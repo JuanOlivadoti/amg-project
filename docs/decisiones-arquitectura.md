@@ -30,6 +30,7 @@
 | ADR-21 | **El stack del portal, cerrado**: solo habla con nuestra API · polling · Tailwind puro · standalone+signals | Aceptada (completa ADR-16) |
 | ADR-22 | **La API en Hono**: comandos compuestos (fila bajo RLS → después el evento), auth = JWT + RLS | Aceptada (implementa 5.1) |
 | ADR-23 | La API verifica identidad contra el **JWKS del emisor**, no contra un secreto compartido | Aceptada (endurece ADR-22) |
+| ADR-24 | Las **membresías se escriben desde `app_user` bajo RLS**, no con service-role (enmienda la `0001`) | **Aceptada** (2026-08-02) · desbloquea la pieza 2 del portal |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | ✅ **CERRADA** (2026-07-19) — manda `contexto-proyecto-frank.md`; el PRD queda como visión |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 | OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
@@ -1228,3 +1229,62 @@ space — que hoy es el eslabón débil. No sustituye el seat: Storyblok pide su
 **Riesgo si no se decide:** el vencimiento largo se queda por inercia y se convierte en el diseño; y
 la cláusula de offboarding se firma sin que nadie haya dicho qué compra el cliente cuando compra
 "editable".
+
+---
+
+## ADR-24 — Las membresías se escriben desde `app_user` bajo RLS
+
+> **Aceptada el 2026-08-02.** Desbloquea la pieza 2 del portal de la agencia, que no podía escribirse
+> sin resolver esto.
+
+**Contexto.** La `0001_init.sql` decidió, con estas palabras, que las membresías **no se escriben
+desde la aplicación**:
+
+> *"Membresías: se LEEN (para resolver permisos), no se escriben desde la app. Crear membresías y
+> cambiar roles va por el backend con service-role: es una operación de administración, no de uso."*
+
+Y lo impuso donde corresponde: `app_user` tiene `grant select on tenants, memberships` y nada más.
+
+**El problema es que ese backend con service-role nunca existió.** La API no recibe —ni debe
+recibir— ninguna credencial de Supabase: el reparto de `env:sync` no le entrega ninguna, y es
+deliberado. Así que hoy **no hay ningún camino para cambiar el rol de un miembro**, ni desde la app
+ni desde el "backend con service-role" que la `0001` daba por supuesto. La decisión quedó huérfana:
+designaba un ejecutor que no se construyó.
+
+La pieza 2 del portal de la agencia (gestión de usuarios) necesita ese camino. Sin resolver esto, su
+plan contradice una decisión escrita — que es exactamente lo que la revisión externa señaló.
+
+**Decisión.** Las membresías **se escriben desde `app_user`, bajo RLS**, con la autoridad derivada de
+`memberships` dentro de Postgres, igual que todo lo demás (ADR-15). Concretamente, y ninguna de estas
+condiciones es opcional:
+
+1. **Grant por columna, no por tabla:** `grant update (rol, client_id) on memberships to app_user`.
+   Sin `insert` ni `delete`. `tenant_id` y `user_id` son la identidad de la fila: si se pudieran
+   editar, cambiar un rol y mover a alguien de tenant serían la misma operación.
+2. **Policy con `using` y `with check`**, las dos, exigiendo que quien escribe sea `maestro` del
+   tenant del contexto. Solo `using` autoriza a leer la fila para escribirla, no filtra el valor
+   nuevo.
+3. **`servicio` no es asignable.** El rol de los procesos no se reparte desde una pantalla.
+4. **Nadie se cambia el rol a sí mismo**, impuesto en la base y no solo en el endpoint.
+5. **Siempre queda un `maestro`**, con un trigger que cubra dos degradaciones concurrentes — un
+   `check` mira una fila y no puede ver el invariante.
+
+**Por qué no las alternativas.**
+
+- **Darle a la API una service-role de Supabase.** Es el camino que la `0001` imaginaba, y es el peor
+  de los tres. Esa credencial no cambia roles: puede crear usuarios, cambiar emails y leer el
+  directorio de identidades entero, saltándose RLS por definición. La pregunta de siempre —*si me lo
+  toman, ¿qué se llevan?*— pasa de "los datos de un tenant" a "todas las identidades del proyecto".
+  Y contradice la compartimentación de credenciales que el proyecto ya sostiene.
+- **Un login extra para la API**, dedicado a administración. Viola **ADR-17** de frente: un proceso,
+  un login, un rol. Si `amg_api` puede asumir un segundo rol, la garantía deja de imponerla Postgres
+  y vuelve a ser un `if` bien intencionado.
+
+**Consecuencia inmediata:** el comentario de la `0001` citado arriba **queda desactualizado y hay que
+corregirlo** en la migración que implemente esto (no editando la `0001`, que ya está aplicada, sino
+dejando el comentario nuevo en la migración que cambia la política). Una decisión derogada que sigue
+escrita como vigente es peor que no tenerla escrita: el próximo que la lea va a diseñar contra ella.
+
+**Lo que NO cambia.** El alta de usuarios sigue fuera: crear una cuenta es de Supabase Auth, y la
+pieza 2 gestiona membresías de usuarios que ya existen. Esta decisión no le da a la API ninguna
+capacidad sobre `auth.users` más allá de la lectura acotada que su propio plan define.

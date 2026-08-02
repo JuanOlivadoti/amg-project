@@ -7,6 +7,30 @@
 > **Leé primero el [programa](2026-08-01-portal-agencia-programa.md).** Ahí están el orden, la lista de
 > qué no se toca, la reserva de números de migración (esta pieza usa `0013`) y la regla de la
 > allowlist. Este plan asume todo eso.
+>
+> ---
+>
+> ## ⛔ Enmendado el 2026-08-02 — NO ejecutar sin leer esto
+>
+> Una revisión externa de los cinco planes abiertos encontró tres cosas en este:
+>
+> 1. **Los permisos estaban descritos por visibilidad, no por verbo.** El plan decía "`grant` a
+>    `app_user` sobre `ideas`" y enumeraba quién ve qué. Con un grant amplio y una policy de solo
+>    `using`, **un rol `cliente` podría editar, aprobar o rechazar su propia idea** — que es
+>    exactamente lo contrario del producto (la agencia revisa) y contradice ADR-20. Ver Etapa 1.
+> 2. **El test de fuga contra `app_render` podía ser vacuo.** Decía "leer como `app_render` y
+>    confirmar que no hay forma de llegar", con mutación "agregar un `grant` y ver que cae". Pero si
+>    el test afirma *cero filas* y la tabla tiene `force row level security` sin policy para
+>    `app_render`, **agregar el grant sigue devolviendo cero filas y la mutación no cae**. Un test de
+>    seguridad que no puede fallar es peor que no tenerlo. Tiene que afirmar `permission denied`.
+> 3. **Falta el contrato de exposición**, y de eso depende la pieza 4. `GET /ideas` sin proyección
+>    devolvería transcripción y análisis de todas las filas; el dashboard quiere esa lista para
+>    contar estados. Se acabaría mandando el dato más sensible del sistema al navegador para pintar
+>    un contador. Ver Etapa 3.
+>
+> Y una cuarta, que es trabajo **añadido**: la pieza 1 dejó un módulo de ideas **mock** dentro de
+> `/clientes/:id/ver` (`cliente-vista.ts`, tab "Ideas", datos iguales para todos los clientes). Esta
+> pieza construye el real y tiene que retirar o conectar aquel. Ver Etapa 7.
 
 **Goal:** que las ideas que el cliente manda por audio se puedan revisar, editar y aprobar/rechazar
 desde el portal, con los datos en Postgres bajo RLS. Origen:
@@ -107,15 +131,30 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
       - `check (jsonb_typeof(analisis) = 'object')` — la forma del valor, no solo el nombre de la clave.
       - `alter table ideas enable row level security` **y `force row level security`** (es lo que hace
         el resto del esquema: sin `force`, el dueño de la tabla se saltea las políticas).
-      - Políticas: `equipo`/`maestro` ven las del tenant; `cliente` ve solo las de su `client_id`;
-        `servicio` según lo que necesite el ingreso futuro (si no lo necesita hoy, **no** se le da).
-      - `grant` a `app_user` sobre `ideas`. **Ningún grant a `app_render`.**
+      - **Permisos por VERBO, no por visibilidad** (enmienda del 2026-08-02). Cada uno con su test:
+        - `select`: staff del tenant (`equipo`/`maestro`) todas las del tenant; `cliente`, **solo las
+          de su `client_id`**.
+        - `update`: **solo `equipo`/`maestro`**. Un `cliente` NO edita, NO aprueba y NO rechaza su
+          propia idea — la revisa la agencia, que es el producto entero (ADR-20).
+        - `insert`: **nadie desde `app_user`** mientras el ingreso real (n8n/audio) esté fuera de
+          alcance. Una idea la crea el seed o el futuro ingreso, no una pantalla.
+        - `delete`: **sin grant.** Si algún día hace falta, se decide entonces.
+        - `servicio`: **sin privilegios especulativos.** Si el ingreso futuro los necesita, se los da
+          el plan que lo construya.
+      - `grant` a `app_user` **enumerando los verbos concedidos**, nunca `all`. **Ningún grant a
+        `app_render`.**
       - Índices: `(tenant_id, estado)`, `(tenant_id, client_id)`.
 - [ ] Verificación por mutación de cada constraint, del `force row level security` y del default
       `nueva`.
-- [ ] **Test de fuga:** una idea con transcripción y análisis cargados; leer como `app_render` y
-      confirmar que no hay forma de llegar a ellos. Mutación: agregar un `grant select on ideas to
-      app_render` en una copia local y confirmar que el test cae.
+- [ ] **Test de fuga contra `app_render`, afirmando el error y no el conjunto vacío.** El test tiene
+      que exigir **`permission denied`** (fallo de ACL), no "devuelve cero filas". Con `force row
+      level security` y sin policy para `app_render`, un `select` da cero filas *aunque exista el
+      grant*: si el test mira el conteo, **la mutación de control no cae y el test no prueba nada**.
+      Mutación: agregar `grant select on ideas to app_render` en una copia local y confirmar que el
+      test cae de verdad.
+- [ ] **Tests de escritura por rol, no solo de visibilidad:** un `cliente` que hace `update` de su
+      propia idea no afecta filas; un `equipo` sí. Es el vector que la enmienda encontró abierto —
+      "ve las suyas" no implica "no puede tocarlas".
 - [ ] **Test del rol `cliente`:** dos clientes en el mismo tenant, una idea cada uno; el `cliente` A
       ve una sola. Mutación: relajar la política a "todas las del tenant" y confirmar que cae.
 
@@ -136,8 +175,22 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 - [ ] **Rojo primero**, un test por vector: sin token → 401; otro tenant → no ve; un `cliente` solo ve
       las suyas; `PATCH` con transición inválida → 400 (no 500); `PATCH` con `tenant_id` en el body →
       se ignora; `PATCH` de una idea de otro tenant → 404 sin revelar existencia.
-- [ ] `GET /ideas` (con filtros `estado` y `client_id`), `GET /ideas/:id`, `PATCH /ideas/:id`
-      (contenido y estado).
+- [ ] **El contrato de exposición — dos DTO distintos, y esto es lo que consume la pieza 4**
+      (enmienda del 2026-08-02):
+      - **`GET /ideas` devuelve un RESUMEN**: `id`, `client_id`, `titulo`, `estado`, `creada_en`.
+        **Sin `transcripcion`, sin `analisis`, sin `audio_url`.** Con filtros (`estado`,
+        `client_id`), orden y **límite**. Es lo que el dashboard y los listados necesitan; mandar la
+        transcripción de cada idea al navegador para pintar un contador es filtrar el dato más
+        sensible del sistema por comodidad.
+      - **`GET /ideas/:id` devuelve el detalle completo**, incluida la transcripción y el análisis.
+        Una idea a la vez, abierta a propósito por alguien que la está revisando.
+      - `PATCH /ideas/:id` (contenido y estado).
+- [ ] Test de que `GET /ideas` **no** trae `transcripcion` ni `analisis` en ningún ítem, ni siquiera
+      cuando el que pregunta es `maestro`. Es un contrato, no un permiso: nadie necesita 200
+      transcripciones en una respuesta de listado.
+- [ ] **Límites de tamaño en la base**, no solo en el cliente: largo máximo de `titulo`, `resumen` y
+      `transcripcion`; tamaño y claves admitidas de `analisis`; `audio_url`/`carpeta_url` validadas
+      como URL http(s). Un jsonb sin tope es una fila que puede crecer sin techo.
 - [ ] ¿Aprobar una idea dispara algo? Hoy, no. **No se inventa un evento**: si en el futuro una idea
       aprobada arranca un research, será fila primero y evento después (ADR-18), y lo decide otro plan.
 - [ ] `api/src/dev-server.ts` con ideas de ejemplo sobre PGlite.
@@ -181,11 +234,32 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
       documentación y en la propia pantalla si hace falta ("las ideas entran por el flujo de audio —
       pendiente de conectar"), para que nadie crea que está enchufado.
 
+## Etapa 7 — Retirar el módulo de ideas mock de la pieza 1
+
+> Añadida el 2026-08-02. `/clientes/:id/ver` (`cliente-vista.ts`) ya tiene un tab "Ideas" con datos
+> de ejemplo: sus propios tipos, estados y contadores, en `core/cliente-vista-mock.ts`. El propio
+> archivo declara que **el contenido es el mismo para cualquier cliente** porque cuando se escribió no
+> había ideas reales de las que filtrar. Ahora las hay. Si esta pieza no lo cierra, el portal queda
+> con dos representaciones de "ideas": una real en `/ideas` y una ficticia dentro del cliente —
+> y la pieza 4 va a reutilizar la real, con lo que la contradicción queda a dos clics.
+
+- [ ] Decidir y ejecutar **una** de las dos: (a) el tab pasa a mostrar las ideas **reales** filtradas
+      por `client_id`, reutilizando el modelo, el servicio y el componente de tabla de esta pieza —
+      no una segunda implementación; o (b) el tab se retira hasta que alguien lo pida.
+      Recomendado (a): la pantalla ya existe y es donde un cuentas mira a su cliente.
+- [ ] **Los mocks de Instagram y Reseñas siguen siendo mocks y tienen que verse como tales.** Si el
+      tab de ideas pasa a datos reales, que un tab real conviva con dos ficticios sin distinción es
+      peor que tener los tres ficticios. Marcarlos explícitamente en la UI o retirarlos.
+- [ ] Limpiar de `core/cliente-vista-mock.ts` lo que deje de usarse. Un generador de ideas falsas que
+      ya no llama nadie es una trampa para el próximo que lo encuentre.
+
 ## Riesgos y cómo se cierran
 
 | Riesgo | Cómo se cierra |
 |---|---|
-| Una transcripción o el audio se filtran al renderizador anónimo | Test de fuga con mutación; ningún `grant` a `app_render` |
+| Una transcripción o el audio se filtran al renderizador anónimo | Test de fuga que exige **`permission denied`**, no cero filas — con `force row level security` el conteo vacío no prueba nada. Ningún `grant` a `app_render` |
+| **Un `cliente` edita o aprueba su propia idea** | Permisos por verbo: `update` solo para staff, con test de escritura por rol (no solo de visibilidad) |
+| **La transcripción viaja al navegador para pintar un contador** | `GET /ideas` devuelve resumen sin transcripción/análisis; el detalle solo por `GET /ideas/:id`, con su test |
 | Un `cliente` ve las ideas de otro cliente del mismo tenant | Política estrecha por `client_id` + su test con mutación |
 | El estado se corrompe (`'aprovada'`) o retrocede | Enum de Postgres + máquina de transiciones en un solo lugar, validada en la API |
 | La pantalla parece enchufada al pipeline de audio y no lo está | Informe de cierre + aviso en la UI. El seed es "de ejemplo" y se nota |

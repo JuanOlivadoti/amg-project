@@ -84,28 +84,57 @@ origen. Si una pieza cree que necesita rehacer el shell, **paren y pregunten**.
 Cuatro piezas en cuatro ramas pueden reclamar el mismo número (`0011`) y chocar al mergear. Reserva
 fijada acá, de una vez:
 
-| Pieza | Migración |
-|---|---|
-| 1 Clientes | `0011_clientes_crm.sql` |
-| 2 Usuarios | `0012_membresias_perfil.sql` (solo si hace falta; ver su plan) |
-| 3 Ideas | `0013_ideas.sql` |
-| 4 Dashboard | ninguna (solo lee) |
+| Pieza / trabajo | Migración | Propietario | Estado |
+|---|---|---|---|
+| 1 Clientes | `0011_clientes_crm.sql` | pieza 1 | ✅ **aplicada** (mergeada 2026-08-01) |
+| 2 Usuarios | `0012_membresias_perfil.sql` | pieza 2 | 🔵 reservada — autorizada por **ADR-24** (aceptada 2026-08-02) |
+| 3 Ideas | `0013_ideas.sql` | pieza 3 | 🔵 reservada |
+| 4 Dashboard | ninguna (solo lee) | — | — |
+| [Plantillas de landing](../specs/2026-08-01-plantillas-landings-design.md) | `0014_fotos_publicas.sql` | spec de landings | 🔵 reservada |
+
+**La reserva incluye trabajos que no son del portal** (enmienda del 2026-08-02). El spec de landings
+tomó la `0012` mirando solo `db/migrations/`, donde estaba libre, y pisó la de usuarios: **un número
+libre en el disco no es un número libre.** Antes de escribir una migración, mirar esta tabla, no la
+carpeta.
 
 Si una pieza se mergea antes que otra y deja un hueco (p. ej. la 2 no necesita migración), **el hueco
 se queda**: renumerar una migración ya mergeada rompe el registro `app.migraciones_aplicadas`.
 
+**El número no es cronología.** `migrarConRegistro` (`db/src/deploy.ts`) lista los `.sql`, los ordena
+alfabéticamente y aplica los que no estén registrados — así que si la `0013` se aplica primero y la
+`0012` llega después, la `0012` se aplicará **después** de la `0013`, pese a su número menor. Eso es
+correcto solo mientras las migraciones reservadas sean **independientes entre sí**, que hoy lo son
+(`0012` toca `memberships`/`auth`, `0013` crea una tabla nueva, `0014` toca `app.nap_publico`).
+**Antes de mergear, cada pieza declara acá si su migración depende de alguna hermana.** Si alguna
+vez una dependiera, el número deja de alcanzar y hay que ordenar el merge.
+
 ### 5. La regla de seguridad que atraviesa las cuatro piezas
 
-**Ningún dato nuevo entra en la allowlist pública.** `clients.business_profile_publico` es una columna
-generada con allowlist y es **lo único** que el rol `app_render` puede leer — el renderizador es la
-única pieza expuesta a internet anónimo (ADR-19). Hoy expone exactamente
-`brand, locations, menu, name, priceRange` (verificado por consulta el 2026-08-01). **Esa lista no
-crece con este programa.** Lo que traen estas piezas es interno: teléfonos, emails, notas de la
-agencia, contratos, scoring, transcripciones de audio, quién lleva la cuenta.
+**Ningún dato interno que traigan estas cuatro piezas entra en la allowlist pública.**
+`clients.business_profile_publico` es una columna generada con allowlist y es **lo único** que el rol
+`app_render` puede leer — el renderizador es la única pieza expuesta a internet anónimo (ADR-19). Hoy
+expone exactamente `brand, locations, menu, name, priceRange` (verificado por consulta el
+2026-08-01). **Esa lista no crece con este programa.** Lo que traen estas piezas es interno:
+teléfonos, emails, notas de la agencia, contratos, scoring, transcripciones de audio, quién lleva la
+cuenta.
+
+> **Delimitación (enmienda del 2026-08-02).** Esta regla **no** es una invariante de todo AMG OS: es
+> una restricción de *estas cuatro piezas*. Antes decía "ningún dato nuevo entra en la allowlist
+> pública" a secas, y así leída prohíbe también lo que el contrato público sí debe crecer.
+> **Las ampliaciones legítimas del contrato público existen y van por otro camino:** un diseño
+> específico del renderizador, con su migración y su revisión contra ADR-19. La que está en curso es
+> el [spec de plantillas de landing](../specs/2026-08-01-plantillas-landings-design.md), que agrega
+> `portada`, `fotos`, `menu[].foto`, `locations[].foto` y `brand.plantilla` — datos que son públicos
+> por definición: son la web del cliente. No hay contradicción; había un alcance mal escrito.
 
 Cada pieza que agregue datos lleva un test que lo fija **por mutación**: cargar el dato, leerlo como
 `app_render`, y afirmar que no aparece. Pregunta de diseño de siempre: *si me toman el renderizador,
 ¿qué se llevan?*
+
+**El test tiene que fallar por la razón correcta.** Con `force row level security` y sin policy para
+`app_render`, un `select` devuelve cero filas *aunque exista el grant*: un test que mire el conteo
+pasa igual y su mutación de control no cae. Donde se pruebe que `app_render` no llega a algo, hay que
+**afirmar `permission denied`**, no el conjunto vacío.
 
 ### 6. Verificación antes de cerrar cada pieza
 
@@ -150,6 +179,47 @@ sin traducir, ese test cae. El mismo archivo verifica que **los 17 pares de la U
 dos temas** (`:60`), así que un token nuevo con mal contraste tampoco pasa. Es una red, no una excusa
 para no abrir las dos vistas en el navegador: el test ve colores, no ve una pantalla ilegible por
 otras razones.
+
+## Las integraciones de retorno (enmienda del 2026-08-02)
+
+El grafo de dependencias `1→2`, `1→3`, `3→4` es correcto pero **incompleto**: la pieza 1 se cerró con
+dos huecos que solo pueden taparse cuando existan las piezas siguientes. No son ciclos —
+`1 → 2 → integración` es una cadena— pero si no están escritos acá, nadie los hace.
+
+| # | Qué quedó abierto en la pieza 1 | Quién lo cierra |
+|---|---|---|
+| A | `asignado_a` es un `<input type="text">` donde la agencia escribe un UUID a mano (`cliente-crear.ts`), porque no había listado de miembros | **Pieza 2, Etapa 6** |
+| B | El tab "Ideas" de `/clientes/:id/ver` son datos de ejemplo iguales para todos los clientes (`cliente-vista-mock.ts`) | **Pieza 3, Etapa 7** |
+| C | "URL del logo" y "URL de imagen de portada" se guardan en `contacto` (interno, que nunca sale a la web) en vez de en `business_profile` (público) | **Trabajo E, abajo** |
+
+### Trabajo E — El puente al perfil público
+
+**Dueño: este programa** (no el spec de landings, que llega hasta contrato y render por decisión de
+alcance, ni la pieza 1, que está cerrada). Sin un dueño explícito, este cambio no es de nadie: la
+agencia carga la portada del cliente y la web no la muestra nunca.
+
+**Precondición:** entrega 1 del [spec de landings](../specs/2026-08-01-plantillas-landings-design.md),
+que es la que crea `business_profile.portada`. Antes de eso, el formulario escribiría un campo
+inexistente.
+
+- [ ] "URL del logo" pasa a escribir `business_profile.brand.logo` (que **ya existe** y ya lo pinta la
+      cabecera del sitio); "URL de imagen de portada", `business_profile.portada.src`.
+- [ ] **Operación de datos estrecha, no `business_profile` en `COLUMNAS_EDITABLES`.** `actualizarCliente`
+      (`db/src/clientes.ts`) escribe la columna entera: `contacto = $n::jsonb`. Con `business_profile`
+      en esa lista, un `PATCH` que solo trae la portada **borraría `locations`, `menu`, `brand` y
+      `name`** — pérdida silenciosa justo en el dato que alimenta la web pública. Hace falta un
+      **merge anidado en el servidor**, que toque solo los paths que el formulario posee.
+- [ ] Validar **forma, HTTPS y host** al escribir, contra la misma allowlist que define el spec de
+      landings. Las cuatro fronteras protegen la lectura; que la escritura no meta basura es barato y
+      evita que el renderizador tenga que descartar en cada request.
+- [ ] Inicializar `business_profile.name` coherentemente si el perfil todavía es `null`: un perfil sin
+      `name` no pasa `perfilValido` y la web sale sin bloque de contacto.
+- [ ] **Test que lo fija:** actualizar la portada de un cliente que tiene `locations`, `menu`, `fotos`
+      y `brand` cargados, y afirmar que los cuatro **siguen ahí** después del PATCH.
+- [ ] Observación que este trabajo hereda, y conviene cerrar de paso: **`contacto` ya tiene el mismo
+      problema hoy.** La única razón por la que un PATCH parcial no borra datos es que el front manda
+      siempre el objeto completo (`cliente-direccion-card`). Es una garantía que vive en el cliente,
+      no en el servidor — es decir, no es una garantía.
 
 ## Qué queda explícitamente fuera de alcance
 

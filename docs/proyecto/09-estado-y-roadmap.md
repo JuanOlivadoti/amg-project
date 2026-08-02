@@ -98,8 +98,8 @@
 > de ~12 min que la pieza D necesitaba para mostrarse en vivo en la demo— así que **la pieza D queda
 > desaconsejada tal como se la había imaginado** (ver §2 más abajo).
 >
-> **Nuevo (2026-08-02): pieza 1 del portal de la agencia — gestión de clientes (CRM), en
-> `feature/paginas-clientes`, sin mergear a `main`.** Primera de cuatro piezas del
+> **Nuevo (2026-08-02): pieza 1 del portal de la agencia — gestión de clientes (CRM), **mergeada a
+> `main`** (la `0011` incluida).** Primera de cuatro piezas del
 > [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md):
 > lleva las cuatro pantallas de clientes del Angular viejo (`dashboard-project`, Firestore + NgRx) al
 > portal de AMG OS, con Postgres bajo RLS y API propia. Ejecutada con
@@ -175,9 +175,15 @@
 >
 > **Cifras de esta etapa:** `db` pasó de 155 a **167 tests** (164 pasan; los 3 que fallan son el
 > mismo bug preexistente de Windows de siempre, sin tocar); `api` subió a **95 tests**, todos verdes.
-> `npm run typecheck` limpio en los 6 paquetes + `scripts/`. Sin ADR nuevo: el diseño sigue
-> exactamente ADR-15 (el rol se deriva, nunca se declara) y ADR-17 (un solo login `app_user`, sin
-> asumir otro rol) — lo nuevo es una política RLS más, no una excepción a ninguna de las dos.
+> `npm run typecheck` limpio en los 6 paquetes + `scripts/`. El diseño sigue exactamente ADR-15 (el
+> rol se deriva, nunca se declara) y ADR-17 (un solo login `app_user`, sin asumir otro rol) — lo nuevo
+> es una política RLS más, no una excepción a ninguna de las dos. La etapa se construyó creyendo que
+> no hacía falta ADR nuevo; **sí hacía falta, y ya está**: [ADR-24](../decisiones-arquitectura.md)
+> (aceptada el 2026-08-02, en `main`) enmienda la `0001`, que prometía que las membresías se
+> escribirían "por el backend con service-role" — un backend que nunca existió. ADR-24 autoriza
+> exactamente lo que esta etapa construyó y le fija las condiciones (grant por columna, `using` +
+> `with check`, `servicio` no asignable, auto-edición rechazada en la base, trigger que sobreviva a
+> degradaciones concurrentes).
 
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
@@ -222,9 +228,9 @@ de La Birra Bar leyendo de Supabase con `app_render`. **Falta el orquestador.**
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **766** — 584 en el monorepo + 182 en el portal (146 `node:test` + 36 Karma). Los de seguridad, contra Postgres real. (En `feature/paginas-clientes`, sin mergear — sobre `main` siguen siendo 539 + 130) |
-| **Migraciones** | 11 en `feature/paginas-clientes` (`0001`..`0011`, la `0011` sin mergear) · **las 10 de `main` (`0001`..`0010`) aplicadas en producción** (la `0010`, el 2026-08-01) |
-| **ADRs** | 23, más 3 observaciones (**las 3 cerradas**) |
+| **Tests** | **766** en `main` — 584 en el monorepo + 182 en el portal (146 `node:test` + 36 Karma). Los de seguridad, contra Postgres real. Verificado el 2026-08-02 sobre `main`. |
+| **Migraciones** | 11 en `main` (`0001`..`0011`) · **las 10 primeras aplicadas en producción** (la `0010`, el 2026-08-01); la `0011` (CRM de clientes) mergeada, pendiente de aplicar en producción |
+| **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
 
@@ -250,7 +256,7 @@ de La Birra Bar leyendo de Supabase con `app_render`. **Falta el orquestador.**
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
 | ✅ | **Doce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
-| 🔵 | **Gestión de clientes (CRM) en el portal — pieza 1 de 4, en `feature/paginas-clientes`, sin mergear.** Listado, alta, perfil editable y vista con datos de ejemplo, sobre Postgres/RLS. La revisión final de la rama encontró y cerró una fuga real (el rol `cliente` podía leer notas internas de la agencia sobre sí mismo) antes de cerrar la pieza. Detalle arriba y en [11-plan-fase-2.md](11-plan-fase-2.md). |
+| ✅ | **Gestión de clientes (CRM) en el portal — pieza 1 de 4, mergeada a `main` el 2026-08-01.** Listado, alta, perfil editable y vista con datos de ejemplo, sobre Postgres/RLS. La revisión final de la rama encontró y cerró una fuga real (el rol `cliente` podía leer notas internas de la agencia sobre sí mismo) antes de cerrar la pieza. Detalle arriba y en [11-plan-fase-2.md](11-plan-fase-2.md). |
 
 ## Próximos pasos
 
@@ -800,7 +806,7 @@ reales, no solo contra tests.
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **66 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
 | **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **120 tests** (103 de núcleo `node:test` + 17 de componente Karma); el flujo, verificado en un navegador real. **Falta:** tests de componente de las pantallas de research, y calibrar el polling contra los 16m15s medidos. |
 | **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **114 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. ✅ **Desplegado el 2026-08-01** en Railway (servicio aparte del de la API): sirve `amg-renderer-production.up.railway.app` leyendo de Supabase con `amg_render` → `app_render`, verificado en el navegador. **Falta:** el dominio propio del cliente (el plan de Railway está en su límite de custom domains) y una CDN delante. |
-| **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Nav fijo de 4 secciones** (Inicio/Menú/Ubicaciones/Contacto, cada una condicionada a que el perfil tenga el dato — reemplaza a la barra vieja derivada de las páginas SEO publicadas) + **footer compartido** con NAP multi-local (`locations`) y link a Blog + `/menu`/`/blog` sintetizados desde el perfil (allowlist en `0010`, ver [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md)) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav y en NAP/carta. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente — **el nav/footer/menú/blog YA NO dependen del brief**: se calculan en vivo desde `business_profile` en cada request, así que republicar no los toca. |
+| **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Nav fijo de 4 secciones** (Inicio/Menú/Ubicaciones/Contacto, cada una condicionada a que el perfil tenga el dato — reemplaza a la barra vieja derivada de las páginas SEO publicadas) + **footer compartido** con NAP multi-local (`locations`) y link a Blog + `/menu`/`/blog` sintetizados desde el perfil (allowlist en `0010`, ver [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md)) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav y en NAP/carta. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente — **el nav/footer/menú/blog YA NO dependen del brief**: se calculan en vivo desde `business_profile` en cada request, así que republicar no los toca. **Lo "hecho" es la infraestructura de marca, no el aspecto:** las landings publicadas se ven sin terminar (ni una foto, CTA que es un párrafo, siete secciones idénticas) y eso tiene su propio diseño, 🟡 **sin empezar** — [spec de plantillas de landing](../superpowers/specs/2026-08-01-plantillas-landings-design.md), migración `0014`, tres entregas. **Enmendado el 2026-08-02** con el **manual de marca** (tokens de color y roles tipográficos self-hosted, en vez de los tres campos actuales) y el **rediseño de la carta** (categorías con foto, precios por ración), tomando como referencia visual un template real de restaurante sin adoptar ni una línea suya. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |
 | **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
 | **Autorización derivada** (OBS-02) | ADR-15, ADR-17 | ✅ **Hecho.** El rol se deriva de `memberships` dentro de Postgres; el GUC `app.role` ya no lo lee nadie. Un login por proceso, `NOINHERIT`, un rol cada uno — ahora **cuatro**: `amg_api`, `amg_orquestador`, `amg_cache` y `amg_render`. El JWT de Supabase **ya está enchufado y probado** (**27 tests** en `auth.test.ts`, con tokens firmados de verdad, ES256 contra un JWKS local). |

@@ -7,6 +7,34 @@
 > **Leé primero el [programa](2026-08-01-portal-agencia-programa.md).** Ahí están el orden de las
 > piezas, la lista de qué no se toca, la reserva de números de migración y la regla de seguridad de la
 > allowlist. Este plan asume todo eso.
+>
+> ---
+>
+> ## ⛔ Enmendado el 2026-08-02 — NO ejecutar sin leer esto
+>
+> Una revisión externa de los cinco planes abiertos encontró tres cosas en este, verificadas contra el
+> código. Las tres están corregidas más abajo, pero conviene saberlas antes de abrir una etapa:
+>
+> 1. **El `grant select` sobre `auth.users` era una fuga cross-tenant, no una lectura acotada**
+>    (Critical). El plan concedía `select (id, email, raw_app_meta_data)` a `app_user` y confiaba en
+>    que la vista filtrara por membresía. **El grant es independiente de la vista:** con él, cualquier
+>    consulta como `app_user` hace `select email from auth.users` y lee todos los usuarios del
+>    proyecto Supabase, de todos los tenants. Es la misma clase de error que una garantía escrita en
+>    un comentario. Ver Etapa 1, reescrita.
+> 2. **Cambiar el rol desde `app_user` contradecía la `0001`**, que dice que las membresías no se
+>    escriben desde la app y que eso va "por el backend con service-role". Ese backend nunca existió
+>    —la API no recibe credenciales de Supabase, a propósito—, así que hoy no hay ningún camino.
+>    Resuelto por **[ADR-24](../../decisiones-arquitectura.md)**, **aceptada el 2026-08-02**: se
+>    escriben desde `app_user` bajo RLS, con grant por columna y policy de `maestro`. La Etapa 2
+>    implementa las cinco condiciones que ese ADR pone; ninguna es opcional.
+> 3. **La UI toma el rol de `app_metadata`, no de `memberships`.** `Sesion.rol`
+>    (`portal/src/app/core/models.ts`) lo lee del token. Como la API no puede escribir ese metadata,
+>    cambiar una membresía dejaría la UI mostrando el rol viejo para siempre. No es escalada (RLS
+>    manda), es desincronización permanente. Ver Etapa 3.
+>
+> Y una cuarta, que es trabajo **añadido** a esta pieza: la pieza 1 dejó `asignado_a` como un
+> `<input type="text" placeholder="uuid del usuario responsable">`. Esta pieza construye justamente
+> el listado de miembros que lo arregla. Ver Etapa 5.
 
 **Goal:** que el equipo de la agencia pueda ver quién tiene acceso al tenant, con qué rol, y cambiar
 ese rol desde el portal — en vez de editarlo a mano en Supabase. Origen:
@@ -103,16 +131,63 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 
 ## Etapa 1 — Acceso de lectura a los miembros (`db`)
 
+> ## ✅ Ya implementada en `feature/paginas-usuarios` (`9614489` + `6ce7f7f`) — con una VISTA, y está bien así
+>
+> Esta etapa se ejecutó **antes** de la enmienda de abajo, y resolvió el filtrado con una **vista**
+> (`membresias_perfil`) en vez de la función que la enmienda propone. **No hay que reescribirla.** El
+> objetivo era que `app_user` no pudiera leer `auth.users` esquivando el filtro por tenant, y una
+> vista lo cumple igual: sin `security_invoker = true` corre con los permisos de su *owner*, así que
+> el invocador no necesita permiso sobre la tabla.
+>
+> **Lo único que falta corregir de esa implementación es borrar una línea:**
+>
+> ```sql
+> grant select (id, email, raw_app_meta_data) on auth.users to app_user;  -- ← ESTA es la fuga
+> ```
+>
+> Verificado empíricamente el 2026-08-02 sobre esa rama, con PGlite:
+>
+> - **Con** el grant, un miembro del tenant A que consulta `select email from auth.users` **sin pasar
+>   por la vista** obtiene también el email de un usuario **de otro tenant** (2 filas, la vista
+>   devuelve 1). Es una fuga cross-tenant, no solo "columnas de más".
+> - **Sin** el grant, la vista sigue devolviendo su fila correcta y el acceso directo pasa a dar
+>   `permission denied for table users`.
+>
+> El `grant usage on schema auth` **sí hace falta** y se queda: permite nombrar el esquema, no leer
+> nada. La confusión de origen está en el comentario de la propia migración, que justifica el grant
+> por columna como defensa de `encrypted_password` — cierto, pero eso protege *qué columnas*, no *qué
+> filas*, y el filtrado de filas es de la vista.
+>
+> Los bullets de abajo describen la alternativa con función; quedan como referencia de lo que hay que
+> garantizar, no como trabajo pendiente.
+
 - [ ] **Rojo primero** en `db/src/membresias.test.ts` (nuevo): `listarMiembros` devuelve solo los del
       tenant del contexto; un `equipo` los ve; un `cliente` **no** ve la lista de miembros (o ve solo
       su propia fila — decidir y fijarlo con un test, no dejarlo implícito).
-- [ ] Escribir `db/migrations/0012_membresias_perfil.sql`:
-      - `grant select (id, email, raw_app_meta_data) on auth.users to app_user` — **por columna**.
-      - Una vista o función que cruce `memberships` con `auth.users` **filtrando por el tenant del
-        contexto**, para que el `join` no sea una puerta a listar todos los usuarios del proyecto de
-        Supabase.
+- [ ] Escribir `db/migrations/0012_membresias_perfil.sql`. **Sin ningún `grant select` sobre
+      `auth.users`** (ver la enmienda del 2026-08-02 arriba: el grant es independiente de la vista y
+      es una fuga cross-tenant, verificada). Con **una vista o una función** que filtre por tenant y
+      por rol — cualquiera de las dos sirve mientras el invocador no tenga acceso directo a la tabla:
+      - `create function app.miembros_del_tenant() returns table (user_id uuid, email text, nombre
+        text, rol text, client_id uuid)`, **`security definer`**, que deriva el tenant del contexto,
+        une `memberships` con `auth.users` y **devuelve columnas escalares explícitas** — nunca
+        `raw_app_meta_data` entero, que es un jsonb con lo que Supabase quiera meter adentro.
+      - **`set search_path = pg_catalog, public, auth`** en la función. Una `security definer` sin
+        `search_path` fijo se puede secuestrar redefiniendo un nombre en un esquema anterior.
+      - **`revoke execute on function app.miembros_del_tenant() from public`** y después
+        `grant execute … to app_user`. En Postgres una función nace con `execute` a `PUBLIC`, y
+        `app_render` tiene `usage` sobre el esquema `app` (`0007_render_publico.sql`): sin el
+        `revoke`, el rol anónimo del renderizador puede llamarla. **Este `revoke` es la tarea, no un
+        detalle de estilo.**
+      - **Test de que `app_render` no puede ejecutarla**, afirmando `permission denied` (no "devuelve
+        cero filas"). Mutación: quitar el `revoke` y confirmar que el test cae.
       - Verificar en PGlite que el esquema `auth` existe en los tests; si no, el helper de test tiene
         que crearlo mínimamente (es lo que hace Supabase en producción).
+- [ ] **Verificar dónde vive el nombre antes de escribir la función.** El plan asumía
+      `raw_app_meta_data`; en Supabase, lo que el usuario aporta al registrarse suele ir a
+      `raw_user_meta_data` y `raw_app_meta_data` es lo que controla la aplicación. Mirar una fila real
+      antes de elegir, y si no hay nombre en ninguna, **mostrar el email** — no inventar uno a partir
+      de la parte local de la dirección.
 - [ ] Implementar `db/src/membresias.ts` con el patrón de `db/src/store.ts` (`withTenant`, `Tx`,
       nunca un `query()` suelto).
 - [ ] **Test de fuga:** un miembro del tenant A no puede ver, por ningún camino, el email de un
@@ -121,13 +196,33 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 
 ## Etapa 2 — Cambiar el rol (`db` + `api`)
 
+> **Autorizada por [ADR-24](../../decisiones-arquitectura.md), aceptada el 2026-08-02.** Hoy
+> `app_user` tiene solo `grant select on memberships` (`0001_init.sql`), y esa migración declara por
+> escrito que los roles se cambian "por el backend con service-role". Esta etapa **cambia esa
+> decisión**; no la ignora — y por eso una de sus tareas es dejar el comentario corregido.
+
 - [ ] **Rojo primero**: `cambiarRol` de un usuario de otro tenant no afecta filas; poner `cliente` sin
       `client_id` falla por la constraint; poner `cliente` con un `client_id` de **otro** tenant falla;
-      quitar el último `maestro` falla; cambiarse el rol a sí mismo falla.
+      quitar el último `maestro` falla; cambiarse el rol a sí mismo falla; **un `equipo` que intenta
+      cambiar un rol no afecta filas**; **`servicio` no se puede asignar**.
+- [ ] En la misma `0012`, la autoridad para escribir — cada punto con su test, y **ninguno es
+      opcional** (son las condiciones que ADR-24 pone a la decisión):
+      - `grant update (rol, client_id) on memberships to app_user`. **Por columna.** Sin `insert` ni
+        `delete`. `tenant_id` y `user_id` son la identidad de la fila: si se pudieran editar, cambiar
+        un rol y mover a alguien de tenant serían la misma operación.
+      - Policy `membership_update` con **`using` Y `with check`**, las dos, exigiendo `maestro` del
+        tenant del contexto. Solo `using` autoriza a leer la fila para escribirla, pero no filtra el
+        valor nuevo — un `maestro` podría escribir `rol = 'servicio'` y la policy lo dejaría pasar.
+      - La auto-edición se rechaza **en la base**, no solo en el endpoint.
+      - **Corregir por escrito el comentario de la `0001`** en esta migración (no editando la `0001`,
+        que ya está aplicada): hoy afirma que las membresías no se escriben desde la app. Una decisión
+        derogada que sigue escrita como vigente hace que el próximo la use de premisa.
 - [ ] Implementar la garantía "siempre queda un `maestro`" **en la base**. Un `check` no alcanza
-      (mira una fila); va con un trigger `after update/delete` o una constraint diferida. Elegir y
-      **explicar por qué en un comentario**, y verificar por mutación: quitar el trigger y confirmar
-      que el test del último `maestro` cae.
+      (mira una fila); va con un trigger `after update/delete` o una constraint diferida. **Tiene que
+      cubrir dos degradaciones concurrentes**: dos transacciones que degradan a dos maestros distintos
+      pueden ver cada una "queda otro" y dejar el tenant sin ninguno. Bloquear una fila estable del
+      tenant, o usar un mecanismo que serialice. Elegir y **explicar por qué en un comentario**, y
+      verificar por mutación: quitar el trigger y confirmar que el test del último `maestro` cae.
 - [ ] `api/src/app.ts`: `GET /members` y `PATCH /members/:userId`. El `rol` se valida contra la
       allowlist `maestro | equipo | cliente` — **`servicio` se rechaza** (400, con test).
 - [ ] Tests de la API, uno por vector: sin token → 401; token de otro tenant → no ve ni modifica;
@@ -139,6 +234,16 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 
 ## Etapa 3 — Las capacidades por rol (derivadas)
 
+- [ ] **Antes que la tabla: arreglar de dónde sale el rol.** Hoy `Sesion.rol`
+      (`portal/src/app/core/models.ts`) lo lee de `app_metadata.rol` del token. Como la API no tiene
+      credenciales de Supabase, **cambiar una membresía no actualiza ese metadata**: en cuanto esta
+      pieza permita cambiar roles, la UI mostraría el rol viejo indefinidamente. No es una escalada
+      —RLS manda, y el comentario del tipo ya lo dice— pero sí una pantalla que miente.
+      El bootstrap de sesión pasa a resolver la **membresía efectiva** (un `GET /members/me` o
+      equivalente) y **ese** valor alimenta la UI. El JWT aporta identidad; `memberships`, el rol y el
+      `client_id`. Es ADR-15 aplicado también al front.
+- [ ] Test: con un token cuyo `app_metadata.rol` diga `equipo` y una membresía que diga `maestro`, la
+      UI tiene que ofrecer las capacidades de `maestro`. Hoy ofrecería las de `equipo`.
 - [ ] Escribir `portal/src/app/core/capacidades.ts`: una tabla `rol → capacidades` con las etiquetas
       en español. **Es documentación ejecutable de lo que RLS permite**, así que cada fila lleva un
       comentario apuntando a la política o constraint que la respalda.
@@ -186,11 +291,32 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
       `11-plan-fase-2.md`, cifras sincronizadas, y marcar la pieza en el
       [programa](2026-08-01-portal-agencia-programa.md).
 
+## Etapa 6 — Integración de retorno con la pieza 1 (clientes)
+
+> Añadida el 2026-08-02. La pieza 1 se cerró pidiéndole a la agencia que escriba el UUID del
+> responsable a mano (`cliente-crear.ts`: `<input type="text" placeholder="uuid del usuario
+> responsable">`), porque no existía el listado de miembros. Esta pieza lo construye, así que le toca
+> volver sobre clientes y cerrarlo. **El grafo es `1 → 2 → integración`, no un ciclo.**
+
+- [ ] Reemplazar el input de texto de `asignado_a` por un **selector de miembros del tenant**, con
+      nombre y email, alimentado por `GET /members`.
+- [ ] Mostrar **nombre/email en vez del UUID** en el perfil del cliente y en la tabla de clientes.
+- [ ] El filtro por responsable pasa a usar ids reales, no texto libre.
+- [ ] **La FK compuesta `(tenant_id, asignado_a) → memberships` sigue siendo la autoridad final.** El
+      selector es comodidad de la UI; que no se pueda asignar a alguien de otro tenant lo sigue
+      garantizando la base, y su test no se toca.
+- [ ] Verificar en el navegador: dar de alta un cliente eligiendo responsable de la lista, y que el
+      perfil lo muestre por nombre.
+
 ## Riesgos y cómo se cierran
 
 | Riesgo | Cómo se cierra |
 |---|---|
-| El `grant` sobre `auth.users` expone más de lo que debe | Grant **por columna** + vista filtrada por tenant + test de fuga con mutación |
+| **`app_render` puede ejecutar la función de miembros** (tiene `usage` sobre el esquema `app`, y en Postgres `execute` nace público) | `revoke execute … from public` + `grant` solo a `app_user`, con test que afirma `permission denied` para `app_render` y mutación que lo confirma |
+| Un `select` directo sobre `auth.users` esquiva la vista y lista todo el proyecto Supabase | **No hay grant sobre `auth.users`**: el único camino es la función `security definer` con `search_path` fijo |
+| Dos degradaciones concurrentes dejan el tenant sin `maestro` | El trigger serializa (bloqueo de una fila estable del tenant); test con dos transacciones |
+| Se escribe `rol = 'servicio'` esquivando el endpoint | Policy con `with check`, no solo `using` — la base lo rechaza aunque el endpoint falle |
+| La UI muestra un rol distinto del que RLS aplica | El bootstrap resuelve la membresía efectiva; test con token y membresía discordantes |
 | Alguien se convierte (o convierte a otro) en `servicio` | Allowlist de roles asignables en el endpoint, con test que manda `servicio` |
 | El tenant queda sin `maestro` y nadie puede administrarlo | Garantía en la base (trigger/constraint), no en la UI, verificada por mutación |
 | Un `maestro` se auto-degrada y se queda afuera | El endpoint rechaza que el objetivo sea el `sub` del token |
