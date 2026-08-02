@@ -59,3 +59,13 @@ Thumbs.db
 # `settings.local.json` queda fuera a propósito: es la mitad NO compartida de la config (la
 # compartida es `settings.json`). Lleva permisos y rutas de la máquina de cada uno.
 .claude/settings.local.json
+
+# progress/ tiene DOS naturalezas y por eso se parte:
+#   - `current.md` (estado vivo de la sesión) e `history.md` (la bitácora del proyecto) SÍ se
+#     versionan: son memoria, y perderlos sería perder el porqué de lo que ya pasó.
+#   - `informes/` NO: es lo que escriben los subagentes durante una sesión, basura de trabajo que
+#     no le sirve a nadie dentro de un mes.
+# La fuente de verdad de QUÉ FALTA sigue siendo docs/proyecto/09-estado-y-roadmap.md; acá vive lo
+# que YA PASÓ y lo que está pasando ahora mismo.
+progress/informes/*
+!progress/informes/.gitkeep

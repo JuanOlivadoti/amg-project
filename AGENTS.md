@@ -18,9 +18,11 @@ Al terminar cualquier pieza de trabajo, antes de darla por cerrada:
 1. **Auto-revisión.** Revisá tu propio diff como lo haría un revisor adversarial: ¿qué afirmé que no
    verifiqué? ¿qué test prueba la implementación en vez del contrato? ¿qué default no tiene test?
    ¿qué garantía escribí en un comentario en vez de imponerla con una constraint o una mutación?
-2. **Verificación real.** Corré `npm test` y `npm run typecheck` desde la raíz y confirmá el verde
-   con el output, no de memoria. Para el renderizador o el portal, **manejá la app en un navegador**
-   (MCP chrome-devtools): encuentra lo que los tests no ven — ya pasó varias veces.
+   La lista concreta está en [CHECKPOINTS.md](CHECKPOINTS.md), y el agente `revisor` la recorre.
+2. **Verificación real.** Corré **`npm run verificar`** desde la raíz: entorno, archivos del arnés,
+   higiene de secretos, typecheck y tests, con exit code. Confirmá el verde con el output, no de
+   memoria. Para el renderizador o el portal, **manejá la app en un navegador** (MCP chrome-devtools):
+   encuentra lo que los tests no ven — ya pasó varias veces.
 3. **Actualizá la documentación del plan.** `09-estado-y-roadmap.md` (qué se hizo, **dónde estamos**,
    **qué falta**) y `11-plan-fase-2.md`. Si el plan no menciona lo que acabás de hacer, el plan
    miente por omisión. Actualizá también el ADR relevante si la decisión cambió o se cumplió una
@@ -49,6 +51,67 @@ archivos ni actualiza documentación. Los hallazgos los verifica, decide e imple
 principal (verificar antes de implementar, discrepar con razón técnica).
 
 ---
+
+## Quién hace qué
+
+El trabajo se reparte por **cuerpo de conocimiento**, no por carpeta: un área es un agente cuando
+tiene su propio modo de verificar y sus propias trampas. Las convenciones viven en skills, que
+también puede cargar la sesión principal sin delegar en nadie.
+
+| Agente | Área | Skills | Estado |
+| --- | --- | --- | --- |
+| `front` | `portal/` — Angular, las pantallas de la agencia | `portal-angular`, `portal-estilos`, `portal-testing` | existe |
+| `revisor` | transversal — recorre `CHECKPOINTS.md` contra el diff. No edita nada | `codex-review` (para la ronda externa) | existe |
+| `datos` | `db/` + `api/` — RLS, roles, `Tx`, endpoints, PGlite | (por escribir) | planificado |
+| `pipeline` | `kr-service/` + `orchestrator/` + `web-builder/` — contenido, idempotencia, gasto | (por escribir) | planificado |
+| `render` | `renderer/` — la única superficie pública anónima, Storyblok CDA | (por escribir) | planificado |
+
+Mientras un agente esté "planificado", ese trabajo lo hace la sesión principal. No lo invoques: no
+existe.
+
+**Cuándo delegar.** La sesión principal coordina, pero no es dogmática: delegar cuesta tiempo y
+tokens, y en un cambio de un archivo cuesta más que hacerlo.
+
+- **Se delega** cuando el trabajo toca 3+ archivos, o entra de lleno en un área que tiene agente
+  propio, o requiere explorar antes de decidir.
+- **Lo hace la sesión principal** cuando es un archivo, un typo, un comentario, una pregunta
+  conceptual o cualquier cosa de `docs/`.
+- **Después de que un agente de área devuelva trabajo, va el `revisor`.** Quien implementa no se
+  autoaprueba.
+
+**Los subagentes escriben en disco, no en el chat.** Un informe que se recuenta se degrada, y el
+chat no queda auditable. Al lanzar un subagente, pedile explícitamente que escriba su resultado en
+`progress/<rol>-<tema>.md` y que **su respuesta sea una sola línea con la referencia**:
+
+```text
+done -> progress/informes/impl-selector-miembro.md
+CAMBIOS_PEDIDOS (2 bloqueantes) -> progress/informes/revision-etapa-8.md
+```
+
+## Dónde vive cada cosa que escribimos
+
+| Archivo | Qué es | ¿Se versiona? |
+| --- | --- | --- |
+| `docs/proyecto/09-estado-y-roadmap.md` | **Dónde estamos y qué falta.** La fuente de verdad del estado | sí |
+| `progress/history.md` | **Cómo llegamos.** La bitácora: una entrada por día, no se reescribe hacia atrás | sí |
+| `progress/current.md` | Qué se está haciendo **ahora**. Se escribe mientras se trabaja | sí |
+| `progress/informes/` | Lo que escriben los subagentes en una sesión. Basura de trabajo | **no** |
+
+La regla que las separa: el `09` responde *qué falta*, la bitácora responde *por qué terminó así*.
+Mezclarlas es lo que infló el `09` a 930 líneas. Y **ningún otro archivo puede decir qué falta** — un
+segundo lugar que lo diga se desincroniza sin que nada avise, que es por lo que este proyecto no tiene
+un `feature_list.json`.
+
+**Cuando el trabajo cruza áreas** —una feature que toca la API y el portal, que va a ser lo normal—:
+
+1. La sesión principal parte el trabajo por área y **fija el contrato primero** (la forma del
+   endpoint, el nombre de los campos). Dos agentes escribiendo las dos mitades de un contrato que
+   nadie fijó producen dos mitades que no encajan.
+2. Se delega **en serie** cuando comparten contrato: primero quien lo define, después quien lo
+   consume. En paralelo solo lo genuinamente independiente.
+3. **Integrar, verificar el conjunto y commitear es siempre de la sesión principal.** Ningún
+   subagente commitea: el ritual de cierre (tests de la raíz, documentación, commit) se hace una vez,
+   con todo el cambio a la vista.
 
 ## Credenciales y seguridad (reglas duras)
 
@@ -117,15 +180,32 @@ principal (verificar antes de implementar, discrepar con razón técnica).
 
 ## Cómo correr
 
+Seguros: no tocan nada de afuera y corren sin credenciales.
+
 ```bash
 npm install         # primero, o `npm test` falla con "Cannot find package 'tsx'" — no es un bug
-npm test            # los 6 paquetes + los tests de scripts/
-npm run typecheck   # tsc --noEmit en todos, incluido scripts/
-npm run env:sync    # reparte docs/private/credenciales.env a los .env de cada paquete
-npm run reseed:demo -- --dry-run  # re-siembra la demo en Supabase (sin --dry-run, siembra de verdad)
+npm run verificar   # TODO lo de abajo de una: entorno, arnés, secretos, typecheck y tests (~50s)
+npm run verificar -- --rapido   # sin los tests (~5s), para iterar
+npm test            # los 6 paquetes + los tests de scripts/ (~42s). NO incluye portal/
+npm run typecheck   # tsc --noEmit en todos, incluido scripts/ (~5s)
 npm run dev:server -w api        # la API real sobre PGlite (verificar el portal)
-npm run demo -w renderer         # el renderizador sobre el Storyblok REAL (demo)
 ```
+
+`portal/` **no es workspace**: sus tests no entran en `npm test`. `npm run verificar` los corre
+aparte cuando detecta cambios en `portal/` (o siempre, con `-- --con-portal`). Los `*.spec.ts` de
+componentes van por Karma: `npm --prefix portal run test:components`.
+
+⚠️ **Tocan servicios reales, escriben credenciales o gastan dinero.** No los corras para "ver qué
+pasa", y no se los permitas a un subagente ni a una revisión externa:
+
+```bash
+npm run env:sync    # reescribe los .env de cada paquete desde docs/private/credenciales.env
+npm run reseed:demo -- --dry-run  # sin --dry-run, siembra de verdad en Supabase
+npm run demo -w renderer          # pega contra el Storyblok REAL con credencial real
+```
+
+Y lo mismo vale para DataForSEO en modo producción: cada corrida se paga (ver la regla de volver a
+sandbox en Credenciales).
 
 Los `.env` de los paquetes son **generados**: se editan en `docs/private/credenciales.env` y se
 reparten con `env:sync`. Cada paquete recibe solo sus claves — el reparto es la compartimentación

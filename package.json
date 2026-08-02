@@ -13,6 +13,7 @@
     "renderer"
   ],
   "scripts": {
+    "verificar": "./scripts/verificar.sh",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p scripts",
     "test": "npm run test --workspaces --if-present && node --import tsx --test \"scripts/*.test.mts\"",
     "env:sync": "tsx scripts/env-sync.mts",

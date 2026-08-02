@@ -1,0 +1,31 @@
+{
+  "$comment": "Config compartida de Claude Code para AMG OS. Los hooks los ejecuta el harness, no el agente: son la parte del ritual que no depende de que alguien se acuerde. La mitad NO compartida (permisos y rutas de cada máquina) va en settings.local.json, que está gitignoreado.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./scripts/hook-cierre.sh",
+            "description": "Al terminar cada turno: si hay código sin commitear, corre el typecheck (~5s) y recuerda que falta la verificación completa. Si no se tocó código, sale al instante."
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm run verificar*)",
+      "Bash(npm test*)",
+      "Bash(npm run typecheck*)",
+      "Bash(./scripts/verificar.sh*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
+    ],
+    "deny": [
+      "Read(./docs/private/**)",
+      "Read(./**/.env)"
+    ]
+  }
+}
