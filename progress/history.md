@@ -58,6 +58,11 @@ en ocho archivos, con el `09` contradiciéndose a sí mismo a veintitrés línea
 **Cifras, medidas al cierre:** 859 = 624 en el monorepo (los 10 nuevos incluidos) + 235 en el portal
 (169 `node:test` + 66 Karma). 12 migraciones, 24 ADRs.
 
+Se revirtieron además 102 borrados de `portal/package-lock.json` que arrastraba el árbol desde antes
+de esta sesión: eran campos `libc` de dependencias opcionales por plataforma (churn de un
+`npm install` con otra versión de npm). Comprobado antes de descartarlos que ninguna versión cambiaba
+y que no entraba ni salía ningún paquete; el portal sigue en 169 después.
+
 ## 2026-08-02 — Pieza 2 del portal de la agencia: usuarios (6 etapas), mergeada a `main`
 
 Segunda pieza del [programa del portal de la agencia](../docs/superpowers/plans/2026-08-01-portal-agencia-programa.md):

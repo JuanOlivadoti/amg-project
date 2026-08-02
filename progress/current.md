@@ -11,12 +11,7 @@
 [`history.md`](history.md).
 **Estado:** —
 
-**Pendiente inmediato:**
-
-- `portal/package-lock.json` tiene 102 borrados que **no son de este trabajo**: campos `libc` de
-  dependencias opcionales por plataforma, churn de haber corrido `npm install` con otra versión de
-  npm. Ninguna versión de paquete cambia. Hay que decidir: revertirlo, o commitearlo aparte diciendo
-  qué es. Quedó fuera de los commits del arnés a propósito.
+**Pendiente inmediato:** ninguno. El árbol está limpio.
 
 **Anotado como decisión consciente, no como olvido:** `docs/proyecto/11-plan-fase-2.md:237` dice "107
 tests" dentro del bloque de la etapa 5.2 ya cerrada. Es un registro de lo que entregó esa etapa, de la
