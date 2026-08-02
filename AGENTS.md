@@ -67,7 +67,9 @@ también puede cargar la sesión principal sin delegar en nadie.
 | `render` | `renderer/` — la única superficie pública anónima, Storyblok CDA | (por escribir) | planificado |
 
 Mientras un agente esté "planificado", ese trabajo lo hace la sesión principal. No lo invoques: no
-existe.
+existe. Qué skills lleva cada uno, en qué orden se escriben y con qué trabajo real se estrena cada
+uno: [.claude/PLAN-AGENTES.md](.claude/PLAN-AGENTES.md) — **una etapa por sesión**. Al cerrar una,
+se actualiza la tabla de acá arriba.
 
 **Cuándo delegar.** La sesión principal coordina, pero no es dogmática: delegar cuesta tiempo y
 tokens, y en un cambio de un archivo cuesta más que hacerlo.

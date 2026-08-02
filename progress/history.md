@@ -11,6 +11,35 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-02 (cierre) — El plan de los tres agentes que faltan
+
+Con `front` y `revisor` cerrados, quedaba decidir cómo se escriben los otros tres. El reparto ya
+estaba acordado; lo que no estaba era **cómo se parten las skills dentro de cada área**, y eso ahora
+se decidió leyendo el código en vez de imaginándolo: nueve skills, con un anclaje verificado por
+cada una (el preflight de `budget.ts` que estaba 50× por debajo, el `published` de `publisher.ts` que
+distingue "lo pedí" de "pasó", el orden `Host → dominio → sitio` de `renderer/src/app.ts` que **es** la
+autorización). Vive en [`.claude/PLAN-AGENTES.md`](../.claude/PLAN-AGENTES.md): **una etapa por
+sesión**, porque las tres juntas se cierran una vez al final, cansado, que es como se produjo el drift
+de quince cifras.
+
+Lo que se junta y lo que no: `db` + `api` en **un** agente (comparten PGlite y comparten el cuerpo de
+conocimiento; partirlos pondría a dos agentes a escribir las dos mitades de un contrato en el caso más
+frecuente), los tres paquetes del pipeline también (el hilo real es *"corre sin nadie mirando, gasta
+dinero, tiene que ser idempotente"*), y `renderer/` solo, con 3.395 líneas, porque es la única
+superficie pública anónima.
+
+**La regla que salió de escribirlo:** una skill redactada leyendo código es una **hipótesis** hasta
+que un agente la usa. `front` está escrito y todavía **sin estrenar**, así que cada etapa ahora
+termina con un trabajo real que la ejercite —para `pipeline` son KR-1 y KR-3, que ya existen en el
+`09`— y no se cierra sin él.
+
+Y tres huecos que quedaron como decisión, no como olvido: no una skill transversal de TypeScript
+(ya está en `AGENTS.md`, que se carga siempre; duplicarla crea dos copias que se desincronizan), no un
+agente de documentación (no sabe qué pasó en la sesión: habría que contárselo, que es el teléfono
+descompuesto), y no un agente de infra (es justo lo que `AGENTS.md` prohíbe delegar). El plan **no**
+se enlazó desde el `09`: meter trabajo de arnés en el roadmap de producto es la misma contaminación
+que se quiso evitar, al revés. El puntero vive en `AGENTS.md`, que se carga siempre.
+
 ## 2026-08-02 — El arnés de trabajo con agentes (`de6f8a4`, `3b4dbd0`, `620f5e4`)
 
 Hasta hoy el "cómo se trabaja acá" era `AGENTS.md` y nada más. Ahora hay tres capas: `AGENTS.md` para
