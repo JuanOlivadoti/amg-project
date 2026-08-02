@@ -132,6 +132,33 @@ export interface NuevoClienteAgencia {
 /** Lo editable de un cliente existente. Mismos campos que `NuevoClienteAgencia`, todos opcionales. */
 export type CambiosClienteAgencia = Partial<NuevoClienteAgencia>;
 
+/**
+ * Un miembro del tenant: una fila de `memberships` con el email de `auth.users` ya resuelto, tal
+ * como la devuelve `GET /members`.
+ *
+ * Qué filas llegan acá **no lo decide el portal**: lo decide la vista `membresias_perfil` (0012)
+ * dentro de Postgres — staff ve el tenant entero, un rol `cliente` ve solo su propia fila. Este tipo
+ * describe lo que llega, no lo que se pidió.
+ */
+export interface Miembro {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  /** `user_role` (0001): `maestro` | `equipo` | `cliente` | `servicio`. */
+  rol: string;
+  client_id: string | null;
+  created_at: string;
+  /** Puede ser null de verdad: invitación pendiente o login por teléfono. No inventar un texto. */
+  email: string | null;
+  raw_app_meta_data: Record<string, unknown> | null;
+}
+
+/** Lo que `PATCH /members/:userId` acepta. `client_id` solo cuenta si el rol es `cliente`. */
+export interface CambioRolMiembro {
+  rol: string;
+  client_id?: string | null;
+}
+
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */
 export interface Sesion {
   accessToken: string;

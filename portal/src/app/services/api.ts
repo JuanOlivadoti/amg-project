@@ -34,4 +34,7 @@ export class ApiService {
   readonly actualizarCliente = this.cliente.actualizarCliente;
   readonly archivarCliente = this.cliente.archivarCliente;
   readonly desarchivarCliente = this.cliente.desarchivarCliente;
+
+  readonly listarMiembros = this.cliente.listarMiembros;
+  readonly cambiarRolMiembro = this.cliente.cambiarRolMiembro;
 }

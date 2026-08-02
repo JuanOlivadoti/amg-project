@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { ApiService } from '../../services/api';
-import { AuthService } from '../../services/auth';
+import { MembresiaService } from '../../services/membresia';
 import type { RunStatus, RunSummary } from '../../core/models';
 import { mostrarLanzarResearch } from '../../core/features';
 import { environment } from '../../../environments/environment';
@@ -88,7 +88,8 @@ const ETIQUETA: Record<RunStatus, string> = {
 })
 export class RunsPage implements OnInit {
   private readonly api = inject(ApiService);
-  readonly auth = inject(AuthService);
+  // El rol sale de `memberships`, no del token: ver la cabecera de `MembresiaService`.
+  readonly membresia = inject(MembresiaService);
 
   readonly runs = signal<RunSummary[]>([]);
   readonly cargando = signal(true);
@@ -104,7 +105,7 @@ export class RunsPage implements OnInit {
    * testeada; acá solo se cablea al rol y al environment. Ver §A.5.
    */
   readonly puedeLanzar = computed(() =>
-    mostrarLanzarResearch(this.auth.esEquipo(), environment.features.lanzarResearch),
+    mostrarLanzarResearch(this.membresia.esEquipo(), environment.features.lanzarResearch),
   );
 
   async ngOnInit(): Promise<void> {

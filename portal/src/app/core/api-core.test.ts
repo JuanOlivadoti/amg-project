@@ -250,3 +250,46 @@ test('si el refresh falla (false), el 401 se propaga sin reintentar', async () =
   await assert.rejects(() => api.listarRuns(), (e: ApiError) => e.status === 401);
   assert.equal(llamadas(), 1, 'no reintentó');
 });
+
+// ---------------------------------------------------------------- miembros (pieza 2)
+
+test('listarMiembros pega a GET /members y desenvuelve { miembros }', async () => {
+  const miembros = [{ id: 'm1', user_id: 'u1', rol: 'maestro', email: 'a@x.test' }];
+  const { fn, capturado } = fakeFetch({ body: { miembros } });
+  const res = await crearApi(opts(fn)).listarMiembros();
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/members');
+  assert.equal(capturado.headers!['x-amg-tenant'], 'tenant-abc');
+  assert.deepEqual(res, miembros);
+});
+
+test('cambiarRolMiembro patchea /members/:userId con el userId escapado', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  // Un `userId` con barra reventaría la ruta si no se escapara: pasaría a apuntar a otro recurso.
+  await crearApi(opts(fn)).cambiarRolMiembro('u1/../otro', { rol: 'equipo' });
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/members/u1%2F..%2Fotro');
+});
+
+test('🔴 cambiarRolMiembro NO manda client_id cuando el rol no es cliente', async () => {
+  // La base fuerza `client_id = null` para cualquier rol que no sea `cliente`
+  // (`cliente_exige_client_id`, 0001). Mandarlo igual sugeriría que se conserva, y el día que alguien
+  // lea el body en un log creería que ese cliente sigue asignado.
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).cambiarRolMiembro('u1', { rol: 'equipo', client_id: 'c-viejo' });
+  assert.deepEqual(JSON.parse(capturado.body!), { rol: 'equipo' });
+});
+
+test('cambiarRolMiembro sí manda client_id cuando el rol es cliente', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).cambiarRolMiembro('u1', { rol: 'cliente', client_id: 'c-1' });
+  assert.deepEqual(JSON.parse(capturado.body!), { rol: 'cliente', client_id: 'c-1' });
+});
+
+test('cambiarRolMiembro propaga el 403 de RLS con su status', async () => {
+  // Un `equipo` que intenta repartir roles: la política `membership_update` lanza 42501 y la API lo
+  // mapea a 403. La UI tiene que poder distinguirlo de un 404 para decir "no tenés permiso".
+  const { fn } = fakeFetch({ status: 403, body: { error: 'No autorizado para esta operación.' } });
+  const api = crearApi(opts(fn));
+  await assert.rejects(() => api.cambiarRolMiembro('u2', { rol: 'maestro' }), (e: ApiError) => e.status === 403);
+});
