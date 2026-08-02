@@ -87,7 +87,7 @@ fijada acá, de una vez:
 | Pieza / trabajo | Migración | Propietario | Estado |
 |---|---|---|---|
 | 1 Clientes | `0011_clientes_crm.sql` | pieza 1 | ✅ **aplicada** (mergeada 2026-08-01) |
-| 2 Usuarios | `0012_membresias_perfil.sql` | pieza 2 | 🔵 reservada — autorizada por **ADR-24** (aceptada 2026-08-02) |
+| 2 Usuarios | `0012_membresias_perfil.sql` | pieza 2 | 🟡 **escrita, sin desplegar** (2026-08-02, en `feature/paginas-usuarios`) — autorizada por **ADR-24**. Mientras no se mergee se puede seguir extendiendo el mismo archivo; después no |
 | 3 Ideas | `0013_ideas.sql` | pieza 3 | 🔵 reservada |
 | 4 Dashboard | ninguna (solo lee) | — | — |
 | [Plantillas de landing](../specs/2026-08-01-plantillas-landings-design.md) | `0014_fotos_publicas.sql` | spec de landings | 🔵 reservada |
@@ -188,7 +188,7 @@ dos huecos que solo pueden taparse cuando existan las piezas siguientes. No son 
 
 | # | Qué quedó abierto en la pieza 1 | Quién lo cierra |
 |---|---|---|
-| A | `asignado_a` es un `<input type="text">` donde la agencia escribe un UUID a mano (`cliente-crear.ts`), porque no había listado de miembros | **Pieza 2, Etapa 6** |
+| ~~A~~ | ~~`asignado_a` es un `<input type="text">` donde la agencia escribe un UUID a mano~~ | ✅ **Cerrado (2026-08-02)** por la pieza 2, Etapa 6: `<app-selector-miembro>` en el alta, el perfil y el filtro, y nombres en vez de uuids en la tabla. La FK compuesta sigue siendo la autoridad |
 | B | El tab "Ideas" de `/clientes/:id/ver` son datos de ejemplo iguales para todos los clientes (`cliente-vista-mock.ts`) | **Pieza 3, Etapa 7** |
 | C | "URL del logo" y "URL de imagen de portada" se guardan en `contacto` (interno, que nunca sale a la web) en vez de en `business_profile` (público) | **Trabajo E, abajo** |
 

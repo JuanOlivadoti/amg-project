@@ -10,6 +10,30 @@
 >
 > ---
 >
+> ## ✅ Pieza TERMINADA el 2026-08-02, en `feature/paginas-usuarios` (sin mergear a `main`)
+>
+> Las seis etapas están hechas. Lo que quedó distinto de lo planificado, y por qué:
+>
+> | Etapa | Estado | Nota |
+> |---|---|---|
+> | 1 — lectura de miembros | ✅ `9614489` | Con una **vista**, no la función `security definer` que proponía la enmienda. Cumple lo mismo y ya estaba escrita. El `grant select` sobre `auth.users` se **borró** (era la fuga). |
+> | 2 — cambiar el rol | ✅ `b9d03ac` + `6ce7f7f` | Las cinco condiciones de ADR-24. La sexta —sobrevivir a degradaciones concurrentes— **faltaba**: se agregó un `pg_advisory_xact_lock` por tenant. |
+> | 3 — capacidades | ✅ `6455b46` | `MembresiaService` resuelve el rol efectivo; `capacidades.ts` cita el símbolo exacto de cada política y el test lo busca en el archivo. |
+> | 4, 5, 6 — pantallas, rutas, integración | ✅ `775bfc2` | `/usuarios`, `/usuarios/:id` y `<app-selector-miembro>`, que cierra el `<input>` de uuid de la pieza 1. |
+>
+> **Verificado en el navegador** (MCP chrome-devtools, API real sobre PGlite, tema claro y oscuro,
+> consola limpia), con los tres roles y forzando los rechazos por fuera de la UI:
+> maestro→otro `200`; equipo→otro `403`; cliente→otro `404` (no llega a *ver* la fila, tal como
+> documenta la política); auto-degradación `403`; `rol: 'servicio'` `400`; `cliente` sin negocio
+> `400`. Un rol `cliente` ve **una** fila en `/usuarios`, la suya, aunque su token diga `maestro`.
+>
+> **Lo que NO se hizo, y no es un olvido:** no hay altas de usuario (la API no recibe credenciales de
+> Supabase), no se portó `user-activity-card` (AMG no registra actividad por usuario) y la carrera de
+> las dos degradaciones **no está reproducida en un test** — PGlite es un solo backend, así que el
+> test fija que el punto de serialización existe y es por tenant.
+>
+> ---
+>
 > ## ⛔ Enmendado el 2026-08-02 — NO ejecutar sin leer esto
 >
 > Una revisión externa de los cinco planes abiertos encontró tres cosas en este, verificadas contra el
@@ -101,18 +125,22 @@ db/      memberships (ya existe) + auth.users (solo lectura, para email y nombre
 **De dónde sale el email y el nombre:** `memberships` guarda solo `user_id`. El email vive en
 `auth.users`, el esquema de Supabase. Dos caminos y la decisión importa:
 
-- **Elegido:** la API lee `auth.users` con un `join` acotado a **los usuarios que ya son miembros del
-  tenant del contexto**, y expone solo `email` y el nombre de `raw_app_meta_data`. Requiere un `grant
-  select` acotado a `app_user` sobre `auth.users` — **una migración (`0012`) que hay que escribir con
-  cuidado**: `auth.users` es de Supabase y tiene columnas sensibles (`encrypted_password`,
-  `confirmation_token`, `recovery_token`). El grant es **por columna** (`select (id, email,
-  raw_app_meta_data)`), nunca sobre la tabla entera, y la vista que lo expone filtra por membresía.
+- **Elegido:** una **vista** (`membresias_perfil`, migración `0012`) que une `memberships` con
+  `auth.users` y ya filtra por tenant y por rol. El portal la lee a través de `GET /members`, y
+  **`app_user` no tiene ningún grant sobre `auth.users`** — no le hace falta: una vista sin
+  `security_invoker = true` corre con los permisos de su *owner*, así que el invocador lee a través
+  de ella sin poder tocar la tabla base.
 - **Descartado:** duplicar el email en `memberships`. Se desincroniza el día que alguien lo cambie en
   Supabase, y nadie se enteraría.
+- **Descartado, y era lo que decía este plan:** un `grant select (id, email, raw_app_meta_data)`
+  acotado a `app_user`. El razonamiento —proteger `encrypted_password` de un `select *` futuro— es
+  correcto y también es incompleto: decide **qué columnas** se leen, no **qué filas**, y el
+  aislamiento por tenant lo hace la vista. Con el grant puesto, saltearla era una fuga cross-tenant,
+  medida con PGlite el 2026-08-02 (2 filas, incluida la de otro tenant, contra la única que devuelve
+  la vista). El `grant usage on schema auth` sí se queda: deja nombrar el esquema, no leer nada.
 
-Si el `grant` acotado sobre `auth.users` resulta imposible o incómodo en Supabase, **la alternativa es
-mostrar solo el `user_id`** y decirlo en la UI, no inventar un email. Anotarlo como hallazgo y
-preguntar antes de duplicar datos.
+Si en Supabase la vista resultara imposible, **la alternativa es mostrar solo el `user_id`** y decirlo
+en la UI, no inventar un email. Anotarlo como hallazgo y preguntar antes de duplicar datos.
 
 ## Global Constraints
 
@@ -312,9 +340,9 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 
 | Riesgo | Cómo se cierra |
 |---|---|
-| **`app_render` puede ejecutar la función de miembros** (tiene `usage` sobre el esquema `app`, y en Postgres `execute` nace público) | `revoke execute … from public` + `grant` solo a `app_user`, con test que afirma `permission denied` para `app_render` y mutación que lo confirma |
-| Un `select` directo sobre `auth.users` esquiva la vista y lista todo el proyecto Supabase | **No hay grant sobre `auth.users`**: el único camino es la función `security definer` con `search_path` fijo |
-| Dos degradaciones concurrentes dejan el tenant sin `maestro` | El trigger serializa (bloqueo de una fila estable del tenant); test con dos transacciones |
+| ~~**`app_render` puede ejecutar la función de miembros**~~ | **No aplica:** no hay función. La lectura es una vista con `grant select … to app_user`, y `app_render` no lo tiene. El riesgo nacía de la alternativa con `security definer`, que no se implementó. |
+| Un `select` directo sobre `auth.users` esquiva la vista y lista todo el proyecto Supabase | ✅ **Cerrado.** No hay ningún grant sobre `auth.users` (solo `usage` sobre el esquema): la vista es el único camino, porque corre con los permisos de su owner. Test que exige `permission denied` —no cero filas— y mutación que lo confirma |
+| Dos degradaciones concurrentes dejan el tenant sin `maestro` | ✅ **Cerrado** con un `pg_advisory_xact_lock` **por tenant** antes de contar (no un bloqueo de fila: `select … for update` exige el privilegio UPDATE de tabla, y `app_user` tiene solo el grant por columna). **El test no reproduce la carrera** —PGlite es un solo backend—: fija que el punto de serialización existe y es por tenant, y cae si alguien saca la línea |
 | Se escribe `rol = 'servicio'` esquivando el endpoint | Policy con `with check`, no solo `using` — la base lo rechaza aunque el endpoint falle |
 | La UI muestra un rol distinto del que RLS aplica | El bootstrap resuelve la membresía efectiva; test con token y membresía discordantes |
 | Alguien se convierte (o convierte a otro) en `servicio` | Allowlist de roles asignables en el endpoint, con test que manda `servicio` |
