@@ -140,6 +140,86 @@
 > rutas en `cartera-portal.test.ts` (`import()` con ruta absoluta sin `file://`), ajeno a esta pieza y
 > presente igual en `main`.
 
+> **Nuevo (2026-08-02): pieza 2 del portal de la agencia — usuarios, COMPLETA (6 etapas), en
+> `feature/paginas-usuarios`, sin mergear a `main`.** Segunda pieza del
+> [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md):
+> quién tiene acceso al tenant, con qué rol, y cambiarlo — sin crear usuarios nuevos (eso lo sigue
+> haciendo Supabase Auth, la API nunca recibe esa credencial).
+>
+> **Etapa 1** (ya commiteada, `9614489`) agrega la vista `membresias_perfil` (0012) — `memberships`
+> cruzada con `auth.users` para traer el email, ya filtrada por tenant y por rol (staff ve el tenant
+> entero, un rol `cliente` ve solo su propia fila) — y `PgMembresias.listarMiembros`.
+>
+> **Etapa 2** (esta entrada) agrega `GET /members` y `PATCH /members/:userId` y extiende la MISMA
+> migración (`0012`, todavía sin desplegar) en vez de abrir una `0013` — reservada para la pieza 3
+> (Ideas) — para no colisionar la numeración entre piezas del mismo programa. Tres piezas nuevas en la
+> base:
+>
+> - **`memberships` deja de ser solo lectura para `app_user`**, por primera vez desde `0001_init.sql`
+>   — pero solo para `UPDATE`, y solo lo que la política `membership_update` deja pasar.
+> - **La garantía "siempre queda un `maestro`" vive en un trigger**, no en un `check`: un `check` mira
+>   una fila, y esto depende del conjunto. Verificado por mutación (sacar el trigger hace caer
+>   exactamente el test del último maestro; puesto de nuevo, pasa).
+> - **`using` vs `with check` decide 403 contra 404**, y con una vuelta de tuerca que el brief no
+>   anticipaba: `membership_select` (0003, cierra la FUGA 1) ya restringe la lectura de `memberships`
+>   a "propia fila" — sin ampliarla, ni el propio `maestro` podría ver la fila de otro para
+>   cambiarla. La ampliación (`membership_select_staff`, staff ve todo el tenant) no puede llamar a
+>   `app.current_role()`: esa función lee `memberships`, y una política de `memberships` que la
+>   llamara se re-evalúa a sí misma sin parar — **medido**: cuelga el proceso de Postgres, no lanza un
+>   error. La resuelve `app.rol_propio_sin_recursion()`, la misma pregunta con una bandera de sesión
+>   que corta la segunda entrada. Con esa visibilidad ya puesta, `membership_update.using` solo exige
+>   tenant (un `equipo` SÍ ve la fila que intenta tocar) y `with check` exige `maestro` **y** que no
+>   sea su propia fila (auto-degradación bloqueada en la base, no solo en la API) — así un `equipo`
+>   que intenta repartir roles cae con 403 real de RLS, no un 404 silencioso, y un `cliente` (que ni
+>   siquiera es staff) sigue dando 404, porque no llega a "ver" la fila ajena por ningún lado.
+>
+> **Cifras de estas dos etapas:** `db` pasó de 155 a **167 tests**; `api` subió a **95**. El diseño
+> sigue exactamente ADR-15 (el rol se deriva, nunca se declara) y ADR-17 (un solo login `app_user`,
+> sin asumir otro rol) — lo nuevo es una política RLS más, no una excepción a ninguna de las dos. Se
+> construyeron creyendo que no hacía falta ADR nuevo; **sí hacía falta, y ya está**:
+> [ADR-24](../decisiones-arquitectura.md) (aceptada el 2026-08-02, en `main`) enmienda la `0001`, que
+> prometía que las membresías se escribirían "por el backend con service-role" — un backend que nunca
+> existió. ADR-24 autoriza exactamente lo que estas etapas construyeron y les fija cinco condiciones:
+> grant por columna, `using` + `with check`, `servicio` no asignable, auto-edición rechazada en la
+> base, y **un trigger que sobreviva a degradaciones concurrentes**.
+>
+> **Las dos correcciones de seguridad que cerraron esas etapas (2026-08-02), las dos con test rojo
+> primero y verificación por mutación:**
+>
+> - **`grant select (id, email, raw_app_meta_data) on auth.users to app_user` era una fuga
+>   CROSS-TENANT y se quitó.** El razonamiento original —un grant por columna protege
+>   `encrypted_password` de un `select *` futuro— es cierto, pero decide *qué columnas* se leen, y el
+>   aislamiento que importa es de *filas*: eso lo hace la vista, no la tabla. Medido con PGlite:
+>   `equipoA` (tenant A) haciendo `select email from auth.users` obtenía **2 filas**, incluida la de
+>   un usuario del tenant B, mientras la vista le devolvía 1. Y nunca hizo falta: una vista sin
+>   `security_invoker = true` corre con los permisos de su *owner*.
+> - **El trigger del último maestro contaba sin serializar.** Con dos maestros, en READ COMMITTED,
+>   dos transacciones que degradan cada una al otro se aprueban entre sí —ninguna ve el cambio
+>   ajeno, todavía sin commitear— y el tenant queda con cero. No hay conflicto de filas que las
+>   ordene. Ahora toma un `pg_advisory_xact_lock` **por tenant** antes de contar. Advisory lock y no
+>   `select … for update`: eso exige el privilegio UPDATE de *tabla*, y `app_user` tiene solo el grant
+>   por columna. **La carrera no está reproducida en un test** —PGlite es un solo backend— y el test
+>   lo dice: fija que el punto de serialización existe y es por tenant.
+>
+> **Etapas 3 a 6 (esta sesión), en el portal.** El rol de la UI deja de salir de `app_metadata.rol`:
+> `MembresiaService` resuelve la **membresía efectiva** y ese valor alimenta la pantalla. Hacía falta
+> porque la API no puede reescribir ese metadata (no tiene credenciales de Supabase), así que en
+> cuanto esta pieza permite cambiar roles, el token queda viejo para siempre. No es escalada —RLS
+> manda— pero es una pantalla que miente. `capacidades.ts` reemplaza los 20 booleanos editables del
+> origen por una tabla derivada y read-only donde **cada fila cita el símbolo exacto de la política
+> que la sostiene y el test lo busca en el archivo**: un renombre en la base tira el test antes de que
+> la pantalla empiece a mentir. Se agregan `/usuarios` y `/usuarios/:id` (sin altas: crear una cuenta
+> es crearla en Supabase Auth), y la **integración de retorno** con la pieza 1 —el
+> `<input type="text" placeholder="uuid del usuario responsable">` pasa a ser un selector de
+> miembros—. Un bug real que encontró su test: `[value]` en un `<select>` se aplica antes de que
+> existan las `<option>` del `@for`, así que el responsable guardado se descartaba en silencio.
+>
+> **Cifras de la pieza completa:** **614 tests** en el monorepo, **169** node en portal (146 antes) y
+> **66** Karma (36 antes). `npm run typecheck` limpio. Verificado además **en el navegador** (MCP
+> chrome-devtools, API real sobre PGlite, tema claro y oscuro, consola sin errores) con los tres
+> roles, y forzando los rechazos por fuera de la UI: maestro→otro `200`, equipo→otro `403`,
+> cliente→otro `404`, auto-degradación `403`, `servicio` `400`, `cliente` sin negocio `400`.
+
 **La cadena completa está construida, de punta a punta y sin huecos:**
 
 ```

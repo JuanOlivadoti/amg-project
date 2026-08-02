@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RunsPage } from './runs';
 import { ApiService } from '../../services/api';
-import { AuthService } from '../../services/auth';
+import { MembresiaService } from '../../services/membresia';
 import { environment } from '../../../environments/environment';
 
 /**
@@ -28,7 +28,7 @@ describe('RunsPage — gate del formulario "lanzar research" (§A.5)', () => {
       providers: [
         provideRouter([]),
         { provide: ApiService, useValue: { listarRuns: async () => [], crearRun: async () => ({}) } },
-        { provide: AuthService, useValue: { esEquipo: () => esEquipo } },
+        { provide: MembresiaService, useValue: { esEquipo: () => esEquipo } },
       ],
     });
     const fixture = TestBed.createComponent(RunsPage);

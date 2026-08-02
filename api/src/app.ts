@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { PgStore, CambiosPagina, PgClientes, NuevoCliente, CambiosCliente } from "db";
+import type { PgStore, CambiosPagina, PgClientes, NuevoCliente, CambiosCliente, PgMembresias } from "db";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
 
@@ -14,6 +14,8 @@ export interface ApiDeps {
   store: PgStore;
   /** CRM de clientes, mismo login/rol que `store` (ADR-17) — ver `db/src/clientes.ts`. */
   clientes: PgClientes;
+  /** Miembros del tenant (pieza 2 — Usuarios), mismo login/rol — ver `db/src/membresias.ts`. */
+  membresias: PgMembresias;
   emisor: EmisorEventos;
   verificar: VerificadorToken;
   /**
@@ -194,6 +196,56 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
   });
 
+  /*
+   * Los dos endpoints de miembros (pieza 2 — Usuarios, Etapa 2). `GET` reusa
+   * `listarMiembros` (Etapa 1): la visibilidad por rol (staff ve el tenant, cliente ve solo su
+   * fila) vive ENTERA en la vista `membresias_perfil` (0012) — este handler no filtra nada.
+   *
+   * `PATCH` es la pieza nueva. El ROL no se chequea acá con un `if` (ADR-15): la política
+   * `membership_update` (0012) es la que de verdad decide si el caller puede escribir esta fila —
+   * este handler solo hace DOS cosas que sí son legítimas en TypeScript:
+   *   1) una ALLOWLIST de valores de entrada (qué `rol` es un valor aceptable), mismo criterio que
+   *      `filtrarCamposCliente` — no es una decisión de autorización, es una restricción de forma;
+   *   2) la comparación de IDENTIDAD ya autenticada (`:userId` de la ruta vs. `ctx.userId`, el `sub`
+   *      del JWT) para la auto-degradación — también reforzada en la base (`membership_update`
+   *      exige `user_id <> current_user_id()`), pero repetirla acá evita pagar un viaje a la base
+   *      por algo que ya se puede descartar con lo que el middleware de auth dejó en `ctx`.
+   */
+
+  /** GET /members — los miembros visibles para quien pregunta (staff: todo el tenant; cliente: su fila). */
+  app.get("/members", async (c) => {
+    const ctx = c.get("ctx");
+    const miembros = await deps.membresias.listarMiembros(ctx);
+    return c.json({ miembros });
+  });
+
+  /** PATCH /members/:userId — cambia el rol (y, si corresponde, el client_id) de un miembro. */
+  app.patch("/members/:userId", async (c) => {
+    const ctx = c.get("ctx");
+    const userId = c.req.param("userId");
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return c.json({ error: "Body inválido." }, 400);
+
+    const rol = body["rol"];
+    if (typeof rol !== "string" || !ROLES_ASIGNABLES.has(rol)) {
+      return c.json({ error: "rol debe ser uno de: maestro, equipo, cliente." }, 400);
+    }
+
+    // Auto-degradación: identidad ya autenticada, no una decisión de rol (ver el comentario de
+    // arriba). `ctx.userId` puede faltar en teoría (el tipo lo permite para el orquestador, que
+    // nunca llega hasta acá) — con `ctx.userId` ausente esta comparación nunca es cierta, y la
+    // política de la base (`user_id <> current_user_id()`) sigue como última palabra.
+    if (ctx.userId && userId === ctx.userId) {
+      return c.json({ error: "No podés cambiar tu propio rol." }, 403);
+    }
+
+    const clientId = typeof body["client_id"] === "string" ? body["client_id"] : null;
+    const ok = await deps.membresias.cambiarRol(ctx, userId, { rol, clientId });
+    return ok
+      ? c.json({ ok: true })
+      : c.json({ error: "Miembro no encontrado, o sin cambios válidos." }, 404);
+  });
+
   app.onError((err, c) => {
     const code = (err as { code?: string }).code;
 
@@ -249,6 +301,16 @@ function filtrarCambios(body: Record<string, unknown>): CambiosPagina {
 function esObjeto(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
+
+/**
+ * Allowlist POSITIVA de roles asignables por `PATCH /members/:userId`, en el borde HTTP — mismo
+ * criterio que `filtrarCamposCliente`. `servicio` es un `user_role` válido (0001) pero NO es un rol
+ * que un humano pueda recibir por este endpoint: es la identidad del orquestador, atada a una
+ * CREDENCIAL de Postgres (`app_service`), no a una fila de `memberships` (0003:
+ * `membresia_no_es_servicio` ya lo rechazaría con 23514/400 aunque esto no existiera — esto además
+ * lo hace explícito, sin gastar un viaje a la base para descartar un valor que nunca fue válido).
+ */
+const ROLES_ASIGNABLES = new Set(["maestro", "equipo", "cliente"]);
 
 /**
  * Allowlist de la edición/alta de clientes, en el borde HTTP (defensa en profundidad: `PgClientes`

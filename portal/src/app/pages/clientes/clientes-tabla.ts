@@ -1,7 +1,9 @@
-import { Component, input, output } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { ClienteAgencia, EstadoContrato, TipoCliente } from '../../core/models';
 import { TableDropdownComponent } from '../../shared/components/table-dropdown';
+import { MembresiaService } from '../../services/membresia';
+import { nombreDe } from '../../core/miembros';
 
 const ETIQUETA_TIPO: Record<TipoCliente, string> = {
   empresa: 'Empresa',
@@ -62,7 +64,7 @@ const ETIQUETA_ESTADO: Record<EstadoContrato, string> = {
                   {{ etiquetaEstado(c.estado_contrato) }}
                 </span>
               </td>
-              <td class="px-4 py-2 text-texto-medio">{{ c.asignado_a ?? 'Sin asignar' }}</td>
+              <td class="px-4 py-2 text-texto-medio">{{ nombreAsignado(c.asignado_a) }}</td>
               <td class="px-4 py-2 text-right">
                 <app-table-dropdown>
                   <button
@@ -125,6 +127,23 @@ const ETIQUETA_ESTADO: Record<EstadoContrato, string> = {
 })
 export class ClientesTablaComponent {
   readonly clientes = input.required<readonly ClienteAgencia[]>();
+  private readonly membresia = inject(MembresiaService);
+
+  /** `user_id -> nombre`, para no mostrar uuids en la tabla. Uno solo, no uno por fila. */
+  private readonly porId = computed(() => {
+    const mapa = new Map<string, string>();
+    for (const m of this.membresia.miembros()) mapa.set(m.user_id, nombreDe(m));
+    return mapa;
+  });
+
+  /**
+   * El uuid se muestra tal cual si no está entre los miembros visibles (una membresía quitada, o un
+   * rol `cliente` que solo se ve a sí mismo). Decir "Sin asignar" ahí sería falso: hay alguien.
+   */
+  nombreAsignado(id: string | null | undefined): string {
+    if (!id) return 'Sin asignar';
+    return this.porId().get(id) ?? id;
+  }
 
   readonly archivar = output<string>();
   readonly desarchivar = output<string>();

@@ -4,7 +4,7 @@ import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { of } from 'rxjs';
 import { BriefPage } from './brief';
 import { ApiService } from '../../services/api';
-import { AuthService } from '../../services/auth';
+import { MembresiaService } from '../../services/membresia';
 import { environment } from '../../../environments/environment';
 import type { Brief } from '../../core/models';
 
@@ -68,7 +68,7 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
         provideRouter([]),
         { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id: 'run-1' })) } },
         { provide: ApiService, useValue: { verBrief: async () => BRIEF } },
-        { provide: AuthService, useValue: { esEquipo: () => esEquipo } },
+        { provide: MembresiaService, useValue: { esEquipo: () => esEquipo } },
       ],
     });
     const fixture = TestBed.createComponent(BriefPage);

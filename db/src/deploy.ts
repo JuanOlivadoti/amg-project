@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { MIGRATIONS_DIR } from "./migrate.js";
+import { MIGRATIONS_DIR, asegurarAuthStandIn } from "./migrate.js";
 
 /**
  * Runner de migraciones para una base REMOTA que persiste (Fase 1: Supabase).
@@ -102,6 +102,11 @@ export async function migrarConRegistro(
   con: ConexionReservada,
   log: (msg: string) => void = () => {},
 ): Promise<string[]> {
+  // La 0012 asume que `auth.users` existe (ver migrate.ts, `asegurarAuthStandIn`). En Supabase real
+  // esto es un no-op (`if not exists`); en PGlite (deploy.test.ts) es lo único que lo crea — este
+  // runner NO pasa por `aplicarMigraciones`, así que necesita la misma garantía por su cuenta.
+  await asegurarAuthStandIn(con);
+
   await con.exec(`
     create schema if not exists app;
     create table if not exists ${REGISTRO} (

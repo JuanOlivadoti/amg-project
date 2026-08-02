@@ -1,8 +1,10 @@
 import type {
   Brief,
+  CambioRolMiembro,
   CambiosClienteAgencia,
   CambiosPagina,
   ClienteAgencia,
+  Miembro,
   NuevoClienteAgencia,
   NuevoRun,
   RunSummary,
@@ -50,6 +52,13 @@ export interface ClienteApi {
   actualizarCliente(id: string, cambios: CambiosClienteAgencia): Promise<void>;
   archivarCliente(id: string): Promise<void>;
   desarchivarCliente(id: string): Promise<void>;
+
+  /**
+   * Los miembros VISIBLES para quien pregunta, que no es lo mismo que "los del tenant": la vista
+   * `membresias_perfil` (0012) ya decidió en Postgres si eso son todos o solo la fila propia.
+   */
+  listarMiembros(): Promise<Miembro[]>;
+  cambiarRolMiembro(userId: string, cambio: CambioRolMiembro): Promise<void>;
 }
 
 export function crearApi(opts: ApiOpts): ClienteApi {
@@ -135,6 +144,22 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     },
     async desarchivarCliente(id) {
       await pedir('POST', `/clients/${encodeURIComponent(id)}/desarchivar`);
+    },
+
+    async listarMiembros() {
+      const { miembros } = await pedir<{ miembros: Miembro[] }>('GET', '/members');
+      return miembros;
+    },
+    async cambiarRolMiembro(userId, cambio) {
+      // El body se arma acá campo por campo, no se reenvía el objeto que venga: `PATCH /members` ya
+      // tiene su allowlist en el servidor, pero mandar solo lo que el endpoint acepta evita que un
+      // día alguien pase un objeto más grande y crea que el resto también viaja.
+      await pedir('PATCH', `/members/${encodeURIComponent(userId)}`, {
+        rol: cambio.rol,
+        // `client_id` solo cuando el rol es `cliente`: para cualquier otro rol la base lo fuerza a
+        // null igual (`cliente_exige_client_id`, 0001), y mandarlo sugeriría que se conserva.
+        ...(cambio.rol === 'cliente' ? { client_id: cambio.client_id ?? null } : {}),
+      });
     },
   };
 }

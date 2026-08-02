@@ -39,6 +39,15 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/clientes/cliente-vista').then((m) => m.ClienteVistaPage),
       },
+      {
+        path: 'usuarios',
+        loadComponent: () => import('./pages/usuarios/usuarios').then((m) => m.UsuariosPage),
+      },
+      {
+        path: 'usuarios/:id',
+        loadComponent: () =>
+          import('./pages/usuarios/usuario-perfil').then((m) => m.UsuarioPerfilPage),
+      },
       { path: '', pathMatch: 'full', redirectTo: 'runs' },
     ],
   },

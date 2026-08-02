@@ -4,7 +4,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink, ActivatedRoute } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
-import { AuthService } from '../../services/auth';
+import { MembresiaService } from '../../services/membresia';
 import type { Brief, PaginaPropuesta } from '../../core/models';
 import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
 import { mostrarAprobarRun } from '../../core/features';
@@ -97,7 +97,7 @@ import { Vigencia } from '../../core/vigencia';
           </span>
         </div>
 
-        @if (auth.esEquipo()) {
+        @if (membresia.esEquipo()) {
           @if (editando() === p.id) {
             <div class="mt-3 space-y-2 border-t border-borde pt-3">
               <input
@@ -145,7 +145,8 @@ import { Vigencia } from '../../core/vigencia';
 })
 export class BriefPage implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
-  readonly auth = inject(AuthService);
+  // El rol sale de `memberships`, no del token: ver la cabecera de `MembresiaService`.
+  readonly membresia = inject(MembresiaService);
   private readonly route = inject(ActivatedRoute);
 
   /** Cada cuánto se repregunta por un research que sigue corriendo (ADR-21: polling, no realtime). */
@@ -180,7 +181,7 @@ export class BriefPage implements OnInit, OnDestroy {
    * de PÁGINAS —abajo, en cada tarjeta— sigue visible: es lo que demuestra la compuerta.
    */
   readonly puedeAprobarRunUI = computed(() =>
-    mostrarAprobarRun(this.auth.esEquipo(), environment.features.aprobarRun),
+    mostrarAprobarRun(this.membresia.esEquipo(), environment.features.aprobarRun),
   );
 
   private sub: Subscription | null = null;

@@ -30,3 +30,16 @@ test('ninguna ruta hija repite su propio authGuard — lo hereda del padre', () 
     assert.equal(hijo.canActivate, undefined, `${hijo.path} no debería tener su propio canActivate`);
   }
 });
+
+test('usuarios y usuarios/:id son hijas del shell, y el redirectTo a runs no se toca', () => {
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const hijos = (shell?.children ?? []).map((r) => r.path);
+  assert.ok(hijos.includes('usuarios'), 'usuarios debe ser hija del shell (y del authGuard)');
+  assert.ok(hijos.includes('usuarios/:id'), 'usuarios/:id debe ser hija del shell');
+
+  // El default de la demo. La pieza 2 es aditiva: si esto cambiara, el portal abriría en otra
+  // pantalla y la demo empezaría en un lugar que nadie ensayó.
+  const raiz = (shell?.children ?? []).find((r) => r.path === '');
+  assert.equal(raiz?.redirectTo, 'runs');
+  assert.equal(raiz?.pathMatch, 'full');
+});

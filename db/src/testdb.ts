@@ -30,6 +30,9 @@ export class TestDb {
 
   static async create(): Promise<TestDb> {
     const pg = new PGlite();
+    // El stand-in de `auth.users` lo crea `aplicarMigraciones` (migrate.ts) — así lo tienen también
+    // los tests de este paquete que llaman `aplicarMigraciones` directo sobre su propio PGlite, sin
+    // pasar por acá (store.test.ts, cache.test.ts, task-log.test.ts).
     await aplicarMigraciones(pg);
     return new TestDb(pg);
   }
