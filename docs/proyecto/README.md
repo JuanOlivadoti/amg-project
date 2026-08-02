@@ -4,10 +4,10 @@ Documentación completa del proyecto: qué es, cómo está construido, qué hace
 y en qué estado está. **Refleja el código real** del repositorio, no un diseño aspiracional:
 cuando algo está diseñado pero no implementado, se dice explícitamente.
 
-> Última revisión: 2026-08-01 · Estado: **Fase 1 desplegada; Fase 2 construida, sin desplegar.** La
+> Última revisión: 2026-08-02 · Estado: **Fase 1 desplegada; de Fase 2, el renderizador también.** La
 > cadena completa —research → compuerta humana → publicación → **la web servida en vivo**— funciona de
 > punta a punta. API, portal y renderizador existen y se manejaron en un navegador real.
-> **539 tests en verde** en el monorepo (+**130** en el portal: 113 `node:test` + 17 Karma).
+> **849 tests en verde**: 614 en el monorepo + 235 en el portal (169 `node:test` + 66 Karma).
 >
 > ✅ **Fase 1 está en producción** desde el 2026-07-25: el portal en [`bigballs.es`](https://bigballs.es)
 > (Hostinger), la API en `api.bigballs.es` (Railway) y la base con RLS forzada en Supabase. El login
@@ -50,6 +50,12 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 > nombres, no de contenido: renombrar rompería los links entrantes, que son muchos.
 
 ## Contexto adicional
+
+- **Bitácora del proyecto:** [`../../progress/history.md`](../../progress/history.md) — qué se hizo
+  cada día, con sus tropiezos y sus lecciones, de lo más reciente a lo más viejo. Vive fuera de
+  `docs/` a propósito: el `09` dice **dónde estamos**, la bitácora dice **cómo llegamos**, y
+  mezclarlas fue lo que infló el `09` a 930 líneas. Lo que se está haciendo ahora mismo, en
+  [`../../progress/current.md`](../../progress/current.md).
 
 - **Decisiones de arquitectura (ADR-01..23 + OBS-01..04):** [`../decisiones-arquitectura.md`](../decisiones-arquitectura.md) — el *porqué* de cada elección técnica, con las alternativas descartadas **y las decisiones que hubo que corregir**. Esta documentación las referencia constantemente. 🔴 **OBS-04 está abierta** (2026-08-01): quién edita la web no lo gobierna nuestro RBAC.
 - **Producto:** [`../contexto-proyecto-frank.md`](../contexto-proyecto-frank.md) y [`../A_PRD_AMG_Madrid_v1_Ilustrado.md`](../A_PRD_AMG_Madrid_v1_Ilustrado.md).
