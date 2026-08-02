@@ -209,10 +209,17 @@ Van con este trabajo porque tocan el mismo CSS que se reorganiza:
 sigue siendo válido sin tocarlo.
 
 ```ts
-/** Una foto del negocio. `alt` vacío = decorativa, igual que `Imagen`. */
+/**
+ * Una foto del negocio. `alt` vacío = decorativa, igual que `Imagen`.
+ *
+ * `alt` es OPCIONAL a propósito: el formulario del portal captura una URL y nada más
+ * (§Punto de unión con el portal), así que exigirlo dejaría el campo inválido siempre. Sin `alt`
+ * se emite `alt=""` — decorativa, que es lo correcto para una portada cuyo contenido ya está en
+ * el `<h1>`, y nunca un `alt` inventado a partir del nombre del negocio.
+ */
 interface Foto {
   src: string;      // URL https de un host de la allowlist — ver §Política de imágenes
-  alt: string;
+  alt?: string;
 }
 
 interface BusinessProfile {
@@ -349,6 +356,7 @@ Las piezas producen HTML y nada más.
 | `fotos` con 500 entradas | Se cortan en 30, en las cuatro fronteras. |
 | Documento que pediría 200 imágenes | Se corta en 60 (presupuesto global). |
 | `foto` como string en vez de objeto | La sub-allowlist devuelve `null`, `perfilValido` la descarta, el ítem se dibuja sin foto. |
+| `foto` sin `alt` (el caso normal, viniendo del portal) | Se emite `alt=""` — decorativa. Nunca un `alt` derivado del nombre del negocio: un texto alternativo inventado es peor que ninguno, igual que un `postalCode` inventado. |
 | Perfil `null` | Las piezas de shell que dependen del perfil devuelven `""` — la cabecera se omite entera, como ya hace hoy `renderSiteHeader`. El pie queda con la línea técnica. El documento sigue siendo válido. |
 | Perfil sin `locations` ni `address` | `locales` devuelve `""`. El nav ya no muestra "Ubicaciones" (`hayUbicaciones`), así que no queda un ancla apuntando a la nada. |
 | Todas las piezas devuelven `""` | Documento válido con `<head>` y `<main>` vacío, nunca una excepción. |
@@ -464,6 +472,35 @@ de Firestore, donde `contacto` era el saco de todo, no por una decisión de fron
 interno y datos de Google Places. Abrirlo campo por campo es hacer un agujero en la pared que la
 `0011` acaba de levantar, y del otro lado está el rol anónimo. El plan del portal ya lo prohíbe con
 un test de mutación propio.
+
+### Cómo se cierra: el dato público se guarda en el campo público
+
+**Decisión (2026-08-02):** el formulario del portal deja de escribir esas dos URLs en `contacto` y
+escribe en `business_profile`. Es el criterio que el propio plan del portal ya fijó para las
+sucursales; `logo_url`/`portada_url` son la excepción heredada, no la regla.
+
+| Campo del formulario | Destino hoy (mal) | Destino correcto |
+| --- | --- | --- |
+| "URL del logo" | `contacto.logo_url` | `business_profile.brand.logo` — **ya existe**, ya es público, ya lo pinta la cabecera del sitio |
+| "URL de imagen de portada" | `contacto.portada_url` | `business_profile.portada.src` — nuevo, lo agrega este spec |
+
+**Este cambio es de la pieza del portal, no de este spec** (que llega hasta contrato y render). Queda
+especificado acá para que quien lo implemente no tenga que re-deducirlo:
+
+1. `business_profile` **no está en `COLUMNAS_EDITABLES`** (`db/src/clientes.ts`): hoy la API del CRM
+   no puede escribir el perfil público. Hay que agregarlo, y con eso aparece una vía de escritura
+   hacia el dato que consume el rol anónimo. Las cuatro fronteras siguen protegiendo la **lectura**,
+   así que el riesgo está acotado por diseño — pero la API debería validar forma y hosts al escribir
+   en vez de apoyarse solo en que el renderizador descarte después.
+2. **No hay migración de datos.** `logo_url`/`portada_url` no están cargados en ningún seed, fixture
+   ni JSON del repo: el campo está vacío en todas partes. Mover el destino ahora cuesta cero; después
+   de dar de alta el primer cliente real con la pantalla actual, cada uno es un dato que hay que
+   mover a mano.
+3. **Orden:** la entrega 1 de este spec va primero (es la que crea `business_profile.portada`); el
+   cambio del portal, después. Al revés, el formulario escribiría un campo que no existe.
+4. **`alt`:** el formulario captura una URL y nada más. Por eso `Foto.alt` es **opcional** con default
+   `""` (decorativa) — ver §Modelo de datos. Exigir un `alt` que la pantalla no pide dejaría el campo
+   inválido siempre.
 
 ---
 
