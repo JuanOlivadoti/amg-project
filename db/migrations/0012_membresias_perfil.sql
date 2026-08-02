@@ -13,22 +13,30 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1) El grant: POR COLUMNA, nunca la tabla entera.
+-- 1) `usage` sobre el esquema, y NINGÚN grant sobre `auth.users`.
 --
--- `usage` sobre el esquema hace falta aparte del `select`: a diferencia de `public`, un esquema
--- nuevo (`auth`) NO tiene `usage` concedido a `PUBLIC` por default -- sin esta línea, CUALQUIER
--- referencia a `auth.users` (aunque sea a una columna permitida) falla con "permission denied for
--- schema auth" antes de llegar a mirar columnas. Es justo lo que atrapó el test de este mismo
--- archivo (`membresias.test.ts`) al escribirse: sin el `usage`, hasta el camino LEGÍTIMO fallaba.
+-- `usage` sobre el esquema hace falta aparte: a diferencia de `public`, un esquema nuevo (`auth`) NO
+-- tiene `usage` concedido a `PUBLIC` por default -- sin esta línea, CUALQUIER referencia a
+-- `auth.users` (aunque sea a través de la vista) falla con "permission denied for schema auth". Es
+-- justo lo que atrapó el test de este mismo archivo (`membresias.test.ts`) al escribirse: sin el
+-- `usage`, hasta el camino LEGÍTIMO fallaba. Deja NOMBRAR el esquema, no leer nada de él.
 --
--- `auth.users` real de Supabase tiene columnas sensibles (`encrypted_password`,
--- `confirmation_token`, `recovery_token`, ...) que ningún proceso de este sistema debe poder leer,
--- ni siquiera indirectamente. `grant select on auth.users to app_user` a secas expondría esas
--- columnas en cuanto alguien agregara un `select *` en el futuro -- con el grant por columna, ESE
--- `select *` directamente falla (permission denied), no filtra datos de más.
+-- Acá vivía `grant select (id, email, raw_app_meta_data) on auth.users to app_user`, y se quitó.
+-- El razonamiento original era correcto pero incompleto: un grant POR COLUMNA sí protege lo sensible
+-- (`encrypted_password`, `confirmation_token`, `recovery_token`, ...) frente a un `select *` que
+-- alguien agregara en el futuro. Solo que eso decide QUÉ COLUMNAS se leen, y el aislamiento que
+-- importa acá es de FILAS: quién pertenece a qué tenant lo impone la vista de abajo, no la tabla.
+-- Con el grant puesto, saltearse la vista era una fuga CROSS-TENANT -- medido con PGlite: `equipoA`
+-- (tenant A) haciendo `select email from auth.users` obtenía 2 filas, incluida la de un usuario del
+-- tenant B, mientras la vista le devolvía 1.
+--
+-- Y nunca hizo falta: una vista sin `security_invoker = true` corre con los permisos de su OWNER, así
+-- que `app_user` lee A TRAVÉS de `membresias_perfil` sin tener ningún permiso sobre la tabla base.
+-- Quitarlo no rompe el camino legítimo, solo cierra el atajo. Lo fija el test "app_user NO puede leer
+-- auth.users directamente", que exige `permission denied` (no cero filas) y cae si alguien repone
+-- esta línea.
 -- -----------------------------------------------------------------------------
 grant usage on schema auth to app_user;
-grant select (id, email, raw_app_meta_data) on auth.users to app_user;
 
 -- -----------------------------------------------------------------------------
 -- 2) La vista: `memberships` cruzado con `auth.users`, YA filtrado por tenant y por rol.
@@ -227,12 +235,44 @@ comment on policy membership_update on memberships is
 -- Verificado por mutación: se sacó el trigger, corrió `db/src/membresias.test.ts` y el test "quitar
 -- el último maestro falla" pasó a fallar (el update se completaba) -- se repuso el trigger y el
 -- mismo test volvió a pasar. Ver `.superpowers/sdd/etapa-2-report.md`.
+--
+-- CONCURRENCIA (la condición que ADR-24 pone explícita: el trigger tiene que sobrevivir a dos
+-- degradaciones simultáneas). Contar no alcanza si dos transacciones cuentan a la vez. Con dos
+-- maestros M1 y M2, en READ COMMITTED (el default, y lo que usa `Tx`):
+--
+--   T1 degrada a M2 -> cuenta -> ve a M1 todavía maestro (el cambio de T2 no está commiteado) -> OK
+--   T2 degrada a M1 -> cuenta -> ve a M2 todavía maestro (el cambio de T1 no está commiteado) -> OK
+--   commit, commit -> el tenant se quedó con CERO maestros, y cada transacción "verificó" que no.
+--
+-- No hay conflicto de filas que las serialice: cada una toca una fila distinta. Por eso hace falta un
+-- punto de serialización EXPLÍCITO, y va antes de contar: el segundo en llegar espera, y cuando entra
+-- su `select` es un statement nuevo -- en READ COMMITTED eso significa snapshot nuevo, que YA incluye
+-- lo que el primero commiteó. Ahí sí ve cero maestros y falla, que es lo correcto.
+--
+-- Por qué un advisory lock y no `select ... for update` sobre `memberships`: `for update` exige el
+-- privilegio UPDATE **de tabla**, y `app_user` tiene solo el grant POR COLUMNA (`update (rol,
+-- client_id)`) -- pedirlo rompería el camino legítimo, o forzaría a ampliar el grant, que es
+-- justamente lo que no queremos. Tampoco sirve bloquear la fila de `tenants` (mismo problema de
+-- privilegios). Los advisory locks los puede tomar cualquiera, no necesitan grant, y `_xact_` los
+-- suelta solo al terminar la transacción -- sin `unlock` que alguien pueda olvidar en un camino de
+-- error.
+--
+-- La clave es POR TENANT, no global: dos agencias distintas no se hacen cola entre sí. El primer
+-- argumento es un espacio de nombres (para no chocar con cualquier otro advisory lock del sistema),
+-- el segundo identifica al tenant.
+--
+-- Lo que este arreglo NO tiene es un test que reproduzca la carrera: PGlite es un solo backend, así
+-- que no hay dos transacciones simultáneas que interleavear. Lo que el test SÍ fija es que el punto
+-- de serialización existe y es por tenant (lock tomado, clave distinta para tenants distintos) --
+-- cae si alguien saca esta línea. La carrera en sí es semántica documentada de READ COMMITTED, no
+-- una conjetura, pero conviene saber que está razonada y no medida.
 -- -----------------------------------------------------------------------------
 create or replace function app.verificar_ultimo_maestro() returns trigger
 language plpgsql as $$
 declare
   tid uuid := coalesce(old.tenant_id, new.tenant_id);
 begin
+  perform pg_advisory_xact_lock(hashtext('memberships_ultimo_maestro'), hashtext(tid::text));
   if not exists (select 1 from memberships where tenant_id = tid and rol = 'maestro') then
     raise exception 'El tenant % se quedaría sin ningún maestro.', tid
       using errcode = '23514'; -- check_violation: el onError de la API ya lo mapea a 400.
@@ -243,7 +283,9 @@ $$;
 
 comment on function app.verificar_ultimo_maestro() is
   'Garantía "siempre queda un maestro", como trigger y no como CHECK: un CHECK de columna/tabla mira '
-  'UNA fila, y esta garantía depende del CONJUNTO (¿queda algún maestro en el tenant?). Ver el '
+  'UNA fila, y esta garantía depende del CONJUNTO (¿queda algún maestro en el tenant?). Toma un '
+  'advisory lock POR TENANT antes de contar: sin él, dos degradaciones simultáneas se aprueban entre '
+  'sí y el tenant se queda con cero maestros (ver el comentario de arriba, y ADR-24). Ver también el '
   'comentario del trigger memberships_ultimo_maestro para la verificación por mutación.';
 
 create trigger memberships_ultimo_maestro

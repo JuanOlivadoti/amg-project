@@ -96,16 +96,40 @@ test("un usuario sin ninguna membresía (intruso) no ve absolutamente nada", asy
   assert.deepEqual(filas, []);
 });
 
-// ---------------------------------------------------------------- grant por columna
+// ---------------------------------------------------------------- acceso directo a auth.users
 
-test("🔴 el grant sobre auth.users es POR COLUMNA: created_at (no concedida) se rechaza para app_user", async () => {
-  // 0012 concede select(id, email, raw_app_meta_data) -- nunca la tabla entera. `created_at` existe
-  // en el stand-in (para poder ordenar internamente) pero NO tiene grant: si esto pasara a resolver,
-  // sería la señal de que alguien cambió el grant a `select on auth.users` a secas, exactamente lo
-  // que el brief prohíbe (auth.users real tiene encrypted_password/confirmation_token/recovery_token).
+test("🔴 app_user NO puede leer auth.users directamente: la vista es el ÚNICO camino", async () => {
+  // La 0012 nació concediendo `select (id, email, raw_app_meta_data) on auth.users to app_user`,
+  // razonando que un grant POR COLUMNA protege lo sensible (encrypted_password, recovery_token...).
+  // Protege las COLUMNAS, sí -- pero el filtrado de FILAS (tenant + rol) lo hace la vista
+  // `membresias_perfil`, no la tabla. Con ese grant, saltearse la vista era una fuga CROSS-TENANT:
+  // medido sobre esta misma rama con PGlite, equipoA (tenant A) que hacía
+  // `select email from auth.users` obtenía 2 filas -- incluida `equipoB@agencia-b.test`, de OTRO
+  // tenant -- mientras la vista le devolvía 1.
+  //
+  // El grant nunca hizo falta: una vista sin `security_invoker = true` corre con los permisos de su
+  // OWNER, así que el invocador no necesita permiso sobre la tabla base para leer a través de ella.
+  // `grant usage on schema auth` sí se queda: deja nombrar el esquema (sin él falla hasta el camino
+  // legítimo), no leer nada.
+  //
+  // Este test se rompe si alguien repone el grant -- que es exactamente su trabajo. Se prueba `email`
+  // (la columna que ANTES estaba concedida y por la que se filtraba el dato) y no una columna
+  // cualquiera: si probáramos solo una nunca concedida, pasaría igual con la fuga puesta.
+  await assert.rejects(
+    () => db.asUser({ tenantId: s.tenantA, userId: s.equipoA }, "select email from auth.users"),
+    /permission denied|no tiene permiso/i,
+    "leer emails salteándose la vista tiene que estar prohibido, no devolver filas de otros tenants",
+  );
   await assert.rejects(
     () => db.asUser({ tenantId: s.tenantA, userId: s.equipoA }, "select created_at from auth.users"),
     /permission denied|no tiene permiso/i,
+  );
+
+  // El camino legítimo sigue funcionando: sin esto, el test de arriba se satisfaría rompiendo todo.
+  const filas = await membresias.listarMiembros({ tenantId: s.tenantA, userId: s.equipoA });
+  assert.ok(
+    filas.some((f) => f.email === "equipoA@agencia-a.test"),
+    "la vista sigue devolviendo el email por el camino permitido",
   );
 });
 
@@ -318,4 +342,69 @@ test("🔴 degradar (o borrar) al ÚLTIMO maestro de un tenant falla, incluso po
 
   const fila = await rolDe(unicoMaestro);
   assert.equal(fila.rol, "maestro", "el intento no tuvo ningún efecto: sigue siendo maestro");
+});
+
+test("🔴 el chequeo del último maestro se serializa POR TENANT antes de contar", async () => {
+  // Contar no alcanza si dos transacciones cuentan a la vez: con dos maestros, cada una degrada al
+  // suyo, cada una ve al OTRO todavía maestro (el cambio ajeno no está commiteado) y las dos aprueban
+  // -- el tenant termina con cero. ADR-24 pide explícitamente que el trigger sobreviva a eso.
+  //
+  // ESTE TEST NO REPRODUCE LA CARRERA, y conviene que se sepa: PGlite es un solo backend, no hay dos
+  // transacciones simultáneas que interleavear. Lo que fija es que el punto de serialización EXISTE y
+  // es por tenant -- que es lo que se puede comprobar acá, y cae si alguien saca el
+  // `pg_advisory_xact_lock` del trigger.
+  const claveDe = async (tenantId: string): Promise<number> => {
+    const [k] = await db.asService<{ objid: number }>(
+      // pg_locks expone classid/objid como oid (sin signo); hashtext devuelve int4 con signo. La
+      // conversión se hace en SQL para comparar exactamente lo mismo que reporta el motor.
+      "select (hashtext($1::text)::bigint & 4294967295)::bigint as objid",
+      [tenantId],
+    );
+    return Number(k!.objid);
+  };
+
+  const locksDeLaTx = async (): Promise<number[]> => {
+    const filas = await db.queryEnTx<{ objid: number }>(
+      `select objid::bigint as objid from pg_locks
+        where locktype = 'advisory'
+          and classid = (hashtext('memberships_ultimo_maestro')::bigint & 4294967295)`,
+    );
+    return filas.map((f) => Number(f.objid));
+  };
+
+  // Un tenant nuevo con dos maestros: degradar a uno dispara el trigger y lo deja pasar (queda el
+  // otro), que es el camino donde el lock tiene que estar puesto -- no solo en el que falla.
+  const [t] = await db.asService<{ id: string }>(
+    "insert into tenants (nombre, slug) values ('Tenant Concurrencia', 'concurrencia') returning id",
+  );
+  const tenantC = t!.id;
+  const m1 = await mkMiembro(tenantC, "maestro");
+  await mkMiembro(tenantC, "maestro");
+
+  await db.exec("begin");
+  try {
+    assert.deepEqual(await locksDeLaTx(), [], "antes del update no hay ningún lock de este espacio");
+
+    await db.queryEnTx("update memberships set rol = 'equipo' where user_id = $1", [m1]);
+
+    assert.deepEqual(
+      await locksDeLaTx(),
+      [await claveDe(tenantC)],
+      "el trigger tiene que haber tomado el lock de ESTE tenant antes de contar",
+    );
+
+    // Y que sea POR TENANT, no uno global: si la clave no dependiera del tenant, dos agencias
+    // distintas se harían cola entre sí sin ninguna razón.
+    const otro = await claveDe(s.tenantA);
+    assert.notEqual(otro, await claveDe(tenantC), "tenants distintos, claves distintas");
+  } finally {
+    await db.exec("rollback");
+  }
+
+  // `_xact_`: se suelta solo al terminar la transacción, sin `unlock` que alguien pueda olvidar en un
+  // camino de error -- acá el camino de salida fue un rollback, y aun así no quedó nada tomado.
+  const [n] = await db.asService<{ n: number }>(
+    "select count(*)::int as n from pg_locks where locktype = 'advisory'",
+  );
+  assert.equal(Number(n!.n), 0, "al cerrar la transacción el lock se suelta solo");
 });
