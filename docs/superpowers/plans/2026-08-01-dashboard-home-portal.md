@@ -66,6 +66,14 @@ portal/  pages/inicio/inicio.ts  ──►  services/{ideas,clientes}.ts + api  
                                        en las piezas 1 y 3; esta pieza AGREGA una vista)
 ```
 
+> **Enmendado el 2026-08-02.** La duda que este párrafo dejaba abierta ya está resuelta del lado de
+> la pieza 3: **`GET /ideas` devuelve un resumen sin `transcripcion`, `analisis` ni `audio_url`**, con
+> filtros, orden y límite; el detalle sensible sale solo por `GET /ideas/:id`. Esta pieza consume ese
+> resumen (o un endpoint de conteos, si los volúmenes lo justifican) y **nunca el detalle completo**.
+> Sin ese contrato, contar estados en el navegador significaba traerse todas las transcripciones de
+> audio del tenant para pintar cuatro números. **Si al empezar esta pieza el `GET /ideas` todavía
+> devuelve el detalle completo, la pieza 3 no está terminada** — arreglarlo allá, no acá.
+
 **Esta pieza no debería necesitar migración ni endpoints nuevos** — si los necesita, algo se quedó
 afuera de las piezas 1 o 3 y conviene arreglarlo allá, no acá. La excepción razonable: un endpoint de
 **conteos** (`GET /metrics` o similar) para no traer todas las filas al navegador solo para contarlas.

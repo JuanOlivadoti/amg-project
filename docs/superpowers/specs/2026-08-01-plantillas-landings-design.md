@@ -557,14 +557,22 @@ sucursales; `logo_url`/`portada_url` son la excepción heredada, no la regla.
 | "URL del logo" | `contacto.logo_url` | `business_profile.brand.logo` — **ya existe**, ya es público, ya lo pinta la cabecera del sitio |
 | "URL de imagen de portada" | `contacto.portada_url` | `business_profile.portada.src` — nuevo, lo agrega este spec |
 
-**Este cambio es de la pieza del portal, no de este spec** (que llega hasta contrato y render). Queda
-especificado acá para que quien lo implemente no tenga que re-deducirlo:
+**Este cambio es de la pieza del portal, no de este spec** (que llega hasta contrato y render). Ya
+tiene dueño explícito: **[Trabajo E del programa del
+portal](../plans/2026-08-01-portal-agencia-programa.md)**, con la entrega 1 de este spec como
+precondición. Antes de asignarlo, el cambio no era de nadie — el spec lo excluía por alcance y la
+pieza 1 ya estaba cerrada. Queda especificado acá para que quien lo implemente no tenga que
+re-deducirlo:
 
 1. `business_profile` **no está en `COLUMNAS_EDITABLES`** (`db/src/clientes.ts`): hoy la API del CRM
-   no puede escribir el perfil público. Hay que agregarlo, y con eso aparece una vía de escritura
-   hacia el dato que consume el rol anónimo. Las cuatro fronteras siguen protegiendo la **lectura**,
-   así que el riesgo está acotado por diseño — pero la API debería validar forma y hosts al escribir
-   en vez de apoyarse solo en que el renderizador descarte después.
+   no puede escribir el perfil público. Pero **no basta con agregarlo a esa lista**:
+   `actualizarCliente` escribe la columna **entera** (`contacto = $n::jsonb`), así que un `PATCH` que
+   solo trajera la portada **borraría `locations`, `menu`, `brand` y `name`** — pérdida silenciosa en
+   el dato que alimenta la web pública. Hace falta una operación estrecha con **merge anidado en el
+   servidor**, que toque solo los paths del formulario, y un test que verifique que el resto del
+   perfil sobrevive. Con eso aparece además una vía de escritura hacia el dato que consume el rol
+   anónimo: las cuatro fronteras siguen protegiendo la **lectura**, pero la escritura debe validar
+   forma, HTTPS y host en vez de apoyarse solo en que el renderizador descarte después.
 2. **No hay migración de datos.** `logo_url`/`portada_url` no están cargados en ningún seed, fixture
    ni JSON del repo: el campo está vacío en todas partes. Mover el destino ahora cuesta cero; después
    de dar de alta el primer cliente real con la pantalla actual, cada uno es un dato que hay que
