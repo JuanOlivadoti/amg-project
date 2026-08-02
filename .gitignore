@@ -50,3 +50,12 @@ Thumbs.db
 # Scratch de las skills de superpowers (ledger de progreso, briefs, diffs de review).
 # Es estado de una sesión de trabajo, no del proyecto.
 .superpowers/
+
+# La configuración de Claude Code de ESTE repo (agentes y skills propios del proyecto) SÍ va al
+# repo: es parte de cómo se trabaja acá, igual que AGENTS.md. El gitignore global del usuario
+# (`~/.config/git/ignore`) excluye `**/.claude/agents/` para todos sus repos; un `!` acá lo revierte
+# solo para este, porque un .gitignore del repositorio tiene precedencia sobre `core.excludesFile`.
+!.claude/agents/
+# `settings.local.json` queda fuera a propósito: es la mitad NO compartida de la config (la
+# compartida es `settings.json`). Lleva permisos y rutas de la máquina de cada uno.
+.claude/settings.local.json
