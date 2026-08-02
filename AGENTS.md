@@ -41,10 +41,12 @@ garantía.** La hace cumplir una constraint, un test que la mute, o nada.
 
 ### Revisiones con Codex
 
-Cuando el usuario pida una **revisión de Codex**, el prompt para Codex debe pedir explícitamente que
-**NO toque el código: solo revisa y reporta**. Codex no aplica cambios; los hallazgos los evalúa y los
-implementa el agente principal (con el rigor de la skill de recibir reviews: verificar antes de
-implementar, discrepar con razón técnica).
+Cuando el usuario pida una **revisión de Codex**, usá la skill `codex-review`
+([.claude/skills/codex-review/SKILL.md](.claude/skills/codex-review/SKILL.md)): tiene la plantilla del
+prompt y el protocolo de vuelta. La regla que la gobierna, por si la skill no está cargada: el prompt
+debe pedir explícitamente que Codex **NO toque el código —solo revisa y reporta—**, y ni edita
+archivos ni actualiza documentación. Los hallazgos los verifica, decide e implementa el agente
+principal (verificar antes de implementar, discrepar con razón técnica).
 
 ---
 
