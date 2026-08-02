@@ -116,10 +116,16 @@ begin
     return null; -- corta el ciclo: NO autoriza (ver el comentario de arriba) -- falla cerrado.
   end if;
   perform set_config('app.resolviendo_rol_propio', '1', true);
+  -- Doble cierre, mismo criterio que app.current_role() (0003, comentario "Doble cierre"): la
+  -- constraint membresia_no_es_servicio ya impide insertar rol='servicio', pero esta función no
+  -- debería depender de esa única capa -- si esa constraint fallara o se sacara, una fila
+  -- 'servicio' colada acá NO debe poder pasar membership_select_staff como si fuera staff humano.
+  -- Allowlist HUMANA explícita, no "todo lo que no sea NULL".
   select rol::text into r
     from memberships
     where tenant_id = app.current_tenant_id()
-      and user_id = app.current_user_id();
+      and user_id = app.current_user_id()
+      and rol in ('maestro', 'equipo', 'cliente');
   perform set_config('app.resolviendo_rol_propio', '0', true);
   return r;
 end;
@@ -128,7 +134,9 @@ $$;
 comment on function app.rol_propio_sin_recursion() is
   'Variante de app.current_role(), SOLO para políticas sobre `memberships` (auto-referencial). Usa '
   'una bandera de sesión para no recursar infinitamente al re-evaluar las políticas de la propia '
-  'tabla. Para cualquier otra tabla, usar app.current_role()/app.es_staff().';
+  'tabla. Mismo doble cierre que app.current_role() (allowlist maestro/equipo/cliente -- servicio '
+  'nunca sale de acá, ni siquiera si la constraint membresia_no_es_servicio fallara). Para cualquier '
+  'otra tabla, usar app.current_role()/app.es_staff().';
 
 -- -----------------------------------------------------------------------------
 -- 4) Visibilidad ampliada para staff, DIRECTO sobre la tabla (no solo vía la vista).
@@ -156,7 +164,7 @@ create policy membership_select_staff on memberships
 -- el rol de un miembro. ADR-17 prohíbe que `amg_api` (→ solo `app_user`, NOINHERIT) asuma ningún otro
 -- rol para hacerlo -- así que `app_user` necesita este grant, no un login aparte.
 -- -----------------------------------------------------------------------------
-grant update on memberships to app_user;
+grant update (rol, client_id) on memberships to app_user;
 
 -- -----------------------------------------------------------------------------
 -- 6) La política de escritura -- el punto más fino de esta etapa.

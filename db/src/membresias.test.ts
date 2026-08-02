@@ -129,6 +129,38 @@ test("🔴 FUGA: un miembro del tenant A no ve, por NINGÚN camino, el email de 
   assert.equal(crudo.length, 0, "la vista tampoco deja pasar la fila de equipoB para el tenant A");
 });
 
+// ------------------------------------------------ defensa en profundidad: rol 'servicio' en memberships
+
+test("🔴 una fila 'servicio' colada en memberships NO obtiene visibilidad de staff (rol_propio_sin_recursion la excluye)", async () => {
+  // La constraint membresia_no_es_servicio (0003) ya bloquea el INSERT normal -- este test simula que
+  // esa CAPA falla (se la saca a mano) para probar que rol_propio_sin_recursion() es una segunda capa
+  // independiente, no una que confía en la constraint. Todo dentro de UNA transacción que se
+  // rollbackea al final: ni el DROP CONSTRAINT ni el INSERT sobreviven este test.
+  await db.exec("begin");
+  try {
+    await db.queryEnTx("alter table memberships drop constraint membresia_no_es_servicio");
+    const [fila] = await db.queryEnTx<{ user_id: string }>(
+      `insert into memberships (tenant_id, user_id, rol, client_id)
+       values ($1, gen_random_uuid(), 'servicio'::user_role, null) returning user_id`,
+      [s.tenantA],
+    );
+    const servicioUserId = fila!.user_id;
+
+    await db.queryEnTx("select set_config('app.tenant_id', $1, true)", [s.tenantA]);
+    await db.queryEnTx("select set_config('app.user_id', $1, true)", [servicioUserId]);
+    await db.queryEnTx("set local role app_user");
+
+    // Si rol_propio_sin_recursion() no filtrara 'servicio' (el bug), membership_select_staff lo
+    // trataría como staff y vería TODAS las membresías del tenant (equipoA, duenoA1, maestroA1/2...).
+    // Con el filtro puesto, solo membership_select (own-row) aplica: una sola fila, la propia.
+    const filas = await db.queryEnTx<{ user_id: string }>("select user_id from memberships");
+    assert.equal(filas.length, 1, "NO debe ver el resto del tenant como si fuera staff");
+    assert.equal(filas[0]?.user_id, servicioUserId, "la única fila visible es la propia");
+  } finally {
+    await db.exec("rollback");
+  }
+});
+
 // ---------------------------------------------------------------- cambiarRol (Etapa 2)
 //
 // Este archivo comparte UNA sola base entre todos los `test()` (un solo before/after, sin reset
@@ -152,6 +184,25 @@ const mkMiembro = async (tenantId: string, rol: string, clientId: string | null 
   );
   return m!.user_id;
 };
+
+test("🔴 el GRANT UPDATE de memberships es POR COLUMNA: user_id se rechaza aunque el que pregunta sea maestro", async () => {
+  // 0012 concede update(rol, client_id) -- nunca la tabla entera. Si esto pasara a resolver, sería
+  // la señal de que alguien volvió al grant amplio (`grant update on memberships`), que permitiría
+  // reescribir user_id/id (la PK) para transferir un rol de maestro a una cuenta arbitraria, sin
+  // pasar por el INSERT que sí está bloqueado. Se prueba con maestroA1 (pasa membership_update.using
+  // Y with check) para que el rechazo sea del GRANT, no de la política -- si solo probáramos con un
+  // 'equipo', el 42501 podría venir de with check y este caso no distinguiría las dos causas.
+  const blanco = await mkMiembro(s.tenantA, "equipo");
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: maestroA1 },
+        "update memberships set user_id = gen_random_uuid() where user_id = $1",
+        [blanco],
+      ),
+    /permission denied|no tiene permiso/i,
+  );
+});
 
 test("🔴 cambiarRol de un usuario de OTRO tenant no afecta ninguna fila", async () => {
   // maestroA1 (tenant A) intenta cambiar a equipoB, que es de tenant B -- membership_update.using
