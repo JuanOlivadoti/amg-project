@@ -11,6 +11,32 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-02 — El arnés de trabajo con agentes (`de6f8a4`, `3b4dbd0`, `620f5e4`)
+
+Hasta hoy el "cómo se trabaja acá" era `AGENTS.md` y nada más. Ahora hay tres capas: `AGENTS.md` para
+lo universal, **agentes** por área para el ámbito y los límites, y **skills** para las convenciones
+—que también carga la sesión principal cuando no delega, que es la mitad de las veces—.
+
+Existen `front` (portal Angular, con `portal-angular`, `portal-estilos` y `portal-testing`) y
+`revisor` (transversal, no edita nada). Quedan planificados `datos`, `pipeline` y `render`: el reparto
+es por **cuerpo de conocimiento**, no por carpeta, así que `db` + `api` van juntos y los tres paquetes
+del pipeline también.
+
+`npm run verificar` es el `init.sh` que faltaba —entorno, archivos del arnés, higiene de secretos,
+typecheck y tests, con exit code— y sabe algo que se olvida siempre: **`portal/` no es workspace**, sus
+tests no entran en `npm test`. `CHECKPOINTS.md` convierte el ritual en algo que se marca con
+evidencia, y el hook `Stop` lo ejecuta el harness: condicional, porque se dispara al final de **cada**
+turno (42s de suite completa contra 5s de typecheck, medidos).
+
+Del harness de ejemplo se dejaron fuera tres cosas a propósito: `feature_list.json` (sería un segundo
+roadmap desincronizándose), el hook que corre toda la suite tras cada edición, y el líder que nunca
+toca código. En el mismo movimiento, la revisión de Codex pasó de ser un párrafo de `AGENTS.md` a la
+skill `codex-review`, con la política de no-escritura como lista cerrada de prohibido/permitido.
+
+**Un hallazgo del camino:** la documentación se contradecía en las cifras de tests (584 contra 614
+contra 539 según el archivo). Sincronizado en 849, medido. `docs/proyecto/08-testing-calidad.md` sigue
+diciendo 516 en su tabla de cobertura — **queda pendiente**.
+
 ## 2026-08-02 — Pieza 2 del portal de la agencia: usuarios (6 etapas), mergeada a `main`
 
 Segunda pieza del [programa del portal de la agencia](../docs/superpowers/plans/2026-08-01-portal-agencia-programa.md):
