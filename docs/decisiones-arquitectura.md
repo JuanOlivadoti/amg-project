@@ -163,6 +163,8 @@
 - **RGPD reforzado** para prompts/trazas LLM; **contrato editorial/legal** (`claims_permitidos/prohibidos`) en el brief.
 **Diferido a implementación/post-pruebas.** Normalización de scoring por percentiles, algoritmo fino de SERP-overlap ponderado, lógica hub/spoke, tuning de índices. Se calibra con datos reales en la Fase 0.
 
+> **Cumplido a medias el 2026-08-02.** La normalización por percentiles **existe** (`VOLUMEN_PERCENTIL_TOPE = 0.9`, nearest-rank, con winsorización), pero es el percentil **del run**, no el del mercado que pedía la review: arregla el aplastamiento por un outlier, no la comparabilidad entre corridas. Y **no está calibrada con datos reales**: el dataset de la corrida de producción se perdió (KR-1). SERP-overlap ponderado y hub/spoke siguen diferidos.
+
 ## ADR-11 — Política de salida/offboarding de webs de cliente
 **Contexto.** En headless, "una web" = contenido (Storyblok) + frontend (Next.js). Entregar solo el space de Storyblok NO deja una web funcionando: falta el render. Hay que definir qué se lleva un cliente al darse de baja.
 **Decisión.**

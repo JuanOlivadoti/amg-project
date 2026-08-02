@@ -1,4 +1,5 @@
 import type { KeywordDataProvider } from "../dataforseo/index.js";
+import type { SerpResultado } from "../dataforseo/provider.js";
 import type { Embedder } from "../llm/index.js";
 import type { EnrichedKeyword, Market } from "../types.js";
 import { cosine, overlapCount } from "../lib/vector.js";
@@ -21,12 +22,12 @@ export interface ClusterOptions {
  * "madrid" + "italiano", así que el coseno las une casi todas. En el dataset real colapsaba
  * 41 de 45 keywords vivas en UN cluster, fusionando "pasta fresca", "pizza napolitana" y
  * "restaurante italiano centro" —tres páginas comercialmente distintas— en una sola. Resultado:
- * 3 páginas propuestas en vez de 7.
+ * 3 páginas propuestas en vez de 8.
  *
  * A 0.75 las cabezas caen sobre las especialidades reales del negocio. Por encima de 0.85 se
  * fragmenta (separa variantes de la misma keyword).
  *
- * Re-calibrar con `out/keywords.json` si cambia el vertical o el modelo de embeddings.
+ * Re-calibrar con `datasets/keywords.json` si cambia el vertical o el modelo de embeddings.
  */
 export const CLUSTER_SIM_THRESHOLD_DEFAULT = 0.75;
 
@@ -35,6 +36,19 @@ const DEFAULTS: ClusterOptions = {
   serpOverlapMin: 3,
   serpValidateTop: 15,
 };
+
+/**
+ * Se invoca por cada cabeza cuyo SERP se consultó, con la señal cruda.
+ *
+ * El clustering es **el único punto del pipeline donde se mira un SERP**, y esa consulta ya está
+ * pagada. Sin este callback, la señal de map pack moriría acá dentro y refinar `is_local` exigiría
+ * pedir los SERP otra vez. Mismo patrón que el `beforeEach` de `applyPageContent`: el llamador
+ * decide qué hacer con lo que pasa dentro del bucle, sin que el bucle sepa de qué se trata.
+ *
+ * Un SERP que falló también se reporta, con `{ urls: [], mapPack: null }`: "no se pudo observar" es
+ * información, y perderla haría indistinguible el fallo del "no hay map pack".
+ */
+export type SerpObserver = (keyword: string, resultado: SerpResultado) => void;
 
 /**
  * Clustering híbrido (ver plan §Paso 6):
@@ -48,6 +62,8 @@ export async function clusterKeywords(
   provider: KeywordDataProvider,
   market: Market,
   opts: Partial<ClusterOptions> = {},
+  /** Ver `SerpObserver`. El tipo de retorno NO cambia: esto es una salida lateral, no un resultado. */
+  onSerp?: SerpObserver,
 ): Promise<Cluster[]> {
   const o = { ...DEFAULTS, ...opts };
   const active = kws.filter((k) => !k.discarded);
@@ -84,12 +100,18 @@ export async function clusterKeywords(
   const serps = new Map<number, string[]>();
   let serpFailures = 0;
   for (const c of topHeads) {
+    const keyword = ordered[c.head]!.keyword;
     try {
-      serps.set(c.head, await provider.serp(ordered[c.head]!.keyword, market));
+      const r = await provider.serp(keyword, market);
+      serps.set(c.head, r.urls);
+      onSerp?.(keyword, r);
     } catch (e) {
       serpFailures++;
       serps.set(c.head, []); // sin URLs → overlap 0 → no fusiona
-      console.warn(`  [cluster] aviso SERP "${ordered[c.head]!.keyword}": ${(e as Error).message}`);
+      // `mapPack: null`, no `false`: no se observó nada. Reportar `false` acá le diría al
+      // refinamiento "Google no considera local esta búsqueda" sin haberla mirado.
+      onSerp?.(keyword, { urls: [], mapPack: null });
+      console.warn(`  [cluster] aviso SERP "${keyword}": ${(e as Error).message}`);
     }
   }
   if (serpFailures > 0) {

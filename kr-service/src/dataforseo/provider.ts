@@ -1,7 +1,9 @@
 import type { Market } from "../types.js";
-import type { SearchVolumeRow } from "./endpoints.js";
+import type { SearchVolumeRow, SerpResultado } from "./endpoints.js";
 
-export type { SearchVolumeRow };
+// `SerpResultado` se define junto al endpoint que lo produce (igual que `SearchVolumeRow`) y se
+// re-exporta acá, que es donde vive el contrato que consume el pipeline.
+export type { SearchVolumeRow, SerpResultado };
 
 /**
  * Abstracción de la fuente de datos de keywords. El pipeline depende de esta
@@ -16,6 +18,9 @@ export interface KeywordDataProvider {
     keywords: string[],
     market: Market,
   ): Promise<Map<string, number | null>>;
-  /** Top URLs orgánicas del SERP (para validar clusters por overlap). */
-  serp(keyword: string, market: Market, depth?: number): Promise<string[]>;
+  /**
+   * SERP: top URLs orgánicas (para validar clusters por overlap) **y** la señal de map pack, que es
+   * la evidencia real de que Google considera local esa búsqueda (ver `SerpResultado`).
+   */
+  serp(keyword: string, market: Market, depth?: number): Promise<SerpResultado>;
 }

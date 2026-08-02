@@ -60,9 +60,13 @@ fusionaban en una. El sandbox no lo mostraba porque sus datos ficticios no se pa
 ### 4. 🔧 Y algo que ahora hace gratis el tuning futuro
 
 Las keywords enriquecidas se **tiraban** al terminar el proceso: pagábamos $0.25 por datos que
-no sobrevivían. Ahora se persisten en **`out/keywords.json`**, así que ajustar scoring o
-clustering es **offline y gratis** — no hay que volver a pagar una corrida. Con eso se calibró
-el punto 3.
+no sobrevivían. Ahora se persisten, así que ajustar scoring o clustering es **offline y gratis** —
+no hay que volver a pagar una corrida. Con eso se calibró el punto 3.
+
+> ⚠️ **Se escribían en `out/keywords.json`, que git ignora, y el dataset de esta corrida se perdió
+> con el clon.** Desde el 2026-08-02 el destino es `datasets/keywords.json`, versionado. Para volver
+> a tener el dato hay que **regenerarlo** (~$0.31): ver KR-1 en el
+> [estado](../proyecto/09-estado-y-roadmap.md).
 
 ---
 
@@ -87,9 +91,9 @@ Las 8 se publicaron en Storyblok con contenido redactado por IA ([acción 04](04
 
 | Qué | Por qué importa |
 |---|---|
-| **`is_local` se dispara de más** (53 de 60 keywords) | Casi todo sale como `landing_local` → JSON-LD `LocalBusiness` en páginas que deberían ser `Article`. Se arregla con señales del SERP (presencia de *map pack*) en vez de inferirlo por LLM. |
-| **5 de 8 páginas no tienen volumen** | El 40% del score (intención + relevancia) no depende de datos de mercado, así que una keyword sin datos arranca en ~50 puntos. El `score_confidence` lo detecta (0.3) pero **no se usa** para ordenar páginas. |
-| **Estimaciones del presupuesto** | Ya se pueden calibrar con estos números; hoy siguen a ojo. |
+| ~~**`is_local` se dispara de más**~~ (53 de 60 keywords) | ✅ **Arreglado el 2026-08-02** con la presencia de *map pack* en el SERP (`pipeline/local-signal.ts`), que es evidencia de mercado en vez de una conjetura sobre el texto. Falta verificar los `item.type` contra la API real. |
+| ~~**5 de 8 páginas no tienen volumen**~~ | ✅ **`score_confidence` ya ordena** dentro de cada grupo de evidencia, y decide el corte al backlog. ⚠️ Pero la base y el portal reordenan por score crudo: en el dashboard la columna "Confianza" sigue sin ordenar nada. |
+| **Estimaciones del presupuesto** | Se calibran con estos números; hoy siguen a ojo, y **el dataset con el que se haría se perdió**. |
 
 ---
 

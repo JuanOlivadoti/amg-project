@@ -63,7 +63,26 @@ Las secciones de `front.md` que conviene replicar, porque cada una nació de un 
 
 ---
 
-## Etapa A — `pipeline` · `kr-service/` + `orchestrator/` + `web-builder/`
+## ~~Etapa A~~ — `pipeline` · `kr-service/` + `orchestrator/` + `web-builder/` ✅ **cerrada el 2026-08-02**
+
+> **Qué quedó.** El agente ([`agents/pipeline.md`](agents/pipeline.md), 128 líneas) y sus cuatro
+> skills, estrenados con **KR-3 entero** y **la mitad gratis de KR-1**. Lo que enseñó estrenarlo está
+> en [`progress/history.md`](../progress/history.md); los dos informes de los subagentes, en
+> `progress/informes/` (no se versionan).
+>
+> **Lo que el estreno corrigió en las skills** —y que es la razón de que la etapa no se cierre sin
+> trabajo real—: `pipeline-research` no decía que la clave de la cache del SERP la parsea
+> `metaDeClave()` **por posición** (se puede cambiar un literal, no la aridad), ni **qué de lo que
+> produce `kr-service` sobrevive a la persistencia** (el orden no: lo pisan `db` y el portal).
+> `pipeline-gasto` no traía la receta para que un test que arranca el pipeline entero no gaste
+> (`dotenv/config` carga el `.env` real sin que nadie se lo pida).
+>
+> **Lo que quedó abierto y no es del agente:** el orden que produce el pipeline no llega al portal
+> (necesita `datos` + `front`), y el dataset crudo sigue sin existir (cuesta ~$0.31, decide el
+> usuario).
+
+Lo que sigue es el plan original de la etapa, que se deja tal cual para poder contrastar lo previsto
+con lo que pasó.
 
 11.198 líneas, 20 archivos de test. Tres paquetes y un agente porque el hilo que los une es real:
 **es el trabajo que corre sin nadie mirando, gasta dinero y tiene que ser idempotente.** El
@@ -190,6 +209,20 @@ El ritual completo está en [`AGENTS.md`](../AGENTS.md) y los checkpoints en
 | --- | --- | --- | --- |
 | — | `front` | `portal-angular`, `portal-estilos`, `portal-testing` | ✅ escrito · ⚪ **sin estrenar todavía** |
 | — | `revisor` | `codex-review` | ✅ escrito y estrenado (dos rondas, 5 hallazgos reales) |
-| A | `pipeline` | `pipeline-gasto`, `pipeline-research`, `pipeline-publicacion`, `pipeline-orquestacion` | ⚪ sin empezar |
+| A | `pipeline` | `pipeline-gasto`, `pipeline-research`, `pipeline-publicacion`, `pipeline-orquestacion` | ✅ **escrito y estrenado** (2026-08-02, con KR-3 y KR-1) |
 | B | `datos` | `datos-postgres`, `datos-api`, `datos-testing` | ⚪ sin empezar |
 | C | `render` | `render-seguridad`, `render-cda-cache` | ⚪ sin empezar |
+
+**Lo que la etapa A enseñó sobre el método, para las dos que quedan:**
+
+- **Estrenar sirve, y se nota en qué.** Las tres correcciones que salieron del estreno son las tres
+  cosas que **cruzan el límite del paquete** (la clave que otro paquete parsea, el orden que la base
+  deshace, el `.env` que un import carga solo). Leyendo el código de `kr-service` no aparecen: son
+  precisamente lo que un agente encerrado en su ámbito no puede ver. **Para `datos` y `render`,
+  escribir explícitamente la sección "qué de esto sobrevive al salir de tu área".**
+- **Fijar el contrato antes de delegar funcionó** y no fue ceremonia: los dos subagentes tocaron el
+  mismo paquete sin pisarse porque el reparto de archivos estaba escrito.
+- **Un agente nuevo no se puede invocar por nombre en la sesión que lo escribe.** El registro de
+  agentes se carga al arrancar. El estreno se hizo pasándole su propia definición al subagente, que
+  funciona, pero **la etapa B conviene arrancarla en una sesión nueva** para poder invocar a
+  `pipeline` de verdad.

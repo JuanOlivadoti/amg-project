@@ -269,7 +269,7 @@ Buenas prácticas:
 Normalización y fórmula (score 0–100):
 
 ```
-volume_norm   = log10(1 + volume) / log10(1 + volume_max_del_run)
+volume_norm   = min(1, log10(1 + volume) / log10(1 + percentil90_del_run))   # winsorizado
 difficulty_inv= 1 - (difficulty / 100)
 intent_weight = { transactional:1.0, local:1.0, commercial:0.8, informational:0.6, navigational:0.4 }
 business_rel  = relevancia 0..1 evaluada por LLM contra los servicios reales del cliente
@@ -291,6 +291,8 @@ opportunity_score = 100 * (
 - **Score de cluster:** media ponderada por volumen de sus miembros.
 
 > **A afinar tras pruebas (Codex):** normalizar `volume_norm` por **percentiles del mercado/vertical** en vez de `volume_max_del_run` (los scores no son comparables entre runs de distinto tamaño), y winsorizar outliers. Se calibra con datos reales en la Fase 0; el default por-run alcanza para el primer spike.
+>
+> **Hecho a medias el 2026-08-02.** La winsorización existe y el denominador es el **percentil 90**, no el máximo: un solo pico ya no aplasta al resto. Lo que **no** cambió es lo que la review señalaba entre paréntesis — sigue siendo un percentil **del run**, así que los scores siguen sin ser comparables entre corridas. Un percentil de mercado/vertical necesita el dataset persistido, que hoy no existe (ver KR-1 en [09-estado-y-roadmap.md](proyecto/09-estado-y-roadmap.md)).
 
 ---
 

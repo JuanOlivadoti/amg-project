@@ -263,7 +263,11 @@ function particionar<T>(xs: T[], pred: (x: T) => boolean): [T[], T[]] {
  *   `ns|sv|loc|lang|kw`
  *   `ns|kd|loc|lang|kw`
  *   `ns|sugg|loc|lang|limit|seed`
- *   `ns|serp|google|desktop|organic|depth|loc|lang|kw`
+ *   `ns|serp|google|desktop|organic+mappack|depth|loc|lang|kw`
+ *
+ * El 5º segmento lleva la VERSIÓN de la forma del valor cacheado (cambió al agregarle el map pack al
+ * SERP). Se puede cambiar ese literal; lo que NO se puede cambiar es la CANTIDAD de segmentos, porque
+ * acá se parsean por posición.
  */
 function metaDeClave(key: string): CacheMeta {
   const p = key.split("|");

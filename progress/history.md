@@ -11,6 +11,49 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-02 (etapa A) — El agente `pipeline`, y lo que se aprende estrenándolo
+
+Se escribió el agente `pipeline` (128 líneas) y sus cuatro skills —`pipeline-gasto`,
+`pipeline-research`, `pipeline-publicacion`, `pipeline-orquestacion`— y se estrenaron con trabajo
+real: **KR-3 entero** y la mitad de **KR-1** que no cuesta dinero. 682 tests (subió de 624), y el
+estreno se delegó de verdad en dos subagentes, en serie, con el contrato fijado antes de repartir.
+
+**Lo que enseñó estrenarlas, que es la razón de que la etapa no se cierre sin trabajo real.** Las
+tres cosas que las skills no traían **son las tres que cruzan el límite del paquete**:
+
+1. La clave de la cache del SERP **la parsea `metaDeClave()` en `orchestrator/` por posición**, así
+   que se puede cambiar un literal pero no la cantidad de segmentos. Sin eso, agregarle un segmento
+   le habría desplazado `depth`, `location_code` y `language_code` a `kr_serp_cache` en silencio.
+2. **El orden que produce `kr-service` no sobrevive a la persistencia**: `db/src/store.ts` y
+   `portal/src/app/core/cartera.ts` reordenan por `opportunity_score` crudo. Lo encontró el subagente
+   *al final*, revisando su propio trabajo, no al principio.
+3. `config.ts` hace `import "dotenv/config"`, así que **un test que arranca el pipeline entero lee el
+   `.env` real** —con keys y baseUrl de producción— sin que nadie se lo pida. Cuatro cerrojos.
+
+Leyendo solo `kr-service` ninguna de las tres aparece: son precisamente lo que un agente encerrado en
+su ámbito no puede ver. Para `datos` y `render` queda anotado escribir explícitamente la sección
+*"qué de esto sobrevive al salir de tu área"*.
+
+**Lo que se implementó.** `is_local` ahora sale del **map pack** del SERP (evidencia de Google) en vez
+de una conjetura sobre el texto de la keyword —que daba 53 de 60 locales y publicaba `LocalBusiness`
+falsos—, pero **solo cuando se observó**: `mapPack: null` respeta al LLM, porque tratar "no observado"
+como "no es local" es el mismo error que `volumen ?? 0`. El volumen se normaliza contra el **percentil
+90 winsorizado** en vez del máximo, así un pico deja de aplastar al resto. Y `score_confidence`
+**ordena**, en dos niveles con la evidencia mandando siempre. El dataset crudo pasa a `datasets/`, y
+que no vuelva a un directorio ignorado **lo impone un test que se lo pregunta a `git check-ignore`**,
+no un comentario.
+
+**Lo que quedó a medias, dicho como tal.** El percentil es *del run*, no *del mercado*: arregla el
+aplastamiento, no la comparabilidad entre corridas. Los dos parámetros nuevos (`0.9` y `0.5`) son
+juicio, no medición — barrerlos es gratis en cuanto exista el dataset, y el dataset **no existe**
+(se perdió en `out/`, regenerarlo cuesta ~$0.31 y lo decide Juan). `TIPOS_MAP_PACK` no está verificado
+contra la API real; si estuviera mal, falla hacia el lado conservador (sub-declara) pero KR-3 no
+arreglaría nada. Y el orden nuevo gobierna **qué páginas existen** pero no **cuáles ve el cliente**.
+
+**Un detalle del arnés:** un agente recién escrito **no se puede invocar por nombre en la sesión que
+lo escribe** —el registro se carga al arrancar—, así que el estreno se hizo pasándole su definición al
+subagente. Funciona, pero la etapa B conviene arrancarla en una sesión nueva.
+
 ## 2026-08-02 (cierre) — El plan de los tres agentes que faltan
 
 Con `front` y `revisor` cerrados, quedaba decidir cómo se escriben los otros tres. El reparto ya

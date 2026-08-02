@@ -4,7 +4,11 @@ import type { Market, SearchIntent } from "../types.js";
  * Clasificación de intención — HEURÍSTICA (fallback).
  * La vía principal es el LLM (ver ContentGen.classifyIntents / applyIntents); esta
  * función cubre las keywords que el LLM no resuelve o si la llamada falla.
- * TODO (F2): incorporar señales de SERP (map pack) para is_local en producción.
+ *
+ * El `is_local` que sale de acá (y el del LLM) es una CONJETURA sobre el texto de la keyword.
+ * `pipeline/local-signal.ts` lo corrige después con la presencia de map pack en el SERP, que es
+ * evidencia de mercado — pero solo para las ~15 cabezas de cluster cuyo SERP se consulta. Para todo
+ * lo demás, lo que decida esta función es lo que queda.
  */
 export function classifyIntent(
   keyword: string,
@@ -28,8 +32,9 @@ export function classifyIntent(
 }
 
 function detectLocal(keyword: string, market: Market): boolean {
-  // v0: marca local si menciona país o términos geográficos comunes.
-  // TODO (F2): usar features del SERP (map pack) en vez de heurística.
+  // v0: marca local si menciona país o términos geográficos comunes. SOBRE-DETECTA a propósito
+  // conocido: en la corrida real dio 53 de 60 keywords locales, porque en un negocio de Madrid casi
+  // toda keyword dice "madrid". Quien lo corrige con evidencia real es `local-signal.ts`.
   const geoHints = ["madrid", "barcelona", "valencia", "sevilla", "centro", "cerca"];
   return geoHints.some((h) => keyword.includes(h)) || keyword.includes(market.country.toLowerCase());
 }

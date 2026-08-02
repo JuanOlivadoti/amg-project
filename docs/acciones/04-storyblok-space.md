@@ -63,6 +63,7 @@ WEB_PUBLISH_MODE=storyblok npx tsx src/cli/build.ts ../kr-service/out/brief.appr
 - **Costo por space/seat.** ADR-04 exige **un space por cliente** para un offboarding limpio, así
   que el costo crece con la cartera. Hay que decidir si lo absorbe la agencia o se traslada al
   cliente. Sigue pendiente en la propuesta comercial.
-- **`is_local` se dispara de más:** 7 de las 8 páginas salieron como `landing_local` → JSON-LD
+- ~~**`is_local` se dispara de más:**~~ 7 de las 8 páginas salieron como `landing_local` → JSON-LD
   `LocalBusiness`. Algunas deberían ser `Article`. Detalle en la
-  [acción 03](03-research-produccion-dataforseo.md).
+  [acción 03](03-research-produccion-dataforseo.md). ✅ **Corregido el 2026-08-02** con el *map pack*
+  del SERP.

@@ -6,6 +6,7 @@ import {
   searchVolume,
   serpOrganic,
   type SearchVolumeRow,
+  type SerpResultado,
 } from "./endpoints.js";
 import type { KeywordDataProvider } from "./provider.js";
 import type { ProviderTaskLog } from "./task-log.js";
@@ -51,7 +52,7 @@ export class LiveProvider implements KeywordDataProvider {
     return bulkKeywordDifficulty(this.client, keywords, market);
   }
 
-  serp(keyword: string, market: Market, depth = 10): Promise<string[]> {
+  serp(keyword: string, market: Market, depth = 10): Promise<SerpResultado> {
     return serpOrganic(this.client, keyword, market, depth);
   }
 }

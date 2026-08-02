@@ -1,5 +1,5 @@
 import type { Market } from "../types.js";
-import type { KeywordDataProvider, SearchVolumeRow } from "./provider.js";
+import type { KeywordDataProvider, SearchVolumeRow, SerpResultado } from "./provider.js";
 
 /**
  * Provider mock: genera datos ficticios pero REALISTAS y DETERMINISTAS
@@ -73,8 +73,14 @@ export class MockProvider implements KeywordDataProvider {
    * SERP mock: top URLs derivadas de los tokens significativos del keyword.
    * Keywords que comparten palabras comparten URLs → el SERP-overlap las fusiona,
    * igual que en la realidad (mismo tema = mismas páginas rankeando).
+   *
+   * El **map pack** se decide por hash, y a propósito NO se correlaciona con los tokens geográficos
+   * ("madrid", "centro"): si el mock lo derivara de lo mismo que mira la heurística, el SERP nunca
+   * podría CONTRADECIR al LLM y ningún test recorrería el camino que importa —que es justamente el
+   * de la evidencia de mercado pisando la conjetura—. Y nunca devuelve `null`: el mock siempre
+   * responde, así que siempre hay observación.
    */
-  async serp(keyword: string, _market: Market, depth = 10): Promise<string[]> {
+  async serp(keyword: string, _market: Market, depth = 10): Promise<SerpResultado> {
     this.costMicros += 3_000; // ~ $0.003 por SERP (el endpoint más caro)
     const tokens = keyword
       .toLowerCase()
@@ -88,7 +94,7 @@ export class MockProvider implements KeywordDataProvider {
     // Relleno determinista hasta `depth` con URLs "genéricas" (no aportan overlap).
     let i = 0;
     while (urls.size < depth) urls.add(`https://generico-${hash(keyword + i++) % 9999}.com/`);
-    return [...urls].slice(0, depth);
+    return { urls: [...urls].slice(0, depth), mapPack: hash(`${keyword}#mappack`) % 2 === 0 };
   }
 }
 

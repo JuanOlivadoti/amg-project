@@ -17,7 +17,7 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 624 tests (monorepo) + 235 (portal)
+## Cobertura actual: 682 tests (monorepo) + 235 (portal)
 
 > Las cifras de esta tabla se miden con `npm run verificar`, que las cuenta de la salida de
 > `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-02.
@@ -25,7 +25,7 @@ sin cuenta.
 | Paquete | Tests | Qué cubre |
 |---|---|---|
 | `db` | **170** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto, **allowlist de `locations`/`menu` en `business_profile_publico`** (`0010`), y que la allowlist restrinja también la **forma** de cada valor —no solo el nombre de la clave— con tope de tamaño aplicado en la fuente (`app.texto_publico`, revisión externa Codex). |
-| `kr-service` | **88** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). |
+| `kr-service` | **146** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). Desde KR-3: el **map pack** del SERP corrigiendo `is_local`, el **percentil winsorizado** del volumen, el **orden en dos niveles**, y que el **destino del dataset no caiga en un directorio que git ignore**. |
 | `web-builder` | **96** | Contrato, handoff, render, XSS, idempotencia de publicación, marca por tenant, imágenes, **nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados** (con escape de `name`/`slug`/`price`), que **`locations` manda** sobre los campos clásicos (JSON-LD y footer, no solo cuando faltan), y que `parseProfile` rechace un perfil con más de 20 locales o 200 ítems de carta. |
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **95** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
@@ -40,13 +40,20 @@ un test de seguridad que siempre pasa es peor que no tenerlo — y me pasó: el 
 comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la otra salía
 `huerfana`, que también autoriza gastar). Pasaba con el bug dentro.
 
-### `kr-service` (88 tests)
+### `kr-service` (146 tests)
 
 | Archivo | Qué fija |
 |---|---|
 | `lib/text.test.ts` | `canonicalKey`: casing, espacios múltiples, **normalización Unicode NFD→NFC**. |
-| `pipeline/scoring.test.ts` | El gate de `business_relevance`: evaluada-alta (score alto, confianza plena), evaluada-bajo-gate (**descartada**), **no evaluada (score capeado a 35 + confianza baja)**, y que una no-evaluada **nunca supere** a una evaluada equivalente. |
+| `pipeline/scoring.test.ts` | El gate de `business_relevance`: evaluada-alta (score alto, confianza plena), evaluada-bajo-gate (**descartada**), **no evaluada (score capeado a 35 + confianza baja)**, y que una no-evaluada **nunca supere** a una evaluada equivalente. Más el **percentil winsorizado**: que un outlier ya no aplaste al resto, que la población sean los volúmenes **conocidos** (los ceros entran, los `null` no), los casos degenerados (vacía, un solo elemento, todos en cero) y el valor de `VOLUMEN_PERCENTIL_TOPE`. |
+| `pipeline/cluster-map.test.ts` | El orden en dos niveles: que **la evidencia mande siempre** (una `sin_validar` con score 100 y confianza 1.0 sigue debajo de una `datos_mercado` con score 10), que dentro del grupo ordene la confianza, que la penalización sea **moderada** (si no, subir `PESO_CONFIANZA_ORDEN` a 1.0 pasaría desapercibido), y que el corte al backlog use el orden nuevo pero guarde el score **crudo**. |
 | `pipeline/intent.test.ts` | El clasificador heurístico de fallback (transactional / commercial / informational / señal local). |
+| `pipeline/local-signal.test.ts` | El refinamiento de `is_local` por map pack. Lo que fija de verdad: **`mapPack: null` no pisa nada** ("no observado" ≠ "no es local", el mismo error que `volumen ?? 0`), que con observación **el SERP gana** al LLM, que una keyword sin señal queda intacta, y que el cruce **canoniza las dos puntas**. |
+| `pipeline/run-local-signal.test.ts` | La **costura** en `run.ts`: que la señal viaje del clustering al refinamiento, que corrija de verdad, y que corra entre `[cluster]` y `[map]`. Arranca `runResearch()` entero con cuatro cerrojos para que no pueda gastar (dotenv apagado, config mock verificada aparte, `fetch` roto). |
+| `pipeline/cluster.test.ts` | El callback `onSerp`: que reporte en el camino OK, que un **SERP fallido reporte `mapPack: null`** y no `false`, y que el overlap lea `.urls`. |
+| `dataforseo/endpoints.test.ts` | La extracción del map pack de la respuesta *advanced*, y que un SERP que respondió dé `false` —nunca `null`—. |
+| `dataforseo/mock-provider.test.ts` | Que el mock sea determinista y **produzca las dos ramas** del map pack: si siempre devolviera lo mismo, ningún test recorrería el camino que importa. |
+| `cli/dataset-path.test.ts` | Que el destino por defecto del dataset **no caiga en un directorio ignorado por git**, preguntándoselo a `git check-ignore`. Con **control positivo**: comprueba antes que `out/keywords.json` sí se detecta como ignorado, para que un `git` ausente no deje la aserción pasando por vacío. |
 | `lib/cost.test.ts` | El total suma **todos los proveedores**; costo del LLM calculado desde tokens; embeddings solo pagan entrada; un **modelo sin tarifa no inventa costo** (queda en `unpricedModels`); `reset()`. |
 | `lib/budget.test.ts` | El **preflight bloquea ANTES de gastar** si la estimación no entra; tiene en cuenta lo ya gastado; sin tope nunca bloquea; corte post-fase si la estimación se quedó corta. |
 | `lib/http.test.ts` | Clasificación de errores (429/5xx reintentables, 4xx no); backoff dentro del tope; `Retry-After` en segundos y fecha HTTP; **un 500 se reintenta y termina bien**; **un 400 NO se reintenta**; se propaga `HttpError` con el status al agotar reintentos; fallos de red. *(Con `fetch` stubeado: sin red.)* |

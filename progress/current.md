@@ -7,17 +7,25 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-02
-**En curso:** nada. Se escribió [`.claude/PLAN-AGENTES.md`](../.claude/PLAN-AGENTES.md) —las tres
-etapas restantes del arnés, una por sesión— y se enlazó desde `AGENTS.md`. El resumen está en
-[`history.md`](history.md).
-**Estado:** listo, verificado en verde (624 monorepo · typecheck limpio · sin secretos).
+**En curso:** nada. Cerrada la **etapa A** del [plan de agentes](../.claude/PLAN-AGENTES.md): el
+agente `pipeline` y sus cuatro skills, estrenados con **KR-3** y la mitad gratis de **KR-1**. El
+resumen está en [`history.md`](history.md).
+**Estado:** listo, verificado en verde (682 monorepo · typecheck limpio · sin secretos).
 
-**Pendiente inmediato:** el commit, que lo pide el usuario. Después, **etapa A**: el agente
-`pipeline` con sus cuatro skills, estrenado con KR-1 y KR-3.
+**Lo que hay que decidir, y no lo decide un agente:** **regenerar el dataset crudo** cuesta **~$0.31**
+y ~16 min de corrida real contra DataForSEO en producción. Sin él, los dos parámetros nuevos
+(`VOLUMEN_PERCENTIL_TOPE = 0.9`, `PESO_CONFIANZA_ORDEN = 0.5`) quedan sin calibrar y `TIPOS_MAP_PACK`
+sin verificar. El destino ya es durable, así que esta vez el dataset sobrevive. **Y si se corre, hay
+que volver a sandbox** en `kr-service/.env`.
+
+**Pendiente inmediato:** **etapa B** (`datos`, con `datos-postgres`/`datos-api`/`datos-testing`), que
+se estrena con KR-2 — y de paso puede cerrar lo que la etapa A dejó abierto: que el orden del pipeline
+llegue al portal (`db/src/store.ts:715,743` + `portal/src/app/core/cartera.ts:37`). Arrancarla en una
+**sesión nueva**, para poder invocar a `pipeline` por nombre.
 
 **Anotado como decisión consciente, no como olvido:** `docs/proyecto/11-plan-fase-2.md:237` dice "107
-tests" dentro del bloque de la etapa 5.2 ya cerrada. Es un registro de lo que entregó esa etapa, de la
-misma familia que el resto de los registros fechados, así que no se sincroniza.
+tests" dentro del bloque de la etapa 5.2 ya cerrada, y hay varias menciones de "516 tests" en bloques
+fechados. Son registros de lo que entregó cada etapa, no cifras vivas, así que no se sincronizan.
 
 ---
 

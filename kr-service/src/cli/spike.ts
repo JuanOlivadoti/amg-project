@@ -1,5 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, relative } from "node:path";
 import { config } from "../config.js";
+import { datasetPath } from "./dataset-path.js";
 import { SCHEMA_VERSION } from "../types.js";
 import { runResearch } from "../pipeline/run.js";
 import type { RunDeps, ResearchDataset } from "../pipeline/run.js";
@@ -81,11 +83,17 @@ async function main() {
   // clustering. Antes solo se guardaba el objeto en memoria y el archivo se escribía al final: si
   // el presupuesto abortaba o fallaban los embeddings, el proceso rechazaba y los ~$0.25 de
   // DataForSEO ya gastados se perdían enteros.
-  await mkdir("out", { recursive: true });
+  //
+  // Y va a `datasets/`, que SÍ se versiona: en `out/` (gitignoreado) el dataset de la corrida real
+  // del 2026-07-30 se perdió con el clon, y con él la promesa de que retocar scoring o clustering
+  // fuera gratis. Ver `datasets/README.md` y `dataset-path.ts`.
+  await mkdir("out", { recursive: true }); // brief.json e informe.md: entregables regenerables
+  const destinoDataset = datasetPath();
+  await mkdir(dirname(destinoDataset), { recursive: true });
   let dataset: ResearchDataset | undefined;
   const saveDataset = async (d: ResearchDataset) => {
     dataset = d;
-    await writeFile("out/keywords.json", JSON.stringify(d, null, 2), "utf8");
+    await writeFile(destinoDataset, JSON.stringify(d, null, 2), "utf8");
   };
 
   // El registro durable se abre ANTES de gastar y se cierra pase lo que pase (el pool deja el
@@ -119,7 +127,8 @@ async function main() {
   await writeFile("out/brief.json", JSON.stringify(brief, null, 2), "utf8");
   await writeFile("out/informe.md", renderReport(brief), "utf8");
   const kwCount = dataset ? ` (${dataset.keywords.length} keywords)` : "";
-  console.log(`\n📄 Escrito: out/brief.json · out/informe.md · out/keywords.json${kwCount}`);
+  const rutaDataset = relative(process.cwd(), destinoDataset) || destinoDataset;
+  console.log(`\n📄 Escrito: out/brief.json · out/informe.md · ${rutaDataset}${kwCount}`);
   console.log(`   Páginas: ${brief.meta_run.paginas_propuestas} · Coste: $${(brief.meta_run.coste_micros_usd / 1_000_000).toFixed(4)}`);
 }
 

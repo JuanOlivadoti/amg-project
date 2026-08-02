@@ -62,8 +62,8 @@ también puede cargar la sesión principal sin delegar en nadie.
 | --- | --- | --- | --- |
 | `front` | `portal/` — Angular, las pantallas de la agencia | `portal-angular`, `portal-estilos`, `portal-testing` | existe |
 | `revisor` | transversal — recorre `CHECKPOINTS.md` contra el diff. No edita nada | `codex-review` (para la ronda externa) | existe |
+| `pipeline` | `kr-service/` + `orchestrator/` + `web-builder/` — contenido, idempotencia, gasto | `pipeline-gasto`, `pipeline-research`, `pipeline-publicacion`, `pipeline-orquestacion` | existe |
 | `datos` | `db/` + `api/` — RLS, roles, `Tx`, endpoints, PGlite | (por escribir) | planificado |
-| `pipeline` | `kr-service/` + `orchestrator/` + `web-builder/` — contenido, idempotencia, gasto | (por escribir) | planificado |
 | `render` | `renderer/` — la única superficie pública anónima, Storyblok CDA | (por escribir) | planificado |
 
 Mientras un agente esté "planificado", ese trabajo lo hace la sesión principal. No lo invoques: no

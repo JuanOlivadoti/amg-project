@@ -15,13 +15,71 @@ const BUSINESS_GATE = 0.4; // ADR-10: business_relevance como gate, no solo peso
 const RELEVANCE_UNKNOWN_CAP = 35; // tope de opportunity_score cuando la relevancia es desconocida.
 
 /**
+ * Percentil de la escala del volumen: por encima de él, todo satura en el mismo aporte.
+ *
+ * Default de PRODUCCIÓN (no lo elige ningún test, y hay uno que fija este valor). 0.9 deja fuera de
+ * la escala al ~10% superior, que es donde vive el outlier que motivó el cambio, sin recortar a la
+ * cabeza legítima de un dataset sano.
+ */
+export const VOLUMEN_PERCENTIL_TOPE = 0.9;
+
+/**
+ * Percentil por **nearest-rank**: devuelve un valor que EXISTE en la población, sin interpolar.
+ *
+ * La interpolación (R-7 y compañía) inventa un número intermedio; acá se prefiere el resultado
+ * determinista y trivial de razonar en un test: `rank = ceil(p × N)`, acotado a `[1, N]`, y se
+ * devuelve el elemento en esa posición del orden ascendente.
+ *
+ * Ordena una copia por su cuenta a propósito. Podría pedir la población ya ordenada y documentarlo,
+ * pero un llamador que pase la lista sin ordenar obtendría un resultado silenciosamente equivocado
+ * —y este repo ya aprendió que una garantía escrita en un comentario es una intención, no una
+ * garantía—. Con N ~ 60 keywords el orden no se nota.
+ *
+ * @returns `null` si la población está vacía. No hay percentil de la nada, y devolver 0 afirmaría
+ *   "el percentil 90 es cero", que es justo la confusión `null`/`0` que el resto del pipeline evita.
+ * @throws `RangeError` si `p` no es finito. Sin esta guarda, `ceil(NaN × N)` atraviesa los dos
+ *   `Math.min/max` (que propagan NaN) y el acceso indexado devuelve `undefined` tipado como
+ *   `number`: exactamente la mentira que `noUncheckedIndexedAccess` existe para evitar, tapada por
+ *   el `!` de abajo. Un percentil fuera de `[0, 1]` sí se acota en silencio: el clamp del rank le da
+ *   el sentido obvio (el mínimo o el máximo).
+ */
+export function percentilNearestRank(poblacion: readonly number[], p: number): number | null {
+  if (!Number.isFinite(p)) throw new RangeError(`percentil no finito: ${p}`);
+  if (poblacion.length === 0) return null;
+  const ordenada = [...poblacion].sort((a, b) => a - b);
+  const rank = Math.min(ordenada.length, Math.max(1, Math.ceil(p * ordenada.length)));
+  return ordenada[rank - 1]!;
+}
+
+/**
  * opportunity_score (0..100) + score_confidence (0..1).
- * TODO (post-pruebas): normalizar volumen por percentiles del mercado en vez de
- * volume_max del run (ver plan §7); winsorizar outliers.
+ *
+ * ## El volumen se normaliza contra el percentil 90 del run, winsorizado
+ *
+ * Antes se normalizaba contra el `volume_max` del run: UN pico (1300 búsquedas en la corrida real)
+ * reescalaba a todas las demás hacia abajo, y eso cambia qué páginas *parecen* valiosas en el brief
+ * que se le enseña al cliente. Ahora el tope es el percentil 90 y todo lo que lo supera satura en
+ * 1.0 — eso es la winsorización, y es lo que impide que un outlier aplaste al resto.
+ *
+ * La población son los volúmenes CONOCIDOS. Un `0` entra (es una observación real: nadie busca eso);
+ * un `null` no (no sabemos). Es la misma distinción que rige `evidenceOf` y el `n/d` del informe.
+ *
+ * TODO (KR-1, cuesta dinero): esto es el percentil **del run**, no el del mercado. Arregla el
+ * aplastamiento por outlier, pero la escala sigue siendo relativa a las keywords de esa corrida: el
+ * mismo volumen puntúa distinto en dos runs con datasets distintos, así que los scores no son
+ * comparables entre corridas. Una distribución de mercado de verdad —percentiles cruzados entre
+ * runs, por rubro y mercado— necesita el dataset persistido y calibrado con datos reales, que hoy
+ * no existe y no se puede construir gratis.
  */
 export function scoreKeywords(kws: EnrichedKeyword[], weights: ScoringWeights): void {
-  const volumeMax = Math.max(1, ...kws.map((k) => k.volume ?? 0));
-  const logMax = Math.log10(1 + volumeMax);
+  const poblacion: number[] = [];
+  for (const k of kws) if (k.volume != null) poblacion.push(k.volume);
+
+  // `max(1, …)` cubre los dos casos degenerados de una sola vez: población vacía (percentil `null`)
+  // y población entera en cero. En ambos `logCap = log10(2) > 0`, así que la división es segura y
+  // todos los volúmenes conocidos dan `volumeNorm = 0`: sin distribución, el volumen no informa nada.
+  const cap = Math.max(1, percentilNearestRank(poblacion, VOLUMEN_PERCENTIL_TOPE) ?? 0);
+  const logCap = Math.log10(1 + cap);
 
   for (const k of kws) {
     const relevanceEvaluated = k.business_relevance != null;
@@ -42,7 +100,8 @@ export function scoreKeywords(kws: EnrichedKeyword[], weights: ScoringWeights): 
       continue;
     }
 
-    const volumeNorm = logMax > 0 ? Math.log10(1 + (k.volume ?? 0)) / logMax : 0;
+    // `min(1, …)`: por encima del percentil 90 se satura. Sin el tope, el pico se llevaba la escala.
+    const volumeNorm = Math.min(1, Math.log10(1 + (k.volume ?? 0)) / logCap);
     const difficultyInv = k.difficulty == null ? 0.4 : 1 - k.difficulty / 100; // null penaliza
     const intentWeight = k.intent ? INTENT_WEIGHT[k.intent] : 0.5;
     // Sin evaluar: neutral-bajo (0.5), NO 0.6, y con el cap de abajo no puede subir a página top.

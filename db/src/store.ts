@@ -265,7 +265,8 @@ export class PgStore {
    * Checkpoint de las keywords enriquecidas: son los datos que se le PAGARON a DataForSEO.
    *
    * Se guardan TODAS, no solo las que llegaron a página. Tirarlas obliga a pagar otra corrida para
-   * cualquier ajuste de scoring o clustering — la lección que ya costó plata en `out/keywords.json`.
+   * cualquier ajuste de scoring o clustering — la lección que ya costó plata con el dataset crudo, que
+   * se escribía en `out/` (gitignoreado) y se perdió; hoy va a `datasets/keywords.json`.
    *
    * Idempotente (`on conflict`): un reintento del orquestador no duplica ni falla.
    */

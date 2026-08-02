@@ -1,7 +1,7 @@
 import { canonicalKey } from "../lib/text.js";
 import { TTL, cacheKeys } from "./cache.js";
 import type { KeywordCache } from "./cache.js";
-import type { KeywordDataProvider, SearchVolumeRow } from "./provider.js";
+import type { KeywordDataProvider, SearchVolumeRow, SerpResultado } from "./provider.js";
 import type { Market } from "../types.js";
 
 export interface CacheStats {
@@ -151,20 +151,25 @@ export class CachedProvider implements KeywordDataProvider {
     return out;
   }
 
-  async serp(keyword: string, market: Market, depth = 10): Promise<string[]> {
+  async serp(keyword: string, market: Market, depth = 10): Promise<SerpResultado> {
     const key = cacheKeys.serp(this.ns, keyword, market, depth);
-    const hit = await this.cache.getMany<string[]>([key]);
+    const hit = await this.cache.getMany<SerpResultado>([key]);
 
-    const cached = hit.get(key);
-    if (cached) {
+    // `has`, no la verdad del valor: el valor es un objeto y siempre sería truthy, pero el criterio
+    // correcto es "¿está la entrada?", no "¿tiene contenido?".
+    if (hit.has(key)) {
       this.stats.hits++;
       this.stats.ahorradas++;
-      return cached;
+      return hit.get(key)!;
     }
 
     this.stats.misses++;
     const fresh = await this.inner.serp(keyword, market, depth);
     // TTL corto: el SERP se usa para fusionar clusters, y un SERP viejo agrupa páginas mal.
+    //
+    // Un `mapPack: null` SÍ se cachea, y no contradice la regla de no fosilizar ausencias: `null`
+    // no afirma nada (el refinamiento lo ignora y respeta lo que dijo el LLM), y las `urls` que van
+    // en el mismo objeto YA SE PAGARON — tirarlas sería el error caro de los dos.
     await this.cache.setMany([[key, fresh]], TTL.serp);
     return fresh;
   }

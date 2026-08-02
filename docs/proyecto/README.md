@@ -7,7 +7,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 > Última revisión: 2026-08-02 · Estado: **Fase 1 desplegada; de Fase 2, el renderizador también.** La
 > cadena completa —research → compuerta humana → publicación → **la web servida en vivo**— funciona de
 > punta a punta. API, portal y renderizador existen y se manejaron en un navegador real.
-> **859 tests en verde**: 624 en el monorepo + 235 en el portal (169 `node:test` + 66 Karma).
+> **917 tests en verde**: 682 en el monorepo + 235 en el portal (169 `node:test` + 66 Karma).
 >
 > ✅ **Fase 1 está en producción** desde el 2026-07-25: el portal en [`bigballs.es`](https://bigballs.es)
 > (Hostinger), la API en `api.bigballs.es` (Railway) y la base con RLS forzada en Supabase. El login

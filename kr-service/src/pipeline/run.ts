@@ -19,6 +19,8 @@ import type {
 } from "../types.js";
 import { scoreKeywords } from "./scoring.js";
 import { CLUSTER_SIM_THRESHOLD_DEFAULT, clusterKeywords } from "./cluster.js";
+import { refineIsLocal } from "./local-signal.js";
+import type { SerpResultado } from "../dataforseo/provider.js";
 import { mapClustersToPages } from "./cluster-map.js";
 import { applyBusinessRelevance, applyIntents, applyPageContent } from "./enrich-content.js";
 import { assembleBrief } from "./brief.js";
@@ -308,9 +310,34 @@ async function runResearchInner(
   log("score", `scoreadas · ${enriched.filter((k) => k.discarded).length} descartadas por relevancia`);
 
   // Paso 6 — Clustering híbrido (embeddings + validación SERP: el endpoint más caro)
+  //
+  // Los SERP de las cabezas se piden ACÁ y ya están pagados. La señal de map pack se recoge al
+  // vuelo: pedirlos de nuevo más adelante sería pagar dos veces por el mismo dato.
   budget.assertCanSpend(est.llmEmbed + CLUSTER_SERP_HEADS * est.dfsSerp, "clustering");
-  const clusters = await clusterKeywords(enriched, getEmbedder(), dfs, market, { simThreshold });
+  const senalesSerp = new Map<string, SerpResultado>();
+  const clusters = await clusterKeywords(
+    enriched,
+    getEmbedder(),
+    dfs,
+    market,
+    { simThreshold },
+    (keyword, r) => senalesSerp.set(keyword, r),
+  );
   log("cluster", `${clusters.length} clusters`);
+
+  // Paso 6b — `is_local` por evidencia del SERP, no por conjetura del LLM (KR-3).
+  //
+  // Va DESPUÉS del clustering (que es donde se observan los SERP) y ANTES del mapeo a páginas
+  // (que es donde `is_local` decide el tipo de página y de ahí el `schema_type`). Y antes del
+  // CHECKPOINT 2 a propósito: el dataset que se persiste tiene que llevar el `is_local` que de
+  // verdad gobernó las páginas, o el tuning offline se haría contra datos que nunca corrieron.
+  const refinado = refineIsLocal(enriched, senalesSerp);
+  log(
+    "local",
+    `map pack observado en ${refinado.observadas}/${senalesSerp.size} cabezas · ` +
+      `${refinado.cambiadas} is_local corregido(s)` +
+      (refinado.sinSenal ? ` · ${refinado.sinSenal} sin señal (se respeta el LLM)` : ""),
+  );
 
   // CHECKPOINT 2 — se actualiza el dataset con el scoring y los clusters ya calculados.
   await onDataset?.(

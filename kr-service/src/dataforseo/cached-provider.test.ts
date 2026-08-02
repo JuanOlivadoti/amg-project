@@ -4,7 +4,7 @@ import { CachedProvider } from "./cached-provider.js";
 import { TTL, cacheKeys } from "./cache.js";
 import type { KeywordCache } from "./cache.js";
 import { MARKET_ES } from "../config.js";
-import type { KeywordDataProvider, SearchVolumeRow } from "./provider.js";
+import type { KeywordDataProvider, SearchVolumeRow, SerpResultado } from "./provider.js";
 import type { Market } from "../types.js";
 
 /** Cache en memoria: alcanza para los tests (lo que se prueba es el decorador, no el backend). */
@@ -59,9 +59,9 @@ class SpyProvider implements KeywordDataProvider {
     return new Map(keywords.map((k) => [k, this.conDatos.has(k) ? 42 : null]));
   }
 
-  async serp(keyword: string): Promise<string[]> {
+  async serp(keyword: string): Promise<SerpResultado> {
     this.serpCalls.push(keyword);
-    return ["https://a.com", "https://b.com"];
+    return { urls: ["https://a.com", "https://b.com"], mapPack: true };
   }
 }
 
@@ -160,6 +160,57 @@ test("cache: un SERP con otra profundidad NO es un hit", async () => {
   await new CachedProvider(spy, cache, NS).serp("pizza", M, 20);
 
   assert.equal(spy.serpCalls.length, 1);
+});
+
+// ---------------------------------------------------------------- la forma del valor cacheado
+
+/**
+ * 🔴 LA CLAVE DEL SERP ESTÁ FIJADA, LITERAL.
+ *
+ * No es un test de higiene: el segmento `organic+mappack` es la VERSIÓN de la forma del valor.
+ * El SERP se cacheaba como `string[]`; ahora se cachea `{urls, mapPack}`. Sin cambiar la clave, las
+ * entradas viejas (7 días de TTL) se leerían como si tuvieran el campo nuevo.
+ *
+ * La ARIDAD también se fija: `metaDeClave()` en `orchestrator/src/deps.ts` parsea esta clave POR
+ * POSICIÓN para poblar las columnas de `kr_serp_cache`. Agregar o quitar un segmento acá le
+ * desplaza `depth`, `location_code` y `language_code` sin que nada avise.
+ */
+test("🔴 la clave del SERP, literal (lleva la versión de la forma del valor)", () => {
+  assert.equal(
+    cacheKeys.serp(NS, "Pizza Napolitana Madrid", M, 10),
+    "dfs:prod|serp|google|desktop|organic+mappack|10|2724|es|pizza napolitana madrid",
+  );
+  assert.equal(cacheKeys.serp(NS, "x", M, 10).split("|").length, 9, "9 segmentos: metaDeClave los parsea por posición");
+});
+
+/**
+ * 🔴 La consecuencia práctica de lo anterior: una entrada con la FORMA VIEJA (un `string[]` bajo la
+ * clave sin versión) no se puede servir. Si se sirviera, `r.urls` sería `undefined` —el overlap del
+ * clustering revienta— y `r.mapPack` también, que no es `null` y podría colarse como "observado".
+ */
+test("🔴 una entrada del formato viejo (string[]) NO se sirve: se vuelve a pedir", async () => {
+  const cache = new MemCache();
+  const claveVieja = "dfs:prod|serp|google|desktop|organic|10|2724|es|pizza";
+  await cache.setMany([[claveVieja, ["https://vieja.com"]]], TTL.serp);
+
+  const spy = new SpyProvider();
+  const r = await new CachedProvider(spy, cache, NS).serp("pizza", M, 10);
+
+  assert.equal(spy.serpCalls.length, 1, "la entrada vieja no matchea: se paga el SERP de nuevo");
+  assert.deepEqual(r.urls, ["https://a.com", "https://b.com"]);
+  assert.equal(r.mapPack, true);
+});
+
+/** El objeto entero sobrevive al viaje por la cache: si `mapPack` se perdiera, KR-3 no haría nada. */
+test("cache: el SERP cacheado conserva urls Y mapPack", async () => {
+  const cache = new MemCache();
+  await new CachedProvider(new SpyProvider(), cache, NS).serp("pizza", M, 10);
+
+  const spy = new SpyProvider();
+  const r = await new CachedProvider(spy, cache, NS).serp("pizza", M, 10);
+
+  assert.equal(spy.serpCalls.length, 0, "es un hit");
+  assert.deepEqual(r, { urls: ["https://a.com", "https://b.com"], mapPack: true });
 });
 
 test("cache: variantes de casing son el MISMO dato (clave canónica)", async () => {

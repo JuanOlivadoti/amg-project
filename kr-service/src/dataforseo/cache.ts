@@ -73,8 +73,20 @@ export const cacheKeys = {
     k(ns, "kd", m.location_code, m.language_code, canonicalKey(kw)),
   suggestions: (ns: string, seed: string, m: Market, limit: number) =>
     k(ns, "sugg", m.location_code, m.language_code, limit, canonicalKey(seed)),
+  /**
+   * El segmento `organic+mappack` NO es decorativo: es la VERSIÓN de la forma del valor cacheado.
+   *
+   * El SERP se cacheaba como `string[]` (solo URLs). Ahora se cachea un `SerpResultado`
+   * (`{urls, mapPack}`). Las entradas viejas siguen vivas hasta 7 días, y sin cambiar la clave se
+   * leerían como si tuvieran el campo nuevo: `r.urls` sería `undefined` (revienta el overlap) y
+   * `r.mapPack` también, o sea `undefined` — que no es `null` y podría colarse como "observado".
+   *
+   * Cambiar el literal invalida esas entradas de golpe, sin migración: pasan a no matchear ninguna
+   * clave y caducan solas. La ARIDAD de la clave se mantiene a propósito — `metaDeClave()` en
+   * `orchestrator/src/deps.ts` la parsea por posición para poblar las columnas de `kr_serp_cache`.
+   */
   serp: (ns: string, kw: string, m: Market, depth: number) =>
-    k(ns, "serp", "google", "desktop", "organic", depth, m.location_code, m.language_code, canonicalKey(kw)),
+    k(ns, "serp", "google", "desktop", "organic+mappack", depth, m.location_code, m.language_code, canonicalKey(kw)),
 };
 
 // ---------------------------------------------------------------- implementaciones

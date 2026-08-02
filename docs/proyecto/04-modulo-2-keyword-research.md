@@ -130,7 +130,7 @@ Dos etapas:
    > así que el coseno las unía casi todas. En el primer dataset real colapsaba **41 de 45**
    > keywords vivas en UN cluster, fusionando *pasta fresca*, *pizza napolitana* y *restaurante
    > italiano centro* —tres páginas comercialmente distintas— en una sola: **3 páginas propuestas
-   > en vez de 8**. Se barrió 0.55→0.85 sobre `out/keywords.json` y 0.75 es donde las cabezas caen
+   > en vez de 8**. Se barrió 0.55→0.85 sobre el dataset crudo (hoy `datasets/keywords.json`) y 0.75 es donde las cabezas caen
    > sobre los servicios reales del negocio. Por encima de 0.85 se fragmenta.
 2. **Validación por SERP (caro, solo el top):** para las **15 cabezas** de mayor score se pide el
    SERP orgánico real. Si dos cabezas comparten **≥ 3 URLs**, se **fusionan** (Google las considera
@@ -191,7 +191,12 @@ Si no valida, sale con código de error.
 > que uno inventado.**
 
 ### 11. Persistencia del dataset crudo
-`out/keywords.json` — las keywords enriquecidas + los clusters.
+`datasets/keywords.json` — las keywords enriquecidas + los clusters. Configurable con `KR_DATASET_PATH`.
+
+> **Estuvo en `out/` hasta el 2026-08-02, y ahí se perdió.** `out/` está gitignoreado: el dataset de
+> la corrida real no viajó con el clon, y con él se fue la promesa de esta sección. Desde entonces el
+> destino es un directorio versionado, y que no vuelva a caer en uno ignorado lo impone un test que
+> le pregunta a `git check-ignore` — no un comentario.
 
 El brief solo lleva las **páginas propuestas**. Sin este volcado, los datos por los que se le pagó
 a DataForSEO **se perdían al terminar el proceso**, y cualquier ajuste de scoring o clustering
@@ -272,7 +277,8 @@ Sin tope, nunca bloquea.
 
 > Las **estimaciones por llamada** (`DEFAULT_ESTIMATES`) siguen siendo aproximadas y sirven solo
 > para decidir si arrancar una fase; el costo **real** se mide aparte. Ya hay datos de producción
-> para calibrarlas (`out/keywords.json`), pero **todavía no se aplicaron**.
+> para calibrarlas, pero **todavía no se aplicaron** — y el dataset con el que se harían se perdió
+> (ver KR-1 en el [estado](09-estado-y-roadmap.md)): regenerarlo cuesta ~$0.31.
 
 ## Estado
 
@@ -294,8 +300,9 @@ Sin tope, nunca bloquea.
 | **Dedupe canónico** (deja de pagar keywords duplicadas) | ✅ |
 | **Métricas ausentes como `null`, no como `0`** (`kr.v0.4`) | ✅ |
 | **Clustering calibrado con datos reales** (0.55 → 0.75) | ✅ |
-| **Dataset crudo persistido** (`out/keywords.json` → tuning gratis) | ✅ |
-| Señales de SERP para `is_local` | ⛔ Hoy se dispara de más (53/60) |
-| Usar `score_confidence` para priorizar páginas | ⛔ Se calcula pero no se usa al ordenar |
-| Calibrar las estimaciones del presupuesto | ⛔ Ya hay datos; falta aplicarlo |
+| **Dataset crudo persistido** (`datasets/keywords.json` → tuning gratis) | ✅ |
+| **Señales de SERP (`map pack`) para `is_local`** | ✅ `pipeline/local-signal.ts`. Solo pisa al LLM cuando hubo observación, y solo en las ~15 cabezas cuyo SERP se paga |
+| **Usar `score_confidence` para priorizar páginas** | 🟠 Sí en `kr-service` (orden en dos niveles + corte al backlog); **la base y el portal reordenan por score crudo** |
+| **Volumen normalizado por percentil, winsorizado** | 🟠 Por percentil **del run**, no del mercado. Arregla el aplastamiento por outlier; los scores siguen sin ser comparables entre runs |
+| Calibrar las estimaciones del presupuesto | ⛔ Falta el dataset: se perdió (~$0.31 regenerarlo) |
 | Persistencia, multi-tenancy, Inngest | ✅ **Hechos** — ver `db/` y `orchestrator/` |

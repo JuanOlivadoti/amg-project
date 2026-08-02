@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mapClustersToPages } from "./cluster-map.js";
+import { mapClustersToPages, PESO_CONFIANZA_ORDEN } from "./cluster-map.js";
 import { renderReport } from "./brief.js";
 import { briefSchema } from "../validation/brief.schema.js";
 import type { Cluster } from "./cluster.js";
@@ -147,4 +147,103 @@ test("el informe SEPARA las páginas respaldadas de las que son una apuesta", ()
   assert.match(report, /no hay evidencia de que alguien los busque/);
   // La cobertura del run se declara arriba de todo.
   assert.match(report, /Calidad de los datos/);
+});
+
+// ──────────────────── KR-3: `score_confidence` pondera el orden dentro del grupo ────────────────────
+
+test("PESO_CONFIANZA_ORDEN es 0.5 (default de producción, no lo elige el test)", () => {
+  assert.equal(PESO_CONFIANZA_ORDEN, 0.5);
+});
+
+/**
+ * El invariante viejo, fijado ahora CONTRA el cambio nuevo: la confianza pondera dentro del grupo de
+ * evidencia, no lo atraviesa. Una apuesta con confianza plena y score máximo sigue debajo de una
+ * página respaldada por datos, por mala que sea.
+ */
+test("la evidencia manda sobre la confianza: ni 100 puntos con confianza 1.0 suben una sin_validar", () => {
+  const apuesta = kw({
+    keyword: "apuesta perfecta",
+    volume: null,
+    difficulty: null,
+    opportunity_score: 100,
+    score_confidence: 1,
+  });
+  const respaldada = kw({
+    keyword: "respaldada floja",
+    volume: 10,
+    opportunity_score: 10,
+    score_confidence: 0.3,
+  });
+
+  const { pages } = mapClustersToPages([cluster(apuesta), cluster(respaldada)], 25);
+
+  assert.equal(pages[0]!.keyword_principal, "respaldada floja");
+  assert.equal(pages[1]!.keyword_principal, "apuesta perfecta");
+});
+
+/**
+ * Lo que arregla el cambio: `score_confidence` se mostraba en el dashboard del portal como columna
+ * "Confianza" y no ordenaba nada. Una página de la que no sabemos casi nada podía encabezar el brief
+ * que se le enseña al cliente.
+ */
+test("dentro del grupo de evidencia, la baja confianza cae por debajo de un score menor pero sólido", () => {
+  const dudosa = kw({ keyword: "dudosa", volume: 500, opportunity_score: 80, score_confidence: 0.3 });
+  const solida = kw({ keyword: "sólida", volume: 500, opportunity_score: 60, score_confidence: 1 });
+
+  const { pages } = mapClustersToPages([cluster(dudosa), cluster(solida)], 25);
+
+  assert.equal(pages[0]!.keyword_principal, "sólida");
+  assert.equal(pages[1]!.keyword_principal, "dudosa");
+});
+
+test("la penalización es moderada, no una descalificación: 80 con confianza 0.3 sigue arriba de 40 con 1.0", () => {
+  const dudosa = kw({ keyword: "dudosa", volume: 500, opportunity_score: 80, score_confidence: 0.3 });
+  const floja = kw({ keyword: "floja", volume: 500, opportunity_score: 40, score_confidence: 1 });
+
+  const { pages } = mapClustersToPages([cluster(dudosa), cluster(floja)], 25);
+
+  assert.equal(pages[0]!.keyword_principal, "dudosa");
+});
+
+test("a igual confianza, el score crudo sigue decidiendo", () => {
+  const alta = kw({ keyword: "alta", volume: 500, opportunity_score: 80, score_confidence: 0.3 });
+  const baja = kw({ keyword: "baja", volume: 500, opportunity_score: 60, score_confidence: 0.3 });
+
+  const { pages } = mapClustersToPages([cluster(baja), cluster(alta)], 25);
+
+  assert.equal(pages[0]!.keyword_principal, "alta");
+});
+
+test("confianza ausente cuenta como 0, igual que en el campo de la página", () => {
+  const sinConfianza = kw({
+    keyword: "sin confianza",
+    volume: 500,
+    opportunity_score: 100,
+    score_confidence: null,
+  });
+  const conConfianza = kw({
+    keyword: "con confianza",
+    volume: 500,
+    opportunity_score: 60,
+    score_confidence: 1,
+  });
+
+  const { pages } = mapClustersToPages([cluster(sinConfianza), cluster(conConfianza)], 25);
+
+  assert.equal(pages[0]!.keyword_principal, "con confianza");
+  assert.equal(pages[1]!.score_confidence, 0, "el campo de la página ya hacía `?? 0`");
+});
+
+test("el corte al backlog usa el orden nuevo, y el backlog lleva el score CRUDO", () => {
+  const dudosa = kw({ keyword: "dudosa", volume: 500, opportunity_score: 80, score_confidence: 0.3 });
+  const solida = kw({ keyword: "sólida", volume: 500, opportunity_score: 60, score_confidence: 1 });
+
+  const { pages, backlog } = mapClustersToPages([cluster(dudosa), cluster(solida)], 1);
+
+  assert.equal(pages.length, 1);
+  assert.equal(pages[0]!.keyword_principal, "sólida", "la respaldada por confianza se queda");
+  assert.equal(backlog.length, 1);
+  assert.equal(backlog[0]!.keyword_principal, "dudosa");
+  // El campo declarado del contrato es `opportunity_score`, no el efectivo (80 × 0.65 = 52).
+  assert.equal(backlog[0]!.opportunity_score, 80);
 });

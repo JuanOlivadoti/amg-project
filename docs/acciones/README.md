@@ -4,7 +4,7 @@ Las **6 cosas que solo vos podías hacer** (requerían cuentas, dinero o decisio
 Una guía por acción, con los pasos exactos, cómo verificar que salió bien y qué hacer si falla.
 
 > **El código está al día.** La cadena `prompt → research → persistencia → compuerta humana → web`
-> funciona de punta a punta, con **624 tests en verde**. Ver el
+> funciona de punta a punta, con **682 tests en verde**. Ver el
 > [Plan de la Fase 2](../proyecto/11-plan-fase-2.md).
 >
 > ✅ **No queda ninguna acción abierta.** Para *qué hacer ahora*, ver
@@ -58,7 +58,10 @@ El sandbox ocultaba tres bugs. Encontrarlos era el punto de la acción 03:
 - **`gpt-4o` quedó legacy** y los modelos actuales son 2-3× más baratos ([guía 02](02-precios-modelos.md)).
   Pero ojo: la 03 mostró que **el LLM es solo el 19% del costo**, así que el ahorro real es chico.
   Ya no es urgente.
-- **`is_local` se dispara de más** (7 de 8 páginas como `LocalBusiness`) → afecta el JSON-LD.
+- ~~**`is_local` se dispara de más**~~ (7 de 8 páginas como `LocalBusiness`) → ✅ **cerrada el
+  2026-08-02**: lo decide el *map pack* del SERP en las cabezas de cluster, que son las que fijan el
+  `schema_type`. Fuera de ellas sigue mandando la heurística (ver las deudas del
+  [estado](../proyecto/09-estado-y-roadmap.md)).
 - **Costo por space de Storyblok** al escalar la cartera ([guía 04](04-storyblok-space.md)).
 
 ## Checklist

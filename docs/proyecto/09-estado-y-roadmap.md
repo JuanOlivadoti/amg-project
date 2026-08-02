@@ -38,7 +38,7 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | | |
 |---|---|
 | **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **859** — 624 en el monorepo + 235 en el portal (169 `node:test` + 66 Karma). Los de seguridad, contra Postgres real. Medido con `npm run verificar` el 2026-08-02. |
+| **Tests** | **917** — 682 en el monorepo + 235 en el portal (169 `node:test` + 66 Karma). Los de seguridad, contra Postgres real. Medido con `npm run verificar` el 2026-08-02. |
 | **Migraciones** | 12 en `main` (`0001`..`0012`) · **las 10 primeras aplicadas en producción** (la `0010`, el 2026-08-01); la `0011` (CRM) y la `0012` (membresías) están mergeadas y **pendientes de aplicar** |
 | **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
 | **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
@@ -61,7 +61,7 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **624 tests en verde** (+235 en el portal) + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **682 tests en verde** (+235 en el portal) + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **El dashboard y el brief no pueden divergir en silencio**: un test ata las 14 páginas de `cartera-mock.ts` (portal) a `PAGINAS_DEMO` (seed), campo por campo y en orden. Estar fuera del monorepo impedía importar el paquete, no leer el archivo. |
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
@@ -131,11 +131,13 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
      de muestra. La fila y las keywords de La Birra Bar sí son reales.
 2. **Módulo 3 — respondedor de reseñas de Google (GBP).** Lo único del alcance base (OBS-01) sin
    ni una línea escrita. Es la pieza de producto más grande que falta.
-3. **🟠 La demo del módulo de Keyword Research** — decidida el 2026-08-01 y con trabajo por delante:
-   recuperar o regenerar el **dataset crudo** (bloquea todo lo demás), llevar el **informe legible al
-   portal**, y las **tres mejoras de calidad** (`is_local` por SERP, `score_confidence` que ordene,
-   volumen por percentiles), que pasaron de "algún día" a **pre-demo**. Guion de dos niveles:
-   entregable primero, pipeline después. Detalle en [§2.b](#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01).
+3. **🟠 La demo del módulo de Keyword Research** — decidida el 2026-08-01. Las **tres mejoras de
+   calidad** están **implementadas** (2026-08-02): `is_local` por map pack del SERP,
+   `score_confidence` ordenando, y el volumen normalizado por percentil con winsorización. Queda
+   **regenerar el dataset crudo** (~$0.31, decide Juan — el destino ya es durable), llevar el
+   **informe legible al portal**, y que el orden nuevo **llegue al portal**, que hoy lo deshace.
+   Guion de dos niveles: entregable primero, pipeline después. Detalle en
+   [§2.b](#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01).
    *(Hub & spoke y el enlazado interno vacío siguen fuera de la demo: ver la tabla de mejoras.)*
 4. **Desplegar la Fase 2** — **el renderizador ya está** (2026-08-01); queda el **orquestador**.
 
@@ -219,9 +221,10 @@ verdad. Encontrarlos era exactamente el punto de correr en producción. **Los tr
    caían en un cluster. Recalibrado a **0.75** con el dataset real: **8 páginas**, cada una sobre un
    servicio real del negocio.
 
-> El dataset crudo ahora se persiste en `out/keywords.json`. Antes se tiraba: se pagaba por datos
+> El dataset crudo se persiste en `datasets/keywords.json`. Antes se tiraba: se pagaba por datos
 > que no sobrevivían al proceso, y cualquier ajuste de scoring obligaba a pagar otra corrida.
-> Ahora el tuning es **offline y gratis**.
+> Ahora el tuning es **offline y gratis** — con la salvedad de que el dataset de la corrida real se
+> perdió igual, porque hasta el 2026-08-02 se escribía en `out/`, que git ignora (ver KR-1 en §2.b).
 
 ---
 
@@ -481,33 +484,55 @@ escrita en ninguna parte — este bloque la fija.
 | **Objetivo** | **Entregable primero, pipeline después** | Abre con lo que el restaurante recibe (informe + evidencia + precio) y, si hay interés técnico, se baja al recorrido `prompt → keywords → clustering → páginas`. Hay que preparar **dos guiones** y decidir dónde se corta. |
 | **¿En vivo?** | **No: se muestra el ya corrido** | Confirma lo que midió la acción 06 (16m15s). La **pieza D queda cerrada, no pendiente**: paralelizar SERP y el progreso incremental **salen del alcance de la demo** y quedan como mejora de producto (§4). |
 | **El informe** | **Se ve en el portal** | `out/informe.md` es el mejor entregable del módulo y hoy **solo existe como archivo local** tras correr el CLI. Pieza de trabajo nueva (ver abajo). |
-| **Calidad del research** | **Las tres, antes de la demo** | `is_local` por señales del SERP, `score_confidence` que ordene, y volumen normalizado por percentiles. Dejan de ser "mejoras algún día": son **pre-demo**. |
+| **Calidad del research** | **Las tres, antes de la demo** | `is_local` por señales del SERP, `score_confidence` que ordene, y volumen normalizado por percentiles. Dejan de ser "mejoras algún día": son **pre-demo**. ✅ **Las tres implementadas el 2026-08-02** — con dos matices que hay que leer: la normalización es por percentil **del run**, no del mercado, y el orden nuevo **no llega al portal**. Ver KR-3 abajo. |
 
-#### 🔴 La precondición que hay que resolver primero: **falta el dataset crudo**
+#### 🔴 La precondición: **falta el dataset crudo** — el destino ya está arreglado, el dato no
 
-La tanda 4 dejó escrito que el dataset se persiste en `out/keywords.json` y que por eso *"el tuning es
-offline y gratis"*. **Ese archivo no está en el repo** (`out/` está gitignoreado y no existe en el
-clon actual). Sin él, las tres mejoras de calidad **no tienen contra qué calibrarse**, y la promesa de
-tuning gratis no se puede cobrar. Tres salidas, en orden de preferencia:
+La tanda 4 dejó escrito que el dataset se persiste y que por eso *"el tuning es offline y gratis"*,
+pero lo escribía en `out/keywords.json` y **`out/` está gitignoreado**: el archivo no viajó con el
+clon y **no está en ninguna máquina** (buscado el 2026-08-02, incluido fuera del repo). Tres salidas,
+en orden de preferencia:
 
-1. **Aparece el `out/` de la corrida del 2026-07-30** en la máquina donde se corrió → coste **$0**.
+1. ~~Aparece el `out/` de la corrida del 2026-07-30~~ — **descartada**: no existe.
 2. **Regenerar el dataset** con una corrida real contra producción → **~$0.31** y ~16 min. Barato, y
-   de paso vuelve a ejercitar el camino live.
+   de paso vuelve a ejercitar el camino live. **Es la única salida, y la decide Juan.**
 3. ~~Calibrar contra sandbox~~ — **no sirve**: los datos son ficticios, y `is_local` depende
    justamente de señales reales del SERP (presencia de *map pack*).
 
-> **Y guardar el dataset donde sobreviva.** Que el tuning sea gratis depende de que el archivo exista;
-> hoy vive en un directorio ignorado por git, que es exactamente donde se pierde. Decidir dónde va
-> (`docs/private/`, un bucket, o commitearlo si no lleva nada sensible) es parte de esta tarea.
+> ✅ **La otra mitad —guardar el dataset donde sobreviva— está hecha (2026-08-02).** El destino por
+> defecto es `datasets/keywords.json`, un directorio **versionado** (`KR_DATASET_PATH` lo cambia). La
+> decisión de commitearlo: son datos de mercado públicos más el prompt del negocio, nada secreto —
+> el motivo real de que estuvieran en un directorio ignorado era que el CLI escribía todas sus
+> salidas en el mismo sitio. Y **no lo garantiza un comentario**: lo impone `dataset-path.test.ts`,
+> que le pregunta a `git check-ignore` y falla si el destino cae en un directorio ignorado. Es el
+> test que habría cazado el bug original.
 
 #### Las piezas de trabajo
 
 | # | Pieza | Estado | Nota |
 |---|---|---|---|
-| **KR-1** | **El dataset crudo, recuperado o regenerado** | ⚪ Sin empezar | **Bloquea a KR-3.** Ver arriba. |
+| **KR-1** | **El dataset crudo, recuperado o regenerado** | 🟠 **A medias** | El **destino durable** ✅ hecho. El **dato** falta: cuesta ~$0.31 y **decide Juan**. Ver arriba. |
 | **KR-2** | **El informe legible, en el portal** | ⚪ Sin empezar | Diseño abierto (ver abajo). |
-| **KR-3** | **Las tres mejoras de calidad** | ⚪ Sin empezar | Depende de KR-1. Detalle en [Mejoras de calidad](#mejoras-de-calidad-del-research-priorizadas-con-los-datos-reales). |
+| **KR-3** | **Las tres mejoras de calidad** | 🟠 **Implementadas, sin calibrar** | ✅ Las tres en `kr-service` (2026-08-02). Dos cosas abiertas: los parámetros no están barridos contra datos reales (necesita KR-1), y **el orden nuevo no llega al portal** (ver abajo). |
 | **KR-4** | **El guion de dos niveles, escrito** | ⚪ Sin empezar | Qué se muestra, en qué orden, y dónde se corta si no hay interés técnico. |
+
+**KR-3 — lo que quedó abierto, y no es del pipeline.** El orden en dos niveles (evidencia primero,
+después `score_confidence`) gobierna **qué páginas existen** —el corte al backlog es irreversible y
+ocurre dentro de `kr-service`—, pero **no el orden en que las ve el cliente**: en cuanto el brief
+pasa por Postgres, `db/src/store.ts` (`getRunPages`, `getPublishablePages`) reordena por
+`opportunity_score` crudo (`store.ts:715,743`), y `portal/src/app/core/cartera.ts:37` vuelve a ordenar igual. O sea que la
+columna "Confianza" del dashboard **sigue sin ordenar nada en la demo**, que era justo el motivo de
+la mejora. Dos formas de cerrarlo:
+
+- **(a) Persistir el orden** — una columna en `kr_pages` escrita por el M2 y un `order by` que la
+  use. Cuesta una migración, y es la única que sobrevive a que alguien cambie la fórmula: el orden lo
+  decide quien tiene el contexto. **Es la recomendada.**
+- **(b) Duplicar la fórmula** en SQL y en el portal. Barato, y son **tres fuentes de verdad** del
+  mismo criterio desincronizándose sin que ningún test lo vea. Es el modo de fallo que este repo ya
+  conoce.
+
+Necesita `datos` (migración + `store.ts`) y después `front` (`cartera.ts`), con el contrato fijado
+antes. Encaja natural con la **etapa B** del [plan de agentes](../../.claude/PLAN-AGENTES.md).
 
 **KR-2 — la decisión técnica que hay que tomar antes de escribir código.** `renderReport()` vive en
 `kr-service`, y `api/package.json` **hoy solo depende de `db`**. Tres caminos:
@@ -560,8 +585,12 @@ se guarda con el run.
 - **Esquema Zod duplicado** entre M2 y M1: dos fuentes de verdad del contrato.
 - **Sin tests de integración**: el camino live se ejecutó a mano contra DataForSEO, OpenAI y
   Storyblok, pero no está automatizado.
-- **Calidad del research**: `is_local` se dispara de más (53 de 60 keywords) y `score_confidence` se
-  calcula pero **no se usa** para priorizar. Detalle en la tabla de mejoras, más abajo.
+- **Calidad del research**: las tres mejoras están implementadas (2026-08-02) pero **sin calibrar
+  contra datos reales** — `VOLUMEN_PERCENTIL_TOPE = 0.9` y `PESO_CONFIANZA_ORDEN = 0.5` son
+  defendibles por construcción, no barridos como sí lo está `CLUSTER_SIM_THRESHOLD_DEFAULT = 0.75`.
+  Barrerlos es **gratis en cuanto exista el dataset** (KR-1). Y `TIPOS_MAP_PACK` (`local_pack`,
+  `map`) **no está verificado contra la API real**: si estuviera mal, `is_local` saldría `false` para
+  todo — falla hacia el lado conservador, pero KR-3 no estaría arreglando nada.
 
 ### ⚪ 5. Lo que ni siquiera empezó
 
@@ -605,7 +634,7 @@ reales, no solo contra tests.
 | **Métricas ausentes ya no mienten** | `volumen`/`dificultad` son nullable; el informe muestra `n/d`. Contrato `kr.v0.4`. |
 | **Dedupe canónico antes de pagar** | Los duplicados de casing ya no se le facturan a DataForSEO. |
 | **Clustering recalibrado (0.55 → 0.75)** | Con datos reales: 3 páginas → **8 páginas**. |
-| **Dataset crudo persistido** | `out/keywords.json` → ajustar scoring/clustering es gratis, sin pagar otra corrida. |
+| **Dataset crudo persistido** | Ajustar scoring/clustering es gratis, sin pagar otra corrida. *(El destino era `out/`, gitignoreado, y el dataset se perdió; desde el 2026-08-02 va a `datasets/`.)* |
 | **Tope de gasto en el CLI** | `MAX_COST_USD=1.00 npm run spike` aborta antes de gastar. |
 
 ### Fase 2-3 — Plataforma
@@ -625,14 +654,15 @@ reales, no solo contra tests.
 
 ### Mejoras de calidad del research (priorizadas con los datos reales)
 
-**Las tres primeras son pre-demo** desde el 2026-08-01 (ver [§2.b](#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01)); las dos últimas quedan fuera. Todas
-dependen de **KR-1**: sin el dataset crudo no hay contra qué calibrarlas.
+**Las tres primeras eran pre-demo** desde el 2026-08-01 y están **implementadas el 2026-08-02**; las
+dos últimas quedan fuera. Lo que **sigue dependiendo de KR-1** no es implementarlas sino
+**calibrarlas**: sin el dataset crudo, los parámetros nuevos son juicio y no medición.
 
-| Mejora | ¿Pre-demo? | Evidencia de la corrida real |
+| Mejora | Estado | Qué la motivó, y qué quedó |
 |---|---|---|
-| **`is_local` por señales del SERP** (presencia de *map pack*) en vez de inferirlo por LLM | 🟠 **Sí** | **53 de 60** keywords salieron `is_local` → 7 de 8 páginas como `LocalBusiness`. Algunas deberían ser `Article`. Es el que más ensucia el JSON-LD, y en la demo se ve. |
-| **Usar `score_confidence` al ordenar páginas** | 🟠 **Sí** | 5 de 8 páginas no tienen volumen. El 40% del score (intención + relevancia) no depende de datos de mercado, así que una keyword de la que no sabemos nada arranca en ~50 puntos. La confianza lo detecta (0.3) pero **no ordena nada** — y el dashboard **ya la muestra** como columna "Confianza": exhibir una confianza que no hace nada invita a la pregunta *"¿y entonces qué hago con esto?"* justo en la demo. |
-| **Normalizar el volumen por percentiles del mercado** en vez del máximo del run; winsorizar outliers | 🟠 **Sí** | Con un solo pico (1300) el resto se aplasta, y eso cambia **qué páginas parecen valiosas** en el brief que se enseña. |
+| **`is_local` por señales del SERP** (presencia de *map pack*) en vez de inferirlo por LLM | ✅ **Hecho** — `pipeline/local-signal.ts` | **53 de 60** keywords salieron `is_local` → 7 de 8 páginas como `LocalBusiness`. Ahora el map pack pisa la conjetura del LLM, pero **solo cuando se observó** (`mapPack: null` respeta al LLM: tratar "no observado" como "no local" sería el mismo error que `volumen ?? 0`), y solo en las ~15 cabezas cuyo SERP se paga. **Falta:** verificar `TIPOS_MAP_PACK` contra la API real (~$0.003). |
+| **Usar `score_confidence` al ordenar páginas** | 🟠 **Hecho en `kr-service`; no llega al portal** | 5 de 8 páginas no tienen volumen, y el 40% del score no depende de datos de mercado. Ahora el orden es en dos niveles: evidencia, y dentro de cada grupo `score × (1 − P + P·confianza)` con `PESO_CONFIANZA_ORDEN = 0.5`. **El corte al backlog sí se arregla** (es irreversible y ocurre en el pipeline); **el orden de presentación no**: lo pisan `db` y el portal. Ver §2.b. |
+| **Normalizar el volumen por percentiles del mercado** en vez del máximo del run; winsorizar outliers | 🟠 **Hecho a medias, a propósito** | Con un solo pico (1300) el resto se aplasta. Ahora el tope es el **percentil 90 del run** (`VOLUMEN_PERCENTIL_TOPE`) y todo lo que lo supera satura: eso arregla el aplastamiento. Lo que **no** se hizo es "del mercado": la escala sigue siendo relativa a cada corrida, así que los scores no son comparables entre runs. Una distribución cruzada necesita el dataset (KR-1). |
 | **Estrategia hub & spoke** en el mapeo cluster→página | ⚪ No | Hoy todo es `single`. |
 | **Enlazado interno** entre las páginas propuestas | ⚪ No | Hoy `enlazado_interno` sale vacío. |
 
@@ -644,10 +674,11 @@ dependen de **KR-1**: sin el dataset crudo no hay contra qué calibrarlas.
 |---|---|---|
 | **El secreto legacy de Supabase sigue vivo, y no se puede revocar sin migrar antes el portal** | Supabase (Project Settings → API) · `portal/src/environments/environment.prod.ts` | Con ese secreto se puede acuñar un token `service_role` que **bypassea RLS por completo** — el radio de daño no depende de que nuestra API ya no lo acepte. Pero **no se puede revocar sin más**: el `anon key` del portal es un JWT legacy firmado con él (`alg: HS256`, verificado), así que revocarlo rompe el login. Hay que migrar el portal a las claves nuevas (*publishable*), desplegar, verificar, y recién ahí revocar. Ver [12-credenciales.md](12-credenciales.md). |
 | **Esquema Zod duplicado** entre M2 y M1 | `kr-service/src/validation/` y `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. Extraer a paquete compartido. |
-| **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos están verificadas** ✅, pero las estimaciones por fase **siguen a ojo**. Se calibran con `out/keywords.json` — **que hoy no está** (ver KR-1 en §2.b): la promesa de "calibrar es gratis" depende de recuperar o regenerar ese dataset. |
-| **🔴 El dataset crudo del research no sobrevive** | `out/keywords.json` (gitignoreado) | La tanda 4 lo persistió para que *"ajustar scoring/clustering sea offline y gratis"*, pero vive en un directorio que git ignora y **no está en el clon actual**. Bloquea las tres mejoras de calidad pre-demo (§2.b) y la calibración del presupuesto. Hay que decidir dónde se guarda para que dure. |
+| **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos están verificadas** ✅, pero las estimaciones por fase **siguen a ojo**. Se calibran con `datasets/keywords.json` — **que hoy no está** (ver KR-1 en §2.b): la promesa de "calibrar es gratis" depende de regenerar ese dataset. |
+| **🟠 El dataset crudo del research no existe** | `datasets/keywords.json` | ✅ **El destino ya es durable** (versionado, con un test que se lo pregunta a `git check-ignore`). Lo que falta es **el dato**: el de la corrida del 2026-07-30 se perdió en `out/` y regenerarlo cuesta ~$0.31 en producción. Bloquea la **calibración** de las tres mejoras de calidad (§2.b) y la del presupuesto — ya no su implementación. |
+| **El orden del pipeline no sobrevive a la persistencia** | `db/src/store.ts:715,743` · `portal/src/app/core/cartera.ts:37` | `kr-service` ordena por evidencia y confianza; la base y el portal reordenan por `opportunity_score` crudo. La columna "Confianza" del dashboard sigue sin ordenar nada. Detalle y las dos salidas, en §2.b. |
 | **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son 2-3× más baratos. **Pero la corrida real bajó la urgencia**: el LLM es solo el **19%** del costo, así que el ahorro total sería de ~10%. Ver [guía 02](../acciones/02-precios-modelos.md). |
-| **`is_local` se dispara de más** | `pipeline/enrich-content.ts` | 53 de 60 keywords → casi todo sale `LocalBusiness`. Ensucia el JSON-LD. |
+| **`is_local` sigue siendo conjetura fuera de las cabezas observadas** | `pipeline/enrich-content.ts` (LLM) · `pipeline/intent.ts` (heurística) · `pipeline/local-signal.ts` | ✅ Desde el 2026-08-02 el **map pack** del SERP corrige `is_local`, pero **solo en las ~15 cabezas** cuyo SERP se paga (`serpValidateTop`). Para las otras ~45 keywords sigue decidiendo el LLM o la heurística, que sobre-detecta (53 de 60 en la corrida real). Pesa menos de lo que pesaba —es la **cabeza** la que fija el `schema_type`—, pero el dataset crudo conserva `is_local` sin validar en la mayoría de sus filas. ⚠️ **Y las páginas no están cubiertas del todo:** `max_pages` vale 25 por defecto y `serpValidateTop` 15, y como el mapeo reordena por evidencia, un cluster de la posición ≥16 con datos de mercado puede subir a página **con la cabeza sin observar**. Con 8 páginas no muerde; con más clusters compitiendo, sí. |
 | **Sin tests de integración** | — | El camino live ya **se ejecutó a mano** contra DataForSEO, OpenAI y Storyblok, pero no está **automatizado**. |
 | **Una rotación de Supabase a otro algoritmo daría 401, no 503** | `api/src/auth.ts` (`CODIGOS_DE_TOKEN`) | `ERR_JOSE_ALG_NOT_ALLOWED` es un código de token, así que si el proyecto pasara a RS256 todos los logins fallarían **y quemarían refresh tokens**. Hoy el JWKS sirve una sola clave ES256 (verificado). Si Supabase anuncia un cambio de algoritmo, hay que tocar `algorithms` antes, no después. |
 | **Durante una caída del JWKS, cada request paga el timeout de 5 s antes de su 503** | `api/src/auth.ts` (`jwksDeSupabase`, vía `crearDeps`) | El caché vence a los 10 minutos y `_local` solo se reemplaza cuando el fetch tiene éxito, así que cada petición secuencial reintenta. Falla cerrado y es correcto, pero se lee como un cuelgue. Si molesta, el lugar para afinar `timeoutDuration`/`cacheMaxAge` es `crearDeps` — con una medición, no a ojo. |

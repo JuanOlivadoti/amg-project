@@ -5,7 +5,7 @@ import type { CostBreakdown } from "../lib/cost.js";
 import type { DataQuality, KeywordResearchBrief, Market, ProposedPage } from "../types.js";
 
 export function assembleBrief(args: {
-  /** Compartidos con el dataset crudo (`out/keywords.json`) para poder cruzarlos. */
+  /** Compartidos con el dataset crudo (`datasets/keywords.json`) para poder cruzarlos. */
   runId: string;
   generatedAt: string;
   cliente: string;
