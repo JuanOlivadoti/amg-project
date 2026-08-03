@@ -53,6 +53,15 @@ detector de rutas; hoy no hay ninguno en el repo, así que no cuesta nada). Cada
 **cada test cae exactamente al quitar su regla** — comprobado con las dos mutaciones. El CLI, con el
 caso real por stdin, sale con 1 y nombra el motivo.
 
+**El frontmatter del `revisor`, en formato array — y lo que NO pude verificar.** `tools: Read, Grep,
+…` (CSV) pasó a `tools: ["Read", "Grep", "Glob", "Bash", "Write"]`, que es lo que exige el schema de
+skill-map y lo que usan **nueve** de los agentes globales de `~/.claude/agents/`, todos cargados en
+esta sesión con sus tools correctas. Pero **el registro de agentes se carga al arrancar**, así que el
+cambio no se pudo probar en vivo: la evidencia es que el mismo runtime, ahora mismo, tiene nueve
+agentes andando con ese formato. **En la próxima sesión, confirmar que `revisor` sigue apareciendo con
+sus cinco tools** — son su límite de seguridad: sin `Edit`, no puede editar código, que es toda la
+razón de que declare `tools`.
+
 **Dos avisos de skill-map que quedan, y son deliberados.** 17 warnings de `extractor-collision` (el
 patrón ``[`ruta`](ruta)``, donde gana el enlace y se registra bien: inocuo) y 5 info de
 `reference-redundant`, de los cuales 2 **no se pueden silenciar**: el `dismiss` de esa clase no
