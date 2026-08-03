@@ -1,0 +1,12 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Unidad de medida en prosa, no una invocación: el extractor de slash-commands lee el separador de la unidad como si fuera un comando.'
+      value: /mes
+    - analyzer: reference-broken
+      note: 'Aparece dentro del árbol ASCII de la estructura de docs/, donde el nombre a secas es lo correcto: poner la ruta completa rompería el dibujo del árbol.'
+      value: docs/proyecto/decisiones-arquitectura.md
+identity:
+  bodyHash: 87ed8a238ca695890f3a1c1beff8c9a3c6d03e7e5d1350baef1f30ad9faeece4
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/proyecto/03-stack.md

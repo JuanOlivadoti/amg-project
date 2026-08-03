@@ -126,7 +126,7 @@ pegar credenciales y hacer click).
 ### C. El deploy — **juntos, en este orden**
 
 > **Para ejecutar paso a paso, con comandos copiables y verificación en cada punto, seguí el
-> [runbook (13-runbook-despliegue.md)](13-runbook-despliegue.md).** Lo de abajo es el resumen.
+> [runbook (13-runbook-despliegue.md)](14-runbook-despliegue.md).** Lo de abajo es el resumen.
 
 1. **Base:** aplicar las migraciones contra Supabase (`DATABASE_URL_ADMIN=… npm run migrate:deploy -w db`).
    Crean el esquema, los roles **sin contraseña** y la RLS.

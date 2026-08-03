@@ -155,8 +155,8 @@ propuesta comercial.
 
 | Rol | Archivo |
 |---|---|
-| **Diseño canónico** (fuente de verdad) | [`../modulo-2-esquema/types.ts`](../modulo-2-esquema/types.ts) y [`schema.sql`](../modulo-2-esquema/schema.sql) |
-| Ejemplo lleno | [`../modulo-2-esquema/ejemplo-brief.json`](../modulo-2-esquema/ejemplo-brief.json) |
+| **Diseño canónico** (fuente de verdad) | [`../historia/modulo-2-esquema/types.ts`](../historia/modulo-2-esquema/types.ts) y [`schema.sql`](../historia/modulo-2-esquema/schema.sql) |
+| Ejemplo lleno | [`../modulo-2-esquema/ejemplo-brief.json`](../historia/modulo-2-esquema/ejemplo-brief.json) |
 | Tipos de implementación (M2) | `kr-service/src/types.ts` |
 | **Validación de salida** (M2) | `kr-service/src/validation/brief.schema.ts` (Zod) |
 | Tipos de consumo (M1) | `web-builder/src/types.ts` |

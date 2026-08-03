@@ -5,7 +5,7 @@
 > producto: quien lo va a ejecutar trabaja en `.claude/`.
 >
 > **Qué NO es.** No es un roadmap. Cuando este documento y
-> [`09-estado-y-roadmap.md`](../docs/proyecto/09-estado-y-roadmap.md) se contradigan sobre el estado
+> [`docs/proyecto/09-estado-y-roadmap.md`](../docs/proyecto/09-estado-y-roadmap.md) se contradigan sobre el estado
 > del proyecto, **gana el `09`**. Acá solo se decide el orden y el contenido de estas tres piezas.
 >
 > Escrito el 2026-08-02, después de que el agente `front` y el `revisor` quedaran cerrados.
@@ -50,7 +50,7 @@ Un agente de área **no** declara `tools` (hereda todas) ni `model` (hereda el d
 selección manual del usuario manda sobre la plantilla). El `revisor` sí declara `tools` porque su
 límite —no editar— es parte de su definición.
 
-Las secciones de `front.md` que conviene replicar, porque cada una nació de un problema real:
+Las secciones de `agents/front.md` que conviene replicar, porque cada una nació de un problema real:
 
 1. **Tu ámbito, y dónde se corta** — qué hacer cuando el trabajo necesita un cambio en otra área
    (terminar lo propio y devolver el control diciendo qué falta afuera).

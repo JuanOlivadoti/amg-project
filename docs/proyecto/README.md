@@ -17,7 +17,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 > [`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app), leyendo
 > de Supabase con el rol más pobre del sistema. Las **10** migraciones están aplicadas en producción.
 > Procedimiento y tropiezos en el
-> [runbook § desplegar el renderizador](13-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
+> [runbook § desplegar el renderizador](14-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
 >
 > ⚠️ **Falta el orquestador** (la última pieza de Fase 2 sin desplegar), el **dominio propio del
 > cliente** —el plan de Railway está en su límite de custom domains— y una **CDN delante** del
@@ -40,14 +40,11 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 | 7 | [Configuración y entornos](07-configuracion.md) | Variables de entorno, modos mock/live, manejo de secretos. |
 | 8 | [Testing y calidad](08-testing-calidad.md) | Suite de tests, typecheck, la review externa y qué se corrigió. |
 | 9 | 🧭 [**Estado y roadmap**](09-estado-y-roadmap.md) | **Empezá por acá si retomás.** Qué funciona hoy, qué queda por delante (ordenado por lo que bloquea), deudas y riesgos abiertos. |
-| 10 | ✅ [Acciones del lado del usuario](10-acciones-pendientes.md) | Lo que **solo Juan podía hacer** (keys, saldo, cuentas, alcance). **Las cinco están cerradas**; queda como registro de qué desbloqueó cada una. |
+| ~~10~~ | ✅ [Acciones del lado del usuario](../historia/10-acciones-pendientes.md) | Lo que **solo Juan podía hacer** (keys, saldo, cuentas, alcance). **Las seis están cerradas**, así que el documento se archivó en [`../historia/`](../historia/); queda como registro de qué desbloqueó cada una. El número 10 queda libre a propósito: renumerar el 11 rompería demasiados enlaces entrantes. |
 | 11 | 🧭 [**Plan de la Fase 2**](11-plan-fase-2.md) | **Empezá por acá si retomás.** De dónde venimos, en qué punto exacto estamos, qué falta y en qué orden. |
 | 12 | [Credenciales y roles](12-credenciales.md) | Los cuatro logins de Postgres, qué puede cada uno y **qué NO puede**. Cómo se reparten los secretos. |
-| 12 | [Despliegue de la Fase 1](12-despliegue-fase-1.md) | La decisión de dónde se hostea cada pieza y por qué. |
-| 13 | [**Runbook de despliegue**](13-runbook-despliegue.md) | El paso a paso real, con los tropiezos que hubo. Incluye cómo actualizar una instalación ya viva. |
-
-> ⚠️ Dos documentos comparten el prefijo `12` (credenciales y despliegue de Fase 1). Es deuda de
-> nombres, no de contenido: renombrar rompería los links entrantes, que son muchos.
+| 13 | [Despliegue de la Fase 1](13-despliegue-fase-1.md) | La decisión de dónde se hostea cada pieza y por qué. |
+| 14 | [**Runbook de despliegue**](14-runbook-despliegue.md) | El paso a paso real, con los tropiezos que hubo. Incluye cómo actualizar una instalación ya viva. |
 
 ## Contexto adicional
 
@@ -57,6 +54,11 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
   mezclarlas fue lo que infló el `09` a 930 líneas. Lo que se está haciendo ahora mismo, en
   [`../../progress/current.md`](../../progress/current.md).
 
-- **Decisiones de arquitectura (ADR-01..23 + OBS-01..04):** [`../decisiones-arquitectura.md`](../decisiones-arquitectura.md) — el *porqué* de cada elección técnica, con las alternativas descartadas **y las decisiones que hubo que corregir**. Esta documentación las referencia constantemente. 🔴 **OBS-04 está abierta** (2026-08-01): quién edita la web no lo gobierna nuestro RBAC.
-- **Producto:** [`../contexto-proyecto-frank.md`](../contexto-proyecto-frank.md) y [`../A_PRD_AMG_Madrid_v1_Ilustrado.md`](../A_PRD_AMG_Madrid_v1_Ilustrado.md).
+- **Decisiones de arquitectura (ADR-01..24 + OBS-01..04):** [`../decisiones-arquitectura.md`](../decisiones-arquitectura.md) — el *porqué* de cada elección técnica, con las alternativas descartadas **y las decisiones que hubo que corregir**. Esta documentación las referencia constantemente. 🔴 **OBS-04 está abierta** (2026-08-01): quién edita la web no lo gobierna nuestro RBAC.
+- **Diseños y planes:** [`../superpowers/`](../superpowers/) — lo que todavía no está construido está
+  en `plans/` y `specs/`; lo que ya aterrizó, en `ejecutados/`. El índice distingue una cosa de la otra.
+
+- **Material de origen e historia cerrada:** [`../historia/`](../historia/) — el PRD y el contexto con
+  los que se propuso el proyecto, las seis acciones ya cerradas, y los documentos del Módulo 2 previos
+  a construirlo. Se conserva porque explica **por qué** el sistema es así; **no describe cómo es hoy**.
 - **READMEs de código:** [`kr-service`](../../kr-service/README.md) · [`web-builder`](../../web-builder/README.md) · [`api`](../../api/README.md) · [`renderer`](../../renderer/README.md) · [`portal`](../../portal/README.md) — cómo correr cada pieza.

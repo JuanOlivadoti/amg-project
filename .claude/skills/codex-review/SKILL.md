@@ -42,9 +42,20 @@ git log --oneline -20                      # de dónde a dónde va la etapa
 git diff --stat <base>..HEAD               # tamaño real del cambio
 ```
 
-Cruzá el rango con `docs/proyecto/09-estado-y-roadmap.md` para nombrar la etapa, y con la última
-tanda de `docs/proyecto/08-testing-calidad.md` para saber **qué ya se revisó** (va al prompt como
-"no repitas esto"). Si el trabajo está sin commitear, el alcance es el working tree y se dice así.
+Tres fuentes, y cada una contesta algo distinto:
+
+- **Qué pasó en esta etapa y por qué** → `progress/current.md` si la etapa está viva, o su entrada en
+  `progress/history.md` si ya se cerró. De acá sale `<estado_de_la_iteracion>` casi entero.
+- **Cómo se llama la etapa, y qué falta** → `docs/proyecto/09-estado-y-roadmap.md`.
+- **Qué ya se revisó** → la última tanda de `docs/proyecto/08-testing-calidad.md`. Va al prompt como
+  "no repitas esto".
+
+Si hubo subagentes, sus informes están en `progress/informes/` y dicen **qué verificaron y qué
+dejaron sin verificar**; lo segundo es el mejor material para elegir los ángulos. Pero son
+afirmaciones del autor, no hechos: al prompt entran como algo a auditar, nunca como contexto ya
+validado.
+
+Si el trabajo está sin commitear, el alcance es el working tree y se dice así.
 
 Para revisión de plan, el alcance son rutas de documentos, no commits: el spec o plan en
 `docs/superpowers/`, el ADR relevante y `docs/proyecto/11-plan-fase-2.md`.
@@ -64,10 +75,21 @@ Transcribí la plantilla de abajo **entera**, rellenando los `<…>`. Las seccio
 **literales**: no las resumas ni las reescribas "porque se entiende igual". Lo que se recorta es lo
 que Codex ignora.
 
+Los cuatro campos de `<estado_de_la_iteracion>` se **copian** de las fuentes del paso 1
+(`progress/current.md` o la entrada de `progress/history.md`, y el `08` para las rondas
+previas). No se escriben de memoria: lo que se olvida al reconstruirlo es justo la decisión que se
+tomó a las dos horas, y entonces Codex la reporta como hallazgo.
+
 ### 4. Procesar la vuelta
 
-El usuario pega el reporte de Codex. Antes de tocar una línea de código, aplicar la clasificación de
-la sección "Qué hacer con los hallazgos", más abajo.
+El usuario pega el reporte de Codex. **Guardalo primero en
+`progress/informes/codex-<tema>.md`** —tal cual llegó, sin resumir— y trabajá contra el archivo. Es
+la misma regla que gobierna a los subagentes en [AGENTS.md](../../../AGENTS.md): un informe que se
+recuenta se degrada, y este ya viene recontado una vez (Codex → el usuario → acá). La clasificación
+de cada hallazgo se escribe **en ese mismo archivo**, debajo del reporte; al chat va el resumen.
+
+Recién entonces, y antes de tocar una línea de código, aplicar la clasificación de la sección "Qué
+hacer con los hallazgos", más abajo.
 
 ---
 
@@ -110,7 +132,7 @@ workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`
 (Postgres real en WASM). Nombres de dominio en español.
 
 Leé primero, en este orden: `AGENTS.md` (los invariantes), `docs/decisiones-arquitectura.md`
-(ADR-01..23) y `docs/proyecto/09-estado-y-roadmap.md` (qué hay y qué falta).
+(ADR-01..24) y `docs/proyecto/09-estado-y-roadmap.md` (qué hay y qué falta).
 </contexto_proyecto>
 
 <alcance>
@@ -268,14 +290,23 @@ Con los hallazgos clasificados y el OK del usuario, el trabajo vuelve al ritual 
    reintroducí el bug y confirmá que cae *exactamente* ese test.
 2. `npm test` y `npm run typecheck` en verde, con el output a la vista. Si tocó portal o
    renderizador, además manejá la app en el navegador.
-3. **Documentar la ronda**: entrada nueva en `docs/proyecto/08-testing-calidad.md` con el número de
-   ronda y de tanda, qué encontró, qué se corrigió y qué se refutó; actualizar
-   `09-estado-y-roadmap.md` y `11-plan-fase-2.md`; y el ADR correspondiente si una decisión cambió o
-   si una promesa vieja recién ahora se cumple. Sincronizar las cifras de tests donde aparezcan.
+3. **Documentar la ronda**, en los cuatro lugares que dice el reparto de `AGENTS.md`:
+   - `docs/proyecto/08-testing-calidad.md` — entrada nueva con el número de ronda y de tanda, qué
+     encontró, qué se corrigió y qué se refutó. Es la contabilidad de rondas: vive acá, no en la
+     bitácora.
+   - `progress/history.md` — la ronda dentro de la entrada del día: **por qué** la etapa terminó como
+     terminó. Si la review cambió el rumbo, eso se cuenta acá.
+   - `progress/current.md` — si la etapa queda cerrada, el resumen se mueve a
+     `progress/history.md` y este archivo vuelve a su plantilla. Si quedaron hallazgos abiertos,
+     quedan acá y no en el chat.
+   - `docs/proyecto/09-estado-y-roadmap.md` y `docs/proyecto/11-plan-fase-2.md`, más el ADR
+     correspondiente si una decisión cambió o si una promesa vieja recién ahora se cumple.
+     Sincronizar las cifras de tests donde aparezcan.
 4. Commit + push.
 
-Si Codex aprobó sin hallazgos, igual queda registro: una línea en `08-testing-calidad.md` diciendo
-qué se revisó y que salió limpio. Una ronda sin rastro es una ronda que se va a repetir.
+Si Codex aprobó sin hallazgos, igual queda registro: una línea en
+`docs/proyecto/08-testing-calidad.md` diciendo qué se revisó y que salió limpio. Una ronda sin
+rastro es una ronda que se va a repetir.
 
 ## Errores frecuentes
 
@@ -285,6 +316,7 @@ qué se revisó y que salió limpio. Una ronda sin rastro es una ronda que se va
 | Pedir revisión y arreglo en la misma corrida | Mezclar trabajos degrada los dos. Una corrida, un trabajo: revisar |
 | Mandar el alcance sin las rondas previas | Codex vuelve a reportar lo mismo de la ronda anterior y la señal se pierde en el ruido |
 | Pegarle al usuario el output de Codex tal cual | El output de Codex es entrada, no conclusión. Se procesa antes de mostrarlo |
+| Procesar el reporte solo en el chat, sin guardarlo | Al tercer hallazgo se está clasificando contra el recuerdo del reporte, no contra el reporte. Va a `progress/informes/codex-<tema>.md` antes de tocar nada |
 | Armar Claude el prompt de re-entrada "para ahorrar un paso" | Lo tiene que armar quien conoce el review recién hecho. Si Codex lo omitió, pedírselo |
 | Dar la ronda por cerrada sin documentarla | La contabilidad de rondas y tandas es lo que hace que el historial sirva |
 

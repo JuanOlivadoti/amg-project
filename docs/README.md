@@ -1,44 +1,74 @@
 # Documentación — AMG OS
 
-Toda la documentación de producto, arquitectura y diseño de los módulos.
-El código vive en [`../kr-service/`](../kr-service/) (Módulo 2) y [`../web-builder/`](../web-builder/) (Módulo 1);
-cada uno tiene su propio `README.md`. La portada del repo es [`../README.md`](../README.md).
+El código vive en [`../kr-service/`](../kr-service/) (Módulo 2) y [`../web-builder/`](../web-builder/)
+(Módulo 1); cada paquete tiene su propio README. La portada del repo es
+[`../README.md`](../README.md).
 
-## ✅ ¿Qué tenés que hacer vos? → [**docs/acciones/**](acciones/)
+## Las cuatro carpetas, y qué pregunta contesta cada una
 
-Guías **paso a paso** de las 5 cosas que solo vos podés hacer (rotar la key de OpenAI, confirmar
-precios, correr el research en producción, crear el space de Storyblok, unificar el alcance).
-**El código está al día: el proyecto está bloqueado en estas acciones.**
+| Carpeta | Contesta | ¿Describe el sistema de hoy? |
+| --- | --- | --- |
+| 📘 [`proyecto/`](proyecto/) | **Cómo es y en qué estado está.** Visión, arquitectura, stack, los dos módulos, el contrato de handoff, configuración, testing, estado y despliegue | **Sí.** Es la documentación viva |
+| 🧭 [`superpowers/`](superpowers/) | **Qué se va a construir y cómo se construyó.** Diseños (`specs/`), planes (`plans/`) y los ya ejecutados (`ejecutados/`) | Solo los vivos. `ejecutados/` es registro |
+| 📦 [`historia/`](historia/) | **Por qué el proyecto es así.** El PRD y el contexto de origen, las acciones ya cerradas, el diseño del Módulo 2 previo a construirlo | **No.** Se conserva por el *por qué* |
+| 🔒 `private/` | Credenciales y notas que no se versionan | — |
 
-## 📘 Empezá acá: [Documentación técnica del proyecto](proyecto/)
+**Empezá por [`proyecto/`](proyecto/)**, y dentro de esa carpeta por
+[**09 — Estado y roadmap**](proyecto/09-estado-y-roadmap.md), que dice dónde estamos y qué falta.
 
-[`proyecto/`](proyecto/) es la **documentación completa y actualizada** del sistema: visión,
-arquitectura, stack, los dos módulos en detalle, el contrato de handoff, configuración, testing
-y roadmap. Refleja el código real, no un diseño aspiracional.
+## Documentos sueltos de esta carpeta
 
-## Contexto y producto
 | Documento | Qué es |
-|---|---|
-| [contexto-proyecto-frank.md](contexto-proyecto-frank.md) | Contexto original: cliente, participantes, módulos, criterios comerciales. |
-| [A_PRD_AMG_Madrid_v1_Ilustrado.md](A_PRD_AMG_Madrid_v1_Ilustrado.md) | PRD v1.0 de AMG OS: problema, visión TO-BE, agentes, RBAC, roadmap por fases. |
-| [A_PRD_AMG_Madrid_v1_Ilustrado (1).pdf](A_PRD_AMG_Madrid_v1_Ilustrado%20(1).pdf) | El PRD en PDF ilustrado. |
+| --- | --- |
+| [decisiones-arquitectura.md](decisiones-arquitectura.md) | **El registro de decisiones: ADR-01..24 + OBS-01..04.** El *porqué* de cada elección, con las alternativas descartadas y las decisiones que hubo que corregir. El resto de la documentación lo referencia constantemente. 🔴 **OBS-04 sigue abierta**: quién edita la web no lo gobierna nuestro RBAC |
+| [guia-dataforseo.md](guia-dataforseo.md) | Alta y uso de DataForSEO, de sandbox a producción. Cada corrida en producción se paga |
 
-## Decisiones (leer antes de construir)
-| Documento | Qué es |
-|---|---|
-| [decisiones-arquitectura.md](decisiones-arquitectura.md) | **Registro de decisiones (ADR-01..11):** stack, orquestación (Inngest), CMS (Storyblok), motor (DataForSEO), ES-first, LLM abstracto, offboarding, etc. |
+## Cómo referenciar entre documentos
 
-## Módulo 2 — Keyword Research
-| Documento | Qué es |
-|---|---|
-| [modulo-2-keyword-research.md](modulo-2-keyword-research.md) | Alcance del módulo (propósito, flujo, argumento comercial). |
-| [modulo-2-keyword-research-plan.md](modulo-2-keyword-research-plan.md) | Plan técnico: arquitectura, modelo de datos, pipeline, scoring, costos, roadmap. |
-| [modulo-2-esquema/schema.sql](modulo-2-esquema/schema.sql) | Esquema tipo v0.2 — DDL Postgres/Supabase (ES-first, market-aware). |
-| [modulo-2-esquema/types.ts](modulo-2-esquema/types.ts) | Esquema tipo v0.2 — tipos TypeScript (fuente de diseño de `kr-service/src/types.ts`). |
-| [modulo-2-esquema/ejemplo-brief.json](modulo-2-esquema/ejemplo-brief.json) | Ejemplo lleno del brief de salida. |
-| [guia-dataforseo.md](guia-dataforseo.md) | Instructivo de alta y uso de DataForSEO (sandbox → producción). |
+El repo tiene un grafo de referencias (skill-map) que valida los enlaces en cada scan. Tres reglas
+mantienen ese grafo limpio, y las tres salen de errores que ya cometimos:
 
-## Módulo 1 — Creador de Webs
-El diseño está en la [ADR-04](decisiones-arquitectura.md) (Storyblok headless, AI-search-first)
-y la [ADR-11](decisiones-arquitectura.md) (offboarding). El detalle de implementación de la PoC
-(handoff, prose, Storyblok) vive en el README del módulo: [`../web-builder/README.md`](../web-builder/README.md).
+**1. Un enlace se escribe como enlace markdown, con ruta relativa al documento.** Así se navega y así
+se valida:
+
+```text
+[Estado y roadmap](proyecto/09-estado-y-roadmap.md)
+```
+
+**2. Un nombre de archivo en un span de código lleva su ruta completa desde la raíz del repo.** Un
+nombre suelto se resuelve **contra la carpeta del documento que lo menciona**, así que el segundo
+ejemplo, escrito en este archivo, se busca dentro de esta misma carpeta y no existe:
+
+```text
+`docs/proyecto/09-estado-y-roadmap.md`     ✔  resuelve
+`09-estado-y-roadmap.md`                   ✘  se busca en docs/ y no está
+```
+
+Es la trampa que más veces se repitió: la misma línea escrita en un documento resuelve y en otro no.
+
+**3. Lo que no es una referencia, no se escribe como ruta.** Un artefacto que genera el pipeline, un
+nombre de ejemplo o una unidad de medida no son enlaces, y si quedan escritos como ruta el grafo los
+reporta rotos para siempre:
+
+```text
+out/informe.md      artefacto generado: nunca existe en disco para el scan
+€/mes               unidad de medida, leída como si fuera un slash-command
+```
+
+Cuando el texto correcto es igualmente ambiguo —un nombre dentro de un árbol de directorios ASCII, por
+ejemplo— se silencia ese caso puntual con `sm issues dismiss` **y su motivo**, que queda escrito en el
+`.sm` del documento. Sin el motivo, la supresión es un olvido en vez de una decisión.
+
+**Y un aviso que se puede ignorar:** un enlace cuyo texto visible es la misma ruta dispara una
+*colisión de extractores*. Es inocuo —gana el enlace y se registra bien— y hay decenas en el repo.
+
+**Un ejemplo de ruta no se puede esconder en un bloque de código.** Lo comprobamos acá mismo: los dos
+ejemplos "malos" de arriba están en un fence ```` ```text ```` y el scan **los persigue igual** —
+`out/informe.md` y el nombre sin carpeta siguen contando como referencias rotas de este documento. No
+hay forma de escribir un contraejemplo de ruta sin que el grafo lo reporte, así que **los dos están
+silenciados con `sm issues dismiss`**, con "es el contraejemplo de la convención" como motivo en
+[`README.sm`](README.sm).
+
+Es la única excepción sana a la regla 3: cuando el documento *tiene* que mostrar una ruta que no
+resuelve, se silencia con su motivo. Este archivo tardó tres intentos en aprenderlo — el primero
+rompía la regla que enseñaba, el segundo apostó a que un fence bastaba, y no bastó.

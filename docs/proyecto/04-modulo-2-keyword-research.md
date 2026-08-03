@@ -1,5 +1,12 @@
 # 4. Módulo 2 — Keyword Research (`kr-service`)
 
+> Este es **el estado real** del módulo: refleja el código, no el diseño. El razonamiento previo a
+> construirlo —modelo de datos propuesto, esquemas de output, riesgos, decisiones que estaban
+> abiertas— quedó en dos documentos de origen:
+> [el plan técnico](../historia/modulo-2-keyword-research-plan.md) y
+> [el alcance comercial](../historia/modulo-2-keyword-research.md). Cuando alguno contradiga a este,
+> gana este.
+
 ## Qué hace
 
 Recibe **un prompt de negocio en texto libre** y devuelve un **brief SEO estructurado**: qué

@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: Ruta del sitio público que genera el renderizador, no un slash-command del proyecto.
+      value: /research
+identity:
+  bodyHash: 1d02d5ba507fe3ab6b1acaf7acb89dd34491a88656f86ab04a2f9975cf805e5f
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/historia/10-acciones-pendientes.md

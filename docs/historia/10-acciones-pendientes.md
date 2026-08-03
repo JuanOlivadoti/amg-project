@@ -4,19 +4,19 @@ Cosas que **solo Juan podía hacer** — requerían cuentas, dinero o decisiones
 
 > ✅ **Ya no queda ninguna abierta.** Este documento se conserva como registro de **qué desbloqueó
 > cada una**, porque varias explican por qué el proyecto tomó el camino que tomó. Para el paso a paso
-> de cada una, ver [`docs/acciones/`](../acciones/).
+> de cada una, ver [`docs/acciones/`](acciones/).
 >
 > 👉 Si venís buscando *qué hacer ahora*, el lugar es
-> [09-estado-y-roadmap § Próximos pasos](09-estado-y-roadmap.md#próximos-pasos).
+> [09-estado-y-roadmap § Próximos pasos](../proyecto/09-estado-y-roadmap.md#próximos-pasos).
 
 | # | Acción | Cerrada | Costo real | Qué desbloqueó |
 |---|---|---|---|---|
-| **A** | [Rotar la API key de OpenAI](../acciones/01-rotar-key-openai.md) | 2026-07-13 | gratis | Dos keys separadas por servicio, con límite de gasto. Cierra el hallazgo #2 de la 1ª review. |
-| **B.1** | [Confirmar los precios de los modelos](../acciones/02-precios-modelos.md) | 2026-07-13 | gratis | Las tarifas dejan de ser aproximadas → **el costo por research es presentable**. |
-| **B.2** | [Research de prueba en producción](../acciones/03-research-produccion-dataforseo.md) | 2026-07-13 | ~$0.87 | El número real (**$0.31**/research) y **tres bugs que el sandbox ocultaba**. |
-| **C** | [Space de Storyblok](../acciones/04-storyblok-space.md) | 2026-07-13 | gratis | El camino live deja de ser dry-run: páginas **editables en el Visual Editor**. |
-| **D** | [Unificar el alcance (OBS-01)](../acciones/05-unificar-alcance.md) | 2026-07-19 | gratis | Alcance base = **3 módulos**; manda `contexto-proyecto-frank.md`; ADR-04 se mantiene. |
-| **E** | [Corrida final + republicar](../acciones/06-corrida-final-demo.md) | 2026-07-30 | $0.3097 | `kr.v0.5` en vivo para **La Birra Bar**, y la **duración real medida** por primera vez (16m15s). |
+| **A** | [Rotar la API key de OpenAI](acciones/01-rotar-key-openai.md) | 2026-07-13 | gratis | Dos keys separadas por servicio, con límite de gasto. Cierra el hallazgo #2 de la 1ª review. |
+| **B.1** | [Confirmar los precios de los modelos](acciones/02-precios-modelos.md) | 2026-07-13 | gratis | Las tarifas dejan de ser aproximadas → **el costo por research es presentable**. |
+| **B.2** | [Research de prueba en producción](acciones/03-research-produccion-dataforseo.md) | 2026-07-13 | ~$0.87 | El número real (**$0.31**/research) y **tres bugs que el sandbox ocultaba**. |
+| **C** | [Space de Storyblok](acciones/04-storyblok-space.md) | 2026-07-13 | gratis | El camino live deja de ser dry-run: páginas **editables en el Visual Editor**. |
+| **D** | [Unificar el alcance (OBS-01)](acciones/05-unificar-alcance.md) | 2026-07-19 | gratis | Alcance base = **3 módulos**; manda `contexto-proyecto-frank.md`; ADR-04 se mantiene. |
+| **E** | [Corrida final + republicar](acciones/06-corrida-final-demo.md) | 2026-07-30 | $0.3097 | `kr.v0.5` en vivo para **La Birra Bar**, y la **duración real medida** por primera vez (16m15s). |
 
 ---
 

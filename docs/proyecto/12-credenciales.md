@@ -129,7 +129,7 @@ como tal — no va al chat, ni a un commit, ni a un ticket.
 > **Regla general que se ganó dos veces en esta pieza:** una credencial no está muerta porque
 > nosotros dejemos de usarla. Está muerta cuando el emisor la revoca — y antes de revocarla hay que
 > saber **qué más cuelga de ella**. Acá colgaba el `anon key`; en Railway colgaba el arranque del
-> proceso viejo (ver [el runbook](13-runbook-despliegue.md), bloque de actualización).
+> proceso viejo (ver [el runbook](14-runbook-despliegue.md), bloque de actualización).
 
 ---
 
@@ -178,7 +178,7 @@ DATABASE_URL_RENDER=postgres://amg_render:...@host/db   # ← LA LEE EL CÓDIGO 
 > Visual Editor solo *casi* funciona) y **`PREVIEW_SECRET`** (sin ella no se sirven borradores, ni con
 > firma). Las dos se generaron con `openssl rand -hex 32` y viven en la fuente única.
 > Ver [`renderer/README.md`](../../renderer/README.md) y el
-> [runbook](13-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
+> [runbook](14-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
 >
 > ⚠️ **Hueco conocido del reparto:** `env:sync` **no** le pasa estas tres al `renderer/.env` — su
 > `.env.example` solo declara las de la demo local (tokens de Storyblok y `DEMO_DOMAIN`). En

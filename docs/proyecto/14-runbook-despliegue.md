@@ -1,7 +1,7 @@
 # Runbook de despliegue — Fase 1 (el portal de Frank)
 
 > **Qué es esto:** la versión "hacé esto, pegá aquello, verificá esto otro" del plan
-> ([12-despliegue-fase-1.md](12-despliegue-fase-1.md)). El plan dice el _qué_ y el _por qué_; esto es
+> ([12-despliegue-fase-1.md](13-despliegue-fase-1.md)). El plan dice el _qué_ y el _por qué_; esto es
 > el _cómo_, paso a paso, para ejecutar de una sentada. **Todo el código ya está listo** (Bloque A):
 > acá no se programa, se despliega.
 >

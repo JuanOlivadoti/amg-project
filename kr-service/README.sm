@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Artefacto generado, no un documento del repo: lo escribe el pipeline en out/, que está gitignoreado, así que nunca existe en disco para el scan.'
+      value: kr-service/informe.md
+identity:
+  bodyHash: d832525042fa328ad650488fc13125bdc6b0ac5fe6dd98598494fb43503bce4a
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: kr-service/README.md

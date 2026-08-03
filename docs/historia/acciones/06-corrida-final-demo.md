@@ -6,8 +6,8 @@ la agencia, así que **el caso de demo en el space de Storyblok ya no es "Bella 
 páginas de La Birra Bar, publicadas y verificadas en el navegador (contenido, marca y JSON-LD
 `LocalBusiness`/`Article`/`FAQPage` correctos, sin restos del perfil viejo). Detalle completo,
 incluida la duración medida y lo que implica para la pieza D, en
-[09-estado-y-roadmap.md](../proyecto/09-estado-y-roadmap.md#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás)
-y [11-plan-fase-2.md](../proyecto/11-plan-fase-2.md).
+[09-estado-y-roadmap.md](../../proyecto/09-estado-y-roadmap.md#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás)
+y [11-plan-fase-2.md](../../proyecto/11-plan-fase-2.md).
 
 ## ✅ El seed del portal ya refleja esta corrida (2026-08-01)
 
@@ -22,7 +22,7 @@ coste (`309700` micros = $0.3097). Un test ata el perfil del seed a
 publicadas acá. El brief del portal y la web dicen lo mismo, palabra por palabra. Lo único
 reconstruido son las **métricas** (volumen, dificultad, score), que vivían en `out/brief.json` y se
 perdieron con el directorio `out/` — respetan el split real 8/6 y se reemplazan cuando se regenere el
-dataset. Ver [09-estado-y-roadmap.md § la demo](../proyecto/09-estado-y-roadmap.md#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás).
+dataset. Ver [09-estado-y-roadmap.md § la demo](../../proyecto/09-estado-y-roadmap.md#-2-la-demo-con-frank--cuatro-piezas-la-a-ya-no-bloquea-a-las-demás).
 
 **Paso operativo:** re-sembrar producción (`npm run seed:demo -w db`) cada vez que cambie este brief.
 

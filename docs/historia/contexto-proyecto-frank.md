@@ -47,7 +47,7 @@ Agente que recibe un prompt y genera páginas en WordPress vía Elementor.
 - **Punto crítico a resolver:** confirmar si genera HTML plano o directamente el formato de datos propio de Elementor (JSON de widgets).
 
 > ⚠️ **Actualización (2026-07-19).** Esto ya no describe lo que hay. **No va sobre WordPress ni
-> Elementor**: [ADR-04](decisiones-arquitectura.md) los descartó —el JSON de Elementor es opaco y
+> Elementor**: [ADR-04](../decisiones-arquitectura.md) los descartó —el JSON de Elementor es opaco y
 > frágil para generación por IA, y WordPress son N instalaciones que mantener, contra la tesis de
 > escalar sin crecer el equipo— y se eligió **Storyblok** (headless + Visual Editor). Confirmado al
 > cerrar OBS-01.
@@ -100,7 +100,7 @@ Mencionado por el socio, sin alcance definido aún. Se deja fuera del presupuest
 - [x] ~~Definir si va **Trello** o **calendario de redes** — o ambos.~~ → **Ninguno de los dos** en
       la propuesta inicial; los dos pasan a línea futura.
 - [x] ~~Decidir motor de Keyword Research (Google Ads API vs SEMrush).~~ → **DataForSEO**
-      ([ADR-05](decisiones-arquitectura.md)), ya integrado y **ya corrido en producción**: 52
+      ([ADR-05](../decisiones-arquitectura.md)), ya integrado y **ya corrido en producción**: 52
       keywords → 8 páginas por **$0.31**. Se descartó SEMrush (~450 €/mes) y Google Ads API
       (developer token, volúmenes en rangos).
 

@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Artefacto generado, no un documento del repo: lo escribe el pipeline en out/, que está gitignoreado, así que nunca existe en disco para el scan.'
+      value: datasets/out/informe.md
+identity:
+  bodyHash: 2e842af88d2edfc2cb1db47d3e0374c301f56c31bf0c70df89ffc22bad6ae207
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: datasets/README.md

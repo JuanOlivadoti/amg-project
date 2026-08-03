@@ -13,12 +13,12 @@
 > viejo del nuevo (`/health` responde igual y un token basura da 401 en ambos), así que "desplegado"
 > no era "arreglado". La **pieza B** (modo oscuro del portal por tokens semánticos) está **cerrada:
 > mergeada a `main`**, y de paso el portal migró a Tailwind v4
-> ([spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) ·
-> [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)). La **pieza C** (dashboard de
+> ([spec](../superpowers/ejecutados/2026-07-30-modo-oscuro-portal-design.md) ·
+> [plan](../superpowers/ejecutados/2026-07-30-modo-oscuro-portal.md)). La **pieza C** (dashboard de
 > cartera) también está **cerrada: mergeada a `main`** (2026-07-31) — esqueleto de shell + `/cartera`
 > sobre datos de muestra, 13/13 tasks del plan más el review final de rama aplicado
-> ([spec](../superpowers/specs/2026-07-30-dashboard-ui-portal-design.md) ·
-> [plan](../superpowers/plans/2026-07-30-dashboard-ui-portal.md)); el detalle task-by-task vive en
+> ([spec](../superpowers/ejecutados/2026-07-30-dashboard-ui-portal-design.md) ·
+> [plan](../superpowers/ejecutados/2026-07-30-dashboard-ui-portal.md)); el detalle task-by-task vive en
 > `.superpowers/sdd/progress.md`. Pendiente sin bloquear el cierre: verificación manual en navegador
 > de `/cartera` y del drawer mobile (el MCP de chrome-devtools no conectó durante la implementación).
 > La **Acción 06** (corrida final + republicar) también se cerró el mismo día: research real contra
@@ -74,7 +74,7 @@
 > ni el portal, ni la API— y verificado en el navegador: 5 rutas en 200, 14 páginas, `/menu`, `/blog`,
 > footer con los 2 locales y JSON-LD por tipo. El aislamiento, comprobado con savepoints contra
 > producción. **De Fase 2 ya solo falta el orquestador.** Procedimiento y los cuatro tropiezos reales,
-> en el [runbook](13-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
+> en el [runbook](14-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
 >
 > **Nuevo (2026-08-01): la demo del módulo de Keyword Research, decidida.** Hasta acá "la demo" quería
 > decir la de la *plataforma* (el recorrido de tres golpes). La del **módulo KR** es otra y ahora está
@@ -177,14 +177,14 @@ corre solo en local. *(La API y el portal están desplegados desde la etapa 5.3,
 
 - ~~**Un despliegue.**~~ ✅ **Fase 1 está en producción** desde el 2026-07-25: portal en
   [`bigballs.es`](https://bigballs.es) (Hostinger), API en `api.bigballs.es` (Railway), base en
-  Supabase (`eu-west-2`) con RLS forzada. Ver [13-runbook-despliegue.md](13-runbook-despliegue.md).
+  Supabase (`eu-west-2`) con RLS forzada. Ver [13-runbook-despliegue.md](14-runbook-despliegue.md).
   **De Fase 2 ya está el renderizador** (2026-08-01, Railway); **falta el orquestador**.
 - ~~**La migración `0010` en la base de producción.**~~ ✅ **Aplicada el 2026-08-01.** Producción va
   con las **10** y la allowlist de `business_profile_publico` ya deja pasar `locations` y `menu`
   (verificado por consulta: 2 locales, 4 items de carta). Se adelantó al despliegue de Fase 2 a
   propósito: era el ítem con más chances de olvidarse, porque su fallo es silencioso —footer **sin
   locales** y `/menu` en **404**, sin ningún error—. Ver
-  [runbook § migraciones sobre una base ya desplegada](13-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
+  [runbook § migraciones sobre una base ya desplegada](14-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
 - ~~**La web del cliente.**~~ ✅ **Existe y está en internet** (2026-08-01): `renderer/` (etapa 6,
   ADR-19) la sirve en vivo desde Storyblok, con preview firmado e invalidación por webhook, desplegado
   en Railway como servicio aparte del de la API. **Lo que falta ya no es el despliegue, es el dominio
@@ -283,7 +283,7 @@ Las pantallas:
 
 **Desplegado el 2026-07-25:** portal en [`bigballs.es`](https://bigballs.es) (Hostinger, autodeploy
 desde `main`), API en `api.bigballs.es` (Railway, `europe-west4`), base en Supabase (`eu-west-2`).
-Paso a paso, con los tropiezos reales, en [13-runbook-despliegue.md](13-runbook-despliegue.md).
+Paso a paso, con los tropiezos reales, en [13-runbook-despliegue.md](14-runbook-despliegue.md).
 
 > ### ✅ Al desplegar, ningún login funcionaba — arreglado el 2026-07-30
 >
@@ -303,8 +303,8 @@ Paso a paso, con los tropiezos reales, en [13-runbook-despliegue.md](13-runbook-
 > **Pieza A** (rama `fix/jwt-es256`): la API verifica contra el **JWKS público** del emisor,
 > `SUPABASE_JWT_SECRET` desaparece y `SUPABASE_JWT_ISS` pasa a obligatoria. De paso se arregla el
 > logout, que solo borraba el `localStorage` sin revocar nada del lado del servidor.
-> [Spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
-> [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) · **las 4 tareas hechas**,
+> [Spec](../superpowers/ejecutados/2026-07-26-verificacion-jwt-es256-design.md) ·
+> [plan](../superpowers/ejecutados/2026-07-26-verificacion-jwt-es256.md) · **las 4 tareas hechas**,
 > mergeadas y desplegadas, y **el login verificado en el navegador el 2026-07-30**. La pieza está
 > cerrada. Dos cosas que quedaron dichas y conviene no perder: `SUPABASE_JWT_SECRET` **se deja** en
 > Railway como red de rollback (`leerConfig` ya no la lee), y **no se puede revocar en Supabase** sin
@@ -398,8 +398,8 @@ veían. Se documentan acá para que el plan no mienta por omisión:
 > brief — republicar los deja intactos.
 
 **✅ Navegación fija del sitio del cliente (cierra el plan
-[`2026-07-31-navegacion-sitio-cliente`](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md),
-[spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md)).** La barra de arriba
+[`2026-07-31-navegacion-sitio-cliente`](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente.md),
+[spec](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente-design.md)).** La barra de arriba
 ("Navegación + home" del bullet anterior) mostraba los 14 títulos SEO de La Birra Bar — se leía como
 un blog, no como el sitio de un restaurante. Reemplazada por:
 
@@ -497,7 +497,7 @@ Todas con su ADR. Las que más condicionan lo que viene:
 
 | Qué | Dónde | Por qué importa |
 |---|---|---|
-| ✅ ~~OBS-01 — unificar el alcance~~ | [acciones/05](../acciones/05-unificar-alcance.md) | **Cerrada (2026-07-19).** Manda `contexto-proyecto-frank.md`; alcance base = 3 módulos (2 ya construidos); el 4 a línea futura; ADR-04 se mantiene. Era la última observación abierta. |
+| ✅ ~~OBS-01 — unificar el alcance~~ | [acciones/05](../historia/acciones/05-unificar-alcance.md) | **Cerrada (2026-07-19).** Manda `docs/historia/contexto-proyecto-frank.md`; alcance base = 3 módulos (2 ya construidos); el 4 a línea futura; ADR-04 se mantiene. Era la última observación abierta. |
 | **Reescribir ADR-11 (offboarding)** | [decisiones](../decisiones-arquitectura.md) | Está redactado sobre "el frontend Next.js", que no existe. Con ADR-19 ya hay **qué entregar** (space + renderizador), pero **el texto todavía promete otra cosa** y de ahí sale una cláusula de contrato. |
 
 > ✅ **OBS-03 cerrada** por [ADR-19](../decisiones-arquitectura.md) (renderizador propio en runtime).
@@ -507,13 +507,13 @@ Todas con su ADR. Las que más condicionan lo que viene:
 
 | Qué | Dónde | Nota |
 |---|---|---|
-| **El portal de la agencia** — 4 piezas desde `dashboard-project` | [**programa**](../superpowers/plans/2026-08-01-portal-agencia-programa.md) · piezas: [clientes](../superpowers/plans/2026-08-01-paginas-clientes-portal.md) · [usuarios](../superpowers/plans/2026-08-01-paginas-usuarios-portal.md) · [ideas](../superpowers/plans/2026-08-01-modulo-ideas-portal.md) · [dashboard](../superpowers/plans/2026-08-01-dashboard-home-portal.md) | 🟡 **En curso: 1 de 4 cerrada, la 2 a mitad.** Se ejecutan **en otra máquina/sesión y una rama por pieza**. Orden **clientes → usuarios → ideas → dashboard** (el dashboard del origen *es* stats de ideas + tabla de ideas, así que va último). **Pieza 1 (clientes): mergeada a `main`** (2026-08-01, migración `0011`). **Pieza 2 (usuarios): COMPLETA** en `feature/paginas-usuarios` (2026-08-02), **sin mergear a `main`** — las seis etapas: `db`+`api` (vista de miembros con email, cambio de rol bajo RLS con trigger del último maestro), el rol de la UI derivado de `memberships` en vez del token, `/usuarios` y `/usuarios/:id`, y la integración de retorno que cierra el `<input>` de uuid que había dejado la pieza 1. En la rama: **849 tests** (614 monorepo + 169 node de portal + 66 Karma), verificada además en el navegador con los tres roles, en tema claro y oscuro. Ideas y dashboard siguen sin empezar. Datos en Postgres bajo RLS con API propia; Firestore se abandona; estado con signals, sin NgRx. Migraciones reservadas `0011`/`0012`/`0013` para que las ramas no choquen — `0011` (clientes) desplegada, `0012` (usuarios) escrita y sin desplegar (mientras no se mergee se puede seguir extendiendo el mismo archivo; después no). Decisiones cerradas al planificar, las dos primeras ya **confirmadas al construir**: **usuarios gestiona membresías, no altas** (la API no recibe ninguna credencial de Supabase, verificado en `scripts/env-sync.mts:26`), **los permisos son derivados del rol y read-only** (preserva ADR-15 — cambiar el rol de otro sigue siendo exclusivo de `maestro`, impuesto por RLS y no por un `if`), e **ideas construye modelo+pantallas+seed, no el ingreso por n8n**. La allowlist del renderizador **no crece**: lo que traen estas piezas es interno (teléfonos, notas, contratos, transcripciones). |
-| ~~Acción 06 — corrida final~~ | [acciones/06](../acciones/06-corrida-final-demo.md) | ✅ **Hecha (2026-07-30)**, $0.3097. `kr.v0.5` publicado para La Birra Bar, verificado en el navegador. De paso midió la duración real del research (16m15s, ver fila siguiente) y cerró el gap de `DATABASE_URL_CACHE` (ADR-14) que la guía no pedía. |
+| **El portal de la agencia** — 4 piezas desde `dashboard-project` | [**programa**](../superpowers/plans/2026-08-01-portal-agencia-programa.md) · piezas: [clientes](../superpowers/ejecutados/2026-08-01-paginas-clientes-portal.md) · [usuarios](../superpowers/ejecutados/2026-08-01-paginas-usuarios-portal.md) · [ideas](../superpowers/plans/2026-08-01-modulo-ideas-portal.md) · [dashboard](../superpowers/plans/2026-08-01-dashboard-home-portal.md) | 🟡 **En curso: 2 de 4 cerradas.** Se ejecutan **en otra máquina/sesión y una rama por pieza**. Orden **clientes → usuarios → ideas → dashboard** (el dashboard del origen *es* stats de ideas + tabla de ideas, así que va último). **Pieza 1 (clientes): mergeada a `main`** (2026-08-01, migración `0011`). **Pieza 2 (usuarios): mergeada a `main`** en `0589140` (2026-08-02; este documento decía "sin mergear" hasta el 2026-08-03, corregido contra `git log` y la presencia de la migración `0012`) — las seis etapas: `db`+`api` (vista de miembros con email, cambio de rol bajo RLS con trigger del último maestro), el rol de la UI derivado de `memberships` en vez del token, `/usuarios` y `/usuarios/:id`, y la integración de retorno que cierra el `<input>` de uuid que había dejado la pieza 1. En la rama: **849 tests** (614 monorepo + 169 node de portal + 66 Karma), verificada además en el navegador con los tres roles, en tema claro y oscuro. Ideas y dashboard siguen sin empezar. Datos en Postgres bajo RLS con API propia; Firestore se abandona; estado con signals, sin NgRx. Migraciones reservadas `0011`/`0012`/`0013` para que las ramas no choquen — `0011` (clientes) desplegada, `0012` (usuarios) escrita y sin desplegar (mientras no se mergee se puede seguir extendiendo el mismo archivo; después no). Decisiones cerradas al planificar, las dos primeras ya **confirmadas al construir**: **usuarios gestiona membresías, no altas** (la API no recibe ninguna credencial de Supabase, verificado en `scripts/env-sync.mts:26`), **los permisos son derivados del rol y read-only** (preserva ADR-15 — cambiar el rol de otro sigue siendo exclusivo de `maestro`, impuesto por RLS y no por un `if`), e **ideas construye modelo+pantallas+seed, no el ingreso por n8n**. La allowlist del renderizador **no crece**: lo que traen estas piezas es interno (teléfonos, notas, contratos, transcripciones). |
+| ~~Acción 06 — corrida final~~ | [acciones/06](../historia/acciones/06-corrida-final-demo.md) | ✅ **Hecha (2026-07-30)**, $0.3097. `kr.v0.5` publicado para La Birra Bar, verificado en el navegador. De paso midió la duración real del research (16m15s, ver fila siguiente) y cerró el gap de `DATABASE_URL_CACHE` (ADR-14) que la guía no pedía. |
 | ~~Migrar SERP + Search Volume a Standard~~ | `kr-service/src/dataforseo/` | ✅ **Hecho** (tandas 11-12): `task_post`/`task_get` con doble capa de recuperación. La 6ª review encontró 4 bugs en la primera versión; corregidos y mutation-tested. |
-| ~~Pieza A — verificación JWT ES256~~ | [plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md) | ✅ **Cerrada (2026-07-30).** Las 4 tareas, mergeadas y desplegadas, y el login verificado en el navegador. Ya no bloquea nada. |
-| ~~Pieza B — modo oscuro del portal~~ | [spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) · [plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md) | ✅ **Mergeada a `main`** (Tarea 1 de la migración a Tailwind v4, esta misma sesión). Tokens semánticos (no `dark:`) para que la pieza C herede el tema por construcción. 21 tests nuevos: el contraste AA de 17 pares × 2 temas leído de `styles.css`, `TOKENS`/`styles.css` atados (incluido el bloque `@theme inline`, que reemplazó a `tailwind.config.js` cuando el portal migró a Tailwind v4), y un test que recorre `src/app` y prohíbe incrustar colores o usar la paleta cruda. |
+| ~~Pieza A — verificación JWT ES256~~ | [plan](../superpowers/ejecutados/2026-07-26-verificacion-jwt-es256.md) | ✅ **Cerrada (2026-07-30).** Las 4 tareas, mergeadas y desplegadas, y el login verificado en el navegador. Ya no bloquea nada. |
+| ~~Pieza B — modo oscuro del portal~~ | [spec](../superpowers/ejecutados/2026-07-30-modo-oscuro-portal-design.md) · [plan](../superpowers/ejecutados/2026-07-30-modo-oscuro-portal.md) | ✅ **Mergeada a `main`** (Tarea 1 de la migración a Tailwind v4, esta misma sesión). Tokens semánticos (no `dark:`) para que la pieza C herede el tema por construcción. 21 tests nuevos: el contraste AA de 17 pares × 2 temas leído de `styles.css`, `TOKENS`/`styles.css` atados (incluido el bloque `@theme inline`, que reemplazó a `tailwind.config.js` cuando el portal migró a Tailwind v4), y un test que recorre `src/app` y prohíbe incrustar colores o usar la paleta cruda. |
 | ~~Cuánto tarda un research real~~ | — | ✅ **Medido (2026-07-30): 16m15s** (55 keywords → 14 páginas, $0.3097), por encima del umbral de ~12 min. **Decisión:** la pieza D (research en vivo en la demo) queda desaconsejada tal como se imaginó — mostrarlo en vivo arriesga que Frank mire un spinner. Mejor correrlo antes (como acá) y mostrar el resultado publicado. El polling del portal (4s) sigue sin calibrar contra este número. |
-| ~~Navegación fija del sitio del cliente~~ | [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md) · [plan](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md) | ✅ **Mergeada a `main` (2026-08-01).** 10 tasks (1-9 más la 6.5, migración `0010` no prevista en el plan original). Nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados, datos reales de La Birra Bar cargados. Revisión final de rama + revisión externa (Codex, 4 hallazgos reales corregidos). 516 tests. Ver §6.1 más arriba. |
+| ~~Navegación fija del sitio del cliente~~ | [spec](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente-design.md) · [plan](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente.md) | ✅ **Mergeada a `main` (2026-08-01).** 10 tasks (1-9 más la 6.5, migración `0010` no prevista en el plan original). Nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados, datos reales de La Birra Bar cargados. Revisión final de rama + revisión externa (Codex, 4 hallazgos reales corregidos). 516 tests. Ver §6.1 más arriba. |
 | **Plantillas de landing + manual de marca** | [spec](../superpowers/specs/2026-08-01-plantillas-landings-design.md) | 🟡 **Diseñado, sin empezar.** Shell fijo + catálogo de piezas + la plantilla como receta de contenido; migración `0014`; tres entregas (contrato → ensamblado con paridad → piezas nuevas y rediseño). Revisado por Codex el 2026-08-01. **Espera a las cuatro piezas del portal** por decisión del usuario, y hay una **colisión de contrato abierta** que la pieza 1 dejó a la vista: el formulario del portal guarda `logo_url`/`portada_url` en `contacto`, que es interno, y el renderizador solo lee `business_profile_publico` — sin cerrarla, la agencia carga la portada y la web nunca la muestra. **Enmendado el 2026-08-02** (sesión de diseño con un template de restaurante como referencia visual, sin adoptar nada suyo): **manual de marca** con tokens de color y roles tipográficos self-hosted —hoy la marca son tres campos y dos clientes se distinguen por un color de acento—, **carta con categorías** (foto por categoría, precios por ración, notas), y el resto del catálogo inventariado para después. Los **testimonios quedan descartados**, no aplazados: no hay reseñas reales de donde sacarlos e inventarlas son *fake reviews* en el JSON-LD. |
 | Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
 | `is_local` fuera de las cabezas de cluster | `pipeline/intent.ts` · `pipeline/local-signal.ts` | ✅ Corregido con el map pack del SERP (2026-08-02) **solo en las ~15 cabezas** que se observan; para el resto sigue la heurística, que sobre-detecta. |

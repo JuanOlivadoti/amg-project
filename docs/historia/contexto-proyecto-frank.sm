@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Unidad de medida en prosa, no una invocación: el extractor de slash-commands lee el separador de la unidad como si fuera un comando.'
+      value: /mes
+identity:
+  bodyHash: fd88f2083a0a816efb83f6e222aa7afa6d84b95d2a16b173e1c52f93b8869749
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/historia/contexto-proyecto-frank.md

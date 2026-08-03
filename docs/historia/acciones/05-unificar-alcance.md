@@ -4,7 +4,7 @@
 >
 > | Pregunta | Decisión |
 > |---|---|
-> | ¿Qué documento manda? | **`contexto-proyecto-frank.md`**. El PRD queda como visión de largo plazo, no como alcance a presupuestar. |
+> | ¿Qué documento manda? | **`docs/historia/contexto-proyecto-frank.md`**. El PRD queda como visión de largo plazo, no como alcance a presupuestar. |
 > | ¿El Creador de Webs entra en la base? | **Sí, en la propuesta base.** |
 > | ¿Se mantiene ADR-04 (Storyblok, no WordPress)? | **Sí, sin cambios.** No hay ADR nueva que escribir. |
 > | ¿Módulo 4: Trello o calendario? | **Ninguno** en la propuesta inicial; ambos a línea futura. |
@@ -21,7 +21,7 @@
 > construir esto"* y pasa a ser *"cuánto vale esto, que ya funciona, más un módulo por hacer"*. Son
 > dos conversaciones distintas, y la segunda es mucho mejor para vos.
 >
-> Registrado en [OBS-01](../decisiones-arquitectura.md).
+> Registrado en [OBS-01](../../decisiones-arquitectura.md).
 
 <details>
 <summary>El planteo original (se conserva como registro)</summary>
@@ -36,11 +36,11 @@ persona **dos alcances incompatibles**.
 
 | Documento | Sponsor | Alcance |
 |---|---|---|
-| [`contexto-proyecto-frank.md`](../contexto-proyecto-frank.md) | "**Frank**, cliente de la agencia" | **4 módulos**. El Creador de Webs es prioritario y "ya avanzado por Juan". |
-| [`A_PRD_AMG_Madrid_v1_Ilustrado.md`](../A_PRD_AMG_Madrid_v1_Ilustrado.md) | "**Franco · CEO**" | **5 agentes**, prioridades distintas. La web-por-prompt está **diferida a I+D**. |
+| [`docs/historia/contexto-proyecto-frank.md`](../contexto-proyecto-frank.md) | "**Frank**, cliente de la agencia" | **4 módulos**. El Creador de Webs es prioritario y "ya avanzado por Juan". |
+| [`docs/historia/A_PRD_AMG_Madrid_v1_Ilustrado.md`](../A_PRD_AMG_Madrid_v1_Ilustrado.md) | "**Franco · CEO**" | **5 agentes**, prioridades distintas. La web-por-prompt está **diferida a I+D**. |
 
 **Frank ≈ Franco es casi con seguridad la misma persona/proyecto**, pero los framings no cierran.
-Está registrado como **OBS-01** en las [decisiones de arquitectura](../decisiones-arquitectura.md).
+Está registrado como **OBS-01** en las [decisiones de arquitectura](../../decisiones-arquitectura.md).
 
 ---
 
@@ -64,7 +64,7 @@ más caro de construir bien.
 ### 3. ¿Qué pasa con el trabajo previo de Juan sobre WordPress/Elementor?
 **Con quién:** Juan (el desarrollador).
 
-Esto es **importante y potencialmente incómodo**: la [ADR-04](../decisiones-arquitectura.md) decidió
+Esto es **importante y potencialmente incómodo**: la [ADR-04](../../decisiones-arquitectura.md) decidió
 **descartar WordPress/Elementor** y usar Storyblok (headless) en su lugar.
 
 Motivos de la decisión:
@@ -95,6 +95,6 @@ Simplemente **contame la decisión**. Con eso yo:
 - [x] Hay **un solo listado de módulos** acordado, en orden de prioridad.
 - [x] Está claro si el Creador de Webs entra en la propuesta base. → **Sí.**
 - [x] La decisión sobre WordPress está confirmada. → **Se mantiene ADR-04 (Storyblok).**
-- [x] Documentos actualizados: `contexto-proyecto-frank.md` (rector), OBS-01 cerrada.
+- [x] Documentos actualizados: `docs/historia/contexto-proyecto-frank.md` (rector), OBS-01 cerrada.
 
 </details>

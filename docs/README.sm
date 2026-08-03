@@ -1,0 +1,12 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Es el contraejemplo de la regla 2 de la convención: el nombre sin su carpeta, mostrado a propósito para que se vea que no resuelve. El scan persigue las rutas incluso dentro de un fence de código.'
+      value: docs/09-estado-y-roadmap.md
+    - analyzer: reference-broken
+      note: 'Es el contraejemplo de la regla 3: un artefacto generado que nunca existe en disco, mostrado a propósito.'
+      value: docs/out/informe.md
+identity:
+  bodyHash: 4588d7517c30b3f1e460ce9e6710bc55ad9c37cd9ea7e5f5f0d7eca20887396f
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/README.md

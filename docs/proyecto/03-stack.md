@@ -126,7 +126,7 @@ AMG/
 ├── docs/                  # toda la documentación
 │   ├── proyecto/          # ← esta documentación técnica
 │   ├── acciones/          # lo que solo Juan puede hacer (cuentas, saldo, decisiones)
-│   ├── decisiones-arquitectura.md    # ADR-01..23 + OBS-01/02/03
+│   ├── decisiones-arquitectura.md    # ADR-01..24 + OBS-01..04
 │   └── modulo-2-esquema/  # esquema de diseño v0 (SQL + tipos + ejemplo)
 │
 ├── db/                    # LA PLATAFORMA — esquema, RLS, cache, tareas

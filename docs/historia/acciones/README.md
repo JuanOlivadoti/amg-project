@@ -5,10 +5,10 @@ Una guía por acción, con los pasos exactos, cómo verificar que salió bien y 
 
 > **El código está al día.** La cadena `prompt → research → persistencia → compuerta humana → web`
 > funciona de punta a punta, con **682 tests en verde**. Ver el
-> [Plan de la Fase 2](../proyecto/11-plan-fase-2.md).
+> [Plan de la Fase 2](../../proyecto/11-plan-fase-2.md).
 >
 > ✅ **No queda ninguna acción abierta.** Para *qué hacer ahora*, ver
-> [09-estado-y-roadmap § Próximos pasos](../proyecto/09-estado-y-roadmap.md#próximos-pasos).
+> [09-estado-y-roadmap § Próximos pasos](../../proyecto/09-estado-y-roadmap.md#próximos-pasos).
 
 ## Las 6 acciones
 
@@ -61,7 +61,7 @@ El sandbox ocultaba tres bugs. Encontrarlos era el punto de la acción 03:
 - ~~**`is_local` se dispara de más**~~ (7 de 8 páginas como `LocalBusiness`) → ✅ **cerrada el
   2026-08-02**: lo decide el *map pack* del SERP en las cabezas de cluster, que son las que fijan el
   `schema_type`. Fuera de ellas sigue mandando la heurística (ver las deudas del
-  [estado](../proyecto/09-estado-y-roadmap.md)).
+  [estado](../../proyecto/09-estado-y-roadmap.md)).
 - **Costo por space de Storyblok** al escalar la cartera ([guía 04](04-storyblok-space.md)).
 
 ## Checklist
@@ -82,4 +82,4 @@ El sandbox ocultaba tres bugs. Encontrarlos era el punto de la acción 03:
 
 ---
 
-**Contexto de por qué importa cada una:** [docs/proyecto/10-acciones-pendientes.md](../proyecto/10-acciones-pendientes.md)
+**Contexto de por qué importa cada una:** [docs/proyecto/10-acciones-pendientes.md](../10-acciones-pendientes.md)

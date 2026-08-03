@@ -1,5 +1,16 @@
 # Módulo 2 — Disparador de Keyword Research
 
+> ## ⚠️ Documento de origen — NO describe el sistema que existe
+>
+> Es el documento comercial con el que se propuso el módulo (2026-07). Se conserva porque explica
+> **qué se le vendió al cliente y por qué**, no cómo funciona lo construido.
+>
+> **Lo que acá está desactualizado:** el §3 dice que el motor elegido es **SEMrush**. No lo es: el
+> motor es **DataForSEO** (ver [ADR-04](../decisiones-arquitectura.md)), y el cambio ocurrió antes de
+> escribir una línea de código.
+>
+> **El estado real del módulo:** [`docs/proyecto/04-modulo-2-keyword-research.md`](../proyecto/04-modulo-2-keyword-research.md).
+
 ## 1. Propósito del módulo
 
 Automatizar el proceso de Keyword Research que hoy se hace manualmente. El agente recibe un prompt describiendo el negocio del cliente y devuelve un **dataset estructurado de keywords priorizadas y clusterizadas por página**, listo para alimentar al Módulo 1 (Creador de Webs).

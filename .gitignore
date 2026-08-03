@@ -34,6 +34,12 @@ out/
 # Notas de despliegue con valores reales (connection strings, uids, refs). El runbook del repo lleva
 # placeholders; lo que tiene valores vive acá y NO se commitea.
 docs/private/
+# Y cualquier comprimido de esa carpeta: la regla de arriba NO cubre `docs/private.zip`, y por eso un
+# zip con credenciales.env adentro terminó commiteado en un repo público (2026-08-01, commit 15ae91a).
+docs/private*.zip
+docs/private*.tar
+docs/private*.tar.gz
+docs/private*.tgz
 
 # Logs
 *.log
@@ -73,3 +79,6 @@ Thumbs.db
 # que YA PASÓ y lo que está pasando ahora mismo.
 progress/informes/*
 !progress/informes/.gitkeep
+
+.skill-map/
+.skillmapignore

@@ -1,0 +1,12 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-redundant
+      note: 'Solape deliberado: el link del encabezado presenta el historial de rondas; la mención del paso 1 es la instrucción operativa de qué leer. Consolidarlos obligaría a decir "el archivo de arriba".'
+      value: docs/proyecto/08-testing-calidad.md
+    - analyzer: reference-redundant
+      note: 'Solape deliberado: las menciones de AGENTS.md están en pasos distintos del procedimiento, y una de ellas vive dentro de la plantilla citada del prompt de Codex, que no se edita.'
+      value: AGENTS.md
+identity:
+  bodyHash: 3d130f2c4083d1caaa8866c4088028a3db89faa2c1e0776901003323dbbb1c14
+  frontmatterHash: cf56c34e604d22bc80cddd85ee113eee208be7c6d6b9d16d877c83d83603253a
+  path: .claude/skills/codex-review/SKILL.md

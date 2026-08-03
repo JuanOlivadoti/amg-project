@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Artefacto generado, no un documento del repo: lo escribe el pipeline en out/, que está gitignoreado, así que nunca existe en disco para el scan.'
+      value: docs/historia/acciones/kr-service/out/informe.md
+identity:
+  bodyHash: 5d792eba09a5237bdd71ab3a14f57b6b2597150835769273b42b8a7e86985432
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/historia/acciones/06-corrida-final-demo.md

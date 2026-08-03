@@ -139,7 +139,7 @@ habría enviado. Sirve para inspeccionar el formato Storyblok-nativo sin tener c
 Una revisión externa señaló que **la misma API key de OpenAI estaba duplicada** en
 `kr-service/.env` y `web-builder/.env`: una sola filtración comprometía **ambos** módulos y no se
 podía revocar ni atribuir costos por servicio. **Rotada**
-([acción 01](../acciones/01-rotar-key-openai.md)).
+([acción 01](../historia/acciones/01-rotar-key-openai.md)).
 
 ### ⏳ Lo que sigue pendiente
 

@@ -131,7 +131,7 @@ el diseño antes de escribir código, no el código.
 | **#6** | `LLM_PROVIDER=anthropic` **degradaba a mock** en intención, relevancia y contenido (solo los seeds usaban Claude). | **`AnthropicContentGen`** implementado (tool use para JSON estructurado; Haiku para clasificar, modelo de gama alta para redactar, según ADR-09). Los tres proveedores implementan ahora **la misma interfaz**. |
 
 **Los 18 hallazgos de la review están corregidos**, salvo **#2 (secretos)**, que requiere acción
-humana → ver [Acciones pendientes](10-acciones-pendientes.md).
+humana → ver [Acciones pendientes](../historia/10-acciones-pendientes.md).
 
 ### Tanda 10 — 5ª review: el aislamiento se perdía AL SALIR, y los tests probaban lo fácil ✅
 
@@ -404,7 +404,7 @@ campo de los ~20 que ahora protege.
 
 **#2 — Secretos:** la misma API key de OpenAI estaba duplicada en los dos `.env`. **Rotada el
 2026-07-13**: dos keys distintas, una por servicio, cada una con límite de gasto. Ver
-[acción 01](../acciones/01-rotar-key-openai.md) y [Configuración](07-configuracion.md).
+[acción 01](../historia/acciones/01-rotar-key-openai.md) y [Configuración](07-configuracion.md).
 
 ## Qué NO está cubierto por tests
 

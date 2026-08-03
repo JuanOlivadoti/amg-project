@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Artefacto generado, no un documento del repo: lo escribe el pipeline en out/, que está gitignoreado, así que nunca existe en disco para el scan.'
+      value: docs/proyecto/informe.md
+identity:
+  bodyHash: d4fbee5597e4885c696fa0d420684c633121b5f6676d2c482365d106a6598329
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/proyecto/02-arquitectura.md

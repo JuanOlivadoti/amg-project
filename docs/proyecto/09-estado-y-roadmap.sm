@@ -1,0 +1,15 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Artefacto generado, no un documento del repo: lo escribe el pipeline en out/, que está gitignoreado, así que nunca existe en disco para el scan.'
+      value: docs/proyecto/out/informe.md
+    - analyzer: reference-broken
+      note: Ruta del sitio público que genera el renderizador, no un slash-command del proyecto.
+      value: /research
+    - analyzer: reference-broken
+      note: Ruta del sitio público que genera el renderizador, no un slash-command del proyecto.
+      value: /blog
+identity:
+  bodyHash: 85297475b2fb363b2ddeaf5117ddf8fb47dfccee1c6223bc32dc5eaaa90b65cd
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/proyecto/09-estado-y-roadmap.md

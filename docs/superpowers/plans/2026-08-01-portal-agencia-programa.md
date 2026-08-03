@@ -34,8 +34,8 @@ re-litigarlas**:
 
 | # | Pieza | Plan | Depende de | Tamaño del origen | Estado |
 |---|---|---|---|---|---|
-| 1 | **Clientes** — listado, crear, perfil, vista | [plan](2026-08-01-paginas-clientes-portal.md) | — | 1 407 líneas | ✅ Cerrada, mergeada a `main` y desplegada (migración `0011` aplicada en producción el 2026-08-02) |
-| 2 | **Usuarios** — listado, perfil, membresías | [plan](2026-08-01-paginas-usuarios-portal.md) | Pieza 1 (asignar cliente a un rol `cliente`) | 570 líneas | 🔵 Planificada |
+| 1 | **Clientes** — listado, crear, perfil, vista | [plan](../ejecutados/2026-08-01-paginas-clientes-portal.md) | — | 1 407 líneas | ✅ Cerrada, mergeada a `main` y desplegada (migración `0011` aplicada en producción el 2026-08-02) |
+| 2 | **Usuarios** — listado, perfil, membresías | [plan](../ejecutados/2026-08-01-paginas-usuarios-portal.md) | Pieza 1 (asignar cliente a un rol `cliente`) | 570 líneas | 🔵 Planificada |
 | 3 | **Ideas** — módulo nuevo completo | [plan](2026-08-01-modulo-ideas-portal.md) | Pieza 1 (una idea pertenece a un cliente) | 104 líneas + modelo | 🔵 Planificada |
 | 4 | **Dashboard** — la home con métricas | [plan](2026-08-01-dashboard-home-portal.md) | **Pieza 3** (el dashboard del origen ES stats de ideas + tabla de ideas) | 181 líneas | 🔵 Planificada |
 
@@ -273,7 +273,7 @@ máquina no es la que trabaja la demo, y `main` avanza en paralelo.
    arquitectura. No es opcional.
 2. `docs/superpowers/plans/2026-08-01-portal-agencia-programa.md` — el programa: las cuatro piezas,
    el orden, qué NO se toca, la reserva de números de migración, qué queda fuera de alcance.
-3. `docs/superpowers/plans/2026-08-01-paginas-clientes-portal.md` — **la pieza que ejecutás**.
+3. `docs/superpowers/ejecutados/2026-08-01-paginas-clientes-portal.md` — **la pieza que ejecutás**.
    ← cambiá esta línea para las piezas 2, 3 o 4.
 4. `docs/proyecto/09-estado-y-roadmap.md` y `docs/decisiones-arquitectura.md` (ADR-13, 15, 17, 18, 19).
 

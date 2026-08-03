@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: Ruta del sitio público que genera el renderizador, no un slash-command del proyecto.
+      value: /vac
+identity:
+  bodyHash: ed8d79dcdc1cc8dad9b82e125a466f660e7488fcc27ec81d8c0058c0de2cef15
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/proyecto/13-despliegue-fase-1.md

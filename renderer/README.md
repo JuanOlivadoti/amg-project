@@ -112,7 +112,7 @@ npm run serve -w renderer        # producción
 > credenciales de base). La diferencia es la CDA: `dev:server` usa un mock para verificar
 > comportamiento; **`demo` lee tu space de Storyblok de verdad** para enseñar la web viva. Necesita
 > `renderer/.env` con el token de LECTURA de la CDA — ver `.env.example` y la
-> [acción 06](../docs/acciones/06-corrida-final-demo.md).
+> [acción 06](../docs/historia/acciones/06-corrida-final-demo.md).
 
 ## Lo que el navegador encontró y los tests no
 

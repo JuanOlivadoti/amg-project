@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: Nombre mencionado en prosa sin backticks, en el resumen de una acción cerrada; no es un enlace. El documento real está linkeado en el cuerpo.
+      value: docs/historia/acciones/contexto-proyecto-frank.md
+identity:
+  bodyHash: 0ddb4a35788ea30760d193123ebdad6cf55f49403aaf7c9215d992d824e866e5
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/historia/acciones/README.md

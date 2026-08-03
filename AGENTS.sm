@@ -1,0 +1,12 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: Nombre de archivo usado como ejemplo para ilustrar la convención de nombres; no es un archivo que deba existir.
+      value: progress/informes/impl-selector-miembro.md
+    - analyzer: reference-broken
+      note: Nombre de archivo usado como ejemplo para ilustrar la convención de nombres; no es un archivo que deba existir.
+      value: progress/informes/revision-etapa-8.md
+identity:
+  bodyHash: 446b3c70d00c3504c81c1429bfd94876ec05dcf63f8da327a2d1587c0195cecb
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: AGENTS.md

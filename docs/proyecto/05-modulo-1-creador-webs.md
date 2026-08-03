@@ -212,6 +212,6 @@ Es **idempotente**: si el componente existe, lo actualiza; si no, lo crea.
 | **`_uid` deterministas** (republicar produce los mismos uids) | ✅ |
 | **Publicación idempotente** (la carrera de creación actualiza en vez de duplicar) | ✅ |
 | **Resiliencia HTTP** (timeout, retries con backoff, `Retry-After`) | ✅ |
-| Publisher Storyblok live + provisioning de componentes | ✅ código · ⛔ **sin probar contra space real** ([acción C](10-acciones-pendientes.md)) |
+| Publisher Storyblok live + provisioning de componentes | ✅ código · ⛔ **sin probar contra space real** ([acción C](../historia/10-acciones-pendientes.md)) |
 | Enlazado interno entre páginas | ⛔ el M2 aún no lo genera |
 | **Servir la web del cliente en un dominio** | ✅ **Construido** — `renderer/` (ADR-19), que reutiliza este mismo `renderStory()`. **Falta desplegarlo**: hoy corre en `localhost`. |

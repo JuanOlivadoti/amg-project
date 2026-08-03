@@ -66,7 +66,7 @@ no hay que volver a pagar una corrida. Con eso se calibró el punto 3.
 > ⚠️ **Se escribían en `out/keywords.json`, que git ignora, y el dataset de esta corrida se perdió
 > con el clon.** Desde el 2026-08-02 el destino es `datasets/keywords.json`, versionado. Para volver
 > a tener el dato hay que **regenerarlo** (~$0.31): ver KR-1 en el
-> [estado](../proyecto/09-estado-y-roadmap.md).
+> [estado](../../proyecto/09-estado-y-roadmap.md).
 
 ---
 

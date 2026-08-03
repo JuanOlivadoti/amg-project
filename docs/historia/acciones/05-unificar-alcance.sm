@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: Ruta del sitio público que genera el renderizador, no un slash-command del proyecto.
+      value: /research
+identity:
+  bodyHash: 781454efa26b66561f949025d3bc4f1f6fda4df908446f5287277484633481d8
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/historia/acciones/05-unificar-alcance.md

@@ -1,0 +1,12 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Unidad de medida en prosa, no una invocación: el extractor de slash-commands lee el separador de la unidad como si fuera un comando.'
+      value: /mes
+    - analyzer: reference-broken
+      note: 'Unidad de medida en prosa, no una invocación: el extractor de slash-commands lee el separador de la unidad como si fuera un comando.'
+      value: /cliente
+identity:
+  bodyHash: c2d894b9e77119c3384f5f11a69d2d68671870ee4882cf1cbbe4b8a7f7cd261e
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/historia/A_PRD_AMG_Madrid_v1_Ilustrado.md

@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Artefacto generado, no un documento del repo: lo escribe el pipeline en out/, que está gitignoreado, así que nunca existe en disco para el scan.'
+      value: .claude/skills/pipeline-research/out/informe.md
+identity:
+  bodyHash: 2c4d85f77e2775f293e64e6d98be2090ff9253d84c093a2b96b58a89b2f7a2c7
+  frontmatterHash: 2df1382e23c983676390742ae7a9487d8a32c95920e8331ddfe828e6e4f654fa
+  path: .claude/skills/pipeline-research/SKILL.md

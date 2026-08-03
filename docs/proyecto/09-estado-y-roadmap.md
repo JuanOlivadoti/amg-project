@@ -147,7 +147,7 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
    enlazadas, `/menu` con sus 3 categorías, `/blog` con los 2 artículos, footer con los 2 locales y
    JSON-LD correcto por tipo. El aislamiento del rol, comprobado con savepoints: `app_render` **no**
    puede leer `business_profile` crudo, ni `kr_runs`, ni `memberships`. Procedimiento y tropiezos
-   reales en el [runbook](13-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
+   reales en el [runbook](14-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
 
    Lo que sigue faltando de este paso:
    - **El orquestador** (Inngest). Sin él, `lanzarResearch` y `aprobarRun` no tienen consumidor.
@@ -210,7 +210,7 @@ por el costo de la API, sino por el valor del entregable.
 
 El sandbox devuelve datos ficticios, y eso **ocultaba tres bugs** que solo aparecieron con datos de
 verdad. Encontrarlos era exactamente el punto de correr en producción. **Los tres están corregidos**
-([detalle](../acciones/03-research-produccion-dataforseo.md)):
+([detalle](../historia/acciones/03-research-produccion-dataforseo.md)):
 
 1. **Se le decía al cliente "0 búsquedas/mes" donde no teníamos el dato.** DataForSEO devuelve
    `null` (le pasó en 41 de 60 keywords en KD) y el código lo coaccionaba a `0`. Ahora se propaga
@@ -243,7 +243,7 @@ verdad. Encontrarlos era exactamente el punto de correr en producción. **Los tr
 | Base + login | Supabase `eu-west-2` (Londres) | ✅ |
 
 Runbook paso a paso, con los tropiezos reales, en
-[13-runbook-despliegue.md](13-runbook-despliegue.md).
+[13-runbook-despliegue.md](14-runbook-despliegue.md).
 
 **Lo verificado en producción** (no "el deploy dio verde", sino comprobado desde afuera):
 
@@ -254,7 +254,7 @@ Runbook paso a paso, con los tropiezos reales, en
   > ✅ **La `0010` también está aplicada** (2026-08-01, posterior a esta verificación). Producción va
   > con las **10**, y la allowlist de `business_profile_publico` ya deja pasar `locations` y `menu`.
   > Ver 0.b en [próximos pasos](#próximos-pasos) y el
-  > [runbook § migraciones sobre una base ya desplegada](13-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
+  > [runbook § migraciones sobre una base ya desplegada](14-runbook-despliegue.md#aplicar-migraciones-nuevas-a-una-base-ya-desplegada).
 - **C.2 — los 4 logins con contraseña** y los 4 **conectando de verdad** por el pooler, con
   `INHERIT=false` intacto tras el `alter role` (ADR-17 sigue en pie).
 - **C.4 — seed verificado**: 2 `memberships` con `user_id` distintos, Frank `maestro` / Juan
@@ -310,8 +310,8 @@ panorama — son lo que las hace creíbles.
 | **C** | Dashboard de cartera + seed de 4-6 restaurantes | ✅ **Cerrada** — esqueleto UI + shell + `/cartera` sobre datos de muestra, mergeada a `main` (2026-07-31) | B (hereda los tokens) ✅ |
 | **D** | Research en vivo (desplegar el orquestador) | ⚪ Sin empezar, **y condicionado** | la medición |
 
-**Pieza A** ([spec](../superpowers/specs/2026-07-26-verificacion-jwt-es256-design.md) ·
-[plan](../superpowers/plans/2026-07-26-verificacion-jwt-es256.md)): 4 tareas, **las 4 hechas** en la
+**Pieza A** ([spec](../superpowers/ejecutados/2026-07-26-verificacion-jwt-es256-design.md) ·
+[plan](../superpowers/ejecutados/2026-07-26-verificacion-jwt-es256.md)): 4 tareas, **las 4 hechas** en la
 rama.
 
 | Tarea | Estado |
@@ -324,13 +324,13 @@ rama.
 **Nada queda pendiente de la pieza A.** El despliegue se ejecutó (`SUPABASE_JWT_ISS` en Railway,
 merge a `main`) y el login se verificó en el navegador. `SUPABASE_JWT_SECRET` **se deja** en Railway a
 propósito, como red de rollback: `leerConfig` ya no la lee, y el código viejo la exige para arrancar.
-Ver [13-runbook-despliegue.md § Actualizar una instalación ya desplegada](13-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada).
+Ver [13-runbook-despliegue.md § Actualizar una instalación ya desplegada](14-runbook-despliegue.md#actualizar-una-instalación-ya-desplegada).
 
 **B — modo oscuro:** solo el portal; el renderizador queda afuera a propósito (la web pública es la
 marca del restaurante). Va por **tokens semánticos**, no por variantes `dark:`, para que la pieza C
 herede el tema por construcción en vez de tener que acordarse
-([spec](../superpowers/specs/2026-07-30-modo-oscuro-portal-design.md) ·
-[plan](../superpowers/plans/2026-07-30-modo-oscuro-portal.md)).
+([spec](../superpowers/ejecutados/2026-07-30-modo-oscuro-portal-design.md) ·
+[plan](../superpowers/ejecutados/2026-07-30-modo-oscuro-portal.md)).
 
 > **Lo que la hace exigible, y no un acuerdo de buena voluntad.** 21 tests nuevos (66 → 87). El
 > contraste WCAG AA de los **17 pares × 2 temas** se lee de `styles.css`, no de una copia. Tras la
@@ -358,10 +358,10 @@ endpoint agregado nuevo — eso queda para más adelante, como trabajo de backen
 **Cerrada (2026-07-31).** Se trajo el esqueleto de layout (sidebar + header + backdrop) y una
 librería chica de componentes del `dashboard-project` (TailAdmin) de referencia, adaptados a los
 tokens semánticos de la pieza B — no una librería genérica sin uso, solo lo que `/cartera` necesita
-([spec](../superpowers/specs/2026-07-30-dashboard-ui-portal-design.md) ·
-[plan de Tailwind v4](../superpowers/plans/2026-07-30-tailwind-v4-migracion-portal.md), cerrado y
+([spec](../superpowers/ejecutados/2026-07-30-dashboard-ui-portal-design.md) ·
+[plan de Tailwind v4](../superpowers/ejecutados/2026-07-30-tailwind-v4-migracion-portal.md), cerrado y
 mergeado ·
-[plan del shell + dashboard](../superpowers/plans/2026-07-30-dashboard-ui-portal.md), 13/13 tasks,
+[plan del shell + dashboard](../superpowers/ejecutados/2026-07-30-dashboard-ui-portal.md), 13/13 tasks,
 review final de rama aplicado). Las dos ramas (`feat/modo-oscuro-portal` y `feat/dashboard-ui-portal`)
 están mergeadas a `main` (`d670c23`). 103 tests `node:test` + 17 Karma + build de producción, todo en
 verde tras el merge. El detalle task-by-task, con SHAs y resultado de cada review, vive en
@@ -443,8 +443,8 @@ de abajo.
 Aparte de las cuatro piezas:
 
 - ✅ **Navegación del sitio del cliente** — **hecha y mergeada a `main` (2026-08-01)**
-  ([spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md) ·
-  [plan](../superpowers/plans/2026-07-31-navegacion-sitio-cliente.md)). El sitio público mostraba
+  ([spec](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente-design.md) ·
+  [plan](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente.md)). El sitio público mostraba
   una barra con los títulos SEO de las 14 páginas de research — parecía un blog. Reemplazada por
   **Inicio · Menú · Ubicaciones · Contacto** fijos (condicionales a que haya datos), un **footer
   compartido** con NAP multi-local, y dos páginas sintetizadas nuevas: `/menu` (la carta, agrupada
@@ -459,7 +459,7 @@ Aparte de las cuatro piezas:
   de que Postgres ya había materializado el array completo, y `/blog` se autoenlazaba con una story
   real. **516 tests** (subió de 466), typecheck limpio, verificado en el navegador dos veces (una
   vez por el implementador de la última tarea, otra por el controlador, con capturas).
-- ✅ **[Corrida final + republicar](../acciones/06-corrida-final-demo.md)** — **hecha (2026-07-30)**,
+- ✅ **[Corrida final + republicar](../historia/acciones/06-corrida-final-demo.md)** — **hecha (2026-07-30)**,
   $0.3097. Publicado en Storyblok con `kr.v0.5`: 14 páginas de **La Birra Bar** (cliente real de la
   agencia, reemplazó al caso de ejemplo "Bella Napoli" en el mismo space), verificado en el
   navegador — evidencia separada (8 respaldadas / 6 sin validar), JSON-LD correcto por tipo de
@@ -468,7 +468,7 @@ Aparte de las cuatro piezas:
   desde ADR-14 y la guía no lo pedía — corregido en la guía y en `scripts/env-sync.mts` /
   `kr-service/.env.example`. Detalle completo en la guía. Lo publicado en Storyblok **ya no es
   anterior a `kr.v0.5`**: ahora sí muestra la evidencia etiquetada, que es *el argumento de venta*.
-- ✅ ~~Unificar el alcance (OBS-01)~~ — **hecho** (2026-07-19): manda `contexto-proyecto-frank.md`,
+- ✅ ~~Unificar el alcance (OBS-01)~~ — **hecho** (2026-07-19): manda `docs/historia/contexto-proyecto-frank.md`,
   alcance base = 3 módulos, ADR-04 se mantiene. Era la última observación abierta del proyecto.
 
 ### 🟠 2.b La demo del **módulo de Keyword Research** (decidido 2026-08-01)
@@ -608,10 +608,10 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 | Tarea | Por qué | Costo |
 |---|---|---|
-| ~~Unificar el alcance (OBS-01)~~ | ✅ **Hecha (2026-07-19).** Manda [`contexto-proyecto-frank.md`](../contexto-proyecto-frank.md); alcance base = 3 módulos; ADR-04 se mantiene. | — |
+| ~~Unificar el alcance (OBS-01)~~ | ✅ **Hecha (2026-07-19).** Manda [`docs/historia/contexto-proyecto-frank.md`](../historia/contexto-proyecto-frank.md); alcance base = 3 módulos; ADR-04 se mantiene. | — |
 | ~~`SUPABASE_JWT_ISS` en Railway~~ | ✅ **Hecha (2026-07-27).** Cargada antes del merge; la API arrancó con ella. `SUPABASE_JWT_SECRET` se **deja** en Railway a propósito: es la red de rollback (el código viejo la exige para arrancar) y no molesta, porque `leerConfig` ya no la lee. | — |
 | ~~Verificar el login en el navegador~~ | ✅ **Hecha (2026-07-30).** Era lo único que podía cerrar la pieza A. Queda **sin verificar** el detalle del logout: que revoca en Supabase (Auth → Users → Sessions) y que es **local** (cerrar sesión en un dispositivo no cierra la del otro). Lo cubren 7 tests, pero no se miró en producción. | — |
-| ~~**[Corrida final + republicar](../acciones/06-corrida-final-demo.md)**~~ | ✅ **Hecha (2026-07-30).** Publicado `kr.v0.5` para La Birra Bar (cliente real), verificado en el navegador. De paso: se midió la duración real del research (16m15s) y se cerró el gap de `DATABASE_URL_CACHE` que la guía no pedía. | $0.3097 |
+| ~~**[Corrida final + republicar](../historia/acciones/06-corrida-final-demo.md)**~~ | ✅ **Hecha (2026-07-30).** Publicado `kr.v0.5` para La Birra Bar (cliente real), verificado en el navegador. De paso: se midió la duración real del research (16m15s) y se cerró el gap de `DATABASE_URL_CACHE` que la guía no pedía. | $0.3097 |
 
 ### Tanda 3 — PROD-readiness ✅ COMPLETA
 
@@ -646,7 +646,7 @@ reales, no solo contra tests.
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **95 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
 | **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **235 tests** (169 de núcleo `node:test` + 66 de componente Karma, las pantallas de research incluidas); el flujo, verificado en un navegador real. **Falta:** calibrar el polling contra los 16m15s medidos. |
 | **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **114 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. ✅ **Desplegado el 2026-08-01** en Railway (servicio aparte del de la API): sirve `amg-renderer-production.up.railway.app` leyendo de Supabase con `amg_render` → `app_render`, verificado en el navegador. **Falta:** el dominio propio del cliente (el plan de Railway está en su límite de custom domains) y una CDN delante. |
-| **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Nav fijo de 4 secciones** (Inicio/Menú/Ubicaciones/Contacto, cada una condicionada a que el perfil tenga el dato — reemplaza a la barra vieja derivada de las páginas SEO publicadas) + **footer compartido** con NAP multi-local (`locations`) y link a Blog + `/menu`/`/blog` sintetizados desde el perfil (allowlist en `0010`, ver [spec](../superpowers/specs/2026-07-31-navegacion-sitio-cliente-design.md)) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav y en NAP/carta. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente — **el nav/footer/menú/blog YA NO dependen del brief**: se calculan en vivo desde `business_profile` en cada request, así que republicar no los toca. **Lo "hecho" es la infraestructura de marca, no el aspecto:** las landings publicadas se ven sin terminar (ni una foto, CTA que es un párrafo, siete secciones idénticas) y eso tiene su propio diseño, 🟡 **sin empezar** — [spec de plantillas de landing](../superpowers/specs/2026-08-01-plantillas-landings-design.md), migración `0014`, tres entregas. **Enmendado el 2026-08-02** con el **manual de marca** (tokens de color y roles tipográficos self-hosted, en vez de los tres campos actuales) y el **rediseño de la carta** (categorías con foto, precios por ración), tomando como referencia visual un template real de restaurante sin adoptar ni una línea suya. |
+| **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Nav fijo de 4 secciones** (Inicio/Menú/Ubicaciones/Contacto, cada una condicionada a que el perfil tenga el dato — reemplaza a la barra vieja derivada de las páginas SEO publicadas) + **footer compartido** con NAP multi-local (`locations`) y link a Blog + `/menu`/`/blog` sintetizados desde el perfil (allowlist en `0010`, ver [spec](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente-design.md)) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav y en NAP/carta. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente — **el nav/footer/menú/blog YA NO dependen del brief**: se calculan en vivo desde `business_profile` en cada request, así que republicar no los toca. **Lo "hecho" es la infraestructura de marca, no el aspecto:** las landings publicadas se ven sin terminar (ni una foto, CTA que es un párrafo, siete secciones idénticas) y eso tiene su propio diseño, 🟡 **sin empezar** — [spec de plantillas de landing](../superpowers/specs/2026-08-01-plantillas-landings-design.md), migración `0014`, tres entregas. **Enmendado el 2026-08-02** con el **manual de marca** (tokens de color y roles tipográficos self-hosted, en vez de los tres campos actuales) y el **rediseño de la carta** (categorías con foto, precios por ración), tomando como referencia visual un template real de restaurante sin adoptar ni una línea suya. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |
 | **Export estático / offboarding** | ADR-11 | ⏳ Pendiente. Snapshot estático incluido; handoff editable como servicio pago. El preview HTML actual es la base. |
 | **Autorización derivada** (OBS-02) | ADR-15, ADR-17 | ✅ **Hecho.** El rol se deriva de `memberships` dentro de Postgres; el GUC `app.role` ya no lo lee nadie. Un login por proceso, `NOINHERIT`, un rol cada uno — ahora **cuatro**: `amg_api`, `amg_orquestador`, `amg_cache` y `amg_render`. El JWT de Supabase **ya está enchufado y probado** (**27 tests** en `auth.test.ts`, con tokens firmados de verdad, ES256 contra un JWKS local). |
@@ -673,11 +673,12 @@ dos últimas quedan fuera. Lo que **sigue dependiendo de KR-1** no es implementa
 | Deuda | Dónde | Impacto |
 |---|---|---|
 | **El secreto legacy de Supabase sigue vivo, y no se puede revocar sin migrar antes el portal** | Supabase (Project Settings → API) · `portal/src/environments/environment.prod.ts` | Con ese secreto se puede acuñar un token `service_role` que **bypassea RLS por completo** — el radio de daño no depende de que nuestra API ya no lo acepte. Pero **no se puede revocar sin más**: el `anon key` del portal es un JWT legacy firmado con él (`alg: HS256`, verificado), así que revocarlo rompe el login. Hay que migrar el portal a las claves nuevas (*publishable*), desplegar, verificar, y recién ahí revocar. Ver [12-credenciales.md](12-credenciales.md). |
+| **🔴 La compuerta de secretos no mira dentro de archivos comprimidos** | `scripts/secretos.mts` | Dio **verde durante tres días** con `docs/private.zip` trackeado en un repo público, con `credenciales.env` adentro (ver Riesgos abiertos). Inspecciona archivos de texto; un `.zip`, `.tar` o `.tgz` versionado le pasa por al lado. El arreglo mínimo no necesita abrir el comprimido: fallar si hay uno versionado bajo una ruta de secretos. |
 | **Esquema Zod duplicado** entre M2 y M1 | `kr-service/src/validation/` y `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. Extraer a paquete compartido. |
 | **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos están verificadas** ✅, pero las estimaciones por fase **siguen a ojo**. Se calibran con `datasets/keywords.json` — **que hoy no está** (ver KR-1 en §2.b): la promesa de "calibrar es gratis" depende de regenerar ese dataset. |
 | **🟠 El dataset crudo del research no existe** | `datasets/keywords.json` | ✅ **El destino ya es durable** (versionado, con un test que se lo pregunta a `git check-ignore`). Lo que falta es **el dato**: el de la corrida del 2026-07-30 se perdió en `out/` y regenerarlo cuesta ~$0.31 en producción. Bloquea la **calibración** de las tres mejoras de calidad (§2.b) y la del presupuesto — ya no su implementación. |
 | **El orden del pipeline no sobrevive a la persistencia** | `db/src/store.ts:715,743` · `portal/src/app/core/cartera.ts:37` | `kr-service` ordena por evidencia y confianza; la base y el portal reordenan por `opportunity_score` crudo. La columna "Confianza" del dashboard sigue sin ordenar nada. Detalle y las dos salidas, en §2.b. |
-| **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son 2-3× más baratos. **Pero la corrida real bajó la urgencia**: el LLM es solo el **19%** del costo, así que el ahorro total sería de ~10%. Ver [guía 02](../acciones/02-precios-modelos.md). |
+| **`gpt-4o` quedó legacy** | `config.ts` (`OPENAI_MODEL`) | Los modelos actuales son 2-3× más baratos. **Pero la corrida real bajó la urgencia**: el LLM es solo el **19%** del costo, así que el ahorro total sería de ~10%. Ver [guía 02](../historia/acciones/02-precios-modelos.md). |
 | **`is_local` sigue siendo conjetura fuera de las cabezas observadas** | `pipeline/enrich-content.ts` (LLM) · `pipeline/intent.ts` (heurística) · `pipeline/local-signal.ts` | ✅ Desde el 2026-08-02 el **map pack** del SERP corrige `is_local`, pero **solo en las ~15 cabezas** cuyo SERP se paga (`serpValidateTop`). Para las otras ~45 keywords sigue decidiendo el LLM o la heurística, que sobre-detecta (53 de 60 en la corrida real). Pesa menos de lo que pesaba —es la **cabeza** la que fija el `schema_type`—, pero el dataset crudo conserva `is_local` sin validar en la mayoría de sus filas. ⚠️ **Y las páginas no están cubiertas del todo:** `max_pages` vale 25 por defecto y `serpValidateTop` 15, y como el mapeo reordena por evidencia, un cluster de la posición ≥16 con datos de mercado puede subir a página **con la cabeza sin observar**. Con 8 páginas no muerde; con más clusters compitiendo, sí. |
 | **Sin tests de integración** | — | El camino live ya **se ejecutó a mano** contra DataForSEO, OpenAI y Storyblok, pero no está **automatizado**. |
 | **Una rotación de Supabase a otro algoritmo daría 401, no 503** | `api/src/auth.ts` (`CODIGOS_DE_TOKEN`) | `ERR_JOSE_ALG_NOT_ALLOWED` es un código de token, así que si el proyecto pasara a RS256 todos los logins fallarían **y quemarían refresh tokens**. Hoy el JWKS sirve una sola clave ES256 (verificado). Si Supabase anuncia un cambio de algoritmo, hay que tocar `algorithms` antes, no después. |
@@ -685,6 +686,27 @@ dos últimas quedan fuera. Lo que **sigue dependiendo de KR-1** no es implementa
 | **El session pooler de Supabase (5432) puede rechazar la primera conexión de un rol recién usado** | `docs/private/credenciales.env` (`DATABASE_URL_*`) | Descubierto con `amg_cache`: password recién puesta y confirmada por `pg_roles`, y aun así `password authentication failed` por el session pooler — es Supavisor, no la credencial (`amg_api` seguía andando en paralelo por el mismo host). El **transaction pooler (6543)** conectó al toque. Si `amg_orquestador` o `amg_render` hacen su primera conexión real y da el mismo error, probar 6543 antes de sospechar de la password — siempre que el código solo use transacciones autocontenidas (`pool.transaction()`, sin `SET LOCAL` de sesión ni `LISTEN`, que es el caso de `PgTaskLog`). |
 
 ## Riesgos abiertos
+
+### 🔴 Credenciales expuestas en el repositorio público · **ABIERTA (detectada 2026-08-03)**
+
+`docs/private.zip` estuvo **commiteado en `origin/main`** desde el commit `15ae91a` (2026-08-01), y el
+repositorio es público. Adentro viajaban `credenciales.env` —el maestro— y los cinco `.env` de backup
+de los paquetes: `SUPABASE_JWT_SECRET`, los tres `DATABASE_URL_*`, `DATAFORSEO_PASSWORD`, las keys de
+Anthropic y OpenAI, y el `STORYBLOK_MANAGEMENT_TOKEN`.
+
+**Por qué pasó:** el `.gitignore` tenía `docs/private/` (con barra), que **no cubre** un archivo
+`docs/private.zip`. Ya se corrigió, con los cuatro patrones de comprimido.
+
+**Por qué el arnés no lo vio:** `npm run verificar` daba **verde en la compuerta de secretos** con ese
+archivo trackeado — `scripts/secretos.mts` inspecciona archivos de texto y un `.zip` le pasa por al
+lado. Es una garantía que existía sin un test que la ejercitara, la misma clase de agujero que
+encontraron las doce tandas de review. **Sigue sin tapar** (ver la deuda de arriba).
+
+**Qué se hizo y qué falta.** Hecho: `git rm --cached` del zip y el `.gitignore` blindado. **Falta la
+rotación**, que es la única cosa que devuelve la seguridad: el objeto sigue en el historial de GitHub
+por decisión tomada —purgarlo no des-expone, porque hay forks, clones y cachés—, así que **todo lo que
+estuvo en ese zip hay que tratarlo como comprometido**. La lista priorizada, con el orden por daño y
+dónde se rota cada una, está en [`../../progress/current.md`](../../progress/current.md).
 
 ### 🔴 OBS-04 — Quién edita la web no lo gobierna nuestro RBAC · **ABIERTA (2026-08-01)**
 
@@ -708,10 +730,10 @@ contrato.
 ### ✅ OBS-01 — Solapamiento de alcance · **CERRADA (2026-07-19)**
 
 Era el último riesgo de producto abierto. Los dos documentos describían alcances distintos
-(`contexto-proyecto-frank.md`: 4 módulos con "Frank"; el PRD: 5 agentes con "Franco · CEO", y el
+(`docs/historia/contexto-proyecto-frank.md`: 4 módulos con "Frank"; el PRD: 5 agentes con "Franco · CEO", y el
 Creador de Webs "diferido a I+D"). **Decidido:**
 
-- **Manda `contexto-proyecto-frank.md`.** El PRD queda como visión de largo plazo.
+- **Manda `docs/historia/contexto-proyecto-frank.md`.** El PRD queda como visión de largo plazo.
 - **Alcance base: 3 módulos.** El 4 (calendario de redes / Trello) pasa a línea futura.
 - **El Creador de Webs va en la propuesta base**, y **ADR-04 se mantiene** (Storyblok, no WordPress).
 

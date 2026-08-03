@@ -6,7 +6,7 @@ propone a un cliente ("Frank").
 
 **Antes de trabajar, leé el estado real** (no lo asumas): `docs/proyecto/09-estado-y-roadmap.md` (qué
 hay, qué falta) y `docs/proyecto/11-plan-fase-2.md` (el plan). Las decisiones viven en
-`docs/decisiones-arquitectura.md` (ADR-01..23 + OBS-01..04; las tres primeras OBS están cerradas y
+`docs/decisiones-arquitectura.md` (ADR-01..24 + OBS-01..04; las tres primeras OBS están cerradas y
 **OBS-04 está abierta**: quién edita la web no lo gobierna nuestro RBAC).
 
 ---
@@ -23,8 +23,8 @@ Al terminar cualquier pieza de trabajo, antes de darla por cerrada:
    higiene de secretos, typecheck y tests, con exit code. Confirmá el verde con el output, no de
    memoria. Para el renderizador o el portal, **manejá la app en un navegador** (MCP chrome-devtools):
    encuentra lo que los tests no ven — ya pasó varias veces.
-3. **Actualizá la documentación del plan.** `09-estado-y-roadmap.md` (qué se hizo, **dónde estamos**,
-   **qué falta**) y `11-plan-fase-2.md`. Si el plan no menciona lo que acabás de hacer, el plan
+3. **Actualizá la documentación del plan.** `docs/proyecto/09-estado-y-roadmap.md` (qué se hizo, **dónde estamos**,
+   **qué falta**) y `docs/proyecto/11-plan-fase-2.md`. Si el plan no menciona lo que acabás de hacer, el plan
    miente por omisión. Actualizá también el ADR relevante si la decisión cambió o se cumplió una
    promesa vieja. Sincronizá las cifras de tests y de migraciones donde aparezcan.
 4. **Commit + push al cerrar cada etapa** (ver Git).
@@ -102,7 +102,7 @@ CAMBIOS_PEDIDOS (2 bloqueantes) -> progress/informes/revision-etapa-8.md
 La regla que las separa: el `09` responde *qué falta*, la bitácora responde *por qué terminó así*.
 Mezclarlas es lo que infló el `09` a 930 líneas.
 
-El `11-plan-fase-2.md` también habla de lo que falta, y eso está bien: dice **el orden y el detalle de
+El `docs/proyecto/11-plan-fase-2.md` también habla de lo que falta, y eso está bien: dice **el orden y el detalle de
 la fase en curso**, mientras el `09` dice **el estado global**. Los dos se actualizan (paso 3 del
 ritual) y **cuando se contradigan, gana el `09`**. Lo que no puede aparecer es un *tercer* lugar —un
 `feature_list.json`, un tablero paralelo— que repita el estado sin que nada avise cuando se

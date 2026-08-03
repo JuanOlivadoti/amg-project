@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Artefacto generado, no un documento del repo: kr-service escribe out/informe.md en cada corrida y out/ está gitignoreado, así que nunca existe en disco para el scan.'
+      value: docs/proyecto/out/informe.md
+identity:
+  bodyHash: e514d69815228eb98d71a14410663464ddec9473400e2f04ad34f11a104776d2
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/proyecto/04-modulo-2-keyword-research.md

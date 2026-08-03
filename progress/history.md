@@ -11,6 +11,67 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-03 — Ordenar la documentación, y lo que apareció debajo
+
+Se reorganizó el corpus entero de documentación (74 archivos, ~24.000 líneas) y se puso el grafo de
+referencias de skill-map en **cero errores**, desde 32. Pero lo importante de la sesión no fue eso.
+
+**🔴 `docs/private.zip` estaba commiteado en un repo público.** Apareció mirando por qué el
+`.gitignore` no lo cubría: la regla era `docs/private/` (con barra), que no alcanza a un zip del mismo
+nombre. Adentro viajaban `credenciales.env` —el archivo maestro— y los cinco `.env` de backup de los
+paquetes, incluidos `SUPABASE_JWT_SECRET`, los tres `DATABASE_URL_*`, `DATAFORSEO_PASSWORD`, las keys
+de Anthropic y OpenAI y el `STORYBLOK_MANAGEMENT_TOKEN`. En `origin/main` desde el commit `15ae91a`
+("priv", 2026-08-01), y el repositorio es **público** (verificado: la API de GitHub responde 200 sin
+autenticar). Se sacó del índice con `git rm --cached` y se blindó el `.gitignore` con los cuatro
+patrones de comprimido. **Decisión del usuario: rotar, y no reescribir el historial** — una vez
+público, el secreto está quemado y purgar no lo des-expone; lo que devuelve la seguridad es rotar.
+
+**Y la lección que deja, que es sobre el arnés y no sobre el zip:** `npm run verificar` daba **verde
+en la compuerta de secretos** con ese archivo trackeado. El detector de `scripts/secretos.mts` mira
+archivos de texto; un `.zip` le pasa por al lado. Tres reviews externas y doce tandas no lo
+encontraron, porque nadie miró *dentro* de un binario versionado. Otra vez lo mismo: la garantía
+existía, el test que la ejercitaba no.
+
+**Lo que se ordenó.** Tres cosas que estaban mezcladas ahora están separadas por la pregunta que
+contesta cada carpeta: `docs/proyecto/` dice **cómo es el sistema hoy**, `docs/superpowers/` dice
+**qué se va a construir y cómo se construyó**, y el nuevo `docs/historia/` dice **por qué el proyecto
+es así**. Se archivaron los 11 planes y specs ya ejecutados (~9.400 líneas, el 52% del corpus) en
+`superpowers/ejecutados/`, fuera del índice del grafo pero dentro de `referencePaths` para que sus
+enlaces sigan resolviendo. Se movieron a `historia/` el PRD de origen, el contexto de Frank, las seis
+acciones cerradas y los dos documentos del Módulo 2 previos a construirlo. Se resolvió la colisión de
+numeración `12`/`12` (despliegue pasó a `13`, el runbook a `14`).
+
+**Un archivo se quedó afirmando algo falso durante un mes:** `docs/historia/modulo-2-keyword-research.md`
+decía "Motor elegido: **SEMrush**", cuando el motor es DataForSEO desde antes de la primera línea de código.
+No se fusionó al documento vivo —habría contaminado el `04`—: se archivó con un aviso arriba que dice
+exactamente qué de ahí es mentira.
+
+**Lo que enseñó arreglar 32 errores de referencia.** Solo **6 eran defectos reales**. El resto eran
+tres clases de falso positivo, y saber distinguirlas es lo que evita reescribir prosa correcta para
+complacer a un linter:
+
+1. **26 venían de carpetas que git ignora** y skill-map escaneaba igual (`respectGitignore: false`).
+   Se fueron con una sola opción de configuración — que además saca de la base de skill-map el
+   `docs/private/credenciales-deploy.md` que estaba indexado y era legible por cualquier cliente MCP.
+2. **Un nombre de archivo suelto en un span de código se resuelve contra la carpeta del documento que
+   lo menciona.** El nombre del `09` sin su carpeta, escrito en `AGENTS.md`, apunta a la raíz del repo
+   y no a `docs/proyecto/`. Es la trampa que más veces se repitió, y por eso ahora hay una convención
+   escrita en [`docs/README.md`](../docs/README.md). Esa sección tardó **tres intentos**: la primera
+   versión rompía la regla que enseñaba, la segunda apostó a que meter los contraejemplos en un fence
+   de código bastaba —**y no basta: el scan persigue las rutas también dentro de los bloques**—, y la
+   tercera los silencia con su motivo escrito. Escribí "el scan hace code-strip" antes de comprobarlo;
+   el scan me contestó que no.
+3. **Lo que no es una referencia no debe escribirse como ruta**: el informe que el pipeline escribe en
+   `out/`, un nombre de ejemplo, una unidad de medida (euros por mes, leída como slash-command).
+   Esos 20 se silenciaron con `sm issues dismiss` **y su motivo escrito en el `.sm`**, que es lo que
+   hace que la supresión sea una decisión y no un olvido.
+
+**Y una asimetría de skill-map 1.2.1 que conviene recordar:** el `dismiss` de `reference-broken`
+funciona y sobrevive a un scan completo; el de `reference-redundant` **no** — la supresión queda
+activa y con el sidecar correcto, y el issue vuelve igual. Verificado con scan completo, no inferido.
+
+---
+
 ## 2026-08-02 (etapa A) — El agente `pipeline`, y lo que se aprende estrenándolo
 
 Se escribió el agente `pipeline` (128 líneas) y sus cuatro skills —`pipeline-gasto`,
@@ -268,7 +329,7 @@ Verificado en el navegador, no por el "✔" del deploy: las 5 rutas en 200, 14 p
 `app_render` no puede leer `business_profile` crudo, ni `kr_runs`, ni `memberships`.
 
 **Cuatro tropiezos que dejaron enseñanza** (todos en el
-[runbook](../docs/proyecto/13-runbook-despliegue.md#desplegar-el-renderizador-fase-2)): el DSN quedó
+[runbook](../docs/proyecto/14-runbook-despliegue.md#desplegar-el-renderizador-fase-2)): el DSN quedó
 con el usuario `amg_api` al copiarlo —lo que habría dado al proceso anónimo la credencial de la API,
 no un typo sino ADR-17 roto—; el **session pooler (5432) aceptó una conexión y rechazó la siguiente
 con la misma password**, así que el DSN va por **6543**; el dominio se agregó primero al servicio **de
@@ -317,7 +378,7 @@ revisión final de rama, más una revisión externa (Codex) que encontró 4 hall
 de Postgres no validaba la *forma* de los valores, solo el nombre de la clave; `locations` tenía la
 precedencia invertida contra su propio comentario; los topes de tamaño se aplicaban tarde; `/blog` se
 autoenlazaba con una story real) — los 4 corregidos y verificados por mutación. Detalle en el
-[plan](../docs/superpowers/plans/2026-07-31-navegacion-sitio-cliente.md).
+[plan](../docs/superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente.md).
 
 ## 2026-08-01 — Las cuatro piezas de la demo con Frank, resueltas
 

@@ -1,0 +1,9 @@
+annotations:
+  issueSuppressions:
+    - analyzer: reference-broken
+      note: 'Unidad de medida en prosa, no una invocación: el extractor de slash-commands lee el separador de la unidad como si fuera un comando.'
+      value: /mes
+identity:
+  bodyHash: 2b2ac52efd9d05f0f3cb3d3db5a4f630e5f9f806471c8fcb5cec331b65e74c29
+  frontmatterHash: ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356
+  path: docs/decisiones-arquitectura.md

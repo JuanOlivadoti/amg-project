@@ -70,8 +70,8 @@ compuerta de aprobación se ejecuta **editando un JSON a mano**. Y el research c
 
 ## Riesgo de producto abierto
 
-Existía un **solapamiento de alcance** entre los dos documentos de producto (`contexto-proyecto-frank.md`
+Existía un **solapamiento de alcance** entre los dos documentos de producto (`docs/historia/contexto-proyecto-frank.md`
 hablaba de 4 módulos; el PRD, de 5 agentes con prioridades distintas). **Resuelto el 2026-07-19**
-(**OBS-01**, cerrada): manda **`contexto-proyecto-frank.md`** y el PRD queda como visión de largo
+(**OBS-01**, cerrada): manda **`docs/historia/contexto-proyecto-frank.md`** y el PRD queda como visión de largo
 plazo. **Alcance base: 3 módulos** — Creador de Webs y Keyword Research **ya construidos**, y el
 Respondedor de reseñas por hacer. El módulo 4 (calendario de redes / Trello) pasó a línea futura.

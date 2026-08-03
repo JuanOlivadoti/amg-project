@@ -31,7 +31,7 @@
 | ADR-22 | **La API en Hono**: comandos compuestos (fila bajo RLS → después el evento), auth = JWT + RLS | Aceptada (implementa 5.1) |
 | ADR-23 | La API verifica identidad contra el **JWKS del emisor**, no contra un secreto compartido | Aceptada (endurece ADR-22) |
 | ADR-24 | Las **membresías se escriben desde `app_user` bajo RLS**, no con service-role (enmienda la `0001`) | **Aceptada** (2026-08-02) · desbloquea la pieza 2 del portal |
-| OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | ✅ **CERRADA** (2026-07-19) — manda `contexto-proyecto-frank.md`; el PRD queda como visión |
+| OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | ✅ **CERRADA** (2026-07-19) — manda `docs/historia/contexto-proyecto-frank.md`; el PRD queda como visión |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 | OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
 | OBS-04 | **Quién edita la web no lo gobierna nuestro RBAC**: el portal y Storyblok son dos identidades que no se cruzan | 🔴 **ABIERTA** (2026-08-01) — bloquea reescribir ADR-11 |
@@ -564,13 +564,13 @@ dos tests de "no gasta un centavo".
 ---
 
 ## OBS-01 — Solapamiento de alcance entre los dos documentos ✅ CERRADA
-**Observación.** `contexto-proyecto-frank.md` describe "Frank, cliente de la agencia" con 4 módulos; `A_PRD_AMG_Madrid_v1_Ilustrado.md` tiene sponsor "Franco · CEO" con 5 agentes y prioridades distintas. **Frank ≈ Franco es casi con seguridad la misma persona/proyecto**, con framings que no cierran (p. ej. el Creador de Webs es "Módulo 1 avanzado" en un doc y "web-por-prompt diferido a I+D / O10" en el otro).
+**Observación.** `docs/historia/contexto-proyecto-frank.md` describe "Frank, cliente de la agencia" con 4 módulos; `docs/historia/A_PRD_AMG_Madrid_v1_Ilustrado.md` tiene sponsor "Franco · CEO" con 5 agentes y prioridades distintas. **Frank ≈ Franco es casi con seguridad la misma persona/proyecto**, con framings que no cierran (p. ej. el Creador de Webs es "Módulo 1 avanzado" en un doc y "web-por-prompt diferido a I+D / O10" en el otro).
 **Riesgo.** Presupuestar o presentar dos alcances incompatibles al mismo cliente.
 **Acción pendiente.** Unificar en un **único alcance coherente por fases** antes de consolidar la propuesta comercial. Confirmar con Juan el estado real del Creador de Webs.
 
 > ### ✅ CERRADA (2026-07-19) — decisión de alcance
 >
-> **Manda `contexto-proyecto-frank.md`.** El PRD (`A_PRD_AMG_Madrid_v1_Ilustrado.md`) queda como
+> **Manda `docs/historia/contexto-proyecto-frank.md`.** El PRD (`docs/historia/A_PRD_AMG_Madrid_v1_Ilustrado.md`) queda como
 > **visión de largo plazo**, no como alcance presupuestado. Donde los dos digan cosas distintas,
 > gana contexto-frank.
 >

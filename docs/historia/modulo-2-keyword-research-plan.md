@@ -1,7 +1,18 @@
 # Módulo 2 — Keyword Research · Plan técnico completo
 
-> Documento de diseño e implementación. Complementa a `modulo-2-keyword-research.md` (alcance) con la arquitectura, modelo de datos, pipeline detallado, costos y roadmap.
-> Versión 1.0 — 2026-07-08
+> ## ⚠️ Documento de origen — el diseño previo a construir
+>
+> Es el plan técnico con el que se arrancó (versión 1.0, 2026-07-08). Se conserva porque contiene el
+> **razonamiento de diseño** que el código ya no explica: el modelo de datos propuesto (§4), los
+> esquemas de output (§8), el tratamiento de mercados (§9), RGPD (§11), los riesgos evaluados (§16) y
+> las decisiones que en ese momento estaban abiertas (§17).
+>
+> **No es el estado del sistema.** El pipeline real, sus 11 pasos y los costos medidos están en
+> [`docs/proyecto/04-modulo-2-keyword-research.md`](../proyecto/04-modulo-2-keyword-research.md);
+> lo que quede en contradicción, gana ese.
+>
+> Complementaba a [`modulo-2-keyword-research.md`](modulo-2-keyword-research.md) (el alcance
+> comercial), que **también** es material de origen.
 
 ---
 
@@ -292,7 +303,7 @@ opportunity_score = 100 * (
 
 > **A afinar tras pruebas (Codex):** normalizar `volume_norm` por **percentiles del mercado/vertical** en vez de `volume_max_del_run` (los scores no son comparables entre runs de distinto tamaño), y winsorizar outliers. Se calibra con datos reales en la Fase 0; el default por-run alcanza para el primer spike.
 >
-> **Hecho a medias el 2026-08-02.** La winsorización existe y el denominador es el **percentil 90**, no el máximo: un solo pico ya no aplasta al resto. Lo que **no** cambió es lo que la review señalaba entre paréntesis — sigue siendo un percentil **del run**, así que los scores siguen sin ser comparables entre corridas. Un percentil de mercado/vertical necesita el dataset persistido, que hoy no existe (ver KR-1 en [09-estado-y-roadmap.md](proyecto/09-estado-y-roadmap.md)).
+> **Hecho a medias el 2026-08-02.** La winsorización existe y el denominador es el **percentil 90**, no el máximo: un solo pico ya no aplasta al resto. Lo que **no** cambió es lo que la review señalaba entre paréntesis — sigue siendo un percentil **del run**, así que los scores siguen sin ser comparables entre corridas. Un percentil de mercado/vertical necesita el dataset persistido, que hoy no existe (ver KR-1 en [09-estado-y-roadmap.md](../proyecto/09-estado-y-roadmap.md)).
 
 ---
 
@@ -475,5 +486,3 @@ Vendible por fases: F0+F1 ya entrega un research automatizado con JSON; F2 sube 
 - Costo por run registrado y dentro de presupuesto.
 - Handoff al Módulo 1 disparado solo tras aprobación.
 - Suite de tests (unit + golden set) en verde en CI sin gastar API real.
-```
-
