@@ -17,10 +17,10 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 682 tests (monorepo) + 235 (portal)
+## Cobertura actual: 684 tests (monorepo) + 235 (portal)
 
 > Las cifras de esta tabla se miden con `npm run verificar`, que las cuenta de la salida de
-> `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-02.
+> `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-03.
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
@@ -30,7 +30,7 @@ sin cuenta.
 | `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **95** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
 | `renderer` | **114** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web; **`locations`/`menu` sobreviven al validador y llegan al render**), **los límites del camino anónimo** (10ª review), y **navegación + home** (barra desde la Links API con las mismas defensas; **la nav falla → sin barra, no 503**; nav de preview en draft sin cachear; la raíz sin `home` **sintetiza un índice**, no 404; `/blog` no se autoenlaza aunque exista una story real con ese slug). |
-| `scripts` | **43** | El reparto de credenciales (`env-sync`) y el re-seed de producción. No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
+| `scripts` | **45** | El reparto de credenciales (`env-sync`) y el re-seed de producción. No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
 | `portal` | **235** | *(fuera del monorepo)* **169 con `node:test`** — el núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, **la separación por evidencia** (✅/⚠️), las **carreras asincrónicas** (`Vigencia`) y el **contraste WCAG AA** de los 17 pares × 2 temas leído de `styles.css`, más un test que recorre `src/app` y **falla si una plantilla incrusta un color**. Más el guard de config de producción: que `environment.prod.ts` esté **listo para desplegar** (sin placeholders, todo HTTPS) — importa porque el portal se despliega solo en cada push. Y **66 de componente con Karma** (`ng test`) para el DOM: tema, shell, y las pantallas de clientes y usuarios (incluido el `<select>` cuyo `[value]` se aplicaba antes de existir las `<option>`). Con `fetch` de mentira — los 169 corren sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
@@ -39,6 +39,12 @@ Cada fix de seguridad se verifica **reintroduciendo el bug** y comprobando que e
 un test de seguridad que siempre pasa es peor que no tenerlo — y me pasó: el test del doble cobro
 comprobaba *"solo una reserva es `nueva`"*, que era cierto **e irrelevante** (la otra salía
 `huerfana`, que también autoriza gastar). Pasaba con el bug dentro.
+
+Volvió a pagar el 2026-08-03, en la compuerta de secretos. Se cerraron dos huecos con una regla cada
+uno, y al mutarlas **por separado** salió que el test de `docs/private*` seguía verde sin su regla:
+todos sus casos eran `.zip`, así que **los cazaba la otra**. Verde por la razón equivocada, y la
+mutación fue lo único que lo dijo. La forma de la trampa se repite: cuando dos reglas se solapan, un
+test que las cubre juntas no prueba ninguna de las dos.
 
 ### `kr-service` (146 tests)
 

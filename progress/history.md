@@ -27,10 +27,23 @@ patrones de comprimido. **Decisión del usuario: rotar, y no reescribir el histo
 público, el secreto está quemado y purgar no lo des-expone; lo que devuelve la seguridad es rotar.
 
 **Y la lección que deja, que es sobre el arnés y no sobre el zip:** `npm run verificar` daba **verde
-en la compuerta de secretos** con ese archivo trackeado. El detector de `scripts/secretos.mts` mira
-archivos de texto; un `.zip` le pasa por al lado. Tres reviews externas y doce tandas no lo
-encontraron, porque nadie miró *dentro* de un binario versionado. Otra vez lo mismo: la garantía
-existía, el test que la ejercitaba no.
+en la compuerta de secretos** con ese archivo trackeado. Mi primer diagnóstico fue impreciso —escribí
+que el detector "no mira dentro de los comprimidos"—, y leyendo `scripts/secretos.mts` la causa
+resultó peor por lo simple: el detector **decide por ruta a propósito**, y su regla comparaba
+`dirs[1] === "private"`, el segundo segmento de **directorio**. En `docs/private.zip` no hay segundo
+directorio: `private.zip` es el **nombre del archivo**. Ninguna regla lo miraba. **El mismo error
+conceptual que el `.gitignore`, en los dos lugares que tenían que atajarlo**: prohibir la carpeta y
+olvidar el archivo que se llama igual. Otra vez lo mismo de siempre: la garantía existía, el test que
+la ejercitaba no.
+
+**Se cerró en la misma sesión**, con la disciplina completa: dos tests rojos primero, dos reglas
+(`docs/private*` por nombre, y cualquier **comprimido versionado** — opaco para un detector de rutas,
+y hoy no hay ninguno en el repo, así que la regla no le cuesta nada a nadie), y **mutación por
+separado de cada una**: al quitar una, cae exactamente su test y ningún otro. Eso último no salió
+gratis: la primera versión del test de `docs/private*` usaba solo nombres `.zip`, así que **la regla de
+comprimidos lo mantenía verde** — el test pasaba por la razón equivocada y la mutación fue lo que lo
+destapó. Se le agregó un caso con un `.md` bajo ese nombre —no un comprimido— para que el test pruebe
+la regla que dice probar.
 
 **Lo que se ordenó.** Tres cosas que estaban mezcladas ahora están separadas por la pregunta que
 contesta cada carpeta: `docs/proyecto/` dice **cómo es el sistema hoy**, `docs/superpowers/` dice

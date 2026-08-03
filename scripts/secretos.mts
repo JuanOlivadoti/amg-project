@@ -17,6 +17,12 @@ export interface Prohibida {
   motivo: string;
 }
 
+/**
+ * Extensiones de comprimido. `.gz` cubre también `.tar.gz`, y están las dos porque la lista se lee
+ * como política —"esto no se versiona"— y no como optimización de un `endsWith`.
+ */
+const COMPRIMIDOS = [".zip", ".tar", ".tar.gz", ".tgz", ".gz", ".bz2", ".xz", ".7z", ".rar"] as const;
+
 /** El nombre del archivo, sin el directorio. */
 function base(ruta: string): string {
   const partes = ruta.split("/");
@@ -49,11 +55,27 @@ export function motivoProhibido(rutaCruda: string): string | null {
   if (dirs[0] === "docs" && dirs[1] === "private") {
     return "docs/private/ guarda los valores reales; nada de ahí se versiona";
   }
+  // La misma carpeta, empaquetada como ARCHIVO. La regla de arriba mira el segundo segmento de
+  // DIRECTORIO, así que `docs/private.zip` —donde `private.zip` es el nombre— pasaba por el hueco:
+  // `dirs` es solo ["docs"]. No es hipotético, es lo que se commiteó en un repo público el
+  // 2026-08-01 con `credenciales.env` adentro.
+  if (dirs[0] === "docs" && nombre.startsWith("private")) {
+    return "docs/private* empaqueta la carpeta de los valores reales";
+  }
   if (dirs.includes("node_modules")) {
     return "node_modules no va al repo (en ningún nivel: también portal/node_modules)";
   }
   if (dirs.includes("out") || dirs.includes("dist") || dirs.includes(".cache")) {
     return "salida de build o cache: se regenera, no se versiona";
+  }
+
+  // Un comprimido es OPACO para este detector, que decide por ruta y no por contenido: no hay forma
+  // de saber si adentro viaja un `.env` sin abrirlo. Así que se rechaza por defecto, con la misma
+  // asimetría que gobierna el gasto del pipeline —rechazar de más es gratis, dejar pasar una key es
+  // irreversible—. Hoy no hay ni un comprimido versionado, así que la regla no le cuesta nada a
+  // nadie; si alguna vez hace falta uno, que sea una decisión y no un descuido.
+  if (COMPRIMIDOS.some((ext) => nombre.endsWith(ext))) {
+    return "comprimido versionado: el detector no puede ver qué trae adentro";
   }
 
   // Plantillas sin valores: son lo ÚNICO de la familia .env que sí se comparte.

@@ -10,8 +10,9 @@
 **En curso:** nada. Cerrada la **reorganización de la documentación**: el corpus quedó separado por la
 pregunta que contesta cada carpeta y el grafo de referencias de skill-map quedó en **cero errores**
 (venía de 32). El relato está en [`history.md`](history.md).
-**Estado:** verificado en verde — 682 tests del monorepo, typecheck limpio, sin secretos entre los 378
-archivos versionados. El portal no se tocó.
+**Estado:** verificado en verde — 684 tests del monorepo (subió 2: los del agujero de la compuerta de
+secretos, ver abajo), typecheck limpio, sin secretos entre los 400 archivos versionados. El portal no
+se tocó.
 
 ---
 
@@ -43,10 +44,14 @@ y las rutas `*_PATH`. `SEED_FRANK_USER_ID` y `SEED_JUAN_USER_ID` son identificad
 
 ## Lo que esta sesión dejó abierto
 
-**El agujero del arnés, sin tapar.** `npm run verificar` daba **verde en la compuerta de secretos** con
-el zip de credenciales trackeado: `scripts/secretos.mts` inspecciona archivos de texto y un `.zip` le
-pasa por al lado. Mientras no se arregle, la compuerta promete algo que no cumple. El arreglo mínimo:
-que el verificador falle si hay un comprimido versionado bajo una ruta de secretos, sin abrirlo.
+**El agujero del arnés: ✅ tapado.** `npm run verificar` daba verde con el zip de credenciales
+trackeado, y la causa no era la que anoté primero: `scripts/secretos.mts` **no** intenta mirar dentro
+de los archivos —decide por ruta, a propósito—, sino que su regla de `docs/private/` comparaba el
+segundo segmento de **directorio**, y en `docs/private.zip` ese nombre es el del **archivo**. Cerrado
+con dos reglas: `docs/private*` por nombre, y cualquier **comprimido versionado** (opaco para un
+detector de rutas; hoy no hay ninguno en el repo, así que no cuesta nada). Cada regla tiene su test y
+**cada test cae exactamente al quitar su regla** — comprobado con las dos mutaciones. El CLI, con el
+caso real por stdin, sale con 1 y nombra el motivo.
 
 **Dos avisos de skill-map que quedan, y son deliberados.** 17 warnings de `extractor-collision` (el
 patrón ``[`ruta`](ruta)``, donde gana el enlace y se registra bien: inocuo) y 5 info de

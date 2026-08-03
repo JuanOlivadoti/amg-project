@@ -673,7 +673,7 @@ dos últimas quedan fuera. Lo que **sigue dependiendo de KR-1** no es implementa
 | Deuda | Dónde | Impacto |
 |---|---|---|
 | **El secreto legacy de Supabase sigue vivo, y no se puede revocar sin migrar antes el portal** | Supabase (Project Settings → API) · `portal/src/environments/environment.prod.ts` | Con ese secreto se puede acuñar un token `service_role` que **bypassea RLS por completo** — el radio de daño no depende de que nuestra API ya no lo acepte. Pero **no se puede revocar sin más**: el `anon key` del portal es un JWT legacy firmado con él (`alg: HS256`, verificado), así que revocarlo rompe el login. Hay que migrar el portal a las claves nuevas (*publishable*), desplegar, verificar, y recién ahí revocar. Ver [12-credenciales.md](12-credenciales.md). |
-| **🔴 La compuerta de secretos no mira dentro de archivos comprimidos** | `scripts/secretos.mts` | Dio **verde durante tres días** con `docs/private.zip` trackeado en un repo público, con `credenciales.env` adentro (ver Riesgos abiertos). Inspecciona archivos de texto; un `.zip`, `.tar` o `.tgz` versionado le pasa por al lado. El arreglo mínimo no necesita abrir el comprimido: fallar si hay uno versionado bajo una ruta de secretos. |
+| ~~**La compuerta de secretos dejaba pasar la carpeta de secretos empaquetada**~~ ✅ **cerrada (2026-08-03)** | `scripts/secretos.mts` | Dio **verde durante tres días** con `docs/private.zip` trackeado en un repo público (ver Riesgos abiertos). La causa no era que no mirara *dentro* del zip —decide por ruta, a propósito—: la regla de `docs/private/` comparaba el **segundo segmento de directorio**, y ahí `private.zip` era el **nombre del archivo**, así que ninguna regla lo miraba. Mismo error conceptual que tenía el `.gitignore`. Cerrado con dos reglas y dos tests: `docs/private*` como nombre, y **cualquier comprimido versionado** —opaco para un detector que decide por ruta—. Las dos caen por mutación. |
 | **Esquema Zod duplicado** entre M2 y M1 | `kr-service/src/validation/` y `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. Extraer a paquete compartido. |
 | **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos están verificadas** ✅, pero las estimaciones por fase **siguen a ojo**. Se calibran con `datasets/keywords.json` — **que hoy no está** (ver KR-1 en §2.b): la promesa de "calibrar es gratis" depende de regenerar ese dataset. |
 | **🟠 El dataset crudo del research no existe** | `datasets/keywords.json` | ✅ **El destino ya es durable** (versionado, con un test que se lo pregunta a `git check-ignore`). Lo que falta es **el dato**: el de la corrida del 2026-07-30 se perdió en `out/` y regenerarlo cuesta ~$0.31 en producción. Bloquea la **calibración** de las tres mejoras de calidad (§2.b) y la del presupuesto — ya no su implementación. |
@@ -697,10 +697,13 @@ Anthropic y OpenAI, y el `STORYBLOK_MANAGEMENT_TOKEN`.
 **Por qué pasó:** el `.gitignore` tenía `docs/private/` (con barra), que **no cubre** un archivo
 `docs/private.zip`. Ya se corrigió, con los cuatro patrones de comprimido.
 
-**Por qué el arnés no lo vio:** `npm run verificar` daba **verde en la compuerta de secretos** con ese
-archivo trackeado — `scripts/secretos.mts` inspecciona archivos de texto y un `.zip` le pasa por al
-lado. Es una garantía que existía sin un test que la ejercitara, la misma clase de agujero que
-encontraron las doce tandas de review. **Sigue sin tapar** (ver la deuda de arriba).
+**Por qué el arnés no lo vio, y ya está tapado (2026-08-03).** `npm run verificar` daba **verde en la
+compuerta de secretos** con ese archivo trackeado. La causa exacta: `scripts/secretos.mts` decide por
+ruta —a propósito— y su regla de `docs/private/` comparaba el **segundo segmento de directorio**;
+para `docs/private.zip` ese segmento no existe, porque `private.zip` es el nombre del archivo. Ninguna
+otra regla lo miraba. **Es el mismo error conceptual que tenía el `.gitignore`**: prohibir la carpeta y
+olvidar el archivo que se llama igual, en los dos lugares que tenían que atajarlo. Cerrado con dos
+reglas nuevas y sus tests, verificadas por mutación (ver la deuda tachada arriba).
 
 **Qué se hizo y qué falta.** Hecho: `git rm --cached` del zip y el `.gitignore` blindado. **Falta la
 rotación**, que es la única cosa que devuelve la seguridad: el objeto sigue en el historial de GitHub

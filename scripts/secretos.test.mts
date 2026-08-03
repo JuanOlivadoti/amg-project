@@ -93,6 +93,41 @@ test("🔴 la caja no apaga el detector", () => {
   assert.equal(motivoProhibido("api/.ENV.EXAMPLE"), null);
 });
 
+test("🔴 la carpeta de secretos, empaquetada como ARCHIVO", () => {
+  // El caso real, y el más caro: `docs/private.zip` estuvo commiteado en este repo —que es PÚBLICO—
+  // desde el 2026-08-01, con `credenciales.env` y los cinco .env de backup adentro, y esta compuerta
+  // dio VERDE tres días. El motivo es de una línea: la regla de `docs/private/` mira el SEGUNDO
+  // segmento de DIRECTORIO, y acá `private.zip` es el nombre del archivo — `dirs` es solo ["docs"],
+  // así que `dirs[1]` no existe y no había ninguna otra regla que lo mirara. Mismo error conceptual
+  // que tenía el .gitignore: prohibir la carpeta y olvidar el archivo que se llama igual.
+  assert.ok(motivoProhibido("docs/private.zip"), "el zip de docs/private/ tiene que caer");
+  assert.ok(motivoProhibido("docs/private.tar.gz"));
+  assert.ok(motivoProhibido("docs/private-backup.zip"));
+  assert.ok(motivoProhibido("docs/Private.ZIP"), "ni en mayúsculas");
+  // Y este caso es el que hace que el test pruebe ESTA regla y no la de comprimidos: los cuatro de
+  // arriba son .zip o .tar.gz, así que caerían igual por opacos. Un `.md` con ese nombre solo lo caza
+  // la regla de `docs/private*` — sin ella, el test seguiría verde y no probaría nada.
+  assert.ok(motivoProhibido("docs/private-notas.md"), "no hace falta que sea un comprimido");
+  const motivo = motivoProhibido("docs/private.zip") ?? "";
+  assert.match(motivo, /private/, "el motivo tiene que nombrar la carpeta, no solo decir 'comprimido'");
+});
+
+test("🔴 cualquier comprimido versionado, porque es opaco para este detector", () => {
+  // Este detector decide por RUTA, no por contenido — a propósito: abrir archivos para decidir sería
+  // otra clase de herramienta. La consecuencia es que un comprimido es una caja negra: no hay forma
+  // de saber si adentro viaja un `.env` sin descomprimirlo. Así que la política es la misma que rige
+  // el gasto en el pipeline: preferir rechazar de más antes que dejar pasar lo irreversible. Hoy no
+  // hay ni un comprimido versionado en el repo, así que no rompe nada; si alguna vez hace falta uno,
+  // que sea una decisión explícita y no un descuido.
+  assert.ok(motivoProhibido("backup.zip"));
+  assert.ok(motivoProhibido("infra/dump.tar.gz"));
+  assert.ok(motivoProhibido("fixtures/datos.tgz"));
+  assert.ok(motivoProhibido("x.7z"));
+  // Y no confundir una extensión con un sufijo cualquiera del nombre.
+  assert.equal(motivoProhibido("docs/proyecto/07-configuracion.md"), null);
+  assert.equal(motivoProhibido("portal/src/app/zip-code.ts"), null);
+});
+
 test("el motivo explica cuál es el problema, no solo que lo hay", () => {
   // Un "[FALLA] hay secretos" sin decir por qué obliga a adivinar. Cada rechazo se explica.
   assert.match(motivoProhibido(".env") ?? "", /entorno|keys/i);
