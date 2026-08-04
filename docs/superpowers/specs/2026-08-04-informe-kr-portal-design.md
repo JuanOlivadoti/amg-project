@@ -33,6 +33,26 @@ por página, ni el backlog. El informe no la duplica — la complementa.
 | Markdown → HTML | **Parser propio**, sin `innerHTML` ni dependencia nueva | 2026-08-04 (Juan) |
 | Entrega | **Dos etapas**: KR-2a (paquete) y KR-2b (feature) | 2026-08-04 (Juan) |
 
+## 2.1 Qué dice ADR-07, y qué de eso cumple esta spec
+
+**ADR-07 decidió un doble entregable: JSON estructurado + informe legible «Markdown→PDF»**
+([`decisiones-arquitectura.md`](../../decisiones-arquitectura.md) § ADR-07). Esta spec **cumple la mitad
+del informe legible y posterga el PDF**, y hay que decirlo en lugar de dejar la promesa flotando:
+
+- ✅ El informe legible existe (`renderReport`) y ahora **llega a un humano sin correr un CLI**. Eso es
+  lo que ADR-07 quería del entregable.
+- ⏸️ **El PDF queda fuera** (§10). ADR-07 lo nombra como formato, no como requisito con fecha, y la
+  pantalla + `.md` cubren el caso de uso real (revisar en el portal, mandar el archivo). Si el PDF llega
+  a hacer falta, se genera **desde el mismo `.md`** y no obliga a rehacer nada de esto.
+- ❗ La alternativa que ADR-07 **descartó** fue "JSON + dashboard interactivo (queda para F3)". Una
+  pantalla que **muestra un informe** no es ese dashboard: no hay filtros, ni agregaciones, ni
+  exploración. Vale decirlo porque el parecido superficial invita a leer esta spec como una violación de
+  ADR-07, y no lo es.
+
+**Al implementar KR-2b hay que actualizar ADR-07** con el estado real del entregable: el Markdown se
+sirve, el PDF sigue diferido. Un ADR que promete un formato que nadie construyó es una promesa vieja que
+envejece sola.
+
 ## 3. Lo que se midió antes de escribir esta spec
 
 Cinco hechos que cambiaron el diseño. Están acá porque cada uno habría producido una degradación
@@ -351,6 +371,16 @@ comentario dice — hay que averiguar cuál antes de tocar el test.
 | El parser **escapa** `<script>` y `<img onerror>` | `portal` | pintar la marca desconocida como HTML en vez de texto |
 | Ninguna plantilla usa `innerHTML` / `bypassSecurityTrustHtml` | `portal` | agregar uno y ver caer el test |
 | El link al informe existe en la pantalla del brief | `portal` | borrar el `routerLink` |
+
+> ⚠️ **Ninguno de los tests de política puede usar la conexión del seed.** `sembrarDemo` recibe una
+> `ConexionReservada` y **no pone contexto de tenant ni de rol**: el CLI conecta con
+> `DATABASE_URL_ADMIN` (el `postgres.<project-ref>` de Supabase) y en PGlite el usuario es superuser, así
+> que **RLS no lo alcanza** — ni siquiera con `force row level security`, que somete al _owner_, no al
+> superuser. Un test de la política escrito con esa conexión **pasa siempre y no prueba nada**. Los tests
+> de la tabla van con `app_user` y contexto puesto, como el resto de la batería de RLS.
+>
+> Esto también responde por qué la política no rompe el seed: el seed la esquiva por construcción. Es una
+> excepción que ya existe para las otras nueve tablas, no algo que la `0016` introduzca.
 
 **Las dos últimas filas de `db` van juntas y son la razón de que sean dos.** Un test con el rol `cliente`
 correctamente puesto **no** caza la forma que falla abierto (`'cliente' is distinct from 'cliente'` es
