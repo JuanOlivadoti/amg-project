@@ -17,12 +17,16 @@ resueltos; el detalle en [`08` § tanda 19](../docs/proyecto/08-testing-calidad.
 
 ---
 
-## 🔴 Acción humana urgente — rotar las credenciales expuestas
+## 🔴 Riesgo abierto — las credenciales expuestas, **postergado por decisión del usuario (2026-08-04)**
 
-**Sigue abierta, sin cambios desde el 2026-08-03.** `docs/private.zip` estuvo **commiteado en este
-repositorio, que es público**, desde el 2026-08-01 (commit `15ae91a`). Ya se sacó del índice y el
-`.gitignore` quedó blindado, pero **el objeto sigue en el historial de GitHub** por decisión tomada:
-purgar no des-expone, lo que devuelve la seguridad es rotar.
+> **No lo levantes como bloqueante en cada sesión.** Juan decidió posponer la rotación; sigue siendo un
+> riesgo real y abierto, no un asunto cerrado. Lo que corresponde es dejarlo anotado y seguir con el
+> trabajo, no volver a proponerlo cada vez.
+
+`docs/private.zip` estuvo **commiteado en este repositorio, que es público**, desde el 2026-08-01
+(commit `15ae91a`). Ya se sacó del índice y el `.gitignore` quedó blindado —y desde la 13ª review cubre
+también los directorios hermanos tipo `docs/private-backup/`—, pero **el objeto sigue en el historial de
+GitHub** por decisión tomada: purgar no des-expone, lo que devuelve la seguridad es rotar.
 
 **La lista priorizada vive fuera del repo:** `docs/private/rotacion-credenciales.md` (gitignoreado).
 Está ahí y no acá a propósito — es un análisis de impacto ordenado por daño, o sea un mapa de qué
