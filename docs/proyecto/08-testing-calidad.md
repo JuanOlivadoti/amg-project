@@ -17,20 +17,20 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 695 tests (monorepo) + 235 (portal)
+## Cobertura actual: 698 tests (monorepo) + 235 (portal)
 
 > Las cifras de esta tabla se miden con `npm run verificar`, que las cuenta de la salida de
-> `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-03.
+> `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-04.
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
-| `db` | **170** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto, **allowlist de `locations`/`menu` en `business_profile_publico`** (`0010`), y que la allowlist restrinja también la **forma** de cada valor —no solo el nombre de la clave— con tope de tamaño aplicado en la fuente (`app.texto_publico`, revisión externa Codex). |
+| `db` | **182** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto, **allowlist de `locations`/`menu` en `business_profile_publico`** (`0010`), y que la allowlist restrinja también la **forma** de cada valor —no solo el nombre de la clave— con tope de tamaño aplicado en la fuente (`app.texto_publico`, revisión externa Codex). |
 | `kr-service` | **146** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). Desde KR-3: el **map pack** del SERP corrigiendo `is_local`, el **percentil winsorizado** del volumen, el **orden en dos niveles**, y que el **destino del dataset no caiga en un directorio que git ignore**. |
 | `web-builder` | **96** | Contrato, handoff, render, XSS, idempotencia de publicación, marca por tenant, imágenes, **nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados** (con escape de `name`/`slug`/`price`), que **`locations` manda** sobre los campos clásicos (JSON-LD y footer, no solo cuando faltan), y que `parseProfile` rechace un perfil con más de 20 locales o 200 ítems de carta. |
-| `orchestrator` | **18** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
+| `orchestrator` | **19** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **95** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
 | `renderer` | **114** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web; **`locations`/`menu` sobreviven al validador y llegan al render**), **los límites del camino anónimo** (10ª review), y **navegación + home** (barra desde la Links API con las mismas defensas; **la nav falla → sin barra, no 503**; nav de preview en draft sin cachear; la raíz sin `home` **sintetiza un índice**, no 404; `/blog` no se autoenlaza aunque exista una story real con ese slug). |
-| `scripts` | **45** | El reparto de credenciales (`env-sync`) y el re-seed de producción. No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
+| `scripts` | **46** | El reparto de credenciales (`env-sync`) y el re-seed de producción. No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
 | `portal` | **235** | *(fuera del monorepo)* **169 con `node:test`** — el núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, **la separación por evidencia** (✅/⚠️), las **carreras asincrónicas** (`Vigencia`) y el **contraste WCAG AA** de los 17 pares × 2 temas leído de `styles.css`, más un test que recorre `src/app` y **falla si una plantilla incrusta un color**. Más el guard de config de producción: que `environment.prod.ts` esté **listo para desplegar** (sin placeholders, todo HTTPS) — importa porque el portal se despliega solo en cada push. Y **66 de componente con Karma** (`ng test`) para el DOM: tema, shell, y las pantallas de clientes y usuarios (incluido el `<select>` cuyo `[value]` se aplicaba antes de existir las `<option>`). Con `fetch` de mentira — los 169 corren sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
@@ -80,7 +80,7 @@ test que las cubre juntas no prueba ninguna de las dos.
 
 ## Revisiones externas (Codex) — qué encontraron y qué se corrigió
 
-**Doce rondas de revisión adversarial**, en 18 tandas de correcciones. Todos los hallazgos están
+**Trece rondas de revisión adversarial**, en 19 tandas de correcciones. Todos los hallazgos están
 corregidos y **los tests los fijan como contrato** para que no reaparezcan.
 
 El patrón que se repite —y por eso las reviews están en el proceso— es que **casi siempre encuentran
@@ -405,6 +405,48 @@ corregidos **y verificados por mutación**:
 **Deuda dicha, no bloqueante:** falta un test positivo de que `/blog` **sí** muestra su link en una
 story normal (solo hay test de que no se autoenlaza), y la validación de forma tiene test en **un**
 campo de los ~20 que ahora protege.
+
+### Tanda 19 — 13ª review: la primera que miró el ARNÉS, y encontró lo que el arnés enseña mal ✅
+
+Codex revisó las **etapas A y B del plan de agentes** (los agentes `pipeline` y `datos` con sus siete
+skills) y el trabajo real que las estrenó, con el encargo explícito de **no tocar código**. Es la
+primera ronda externa sobre `.claude/`: hasta acá las doce anteriores solo habían mirado los paquetes.
+Veredicto **NO LISTO**, nueve hallazgos, **ninguno refutado del todo** y uno parcialmente.
+
+| Hallazgo | Por qué importaba |
+|---|---|
+| **Dos `savePages` concurrentes del mismo run dejan la UNIÓN de dos briefs** | En READ COMMITTED —lo que abre `NodePgPool`— ninguna reconciliación ve las filas no confirmadas de la otra, así que ninguna retira las ajenas: quedan los dos briefs activos con **dos páginas en la posición 0**. Cerrado con `select … for update` sobre `kr_runs` al inicio de la transacción. **PGlite serializa sus transacciones, así que esta propiedad NO tiene test y eso quedó escrito en el código**: un test que no puede fallar es peor que ninguno. Lo que sí se testeó es el contrato observable (si el run no se puede bloquear, no se escribe nada), y de paso arregló un 400 que culpaba al payload cuando el problema era el run. |
+| **La skill enseñaba "todo se escribe como `app_user`"** | El orquestador escribe como `app_service`, y su login **no puede** asumir `app_user` (ADR-17). Un agente que siguiera la skill al pie de la letra podía escribir un test con el rol equivocado o "unificar" los dos roles. La raíz estaba en el comentario de `db/src/store.ts`, que la skill citó textualmente: **el error nació en el código y la skill lo propagó convertido en instrucción**. Corregido en los tres sitios. |
+| **`docs/private-backup/` evadía el detector Y el `.gitignore`** | Tercera forma del mismo error: la carpeta (cubierta el día uno), el archivo que se llama igual (`docs/private.zip`, cerrado el 2026-08-03) y ahora el **directorio hermano con sufijo**. La regla comparaba el segundo segmento con `=== "private"`. Medido: exit 0 del detector y `check-ignore` exit 1 — las dos defensas. |
+| **El test de `app_service` no fijaba que PRODUCCIÓN elija ese rol** | Mutar `"app_service"` → `"app_user"` en `orchestrator/src/deps.ts` dejaba **199 tests y el typecheck en verde**, y el fallo aparecía solo en producción. El test probaba `PgStore` con ese rol *cuando el test lo elige*. Ahora hay un test del **composition root**, con un pool espía que afirma el `set local role` que la conexión ejecuta. |
+| **La aserción de orden del seed no distinguía el orden nuevo del viejo** | Los 14 scores de `PAGINAS_DEMO` ya son descendentes, así que volver el `order by` del test al criterio viejo lo dejaba verde. Y el comentario **concluía que esa coincidencia hacía valioso el test**, cuando para una aserción de orden es justo lo que la anula. Reescrito para comprobar la asociación `slug → índice` **sin ordenar la consulta**. |
+| **El arnés no impone los límites que atribuye a sus agentes** | Los agentes de área heredan `Bash`, y el `revisor` conserva `Write` y `Bash`: con eso se lee cualquier archivo y se corre cualquier comando. Las prohibiciones de los prompts son un **contrato**, no un sandbox. Se ampliaron los `permissions.deny` (los cuatro comandos que tocan servicios reales, y los patrones `.env.*`/`*.env`/`.envrc`/`docs/private*`) **y se declaró explícitamente la diferencia** en `AGENTS.md` y en los tres agentes: un límite que se cree técnico y es textual es peor que uno declarado como textual. |
+| **Tres anclajes `ruta:línea` inexactos** | Uno de ellos —`evidence.ts:35`— **se rompió en la misma sesión que lo escribió**, porque el arreglo de otro hallazgo agregó diez líneas encima. Los anclajes por número de línea a código que estás tocando duran horas: se cambiaron por el nombre de la función. |
+| **Los tiempos de la skill estaban desfasados por 3×** | Decía "~15s" para `db + api`; medido, **52s** (`db` ~6s, `api` ~46s, porque `app.test.ts` rehace PGlite y las migraciones en cada `beforeEach`). Escrito de memoria. |
+| **`origin: "*"` etiquetado como "default de producción"** | Es el fallback de `createApp` para el montaje inyectado; en producción `leerConfig` **exige** `CORS_ORIGINS` y **prohíbe** `*`. La etiqueta invitaba a "arreglar" un agujero que no existe. |
+
+**Lo parcialmente refutado:** que el `tools` del `revisor` "no convierte no-editar en una restricción
+técnica". Omitir `Edit` **sí** es técnico —el agente no recibe la herramienta—; lo correcto es que la
+restricción es **incompleta**, porque `Write` y `Bash` siguen ahí. La distinción importa porque de ella
+depende el arreglo. También su cita de línea del `deny` estaba mal (`:90-93`, no `:16-29`).
+
+**Y un hallazgo propio, encontrado al pasar por el archivo:** el test *"sembrar dos veces es idempotente:
+no duplica tenant, cliente, **run** ni páginas"* consultaba el conteo de runs y **no lo aseveraba** —una
+query muerta y una variable sin usar, justo en la garantía que el nombre promete—. Ahora cuenta el run de
+demo **por id** y lo afirma.
+
+> **La lección de esta ronda es distinta de las doce anteriores, y por eso vale.** Las otras encontraron
+> garantías escritas en comentarios y no impuestas por el código. Esta encontró lo mismo un nivel más
+> arriba: **afirmaciones falsas en las instrucciones que gobiernan el trabajo futuro**. Cuatro de los
+> nueve hallazgos son cifras o versiones que escribí de memoria mientras redactaba las skills
+> (`Postgres 18` cuando `db/` corre 16.4, `12 migraciones`, `veinte rutas`, `~15s`). Una skill
+> equivocada no rompe un test: dirige mal cada decisión que se tome a partir de ella, con tono de
+> certeza. La regla que queda escrita en `datos-testing`: **si vas a citar una cifra o un
+> comportamiento del motor, medilo en el momento; si no lo vas a medir, no des el número.**
+>
+> Y la segunda, que salió de una mutación que **no** cayó: cuando una mutación no tumba nada, la primera
+> hipótesis no es "falta el test" — puede ser que **la línea que mutaste no haga lo que su comentario
+> dice**. Fue el caso de `nulls last`, que ya era el default de Postgres.
 
 ### 🔑 Acción humana — ✅ cerrada
 

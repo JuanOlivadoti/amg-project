@@ -40,6 +40,11 @@ docs/private*.zip
 docs/private*.tar
 docs/private*.tar.gz
 docs/private*.tgz
+# Y cualquier DIRECTORIO hermano con sufijo: `docs/private/` (con barra) no cubre
+# `docs/private-backup/`, medido con `git check-ignore` en la 13ª review. Es la tercera forma del mismo
+# error —la carpeta, el archivo que se llama igual, el directorio con sufijo—, así que este patrón sin
+# barra final cubre las tres de una: `docs/private*` matchea archivos Y directorios.
+docs/private*
 
 # Logs
 *.log

@@ -81,6 +81,16 @@ tokens, y en un cambio de un archivo cuesta más que hacerlo.
 - **Después de que un agente de área devuelva trabajo, va el `revisor`.** Quien implementa no se
   autoaprueba.
 
+**Lo que un agente NO hace es un contrato, no un sandbox.** Las prohibiciones que llevan los prompts de
+`.claude/agents/` —no gastar dinero, no tocar `.env`, no commitear, no editar código (el `revisor`)—
+son instrucciones, y las cumple quien las lee. El único límite **técnico** es no tener la herramienta:
+por eso el `revisor` declara `tools` sin `Edit`. Pero conserva `Write` y `Bash`, y los agentes de área
+heredan `Bash` entero, así que **con Bash se puede leer cualquier archivo y correr cualquier comando**,
+sin pasar por `Read`. El `permissions.deny` de `.claude/settings.json` cubre los cuatro comandos que
+tocan servicios reales y los patrones de lectura sensible: eso evita el **accidente**, no a un agente
+que decida ignorar su prompt. Lo señaló la 13ª review externa, y decirlo acá es la mitad del arreglo —
+un límite que se cree técnico y es textual es peor que uno declarado como textual.
+
 **Los subagentes escriben en disco, no en el chat.** Un informe que se recuenta se degrada, y el
 chat no queda auditable. Al lanzar un subagente, pedile explícitamente que escriba su resultado en
 `progress/informes/<rol>-<tema>.md` y que **su respuesta sea una sola línea con la referencia**:

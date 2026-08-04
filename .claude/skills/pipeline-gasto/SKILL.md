@@ -32,7 +32,8 @@ los briefs salían con totales cruzados. Si escribís un proveedor nuevo, su cos
 total quede marcado como incompleto en vez de mentir — pero también significa que **el presupuesto lo
 ve gratis y el tope queda desactivado en silencio**. Por eso, si hay tope activo, `run.ts` aborta
 antes de la primera llamada cuando algún modelo facturable no tiene tarifa
-([`run.ts:128`](../../../kr-service/src/pipeline/run.ts)). Y mira los modelos del proveedor
+(el `BudgetExceededError` de `modelosFacturables()` en
+[`run.ts`](../../../kr-service/src/pipeline/run.ts)). Y mira los modelos del proveedor
 **realmente activo**: antes miraba siempre los de OpenAI, así que con `LLM_PROVIDER=anthropic` el
 chequeo pasaba mientras se gastaba con modelos de Claude sin tarifa.
 

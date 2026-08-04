@@ -924,6 +924,49 @@ test("🔴 la base rechaza una retirada CON posición (check de la 0015)", async
 });
 
 /**
+ * 🔴 `savePages` bloquea la fila del run antes de escribir, y si no puede, no escribe nada.
+ *
+ * El motivo de fondo es la **serialización** de dos `savePages` concurrentes del mismo run (13ª review
+ * externa): en READ COMMITTED ninguna reconciliación ve las filas no confirmadas de la otra, así que
+ * quedaría la unión de dos briefs con posiciones repetidas. **Esa propiedad no se puede probar acá** —
+ * PGlite serializa todas sus transacciones sobre una conexión, así que la carrera es invisible para
+ * esta batería, y decirlo es parte del arreglo: un test que no puede fallar es peor que ninguno.
+ *
+ * Lo que este test sí fija es el contrato observable del bloqueo: **si el run no se puede bloquear, no
+ * se escribe nada, y el error lo dice.** Antes esto fallaba más abajo con el 23503 de la FK compuesta,
+ * que la API traduce a "revisá clientId, market y los campos obligatorios": un 400 que culpa al
+ * payload cuando el problema es el run.
+ */
+test("🔴 savePages no escribe nada si el run no existe o es de otro tenant", async () => {
+  const inexistente = "99999999-9999-4999-8999-999999999999";
+  await assert.rejects(
+    () => store.savePages(ctxA(), inexistente, clientA1, [page()]),
+    /no existe o no es visible/,
+    "falla nombrando el run, no el payload",
+  );
+
+  // Un run REAL de otro tenant: bajo RLS no se ve, así que da el MISMO error. Que no se distinga es
+  // deliberado — decir "existe pero no es tuyo" ya es filtrar información.
+  const { rows: otroTenant } = await pg.query<{ id: string }>(
+    `insert into kr_runs (tenant_id, client_id, schema_version, prompt, market_country,
+                          market_language, market_location_code)
+     values ($1, $2, 'kr.v0.5', 'ajeno', 'ES', 'es', 2724) returning id`,
+    [tenantB, clientB1],
+  );
+  await assert.rejects(
+    () => store.savePages(ctxA(), otroTenant[0]!.id, clientA1, [page()]),
+    /no existe o no es visible/,
+  );
+
+  // Y no quedó ni una página escrita en el run ajeno.
+  const { rows: n } = await pg.query<{ n: string }>(
+    "select count(*)::text as n from kr_pages where run_id = $1",
+    [otroTenant[0]!.id],
+  );
+  assert.equal(n[0]!.n, "0");
+});
+
+/**
  * 🔴 Un brief con DOS páginas al mismo `url_slug` se rechaza entero, y no se colapsa en silencio.
  *
  * Medido antes de imponerlo: con `[{/dup}, {/otra}, {/dup}]` el resultado era

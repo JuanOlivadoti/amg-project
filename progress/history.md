@@ -15,8 +15,8 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 Cerrada la **etapa B** del plan de agentes: el agente `datos` (`db/` + `api/`) con sus tres skills
 —`datos-postgres`, `datos-api`, `datos-testing`—, estrenado con **KR-3**, la mitad que la etapa A dejó
-abierta. Quedan **4 agentes y 12 skills**; 695 tests en el monorepo (venía de 684), 169 del portal, 66
-de Karma. Con la migración `0015` son 13.
+abierta. Quedan **4 agentes y 12 skills**; 698 tests en el monorepo al cerrar la jornada (venía de 684), 169
+del portal, 66 de Karma. Con la migración `0015` son 13.
 
 **El estreno no fue el previsto, y eso fue una decisión.** El plan decía KR-2 (el informe en el
 portal), pero KR-2 llegaba con tres decisiones abiertas y KR-3 tenía la suya ya razonada en el `09`. Se
@@ -72,6 +72,38 @@ no quiere que se aplique.
 `where` (1), `nulls last` (**0** — el hallazgo), `nulls first` (1), el check de posición negativa (1), el
 rechazo de slugs repetidos (1), el check de retirada sin posición (1), y el `sort` por score en el portal
 (1).
+
+**Y después, la 13ª review externa: la primera que miró el arnés.** Veredicto NO LISTO, nueve hallazgos,
+ninguno refutado del todo. El detalle está en el
+[`08` § tanda 19](../docs/proyecto/08-testing-calidad.md); lo que cambió el rumbo:
+
+- **Cuatro de los nueve eran cifras o versiones que escribí de memoria** al redactar las skills
+  (`Postgres 18` cuando `db/` corre 16.4, `12 migraciones`, `veinte rutas`, `~15s` cuando son 52s). Las
+  doce rondas anteriores encontraron garantías escritas en comentarios y no impuestas; esta encontró lo
+  mismo **un nivel más arriba**: afirmaciones falsas en las instrucciones que van a gobernar el trabajo
+  futuro de un área. Una skill equivocada no rompe un test — dirige mal cada decisión posterior, con
+  tono de certeza.
+- **La carrera de `savePages` que ningún test podía ver.** Dos guardados concurrentes del mismo run
+  dejaban la unión de dos briefs, con dos páginas en la posición 0. Hoy estaba tapado por el
+  `{ key: tenantId, limit: 1 }` de Inngest — que está ahí por **equidad entre tenants**, no por
+  integridad, así que quien lo suba a 2 abre una brecha de datos sin señal. Se cerró donde corresponde:
+  `select … for update` sobre `kr_runs`. Y se escribió en el código que **PGlite serializa, así que esta
+  propiedad no tiene test**: era eso o dejar creer que estaba cubierta.
+- **La raíz de un hallazgo estaba en el código, no en la skill.** "Todo se escribe como `app_user`" es
+  cita textual del comentario de `db/src/store.ts`, que también estaba mal (el orquestador escribe como
+  `app_service`). La skill no inventó el error: lo propagó convertido en instrucción. Se corrigió en los
+  tres sitios.
+- **Un anclaje `ruta:línea` se rompió en la misma sesión que lo escribió**, porque el arreglo de otro
+  hallazgo agregó diez líneas encima. Los anclajes por línea a código que estás tocando duran horas.
+- **El arnés no impone lo que promete**, y ahora lo dice: los agentes de área heredan `Bash` y el
+  `revisor` conserva `Write`, así que sus prohibiciones son un **contrato**, no un sandbox. Se ampliaron
+  los `permissions.deny` para atajar el accidente y se declaró la diferencia en `AGENTS.md`. Refuté la
+  parte fuerte del hallazgo: omitir `Edit` sí es un límite técnico; lo que es incompleto, no inexistente.
+- **Un hallazgo propio, al pasar:** el test "sembrar dos veces … no duplica tenant, cliente, **run** ni
+  páginas" consultaba el conteo de runs y no lo aseveraba. Una query muerta justo en la garantía que su
+  nombre prometía.
+
+**698 tests** al cerrar (+3 sobre los 695 de la mañana), 19 tandas y 13 rondas externas.
 
 ---
 

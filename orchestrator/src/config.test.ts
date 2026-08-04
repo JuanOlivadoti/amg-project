@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import type { DbPool } from "db";
 import { CLAVE_TENANT, CONCURRENCIA } from "./functions.js";
 
 /**
@@ -23,6 +24,51 @@ test("🔴 la clave de concurrencia por tenant apunta a un campo real del evento
   const porTenant = CONCURRENCIA.find((c) => "key" in c);
   assert.equal(porTenant?.key, "event.data.tenantId", "la regla por tenant usa la clave correcta");
   assert.equal(porTenant && "limit" in porTenant ? porTenant.limit : 0, 1, "1 research por tenant a la vez");
+});
+
+/**
+ * 🔴 El composition root ata el store al rol `app_service`, y ESO es lo que ningún test fijaba.
+ *
+ * La 13ª review externa lo midió con una mutación de un carácter: cambiar `"app_service"` por
+ * `"app_user"` en `deps.ts` dejaba **199 tests y el typecheck en verde**, y el fallo aparecía recién en
+ * producción, donde `amg_orquestador` **no tiene concedido** `app_user` y Postgres rechaza el
+ * `set role` (ADR-17). Los tests de `db` prueban que `PgStore` funciona con `app_service` **cuando el
+ * test lo elige**; ninguno probaba que producción lo elija. Es la regla del proyecto incumplida: *un
+ * default de producción sin test es una decisión sin dueño*.
+ *
+ * Se comprueba por el EFECTO y no leyendo el campo privado: un pool espía registra el SQL, y lo que se
+ * afirma es el `set local role` que la conexión acaba ejecutando — que es lo que Postgres ve.
+ */
+test("🔴 crearDeps ata el store a app_service, el único rol que su login puede asumir", async () => {
+  const ejecutado: string[] = [];
+  const espia: DbPool = {
+    transaction: (fn) =>
+      fn({
+        query: async (sql: string) => {
+          ejecutado.push(sql);
+          return { rows: [] };
+        },
+        exec: async (sql: string) => {
+          ejecutado.push(sql);
+          return undefined;
+        },
+      }),
+  };
+
+  const { crearDeps } = await import("./deps.js");
+  const deps = crearDeps({ orquestador: espia, cache: espia, cerrar: async () => {} });
+
+  // Cualquier operación sirve: `withTenant` aplica el rol antes de tocar los datos.
+  await deps.store.getRun({ tenantId: "11111111-1111-4111-8111-111111111111" }, "22222222-2222-4222-8222-222222222222");
+
+  assert.ok(
+    ejecutado.some((s) => s.includes("set local role app_service")),
+    `el store del orquestador tiene que asumir app_service. SQL ejecutado: ${JSON.stringify(ejecutado)}`,
+  );
+  assert.ok(
+    !ejecutado.some((s) => s.includes("set local role app_user")),
+    "y NUNCA app_user: su login no lo tiene concedido, así que en producción esto reventaría",
+  );
 });
 
 /**

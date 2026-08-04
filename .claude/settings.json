@@ -1,5 +1,7 @@
 {
   "$comment": "Config compartida de Claude Code para AMG OS. Los hooks los ejecuta el harness, no el agente: son la parte del ritual que no depende de que alguien se acuerde. La mitad NO compartida (permisos y rutas de cada máquina) va en settings.local.json, que está gitignoreado.",
+  "$comment_deny": "Lo que el deny SÍ y NO consigue (13ª review externa, 2026-08-04). SÍ: evita el accidente — que un agente lea un .env por costumbre o dispare un comando que gasta dinero o escribe en Supabase. NO es un sandbox: `Bash` sigue disponible para los agentes de área, y con Bash se puede leer cualquier archivo sin pasar por la herramienta Read. Las prohibiciones de los prompts de .claude/agents/ son un CONTRATO, no un límite técnico; el único límite técnico real es no tener la herramienta (por eso el revisor no declara Edit). Se denegaron los cuatro comandos que tocan servicios reales y NO se denegó git: el ritual del proyecto exige que la sesión principal commitee y pushee. Ojo: `deny` es duro y no se puede aprobar interactivamente — si hace falta correr reseed:demo o migrate:deploy de verdad, se hace desde una terminal fuera de Claude Code.",
+  "$comment_hooks_skillmap": "Los seis hooks que invocan .skill-map/activity/bridge.js los agregó el instalador de skill-map, no una edición a mano. Dependen de .skill-map/, que está gitignoreado: en un clon sin skill-map instalado esos hooks fallan en cada turno. Si eso molesta, se quitan; están acá para que la config no se pierda entre máquinas.",
   "hooks": {
     "Stop": [
       {
@@ -10,6 +12,70 @@
             "description": "Al terminar cada turno: si hay código sin commitear, corre el typecheck (~5s) y recuerda que falta la verificación completa. Si no se tocó código, sale al instante."
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.skill-map/activity/bridge.js claude"
+          }
+        ],
+        "matcher": "*"
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.skill-map/activity/bridge.js claude"
+          }
+        ],
+        "matcher": "*"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.skill-map/activity/bridge.js claude"
+          }
+        ],
+        "matcher": "^(Skill|Agent|Read|mcp__.+)$"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.skill-map/activity/bridge.js claude"
+          }
+        ],
+        "matcher": "^Agent$"
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.skill-map/activity/bridge.js claude"
+          }
+        ],
+        "matcher": "*"
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR\"/.skill-map/activity/bridge.js claude"
+          }
+        ],
+        "matcher": "*"
       }
     ]
   },
@@ -25,7 +91,15 @@
     ],
     "deny": [
       "Read(./docs/private/**)",
-      "Read(./**/.env)"
+      "Read(./docs/private*/**)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./**/*.env)",
+      "Read(./**/.envrc)",
+      "Bash(npm run env:sync*)",
+      "Bash(npm run reseed:demo*)",
+      "Bash(npm run demo*)",
+      "Bash(npm run migrate:deploy*)"
     ]
   }
 }

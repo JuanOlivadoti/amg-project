@@ -10,9 +10,10 @@
 **En curso:** nada. Cerrada la **etapa B** del [plan de agentes](../.claude/PLAN-AGENTES.md): el agente
 `datos` (`db/` + `api/`) con `datos-postgres`, `datos-api` y `datos-testing`, estrenado con **KR-3** —el
 orden del brief, persistido—. El relato está en [`history.md`](history.md).
-**Estado:** verificado en verde — **695 tests** del monorepo (venía de 684), 169 del portal, 66 de Karma,
-typecheck limpio, sin secretos entre los 400 archivos versionados. Revisado por el `revisor`: dos
-bloqueantes, los dos resueltos.
+**Estado:** verificado en verde — **698 tests** del monorepo (venía de 684), 169 del portal, 66 de Karma,
+typecheck limpio, sin secretos entre los 405 archivos versionados. Pasó por **dos** revisiones: la interna
+del `revisor` (2 bloqueantes) y la **13ª ronda externa de Codex** (NO LISTO, 9 hallazgos). Los once
+resueltos; el detalle en [`08` § tanda 19](../docs/proyecto/08-testing-calidad.md).
 
 ---
 

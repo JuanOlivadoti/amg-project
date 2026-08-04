@@ -52,8 +52,22 @@ export function motivoProhibido(rutaCruda: string): string | null {
   const dirs = segmentos(ruta).map((d) => d.toLowerCase());
   const nombre = base(ruta).toLowerCase();
 
-  if (dirs[0] === "docs" && dirs[1] === "private") {
-    return "docs/private/ guarda los valores reales; nada de ahí se versiona";
+  /*
+   * `startsWith("private")` y no `=== "private"`, y es la MISMA familia de nombres que se aplica al
+   * archivo doce líneas más abajo. La igualdad estricta dejaba pasar el directorio HERMANO:
+   * `docs/private-backup/credenciales.txt` salía con exit 0 del detector y `git check-ignore` también
+   * lo dejaba (la 13ª review lo midió). Las dos defensas, por un `===`.
+   *
+   * Tercera forma del mismo error: la carpeta, el archivo que se llama igual (`docs/private.zip`,
+   * 2026-08-03) y el directorio con sufijo. Cuando una regla compara un segmento de ruta contra un
+   * literal, la pregunta no es si cubre el caso que uno tiene en mente: es qué vecino se le parece lo
+   * bastante para engañar a un humano y no a un `===`.
+   *
+   * No se amplía más que eso a propósito: `docs/priv/` y `docs/privacidad.md` NO caen, y hay tests que
+   * lo fijan. Una regla que prohíbe de más se termina desactivando, y entonces no protege nada.
+   */
+  if (dirs[0] === "docs" && dirs[1]?.startsWith("private")) {
+    return "docs/private* guarda los valores reales; nada de ahí se versiona";
   }
   // La misma carpeta, empaquetada como ARCHIVO. La regla de arriba mira el segundo segmento de
   // DIRECTORIO, así que `docs/private.zip` —donde `private.zip` es el nombre— pasaba por el hueco:

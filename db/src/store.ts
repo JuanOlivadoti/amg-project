@@ -10,11 +10,18 @@ import type { DbPool, Tx } from "./pool.js";
  * misma disciplina que ya separa M2 de M1 mediante el brief JSON: una frontera explícita en vez de
  * un acoplamiento cómodo.
  *
- * **2. Todo se escribe BAJO RLS, como `app_user`, no con la service-role.** Podría usarse la
- * service-role (salta RLS) y "confiar" en que el código pone bien el `tenant_id` — pero entonces el
- * aislamiento entre clientes dependería de que yo no me equivoque nunca. Escribiendo bajo RLS, un
+ * **2. Todo se escribe BAJO RLS, con el rol del PROCESO, nunca con la service-role.** Podría usarse
+ * la service-role (salta RLS) y "confiar" en que el código pone bien el `tenant_id` — pero entonces
+ * el aislamiento entre clientes dependería de que yo no me equivoque nunca. Escribiendo bajo RLS, un
  * bug de aplicación **no puede** cruzar tenants: lo frena Postgres. La service-role queda reservada
  * para lo que RLS no cubre (las caches, que no tienen `tenant_id`).
+ *
+ * "El rol del proceso" son **dos**, y decirlo importa: `app_user` para la API (`amg_api`) y
+ * `app_service` para el orquestador (`amg_orquestador`), cada uno atado a su login con `NOINHERIT`
+ * (ADR-17). Los dos están sujetos a RLS. Esta línea decía "como `app_user`" a secas hasta la 13ª
+ * review, y esa simplificación se propagó a la skill `datos-postgres` convertida en instrucción: un
+ * agente que la siguiera al pie de la letra podría "unificar" los roles y borrar la separación que
+ * ADR-17 existe para imponer.
  *
  * **3. Toda query va por una conexión RESERVADA (`Tx`).** El Store no tiene ningún `query()` suelto
  * al que llamar: el contexto de tenant se aplica con `set local`, que es local a la transacción, y
@@ -411,6 +418,41 @@ export class PgStore {
     // Ojo: NO se sale temprano con `pages.length === 0`. Un research que ahora no propone NINGUNA
     // página tiene que RETIRAR las que había, no dejarlas aprobadas y publicables.
     await this.withTenant(ctx, async (tx) => {
+      /*
+       * SERIALIZAR POR RUN. Lo primero de la transacción, antes de escribir nada.
+       *
+       * Las tres fases de abajo (upserts → orden → reconciliación) son atómicas *juntas*, pero eso no
+       * las serializa contra OTRA llamada para el mismo run. En READ COMMITTED —que es lo que abre
+       * `NodePgPool.transaction`— dos `savePages` concurrentes con conjuntos de slugs distintos no ven
+       * las filas no confirmadas de la otra, así que **ninguna reconciliación retira las páginas
+       * ajenas**: quedan las de los dos briefs activas, con posiciones repetidas (dos en la 0) y
+       * páginas que el último brief no proponía. El síntoma es el invariante que KR-3 protege, roto.
+       *
+       * `for update` sobre la fila del run pone a la segunda a esperar el commit de la primera, y
+       * entonces su reconciliación **sí** ve lo que la otra escribió. Se elige la fila de `kr_runs` y
+       * no un advisory lock porque es el objeto que ya define el ámbito, viaja con la transacción y se
+       * suelta solo en el commit o el rollback.
+       *
+       * ⚠️ **Esta propiedad NO tiene test, y no puede tenerlo acá:** `PglitePool` serializa todas sus
+       * transacciones sobre una única conexión (ver `pool.ts`), así que la carrera es invisible para la
+       * batería entera. Lo detectó la 13ª review externa por lectura, no por ejecución. Lo que sí está
+       * testeado es el contrato observable: si el run no se puede bloquear, no se escribe nada.
+       *
+       * Y de paso arregla un mensaje que mentía: un `runId` inexistente o de otro tenant fallaba más
+       * abajo con el 23503 de la FK compuesta, que la API traduce a *"revisá clientId, market y los
+       * campos obligatorios"* — un 400 que culpa al payload cuando el problema es el run.
+       */
+      const { rows: run } = await tx.query<{ id: string }>(
+        "select id from kr_runs where id = $1 for update",
+        [runId],
+      );
+      if (!run[0]) {
+        throw new Error(
+          `El run ${runId} no existe o no es visible para este tenant: no se guardan páginas. ` +
+            `Bajo RLS un run ajeno no se ve, así que este error cubre los dos casos a propósito.`,
+        );
+      }
+
       for (const [i, p] of pages.entries()) {
         await tx.query(
           `insert into kr_pages

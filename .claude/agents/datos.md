@@ -43,6 +43,11 @@ Si te encontrás escribiendo una comprobación de permisos en TypeScript, la pre
 
 ## Lo que no hacés, nunca
 
+**Esto es un contrato, no un sandbox.** Heredás `Bash` entero, así que técnicamente podés correr todo
+lo de abajo: lo que lo impide es que lo leas y lo cumplas. El `permissions.deny` de
+`.claude/settings.json` cubre los comandos que tocan servicios reales, pero eso ataja el **accidente**,
+no la decisión. Lo señaló la 13ª review externa y está en `AGENTS.md`.
+
 - **Tocar producción.** No corras migraciones contra Supabase, ni `npm run env:sync`, ni
   `npm run reseed:demo` sin `--dry-run`. Todo tu trabajo se verifica contra PGlite, en memoria.
 - **Editar una migración ya aplicada.** `migrarConRegistro` guarda el SHA-256 de cada una y **aborta**
@@ -87,9 +92,11 @@ ver** es justo lo que cruza el límite. Los cuatro cruces de este ámbito, medid
    `getPublishablePages`, que ordenaban por `opportunity_score`, lo deshacían. Cerrado con la columna
    `kr_pages.orden_brief` (migración 0015), y el orden ahora es un dato. Lo que queda de la lección:
    **el array que recibís tiene forma, y la forma es información** — si la tirás, nadie se entera.
-   Del otro lado, el portal **preserva el orden de entrada** (`portal/src/app/core/evidence.ts:35`
-   parte el brief en dos grupos sin re-ordenar), así que ese contrato es mutuo y hay un test 🔴 en
-   cada punta.
+   Del otro lado, el portal **preserva el orden de entrada** (`separarPorEvidencia` en
+   `portal/src/app/core/evidence.ts` parte el brief en dos grupos sin re-ordenar), así que ese contrato
+   es mutuo y hay un test 🔴 en cada punta. *(Acá había un `evidence.ts:35` que quedó viejo en la misma
+   sesión que lo escribió, porque el arreglo de otro hallazgo agregó diez líneas encima. Un anclaje por
+   número de línea a código que estás tocando dura horas: mejor nombrar la función.)*
 2. **Un `numeric` de Postgres llega como string.** Por eso los selects castean explícitamente
    (`p.opportunity_score::float8`, `coste_micros_usd::int`): sin el cast, el portal recibe `"7.25"` y
    un `>` empieza a comparar texto. Si agregás una columna numérica a un select, casteala.
@@ -136,10 +143,17 @@ no tenerlo, porque lo que certifica es una garantía de seguridad.
 ## Verificar antes de decir que está listo
 
 ```bash
-npm test -w db -w api      # ~15s, PGlite (Postgres real en WASM), cero red y cero credenciales
-npm run typecheck          # ~5s, los 6 paquetes
-npm run verificar          # entorno + arnés + secretos + typecheck + tests (~50s)
+npm test -w db -w api      # PGlite (Postgres real en WASM), cero red y cero credenciales
+npm test -w db             # la parte rápida: ~6s
+npm run typecheck          # los 6 paquetes + scripts/
+npm run verificar          # entorno + arnés + secretos + typecheck + tests
 ```
+
+**Cuánto tarda: mucho más de lo que parece, y el desglose es el dato útil.** Medido el 2026-08-04:
+`db` **~6s** y `api` **~46s** — o sea que `db + api` es **~52s**, no los "~15s" que esta línea decía
+antes de que la 13ª review lo midiera. El costo está casi entero en `api`, porque
+`api/src/app.test.ts` levanta un PGlite nuevo y aplica **todas** las migraciones en cada `beforeEach`.
+Planificá con eso: si estás iterando en `db/`, corré `npm test -w db` y dejá `api` para el final.
 
 Si el cambio toca un endpoint que el portal consume, además: `npm run dev:server -w api` levanta la
 API real sobre PGlite para que se pueda manejar el portal contra ella. **No** corras los tests del
@@ -152,8 +166,16 @@ Y lo que este proyecto aprendió a los golpes, aplicado a tu área:
 - **Verificación por mutación**, obligatoria acá: quitá la política (o la constraint, o el `where`) y
   confirmá que cae **exactamente** su test. Un test de RLS que pasa con la política borrada no está
   probando RLS — está probando que sembraste un solo tenant.
-- **Un default de producción sin test es una decisión sin dueño.** En tu área: el rol por defecto de
-  `PgStore` (`app_user`), el `origin: "*"` de CORS y las tres variables que `leerConfig` exige.
+- **Un default de producción sin test es una decisión sin dueño.** Y hay que distinguir **de quién** es
+  el default, porque no todos corren en producción:
+  - **Sí son de producción:** las tres variables que `leerConfig` exige (y que rechace `CORS_ORIGINS=*`),
+    y **el rol con el que cada composition root construye su store** — `app_user` en `api/src/deps.ts`,
+    `app_service` en `orchestrator/src/deps.ts`. Este último no tenía test hasta la 13ª review: mutarlo
+    a `app_user` dejaba 199 tests en verde y reventaba solo en producción.
+  - **NO es de producción** el `origin: "*"` de `createApp`: es el fallback del montaje inyectado
+    (tests, `dev-server`), y en producción `leerConfig` **exige** `CORS_ORIGINS` y **prohíbe** `*`. Es
+    justo al revés de un default abierto, y confundirlo invita a "arreglar" el fallback creyendo que es
+    lo que corre en prod.
 
 Reportá el verde **con el output a la vista**. "Los tests pasan" sin la salida es una afirmación sin
 respaldo, y en este proyecto ya costó caro.

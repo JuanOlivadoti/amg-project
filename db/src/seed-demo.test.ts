@@ -117,31 +117,40 @@ test("las respaldadas tienen volumen y las sin validar no (el dato honesto)", as
 });
 
 /**
- * El orden del brief sembrado es la POSICIÓN en `PAGINAS_DEMO`, no el score (KR-3, migración 0015).
+ * El seed persiste la POSICIÓN de cada página en `PAGINAS_DEMO` (KR-3, migración 0015).
  *
- * Hoy los dos coinciden —el array está por score descendente—, y eso es justo lo que hace que este test
- * valga: prueba que el brief de la demo **no depende de esa coincidencia**. Si mañana el array se
- * reordena por evidencia y confianza (el orden que produce `kr-service`), el portal lo mostrará en ese
- * orden y este test lo seguirá; si alguien deja de sembrar `orden_brief`, cae acá y no en la demo.
+ * **Cómo se comprueba, y por qué así.** La versión anterior de este test ordenaba la consulta por
+ * `orden_brief` y comparaba la lista resultante contra el array. **No probaba el orden**, y lo midió la
+ * 13ª review con una mutación: cambiando el `order by` de la consulta al criterio viejo
+ * (`opportunity_score desc`) las dos aserciones seguían verdes, porque los 14 scores de `PAGINAS_DEMO`
+ * ya son estrictamente descendentes. Peor: el comentario concluía que esa coincidencia era lo que hacía
+ * valioso el test, cuando para una aserción de orden es exactamente lo que lo anula.
+ *
+ * Así que ahora **no se ordena la consulta**: se comprueba la ASOCIACIÓN `slug → índice`, que es lo que
+ * el seed de verdad escribe y lo único que no depende de la coincidencia. Si alguien deja de sembrar
+ * `orden_brief`, o siembra las posiciones corridas, cae acá y no en la demo. El orden que sale de la
+ * base ya lo prueban los tests de `getRunPages` en `store.test.ts`, con un fixture que **sí** contradice
+ * al score.
  */
-test("el brief sembrado sale en el orden de PAGINAS_DEMO, no en el del score", async () => {
+test("el seed persiste la posición de cada página del brief (slug → índice)", async () => {
   const pages = await db.asUser<{ url_slug: string; orden_brief: number | null }>(
     { tenantId: r.tenantId, userId: FRANK },
-    `select url_slug, orden_brief from kr_pages where run_id = $1
-     order by orden_brief asc nulls last, opportunity_score desc, url_slug asc`,
+    // Sin `order by` a propósito: lo que se prueba es la asociación, no el orden de la consulta.
+    "select url_slug, orden_brief from kr_pages where run_id = $1",
     [r.runId],
   );
 
-  assert.deepEqual(
-    pages.map((p) => p.url_slug),
-    PAGINAS_DEMO.map((p) => p.slug),
-    "el orden del brief que ve Frank no es el del array que cuenta la demo",
-  );
-  assert.deepEqual(
-    pages.map((p) => p.orden_brief),
-    PAGINAS_DEMO.map((_, i) => i),
-    "0 = primera, y sin huecos",
-  );
+  const esperado = new Map(PAGINAS_DEMO.map((p, i) => [p.slug, i]));
+  const obtenido = new Map(pages.map((p) => [p.url_slug, p.orden_brief]));
+
+  assert.equal(obtenido.size, esperado.size, "una fila por página del array, sin duplicados");
+  for (const [slug, i] of esperado) {
+    assert.equal(
+      obtenido.get(slug),
+      i,
+      `${slug} tiene que estar en la posición ${i} de PAGINAS_DEMO, y está en ${obtenido.get(slug)}`,
+    );
+  }
 });
 
 /**
@@ -243,9 +252,13 @@ test("sembrar dos veces es idempotente: no duplica tenant, cliente, run ni pági
     "select count(*)::text as n from clients where tenant_id = $1",
     [r.tenantId],
   );
-  const [runs] = await db.asService<{ n: string }>(
-    "select count(*)::text as n from kr_runs where tenant_id = $1",
-    [r.tenantId],
+  // El run DE DEMO, por id: no puede haber dos. Se cuenta por `id` y no por `tenant_id` porque el
+  // cliente puede tener otros runs legítimos (lo prueba el test de abajo), así que un conteo por tenant
+  // no diría nada. Antes acá había un `count(*) where tenant_id` cuyo resultado **no se aseveraba**:
+  // una query muerta y una variable sin usar, en el test cuyo nombre promete "no duplica … run …".
+  const [runDemo] = await db.asService<{ n: string }>(
+    "select count(*)::text as n from kr_runs where id = $1",
+    [r.runId],
   );
   const [pages] = await db.asService<{ n: string }>(
     "select count(*)::text as n from kr_pages where tenant_id = $1",
@@ -253,9 +266,8 @@ test("sembrar dos veces es idempotente: no duplica tenant, cliente, run ni pági
   );
   assert.equal(tenants?.n, "1", "un solo tenant");
   assert.equal(clientes?.n, "1", "un solo cliente");
+  assert.equal(runDemo?.n, "1", "un solo run de demo: el id es fijo y el upsert no lo duplica");
   assert.equal(pages?.n, "14", "las 14 páginas del run de demo, sin duplicar");
-  // Puede haber MÁS de un run del cliente (ver el test de abajo); acá basta con que el de demo no se
-  // duplique. La cuenta exacta de runs se afirma en el test de no-destrucción.
 });
 
 test("re-sembrar NO destruye un run ajeno del mismo cliente (no es un delete por client_id)", async () => {

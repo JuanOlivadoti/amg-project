@@ -21,10 +21,18 @@ Están escritas en la cabecera de `db/src/store.ts` y las tres se pueden romper 
    y sin base. Quien une pipeline y persistencia es el orquestador, que le inyecta implementaciones
    de `ProviderTaskLog` y `KeywordCache`. Un `import … from "db"` dentro de `kr-service/src/` es la
    señal de que algo se torció.
-2. **Todo se escribe BAJO RLS, como `app_user`, no con la service-role.** Se podría usar la
+2. **Todo se escribe BAJO RLS, con el rol del PROCESO, nunca con la service-role.** Se podría usar la
    service-role (que salta RLS) y confiar en que el código pone bien el `tenant_id`. Entonces el
    aislamiento entre clientes dependería de no equivocarse nunca. Escribiendo bajo RLS, **un bug de
    aplicación no puede cruzar tenants: lo frena Postgres.**
+
+   **El rol del proceso son DOS, y confundirlos borra ADR-17:** `app_user` para la API (login
+   `amg_api`) y `app_service` para el orquestador (login `amg_orquestador`). Los dos están sujetos a
+   RLS; ninguno de los dos es la service-role. El orquestador escribe los briefs como `app_service`
+   (`orchestrator/src/deps.ts:100`), y su login **no puede** asumir `app_user` ni al revés. Esta línea
+   decía "como `app_user`" a secas y la 13ª review lo marcó: un agente que la siguiera literalmente
+   podría escribir un test con el rol equivocado, o "unificar" los dos roles y tirar la separación que
+   Postgres impone.
 3. **Toda query va por una conexión reservada (`Tx`).** Ver abajo — es lo que más fácil se rompe.
 
 ## `Tx`: por qué no existe un `query()` suelto (ADR-13)

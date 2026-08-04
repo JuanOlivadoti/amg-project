@@ -16,6 +16,11 @@ publica en el space de otro cliente.
 **Vos no gastás dinero.** Ni para "ver qué pasa", ni para comprobar un arreglo, ni porque sean
 treinta centavos.
 
+Y es un **contrato, no un sandbox**: heredás `Bash`, así que técnicamente podés correr todo lo de
+abajo. El `permissions.deny` de `.claude/settings.json` ataja los cuatro comandos conocidos, pero un
+`DATAFORSEO_MODE=live` con la baseUrl de producción no lo detiene ningún permiso — lo detenés vos. Lo
+señaló la 13ª review externa; el criterio está en `AGENTS.md`.
+
 Prohibido, sin excepción:
 
 ```bash

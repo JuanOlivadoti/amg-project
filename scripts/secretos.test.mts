@@ -112,6 +112,36 @@ test("🔴 la carpeta de secretos, empaquetada como ARCHIVO", () => {
   assert.match(motivo, /private/, "el motivo tiene que nombrar la carpeta, no solo decir 'comprimido'");
 });
 
+test("🔴 la carpeta de secretos con un SUFIJO en el nombre del directorio", () => {
+  /*
+   * El tercer hueco de la misma familia, y lo encontró la 13ª review externa. La regla de
+   * `docs/private/` comparaba el segundo segmento de directorio contra el literal `private`, así que
+   * `docs/private-backup/credenciales.txt` pasaba: ni el detector (exit 0) ni el `.gitignore`
+   * (`git check-ignore` → exit 1) lo tocaban. Las DOS defensas.
+   *
+   * Es el mismo error conceptual por tercera vez, en su tercera forma: la carpeta (cubierta desde el
+   * día uno), el archivo que se llama igual (`docs/private.zip`, cubierto el 2026-08-03) y ahora el
+   * directorio HERMANO con un sufijo. La lección: cuando una regla compara un segmento de ruta contra
+   * un literal, la pregunta no es "¿cubre el caso que estoy pensando?" sino "¿qué vecino se le
+   * parece lo suficiente para engañar a un humano y no a un `===`?".
+   */
+  assert.ok(motivoProhibido("docs/private-backup/credenciales.txt"), "el caso exacto de la review");
+  assert.ok(motivoProhibido("docs/private-old/notas.md"));
+  assert.ok(motivoProhibido("docs/private2/x.txt"));
+  assert.ok(motivoProhibido("docs/Private-Backup/CREDENCIALES.TXT"), "ni en mayúsculas");
+  // Anidado más abajo también: el segundo segmento sigue siendo el que decide.
+  assert.ok(motivoProhibido("docs/private-backup/sub/dir/algo.txt"));
+
+  const motivo = motivoProhibido("docs/private-backup/credenciales.txt") ?? "";
+  assert.match(motivo, /private/, "el motivo nombra la carpeta");
+
+  // Y lo que NO debe caer, porque una regla que prohíbe de más se desactiva sola: `docs/` normal y
+  // cualquier carpeta que solo se parezca de lejos.
+  assert.equal(motivoProhibido("docs/proyecto/09-estado-y-roadmap.md"), null);
+  assert.equal(motivoProhibido("docs/privacidad.md"), null, "privacidad no es private*");
+  assert.equal(motivoProhibido("docs/priv/x.md"), null, "priv/ tampoco: la familia es `private*`");
+});
+
 test("🔴 cualquier comprimido versionado, porque es opaco para este detector", () => {
   // Este detector decide por RUTA, no por contenido — a propósito: abrir archivos para decidir sería
   // otra clase de herramienta. La consecuencia es que un comprimido es una caja negra: no hay forma

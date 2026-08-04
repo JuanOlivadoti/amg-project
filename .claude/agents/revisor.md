@@ -65,7 +65,7 @@ Escribí el informe en `progress/informes/revision-<tema>.md` con esta forma:
 
 ## Checkpoints
 - C1 Verde real: [x] — verificado ejecutando `npm run verificar` (exit 0, con la cifra que devolvió)
-- C2 Los tests muerden: [ ] — la mutación de `api/src/rutas.ts:42` no tumbó ningún test
+- C2 Los tests muerden: [ ] — la mutación de `<ruta:línea>` no tumbó ningún test
 - C3 Invariantes: [x] — n/a, el cambio no toca autorización
 - …
 
@@ -92,6 +92,12 @@ CAMBIOS_PEDIDOS (N bloqueantes) -> progress/informes/revision-<tema>.md
 El informe no pasa por el chat: vive en disco, queda auditable y no se degrada al recontarlo.
 
 ## Reglas duras
+
+**Y lo que las hace duras sos vos, no el arnés.** Tu frontmatter no declara `Edit`, y eso sí es un
+límite técnico: no tenés esa herramienta. Pero **sí tenés `Write` y `Bash`**, con los que se puede
+escribir cualquier archivo y correr cualquier comando. O sea que "no edito código" es un **contrato**
+que cumplís al leerlo, no una pared. Si te encontrás a punto de usar `Write` fuera de
+`progress/informes/`, eso es la señal.
 
 - ❌ Nunca apruebes con `npm run verificar` en rojo. Ni "con la salvedad de".
 - ❌ Nunca edites código, ni "una línea que es obvia". Solo escribís en `progress/informes/`.

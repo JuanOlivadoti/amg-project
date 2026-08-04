@@ -200,8 +200,14 @@ escribí además su test de aislamiento.
 - **Un test estructural que puede recorrer cero archivos.** Si itera un glob y el glob no matchea, pasa
   en verde sin haber comprobado nada. Aseverá primero que la lista no está vacía.
 - **Un default de producción que el test elige.** Si el test pasa el parámetro, no está fijando el que
-  corre en prod. En este ámbito: el `"app_user"` por defecto de `PgStore`, el `origin: "*"` de CORS, y
-  las tres variables que `leerConfig` exige.
+  corre en prod. El caso canónico de este repo: había un test que probaba `PgStore` con `app_service`
+  **eligiéndolo él mismo**, y ninguno que probara que `orchestrator/src/deps.ts` lo elige — mutar ese
+  literal a `app_user` dejaba 199 tests y el typecheck en verde, y el fallo aparecía solo en producción
+  (13ª review). Lo que hay que fijar es **el composition root**, no la clase.
+- **Confundir el default de una función con el de producción.** El `origin: "*"` de `createApp` **no**
+  es un default de producción: es el fallback del montaje inyectado. En producción `leerConfig` exige
+  `CORS_ORIGINS` y **prohíbe** `*`. Son dos cosas con dos tests distintos, y mezclarlas hace que alguien
+  "arregle" el fallback creyendo que cierra un agujero que no existe.
 - **Sembrar con `asService` y creer que se probó el camino de la app.** Sembrar salta RLS a propósito;
   la comprobación va con `asUser`.
 - **Un solo tenant.** Ya está arriba, y es el error más frecuente.
@@ -209,10 +215,19 @@ escribí además su test de aislamiento.
 ## Cómo se corre
 
 ```bash
-npm test -w db -w api    # ~15s, cero red y cero credenciales
-npm test -w db           # solo la base
+npm test -w db           # ~6s — la parte rápida: iterá acá
+npm test -w db -w api    # ~52s, y ~46 de esos son api (ver abajo)
 npm run verificar        # todo: entorno, arnés, secretos, typecheck y tests
 ```
+
+**Dónde está el tiempo, porque cambia cómo se itera.** Medido el 2026-08-04: `db` ~6s y `api` ~46s. La
+asimetría no es misteriosa: `api/src/app.test.ts` hace `new PGlite()` + `aplicarMigraciones` en cada
+`beforeEach`, así que reconstruye el esquema entero unas 95 veces. `db` reusa su instancia entre tests
+del mismo archivo.
+
+Y una advertencia sobre estas cifras, que es la lección de la 13ª review: **acá decía "~15s" y estaba
+mal por un factor de tres.** Lo escribí de memoria. Si vas a citar un tiempo, medilo con `time` en el
+momento; si no lo vas a medir, no des el número.
 
 Ningún test de este ámbito toca una credencial ni la red — ni siquiera a localhost (el JWKS de los
 tests de JWT es **local**). Si un test tuyo necesita una key o un puerto, está mal planteado.
