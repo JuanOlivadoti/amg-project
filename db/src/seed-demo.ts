@@ -506,15 +506,28 @@ export async function sembrarDemo(
     );
     const runId = run[0]!.id;
 
-    // --- Las 14 páginas del brief ---
-    for (const p of PAGINAS_DEMO) {
+    /*
+     * --- Las 14 páginas del brief ---
+     *
+     * `orden_brief` = la posición en `PAGINAS_DEMO` (0 = primera), que es el mismo contrato que aplica
+     * `PgStore.savePages`: **el orden ES la posición en el array** (KR-3, migración 0015). Este insert
+     * no pasa por el store —siembra con la conexión de infraestructura, saltando RLS a propósito—, así
+     * que la posición hay que escribirla acá o el brief de la demo quedaría con `orden_brief` NULL y se
+     * ordenaría por score, que es justo lo que KR-3 vino a arreglar.
+     *
+     * Hoy los dos órdenes coinciden (el array está por score descendente y el split 8/6 cae junto), así
+     * que la demo se ve igual que antes. Lo que cambia es que **deja de depender de esa coincidencia**:
+     * si el array se reordena por evidencia y confianza, el portal lo muestra en ese orden.
+     */
+    for (const [i, p] of PAGINAS_DEMO.entries()) {
       await con.query(
         `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, page_strategy,
                                url_slug, keyword_principal, keywords_secundarias, intencion, local,
                                volumen, dificultad, evidencia, opportunity_score, score_confidence,
-                               seo, content_brief, preguntas_frecuentes, approved, retirada)
+                               seo, content_brief, preguntas_frecuentes, approved, retirada,
+                               orden_brief)
          values ($1, $2, $3, gen_random_uuid(), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                 $15, $16::jsonb, $17::jsonb, $18, false, false)`,
+                 $15, $16::jsonb, $17::jsonb, $18, false, false, $19)`,
         [
           tenantId,
           runId,
@@ -534,6 +547,7 @@ export async function sembrarDemo(
           JSON.stringify(p.seo),
           JSON.stringify(p.brief),
           p.faqs,
+          i,
         ],
       );
     }

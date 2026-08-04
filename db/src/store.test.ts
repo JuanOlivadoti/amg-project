@@ -683,6 +683,312 @@ test("failRun SÍ marca failed un run que seguía corriendo", async () => {
   assert.equal((await store.getRun(ctxA(), runId))?.status, "failed");
 });
 
+// ================================================================
+// KR-3 — el ORDEN del brief (migración 0015)
+//
+// `kr-service` ordena en dos niveles (evidencia primero, después el score ponderado por
+// `score_confidence`) y ese orden gobierna QUÉ páginas existen. La base lo deshacía: `order by
+// opportunity_score desc`. Un criterio de orden que no está en una columna se pierde al pasar por
+// Postgres.
+//
+// El contrato: **el orden ES la posición en el array que recibe `savePages`.**
+// ================================================================
+
+/**
+ * Un brief cuyo orden CONTRADICE el `opportunity_score`, que es el caso real: una página sin validar
+ * puede tener un score alto y aun así no puede presentarse por encima de una respaldada por datos de
+ * mercado. Si los dos órdenes coincidieran, el test pasaría igual con el `order by` viejo.
+ */
+const briefDosNiveles = (): PageRow[] => [
+  page({
+    url_slug: "/respaldada-score-bajo",
+    cluster_id: "aaaaaaaa-1111-4111-8111-111111111111",
+    evidencia: "datos_mercado",
+    opportunity_score: 40,
+  }),
+  page({
+    url_slug: "/sin-validar-score-alto",
+    cluster_id: "aaaaaaaa-2222-4222-8222-222222222222",
+    evidencia: "sin_validar",
+    opportunity_score: 90,
+    score_confidence: 0.25,
+  }),
+  page({
+    url_slug: "/sin-validar-score-medio",
+    cluster_id: "aaaaaaaa-3333-4333-8333-333333333333",
+    evidencia: "sin_validar",
+    opportunity_score: 70,
+    score_confidence: 0.25,
+  }),
+];
+
+const ORDEN_DEL_BRIEF = [
+  "/respaldada-score-bajo",
+  "/sin-validar-score-alto",
+  "/sin-validar-score-medio",
+];
+
+test("🔴 getRunPages devuelve el orden DEL BRIEF, no el del opportunity_score", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, briefDosNiveles());
+
+  const pages = await store.getRunPages(ctxA(), runId);
+
+  assert.deepEqual(
+    pages.map((p) => p.url_slug),
+    ORDEN_DEL_BRIEF,
+    "por score sería 90/70/40: la base estaría deshaciendo el orden de dos niveles del M2",
+  );
+  assert.deepEqual(pages.map((p) => p.orden_brief), [0, 1, 2], "0 = primera");
+  assert.equal(typeof pages[0]!.orden_brief, "number", "un entero, no el string de un numeric");
+});
+
+test("🔴 getPublishablePages también publica en el orden del brief", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, briefDosNiveles());
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  for (const r of rows) await store.approvePage(ctxA(), r.id);
+  await store.approveRun(ctxA(), runId);
+
+  const publicables = await store.getPublishablePages(ctxA(), runId);
+
+  assert.deepEqual(publicables.map((p) => p.url_slug), ORDEN_DEL_BRIEF);
+});
+
+/**
+ * 🔴 LA RESTRICCIÓN DURA DE KR-3: `orden_brief` **no es material**.
+ *
+ * Revocar una aprobación porque una página subió del puesto 2 al 1 sería absurdo — el humano aprobó
+ * ESA página, no su posición. Pero el `where` del upsert bloquea el update entero cuando nada
+ * material cambió, así que meter `orden_brief` en el `set` no habría bastado: el orden nuevo no se
+ * escribiría. Y meterlo en el `where` revocaría aprobaciones por un cambio de orden.
+ *
+ * Las dos mitades se prueban acá, y las dos mutaciones son de una línea (ver el informe).
+ */
+test("🔴 un reintento que SOLO cambia el orden actualiza el orden y NO revoca la aprobación", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const [primera, segunda, tercera] = briefDosNiveles() as [PageRow, PageRow, PageRow];
+  await store.savePages(ctxA(), runId, clientA1, [primera, segunda, tercera]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  for (const r of rows) await store.approvePage(ctxA(), r.id);
+
+  // Mismísimas páginas, permutadas: es lo que produce un recalibrado del orden sin tocar contenido.
+  await store.savePages(ctxA(), runId, clientA1, [tercera, primera, segunda]);
+
+  const pages = await store.getRunPages(ctxA(), runId);
+  assert.deepEqual(
+    pages.map((p) => p.url_slug),
+    ["/sin-validar-score-medio", "/respaldada-score-bajo", "/sin-validar-score-alto"],
+    "el orden nuevo SÍ se persiste, aunque nada material haya cambiado",
+  );
+  assert.ok(
+    pages.every((p) => p.approved),
+    "y ninguna aprobación se revoca: la posición no es lo que el humano certificó",
+  );
+});
+
+/** La otra mitad del contrato: lo material sigue revocando, y el orden se actualiza igual. */
+test("🔴 un reintento con contenido material distinto SÍ revoca, y el orden se actualiza igual", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const [primera, segunda] = briefDosNiveles() as [PageRow, PageRow, PageRow];
+  await store.savePages(ctxA(), runId, clientA1, [primera, segunda]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  for (const r of rows) await store.approvePage(ctxA(), r.id);
+
+  // La segunda cambia de keyword (material). El orden que se guarda sigue contradiciendo al score
+  // (40 antes que 90), para que la mitad de orden de este test no pase por casualidad.
+  await store.savePages(ctxA(), runId, clientA1, [
+    primera,
+    { ...segunda, keyword_principal: "otra keyword" },
+  ]);
+
+  const pages = await store.getRunPages(ctxA(), runId);
+  assert.deepEqual(pages.map((p) => p.url_slug), ["/respaldada-score-bajo", "/sin-validar-score-alto"]);
+  assert.equal(pages[0]!.approved, true, "la que no cambió conserva su aprobación");
+  assert.equal(pages[1]!.approved, false, "cambió el contenido: hay que volver a mirarla");
+});
+
+/**
+ * La reconciliación: una página que el research dejó de proponer no tiene posición en el brief, y si
+ * vuelve a proponerse recupera la que le toque — no la que tenía en el brief anterior.
+ */
+test("una página retirada pierde su posición, y al volver a proponerse recupera una coherente", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const [primera, segunda, tercera] = briefDosNiveles() as [PageRow, PageRow, PageRow];
+  await store.savePages(ctxA(), runId, clientA1, [primera, segunda, tercera]);
+
+  // El clustering disuelve la primera: quedan dos, renumeradas.
+  await store.savePages(ctxA(), runId, clientA1, [segunda, tercera]);
+  const { rows: retirada } = await pg.query<{ orden_brief: number | null; retirada: boolean }>(
+    "select orden_brief, retirada from kr_pages where run_id = $1 and url_slug = $2",
+    [runId, "/respaldada-score-bajo"],
+  );
+  assert.equal(retirada[0]!.retirada, true);
+  assert.equal(retirada[0]!.orden_brief, null, "retirada = no está en el brief, así que no tiene posición");
+  assert.deepEqual(
+    (await store.getRunPages(ctxA(), runId)).map((p) => p.orden_brief),
+    [0, 1],
+    "las que quedan se renumeran desde 0: la posición es del brief actual",
+  );
+
+  // Vuelve a proponerse, ahora en el medio.
+  await store.savePages(ctxA(), runId, clientA1, [segunda, primera, tercera]);
+
+  const pages = await store.getRunPages(ctxA(), runId);
+  assert.deepEqual(pages.map((p) => p.url_slug), [
+    "/sin-validar-score-alto",
+    "/respaldada-score-bajo",
+    "/sin-validar-score-medio",
+  ]);
+  assert.deepEqual(pages.map((p) => p.orden_brief), [0, 1, 2]);
+});
+
+/**
+ * Las filas escritas ANTES de la 0015 (el seed ya sembrado, la base desplegada) tienen `orden_brief`
+ * NULL, y tienen que caer al final. Y sin un desempate total, dos filas viejas con el mismo score
+ * saldrían en orden indefinido: un test intermitente esperando a pasar.
+ *
+ * **Qué muerde y qué no**, medido: **quitar el `nulls last` de `ORDEN_DEL_BRIEF` no tumba este test**,
+ * porque `nulls last` ya es el default de Postgres para `asc`. Lo que sí lo tumba es cambiarlo por
+ * `nulls first`, y esa es la mutación con la que se verifica. El test es válido —detecta que los NULL
+ * se ordenen mal— pero no prueba que ese texto haga falta: prueba el comportamiento, no la línea.
+ */
+test("🔴 las filas sin orden_brief (previas a la 0015) caen al final, y el desempate es total", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [briefDosNiveles()[0]!]);
+
+  // Dos filas "viejas": sin orden_brief y con el MISMO score, para que el desempate tenga que
+  // resolverlo url_slug y no el azar del plan de ejecución.
+  for (const slug of ["/vieja-b", "/vieja-a"]) {
+    await pg.query(
+      `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug,
+                             keyword_principal, intencion, evidencia, opportunity_score)
+       values ($1, $2, $3, gen_random_uuid(), 'blog', $4, 'kw', 'informacional', 'sin_validar', 99)`,
+      [tenantA, runId, clientA1, slug],
+    );
+  }
+
+  const pages = await store.getRunPages(ctxA(), runId);
+
+  assert.deepEqual(
+    pages.map((p) => p.url_slug),
+    ["/respaldada-score-bajo", "/vieja-a", "/vieja-b"],
+    "la que tiene posición va primera aunque su score sea 40 contra 99; el empate lo rompe el slug",
+  );
+});
+
+/** Una posición negativa no es un dato raro, es un dato roto: lo rechaza la base, no la aplicación. */
+test("🔴 la base rechaza una posición negativa (check de la 0015)", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+
+  await assert.rejects(
+    () =>
+      pg.query(
+        `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug,
+                               keyword_principal, intencion, evidencia, orden_brief)
+         values ($1, $2, $3, gen_random_uuid(), 'blog', '/negativa', 'kw', 'informacional',
+                 'sin_validar', -1)`,
+        [tenantA, runId, clientA1],
+      ),
+    /orden_brief/,
+    "el 23514 lo tira el check, no un if de TypeScript",
+  );
+});
+
+/**
+ * 🔴 Una página RETIRADA no puede tener posición, y lo impone el esquema — no la sentencia que la retira.
+ *
+ * `savePages` anula `orden_brief` en la misma sentencia que pone `retirada = true`, así que hoy el
+ * invariante se cumple. Pero eso es una garantía que sostiene UN sitio del código: cualquier `update`
+ * futuro que retire una página por otra vía (una purga, un endpoint de "descartar") lo rompería sin que
+ * nada avisara, y el síntoma sería una retirada ocupando el puesto de una página viva.
+ *
+ * Es decidible mirando UNA fila, así que va en un `check` — el mismo criterio con el que la 0015 razona
+ * el `>= 0`.
+ */
+test("🔴 la base rechaza una retirada CON posición (check de la 0015)", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+
+  await assert.rejects(
+    () =>
+      pg.query(
+        `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug,
+                               keyword_principal, intencion, evidencia, retirada, orden_brief)
+         values ($1, $2, $3, gen_random_uuid(), 'blog', '/retirada-con-puesto', 'kw', 'informacional',
+                 'sin_validar', true, 3)`,
+        [tenantA, runId, clientA1],
+      ),
+    /retirada_sin_posicion/,
+    "lo tira el check nombrado, no un if de TypeScript",
+  );
+});
+
+/**
+ * 🔴 Un brief con DOS páginas al mismo `url_slug` se rechaza entero, y no se colapsa en silencio.
+ *
+ * Medido antes de imponerlo: con `[{/dup}, {/otra}, {/dup}]` el resultado era
+ * `[['/otra', 1], ['/dup', 2]]` — **tres cosas mal a la vez**. No existía la posición 0; el brief
+ * arrancaba en 1; y `/dup`, que era el índice 0 del array, terminaba DESPUÉS de `/otra`, que era el 1.
+ * La causa es que `update … from unnest(...)` matchea la fila dos veces y Postgres usa una de las dos
+ * filas de origen **sin garantizar cuál**: ni siquiera es reproducible por contrato.
+ *
+ * Y el síntoma es el invariante que KR-3 vino a proteger: una página `datos_mercado` puede acabar por
+ * debajo de una `sin_validar`.
+ *
+ * Se rechaza en vez de deduplicar porque **no hay una respuesta correcta que adivinar**: dos páginas al
+ * mismo slug se pisarían una a la otra al publicar (`url_slug` es la URL). Un brief así está roto en
+ * origen, y un run `failed` con el motivo escrito es mejor que publicar en silencio una página menos de
+ * las que el revisor aprobó. La precondición vivía sin dueño en otro paquete (`kr-service` genera los
+ * slugs); ahora la impone quien la necesita.
+ */
+test("🔴 savePages rechaza un brief con url_slug repetido, en vez de perder una posición", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const [primera, segunda] = briefDosNiveles();
+
+  await assert.rejects(
+    () =>
+      store.savePages(ctxA(), runId, clientA1, [
+        primera!,
+        segunda!,
+        page({ url_slug: primera!.url_slug, cluster_id: "bbbbbbbb-9999-4999-8999-999999999999" }),
+      ]),
+    /url_slug repetido/,
+    "el brief se rechaza entero: nada a medias",
+  );
+
+  // Y no dejó nada escrito: el rechazo es antes de tocar la base.
+  assert.deepEqual(await store.getRunPages(ctxA(), runId), []);
+});
+
+/**
+ * El rol que corre en PRODUCCIÓN es `app_service` (el orquestador: `orchestrator/src/deps.ts` construye
+ * `new PgStore(cx.orquestador, "app_service")`), no el `app_user` con el que corren los demás tests de
+ * este archivo. Sin este test, todo KR-3 estaría probado con un rol que en prod no escribe briefs
+ * nunca — y los grants de `app_service` son de tabla, no por columna, así que la columna nueva podría
+ * haber quedado fuera sin que nada avisara.
+ *
+ * Incluye una PERMUTACIÓN pura, que es el caso que un `unique (run_id, orden_brief)` habría reventado.
+ */
+test("🔴 savePages escribe el orden también como app_service, el rol que corre en producción", async () => {
+  const servicio = new PgStore(new PglitePool(pg), "app_service");
+  const runId = await servicio.createRun(ctxA(), nuevoRun(clientA1));
+
+  const [primera, segunda] = briefDosNiveles();
+  await servicio.savePages(ctxA(), runId, clientA1, [primera!, segunda!]);
+  assert.deepEqual(
+    (await servicio.getRunPages(ctxA(), runId)).map((p) => [p.url_slug, p.orden_brief]),
+    [[primera!.url_slug, 0], [segunda!.url_slug, 1]],
+  );
+
+  // Permutación pura: las dos cambian de puesto en UNA sentencia.
+  await servicio.savePages(ctxA(), runId, clientA1, [segunda!, primera!]);
+  assert.deepEqual(
+    (await servicio.getRunPages(ctxA(), runId)).map((p) => [p.url_slug, p.orden_brief]),
+    [[segunda!.url_slug, 0], [primera!.url_slug, 1]],
+    "permutar posiciones no puede fallar: es por qué la 0015 no lleva unique (run_id, orden_brief)",
+  );
+});
+
 /** Publicar es un hecho externo: queda registrado por página, con su id de story. */
 test("marcarPublicadas registra el hecho externo (story_id + cuándo)", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));

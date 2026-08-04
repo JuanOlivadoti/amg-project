@@ -3,9 +3,11 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-03** · **919 tests en verde en `main`** — **684** en el monorepo +
-> **235** en el portal (169 `node:test` + 66 Karma). Subió de 766 al mergear la pieza 2 (usuarios), y
-> los dos últimos son del agujero de la compuerta de secretos que se cerró el 2026-08-03.
+> Última actualización: **2026-08-04** · **930 tests en verde** — **695** en el monorepo + **235** en
+> el portal (169 `node:test` + 66 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
+> siguientes fueron del agujero de la compuerta de secretos (2026-08-03) y los **once** últimos, de
+> KR-3 —el orden del brief persistido, migración `0015`— al estrenar el agente `datos`
+> ([plan de agentes](../../.claude/PLAN-AGENTES.md), etapa B, cerrada el 2026-08-04).
 > Medido con `npm run verificar` más los dos suites del portal.
 >
 > **Dónde estamos hoy:** Fase 1 desplegada y la **pieza A cerrada** — la verificación ES256 contra el
@@ -87,10 +89,16 @@
 > [§2.b del estado](09-estado-y-roadmap.md#-2b-la-demo-del-módulo-de-keyword-research-decidido-2026-08-01).
 >
 > **Actualizado el 2026-08-02:** las **tres mejoras de calidad están implementadas** y el **destino
-> del dataset ya es durable** (`datasets/`, con un test que se lo pregunta a `git check-ignore`). Lo
-> que sigue abierto es el **dato** (~$0.31, decide Juan), la **calibración** de los dos parámetros
-> nuevos, y que el **orden que produce el pipeline llegue al portal** — hoy lo deshacen
-> `db/src/store.ts` y `portal/src/app/core/cartera.ts`.
+> del dataset ya es durable** (`datasets/`, con un test que se lo pregunta a `git check-ignore`).
+>
+> ✅ **Actualizado el 2026-08-04: el orden que produce el pipeline YA llega al portal.** Era lo que
+> deshacía `db/src/store.ts` con su `order by opportunity_score`; ahora el orden es un dato
+> (`kr_pages.orden_brief`, migración `0015`) y las dos lecturas ordenan por una única definición.
+> `kr-service` y `orchestrator` no cambiaron: el array ya viajaba ordenado. Y **el portal no necesitó
+> cambios** — lo que este documento decía de `portal/src/app/core/cartera.ts` era **falso**: ese `sort`
+> es `topOportunidades`, el widget de "las N de mayor score", con otro propósito;
+> `separarPorEvidencia` preserva el orden de entrada. Lo que sigue abierto de KR-3 es solo el **dato**
+> (~$0.31, decide Juan) y la **calibración** de los dos parámetros nuevos.
 >
 > **Nuevo (2026-08-02): pieza 1 del portal de la agencia — gestión de clientes, en
 > `main` (mergeada el 2026-08-01).** Es la primera de las cuatro piezas del
@@ -105,8 +113,8 @@
 > ver la fila propia por completo, y esta pieza le agregó a esa fila columnas que son notas internas
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
-> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **919 tests** (684 monorepo + 235
-> portal), **12 migraciones** (la `0011` y la `0012` mergeadas; pendientes de aplicar en producción).
+> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **930 tests** (695 monorepo + 235
+> portal), **13 migraciones** (la `0011` y la `0012` mergeadas, la `0015` de esta etapa; pendientes de aplicar en producción).
 
 ---
 
@@ -169,7 +177,7 @@ corre solo en local. *(La API y el portal están desplegados desde la etapa 5.3,
 ```
 
 - **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **684 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **695 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.

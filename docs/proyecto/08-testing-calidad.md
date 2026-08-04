@@ -17,7 +17,7 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 684 tests (monorepo) + 235 (portal)
+## Cobertura actual: 695 tests (monorepo) + 235 (portal)
 
 > Las cifras de esta tabla se miden con `npm run verificar`, que las cuenta de la salida de
 > `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-03.

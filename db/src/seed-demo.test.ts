@@ -2,7 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { TestDb } from "./testdb.js";
-import { sembrarDemo, PERFIL_DEMO, type ResultadoSeed } from "./seed-demo.js";
+import { sembrarDemo, PAGINAS_DEMO, PERFIL_DEMO, type ResultadoSeed } from "./seed-demo.js";
 import { ConexionReservada } from "./deploy.js";
 
 /**
@@ -114,6 +114,34 @@ test("las respaldadas tienen volumen y las sin validar no (el dato honesto)", as
     if (p.evidencia === "datos_mercado") assert.ok(p.volumen !== null, "respaldada → tiene volumen");
     else assert.equal(p.volumen, null, "sin validar → sin volumen (≠ 0)");
   }
+});
+
+/**
+ * El orden del brief sembrado es la POSICIÓN en `PAGINAS_DEMO`, no el score (KR-3, migración 0015).
+ *
+ * Hoy los dos coinciden —el array está por score descendente—, y eso es justo lo que hace que este test
+ * valga: prueba que el brief de la demo **no depende de esa coincidencia**. Si mañana el array se
+ * reordena por evidencia y confianza (el orden que produce `kr-service`), el portal lo mostrará en ese
+ * orden y este test lo seguirá; si alguien deja de sembrar `orden_brief`, cae acá y no en la demo.
+ */
+test("el brief sembrado sale en el orden de PAGINAS_DEMO, no en el del score", async () => {
+  const pages = await db.asUser<{ url_slug: string; orden_brief: number | null }>(
+    { tenantId: r.tenantId, userId: FRANK },
+    `select url_slug, orden_brief from kr_pages where run_id = $1
+     order by orden_brief asc nulls last, opportunity_score desc, url_slug asc`,
+    [r.runId],
+  );
+
+  assert.deepEqual(
+    pages.map((p) => p.url_slug),
+    PAGINAS_DEMO.map((p) => p.slug),
+    "el orden del brief que ve Frank no es el del array que cuenta la demo",
+  );
+  assert.deepEqual(
+    pages.map((p) => p.orden_brief),
+    PAGINAS_DEMO.map((_, i) => i),
+    "0 = primera, y sin huecos",
+  );
 });
 
 /**

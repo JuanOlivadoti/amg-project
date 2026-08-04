@@ -484,7 +484,7 @@ escrita en ninguna parte — este bloque la fija.
 | **Objetivo** | **Entregable primero, pipeline después** | Abre con lo que el restaurante recibe (informe + evidencia + precio) y, si hay interés técnico, se baja al recorrido `prompt → keywords → clustering → páginas`. Hay que preparar **dos guiones** y decidir dónde se corta. |
 | **¿En vivo?** | **No: se muestra el ya corrido** | Confirma lo que midió la acción 06 (16m15s). La **pieza D queda cerrada, no pendiente**: paralelizar SERP y el progreso incremental **salen del alcance de la demo** y quedan como mejora de producto (§4). |
 | **El informe** | **Se ve en el portal** | `out/informe.md` es el mejor entregable del módulo y hoy **solo existe como archivo local** tras correr el CLI. Pieza de trabajo nueva (ver abajo). |
-| **Calidad del research** | **Las tres, antes de la demo** | `is_local` por señales del SERP, `score_confidence` que ordene, y volumen normalizado por percentiles. Dejan de ser "mejoras algún día": son **pre-demo**. ✅ **Las tres implementadas el 2026-08-02** — con dos matices que hay que leer: la normalización es por percentil **del run**, no del mercado, y el orden nuevo **no llega al portal**. Ver KR-3 abajo. |
+| **Calidad del research** | **Las tres, antes de la demo** | `is_local` por señales del SERP, `score_confidence` que ordene, y volumen normalizado por percentiles. Dejan de ser "mejoras algún día": son **pre-demo**. ✅ **Las tres implementadas el 2026-08-02** — con un matiz que hay que leer: la normalización es por percentil **del run**, no del mercado. El otro matiz —que el orden nuevo no llegaba al portal— se cerró el 2026-08-04 con la migración `0015`. Ver KR-3 abajo. |
 
 #### 🔴 La precondición: **falta el dataset crudo** — el destino ya está arreglado, el dato no
 
@@ -512,43 +512,59 @@ en orden de preferencia:
 | # | Pieza | Estado | Nota |
 |---|---|---|---|
 | **KR-1** | **El dataset crudo, recuperado o regenerado** | 🟠 **A medias** | El **destino durable** ✅ hecho. El **dato** falta: cuesta ~$0.31 y **decide Juan**. Ver arriba. |
-| **KR-2** | **El informe legible, en el portal** | ⚪ Sin empezar | Diseño abierto (ver abajo). |
-| **KR-3** | **Las tres mejoras de calidad** | 🟠 **Implementadas, sin calibrar** | ✅ Las tres en `kr-service` (2026-08-02). Dos cosas abiertas: los parámetros no están barridos contra datos reales (necesita KR-1), y **el orden nuevo no llega al portal** (ver abajo). |
+| **KR-2** | **El informe legible, en el portal** | ⚪ Sin empezar, **con el camino ya decidido** | Cómo se comparte `renderReport()`: **(b) paquete compartido** (decidido 2026-08-04). Siguen abiertas dos preguntas de producto: pantalla o descarga, y al vuelo o guardado con el run. Ver abajo. |
+| **KR-3** | **Las tres mejoras de calidad** | 🟠 **Implementadas, sin calibrar** | ✅ Las tres en `kr-service` (2026-08-02), y ✅ **el orden ya llega al portal** (2026-08-04, migración `0015`). Queda **una** cosa abierta: los parámetros no están barridos contra datos reales (necesita KR-1). |
 | **KR-4** | **El guion de dos niveles, escrito** | ⚪ Sin empezar | Qué se muestra, en qué orden, y dónde se corta si no hay interés técnico. |
 
-**KR-3 — lo que quedó abierto, y no es del pipeline.** El orden en dos niveles (evidencia primero,
-después `score_confidence`) gobierna **qué páginas existen** —el corte al backlog es irreversible y
-ocurre dentro de `kr-service`—, pero **no el orden en que las ve el cliente**: en cuanto el brief
-pasa por Postgres, `db/src/store.ts` (`getRunPages`, `getPublishablePages`) reordena por
-`opportunity_score` crudo (`store.ts:715,743`), y `portal/src/app/core/cartera.ts:37` vuelve a ordenar igual. O sea que la
-columna "Confianza" del dashboard **sigue sin ordenar nada en la demo**, que era justo el motivo de
-la mejora. Dos formas de cerrarlo:
+**KR-3 — lo que quedaba abierto: ✅ CERRADO el 2026-08-04** (etapa B del
+[plan de agentes](../../.claude/PLAN-AGENTES.md), que estrena con esto al agente `datos`).
 
-- **(a) Persistir el orden** — una columna en `kr_pages` escrita por el M2 y un `order by` que la
-  use. Cuesta una migración, y es la única que sobrevive a que alguien cambie la fórmula: el orden lo
-  decide quien tiene el contexto. **Es la recomendada.**
-- **(b) Duplicar la fórmula** en SQL y en el portal. Barato, y son **tres fuentes de verdad** del
-  mismo criterio desincronizándose sin que ningún test lo vea. Es el modo de fallo que este repo ya
-  conoce.
+El orden en dos niveles (evidencia primero, después `score_confidence`) gobierna **qué páginas
+existen** —el corte al backlog es irreversible y ocurre dentro de `kr-service`—, pero **no llegaba al
+cliente**: en cuanto el brief pasaba por Postgres, `getRunPages` y `getPublishablePages` reordenaban
+por `opportunity_score` crudo, así que la columna "Confianza" del portal no ordenaba nada. Se cerró con
+la **(a) persistir el orden**, que era la recomendada: el orden lo decide quien tiene el contexto, y es
+la única que sobrevive a que alguien cambie la fórmula. La (b) —duplicar la fórmula en SQL y en el
+portal— se descartó: eran tres fuentes de verdad del mismo criterio.
 
-Necesita `datos` (migración + `store.ts`) y después `front` (`cartera.ts`), con el contrato fijado
-antes. Encaja natural con la **etapa B** del [plan de agentes](../../.claude/PLAN-AGENTES.md).
+Qué quedó, con el contrato **el orden ES la posición en `brief.paginas_propuestas`**:
 
-**KR-2 — la decisión técnica que hay que tomar antes de escribir código.** `renderReport()` vive en
-`kr-service`, y `api/package.json` **hoy solo depende de `db`**. Tres caminos:
+- **`kr_pages.orden_brief`** (migración `0015`, `0` = primera), escrita por `PgStore.savePages` desde el
+  índice del array. `kr-service` y `orchestrator` **no cambiaron**: el array ya viajaba ordenado.
+- Las **dos** lecturas ordenan por una única definición (`ORDEN_DEL_BRIEF`), para que el revisor no
+  pueda aprobar una lista y publicarse otra.
+- **El portal no necesitó cambios**, y esto corrige lo que este documento afirmaba: el que deshacía el
+  orden era solo `store.ts`. `separarPorEvidencia` **preserva** el orden de entrada
+  (`portal/src/app/core/evidence.ts:35`) y las plantillas no re-ordenan. Y
+  `portal/src/app/core/cartera.ts:37` **no era una violación**: es `topOportunidades`, el widget de "las
+  N de mayor score" del dashboard, con un propósito distinto del orden del brief. Sí se agregó un test
+  🔴 en el portal que **muerde** —su fixture entra con el orden contradiciendo al score—, porque el que
+  había usaba dos páginas con el mismo score y pasaba igual con un `sort` metido en medio.
+- Dos garantías nuevas que antes no las imponía nada: un brief con **`url_slug` repetido se rechaza
+  entero** (producía un orden invertido y **no reproducible**), y una página **retirada no puede tener
+  posición** (`check retirada_sin_posicion`).
+
+**Con el seed actual la demo se ve igual**, y está medido: los 14 scores de `PAGINAS_DEMO` son
+estrictamente descendentes y sin empates, con las 8 respaldadas antes de las 6 sin validar, así que el
+orden del array coincide índice por índice con el de dos niveles. Lo que cambia es que **deja de
+depender de esa coincidencia**.
+
+**KR-2 — la decisión técnica, ✅ TOMADA el 2026-08-04: la (b), paquete compartido.** Se decidió sin
+implementar, para que no siguiera bloqueando. `renderReport()` vive en `kr-service`, y
+`api/package.json` **hoy solo depende de `db`**. Los tres caminos que se compararon:
 
 - **(a) La API importa `kr-service`** y `GET /runs/:id` devuelve el informe ya renderizado. Lo más
   rápido, pero mete el pipeline de research entero como dependencia de la API — que es la superficie
   autenticada, y hasta ahora solo depende de la base.
-- **(b) Extraer el contrato + `renderReport` a un paquete compartido.** Más trabajo, pero **cierra de
-  paso la deuda del esquema Zod duplicado M2/M1**, que ya está anotada como deuda técnica. Es la que
-  recomiendo.
+- **(b) Extraer el contrato + `renderReport` a un paquete compartido.** ✅ **ELEGIDA.** Más trabajo,
+  pero **cierra de paso la deuda del esquema Zod duplicado M2/M1**, que ya está anotada como deuda
+  técnica. Y mantiene la API dependiendo solo de datos, no del pipeline de research.
 - **(c) El portal renderiza el informe desde el `brief` JSON que ya recibe.** Cero cambios en el
   backend, pero **duplica la lógica del informe** en un tercer lugar y en otro lenguaje de plantilla:
   la misma clase de deriva que acaba de costar la unificación del cliente.
 
-Falta decidir además si es **pantalla** o **descarga** (`.md`), y si el informe se genera al vuelo o
-se guarda con el run.
+**Lo que sigue abierto** son las dos preguntas de producto, no la de arquitectura: si es **pantalla** o
+**descarga** (`.md`), y si el informe se genera al vuelo o se guarda con el run.
 
 ### 🟡 3. Lo que ADR-19 dejó a medias y hay que cerrar antes de un SLA
 
@@ -641,7 +657,7 @@ reales, no solo contra tests.
 
 | Pieza | ADR | Estado |
 |---|---|---|
-| **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **170 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
+| **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **181 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **95 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
 | **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **235 tests** (169 de núcleo `node:test` + 66 de componente Karma, las pantallas de research incluidas); el flujo, verificado en un navegador real. **Falta:** calibrar el polling contra los 16m15s medidos. |

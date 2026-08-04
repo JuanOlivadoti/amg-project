@@ -131,6 +131,18 @@ export interface PageRow {
 export interface PaginaPropuesta extends PageRow {
   id: string;
   approved: boolean;
+  /**
+   * Posición en el brief que produjo el M2 (0 = primera), y el ÚNICO orden con el que se muestran las
+   * páginas de un run (KR-3, migración 0015).
+   *
+   * Está acá y **no en `PageRow`** a propósito, y no es un detalle: `PageRow` es lo que ENTRA desde el
+   * M2, y ahí el orden no es un campo — **es la posición en el array** `brief.paginas_propuestas`.
+   * `savePages` lo deriva del índice. Que el tipo lo diga es parte del contrato: si `PageRow` lo
+   * llevara, alguien podría mandar un orden que no se corresponde con el array que manda.
+   *
+   * `null` = fila escrita antes de la 0015 (base ya desplegada). Se ordena al final, por score.
+   */
+  orden_brief: number | null;
 }
 
 /**
@@ -178,6 +190,25 @@ export interface RunSummary {
   created_at: string;
   finished_at: string | null;
 }
+
+/**
+ * El orden en que se ven las páginas de un run. **Una sola definición** para las dos lecturas: si el
+ * brief y lo que se publica se ordenaran distinto, el revisor aprobaría una lista y se publicaría otra.
+ *
+ * `orden_brief` es la posición que le dio el M2 (KR-3, migración 0015). Los otros dos criterios son el
+ * desempate:
+ *
+ *  · **`nulls last`** — las filas escritas antes de la 0015 no tienen posición y tienen que caer al
+ *    final. **Es REDUNDANTE y está a propósito**: `nulls last` ya es el default de Postgres para `asc`
+ *    (medido: `order by n asc` sobre `1, null, 0` devuelve `0, 1, null`; en `desc` es al revés).
+ *    Se escribe explícito para que el orden no dependa de un default que hay que recordar — pero no
+ *    hay que creerle a este comentario más de lo que dice: **quitarlo no cambia nada, y por eso
+ *    ningún test cae si se quita.** La mutación que sí lo tumba es cambiarlo por `nulls first`.
+ *  · **`url_slug`** — cierra el orden. Dos filas viejas con el mismo score, sin este último criterio,
+ *    salen en orden indefinido: un test intermitente esperando a pasar. `unique (run_id, url_slug)`
+ *    garantiza que el desempate es total.
+ */
+const ORDEN_DEL_BRIEF = `order by p.orden_brief asc nulls last, p.opportunity_score desc, p.url_slug asc`;
 
 /** Las columnas de `RunSummary`. Una sola definición: el select no puede quedar desalineado. */
 const RUN_SUMMARY_COLS = `id, client_id, status, prompt, schema_version,
@@ -333,20 +364,62 @@ export class PgStore {
    * Ahora se actualizan TODOS los campos derivados y, si el contenido REALMENTE cambió, la
    * aprobación se revoca. Un reintento idéntico (el caso normal) no toca nada: el `where` compara
    * los valores, así que la fila ni se escribe y la aprobación sobrevive.
+   *
+   * ## El orden del brief va aparte, y por qué (KR-3, migración 0015)
+   *
+   * **El orden ES la posición en `pages`.** `orden_brief` se escribe desde el índice del array — el M2
+   * no manda un campo con la posición porque el orden no es un campo del brief, es su forma.
+   *
+   * Pero `orden_brief` **no es material**, y eso lo deja fuera de los dos sitios obvios:
+   *
+   *  · **No puede ir en el `where`.** Revocaría la aprobación de una página que subió del puesto 5 al
+   *    4 sin que nada de su contenido cambiara. La compuerta certifica que un humano miró ESA página,
+   *    no en qué posición estaba.
+   *  · **Tampoco alcanza ponerlo solo en el `set`.** El `where` gobierna el update ENTERO: en un
+   *    reintento donde SOLO cambió el orden, ninguna condición material se cumple, el update no ocurre
+   *    y el orden nuevo se perdería en silencio — la fila quedaría con la posición vieja.
+   *
+   * Por eso va en una sentencia propia, después de los upserts: escribe la posición sin tocar
+   * `approved`. Es una sola sentencia para todas las páginas (no una por página).
    */
   async savePages(ctx: TenantContext, runId: string, clientId: string, pages: PageRow[]): Promise<void> {
+    /*
+     * PRECONDICIÓN: los `url_slug` del array son únicos. Antes vivía sin dueño —la generan los slugs de
+     * `kr-service`, y acá nada la imponía— y romperla NO daba un error: daba un orden roto en silencio.
+     *
+     * Medido con `[{/dup}, {/otra}, {/dup}]`: el resultado era `[['/otra',1], ['/dup',2]]`. No existía
+     * la posición 0, el brief arrancaba en 1, y `/dup` (índice 0 del array) terminaba DESPUÉS de
+     * `/otra` (índice 1) — o sea el invariante que KR-3 protege, invertido. La causa es la sentencia del
+     * orden de más abajo: `update … from unnest(...)` matchea la misma fila dos veces y Postgres elige
+     * una de las dos filas de origen **sin garantizar cuál**, así que ni siquiera es reproducible.
+     *
+     * Se RECHAZA en vez de deduplicar porque no hay una respuesta correcta que adivinar: dos páginas al
+     * mismo slug se pisarían al publicar (el slug ES la URL). Un brief así está roto en origen, y un run
+     * `failed` con el motivo escrito es mejor que publicar en silencio una página menos de las que el
+     * revisor aprobó. Va ANTES del `withTenant`: si el brief no es válido, no se abre transacción.
+     */
+    const slugs = new Set<string>();
+    const repetidos = pages.map((p) => p.url_slug).filter((s) => slugs.size === slugs.add(s).size);
+    if (repetidos.length > 0) {
+      throw new Error(
+        `El brief del run ${runId} trae url_slug repetido: ${[...new Set(repetidos)].join(", ")}. ` +
+          `Dos páginas con el mismo slug se pisarían al publicar, y la posición de una de las dos se ` +
+          `perdería. El brief se rechaza entero.`,
+      );
+    }
+
     // Ojo: NO se sale temprano con `pages.length === 0`. Un research que ahora no propone NINGUNA
     // página tiene que RETIRAR las que había, no dejarlas aprobadas y publicables.
     await this.withTenant(ctx, async (tx) => {
-      for (const p of pages) {
+      for (const [i, p] of pages.entries()) {
         await tx.query(
           `insert into kr_pages
              (tenant_id, run_id, client_id, cluster_id, tipo, page_strategy, url_slug, keyword_principal,
               keywords_secundarias, intencion, local, volumen, dificultad, evidencia,
               opportunity_score, score_confidence, seo, content_brief, preguntas_frecuentes,
-              approved, retirada)
+              approved, retirada, orden_brief)
            values ($1,$2,$19,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17::jsonb,$18,
-                   false, false)
+                   false, false, $20)
            on conflict (run_id, url_slug) do update set
              cluster_id = excluded.cluster_id,
              tipo = excluded.tipo,
@@ -363,6 +436,8 @@ export class PgStore {
              seo = excluded.seo,
              content_brief = excluded.content_brief,
              preguntas_frecuentes = excluded.preguntas_frecuentes,
+             -- orden_brief NO está acá ni en el WHERE: no es material, y el WHERE gobierna el update
+             -- entero (ver la cabecera del método). Lo escribe la sentencia de abajo.
              -- Vuelve a estar propuesta.
              retirada = false,
              -- El contenido cambió → la aprobación anterior ya no vale para ESTA página.
@@ -411,9 +486,33 @@ export class PgStore {
             JSON.stringify(p.content_brief),
             p.preguntas_frecuentes,
             clientId,
+            i, // orden_brief: 0 = primera. El orden ES la posición en el array (KR-3).
           ],
         );
       }
+
+      /*
+       * EL ORDEN DEL BRIEF — en su propia sentencia, y sin tocar `approved`.
+       *
+       * Va aparte porque `orden_brief` no es material: no puede ir en el `where` del upsert (revocaría
+       * aprobaciones por un cambio de posición) ni solo en su `set` (el `where` bloquearía el update
+       * cuando SOLO cambió el orden, y la posición nueva se perdería). Ver la cabecera del método.
+       *
+       * `is distinct from` evita reescribir las que ya están en su sitio — el caso normal de un
+       * reintento idéntico no escribe ni una fila.
+       *
+       * Una sola sentencia para todas las páginas, y eso es lo que permite PERMUTAR posiciones: con un
+       * `unique (run_id, orden_brief)` esto reventaría a mitad de sentencia (Postgres comprueba fila
+       * por fila), y de ahí que la 0015 no lo lleve.
+       */
+      await tx.query(
+        `update kr_pages p set orden_brief = o.orden
+         from unnest($2::text[], $3::int[]) as o(slug, orden)
+         where p.run_id = $1
+           and p.url_slug = o.slug
+           and p.orden_brief is distinct from o.orden`,
+        [runId, pages.map((p) => p.url_slug), pages.map((_, i) => i)],
+      );
 
       /*
        * RECONCILIACIÓN — lo que faltaba, y era una brecha de la compuerta.
@@ -431,7 +530,11 @@ export class PgStore {
            retirada = true,
            approved = false,
            approved_by = null,
-           approved_at = null
+           approved_at = null,
+           -- Una página que el research ya no propone no está EN el brief, así que no tiene posición
+           -- en él. Dejarle la vieja invitaría a que un lector futuro ordenara retiradas por un puesto
+           -- que ya ocupa otra página. Si vuelve a proponerse, la sentencia de arriba le da la nueva.
+           orden_brief = null
          where run_id = $1
            and not (url_slug = any($2::text[]))
            and not retirada`,
@@ -709,10 +812,10 @@ export class PgStore {
                 p.dificultad, p.evidencia,
                 p.opportunity_score::float8 as opportunity_score,
                 p.score_confidence::float8 as score_confidence,
-                p.seo, p.content_brief, p.preguntas_frecuentes
+                p.orden_brief, p.seo, p.content_brief, p.preguntas_frecuentes
          from kr_pages p
          where p.run_id = $1 and not p.retirada
-         order by p.opportunity_score desc`,
+         ${ORDEN_DEL_BRIEF}`,
         [runId],
       );
       return rows;
@@ -740,7 +843,7 @@ export class PgStore {
            -- Una página que el research ya no propone NO se publica, aunque siga aprobada.
            and not p.retirada
            and r.status = 'approved'
-         order by p.opportunity_score desc`,
+         ${ORDEN_DEL_BRIEF}`,
         [runId],
       );
       return rows;

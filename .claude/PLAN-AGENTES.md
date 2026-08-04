@@ -111,9 +111,31 @@ del ámbito: decidir si se paga una corrida.
 
 ---
 
-## Etapa B — `datos` · `db/` + `api/`
+## ~~Etapa B~~ — `datos` · `db/` + `api/` ✅ **cerrada el 2026-08-04**
 
-10.320 líneas, 14 archivos de test, 12 migraciones. **Van juntos y no separados**, aunque sea el
+> **Qué quedó.** El agente ([`agents/datos.md`](agents/datos.md)) y sus tres skills, estrenados con
+> **KR-3** —persistir el orden del brief—: migración `0015_orden_brief.sql`, `PgStore.savePages` y las
+> dos lecturas, más el cruce al portal. El relato está en
+> [`progress/history.md`](../progress/history.md); la revisión, en `progress/informes/` (no se versiona).
+>
+> **El estreno no se pareció al plan, y ahí estuvo el rédito.** El trabajo previsto era KR-2 (el
+> informe en el portal); se cambió a **KR-3** porque KR-2 tenía tres decisiones abiertas y KR-3
+> cerraba deuda de la etapa A con la decisión ya razonada en el `09`. La de KR-2 se tomó igual, para
+> que no siga abierta: **paquete compartido** (opción b).
+>
+> **Lo que el estreno corrigió, y ninguna lectura del código habría dado:** que `nulls last` **ya es
+> el default de Postgres para `asc`** —el comentario afirmaba lo contrario en tres archivos, y la
+> mutación que no cayó fue lo que lo delató—; que `db/` corre **PostgreSQL 16.4** y `api/` **18.3**,
+> dos majors distintos, así que un comportamiento del motor medido en uno no se puede afirmar del
+> otro; y que un `url_slug` repetido en el brief producía un orden **invertido y no reproducible**,
+> una precondición que vivía sin dueño en otro paquete.
+>
+> **Lo que quedó abierto y no es del agente:** KR-2 sigue sin implementar (ya con el camino decidido).
+
+Lo que sigue es el plan original de la etapa, que se deja tal cual para poder contrastar lo previsto
+con lo que pasó.
+
+10.320 líneas, 14 archivos de test, 13 migraciones. **Van juntos y no separados**, aunque sea el
 bloque más grande: [`api/src/app.ts`](../api/src/app.ts) es casi una fachada HTTP sobre el store, y
 ADR-22 dice que la seguridad vive en Postgres. Partirlos crearía dos agentes escribiendo las dos
 mitades de un contrato en el caso más frecuente —un endpoint nuevo casi siempre necesita un método
@@ -210,7 +232,7 @@ El ritual completo está en [`AGENTS.md`](../AGENTS.md) y los checkpoints en
 | — | `front` | `portal-angular`, `portal-estilos`, `portal-testing` | ✅ escrito · ⚪ **sin estrenar todavía** |
 | — | `revisor` | `codex-review` | ✅ escrito y estrenado (dos rondas, 5 hallazgos reales) |
 | A | `pipeline` | `pipeline-gasto`, `pipeline-research`, `pipeline-publicacion`, `pipeline-orquestacion` | ✅ **escrito y estrenado** (2026-08-02, con KR-3 y KR-1) |
-| B | `datos` | `datos-postgres`, `datos-api`, `datos-testing` | ⚪ sin empezar |
+| B | `datos` | `datos-postgres`, `datos-api`, `datos-testing` | ✅ **escrito y estrenado** (2026-08-04, con KR-3: el orden del brief) |
 | C | `render` | `render-seguridad`, `render-cda-cache` | ⚪ sin empezar |
 
 **Lo que la etapa A enseñó sobre el método, para las dos que quedan:**
@@ -222,7 +244,24 @@ El ritual completo está en [`AGENTS.md`](../AGENTS.md) y los checkpoints en
   escribir explícitamente la sección "qué de esto sobrevive al salir de tu área".**
 - **Fijar el contrato antes de delegar funcionó** y no fue ceremonia: los dos subagentes tocaron el
   mismo paquete sin pisarse porque el reparto de archivos estaba escrito.
-- **Un agente nuevo no se puede invocar por nombre en la sesión que lo escribe.** El registro de
-  agentes se carga al arrancar. El estreno se hizo pasándole su propia definición al subagente, que
-  funciona, pero **la etapa B conviene arrancarla en una sesión nueva** para poder invocar a
-  `pipeline` de verdad.
+- ~~**Un agente nuevo no se puede invocar por nombre en la sesión que lo escribe.**~~ **Falso, medido
+  en la etapa B:** al guardar `agents/datos.md`, el registro se recargó en el acto y `datos` quedó
+  invocable en la misma sesión. En la etapa A el estreno se hizo pasándole su definición al subagente
+  creyendo que el registro solo se lee al arrancar. No hace falta una sesión nueva para estrenar.
+
+**Lo que la etapa B enseñó, para la que queda:**
+
+- **El trabajo que estrena puede no ser el previsto, y conviene que gane el que está decidido.** El
+  plan decía KR-2; se estrenó con KR-3 porque KR-2 tenía tres decisiones abiertas y KR-3 tenía la suya
+  ya razonada. Un estreno que arranca eligiendo arquitectura prueba la capacidad de decidir, no las
+  skills.
+- **La mutación que NO cae es el hallazgo más valioso, no un fallo del método.** Dice una de dos cosas:
+  falta el test, o **la línea que mutaste no hace lo que su comentario dice**. Fue lo segundo, y
+  desenterró una afirmación falsa repetida en tres archivos.
+- **Escribir las skills antes de estrenarlas produce afirmaciones falsas con formato de certeza.** De
+  las cuatro que el `revisor` encontró, tres eran cifras o versiones que yo puse de memoria (`Postgres
+  18`, `12 migraciones`, `unas veinte rutas`). La forma de escribirlas es **medir mientras se escribe**,
+  o no dar la cifra y dejar el comando que la cuenta.
+- **El revisor pagó su coste con creces**, y lo hizo mirando lo que yo no podía: verificó los ~30
+  anclajes de las skills uno por uno y midió `select version()` en los dos paquetes. Dos bloqueantes,
+  los dos reales.

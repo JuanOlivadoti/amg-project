@@ -11,6 +11,70 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-04 — Etapa B: el agente `datos`, y el orden del brief que se perdía en Postgres
+
+Cerrada la **etapa B** del plan de agentes: el agente `datos` (`db/` + `api/`) con sus tres skills
+—`datos-postgres`, `datos-api`, `datos-testing`—, estrenado con **KR-3**, la mitad que la etapa A dejó
+abierta. Quedan **4 agentes y 12 skills**; 695 tests en el monorepo (venía de 684), 169 del portal, 66
+de Karma. Con la migración `0015` son 13.
+
+**El estreno no fue el previsto, y eso fue una decisión.** El plan decía KR-2 (el informe en el
+portal), pero KR-2 llegaba con tres decisiones abiertas y KR-3 tenía la suya ya razonada en el `09`. Se
+estrenó con KR-3 y **de paso se tomó la decisión de KR-2** para que dejara de bloquear: paquete
+compartido (opción b). Un estreno que arranca eligiendo arquitectura prueba la capacidad de decidir, no
+las skills.
+
+**Qué se arregló.** `kr-service` ordena las páginas en dos niveles (evidencia primero, después
+`score_confidence`) y ese orden viajaba como **la posición del array** — así que `getRunPages` y
+`getPublishablePages`, que ordenaban por `opportunity_score`, lo deshacían, y la columna "Confianza"
+del portal no ordenaba nada. Ahora es un dato: `kr_pages.orden_brief`, escrita por `savePages` desde el
+índice. **`kr-service` y `orchestrator` no se tocaron**: el contrato se fijó antes de escribir código, y
+resultó que el array ya viajaba ordenado.
+
+**Lo más fino del cambio, y lo que enseña.** `orden_brief` **no es material**: no puede ir en el `where`
+del upsert de `savePages` (revocaría la aprobación de una página que solo cambió de puesto) ni solo en
+su `set` (el `where` gobierna el update entero, así que en un reintento donde SOLO cambió el orden no se
+escribiría). Va en una sentencia propia. Son dos garantías opuestas, y por eso hacen falta **dos
+mutaciones** para probarlas.
+
+**El hallazgo que más valió fue una mutación que NO cayó.** Quitar el `nulls last` del `order by` dejó
+los 178 tests en verde. La primera hipótesis tentadora era "falta un test"; la correcta era otra:
+**`nulls last` ya es el default de Postgres para `asc`** (medido: `order by n asc` sobre `1, null, 0` da
+`0, 1, null`). El comentario afirmaba lo contrario **en tres archivos**, escrito por mí antes de medir.
+La regla que queda: *una mutación que no cae dice una de dos cosas —falta el test, o la línea no hace lo
+que su comentario dice—, y hay que averiguar cuál antes de tocar nada.*
+
+**El `revisor` devolvió CAMBIOS_PEDIDOS con dos bloqueantes, los dos reales.** (1) Corregí el comentario
+del test del portal y **dejé el de la fuente** afirmando que la API ordena por score — el próximo lector
+tenía permiso escrito para restaurar el `sort` que el test acababa de blindar. (2) Mi skill decía
+"PGlite es Postgres 18": **`db/` corre PostgreSQL 16.4 y `api/` 18.3**, dos majors distintos, así que un
+comportamiento del motor medido en un paquete no se puede afirmar del otro. Lo verifiqué yo mismo, y
+resultó que mi medición del `nulls last` había sido con el PGlite de `db/` (16.4): coincide en 18.3, pero
+lo supe por suerte, no por método. Otros tres hallazgos eran cifras que puse **de memoria** al escribir
+las skills (`12 migraciones`, `unas veinte rutas`), que es exactamente el modo de fallo que el proyecto
+persigue. Y encontró uno de fondo: un `url_slug` repetido en el brief producía un orden **invertido y no
+reproducible** (`update … from unnest` matchea la fila dos veces y Postgres elige una sin garantizar
+cuál) — una precondición que vivía sin dueño en otro paquete. Ahora `savePages` rechaza el brief entero.
+
+**Dos cosas que resultaron falsas y estaban escritas como ciertas.** Que `portal/.../cartera.ts:37`
+deshacía el orden del brief: es `topOportunidades`, el widget de "las N de mayor score", con otro
+propósito — el único que lo deshacía era `store.ts`, y **el portal no necesitó cambios** porque
+`separarPorEvidencia` preserva el orden de entrada. Y que un agente nuevo no se puede invocar en la
+sesión que lo escribe (lección de la etapa A): al guardar `agents/datos.md` el registro se recargó en el
+acto.
+
+**El test del portal que no mordía.** El que fijaba "conserva el orden de entrada" usaba dos páginas con
+el **mismo** score, así que un `.sort()` por score lo dejaba pasar. Reescrito con el orden
+contradiciendo al score: ahora cae. Un test de orden necesita que la entrada contradiga el criterio que
+no quiere que se aplique.
+
+**Siete mutaciones en total**, cada una con qué tumbó: el update del orden (2 tests), el orden en el
+`where` (1), `nulls last` (**0** — el hallazgo), `nulls first` (1), el check de posición negativa (1), el
+rechazo de slugs repetidos (1), el check de retirada sin posición (1), y el `sort` por score en el portal
+(1).
+
+---
+
 ## 2026-08-03 — Ordenar la documentación, y lo que apareció debajo
 
 Se reorganizó el corpus entero de documentación (74 archivos, ~24.000 líneas) y se puso el grafo de

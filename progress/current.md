@@ -6,77 +6,51 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-03
-**En curso:** nada. Cerrada la **reorganización de la documentación**: el corpus quedó separado por la
-pregunta que contesta cada carpeta y el grafo de referencias de skill-map quedó en **cero errores**
-(venía de 32). El relato está en [`history.md`](history.md).
-**Estado:** verificado en verde — 684 tests del monorepo (subió 2: los del agujero de la compuerta de
-secretos, ver abajo), typecheck limpio, sin secretos entre los 400 archivos versionados. El portal no
-se tocó.
+**Sesión:** 2026-08-04
+**En curso:** nada. Cerrada la **etapa B** del [plan de agentes](../.claude/PLAN-AGENTES.md): el agente
+`datos` (`db/` + `api/`) con `datos-postgres`, `datos-api` y `datos-testing`, estrenado con **KR-3** —el
+orden del brief, persistido—. El relato está en [`history.md`](history.md).
+**Estado:** verificado en verde — **695 tests** del monorepo (venía de 684), 169 del portal, 66 de Karma,
+typecheck limpio, sin secretos entre los 400 archivos versionados. Revisado por el `revisor`: dos
+bloqueantes, los dos resueltos.
 
 ---
 
 ## 🔴 Acción humana urgente — rotar las credenciales expuestas
 
-`docs/private.zip` estuvo **commiteado en un repositorio público** desde el 2026-08-01 (commit
-`15ae91a`). Ya se sacó del índice y el `.gitignore` quedó blindado, pero **el objeto sigue en el
-historial de GitHub** por decisión tomada: purgar no des-expone, lo que devuelve la seguridad es
-rotar. Todo lo de abajo hay que considerarlo **comprometido**.
+**Sigue abierta, sin cambios desde el 2026-08-03.** `docs/private.zip` estuvo **commiteado en este
+repositorio, que es público**, desde el 2026-08-01 (commit `15ae91a`). Ya se sacó del índice y el
+`.gitignore` quedó blindado, pero **el objeto sigue en el historial de GitHub** por decisión tomada:
+purgar no des-expone, lo que devuelve la seguridad es rotar.
 
-Orden por daño potencial. Después de cada bloque: `npm run env:sync` y redeploy de lo que la use.
+**La lista priorizada vive fuera del repo:** `docs/private/rotacion-credenciales.md` (gitignoreado).
+Está ahí y no acá a propósito — es un análisis de impacto ordenado por daño, o sea un mapa de qué
+buscar y por dónde empezar, y este repositorio es público. El hecho va al repo; el mapa, no.
 
-| # | Credencial | Por qué primero | Dónde se rota |
-| --- | --- | --- | --- |
-| 1 | `SUPABASE_JWT_SECRET` | Con esto se **forjan JWT válidos**: se entra a la API como cualquier usuario y con cualquier rol. Deja sin valor a ADR-15, ADR-17 y ADR-18 — no importa que el rol se derive en Postgres si el token se puede firmar | Supabase → Settings → API → JWT Settings. Después, redeploy de `api` |
-| 2 | `DATABASE_URL_ADMIN` | Acceso total a la base, **salta RLS** | Supabase → cambiar la contraseña del rol admin |
-| 3 | `DATAFORSEO_PASSWORD` (+ `DATAFORSEO_LOGIN`) | **Gasta dinero real** contra el saldo de la cuenta | Panel de DataForSEO |
-| 4 | `ANTHROPIC_API_KEY`, `KR_SERVICE__OPENAI_API_KEY`, `WEB_BUILDER__OPENAI_API_KEY`, `OPENAI_API_KEY` | **Gastan dinero real** | Consolas de Anthropic y OpenAI: revocar y crear nuevas |
-| 5 | `STORYBLOK_MANAGEMENT_TOKEN` | **Escribe y borra en el space.** El invariante dice que el proceso anónimo nunca toca una credencial que pueda modificar el space; esta estuvo pública | Storyblok → Settings → Access Tokens |
-| 6 | `DATABASE_URL_API`, `DATABASE_URL_CACHE` | Acceso directo a datos con los roles `amg_api` y `amg_cache` (más pobres que admin, pero acceso directo) | Supabase → contraseñas de esos roles |
-| 7 | `STORYBLOK_PREVIEW_TOKEN` | Lee contenido en borrador | Storyblok → Access Tokens |
-
-**No son secretos y no hace falta rotarlos:** `SUPABASE_JWT_AUD`, `SUPABASE_JWT_ISS`, `CORS_ORIGINS`,
-`DATAFORSEO_BASE_URL`, `DATAFORSEO_MODE`, `LLM_PROVIDER`, `PROSE_MODE`, `WEB_PUBLISH_MODE`,
-`STORYBLOK_REGION`, `STORYBLOK_SPACE_ID`, `STORYBLOK_PUBLIC_TOKEN` (público por diseño), `DEMO_DOMAIN`
-y las rutas `*_PATH`. `SEED_FRANK_USER_ID` y `SEED_JUAN_USER_ID` son identificadores, no credenciales.
+Cuando la rotación se complete, dejar acá una línea con la fecha. Eso sí es el hecho.
 
 ---
 
 ## Lo que esta sesión dejó abierto
 
-**El agujero del arnés: ✅ tapado.** `npm run verificar` daba verde con el zip de credenciales
-trackeado, y la causa no era la que anoté primero: `scripts/secretos.mts` **no** intenta mirar dentro
-de los archivos —decide por ruta, a propósito—, sino que su regla de `docs/private/` comparaba el
-segundo segmento de **directorio**, y en `docs/private.zip` ese nombre es el del **archivo**. Cerrado
-con dos reglas: `docs/private*` por nombre, y cualquier **comprimido versionado** (opaco para un
-detector de rutas; hoy no hay ninguno en el repo, así que no cuesta nada). Cada regla tiene su test y
-**cada test cae exactamente al quitar su regla** — comprobado con las dos mutaciones. El CLI, con el
-caso real por stdin, sale con 1 y nombra el motivo.
+**La migración `0015` está escrita y NO desplegada.** Igual que la `0011` y la `0012`. Se aplica con
+`npm run migrate:deploy -w db` contra la base real — que **no** se corrió acá, y no se corre sin
+decidirlo. `0013` y `0014` siguen **reservadas** para las ramas de las piezas "ideas" y "fotos
+públicas", que se ejecutan en otra máquina: la reserva vive en
+`docs/superpowers/plans/2026-08-01-portal-agencia-programa.md` (§4), y **un número libre en el disco no
+es un número libre**.
 
-**El frontmatter del `revisor`, en formato array — y lo que NO pude verificar.** `tools: Read, Grep,
-…` (CSV) pasó a `tools: ["Read", "Grep", "Glob", "Bash", "Write"]`, que es lo que exige el schema de
-skill-map y lo que usan **nueve** de los agentes globales de `~/.claude/agents/`, todos cargados en
-esta sesión con sus tools correctas. Pero **el registro de agentes se carga al arrancar**, así que el
-cambio no se pudo probar en vivo: la evidencia es que el mismo runtime, ahora mismo, tiene nueve
-agentes andando con ese formato. **En la próxima sesión, confirmar que `revisor` sigue apareciendo con
-sus cinco tools** — son su límite de seguridad: sin `Edit`, no puede editar código, que es toda la
-razón de que declare `tools`.
+**Lo que ningún script vio: la app en el navegador.** El ritual lo pide y esta vez **no se hizo**, con
+un motivo medido y no como excusa: con el seed actual la demo se ve **exactamente igual** que antes de
+la 0015 — los 14 scores de `PAGINAS_DEMO` son estrictamente descendentes, sin empates, con las 8
+respaldadas antes de las 6 sin validar, así que el orden del array coincide índice por índice con el de
+dos niveles. Una sesión de navegador **no podría distinguir** si el cambio funciona. Lo que sí queda sin
+comprobar visualmente es que la pantalla del brief siga pintando bien; los 66 tests de componentes
+pasan.
 
-**Dos avisos de skill-map que quedan, y son deliberados.** 17 warnings de `extractor-collision` (el
-patrón ``[`ruta`](ruta)``, donde gana el enlace y se registra bien: inocuo) y 5 info de
-`reference-redundant`, de los cuales 2 **no se pueden silenciar**: el `dismiss` de esa clase no
-funciona en skill-map 1.2.1 — la supresión queda activa, el sidecar correcto, y el issue vuelve
-después de un scan completo.
-
-**Toda la configuración de skill-map es local a esta máquina.** `.skill-map/` está gitignoreado
-entero, así que `respectGitignore`, `ignore` y `referencePaths` **no viajan con el repo**: en otro
-clon, el scan vuelve a indexar `progress/informes/` y `docs/private/`. Si esto tiene que valer para
-todos, hay que versionar `.skill-map/settings.json`.
-
-**Sin verificar contra producción:** `docs/proyecto/README.md` afirma que hay **10 migraciones
-aplicadas en producción**, y en el repo hay **12** (`0011_clientes_crm`, `0012_membresias_perfil`). El
-11 dice que `0011` está desplegada. No se puede confirmar sin credenciales, así que la cifra quedó
-como estaba.
+**KR-2 tiene el camino decidido y sigue sin implementar:** paquete compartido (opción b), que de paso
+cierra la deuda del esquema Zod duplicado M2/M1. Faltan dos decisiones de **producto**, no de
+arquitectura: pantalla o descarga (`.md`), y al vuelo o guardado con el run.
 
 ## Lo que sigue pendiente de antes
 
@@ -85,11 +59,19 @@ DataForSEO en producción. Sin él, `VOLUMEN_PERCENTIL_TOPE = 0.9` y `PESO_CONFI
 sin calibrar y `TIPOS_MAP_PACK` sin verificar. El destino ya es durable, así que el dataset sobrevive.
 **Y si se corre, hay que volver a sandbox** en `kr-service/.env`.
 
-**Pendiente inmediato:** **etapa B** del [plan de agentes](../.claude/PLAN-AGENTES.md) (el agente
-`datos`, con `datos-postgres`/`datos-api`/`datos-testing`), que se estrena con KR-2 — y de paso puede
-cerrar lo que la etapa A dejó abierto: que el orden del pipeline llegue al portal
-(`db/src/store.ts:715,743` + `portal/src/app/core/cartera.ts:37`). Arrancarla en una **sesión nueva**,
-para poder invocar a `pipeline` por nombre.
+**Pendiente inmediato:** **etapa C** del [plan de agentes](../.claude/PLAN-AGENTES.md) — el agente
+`render` con `render-seguridad` y `render-cda-cache`. Va última a propósito y **no tiene trabajo real
+que la estrene**: lo que le queda al renderizador (CDN en el borde, cache compartida entre instancias)
+es decisión de despliegue, no código. Es razonable que espere a que aparezca trabajo real en vez de
+escribirse por completitud. Alternativa con más valor inmediato: **KR-2**, ahora que su arquitectura
+está decidida.
+
+**Toda la configuración de skill-map es local a esta máquina.** `.skill-map/` está gitignoreado entero,
+así que `respectGitignore`, `ignore` y `referencePaths` **no viajan con el repo**. Si tiene que valer
+para todos, hay que versionar `.skill-map/settings.json`.
+
+**Sin verificar contra producción:** `docs/proyecto/README.md` afirma que hay **10 migraciones
+aplicadas en producción**, y en el repo hay **13**. No se puede confirmar sin credenciales.
 
 ---
 

@@ -26,8 +26,18 @@ export interface PorEvidencia {
 }
 
 /**
- * Parte las páginas en respaldadas / sin validar, **conservando el orden** de entrada (la API ya las
- * manda por `opportunity_score` desc). No descarta ninguna: mostrar lo que no se sabe es el punto.
+ * Parte las páginas en respaldadas / sin validar, **conservando el orden** de entrada. No descarta
+ * ninguna: mostrar lo que no se sabe es el punto.
+ *
+ * **Conservar el orden no es un detalle de implementación: es el contrato.** La API manda las páginas
+ * en el orden del brief que produjo el M2 —evidencia primero, después `score_confidence`— persistido en
+ * `kr_pages.orden_brief` (KR-3, migración 0015). Ese criterio **no se puede reconstruir desde
+ * `opportunity_score`**: una página sin validar puede tener más score que una respaldada, y aun así no
+ * puede presentarse por encima de ella.
+ *
+ * Así que **no re-ordenes acá, ni "restaures" un `sort` por score**: era lo que la base hacía antes de
+ * la 0015, y es la razón por la que la columna "Confianza" del portal no ordenaba nada. Lo fija el test
+ * 🔴 de `evidence.test.ts`, cuyo fixture entra con el orden contradiciendo al score a propósito.
  */
 export function separarPorEvidencia(pages: PaginaPropuesta[]): PorEvidencia {
   const respaldadas: PaginaPropuesta[] = [];
