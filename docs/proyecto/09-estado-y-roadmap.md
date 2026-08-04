@@ -512,7 +512,7 @@ en orden de preferencia:
 | # | Pieza | Estado | Nota |
 |---|---|---|---|
 | **KR-1** | **El dataset crudo, recuperado o regenerado** | 🟠 **A medias** | El **destino durable** ✅ hecho. El **dato** falta: cuesta ~$0.31 y **decide Juan**. Ver arriba. |
-| **KR-2** | **El informe legible, en el portal** | ⚪ Sin empezar, **con el camino ya decidido** | Cómo se comparte `renderReport()`: **(b) paquete compartido** (decidido 2026-08-04). Siguen abiertas dos preguntas de producto: pantalla o descarga, y al vuelo o guardado con el run. Ver abajo. |
+| **KR-2** | **El informe legible, en el portal** | 🟠 **Spec aprobada, sin implementar** | Las tres decisiones cerradas el 2026-08-04: **(b) paquete compartido**, **pantalla + descarga `.md`**, **el `.md` guardado**. La spec está en [`2026-08-04-informe-kr-portal-design.md`](../superpowers/specs/2026-08-04-informe-kr-portal-design.md), partida en KR-2a (el paquete) y KR-2b (la feature). Ver abajo. |
 | **KR-3** | **Las tres mejoras de calidad** | 🟠 **Implementadas, sin calibrar** | ✅ Las tres en `kr-service` (2026-08-02), y ✅ **el orden ya llega al portal** (2026-08-04, migración `0015`). Queda **una** cosa abierta: los parámetros no están barridos contra datos reales (necesita KR-1). |
 | **KR-4** | **El guion de dos niveles, escrito** | ⚪ Sin empezar | Qué se muestra, en qué orden, y dónde se corta si no hay interés técnico. |
 
@@ -563,8 +563,29 @@ implementar, para que no siguiera bloqueando. `renderReport()` vive en `kr-servi
   backend, pero **duplica la lógica del informe** en un tercer lugar y en otro lenguaje de plantilla:
   la misma clase de deriva que acaba de costar la unificación del cliente.
 
-**Lo que sigue abierto** son las dos preguntas de producto, no la de arquitectura: si es **pantalla** o
-**descarga** (`.md`), y si el informe se genera al vuelo o se guarda con el run.
+**Las dos preguntas de producto se cerraron el 2026-08-04**, y con eso la spec quedó escrita
+([`2026-08-04-informe-kr-portal-design.md`](../superpowers/specs/2026-08-04-informe-kr-portal-design.md)):
+**pantalla + botón de descarga `.md`**, y el **`.md` guardado ya renderizado**.
+
+Lo que el diseño destapó, y que no se sabía al tomar esas decisiones:
+
+- **El `backlog` no se persiste en ninguna parte** — `savePages` solo guarda páginas. Un informe
+  reconstruido desde la base saldría sin esa sección **sin avisar**. Guardar el `.md` renderizado desde
+  el brief en memoria lo evita.
+- **El run de la demo no lo produjo el pipeline: lo siembra `sembrarDemo`.** Escribir el informe solo "al
+  terminar el research" lo habría dejado sin informe, y el `out/informe.md` de la corrida real no existe
+  en ninguna máquina (KR-1). De ahí que haya **dos productores** que escriben el informe.
+- **`renderReport` emite `NaN` con datos incompletos**, y el contrato **no admite "no sé"** en las
+  coberturas de `calidad_datos` (son `number` no-nullable). Las dos cosas se arreglan en KR-2a.
+- **El informe va en tabla propia (`kr_informes`), no en una columna de `kr_runs`.** RLS es por fila: una
+  columna habría dejado el **coste interno de la agencia** visible para el rol `cliente`, que ve los runs
+  de su negocio. La política exige `app.es_staff()`.
+- **El informe de la demo va a tener tres huecos** (desglose de coste y las dos coberturas) hasta que se
+  regenere el dataset. Es el momento en que el ~$0.31 de KR-1 deja de ser mejora interna y se vuelve
+  visible en la demo.
+
+Partida en dos etapas: **KR-2a** (el paquete `contrato/`, cero cambios visibles) y **KR-2b** (migración
+`0016`, endpoints, pantalla, seed).
 
 ### 🟡 3. Lo que ADR-19 dejó a medias y hay que cerrar antes de un SLA
 

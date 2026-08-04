@@ -7,9 +7,14 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-04
-**En curso:** nada. Cerrada la **etapa B** del [plan de agentes](../.claude/PLAN-AGENTES.md): el agente
-`datos` (`db/` + `api/`) con `datos-postgres`, `datos-api` y `datos-testing`, estrenado con **KR-3** —el
-orden del brief, persistido—. El relato está en [`history.md`](history.md).
+**En curso:** **KR-2 — el informe legible en el portal.** Spec escrita y aprobada, **sin implementar**:
+[`docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md`](../docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md).
+Lo próximo es el plan de implementación (writing-plans), partido en **KR-2a** (el paquete `contrato/`) y
+**KR-2b** (migración `0016` + endpoints + pantalla + seed).
+
+Antes, en esta misma sesión: cerrada la **etapa B** del [plan de agentes](../.claude/PLAN-AGENTES.md): el
+agente `datos` (`db/` + `api/`) con `datos-postgres`, `datos-api` y `datos-testing`, estrenado con
+**KR-3** —el orden del brief, persistido—. El relato está en [`history.md`](history.md).
 **Estado:** verificado en verde — **698 tests** del monorepo (venía de 684), 169 del portal, 66 de Karma,
 typecheck limpio, sin secretos entre los 405 archivos versionados. Pasó por **dos** revisiones: la interna
 del `revisor` (2 bloqueantes) y la **13ª ronda externa de Codex** (NO LISTO, 9 hallazgos). Los once
@@ -53,9 +58,13 @@ dos niveles. Una sesión de navegador **no podría distinguir** si el cambio fun
 comprobar visualmente es que la pantalla del brief siga pintando bien; los 66 tests de componentes
 pasan.
 
-**KR-2 tiene el camino decidido y sigue sin implementar:** paquete compartido (opción b), que de paso
-cierra la deuda del esquema Zod duplicado M2/M1. Faltan dos decisiones de **producto**, no de
-arquitectura: pantalla o descarga (`.md`), y al vuelo o guardado con el run.
+**KR-2 tiene spec aprobada y sigue sin implementar.** Las tres decisiones cerradas: paquete compartido
+(opción b, que de paso cierra la deuda del Zod duplicado M2/M1), **pantalla + descarga `.md`**, y el
+**`.md` guardado**. Lo que el diseño destapó y no se sabía antes: el **backlog no se persiste**, el run
+de la demo **lo siembra `sembrarDemo`** (no el pipeline), `renderReport` **emite `NaN`** con datos
+incompletos, el contrato **no admite "no sé"** en las coberturas, y el informe va en **tabla propia** con
+`app.es_staff()` porque una columna de `kr_runs` habría filtrado el coste interno al rol `cliente`.
+Detalle en la [spec](../docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md).
 
 ## Lo que sigue pendiente de antes
 
@@ -64,12 +73,13 @@ DataForSEO en producción. Sin él, `VOLUMEN_PERCENTIL_TOPE = 0.9` y `PESO_CONFI
 sin calibrar y `TIPOS_MAP_PACK` sin verificar. El destino ya es durable, así que el dataset sobrevive.
 **Y si se corre, hay que volver a sandbox** en `kr-service/.env`.
 
-**Pendiente inmediato:** **etapa C** del [plan de agentes](../.claude/PLAN-AGENTES.md) — el agente
+**Pendiente inmediato:** el **plan de implementación de KR-2** (writing-plans), y después KR-2a.
+
+Sigue en la cola, sin apuro: la **etapa C** del [plan de agentes](../.claude/PLAN-AGENTES.md) — el agente
 `render` con `render-seguridad` y `render-cda-cache`. Va última a propósito y **no tiene trabajo real
 que la estrene**: lo que le queda al renderizador (CDN en el borde, cache compartida entre instancias)
 es decisión de despliegue, no código. Es razonable que espere a que aparezca trabajo real en vez de
-escribirse por completitud. Alternativa con más valor inmediato: **KR-2**, ahora que su arquitectura
-está decidida.
+escribirse por completitud.
 
 **Toda la configuración de skill-map es local a esta máquina.** `.skill-map/` está gitignoreado entero,
 así que `respectGitignore`, `ignore` y `referencePaths` **no viajan con el repo**. Si tiene que valer
