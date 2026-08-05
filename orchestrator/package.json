@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@types/pg": "^8.20.0",
+    "contrato": "*",
     "db": "*",
     "inngest": "^3.27.0",
     "kr-service": "*",

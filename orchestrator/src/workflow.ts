@@ -1,3 +1,5 @@
+import { renderReport } from "contrato";
+import type { KeywordResearchBrief, ProposedPage } from "contrato";
 import type { PgStore, TenantContext, PageRow, RunSummary } from "db";
 
 /**
@@ -75,16 +77,22 @@ export interface KeywordParaGuardar {
   discard_reason?: string | undefined;
 }
 
-export interface BriefDelPipeline {
-  schema_version: string;
-  paginas_propuestas: PageRow[];
-  meta_run: {
-    coste_micros_usd: number;
-    coste_breakdown: Record<string, unknown>;
-    calidad_datos: Record<string, unknown>;
-    modelos_sin_precio?: string[];
-  };
-}
+/**
+ * Lo que el pipeline del M2 devuelve: **el brief del contrato, entero.**
+ *
+ * Hasta KR-2b esto era un mirror RECORTADO (`schema_version`, las páginas ya en forma de fila de
+ * Postgres, y un `meta_run` con cuatro campos), y el composition root traducía el brief del contrato a
+ * ese recorte. El recorte tiraba `cliente`, `generated_at`, `market`, `backlog` y
+ * `meta_run.keywords_analizadas` — exactamente los datos que el informe necesita y que el pipeline SÍ
+ * conoce. Con el step `guardar-informe` acá, el recorte dejaba dos salidas y las dos malas: castear
+ * (mentir en el tipo) o emitir un informe con huecos inventados.
+ *
+ * Así que el workflow habla el contrato, y la traducción a la forma de la base ocurre en el único sitio
+ * que la necesita (`aFilaDePagina`, al fondo). Esto NO borra la frontera M2→M1: el brief que se
+ * PUBLICA sigue reconstruyéndose desde la base y revalidándose con Zod (`briefDesdeLaBase` +
+ * `validarContrato`), y `deps.publicar` sigue recibiendo `unknown`.
+ */
+export type BriefDelPipeline = KeywordResearchBrief;
 
 /**
  * Lo que el evento trae. **Solo coordenadas, cero autoridad.**
@@ -189,15 +197,50 @@ export async function workflowResearch(
     });
 
     await paso.run("guardar-paginas", async () => {
-      await deps.store.savePages(ctx, runId, run.client_id, brief.paginas_propuestas);
-      return brief.paginas_propuestas.length;
+      const filas = brief.paginas_propuestas.map(aFilaDePagina);
+      await deps.store.savePages(ctx, runId, run.client_id, filas);
+      return filas.length;
+    });
+
+    /*
+     * ---- El informe, guardado ANTES de cerrar el run --------------------------
+     *
+     * Ese orden ES el invariante: **un run en `pending_approval` (o posterior) siempre tiene informe.**
+     * Al revés existiría una ventana con el run ya en la compuerta y sin informe, y como los tres steps
+     * tienen transacciones separadas no sería una ventana teórica. La pantalla del portal se apoya en
+     * esto para poder decir que un run sin informe es uno anterior a la migración 0016 o uno que nunca
+     * llegó a la compuerta — y NO un fallo silencioso de persistencia.
+     *
+     * El brief entero vive en la memoización de `paso.run("research")`, así que un reintento de ESTE
+     * step lo tiene completo sin volver a pedirle nada a DataForSEO ni al LLM. Y `guardarInforme` es
+     * idempotente (`on conflict (run_id) do update`), así que el reintento reescribe en vez de reventar
+     * con 23505.
+     *
+     * Si el informe NO se puede guardar, el step falla y el run no llega a `pending_approval`: es la
+     * decisión deliberada de fallar CERRADO. El caso realista es el tope de 256 KiB de la columna
+     * (`informe_tamano_razonable`), que solo alcanza un dato patológico. Tragarse ese error dejaría el
+     * run en la compuerta sin informe, que es justo la ventana que este step existe para cerrar.
+     *
+     * Devuelve el TAMAÑO, no el Markdown: Inngest persiste el resultado de cada step, y devolver el
+     * informe lo guardaría dos veces (en `kr_informes` y en la memoria del step). El número sirve de
+     * rastro en el panel.
+     */
+    await paso.run("guardar-informe", async () => {
+      const md = renderReport(brief);
+      await deps.store.guardarInforme(ctx, runId, md);
+      return md.length;
     });
 
     await paso.run("cerrar-run", async () => {
       await deps.store.finishRun(ctx, runId, {
         costeMicros: brief.meta_run.coste_micros_usd,
         costeBreakdown: brief.meta_run.coste_breakdown,
-        calidadDatos: brief.meta_run.calidad_datos,
+        // El spread NO es una copia defensiva: `DataQuality` es una `interface`, y una interface no
+        // recibe index signature implícita, así que `tsc` la rechaza contra el `Record<string, unknown>`
+        // que pide `finishRun` (medido con `tsc --noEmit`: "Index signature for type 'string' is missing
+        // in type 'DataQuality'"). El objeto literal del spread sí la recibe. `coste_breakdown` no lo
+        // necesita porque es un `Partial<CostBreakdown>` —un tipo mapeado—, y esos sí la reciben.
+        calidadDatos: { ...brief.meta_run.calidad_datos },
         modelosSinPrecio: brief.meta_run.modelos_sin_precio ?? [],
       });
       return "pending_approval";
@@ -303,6 +346,41 @@ export async function workflowResearch(
     log(`[run ${runId}] publicadas ${publicadas.length} de ${resultados.length} página(s)`);
     return { runId, estado: "publicado" as const, paginasPublicadas: publicadas.length };
   });
+}
+
+/**
+ * `ProposedPage` (el contrato) → `PageRow` (la forma que escribe `savePages`).
+ *
+ * Los dos tipos describen la misma página y NO son intercambiables, a propósito: `PageRow` es lo que
+ * entra a Postgres (`tipo`, `intencion` y `evidencia` como `string`, `seo` y `content_brief` como
+ * jsonb), y `approved` no viaja acá — lo escribe la compuerta cuando un humano mira, nunca el M2.
+ *
+ * El spread de `seo`/`content_brief` es obligatorio y no es una copia defensiva: `PageSeo` y
+ * `ContentBrief` son `interface`, y `tsc` rechaza una interface contra un `Record<string, unknown>` por
+ * falta de index signature (medido). El objeto literal del spread sí la recibe.
+ *
+ * Vivía inline en `deps.ts`. Se mueve acá porque acá es donde se usa y porque en el composition root no
+ * lo cubría ningún test: `deps.ts` solo corre en producción, y este archivo se testea contra PGlite.
+ */
+function aFilaDePagina(p: ProposedPage): PageRow {
+  return {
+    cluster_id: p.cluster_id,
+    tipo: p.tipo,
+    page_strategy: p.page_strategy,
+    url_slug: p.url_slug,
+    keyword_principal: p.keyword_principal,
+    keywords_secundarias: p.keywords_secundarias,
+    intencion: p.intencion,
+    local: p.local,
+    volumen: p.volumen,
+    dificultad: p.dificultad,
+    evidencia: p.evidencia,
+    opportunity_score: p.opportunity_score,
+    score_confidence: p.score_confidence,
+    seo: { ...p.seo },
+    content_brief: { ...p.content_brief },
+    preguntas_frecuentes: p.preguntas_frecuentes,
+  };
 }
 
 /** Lee un número de la config del run (que viene de jsonb, o sea `unknown`). */

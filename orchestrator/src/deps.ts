@@ -136,33 +136,18 @@ export function crearDeps(cx: Conexiones): Deps {
         { taskLog, cache },
       );
 
-      return {
-        schema_version: brief.schema_version,
-        paginas_propuestas: brief.paginas_propuestas.map((p) => ({
-          cluster_id: p.cluster_id,
-          tipo: p.tipo,
-          page_strategy: p.page_strategy,
-          url_slug: p.url_slug,
-          keyword_principal: p.keyword_principal,
-          keywords_secundarias: p.keywords_secundarias,
-          intencion: p.intencion,
-          local: p.local,
-          volumen: p.volumen,
-          dificultad: p.dificultad,
-          evidencia: p.evidencia,
-          opportunity_score: p.opportunity_score,
-          score_confidence: p.score_confidence,
-          seo: { ...p.seo },
-          content_brief: { ...p.content_brief },
-          preguntas_frecuentes: p.preguntas_frecuentes,
-        })),
-        meta_run: {
-          coste_micros_usd: brief.meta_run.coste_micros_usd,
-          coste_breakdown: { ...brief.meta_run.coste_breakdown },
-          calidad_datos: { ...brief.meta_run.calidad_datos },
-          modelos_sin_precio: brief.meta_run.modelos_sin_precio ?? [],
-        },
-      };
+      /*
+       * El brief se devuelve ENTERO, tal como lo emitió el M2.
+       *
+       * Acá había un mapeo que lo recortaba a la forma que la base necesita: se quedaba con las páginas
+       * y cuatro campos de `meta_run`, y tiraba `cliente`, `generated_at`, `market`, `backlog` y
+       * `keywords_analizadas`. Mientras el único consumidor era `savePages` eso no se notaba; desde que
+       * el workflow renderiza el informe (KR-2b), el recorte era pérdida de datos: el informe habría
+       * salido sin el nombre del cliente, sin fecha, sin backlog y con "keywords analizadas" inventadas
+       * — y el pipeline los conocía todos. La traducción a la forma de la base ahora vive en
+       * `workflow.ts` (`aFilaDePagina`), en el sitio de llamada que la necesita y donde hay tests.
+       */
+      return brief;
     },
 
     validarContrato: (raw) => parseBrief(raw),

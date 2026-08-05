@@ -5,8 +5,10 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { renderReport } from "contrato";
+import type { ProposedPage } from "contrato";
 import { PgStore, PglitePool, aplicarMigraciones } from "db";
-import type { PageRow, TenantContext } from "db";
+import type { DbPool, TenantContext } from "db";
 import { workflowResearch } from "./workflow.js";
 import type { BriefDelPipeline, Deps, DestinoPublicacion, Pasos } from "./workflow.js";
 
@@ -23,6 +25,7 @@ import type { BriefDelPipeline, Deps, DestinoPublicacion, Pasos } from "./workfl
 const aqui = dirname(fileURLToPath(import.meta.url));
 
 let pg: PGlite;
+let pool: DbPool;
 let store: PgStore;
 /** El orquestador: rol app_service. En prod es OTRO login (amg_orquestador). */
 let storeServicio: PgStore;
@@ -68,6 +71,15 @@ class MotorPasos implements Pasos {
     return out;
   }
 
+  /**
+   * Descarta el resultado memoizado de UN step, que es como se ve un reintento de step desde acá:
+   * Inngest vuelve a ejecutar ese step entero y deja los anteriores memoizados (por eso el research, que
+   * es el que cuesta dinero, no se vuelve a correr).
+   */
+  olvidar(id: string): void {
+    if (!this.memo.delete(id)) throw new Error(`El step "${id}" nunca corrió: no hay nada que olvidar.`);
+  }
+
   async esperarEvento(id: string): Promise<{ data: unknown } | null> {
     if (this.memo.has(id)) return this.memo.get(id) as { data: unknown } | null;
     if (this.aprobacion === null) throw new Suspendido(); // el workflow se duerme acá
@@ -77,9 +89,57 @@ class MotorPasos implements Pasos {
   }
 }
 
-const paginaFalsa = (over: Partial<PageRow> = {}): PageRow => ({
+/**
+ * El store del orquestador, REAL, que además anota el orden de sus tres escrituras.
+ *
+ * **No es un doble de prueba, y eso es el punto.** Hereda de `PgStore` y delega en `super`, así que
+ * corre el mismo SQL, con el mismo rol (`app_service`) y las mismas políticas — la razón está en el
+ * comentario de la cabecera del archivo: un store mockeado probaría mis suposiciones sobre RLS en vez de
+ * la realidad. Lo único que agrega es la observación del ORDEN, que el resultado final no puede dar: los
+ * tres steps commitean en transacciones separadas, así que "al terminar hay informe" no dice nada sobre
+ * si lo había cuando el run pasó a `pending_approval`, que es lo que el invariante afirma.
+ *
+ * Cada anotación va DESPUÉS del `await`: lo que se está fijando es qué quedó COMMITEADO antes de qué, no
+ * en qué orden se llamó al store.
+ */
+class StoreQueAnota extends PgStore {
+  readonly orden: string[] = [];
+  readonly informes: Array<{ runId: string; md: string }> = [];
+
+  constructor(p: DbPool) {
+    super(p, "app_service");
+  }
+
+  override async savePages(...args: Parameters<PgStore["savePages"]>): Promise<void> {
+    await super.savePages(...args);
+    this.orden.push("guardar-paginas");
+  }
+
+  override async guardarInforme(ctx: TenantContext, runId: string, md: string): Promise<void> {
+    await super.guardarInforme(ctx, runId, md);
+    this.orden.push("guardar-informe");
+    this.informes.push({ runId, md });
+  }
+
+  override async finishRun(...args: Parameters<PgStore["finishRun"]>): Promise<void> {
+    await super.finishRun(...args);
+    this.orden.push("cerrar-run");
+  }
+}
+
+/**
+ * Una página tal como la EMITE el M2 (`ProposedPage`, del contrato), no como la guarda Postgres.
+ *
+ * Era `PageRow` hasta KR-2b, y eso hacía del fixture algo que el pipeline nunca produce: `PageRow` es la
+ * forma de la FILA (`tipo`/`intencion`/`evidencia` como `string` suelto, `seo` como jsonb). Con la forma
+ * del contrato, el fixture pasa por la misma conversión que la de producción (`aFilaDePagina`) y
+ * `renderReport` puede leerlo sin un cast.
+ */
+const paginaFalsa = (over: Partial<ProposedPage> = {}): ProposedPage => ({
   cluster_id: randomUUID(),
   tipo: "landing_local",
+  // La estrategia la calcula el M2 y la capa de datos la TIRABA (ver `PageRow.page_strategy`).
+  page_strategy: "single",
   url_slug: "/pizza-napolitana-madrid",
   keyword_principal: "pizza napolitana madrid",
   keywords_secundarias: ["pizza napolitana"],
@@ -103,14 +163,34 @@ const paginaFalsa = (over: Partial<PageRow> = {}): PageRow => ({
     enlazado_interno: [],
   },
   preguntas_frecuentes: ["¿Hacen reservas?"],
+  // El M2 emite todo SIN aprobar: la aprobación la escribe la compuerta cuando un humano mira.
+  approved: false,
   ...over,
 });
 
-const briefFalso = (paginas: PageRow[]): BriefDelPipeline => ({
+/**
+ * El brief del contrato tal como lo devuelve el pipeline. **Determinista a partir de `paginas`**, y eso
+ * es una precondición del test del informe: compara el Markdown guardado con `renderReport(briefFalso(
+ * paginas))` por igualdad exacta, así que ni la fecha ni el nombre del cliente pueden moverse.
+ *
+ * `run_id`, `cliente` y `generated_at` los pone el M2 (`assembleBrief`), no el evento: el pipeline los
+ * deriva del prompt y del reloj. Acá van fijos.
+ */
+const briefFalso = (paginas: ProposedPage[]): BriefDelPipeline => ({
   schema_version: "kr.v0.5",
+  run_id: "9c1f3d2a-0000-4000-8000-000000000001",
+  cliente: "Restaurante italiano en Madrid centro",
+  generated_at: "2026-08-05T08:16:15.000Z",
+  market: { country: "ES", language_code: "es", location_code: 2724 },
+  status: "pending_approval",
   paginas_propuestas: paginas,
+  backlog: [],
   meta_run: {
+    keywords_analizadas: 55,
+    paginas_propuestas: paginas.length,
     coste_micros_usd: 310_800,
+    // Desglose INCOMPLETO a propósito (falta el LLM): el informe muestra el total y dice que el reparto
+    // no quedó registrado, en vez de pintar una tabla de `$NaN`. Es el camino endurecido en KR-2a.
     coste_breakdown: { dataforseo_micros: 252_200 },
     calidad_datos: { cobertura_volumen: 0.71, cobertura_kd: 0.31, endpoints_degradados: [] },
     modelos_sin_precio: [],
@@ -119,6 +199,8 @@ const briefFalso = (paginas: PageRow[]): BriefDelPipeline => ({
 
 interface Espia {
   deps: Deps;
+  /** El store REAL del orquestador (`app_service`), que además anota el orden de sus escrituras. */
+  store: StoreQueAnota;
   publicadas: string[][];
   researchCorrido: number;
   keywordsGuardadas: number;
@@ -128,8 +210,9 @@ interface Espia {
   simularDraft: boolean;
 }
 
-function depsFalsas(paginas: PageRow[]): Espia {
+function depsFalsas(paginas: ProposedPage[]): Espia {
   const espia: Espia = {
+    store: new StoreQueAnota(pool),
     publicadas: [],
     researchCorrido: 0,
     keywordsGuardadas: 0,
@@ -139,7 +222,7 @@ function depsFalsas(paginas: PageRow[]): Espia {
   };
 
   espia.deps = {
-    store: storeServicio,
+    store: espia.store,
     research: async ({ onKeywords }) => {
       espia.researchCorrido++;
       await onKeywords([
@@ -219,7 +302,7 @@ async function aprobarTodo(ctx: TenantContext, runId: string): Promise<void> {
 before(async () => {
   pg = new PGlite();
   await aplicarMigraciones(pg);
-  const pool = new PglitePool(pg);
+  pool = new PglitePool(pg);
   store = new PgStore(pool); // los humanos: app_user
   storeServicio = new PgStore(pool, "app_service"); // el orquestador
 });
@@ -337,6 +420,92 @@ test("solo se publican las páginas que el humano aprobó, no todas las del run"
   await despertar(motor, espia, runId);
 
   assert.deepEqual(espia.publicadas[0], ["/pizza-napolitana-madrid"], "la página sin validar NO se publica");
+});
+
+// ================================================================
+// El informe del research (KR-2b)
+// ================================================================
+
+/**
+ * El invariante de la spec §5.3: **un run en `pending_approval` (o posterior) SIEMPRE tiene informe.**
+ *
+ * Es el que hace que el mensaje de la pantalla no sea ambiguo: un run sin informe es uno anterior a la
+ * migración 0016 o uno que nunca llegó a la compuerta, NO un fallo silencioso de persistencia.
+ *
+ * El ORDEN es lo que este test fija, y hay que fijarlo aparte porque el estado final no lo revela: si
+ * `guardar-informe` fuera DESPUÉS de `cerrar-run`, al terminar habría igualmente informe y run en
+ * `pending_approval` — y sin embargo existiría una ventana con el run ya en la compuerta y sin informe.
+ * Como los tres steps commitean en transacciones separadas (y entre dos steps Inngest puede reintentar,
+ * fallar o simplemente tardar), esa ventana no es teórica: es el intervalo en el que la pantalla de un
+ * humano que refresca lee un run aprobable sin informe.
+ */
+test("🔴 un run que llega a `pending_approval` SIEMPRE tiene informe", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  // Las páginas se guardan en una `const` porque `paginaFalsa()` lleva un `cluster_id` aleatorio: el
+  // informe esperado se renderiza a partir de ESTAS, o la comparación exacta de más abajo no cerraría.
+  const paginas = [paginaFalsa()];
+  const espia = depsFalsas(paginas);
+
+  await correrHastaLaCompuerta(espia, runId);
+
+  assert.deepEqual(
+    espia.store.orden,
+    ["guardar-paginas", "guardar-informe", "cerrar-run"],
+    "el informe se guarda ANTES de cerrar el run, o el invariante tiene una ventana",
+  );
+  assert.equal(espia.store.informes.length, 1, "se guardó exactamente un informe");
+  assert.equal(espia.store.informes[0]!.runId, runId, "el informe se guardó contra SU run");
+
+  /*
+   * Y lo guardado es el informe de ESTE brief. La igualdad exacta contra `renderReport` es a propósito:
+   * con solo comprobar que empieza por `# Keyword Research` pasaría igual el informe de otro run, o el
+   * de un brief recortado — y el recorte es exactamente lo que este cambio tuvo que deshacer para que el
+   * informe no saliera sin cliente, sin fecha y con las keywords analizadas inventadas.
+   */
+  const md = espia.store.informes[0]!.md;
+  assert.match(md, /^# Keyword Research/, "es el Markdown de renderReport, no otra cosa");
+  assert.equal(md, renderReport(briefFalso(paginas)), "es el informe de ESTE brief, no de otro");
+
+  // Y no solo se pidió: quedó en la base, y lo lee el staff con `app_user` — el camino del endpoint.
+  const fila = await store.getInforme(humano(tenantA), runId);
+  assert.equal(fila?.informe_md, md, "el informe quedó persistido, no solo renderizado");
+
+  // El run está en la compuerta, o sea que el informe ya existía cuando llegó a ella.
+  const run = await store.getRun(humano(tenantA), runId);
+  assert.equal(run?.status, "pending_approval");
+});
+
+/**
+ * El reintento del step **no vuelve a pagar y no revienta**. Las dos mitades:
+ *
+ *  · el brief entero vive en la memoización de `paso.run("research")`, así que el segundo intento lo
+ *    tiene completo sin pedirle nada a DataForSEO ni al LLM (`researchCorrido` sigue en 1);
+ *  · `guardarInforme` es idempotente (`on conflict (run_id) do update`), así que reescribe en vez de
+ *    fallar con 23505.
+ *
+ * Se simula como Inngest reintenta un step: se descarta el resultado memoizado de ESE step y se vuelve a
+ * correr el workflow con el mismo motor. Si el motor no olvidara nada no habría reintento que probar.
+ */
+test("un reintento de `guardar-informe` reescribe y no vuelve a pagar el research", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const paginas = [paginaFalsa()];
+  const espia = depsFalsas(paginas);
+
+  const motor = await correrHastaLaCompuerta(espia, runId);
+  const primero = await store.getInforme(humano(tenantA), runId);
+
+  motor.olvidar("guardar-informe");
+  await assert.rejects(() => workflowResearch(motor, entrada(runId, tenantA), espia.deps), Suspendido);
+
+  assert.equal(espia.researchCorrido, 1, "el reintento NO volvió a correr el research (ni a pagarlo)");
+  assert.equal(espia.store.informes.length, 2, "el step corrió dos veces");
+  const { rows } = await pg.query<{ n: number }>("select count(*)::int as n from kr_informes where run_id = $1", [
+    runId,
+  ]);
+  assert.equal(rows[0]!.n, 1, "y dejó UNA fila: el segundo intento reescribió, no duplicó ni reventó");
+
+  const segundo = await store.getInforme(humano(tenantA), runId);
+  assert.equal(segundo?.informe_md, primero?.informe_md, "el mismo brief da el mismo informe");
 });
 
 // ================================================================
