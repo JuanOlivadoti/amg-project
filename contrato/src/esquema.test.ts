@@ -100,3 +100,61 @@ test("consumoM1 CONSERVA evidencia y score_confidence cuando vienen", () => {
   assert.equal(r.success && r.data.paginas_propuestas[0]?.evidencia, "sin_validar");
   assert.equal(r.success && r.data.paginas_propuestas[0]?.score_confidence, 0.2);
 });
+
+// --- La INCLUSIÓN. Es lo ÚNICO que ata los dos derivados entre sí: los tests de arriba prueban cada
+// --- validador por separado, y los dos siguen verdes mientras se separan. Endurecer `consumoM1` o
+// --- agregar un valor a un enum de `emisionM2` rompe el handoff M2→M1 en producción sin que nada avise.
+// ---
+// --- PASA EN VERDE DESDE QUE SE ESCRIBIÓ, y eso NO lo vuelve inútil: no documenta un bug arreglado,
+// --- fija una relación que hoy se cumple y que nada impedía romper. Su valor se comprobó por MUTACIÓN,
+// --- no por un rojo previo. Si algún día parece que "no aporta", la comprobación es de tres líneas:
+// --- agregale un campo requerido a `consumoM1` que el M2 no emita y mirá que caiga exactamente acá.
+// ---
+// --- Qué NO cubre, para no prometer de más:
+// ---  1. Un campo que `consumoM1` OLVIDE. Zod descarta lo que no está en el esquema, así que el brief
+// ---     del M2 sigue validando, solo más pobre: la inclusión pasa igual. Eso lo cubre el diferencial
+// ---     de la SALIDA contra el esquema viejo, no este test.
+// ---  2. Un valor de enum nuevo en `emisionM2` que ningún caso de acá ejercite. Se midió: la mutación
+// ---     que agrega "institucional_v2" al `tipo` del M2 pasaba en verde con los tres casos originales,
+// ---     y solo cayó cuando un fixture lo usó. Este test cubre lo que sus fixtures ejercitan.
+test("todo brief que valide emisionM2 valida consumoM1 (emisionM2 ⊆ consumoM1)", () => {
+  // La relación NO es simétrica, y eso es correcto: hay briefs kr.v0.2 que el M1 acepta y el M2 ya no
+  // emite. Lo que no puede pasar es lo contrario — que el M2 emita algo que el M1 rechaza, porque ahí
+  // el handoff se rompe en producción con toda la suite en verde.
+  const pagina = briefM2().paginas_propuestas[0]!;
+  const casos = [
+    briefM2(),
+    briefM2({ paginas_propuestas: [] }),
+    briefM2({ status: "approved" }),
+    // El cuarto caso NO es decorativo: existe por lo que midió la mutación del punto 2 de arriba. Los
+    // tres de arriba usan la MISMA página del fixture, así que ejercitan un solo valor de cada enum
+    // compartido (`landing_local`, `local`, `LocalBusiness`, `single`, `datos_mercado`) y
+    // `volumen`/`dificultad` solo con número. Este recorre el otro extremo, incluido el `null` de v0.4.
+    // `local: false` no es casual: una página `blog` no puede declararse `LocalBusiness`.
+    briefM2({
+      paginas_propuestas: [
+        {
+          ...pagina,
+          tipo: "blog",
+          page_strategy: "hub_spoke",
+          intencion: "informational",
+          local: false,
+          volumen: null,
+          dificultad: null,
+          evidencia: "sin_validar",
+          score_confidence: 0.2,
+          seo: { ...pagina.seo, schema_type: "Article" },
+        },
+      ],
+    }),
+  ];
+  for (const brief of casos) {
+    assert.equal(emisionM2.safeParse(brief).success, true, "el fixture ya no es válido para el M2");
+    const r = consumoM1.safeParse(brief);
+    assert.equal(
+      r.success,
+      true,
+      `el M2 emite algo que el M1 rechaza: ${r.success ? "" : JSON.stringify(r.error.issues)}`,
+    );
+  }
+});
