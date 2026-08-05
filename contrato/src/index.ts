@@ -15,6 +15,7 @@ export type {
   CostBreakdown,
 } from "./tipos.js";
 export { usdFromMicros } from "./dinero.js";
+export { renderReport } from "./informe.js";
 export {
   emisionM2,
   esquemaBase,

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mapClustersToPages, PESO_CONFIANZA_ORDEN } from "./cluster-map.js";
-import { renderReport } from "./brief.js";
+import { renderReport } from "contrato";
 import { briefSchema } from "../validation/brief.schema.js";
 import type { Cluster } from "./cluster.js";
 import type { EnrichedKeyword, KeywordResearchBrief } from "../types.js";

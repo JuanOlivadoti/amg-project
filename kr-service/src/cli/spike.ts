@@ -6,7 +6,7 @@ import { SCHEMA_VERSION } from "../types.js";
 import { runResearch } from "../pipeline/run.js";
 import type { RunDeps, ResearchDataset } from "../pipeline/run.js";
 import type { ProviderTaskLog } from "../dataforseo/task-log.js";
-import { renderReport } from "../pipeline/brief.js";
+import { renderReport } from "contrato";
 import { briefSchema } from "../validation/brief.schema.js";
 
 // Caso por defecto del spike (restaurante italiano en Madrid).
