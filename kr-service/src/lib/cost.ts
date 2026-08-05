@@ -1,4 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+// Un `export ... from` re-exporta pero NO crea un binding local, y `CostMeter.breakdown` lo usa acá.
+import type { CostBreakdown } from "contrato";
 
 /**
  * Medición de costo del run, en MICROS de USD (millonésimas), para evitar coma flotante (ADR-10).
@@ -14,11 +16,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 export type CostSource = "dataforseo" | "llm_generation" | "llm_embeddings";
 
-export interface CostBreakdown {
-  dataforseo_micros: number;
-  llm_generation_micros: number;
-  llm_embeddings_micros: number;
-}
+// El desglose de coste y su formateo son parte del contrato del brief (viajan en `meta_run`), así que
+// viven en `contrato`. Acá se re-exportan porque los usan el medidor y los logs de este paquete.
+export type { CostBreakdown } from "contrato";
+export { usdFromMicros } from "contrato";
 
 /** Precio en USD por 1.000.000 de tokens. */
 export interface ModelPrice {
@@ -169,8 +170,4 @@ export function currentMeter(): CostMeter {
 /** Corre `fn` con su PROPIO medidor. Todo lo que gaste dentro se acumula ahí y en ningún otro lado. */
 export function withCostMeter<T>(meter: CostMeter, fn: () => Promise<T>): Promise<T> {
   return costContext.run(meter, fn);
-}
-
-export function usdFromMicros(micros: number): string {
-  return (micros / 1_000_000).toFixed(4);
 }
