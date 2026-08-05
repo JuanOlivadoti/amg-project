@@ -236,15 +236,34 @@ async function runResearchInner(
   //
   // Con cobertura 0 se corta ACÁ, antes de seguir gastando: un research sin un solo dato de
   // mercado no es un research, es una lista de opiniones del LLM.
+  //
+  // Las coberturas se calculan en locales `number` y el gate las lee de ahí, NO de vuelta desde
+  // `calidadDatos` —que desde KR-2a las declara `number | null`, porque el contrato ya puede decir "no
+  // sé"—. Acá el research CORRIÓ: hay denominador, así que hay número, y el corte de abajo necesita esa
+  // garantía por escrito y no de palabra: `null === 0` y `null < 0.3` son las dos false, así que un
+  // `null` que llegue al gate lo desactiva EN SILENCIO y el run sigue gastando en intención,
+  // relevancia y contenido sin un solo dato de mercado. Medido al hacer este cambio: con el gate
+  // leyendo el campo, poner `cobertura_volumen: null` pasa el typecheck y los 146 tests de kr-service
+  // en verde; leyéndolo de los locales, el mismo intento revienta en `tsc` (TS18047 en el `< 0.3`).
+  //
+  // Sin keywords la cobertura es 0 y no `null`: no es que no se haya medido, es que ninguna de las
+  // (cero) keywords tiene volumen. Y tiene que seguir siendo 0 para que el corte duro salte — un run
+  // que no llegó a tener keywords tampoco es un research.
+  const coberturaVolumen: number = enriched.length
+    ? enriched.filter((k) => k.volume != null).length / enriched.length
+    : 0;
+  const coberturaKd: number = enriched.length
+    ? enriched.filter((k) => k.difficulty != null).length / enriched.length
+    : 0;
   const calidadDatos: DataQuality = {
-    cobertura_volumen: enriched.length ? enriched.filter((k) => k.volume != null).length / enriched.length : 0,
-    cobertura_kd: enriched.length ? enriched.filter((k) => k.difficulty != null).length / enriched.length : 0,
+    cobertura_volumen: coberturaVolumen,
+    cobertura_kd: coberturaKd,
     endpoints_degradados: endpointsDegradados,
   };
   const pct = (n: number) => `${Math.round(n * 100)}%`;
   log(
     "calidad",
-    `cobertura volumen ${pct(calidadDatos.cobertura_volumen)} · KD ${pct(calidadDatos.cobertura_kd)}` +
+    `cobertura volumen ${pct(coberturaVolumen)} · KD ${pct(coberturaKd)}` +
       (endpointsDegradados.length ? ` · ⚠️ degradados: ${endpointsDegradados.join(", ")}` : ""),
   );
   // El corte duro solo aplica cuando el dinero es REAL. El mock y el sandbox no cobran y no
@@ -252,7 +271,7 @@ async function runResearchInner(
   // loop de desarrollo gratis —que es una propiedad central del proyecto— sin proteger nada.
   const gastaDineroReal = config.dataforseo.mode === "live" && !config.dataforseo.isSandbox;
 
-  if (calidadDatos.cobertura_volumen === 0) {
+  if (coberturaVolumen === 0) {
     const msg =
       "Cobertura de volumen 0%: ninguna keyword tiene datos de mercado. " +
       (endpointsDegradados.length
@@ -266,10 +285,10 @@ async function runResearchInner(
       );
     }
     log("calidad", `⚠️ ${msg} (esperable fuera de producción: se continúa)`);
-  } else if (calidadDatos.cobertura_volumen < 0.3) {
+  } else if (coberturaVolumen < 0.3) {
     log(
       "calidad",
-      `⚠️ solo ${pct(calidadDatos.cobertura_volumen)} de las keywords tiene volumen. El brief lo ` +
+      `⚠️ solo ${pct(coberturaVolumen)} de las keywords tiene volumen. El brief lo ` +
         `declara en meta_run.calidad_datos y las páginas afectadas quedan marcadas "sin_validar".`,
     );
   }

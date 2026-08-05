@@ -65,6 +65,32 @@ test("emisionM2 RECHAZA un location_code fraccionario", () => {
   );
 });
 
+// --- `calidad_datos` — la distinción entre "cero" y "no sé". Los dos tests van juntos porque la
+// --- laxitud del primero solo es segura si el segundo sigue en pie: un `.nullable()` que se escriba
+// --- como `.optional()` deja de pedir el dato en vez de admitir que no se conoce, y ahí un brief que
+// --- OMITE la cobertura pasa como si la hubiera declarado desconocida.
+
+test("emisionM2 acepta coberturas null (no se sabe) y sigue exigiendo el campo", () => {
+  const b = briefM2();
+  b.meta_run.calidad_datos = {
+    cobertura_volumen: null,
+    cobertura_kd: null,
+    endpoints_degradados: null,
+  };
+  assert.equal(emisionM2.safeParse(b).success, true);
+
+  // Pero la CLAVE sigue siendo obligatoria: "no sé" es un valor, no una ausencia.
+  // @ts-expect-error: se borra a propósito.
+  delete b.meta_run.calidad_datos.cobertura_kd;
+  assert.equal(emisionM2.safeParse(b).success, false);
+});
+
+test("emisionM2 sigue rechazando una cobertura fuera de 0..1", () => {
+  const b = briefM2();
+  b.meta_run.calidad_datos.cobertura_volumen = 1.5;
+  assert.equal(emisionM2.safeParse(b).success, false);
+});
+
 // --- `consumoM1` — el derivado LAXO. Lo que se prueba acá es lo que ACEPTA: cada laxitud es
 // --- deliberada (briefs viejos que siguen siendo publicables), así que un endurecimiento accidental
 // --- es el fallo a evitar, no el rechazo.

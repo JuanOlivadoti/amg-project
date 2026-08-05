@@ -41,12 +41,24 @@ export type PageEvidence = "datos_mercado" | "sin_validar";
  * páginas basadas en cero datos. Esto lo hace explícito y auditable.
  */
 export interface DataQuality {
-  /** Fracción de keywords con volumen conocido (0..1). */
-  cobertura_volumen: number;
-  /** Fracción de keywords con dificultad conocida (0..1). */
-  cobertura_kd: number;
-  /** Endpoints de pago que fallaron ENTEROS (no devolvieron nada). */
-  endpoints_degradados: string[];
+  /**
+   * Fracción de keywords con volumen conocido (0..1), o **`null` = no se sabe**.
+   *
+   * `null` no es lo mismo que `0`: `0` dice "ninguna keyword tenía volumen" —un dato— y `null` dice
+   * "esta corrida no registró la cobertura". El seed de la demo cae en el segundo caso, porque el
+   * dato se perdió con `out/brief.json`. Sin `null`, el tipo OBLIGA a inventar un número.
+   */
+  cobertura_volumen: number | null;
+  /** Ídem para la dificultad (KD). */
+  cobertura_kd: number | null;
+  /**
+   * Endpoints de pago que fallaron ENTEROS, o **`null` = no se sabe**.
+   *
+   * `[]` afirma "ninguno falló", que es una afirmación con contenido. `null` es la ausencia de dato.
+   * Confundirlos fue el hallazgo de la 14ª review sobre el seed: trataba tres datos como desconocidos
+   * y convertía este cuarto en certeza.
+   */
+  endpoints_degradados: string[] | null;
 }
 
 export interface PageSeo {

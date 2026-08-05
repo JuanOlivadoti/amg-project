@@ -71,10 +71,16 @@ export const briefSchema = z.object({
     keywords_analizadas: z.number().int().nonnegative(),
     paginas_propuestas: z.number().int().nonnegative(),
     // v0.5: cobertura real de los datos. Un fallo de DataForSEO deja de ser invisible.
+    //
+    // Los tres van `.nullable()` en espejo de `emisionM2` (`contrato/src/esquema.ts`). Este archivo es
+    // la copia condenada del contrato —la tarea 9 de KR-2a lo borra y sus dos importadores pasan a
+    // `emisionM2`—, pero mientras exista tiene que decir lo mismo: dejarlo estricto haría que el
+    // validador de salida del propio M2 RECHACE un brief que el contrato declara válido, que es
+    // exactamente el modo de fallo de tener dos fuentes de verdad. `.nullable()`, nunca `.optional()`.
     calidad_datos: z.object({
-      cobertura_volumen: z.number().min(0).max(1),
-      cobertura_kd: z.number().min(0).max(1),
-      endpoints_degradados: z.array(z.string()),
+      cobertura_volumen: z.number().min(0).max(1).nullable(),
+      cobertura_kd: z.number().min(0).max(1).nullable(),
+      endpoints_degradados: z.array(z.string()).nullable(),
     }),
     // v0.3: total de TODOS los proveedores (antes solo DataForSEO) + desglose.
     coste_micros_usd: z.number().int().nonnegative(),

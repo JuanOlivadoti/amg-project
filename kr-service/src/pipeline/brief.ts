@@ -72,13 +72,20 @@ export function renderReport(brief: KeywordResearchBrief): string {
   // Calidad de los datos del run. Va ARRIBA de las páginas a propósito: quien aprueba tiene que
   // saber sobre qué base está aprobando ANTES de mirar la lista.
   const q = brief.meta_run.calidad_datos;
-  const pct = (n: number) => `${Math.round(n * 100)}%`;
+  // Las coberturas son `number | null` desde KR-2a: `null` = esta corrida no las registró, que NO es
+  // 0%. Mismo criterio que `metric()` unas líneas arriba y por el mismo motivo — el informe es el
+  // entregable que ve el cliente, y un 0% inventado le afirma que no hay demanda.
+  const pct = (n: number | null) => (n === null ? "n/d" : `${Math.round(n * 100)}%`);
   l.push(`### Calidad de los datos\n`);
   l.push(`| Métrica | Cobertura |`);
   l.push(`|---|---|`);
   l.push(`| Keywords con **volumen** conocido | **${pct(q.cobertura_volumen)}** |`);
   l.push(`| Keywords con **dificultad (KD)** conocida | **${pct(q.cobertura_kd)}** |`);
-  if (q.endpoints_degradados.length) {
+  // `?.` y no `!`: `null` = no se registró si alguno falló, y ahí NO se puede avisar de un fallo que
+  // no se conoce. Falta la otra mitad —decir explícitamente "no se registró", que es distinto del `[]`
+  // que afirma "ninguno falló"—: la completa la tarea 7, que muda `renderReport` a `contrato`. Hoy
+  // `run.ts` siempre emite un array, así que el informe del CLI no cambia.
+  if (q.endpoints_degradados?.length) {
     l.push(
       `\n> 🔴 **Datos incompletos:** falló el endpoint \`${q.endpoints_degradados.join("`, `")}\`. ` +
         `Las métricas que faltan **no son ceros**: no se pudieron obtener.`,

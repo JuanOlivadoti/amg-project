@@ -145,10 +145,15 @@ export const emisionM2 = z.object({
     keywords_analizadas: z.number().int().nonnegative(),
     paginas_propuestas: z.number().int().nonnegative(),
     // v0.5: cobertura real de los datos. Un fallo de DataForSEO deja de ser invisible.
+    //
+    // `.nullable()` y NUNCA `.optional()`: la clave es obligatoria porque "no sé" es un valor que hay
+    // que ESCRIBIR, no una ausencia que se pueda omitir. Con `.optional()`, un brief que simplemente
+    // se olvidó de calcular la cobertura pasaría indistinguible de uno que declara no conocerla.
+    // Ver `DataQuality` en tipos.ts para por qué `null` ≠ `0` y `null` ≠ `[]`.
     calidad_datos: z.object({
-      cobertura_volumen: z.number().min(0).max(1),
-      cobertura_kd: z.number().min(0).max(1),
-      endpoints_degradados: z.array(z.string()),
+      cobertura_volumen: z.number().min(0).max(1).nullable(),
+      cobertura_kd: z.number().min(0).max(1).nullable(),
+      endpoints_degradados: z.array(z.string()).nullable(),
     }),
     // v0.3: total de TODOS los proveedores (antes solo DataForSEO) + desglose.
     coste_micros_usd: z.number().int().nonnegative(),
