@@ -238,6 +238,53 @@ test("un run sin informe devuelve null, no lanza", async () => {
  * El informe lleva el desglose del coste que la agencia le paga a DataForSEO, o sea su margen, y `duenoA1`
  * es el dueño del negocio: ve su run y no puede ver el informe.
  */
+/**
+ * `generado_at` sale del store como `string` ISO, y esto se comprueba **en runtime**.
+ *
+ * El tipo `InformeRow` no puede probar nada de esto: `tx.query<T>` no valida, así que el `T` es una
+ * promesa que nadie comprueba, y el driver entrega los `timestamptz` como `Date` de JS. Un contrato que
+ * dijera `string` con un `Date` dentro haría que `generado_at.slice(0, 10)` —lo que T4 necesita para el
+ * nombre del archivo de descarga— pasara `tsc` y reventara en producción. Es el defecto que KR-2a arregló
+ * dos veces (`parseBrief`, `coste_breakdown`).
+ *
+ * Por eso los asserts miran `typeof`, la FORMA de la cadena, que el instante no se haya movido, y que una
+ * operación de string real funcione. Sin la conversión de `getInforme`, los cuatro se caen.
+ */
+test("🔴 `generado_at` es un string ISO en RUNTIME, no el `Date` que da el driver", async () => {
+  const crudo = await informeCrudo(s.runA1);
+  assert.ok(crudo, "precondición: el informe existe (si no, esto no prueba nada)");
+
+  const informe = await api.getInforme({ tenantId: s.tenantA, userId: s.equipoA }, s.runA1);
+
+  // `typeof` es lo único que mira el runtime en vez del tipo. Con el `Date` del driver da "object".
+  assert.equal(
+    typeof informe?.generado_at,
+    "string",
+    `el store tiene que devolver lo que su tipo promete; devolvió ${typeof informe?.generado_at}`,
+  );
+
+  // Y con forma ISO 8601 en UTC: es lo que el portal parsea y lo que el JSON del endpoint va a llevar.
+  assert.match(
+    informe!.generado_at,
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    "ISO 8601 en UTC con milisegundos",
+  );
+
+  // La conversión no movió el instante: es la MISMA fecha que hay en la fila, en otra representación.
+  assert.equal(
+    new Date(informe!.generado_at).getTime(),
+    new Date(crudo.generado_at).getTime(),
+    "convertir no puede cambiar la fecha que se guardó",
+  );
+
+  /*
+   * Y la operación concreta que T4 va a escribir para el `filename` de la descarga. Va explícita y no
+   * como comentario porque es el síntoma real: sobre un `Date` esto lanza `TypeError: ... is not a
+   * function`, y ese es el fallo que el tipo no atajaba.
+   */
+  assert.equal(informe!.generado_at.slice(0, 10).length, 10, "se puede operar como string de verdad");
+});
+
 test("🔴 `getInforme` no le da el informe al rol `cliente`, aunque el informe exista", async () => {
   assert.ok(await informeCrudo(s.runA1), "precondición: el informe existe (si no, esto no prueba nada)");
 

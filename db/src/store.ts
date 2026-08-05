@@ -204,11 +204,22 @@ export interface RunSummary {
  * `generado_at` es la fecha del ÚLTIMO render, no la del primero: el step del orquestador es durable y un
  * reintento la actualiza a propósito, porque la pantalla la muestra junto al texto que está pintando.
  *
+ * **Y es un `string` ISO 8601 de verdad, no un `Date` disfrazado.** El driver entrega los `timestamptz`
+ * como `Date` de JS (medido en PGlite; `node-postgres` hace lo mismo), así que `getInforme` convierte en
+ * el borde. Si el tipo dijera `string` y el runtime diera un `Date`, `generado_at.slice(0, 10)` —justo lo
+ * que hace falta para armar el nombre del archivo de descarga— pasaría `tsc` y reventaría en producción.
+ * Es el defecto que KR-2a ya arregló dos veces (`parseBrief`, `coste_breakdown`): un tipo que promete algo
+ * que el runtime no cumple es peor que no tenerlo, porque desactiva al único que podía avisar.
+ *
+ * ⚠️ `RunSummary.created_at` / `finished_at` **siguen teniendo ese defecto** (dicen `string`, entregan
+ * `Date`). Es deuda vieja y anotada; se arregla cuando alguien toque ese contrato. No se propaga a éste.
+ *
  * No lleva `tenant_id` ni `client_id`: quien lee ya está dentro de su tenant (lo impone RLS, no un
  * `where`), y devolverlos solo daría a la API la oportunidad de tomar una decisión con ellos.
  */
 export interface InformeRow {
   informe_md: string;
+  /** ISO 8601 en UTC (`2026-08-05T21:04:41.597Z`), garantizado por `getInforme`. */
   generado_at: string;
 }
 
@@ -874,11 +885,32 @@ export class PgStore {
    */
   async getInforme(ctx: TenantContext, runId: string): Promise<InformeRow | null> {
     return this.withTenant(ctx, async (tx) => {
-      const { rows } = await tx.query<InformeRow>(
+      /*
+       * La fila CRUDA se tipa `Date | string` porque es lo que el driver entrega de verdad: `timestamptz`
+       * llega como `Date` de JS. Tiparla `InformeRow` acá sería la mentira que este método existe para no
+       * contar — y `tx.query<T>` no valida nada en runtime, así que el `T` que se le pase es una promesa
+       * que nadie comprueba.
+       */
+      const { rows } = await tx.query<{ informe_md: string; generado_at: Date | string }>(
         "select informe_md, generado_at from kr_informes where run_id = $1",
         [runId],
       );
-      return rows[0] ?? null;
+      const fila = rows[0];
+      if (!fila) return null;
+
+      return {
+        informe_md: fila.informe_md,
+        /*
+         * La conversión va ACÁ y no en el endpoint: si viviera en la API, el próximo consumidor del store
+         * heredaría la trampa entera, y la garantía dependería de que cada llamador se acuerde. El borde
+         * del store es el único sitio donde se paga una vez.
+         *
+         * `toISOString()` normaliza a UTC con milisegundos. No pierde precisión respecto de lo que había:
+         * un `Date` de JS solo guarda milisegundos, así que los microsegundos de Postgres ya los había
+         * descartado el driver antes de llegar hasta acá.
+         */
+        generado_at: new Date(fila.generado_at).toISOString(),
+      };
     });
   }
 
