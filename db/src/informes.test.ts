@@ -11,15 +11,19 @@ import type { Seed } from "./testdb.js";
  * ver el run vería la columna. El rol `cliente` existe, es el dueño del negocio, y ve los runs de su
  * cliente. Con la fila propia, la política puede exigir staff.
  *
- * ⚠️ Ninguna ASEVERACIÓN de estos tests puede apoyarse en `db.asService`: es el SUPERUSUARIO de
- * infraestructura y salta RLS (y los grants). Medido: un `insert` sin un solo `grant` pasa como
- * superuser y da 42501 con `set local role app_service`. Lo que se comprueba va con `asUser`
- * (app_user) y `asOrquestador` (app_service).
+ * ⚠️ La regla de `db.asService` acá, y el criterio no es "aseverar o no aseverar" sino **DE QUÉ habla
+ * la aseveración**:
  *
- * Sí se usa `asService` para dos cosas que NO son comprobaciones, y es exactamente para lo que
- * existe: sembrar un run (`crearRunSinInforme`) y establecer la VERDAD DE BASE de que una fila está
- * en la tabla (`exigirQueElInformeExista`). Justo porque salta RLS es el único rol que puede
- * afirmar "la fila existe" sin que la política bajo prueba influya en la respuesta.
+ * - **Ninguna aseveración sobre la política o los grants bajo prueba** puede pasar por `asService`. Es
+ *   el SUPERUSUARIO de infraestructura y salta las dos cosas, así que el test pasaría siempre — y un
+ *   test de seguridad que siempre pasa es peor que no tenerlo. Eso va con `asUser` (app_user) y
+ *   `asOrquestador` (app_service). Medido: un `insert` sobre una tabla sin un solo `grant` pasa como
+ *   superuser y da 42501 con `set local role app_service`.
+ * - **Una aseveración sobre si el DATO EXISTE sí va con `asService`**, y tiene que ir con él:
+ *   `exigirQueElInformeExista` es un `assert` y es legítimo precisamente porque su respuesta NO depende
+ *   de la política que el test está por probar. Preguntárselo a `asUser` sería circular — devolvería
+ *   cero filas tanto si la fila falta como si la política la esconde, que es la confusión que ese
+ *   helper existe para impedir. Sembrar (`crearRunSinInforme`) es el mismo caso y ni asevera.
  */
 let db: TestDb;
 let s: Seed;
@@ -206,9 +210,8 @@ test("🔴 un informe de más de 256 KiB se rechaza en la BASE", async () => {
  * 262144 es un default de producción, que sin test es una decisión sin dueño. Con este par, moverlo en
  * cualquier dirección tumba uno de los dos: bajarlo tumba éste, subirlo tumba el de arriba.
  *
- * `octet_length` cuenta BYTES, no caracteres; 'x' es un byte en UTF-8, así que `repeat(TOPE_BYTES)`
- * son exactamente 262144 bytes. (Un informe real lleva acentos y emojis: el tope es de bytes, y un
- * carácter multibyte gasta más de uno. Eso es lo que la constraint mide y lo que este test fija.)
+ * 'x' es un byte en UTF-8, así que `repeat(TOPE_BYTES)` son exactamente 262144 bytes. Que el tope se
+ * cuente en BYTES y no en caracteres lo fija el test de abajo, no éste.
  */
 test("🔴 exactamente 262144 bytes (256 KiB) SÍ entra: el borde está donde dice", async () => {
   const runId = await crearRunSinInforme();
@@ -227,4 +230,46 @@ test("🔴 exactamente 262144 bytes (256 KiB) SÍ entra: el borde está donde di
     [runId],
   );
   assert.equal(fila?.bytes, TOPE_BYTES, "el informe del borde se guardó entero, sin truncar");
+});
+
+/**
+ * 🔴 El tope se cuenta en BYTES, no en caracteres — y esto es lo que lo fija.
+ *
+ * Los dos tests de arriba usan 'x', que es un byte por carácter en UTF-8, así que con ellos
+ * `octet_length` y `length` dan lo MISMO y no distinguen una constraint de la otra. Medido: cambiar
+ * `octet_length(informe_md) <= 262144` por `length(informe_md) <= 262144` en la migración dejaba los 8
+ * tests en verde. La semántica de bytes era la única garantía de la constraint que ningún test mordía.
+ *
+ * El payload de acá es el que discrimina: 131072 'ñ' (dos bytes cada una en UTF-8, medido:
+ * `octet_length('ñ')` = 2 y `length('ñ')` = 1, con `server_encoding` = UTF8) más una 'x'. Eso es
+ * 262145 BYTES —uno por encima del tope, así que la constraint real lo rechaza— y solo 131073
+ * CARACTERES, muy por debajo, así que una constraint que contara caracteres lo aceptaría.
+ *
+ * Importa cuál de las dos es porque un informe real está en español y lleva acentos: contar caracteres
+ * dejaría entrar hasta el doble de bytes de los que la columna dice admitir.
+ */
+test("🔴 el tope cuenta BYTES, no caracteres: multibyte al borde se rechaza", async () => {
+  // `TOPE_BYTES / 2` 'ñ' llenan el tope exacto en bytes; la 'x' lo pasa por uno.
+  const multibyte = "ñ".repeat(TOPE_BYTES / 2) + "x";
+
+  // Precondición del propio payload: si dejara de discriminar, el test tiene que decirlo y no pasar
+  // por casualidad. (JS coincide con Postgres en las dos cuentas para caracteres del BMP como 'ñ':
+  // `Buffer.byteLength` ↔ `octet_length`, y `.length` ↔ `length`.)
+  assert.equal(Buffer.byteLength(multibyte, "utf8"), TOPE_BYTES + 1, "en BYTES pasa el tope por uno");
+  assert.ok(multibyte.length < TOPE_BYTES, "en CARACTERES queda holgadamente por debajo del tope");
+
+  const runId = await crearRunSinInforme();
+
+  await assert.rejects(
+    () =>
+      db.asOrquestador(
+        { tenantId: s.tenantA },
+        `insert into kr_informes (run_id, tenant_id, client_id, informe_md)
+         select $1, $2, r.client_id, $3 from kr_runs r where r.id = $1`,
+        [runId, s.tenantA, multibyte],
+      ),
+    (e: { code?: string; constraint?: string }) =>
+      e.code === "23514" && e.constraint === "informe_tamano_razonable",
+    "un check que contara caracteres lo aceptaría: el que está cuenta bytes",
+  );
 });
