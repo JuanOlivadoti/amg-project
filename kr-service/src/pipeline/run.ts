@@ -239,12 +239,20 @@ async function runResearchInner(
   //
   // Las coberturas se calculan en locales `number` y el gate las lee de ahí, NO de vuelta desde
   // `calidadDatos` —que desde KR-2a las declara `number | null`, porque el contrato ya puede decir "no
-  // sé"—. Acá el research CORRIÓ: hay denominador, así que hay número, y el corte de abajo necesita esa
-  // garantía por escrito y no de palabra: `null === 0` y `null < 0.3` son las dos false, así que un
-  // `null` que llegue al gate lo desactiva EN SILENCIO y el run sigue gastando en intención,
-  // relevancia y contenido sin un solo dato de mercado. Medido al hacer este cambio: con el gate
-  // leyendo el campo, poner `cobertura_volumen: null` pasa el typecheck y los 146 tests de kr-service
-  // en verde; leyéndolo de los locales, el mismo intento revienta en `tsc` (TS18047 en el `< 0.3`).
+  // sé"—. Acá el research CORRIÓ: hay denominador, así que hay número.
+  //
+  // El motivo NO es que `tsc` deje pasar el campo nullable: lo caza, y bien. Medido en un worktree sobre
+  // este commit: con el gate leyendo el campo son 4 errores y exit 2 (TS18047 en el `< 0.3`, TS2345 en
+  // los `pct()`). El motivo es lo que uno hace con esos 4 errores. La forma más barata de callarlos es un
+  // default —`?? 1`, `?? 0`, `!`— y ahí un número inventado decide si se sigue gastando. También medido:
+  // con `?? 1` y `cobertura_volumen: null`, `tsc` vuelve a exit 0, los 146 tests siguen en verde y el
+  // corte duro queda DESACTIVADO (`null === 0` es false y `(null ?? 1) < 0.3` es false), así que el run
+  // paga intención, relevancia y contenido sin un solo dato de mercado. Leyendo los locales no hay
+  // `null` que reconciliar: no hay error que callar, así que no hay atajo que tomar.
+  //
+  // Lo que hay que saber antes de tocar esto: los 146 tests pasan en las TRES variantes. No hay test del
+  // corte por cobertura 0 (deuda anotada), así que la red es `tsc` más el hecho de que el `null` no
+  // exista en el camino del gate. La suite no avisa.
   //
   // Sin keywords la cobertura es 0 y no `null`: no es que no se haya medido, es que ninguna de las
   // (cero) keywords tiene volumen. Y tiene que seguir siendo 0 para que el corte duro salte — un run
