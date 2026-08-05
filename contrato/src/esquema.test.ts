@@ -184,3 +184,68 @@ test("todo brief que valide emisionM2 valida consumoM1 (emisionM2 ⊆ consumoM1)
     );
   }
 });
+
+// --- El tipo de retorno de `parseBrief` NO puede prometer más que el validador. Fue un hallazgo
+// --- bloqueante de la revisión de la tarea 9: el retorno se casteaba con `as KeywordResearchBrief`, o
+// --- sea al tipo de EMISIÓN, que exige cinco campos que `consumoM1` no valida. Nadie los leía, así que
+// --- ningún test caía — la garantía vivía en un comentario del propio docstring que admitía la mentira.
+// ---
+// --- Este test la fija por los DOS lados, y cada mitad caza una cosa distinta:
+// ---  · en runtime, que Zod efectivamente los DESCARTA (o sea que el dato no los tiene);
+// ---  · en tipos, que el retorno no los promete. Esa mitad la hace cumplir `npm run typecheck`, no el
+// ---    runner: si alguien vuelve a castear a `KeywordResearchBrief`, al literal de abajo le faltan
+// ---    cuatro campos obligatorios y `tsc` cae. Verificado por mutación, en esa dirección.
+test("parseBrief devuelve el tipo de CONSUMO, no el de emisión (ni en el dato ni en el tipo)", () => {
+  const b = parseBrief(briefM1());
+
+  // El dato: los cuatro campos raíz de emisión no sobreviven al parseo, aunque el brief los traiga.
+  const conExtras = { ...briefM1(), run_id: "r1", generated_at: "2026-01-01T00:00:00.000Z", backlog: [] };
+  const parseado = parseBrief(conExtras);
+  for (const k of ["run_id", "generated_at", "backlog", "meta_run"]) {
+    assert.ok(!(k in parseado), `${k} no debería sobrevivir a consumoM1, y sobrevivió`);
+  }
+  assert.ok(
+    !("page_strategy" in (parseado.paginas_propuestas[0] ?? {})),
+    "page_strategy tampoco: el M1 no la valida",
+  );
+
+  // El tipo: un brief de consumo completo, con una página SIN `page_strategy`, SIN `evidencia` y SIN
+  // `score_confidence`. Si `parseBrief` volviera a devolver el tipo de emisión no compilaría: le
+  // faltarían `run_id`/`generated_at`/`backlog`/`meta_run` a la raíz y esos tres a la página. Sin
+  // ningún `as`, que es el punto — un cast acá anularía la comprobación entera.
+  const soloConsumo: typeof b = {
+    schema_version: "kr.v0.2",
+    cliente: "x",
+    market: { country: "ES", language_code: "es", location_code: 2724 },
+    status: "approved",
+    paginas_propuestas: [
+      {
+        cluster_id: "c1",
+        tipo: "landing_local",
+        url_slug: "/x",
+        keyword_principal: "x",
+        keywords_secundarias: [],
+        intencion: "local",
+        local: true,
+        volumen: null,
+        dificultad: null,
+        opportunity_score: 0,
+        seo: { meta_title: "t", meta_description: "d", schema_type: "WebPage", canonical: "/x" },
+        content_brief: {
+          h1: "h",
+          secciones_sugeridas: [],
+          word_count_objetivo: 0,
+          enlazado_interno: [],
+        },
+        preguntas_frecuentes: [],
+        approved: false,
+      },
+    ],
+  };
+
+  // Y que además VALIDE, no solo que tipe: un tipo que acepta lo que el validador rechaza es la misma
+  // mentira al revés. Las dos mitades tienen que coincidir, y esto lo ata.
+  assert.equal(consumoM1.safeParse(soloConsumo).success, true, "el tipo acepta lo que Zod rechaza");
+  assert.equal(soloConsumo.paginas_propuestas[0]?.evidencia, undefined);
+  assert.equal(soloConsumo.paginas_propuestas[0]?.score_confidence, undefined);
+});

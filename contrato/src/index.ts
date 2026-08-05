@@ -23,3 +23,7 @@ export {
   parseBrief,
   SUPPORTED_SCHEMA_VERSIONS,
 } from "./esquema.js";
+// Los tipos de CONSUMO, derivados de `consumoM1` con `z.infer`. Son lo que el M1 recibe de verdad, y
+// NO lo mismo que `KeywordResearchBrief`/`ProposedPage`, que son los de emisión: ver el comentario
+// largo en `esquema.ts`, que explica los cinco campos de diferencia y por qué confundirlos mentía.
+export type { ConsumoM1Brief, ConsumoM1Pagina } from "./esquema.js";

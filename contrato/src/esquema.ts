@@ -10,7 +10,6 @@
  * deja de exigir campos que hoy exige. Lo que se comparte es `esquemaBase` y los tipos.
  */
 import { z } from "zod";
-import type { KeywordResearchBrief } from "./tipos.js";
 
 // ---------------------------------------------------------------------------------------------
 // `esquemaBase` — el piso común de los dos validadores.
@@ -195,7 +194,7 @@ export const emisionM2 = z.object({
 // llegar a publicarse sin que quien aprueba lo sepa.
 export const SUPPORTED_SCHEMA_VERSIONS = ["kr.v0.2", "kr.v0.3", "kr.v0.4", "kr.v0.5"] as const;
 
-const paginaM1 = z.object({
+export const paginaM1 = z.object({
   cluster_id: z.string(),
   tipo: pageType,
   // `.min(1)` y no `.startsWith("/")` como el M2: exigirla acá rechazaría un brief que se publica
@@ -232,15 +231,32 @@ export const consumoM1 = z.object({
   paginas_propuestas: z.array(paginaM1),
 });
 
-/**
- * Valida y tipa el brief. Lanza con un mensaje claro si la forma o la versión no cuadran.
+/*
+ * Lo que el M1 recibe DE VERDAD. Se DERIVA del validador con `z.infer`, no se escribe a mano.
  *
- * El tipo de retorno es el del brief COMPLETO, pero `consumoM1` no exige `run_id`, `generated_at`,
- * `backlog` ni `meta_run`: el M1 no los consume, y el brief que el orquestador reconstruye desde la
- * base no trae `meta_run`. O sea que el `as` de abajo afirma más de lo que se validó. Quien lea uno de
- * esos cuatro campos desde el M1 tiene que tratarlo como ausente aunque el tipo diga que está.
+ * Dos razones, y las dos son cicatrices:
+ *
+ *  1. Un subconjunto escrito aparte (`Pick<…>`, una interfaz gemela) es la segunda descripción del
+ *     mismo esquema que KR-2a existe para eliminar: se desincroniza de `consumoM1` sin que nada avise.
+ *     Derivado, el tipo NO PUEDE mentir, porque lo genera el mismo validador que corre.
+ *
+ *  2. Y NO es `KeywordResearchBrief`, que es el tipo de EMISIÓN. Ese exige `run_id`, `generated_at`,
+ *     `backlog`, `meta_run` y —por página— `page_strategy`, más `evidencia` y `score_confidence`
+ *     obligatorios. `consumoM1` no valida ninguno de esos cinco y Zod los DESCARTA al parsear, así que
+ *     tipar el retorno como el brief completo era prometer cinco campos que el dato no tiene. No era
+ *     teórico: el brief que el orquestador reconstruye desde la base (`briefDesdeLaBase`, en
+ *     `orchestrator/src/workflow.ts`) no trae `meta_run` ni `page_strategy`, o sea que la promesa ya
+ *     era falsa en un camino de producción. Un `brief.meta_run.coste_micros_usd` habría compilado
+ *     limpio y reventado en runtime.
+ *
+ * El tipo de emisión sigue existiendo y sigue siendo el correcto para el M2 y para `renderReport`:
+ * son dos tipos porque son dos contratos, igual que `emisionM2` y `consumoM1` son dos validadores.
  */
-export function parseBrief(raw: unknown): KeywordResearchBrief {
+export type ConsumoM1Brief = z.infer<typeof consumoM1>;
+export type ConsumoM1Pagina = z.infer<typeof paginaM1>;
+
+/** Valida y tipa el brief. Lanza con un mensaje claro si la forma o la versión no cuadran. */
+export function parseBrief(raw: unknown): ConsumoM1Brief {
   const parsed = consumoM1.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`Brief inválido: ${formatIssues(parsed.error)}`);
@@ -252,7 +268,8 @@ export function parseBrief(raw: unknown): KeywordResearchBrief {
         `Actualizá el adaptador o migrá el brief.`,
     );
   }
-  return parsed.data as KeywordResearchBrief;
+  // Sin `as`: el tipo de retorno es el que el validador produce, así que no hay nada que afirmar.
+  return parsed.data;
 }
 
 // Se movió tal cual desde `web-builder/src/contract.ts`, con sus mensajes: son los que LEE UN HUMANO

@@ -21,14 +21,16 @@ export type SearchIntent =
   | "navigational";
 
 // El M1 consume un SUBCONJUNTO del brief del M2. Los nombres `Kr*` se conservan porque los usan ~15
-// archivos de este paquete, pero ya no son una definición paralela: son el tipo del contrato.
+// archivos de este paquete, pero ya no son una definición paralela: son el tipo del contrato, derivado
+// del validador del M1 (`consumoM1`) con `z.infer`.
 //
-// ⚠️ El tipo afirma más de lo que `consumoM1` valida, y eso es heredado de `parseBrief` (ver su
-// docstring en `contrato/src/esquema.ts`): `page_strategy` no se valida acá, y `evidencia` /
-// `score_confidence` son opcionales en el esquema aunque el tipo los declare obligatorios. Quien los
-// lea desde el M1 tiene que tolerar `undefined` — que es lo que ya hace `cli/build.ts` con
-// `p.score_confidence != null`.
-export type { KeywordResearchBrief as KrBrief, ProposedPage as KrProposedPage } from "contrato";
+// El alias apunta al tipo de CONSUMO y no a `KeywordResearchBrief`/`ProposedPage` (los de EMISIÓN) a
+// propósito: los de emisión exigen `run_id`, `generated_at`, `backlog`, `meta_run` y `page_strategy`,
+// que `consumoM1` no valida y Zod descarta al parsear. Apuntar ahí prometía cinco campos que el dato no
+// trae —y el brief que el orquestador reconstruye desde la base no los trae de verdad—, así que
+// cualquier lectura confiada compilaba limpio y reventaba en runtime. Es un tipo, no un comentario: si
+// alguien lo vuelve a apuntar a la emisión, el typecheck cae.
+export type { ConsumoM1Brief as KrBrief, ConsumoM1Pagina as KrProposedPage } from "contrato";
 
 // ---------------------------------------------------------------- 2) Salida (bloks Storyblok)
 /** SEO nativo de la página (mapea a los campos SEO de Storyblok / meta tags). */

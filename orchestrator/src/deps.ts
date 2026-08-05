@@ -179,6 +179,17 @@ export function crearDeps(cx: Conexiones): Deps {
      * exactamente lo que hacía imposible tener dos destinos.
      */
     publicar: async (briefValidado, destino) => {
+      /*
+       * El `as` no se puede quitar, y no es pereza: `Deps.publicar` recibe `unknown` a propósito, para
+       * que `workflow.ts` —la lógica— no dependa de los tipos del M1. El cast es el precio de esa
+       * costura, y hoy es SANO: el valor viene de `validarContrato` → `parseBrief`, cuyo retorno es el
+       * tipo del validador de consumo.
+       *
+       * Cuando `parseBrief` casteaba al tipo de EMISIÓN, este mismo `as` afirmaba además `run_id`,
+       * `generated_at`, `backlog`, `meta_run` y `page_strategy` — que `briefDesdeLaBase` no construye y
+       * que Zod descarta al parsear. Era una promesa falsa sobre un brief reconstruido desde la base:
+       * compilaba limpio y el primer lector confiado reventaba en runtime.
+       */
       const brief = briefValidado as Parameters<typeof briefToStories>[0];
       const stories = briefToStories(brief);
 
