@@ -199,6 +199,20 @@ export interface RunSummary {
 }
 
 /**
+ * Lo que la API devuelve del informe de keyword research ya renderizado (KR-2b, migración 0016).
+ *
+ * `generado_at` es la fecha del ÚLTIMO render, no la del primero: el step del orquestador es durable y un
+ * reintento la actualiza a propósito, porque la pantalla la muestra junto al texto que está pintando.
+ *
+ * No lleva `tenant_id` ni `client_id`: quien lee ya está dentro de su tenant (lo impone RLS, no un
+ * `where`), y devolverlos solo daría a la API la oportunidad de tomar una decisión con ellos.
+ */
+export interface InformeRow {
+  informe_md: string;
+  generado_at: string;
+}
+
+/**
  * El orden en que se ven las páginas de un run. **Una sola definición** para las dos lecturas: si el
  * brief y lo que se publica se ordenaran distinto, el revisor aprobaría una lista y se publicaría otra.
  *
@@ -672,6 +686,50 @@ export class PgStore {
     });
   }
 
+  /**
+   * Guarda el informe ya renderizado del run. Lo llama el ORQUESTADOR (rol `app_service`).
+   *
+   * El `client_id` NO lo aporta el llamador: se lee del propio run, dentro de la misma sentencia. Un
+   * parámetro sería una forma de que la fila mintiera sobre a qué cliente pertenece el informe, y aunque
+   * la FK compuesta `(run_id, tenant_id, client_id)` de la 0016 lo cazaría con un 23503, es mejor que no
+   * haya nada que cazar.
+   *
+   * Idempotente: el step del orquestador es durable y se reintenta, así que un segundo intento tiene que
+   * reescribir en vez de reventar con 23505 y dejar el run sin cerrar. `generado_at` se actualiza a
+   * propósito — es la fecha del render que se está guardando, y la pantalla la muestra junto al texto.
+   */
+  async guardarInforme(ctx: TenantContext, runId: string, informeMd: string): Promise<void> {
+    await this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ run_id: string }>(
+        `insert into kr_informes (run_id, tenant_id, client_id, informe_md)
+         select $1, $2, r.client_id, $3
+           from kr_runs r
+          where r.id = $1
+         on conflict (run_id) do update
+            set informe_md  = excluded.informe_md,
+                generado_at = now()
+         returning run_id`,
+        [runId, ctx.tenantId, informeMd],
+      );
+
+      /*
+       * Sin este guard, un run inexistente o de otro tenant NO da error: bajo RLS el `select` no devuelve
+       * filas, el insert escribe CERO y todo parece haber funcionado. El orquestador cerraría el run en
+       * `pending_approval` sin informe, y el invariante "un run en pending_approval siempre tiene informe"
+       * —del que dependen el endpoint de T4 y la pantalla— quedaría roto sin que nada avisara.
+       *
+       * El mensaje cubre los dos casos a propósito: bajo RLS un run ajeno no se ve, así que desde acá no
+       * se puede (ni se debe) distinguir "no existe" de "no es tuyo". Distinguirlos sería confirmarle a
+       * quien pregunta que ese run existe en otro tenant.
+       */
+      if (!rows[0]) {
+        throw new Error(
+          `El run ${runId} no existe o no es visible para este tenant: no se guarda informe.`,
+        );
+      }
+    });
+  }
+
   // -------------------------------------------------------------- compuerta (ADR-06)
 
   /**
@@ -800,6 +858,25 @@ export class PgStore {
       const { rows } = await tx.query<ClientRow>(
         "select id, nombre, storyblok_space_id, business_profile from clients where id = $1",
         [clientId],
+      );
+      return rows[0] ?? null;
+    });
+  }
+
+  /**
+   * El informe del run, o `null` si no hay. Lo llama la API (rol `app_user`; solo staff lo recibe).
+   *
+   * **No hay ningún filtro de rol acá, y es la decisión.** La política `informe_staff` (0016) exige
+   * `app.es_staff()`, así que para el rol `cliente` —el dueño del negocio, que SÍ ve sus runs— esta misma
+   * query devuelve cero filas. El informe lleva el desglose de lo que la agencia le paga a DataForSEO: un
+   * `if` acá sería una segunda fuente de verdad que alguien podría olvidarse de escribir en el próximo
+   * endpoint. `null` y no una excepción porque "no hay informe todavía" es un estado normal de un run.
+   */
+  async getInforme(ctx: TenantContext, runId: string): Promise<InformeRow | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<InformeRow>(
+        "select informe_md, generado_at from kr_informes where run_id = $1",
+        [runId],
       );
       return rows[0] ?? null;
     });

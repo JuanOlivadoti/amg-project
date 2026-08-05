@@ -14,6 +14,7 @@ export type {
   ClientRow,
   CambiosPagina,
   RunSummary,
+  InformeRow,
 } from "./store.js";
 
 export { PgSitios, MemSitios } from "./sitios.js";
