@@ -10,8 +10,9 @@
 **En curso:** nada. Cerrado **KR-2a**: el paquete `contrato/` (7º workspace) con los tipos del contrato del
 brief, los **dos** validadores Zod y `renderReport`. 11 commits por las 9 tareas del
 [plan](../docs/superpowers/plans/2026-08-05-kr2a-paquete-contrato.md) —cada una con su review— más una fix
-wave de la review de conjunto. El relato está en [`history.md`](history.md).
-**Estado:** verificado en verde — **734 tests** del monorepo (venía de 698) + 235 del portal, typecheck
+wave de la review de conjunto. El relato está en [`history.md`](history.md). Después, **arreglado el
+contador de tests del arnés**, que estaba reportando en cero (abajo).
+**Estado:** verificado en verde — **743 tests** del monorepo (venía de 734) + 235 del portal, typecheck
 limpio en los 7 paquetes, sin secretos entre los 419 archivos versionados.
 
 **No hubo sesión de navegador, y esta vez el motivo es estructural:** KR-2a no toca el portal ni el
@@ -55,27 +56,42 @@ es la razón por la que no se escribió antes. Lo que trae, según la
 **La próxima migración libre sigue siendo la `0016`.** `0013` y `0014` están **reservadas** para ramas que
 se ejecutan en otra máquina: un número libre en el disco no es un número libre.
 
-## 🔴 El arnés puede reportar "0 tests en verde" **en verde**, según la versión de Node
+## ✅ Cerrado — el arnés reportaba "0 tests en verde", **en verde**
 
-Encontrado por el re-review de la fix wave y **medido al cerrar la etapa**, no de palabra:
+Se arregló el 2026-08-05, al arrancar la sesión siguiente. La deuda estaba anotada acá abajo con una
+predicción **que era falsa**, y conviene que quede escrito por qué:
 
-- `scripts/verificar.sh:149` cuenta los tests con `grep -hE '^# pass'`.
-- **Node 22** imprime `# pass 48`. **Node 24 imprime `ℹ pass 48`** — con `ℹ`, no con `#`.
-- Medido en esta máquina (`node --version` → **v24.18.1**):
-  `node --import tsx --test "scripts/*.test.mts" | grep -hcE '^# pass'` → **0 coincidencias**.
+> «el script se ejecuta bajo 22 aunque el shell tenga 24 (...) el riesgo hoy no está activo — está a una
+> resolución de PATH de estarlo, y nada avisaría»
 
-Con lo cual, bajo Node 24 el arnés imprimiría **`[OK] 0 tests en verde`**: un `ok`, o sea verde, con la
-cifra en cero. Es **exactamente el patrón que esta etapa arregló dos veces** —el piso del `N_PAQUETES` (T1)
-y el barrido que no puede quedar vacío (T9)—: una cifra ausente disfrazada de verde.
+**El riesgo ya estaba activo.** La sesión siguiente midió `npm run verificar` y su sección de entorno dijo
+`node v24.18.1`, no v22: el `npm` que resuelve el PATH vive en la instalación de 24, así que los scripts
+corren con 24. La nota se apoyó en la línea `node v22.21.1` que había impreso una corrida vieja, o sea en un
+recuerdo, en el mismo párrafo donde se felicitaba por medir. **Y "nada avisaría" también se cumplió**: la
+corrida de cierre de KR-2a informó su cifra en verde sin que nada indicara que el contador estaba ciego.
 
-**Por qué las corridas de KR-2a sí contaron bien:** el propio `verificar` reporta `node v22.21.1` en su
-sección de entorno, así que **el script se ejecuta bajo 22** aunque el shell tenga 24. O sea el riesgo hoy
-no está activo — está a una resolución de PATH de estarlo, y nada avisaría.
+Lo que se hizo, con las dos mitades que la nota pedía:
 
-**No se arregló acá a propósito:** es del arnés, no de KR-2a, y un cambio en el contador de tests merece su
-propia verificación con las dos versiones de Node a la vista. El arreglo tiene dos mitades y la segunda es
-la que importa: aceptar los dos formatos, **y un piso que falle si el conteo es 0** — porque un contador que
-no cuenta no puede reportar `[OK]`.
+- La lógica salió del bash a **`scripts/contar-tests.mts`** (mismo motivo que `secretos.mts`: lo que
+  necesita test no vive en el script). El patrón acepta **cualquier prefijo** no alfanumérico, no solo el
+  `#` de tap y el `ℹ` de spec — medidos los dos, v22.21.1 y v24.18.1.
+- **El piso, que es la mitad que importa:** si no encuentra ninguna línea de resumen, o si los resúmenes
+  suman 0, **no devuelve 0: falla**, y el arnés cierra la compuerta con `[FALLA]` y exit 1. El patrón cubre
+  los dos formatos que existen; el piso cubre el tercero, que todavía no existe.
+- **9 tests**, y las **4 mutaciones** caen: volver al patrón viejo tumba 5 (incluido el que se describe
+  abajo), quitar el piso tumba 3, y quitar cada ancla del regex tumba exactamente su test.
+
+**El test que no envejece.** Uno de los 9 corre el runner de verdad en un subproceso y exige que el formato
+que imprime *el Node de esta máquina* se pueda contar. Es el único que se habría puesto rojo ayer, y el
+único que se pondrá rojo cuando Node 26 vuelva a cambiar el formato.
+
+**Y ese test se estrenó cazándose a sí mismo.** El subproceso heredaba `NODE_TEST_CONTEXT`, con lo cual Node
+avisaba "run() is being called recursively", **no corría ningún test y salía con status 0**: la salida vacía
+contada como verde, el mismo fallo que el archivo existe para impedir, escondido adentro. Lo cazó el assert
+del conteo, no el del status — por eso el test comprueba la cifra y no le alcanza con "el hijo no falló".
+
+**El arnés ahora cuenta 743** (los 734 de KR-2a + los 9 del contador). Los dos sitios que contaban —el
+monorepo y el portal— usan el mismo contador.
 
 ## Lo que quedó abierto de KR-2a (deuda con nombre, no silenciosa)
 

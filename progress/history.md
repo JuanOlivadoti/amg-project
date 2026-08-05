@@ -11,6 +11,45 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-05 (noche) — el arnés contaba 0 tests y lo decía en verde, y la nota de la tarde se equivocó al medirlo
+
+Arreglado el contador de tests de `verificar.sh`. La deuda estaba anotada esa misma tarde en `current.md`,
+así que lo que esta entrada agrega no es el bug: es **que la nota que lo anotaba se equivocó justo en la
+parte que decidía la urgencia**.
+
+La nota concluía que el riesgo «no está activo — está a una resolución de PATH de estarlo, y nada
+avisaría». Las dos mitades resultaron ser lo contrario y lo mismo: **ya estaba activo** —`npm run verificar`
+imprime `node v24.18.1` en su sección de entorno, porque el `npm` del PATH vive en la instalación de 24— y
+**"nada avisaría" se había cumplido ya**, en la corrida de cierre de KR-2a, que informó su cifra en verde
+con el contador ciego. El error de la nota: se apoyó en la línea `node v22.21.1` de una corrida vieja —o
+sea en un recuerdo— en el mismo párrafo donde se felicitaba por haber medido. La regla del proyecto es
+medir al momento, y **una medición vieja citada como actual es exactamente la forma en que esa regla se
+incumple sin darse cuenta**: no se siente como recordar, se siente como citar.
+
+**El cambio.** La lógica salió del bash a `scripts/contar-tests.mts`, por el motivo que ya declaraba la
+cabecera de `verificar.sh` para `secretos.mts`: lo que necesita test no vive en el script. El patrón acepta
+cualquier prefijo no alfanumérico —el `#` del reporter `tap` (Node 22) y el `ℹ` del `spec` (Node 24), los
+dos medidos—, y el piso hace lo que importa: si no encuentra resúmenes, o si suman 0, **falla** en vez de
+devolver 0. El patrón cubre los dos formatos que existen; el piso cubre el que todavía no existe.
+
+**El diagnóstico verdadero no era el prefijo.** Node 24 no cambió el símbolo: cambió el **reporter por
+defecto** de `tap` a `spec` cuando la salida no es una terminal. El prefijo era el síntoma visible.
+
+**Y el test que no envejece se estrenó cazándose a sí mismo.** Es el que corre el runner de verdad en un
+subproceso y exige que el formato del Node de hoy se pueda contar. Primera corrida: rojo, con la salida del
+hijo **vacía y su status en 0** — el subproceso heredaba `NODE_TEST_CONTEXT`, Node avisaba "run() is being
+called recursively", se salteaba todos los archivos y salía bien. O sea el test escrito para impedir que una
+salida vacía cuente como verde tenía adentro, en su primera versión, una salida vacía contando como verde.
+Lo cazó el assert de la cifra; el assert del status estaba en verde. **Por eso un test no puede conformarse
+con "el proceso no falló": tiene que comprobar el número.** Es la tercera vez en dos días que el arnés falla
+por el mismo molde —el piso de `N_PAQUETES`, el barrido que no puede quedar vacío, y ahora esto—: una cifra
+ausente que se presenta como un cero legítimo.
+
+Cierre: **743 tests** (734 + 9), `verificar` exit 0, y las 4 mutaciones caen —el patrón viejo tumba 5 tests,
+quitar el piso tumba 3, y cada ancla del regex tumba exactamente el suyo.
+
+---
+
 ## 2026-08-05 (tarde) — KR-2a: el paquete `contrato/`, y nueve tareas con un revisor detrás de cada una
 
 Ejecutado el plan de KR-2a con **subagentes**: una tarea por implementador, el `revisor` después de cada

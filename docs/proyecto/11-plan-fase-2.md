@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-05** · **969 tests en verde** — **734** en el monorepo + **235** en
+> Última actualización: **2026-08-05** · **978 tests en verde** — **743** en el monorepo + **235** en
 > el portal (169 `node:test` + 66 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
 > siguientes fueron del agujero de la compuerta de secretos (2026-08-03), **once** de KR-3 —el orden del
 > brief persistido, migración `0015`— al estrenar el agente `datos`
@@ -114,7 +114,7 @@
 > ver la fila propia por completo, y esta pieza le agregó a esa fila columnas que son notas internas
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
-> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **969 tests** (734 monorepo + 235
+> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **978 tests** (743 monorepo + 235
 > portal), **13 migraciones** (la `0011` y la `0012` mergeadas, la `0015` de esta etapa; pendientes de aplicar en producción).
 
 ---
@@ -178,7 +178,7 @@ corre solo en local. *(La API y el portal están desplegados desde la etapa 5.3,
 ```
 
 - **7 paquetes** en workspaces npm: `contrato` (el contrato del brief, compartido), `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **734 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **743 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.

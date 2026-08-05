@@ -17,7 +17,7 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 734 tests (monorepo) + 235 (portal)
+## Cobertura actual: 743 tests (monorepo) + 235 (portal)
 
 > Las cifras de esta tabla se miden con `npm run verificar`, que las cuenta de la salida de
 > `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-05.
@@ -31,7 +31,7 @@ sin cuenta.
 | `orchestrator` | **19** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **95** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
 | `renderer` | **114** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web; **`locations`/`menu` sobreviven al validador y llegan al render**), **los límites del camino anónimo** (10ª review), y **navegación + home** (barra desde la Links API con las mismas defensas; **la nav falla → sin barra, no 503**; nav de preview en draft sin cachear; la raíz sin `home` **sintetiza un índice**, no 404; `/blog` no se autoenlaza aunque exista una story real con ese slug). |
-| `scripts` | **48** | El reparto de credenciales (`env-sync`) y el re-seed de producción. No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
+| `scripts` | **57** | El reparto de credenciales (`env-sync`), el re-seed de producción y **el contador de tests del propio arnés** (9, ver abajo: los dos formatos de reporter, el piso que impide reportar 0 en verde, y uno que corre el runner de verdad). No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
 | `portal` | **235** | *(fuera del monorepo)* **169 con `node:test`** — el núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, **la separación por evidencia** (✅/⚠️), las **carreras asincrónicas** (`Vigencia`) y el **contraste WCAG AA** de los 17 pares × 2 temas leído de `styles.css`, más un test que recorre `src/app` y **falla si una plantilla incrusta un color**. Más el guard de config de producción: que `environment.prod.ts` esté **listo para desplegar** (sin placeholders, todo HTTPS) — importa porque el portal se despliega solo en cada push. Y **66 de componente con Karma** (`ng test`) para el DOM: tema, shell, y las pantallas de clientes y usuarios (incluido el `<select>` cuyo `[value]` se aplicaba antes de existir las `<option>`). Con `fetch` de mentira — los 169 corren sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
@@ -65,6 +65,44 @@ Y una cuarta, que sí cayó pero enseñó lo contrario de lo que su comentario d
 código era correcta y la justificación escrita estaba invertida** — y lo que sí era cierto es la mitad más
 instructiva: los 146 tests de `kr-service` pasan en **las tres** variantes, así que la red que atrapa eso es
 `tsc`, nunca la suite.
+
+#### El molde que ya apareció tres veces: **una cifra ausente disfrazada de un cero legítimo**
+
+No es un bug repetido, es una **forma**. Las tres veces, algo que debía contar no contó, y el resultado
+—cero— era indistinguible de una respuesta válida:
+
+| Dónde | Qué contaba | Por qué el cero pasaba por bueno |
+|---|---|---|
+| `verificar.sh`, sección 2 | los paquetes del monorepo | Un `find` que no encuentra nada devuelve 0 sin error, y el mensaje decía "6 paquetes" a mano. |
+| `contrato`, test de arquitectura | los paquetes barridos buscando un `z.object` del brief | Un barrido con el glob mal escrito recorre **cero** archivos y **pasa para siempre**. |
+| `verificar.sh`, secciones 5 y 6 | los tests en verde | `grep '^# pass'` no matcheaba nada bajo Node 24, `awk` sumaba 0, y el arnés imprimía `[OK] 0 tests en verde`. |
+
+La defensa es siempre la misma y **no es un test: es un piso**. Si la cuenta da cero, no hay salida verde —
+falla y dice qué mirar. Un contador que no puede contar no está autorizado a reportar `[OK]`.
+
+Y hay un corolario que costó una corrida entera de KR-2a: **el cero no lo detecta la suite, porque la suite
+no se mira a sí misma.** La cifra del arnés era la única señal de cuántos tests corrieron, así que cuando
+ella se rompió, todo lo demás siguió en verde legítimamente. Por eso ahora esa cifra tiene tests propios.
+
+#### El test que no envejece (y que se estrenó cazándose a sí mismo)
+
+`scripts/contar-tests.test.mts` tiene dos clases de test. Siete usan **fixtures medidos** —la salida literal
+de `node --test` bajo v22.21.1 (`# pass 34`, reporter `tap`) y v24.18.1 (`ℹ pass 34`, reporter `spec`)—, y
+esos envejecen: fijan el pasado. El noveno **corre el runner de verdad** en un subproceso y exige que el
+formato que imprime *el Node que está resolviendo el PATH ahora* se pueda contar. Ése es el único que se
+habría puesto rojo el día del bug, y el único que se pondrá rojo cuando Node vuelva a cambiar el formato.
+
+Su primera versión estaba en verde **midiendo una salida vacía**. El subproceso heredaba `NODE_TEST_CONTEXT`
+del runner padre, con lo cual Node avisaba `run() is being called recursively within a test file. skipping
+running files`, **no ejecutaba ningún test y salía con status 0**. O sea: el test escrito para impedir que
+una salida vacía cuente como verde tenía adentro, en su primera versión, una salida vacía contando como
+verde. Lo cazó el `assert` de la cifra; el `assert` del status estaba conforme.
+
+**La regla que deja:** un test que lanza un subproceso no puede conformarse con *"el proceso no falló"*.
+Tiene que comprobar el **resultado**, porque el camino que no hace nada también termina bien. Vale igual para
+el arreglo: se borran `NODE_TEST_CONTEXT` y `NODE_TEST_WORKER_ID` del entorno del hijo, **y** se afirma que
+su stderr no trae `recursively` — para que el día que Node renombre esas variables, el test lo diga en vez
+de volver a medir el vacío.
 
 ### `kr-service` (146 tests)
 

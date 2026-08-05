@@ -37,9 +37,9 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 
 | | |
 |---|---|
-| **Paquetes** | 6 workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **917** — 682 en el monorepo + 235 en el portal (169 `node:test` + 66 Karma). Los de seguridad, contra Postgres real. Medido con `npm run verificar` el 2026-08-02. |
-| **Migraciones** | 12 en `main` (`0001`..`0012`) · **las 10 primeras aplicadas en producción** (la `0010`, el 2026-08-01); la `0011` (CRM) y la `0012` (membresías) están mergeadas y **pendientes de aplicar** |
+| **Paquetes** | 7 workspaces (`contrato`, `db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
+| **Tests** | **978** — 743 en el monorepo + 235 en el portal (169 `node:test` + 66 Karma). Los de seguridad, contra Postgres real. Medido con `npm run verificar` el 2026-08-05. |
+| **Migraciones** | 13 en `main` (`0001`..`0012` + `0015`) · **las 10 primeras aplicadas en producción** (la `0010`, el 2026-08-01) — *sin verificar contra prod, no hay credenciales acá*; la `0011` (CRM), la `0012` (membresías) y la `0015` (orden del brief) están mergeadas y **pendientes de aplicar**. La próxima libre es la **`0016`**: `0013` y `0014` están **reservadas** para ramas que corren en otra máquina |
 | **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
 | **Reviews externas** | **14 rondas** (Codex), **20 tandas** de correcciones — la 13ª fue la primera sobre el arnés `.claude/` y la 14ª la primera sobre un **documento de diseño** (la spec de KR-2), antes de escribir código. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
@@ -61,7 +61,7 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **682 tests en verde** (+235 en el portal) + typecheck limpio en los 6 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **743 tests en verde** (+235 en el portal) + typecheck limpio en los 7 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **El dashboard y el brief no pueden divergir en silencio**: un test ata las 14 páginas de `cartera-mock.ts` (portal) a `PAGINAS_DEMO` (seed), campo por campo y en orden. Estar fuera del monorepo impedía importar el paquete, no leer el archivo. |
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
@@ -647,6 +647,22 @@ no desalinea la tabla ni un `\n##` inventa una sección. Ese último era un bug 
 - **Queda una decisión abierta: el PDF de ADR-07.** Con el informe convertido en documento interno el PDF
   pierde su motivo —era formato de entrega hacia afuera— y pasa a pertenecer al **entregable del
   restaurante**, que no existe. La recomendación es registrarlo en ADR-07 **antes** de implementar.
+
+#### ✅ Después de KR-2a — el contador de tests del arnés reportaba 0, y en verde (2026-08-05)
+
+No es de KR-2a, pero se arregló al terminarla porque **dejaba ciega la verificación de todo lo que viene
+después**. `verificar.sh` contaba los tests con `grep '^# pass'`, y Node 24 cambió el reporter por defecto de
+`tap` a `spec`: el resumen pasó a ser `ℹ pass 34`. El patrón no matcheaba nada, `awk` sumaba 0 y el arnés
+imprimía **`[OK] 0 tests en verde`** — la única cifra que dice cuánto se verificó, en cero, presentada como
+un éxito. La deuda estaba anotada la tarde anterior, pero con la conclusión equivocada de que el riesgo
+todavía no estaba activo; **ya lo estaba** (el detalle de por qué, en la
+[bitácora del 2026-08-05 (noche)](../../progress/history.md)).
+
+La lógica salió del bash a **`scripts/contar-tests.mts`** con **9 tests**: acepta cualquier prefijo de
+reporter —medidos los de v22.21.1 y v24.18.1— y, lo que importa, **falla si no puede contar** en vez de
+devolver 0. Los dos sitios que contaban (monorepo y portal) usan el mismo contador. **743 tests**, exit 0, y
+las 4 mutaciones caen. La lección quedó en [`08` §
+el molde que ya apareció tres veces](08-testing-calidad.md) y un checkpoint nuevo en `C1`.
 
 ### 🟡 3. Lo que ADR-19 dejó a medias y hay que cerrar antes de un SLA
 

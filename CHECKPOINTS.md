@@ -13,6 +13,12 @@ Marcá `[x]` solo con la evidencia a la vista. Si un ítem no aplica, escribí `
 
 - [ ] `npm run verificar` termina con exit code 0, y el output está a la vista (no "me acuerdo de
       que pasaba").
+- [ ] **Toda cifra o dato de entorno que escribas viene de ESTA corrida**, no de una anterior que
+      todavía se ve en el chat. Vale para el número de tests, la versión de Node, la de migraciones.
+      *Por qué está acá:* el 2026-08-05 una nota afirmó "el script corre bajo Node 22" citando la
+      línea de entorno de una corrida vieja, y concluyó que un riesgo medido no estaba activo cuando
+      sí lo estaba. Citar una medición ajena no se siente como recordar de memoria — se siente como
+      medir. Es el mismo error igual.
 - [ ] Si se tocó `portal/`: sus tests corrieron aparte. **`npm test` de la raíz no los incluye** —
       `portal/` no es workspace.
 - [ ] Si se tocó un componente Angular: corrió también `npm --prefix portal run test:components`.
