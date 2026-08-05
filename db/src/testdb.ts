@@ -86,6 +86,40 @@ export class TestDb {
   }
 
   /**
+   * Query como el ORQUESTADOR: rol `app_service` de verdad, **sujeto a RLS y a los grants**.
+   *
+   * No confundir con `asService`, que es el superusuario de infraestructura (migraciones y seed) y
+   * **salta** las dos cosas. La diferencia no es cosmética: medido en PGlite, un `insert` sobre una tabla
+   * sin un solo `grant` PASA con `asService` y da 42501 con este helper. Un test de política o de grants
+   * escrito con `asService` pasa siempre y no prueba nada.
+   *
+   * Pone el contexto de tenant porque las políticas lo exigen (`app.current_tenant_id()`); el `userId` es
+   * opcional porque el orquestador **no es una persona** y su autoridad no viene de una membresía.
+   *
+   * Hace `commit` y no `rollback` —a diferencia de `asRender`, que solo lee— porque este helper ESCRIBE
+   * y los tests que leen después necesitan que lo escrito sobreviva a la transacción. Con `rollback`, un
+   * test de idempotencia pasaría por la razón equivocada: nunca habría una fila previa.
+   */
+  async asOrquestador<T = Record<string, unknown>>(
+    ctx: { tenantId: string; userId?: string },
+    sql: string,
+    params: unknown[] = [],
+  ): Promise<T[]> {
+    await this.pg.exec("begin");
+    try {
+      await this.pg.query("select set_config('app.tenant_id', $1, true)", [ctx.tenantId]);
+      await this.pg.query("select set_config('app.user_id', $1, true)", [ctx.userId ?? ""]);
+      await this.pg.exec("set local role app_service");
+      const res = await this.pg.query<T>(sql, params);
+      await this.pg.exec("commit");
+      return res.rows;
+    } catch (e) {
+      await this.pg.exec("rollback");
+      throw e;
+    }
+  }
+
+  /**
    * Query como service-role de INFRAESTRUCTURA (superusuario: salta RLS).
    *
    * Ojo con no confundirla con `app_service`: esta es la que corre migraciones y siembra datos.
