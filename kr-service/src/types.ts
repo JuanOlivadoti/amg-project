@@ -1,5 +1,9 @@
-// Módulo 2 — Keyword Research · tipos (mirror de docs/modulo-2-esquema/types.ts, v0.2).
-// Fuente de diseño: ../docs/modulo-2-esquema/. Acá viven los tipos de implementación.
+// Módulo 2 — Keyword Research · tipos INTERNOS del pipeline, más un re-export del contrato.
+//
+// Ya NO es el mirror de `types.ts` que fue hasta KR-2a: los tipos del contrato se mudaron al paquete
+// `contrato` y acá solo se reenvían (ver el bloque de abajo). La fuente de diseño histórica es
+// `docs/historia/modulo-2-esquema/` — lleva `historia/` desde que se reorganizó `docs/`, y la ruta sin
+// ese tramo que este encabezado arrastraba (`docs/modulo-2-esquema/`) no existe.
 
 /*
  * Los tipos del CONTRATO del brief viven en el paquete `contrato` (KR-2a): los comparten el M2 (que los

@@ -1,15 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderReport } from "./index.js";
-import type { KeywordResearchBrief } from "./index.js";
 // El mismo fixture de emisión, desde `fixtures.ts` y NO desde `esquema.test.ts`: importar un módulo de
 // test haría que node:test corra sus casos dos veces.
 import { briefM2 } from "./fixtures.js";
 
+/*
+ * Los dos tests de abajo asignan `{}` SIN `as`, y eso es la mitad de tipos del arreglo de la review
+ * final de rama. Hasta entonces el tipo declaraba los tres campos del desglose obligatorios, así que
+ * el caso que estos tests reproducen —el default `'{}'::jsonb` de la columna, que es lo que el seed de
+ * la demo deja— solo se podía escribir mintiéndole a `tsc` con
+ * `{} as KeywordResearchBrief["meta_run"]["coste_breakdown"]`. Un cast en un test es el tipo
+ * admitiendo que no describe el dato: si vuelve a hacer falta acá, el tipo se rompió otra vez.
+ */
+
 test("el informe nunca contiene NaN, con cualquier dato incompleto", () => {
   const b = briefM2();
   // El default de la columna `coste_breakdown` es '{}' y el seed de la demo no lo puebla.
-  b.meta_run.coste_breakdown = {} as KeywordResearchBrief["meta_run"]["coste_breakdown"];
+  b.meta_run.coste_breakdown = {};
   b.meta_run.calidad_datos = {
     cobertura_volumen: null,
     cobertura_kd: null,
@@ -23,7 +31,7 @@ test("el informe nunca contiene NaN, con cualquier dato incompleto", () => {
 
 test("sin desglose, NO se pinta la tabla de desglose, y el total sigue estando", () => {
   const b = briefM2();
-  b.meta_run.coste_breakdown = {} as KeywordResearchBrief["meta_run"]["coste_breakdown"];
+  b.meta_run.coste_breakdown = {};
 
   const md = renderReport(b);
   // Una tabla de tres `n/d` ocupa el lugar del argumento comercial sin decirlo, y parece un fallo del

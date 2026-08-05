@@ -65,26 +65,40 @@ export function renderReport(brief: KeywordResearchBrief): string {
   l.push(`- Páginas propuestas: **${brief.meta_run.paginas_propuestas}**`);
 
   // El desglose por proveedor es el argumento comercial del research (81% DataForSEO / 19% LLM), pero
-  // solo si están los TRES números. Con `coste_breakdown: {}` —el default de la columna en Postgres, y
-  // lo que el seed de la demo deja— cada fila salía `$NaN`.
+  // solo si están los TRES números. Con `coste_breakdown: {}` —el default de la columna en Postgres
+  // (`db/migrations/0001_init.sql:133`: `not null default '{}'::jsonb`), y lo que el seed de la demo
+  // deja— cada fila salía `$NaN`.
+  //
+  // Este chequeo NO es defensivo: es OBLIGATORIO, y lo impone `tsc`. El tipo declara los tres campos
+  // opcionales (`Partial<CostBreakdown>`, ver `tipos.ts`), así que sin el guard cada `usdFromMicros`
+  // de abajo recibe `number | undefined` y el typecheck cae. Antes el tipo los declaraba obligatorios y
+  // este guard era la única pieza que sabía que podían faltar: un tipo y un guard contradiciéndose
+  // dentro del mismo paquete, con el guard teniendo razón. Lo arregló la review final de rama de KR-2a.
+  //
+  // Se desestructura, y eso también es a propósito: con los tres en `const` el estrechamiento por
+  // condición aliaseada de TS aplica dentro del `if`, así que el guard y el uso no pueden separarse.
+  // La CLAVE `coste_breakdown` sí se accede directo, sin `?.`: es obligatoria en el tipo, `emisionM2`
+  // la exige y la columna es `not null`. Un `?.` acá volvería a afirmar que puede faltar algo que
+  // ninguna de las tres capas permite faltar.
   //
   // Y la decisión no es solo de valor, es de forma: sin desglose NO se pinta la tabla. Una tabla de
   // tres `n/d` ocupa el lugar del argumento sin decirlo, y se lee como un fallo del sistema en vez de
   // como un dato que falta. El TOTAL sí se conoce, así que se muestra igual: es lo que el cliente
   // necesita, y es un dato, no una conjetura.
-  const c = brief.meta_run.coste_breakdown;
+  const { dataforseo_micros, llm_generation_micros, llm_embeddings_micros } =
+    brief.meta_run.coste_breakdown;
   const desgloseCompleto =
-    typeof c?.dataforseo_micros === "number" &&
-    typeof c?.llm_generation_micros === "number" &&
-    typeof c?.llm_embeddings_micros === "number";
+    typeof dataforseo_micros === "number" &&
+    typeof llm_generation_micros === "number" &&
+    typeof llm_embeddings_micros === "number";
 
   l.push(`\n### Coste del research\n`);
   if (desgloseCompleto) {
     l.push(`| Proveedor | Coste |`);
     l.push(`|---|---|`);
-    l.push(`| DataForSEO | $${usdFromMicros(c.dataforseo_micros)} |`);
-    l.push(`| LLM (generación) | $${usdFromMicros(c.llm_generation_micros)} |`);
-    l.push(`| LLM (embeddings) | $${usdFromMicros(c.llm_embeddings_micros)} |`);
+    l.push(`| DataForSEO | $${usdFromMicros(dataforseo_micros)} |`);
+    l.push(`| LLM (generación) | $${usdFromMicros(llm_generation_micros)} |`);
+    l.push(`| LLM (embeddings) | $${usdFromMicros(llm_embeddings_micros)} |`);
     l.push(`| **TOTAL** | **$${usdFromMicros(brief.meta_run.coste_micros_usd)}** |`);
   } else {
     l.push(`- Coste total: **$${usdFromMicros(brief.meta_run.coste_micros_usd)}**`);

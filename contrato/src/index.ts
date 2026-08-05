@@ -16,13 +16,9 @@ export type {
 } from "./tipos.js";
 export { usdFromMicros } from "./dinero.js";
 export { renderReport } from "./informe.js";
-export {
-  emisionM2,
-  esquemaBase,
-  consumoM1,
-  parseBrief,
-  SUPPORTED_SCHEMA_VERSIONS,
-} from "./esquema.js";
+// Las piezas compartidas del piso (los enums, `market`, `seo`, `contentBrief`) NO se exportan: ver el
+// comentario de `esquema.ts`. Desde afuera el contrato se usa por estos cuatro nombres y por nada más.
+export { emisionM2, consumoM1, parseBrief, SUPPORTED_SCHEMA_VERSIONS } from "./esquema.js";
 // Los tipos de CONSUMO, derivados de `consumoM1` con `z.infer`. Son lo que el M1 recibe de verdad, y
 // NO lo mismo que `KeywordResearchBrief`/`ProposedPage`, que son los de emisión: ver el comentario
 // largo en `esquema.ts`, que explica los cinco campos de diferencia y por qué confundirlos mentía.

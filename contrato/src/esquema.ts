@@ -7,12 +7,27 @@
  *    `score_confidence` opcionales para no rechazar briefs viejos que siguen siendo publicables.
  *
  * Fusionarlos obliga a que uno pierda su garantía: o el M1 deja de aceptar briefs históricos, o el M2
- * deja de exigir campos que hoy exige. Lo que se comparte es `esquemaBase` y los tipos.
+ * deja de exigir campos que hoy exige. Lo que se comparte son las piezas del piso de más abajo (los
+ * enums, `market`, `seo`, `contentBrief`) y los tipos de `tipos.ts`.
  */
 import { z } from "zod";
+import type { CostBreakdown, KeywordResearchBrief } from "./tipos.js";
 
 // ---------------------------------------------------------------------------------------------
-// `esquemaBase` — el piso común de los dos validadores.
+// EL PISO COMÚN de los dos validadores. Son `const` de módulo y NO se exportan: desde afuera del
+// paquete el contrato se usa por `emisionM2`, `consumoM1` o `parseBrief`, y por nada más.
+//
+// Estuvieron exportadas en un objeto `esquemaBase` hasta la review final de rama de KR-2a, que midió
+// que nadie lo leía: `consumoM1` vive en este módulo y referencia los `const` directamente, así que
+// borrarlo —objeto y línea de `index.ts`— dejó la suite entera en verde y el typecheck en exit 0. Se
+// sacó en vez de hacer que los dos validadores derivaran DE VERDAD a través de él, porque exportarlo
+// habilitaba justo lo que este paquete existe para impedir y hacerlo real no lo arreglaba: un
+// consumidor armándose su propio validador de página con `esquemaBase.seo.extend({...})` NO lo caza
+// `una-sola-fuente.test.ts`, cuya firma es un `z.object` con `paginas_propuestas` adentro — y un
+// esquema de PÁGINA no la tiene. Medido con dos sondas en `api/src/`: la de página pasa el barrido sin
+// que caiga nada, la que agrega `paginas_propuestas` lo tumba nombrando el archivo.
+//
+// El *compartir* sigue siendo real y es esto de acá abajo; el objeto era ceremonia con un filo.
 //
 // Es el MÍNIMO que los dos aceptan, no el máximo, y esa dirección es una decisión: en Zod endurecer
 // es aditivo (`.extend()` con la restricción encima) mientras aflojar obliga a redeclarar el campo
@@ -72,21 +87,6 @@ const contentBrief = z.object({
   claims_prohibidos: z.array(z.string()).optional(),
   competidores_serp: z.array(z.string()).optional(),
 });
-
-/**
- * Las piezas compartidas, expuestas para que el validador de consumo (`consumoM1`) derive de acá en
- * vez de copiarlas. Se exporta el objeto y no cada pieza para que agregar una no toque `index.ts`.
- */
-export const esquemaBase = {
-  market,
-  searchIntent,
-  pageType,
-  schemaType,
-  evidencia,
-  estado,
-  seo,
-  contentBrief,
-} as const;
 
 // ---------------------------------------------------------------------------------------------
 // `emisionM2` — lo que el M2 produce. Es la "validación" del pipeline: garantiza que la salida
@@ -165,10 +165,58 @@ export const emisionM2 = z.object({
   }),
 });
 
+/* ---------------------------------------------------------------------------------------------
+ * EL LAZO entre las dos descripciones del contrato de EMISIÓN. Es una comprobación de tipos, no un
+ * comentario: la impone `npm run typecheck`.
+ *
+ * `emisionM2` (arriba) y `KeywordResearchBrief` (`tipos.ts`) describen la MISMA cosa y los dos se
+ * escriben a mano, así que hasta la review final de rama de KR-2a coincidían solo por vigilancia. Está
+ * medido, y por eso existe este bloque: antes de él, quitarle `preguntas_frecuentes` a `emisionM2`
+ * dejaba la suite ENTERA en verde y el typecheck en exit 0 (con el bloque puesto la suite sigue verde
+ * igual: el typecheck es lo único que cae, y eso es el punto).
+ *
+ * Y lo que se apaga al comerse una línea de acá no es un test: es la ÚNICA comprobación de salida del
+ * M2 (`kr-service/src/cli/spike.ts` corre `emisionM2` sobre el brief). `assembleBrief` sigue
+ * devolviendo `KeywordResearchBrief`, así que el campo se sigue EMITIENDO — solo deja de validarse.
+ *
+ * El lado de CONSUMO ya estaba atado con el mismo mecanismo pero al revés: `ConsumoM1Brief` se DERIVA
+ * de `consumoM1` con `z.infer`, así que no puede mentir. Acá no se puede derivar en esa dirección —el
+ * tipo es la fuente que usan tres paquetes, y el validador tiene derecho a ser MÁS estricto que él— así
+ * que se atan con las dos asignabilidades cruzadas.
+ * --------------------------------------------------------------------------------------------- */
+type Emitido = z.infer<typeof emisionM2>;
+
+/**
+ * `A` tiene que ser asignable a `B`, o `tsc` cae acá con el campo culpable en el mensaje. El alias no
+ * se usa para nada más: existe para que el chequeo no emita ni una línea de JavaScript.
+ */
+type Asignable<A extends B, B> = [A, B];
+
+/**
+ * La ÚNICA divergencia deliberada entre las dos descripciones: `coste_breakdown`. El tipo lo admite
+ * parcial (un brief LEÍDO de Postgres trae `{}`, el default de la columna) y `emisionM2` lo exige
+ * completo (el M2 los emite siempre). Se nombra acá, en el único punto donde las dos se comparan, en
+ * vez de dejar la dirección 2 sin comprobar: cualquier OTRA divergencia sigue cayendo.
+ */
+type BriefConDesgloseCompleto = Omit<KeywordResearchBrief, "meta_run"> & {
+  meta_run: Omit<KeywordResearchBrief["meta_run"], "coste_breakdown"> & {
+    coste_breakdown: CostBreakdown;
+  };
+};
+
+/** Dirección 1: todo lo que `emisionM2` acepta ES un `KeywordResearchBrief`. Cae si al VALIDADOR le
+ * falta un campo que el tipo declara — la mutación que la review midió y que nadie notaba. */
+type _EmisionCubreElTipo = Asignable<Emitido, KeywordResearchBrief>;
+
+/** Dirección 2: y todo `KeywordResearchBrief` satisface a `emisionM2`. Cae si el validador exige algo
+ * que el tipo no tiene, o si estrecha un enum compartido que el tipo deja ancho — que los tests solo
+ * cazan cuando algún fixture ejercita ese valor (lo dice el test de inclusión de sí mismo). */
+type _ElTipoSatisfaceLaEmision = Asignable<BriefConDesgloseCompleto, Emitido>;
+
 // ---------------------------------------------------------------------------------------------
 // `consumoM1` — lo que el M1 puede RECIBIR. Es el esquema que vivía en `web-builder/src/contract.ts`,
-// derivado del mismo piso: usa las piezas de `esquemaBase` (los enums, `seo`, `contentBrief`,
-// `market`) sin endurecer NINGUNA.
+// derivado del mismo piso: referencia los `const` de arriba (los enums, `seo`, `contentBrief`,
+// `market`) sin endurecer NINGUNO.
 //
 // Cada laxitud de acá es deliberada, no un descuido: el brief que llega puede ser de una versión
 // anterior del pipeline, venir de edición humana, o ser el que el orquestador RECONSTRUYE desde la
@@ -182,9 +230,19 @@ export const emisionM2 = z.object({
 // validador — y la severidad del de emisión es la razón entera de que exista aparte.
 //
 // El riesgo de esa duplicación es olvidar un campo, que Zod entonces DESCARTA al parsear en silencio
-// (es el bug histórico de `evidencia`). Lo que lo cubre: el test que exige que `evidencia` y
-// `score_confidence` SOBREVIVAN al parseo, y el diferencial de 1101 casos contra el esquema viejo que
-// se corrió al mudarlo, que compara el JSON de salida y no solo si acepta.
+// (es el bug histórico de `evidencia`). Lo cubren dos redes, y son de naturaleza distinta:
+//
+//  · en RUNTIME, el test que exige que `evidencia` y `score_confidence` SOBREVIVAN al parseo;
+//  · en TIPOS, y es la que muerde de verdad: `tsc` sobre el tipo DERIVADO. `ConsumoM1Pagina` sale de
+//    `paginaM1` con `z.infer`, así que un campo que se caiga de este objeto desaparece del tipo y
+//    rompe a quien lo lee. Medido: quitarle `keywords_secundarias` a `paginaM1` da `TS2339` en
+//    `web-builder/src/handoff/adapter.ts:57` SIN que caiga ningún test de `contrato`.
+//
+// Lo que NO es una red, y este comentario lo presentaba como si lo fuera hasta la review final de rama:
+// el diferencial de 1101 casos contra el esquema viejo. Fue una medición PUNTUAL al mudarlo —que la
+// mudanza no cambiaba el JSON de salida, no solo si aceptaba— y no se puede repetir: el esquema viejo
+// (`kr-service/src/validation/brief.schema.ts`) lo borró `db8b255` y el script del diferencial era de un
+// solo uso. Sirvió para lo que sirvió; no vigila nada desde entonces.
 // ---------------------------------------------------------------------------------------------
 
 // v0.3 solo cambia `meta_run` (costo total + desglose), que el M1 no consume → compatible.

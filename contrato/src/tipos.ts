@@ -128,12 +128,24 @@ export interface KeywordResearchBrief {
     calidad_datos: DataQuality;
     /** Costo TOTAL del run (DataForSEO + LLM), en micros de USD. */
     coste_micros_usd: number;
-    /** Desglose por proveedor: permite ver dónde se va el gasto. */
-    coste_breakdown: {
-      dataforseo_micros: number;
-      llm_generation_micros: number;
-      llm_embeddings_micros: number;
-    };
+    /**
+     * Desglose por proveedor: permite ver dónde se va el gasto.
+     *
+     * **`Partial` y no `CostBreakdown` a secas, y esa es la parte que importa.** La clave es
+     * obligatoria (el desglose siempre viaja), pero sus tres campos pueden faltar: el default de la
+     * columna `coste_breakdown` en Postgres es `'{}'::jsonb` (`db/migrations/0001_init.sql:133`), así
+     * que un brief LEÍDO de la base —lo que hace `renderReport` desde el seed de la demo, y lo que va
+     * a hacer la API en KR-2b— trae legítimamente `{}`. Con los tres obligatorios, este tipo prometía
+     * tres números que el dato no tiene y `informe.ts` tenía que desmentirlo con un guard de runtime:
+     * el mismo defecto que la review de la tarea 9 declaró bloqueante en `parseBrief`, satisfecho con
+     * un `as`. Aliasearlo a `CostBreakdown` sin más habría consolidado el tipo equivocado.
+     *
+     * El que sí exige los tres es **`emisionM2`**, y ahí está bien: el M2 los emite siempre, los mide
+     * el `CostMeter` y salen enteros o el run no llegó al brief. La laxitud es de la LECTURA, no de la
+     * emisión, y por eso vive en el tipo y no en el validador de salida (test: "emisionM2 RECHAZA un
+     * coste_breakdown incompleto").
+     */
+    coste_breakdown: Partial<CostBreakdown>;
     /** Modelos usados sin tarifa configurada → el total está INCOMPLETO (no se inventa el costo). */
     modelos_sin_precio?: string[];
   };
@@ -145,6 +157,12 @@ export interface KeywordResearchBrief {
  *
  * Vive en el contrato porque viaja DENTRO del brief (`meta_run.coste_breakdown`): no es un detalle
  * interno del medidor de `kr-service`, es un dato que el consumidor lee.
+ *
+ * Los tres campos son obligatorios ACÁ porque este es el tipo de lo que el medidor PRODUCE
+ * (`CostMeter.breakdown` en `kr-service/src/lib/cost.ts`), y el medidor los tiene los tres siempre.
+ * El brief lo lleva como `Partial<CostBreakdown>` porque al leerlo de Postgres pueden faltar — ver el
+ * comentario de `meta_run.coste_breakdown`. Los dos tipos son distintos a propósito: uno describe una
+ * medición, el otro describe un campo que se lee de una columna con default `'{}'`.
  */
 export interface CostBreakdown {
   dataforseo_micros: number;

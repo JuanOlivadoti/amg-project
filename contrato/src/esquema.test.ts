@@ -41,8 +41,8 @@ test("emisionM2 RECHAZA una dificultad fuera de 0..100", () => {
   assert.equal(emisionM2.safeParse(b).success, false);
 });
 
-// --- Los tres de abajo cubren las exigencias que `emisionM2` añade con `.extend()` sobre el piso de
-// --- `esquemaBase`. Sin ellos, borrar un `.extend()` no tumbaría ningún test y la exigencia del M2 se
+// --- Los tres de abajo cubren las exigencias que `emisionM2` añade con `.extend()` sobre el piso
+// --- común. Sin ellos, borrar un `.extend()` no tumbaría ningún test y la exigencia del M2 se
 // --- perdería en silencio al aflojarse a la forma laxa del consumo.
 
 test("emisionM2 RECHAZA un meta_title vacío (exigencia del M2, no del piso)", () => {
@@ -91,6 +91,33 @@ test("emisionM2 sigue rechazando una cobertura fuera de 0..1", () => {
   assert.equal(emisionM2.safeParse(b).success, false);
 });
 
+/*
+ * `coste_breakdown` — este test EXISTE porque la review final de rama aflojó el TIPO. Hasta entonces
+ * `KeywordResearchBrief` declaraba los tres campos obligatorios y la garantía "el M2 los emite
+ * siempre" la imponía `tsc`: `assembleBrief` no podía devolver un brief sin ellos. Ahora el tipo los
+ * admite ausentes —el brief que se LEE de Postgres trae `{}`, que es el default de la columna— así que
+ * `tsc` ya no la impone y el único que queda es `emisionM2`.
+ *
+ * Sin este test, aflojar el tipo habría BORRADO una garantía en vez de moverla: un `assembleBrief` con
+ * el desglose a medias compilaría, y la única comprobación de salida del M2 (`cli/spike.ts`, que corre
+ * `emisionM2` sobre el brief) sería lo único entre eso y un informe sin el argumento comercial.
+ *
+ * El caso parcial no es hipotético: `orchestrator/src/workflow.test.ts:114` ya usa un desglose con un
+ * solo campo, y es la forma que llega de la base.
+ */
+test("emisionM2 RECHAZA un coste_breakdown incompleto (el M2 emite los tres, siempre)", () => {
+  const vacio = briefM2();
+  vacio.meta_run.coste_breakdown = {};
+  assert.equal(emisionM2.safeParse(vacio).success, false, "aceptó el desglose vacío");
+
+  const campos = ["dataforseo_micros", "llm_generation_micros", "llm_embeddings_micros"] as const;
+  for (const campo of campos) {
+    const b = briefM2();
+    delete b.meta_run.coste_breakdown[campo];
+    assert.equal(emisionM2.safeParse(b).success, false, `aceptó un desglose sin ${campo}`);
+  }
+});
+
 // --- `consumoM1` — el derivado LAXO. Lo que se prueba acá es lo que ACEPTA: cada laxitud es
 // --- deliberada (briefs viejos que siguen siendo publicables), así que un endurecimiento accidental
 // --- es el fallo a evitar, no el rechazo.
@@ -113,6 +140,22 @@ test("parseBrief RECHAZA una schema_version fuera de las cuatro", () => {
 
 test("parseBrief RECHAZA un brief con la forma mal", () => {
   assert.throws(() => parseBrief({ schema_version: "kr.v0.5" }), /Brief inválido/);
+});
+
+/*
+ * El rango de `score_confidence` es la ÚNICA restricción numérica que `consumoM1` conserva del M2:
+ * `volumen`, `dificultad` y `opportunity_score` se relajan a propósito (un valor feo de un brief viejo
+ * no es motivo para no publicar la web), y este NO, porque es una fracción 0..1 que el portal PINTA en
+ * esa escala. La distinción es fácil de perder leyendo la tabla del contrato en diagonal, y hasta este
+ * test nadie fallaba si se quitaba el `.min(0).max(1)` de `paginaM1` — el hueco que la review de la
+ * tarea 4 declaró y dejó para la review final de rama.
+ */
+test("consumoM1 RECHAZA un score_confidence fuera de 0..1", () => {
+  for (const valor of [7, -0.5]) {
+    const b = briefM1();
+    (b.paginas_propuestas[0] as Record<string, unknown>).score_confidence = valor;
+    assert.equal(consumoM1.safeParse(b).success, false, `aceptó score_confidence = ${valor}`);
+  }
 });
 
 test("consumoM1 CONSERVA evidencia y score_confidence cuando vienen", () => {
