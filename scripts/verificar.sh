@@ -142,11 +142,24 @@ fi
 echo ""
 echo "── 5. Tests del monorepo ─────────────────────────────────"
 
+# El conteo NO se hace con un grep acá: el patrón que estaba en esta línea (`^# pass`) se rompió el día
+# que Node 24 cambió el reporter por defecto de `tap` a `spec` (`ℹ pass 34` en vez de `# pass 34`), y el
+# arnés estuvo imprimiendo `[OK] 0 tests en verde` — verde, con la cifra en cero. Ahora la lógica vive
+# en scripts/contar-tests.mts, que tiene 9 tests, cubre los dos formatos y **falla si no puede contar**:
+# un contador que no cuenta no reporta verde. Mismo motivo que el piso de N_PAQUETES.
+contar_tests() { node --import tsx scripts/contar-tests.mts "$1" 2>&1; }
+
 if npm test --silent > "$LOG_TEST" 2>&1; then
   # Esta es LA cifra de tests del monorepo, medida. Si no coincide con la que declara la
   # documentación, la que está mal es la documentación: sincronizala (09-estado-y-roadmap.md,
   # 08-testing-calidad.md y el README de docs/proyecto/ la repiten).
-  ok "$(grep -hE '^# pass' "$LOG_TEST" | awk '{s+=$3} END {print s+0}') tests en verde ($N_PAQUETES paquetes + scripts/)"
+  if CONTEO=$(contar_tests "$LOG_TEST"); then
+    ok "$CONTEO tests en verde ($N_PAQUETES paquetes + scripts/)"
+  else
+    fail "los tests pasaron, pero NO pude contarlos — así que esto no es un verde:"
+    echo "$CONTEO" | sed 's/^/          /'
+    SALIDA=1
+  fi
 else
   fail "tests en rojo — últimas líneas:"; tail -25 "$LOG_TEST" | sed 's/^/          /'; SALIDA=1
 fi
@@ -163,7 +176,13 @@ if [ "$CON_PORTAL" = "1" ] || [ -n "$PORTAL_SIN_COMMITEAR" ] || [ -n "$PORTAL_SI
   if [ ! -d portal/node_modules ]; then
     fail "el portal cambió pero no tiene node_modules — 'npm --prefix portal install'"; SALIDA=1
   elif npm --prefix portal test --silent > "$LOG_PORTAL" 2>&1; then
-    ok "$(grep -hE '^# pass' "$LOG_PORTAL" | awk '{s+=$3} END {print s+0}') tests del portal en verde (node:test)"
+    if CONTEO_PORTAL=$(contar_tests "$LOG_PORTAL"); then
+      ok "$CONTEO_PORTAL tests del portal en verde (node:test)"
+    else
+      fail "los tests del portal pasaron, pero NO pude contarlos — así que esto no es un verde:"
+      echo "$CONTEO_PORTAL" | sed 's/^/          /'
+      SALIDA=1
+    fi
     warn "los *.spec.ts de componentes van aparte: 'npm --prefix portal run test:components' (Karma)"
   else
     fail "tests del portal en rojo — últimas líneas:"; tail -20 "$LOG_PORTAL" | sed 's/^/          /'; SALIDA=1
