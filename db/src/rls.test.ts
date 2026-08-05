@@ -4,7 +4,7 @@ import { TestDb, seed } from "./testdb.js";
 import type { Seed } from "./testdb.js";
 
 /**
- * Tests de RLS (ADR-10) contra Postgres 18 real (PGlite en WASM), no contra un mock: el aislamiento
+ * Tests de RLS (ADR-10) contra Postgres real (PGlite en WASM), no contra un mock: el aislamiento
  * depende de la semántica exacta de Postgres (FORCE vs ENABLE, USING vs WITH CHECK, el cast de un
  * GUC vacío), y un mock reproduciría mis suposiciones en vez de la realidad.
  *
