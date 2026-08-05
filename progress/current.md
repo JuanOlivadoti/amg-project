@@ -13,16 +13,17 @@ externa** (NO LISTO, 13 hallazgos, los 13 verificados) y **corregida**, sin impl
 El relato de la ronda está en [`history.md`](history.md) y la contabilidad en
 [`08` § tanda 20](../docs/proyecto/08-testing-calidad.md).
 
-**Lo próximo:** el plan de implementación (writing-plans), partido en **KR-2a** (el paquete `contrato/`) y
-**KR-2b** (migración `0016` + endpoints + pantalla + seed).
+**El plan de KR-2a está escrito y sin ejecutar:**
+[`plans/2026-08-05-kr2a-paquete-contrato.md`](../docs/superpowers/plans/2026-08-05-kr2a-paquete-contrato.md)
+— **9 tareas** con ciclo TDD y mutación por garantía. Lo próximo es ejecutarlo.
 
-**🔴 Lo único que bloquea el plan: qué pasa con el PDF de ADR-07.** ADR-07 decide "informe legible
-(Markdown→PDF)" y KR-2 entrega pantalla + `.md`. Con el informe convertido en **documento interno**
-(decisión de Juan, 2026-08-05) el PDF pierde su motivo: era formato de entrega hacia afuera, y pasa a
-pertenecer al **entregable del restaurante**, que no existe. Recomendación pendiente de OK: registrarlo en
-ADR-07 con una nota fechada **antes** de implementar KR-2b —el precedente es el bloque
-`> Cumplido a medias` de ADR-10— porque hacerlo después es cambiar una decisión aceptada con el trabajo ya
-hecho.
+**El plan de KR-2b se escribe cuando KR-2a cierre**, a propósito: depende de las firmas reales que produzca
+el paquete, y escribirlas ahora sería inventar nombres que después no coinciden.
+
+**✅ El PDF de ADR-07, resuelto (2026-08-05).** La nota está escrita **en ADR-07 y antes de implementar**:
+el informe legible se sirve como **pantalla + Markdown**, y el **PDF se traslada al entregable del
+restaurante** (que no existe y no tiene fecha), porque con el informe convertido en documento interno el
+PDF perdió su motivo — era un formato de entrega hacia afuera.
 
 **Dos cosas que la ronda dejó anotadas y NO son de KR-2:**
 
