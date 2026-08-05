@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mapClustersToPages, PESO_CONFIANZA_ORDEN } from "./cluster-map.js";
-import { renderReport } from "contrato";
-import { briefSchema } from "../validation/brief.schema.js";
+import { emisionM2, renderReport } from "contrato";
 import type { Cluster } from "./cluster.js";
 import type { EnrichedKeyword, KeywordResearchBrief } from "../types.js";
 
@@ -74,7 +73,7 @@ function briefWith(pages: ReturnType<typeof mapClustersToPages>["pages"], cobert
 test("el brief con métricas null valida contra el esquema", () => {
   const { pages } = mapClustersToPages([cluster(kw({ volume: null, difficulty: null }))], 25);
 
-  assert.equal(briefSchema.safeParse(briefWith(pages)).success, true);
+  assert.equal(emisionM2.safeParse(briefWith(pages)).success, true);
 });
 
 test("el informe muestra 'n/d' para la métrica ausente, nunca '0'", () => {

@@ -6,8 +6,7 @@ import { SCHEMA_VERSION } from "../types.js";
 import { runResearch } from "../pipeline/run.js";
 import type { RunDeps, ResearchDataset } from "../pipeline/run.js";
 import type { ProviderTaskLog } from "../dataforseo/task-log.js";
-import { renderReport } from "contrato";
-import { briefSchema } from "../validation/brief.schema.js";
+import { emisionM2, renderReport } from "contrato";
 
 // Caso por defecto del spike (restaurante italiano en Madrid).
 const DEFAULT_PROMPT =
@@ -114,8 +113,10 @@ async function main() {
     await cerrar();
   }
 
-  // Validación del contrato (Zod) — la "validación" del pipeline.
-  const parsed = briefSchema.safeParse(brief);
+  // Validación del contrato (Zod) — la "validación" del pipeline: `emisionM2` es el validador de
+  // SALIDA del contrato compartido, el estricto. Antes era una copia local del esquema, que podía
+  // aceptar un brief que el consumidor rechazaba (y al revés) sin que nada avisara.
+  const parsed = emisionM2.safeParse(brief);
   if (!parsed.success) {
     console.error(`\n❌ El brief NO cumple el esquema ${SCHEMA_VERSION}:`);
     console.error(parsed.error.issues.slice(0, 10));

@@ -1,10 +1,12 @@
 // Módulo 1 — Creador de Webs · contratos de datos (PoC).
 //
 // Dos contratos viven acá:
-//  1) KR_* : el subconjunto del brief del Módulo 2 que este módulo consume.
-//     Es el "contrato de handoff" (ADR-06/07): el brief JSON es la frontera entre módulos.
-//     Se define acá (no se importa de kr-service) para mantener el límite del módulo limpio.
-//  2) Story / *Blok : el contrato de bloks de Storyblok (ADR-04) que este módulo produce.
+//  1) KR_* : el subconjunto del brief del Módulo 2 que este módulo consume. Es el "contrato de
+//     handoff" (ADR-06/07): el brief JSON es la frontera entre módulos. Desde KR-2a **no se define
+//     acá**: se importa del paquete `contrato`, que no es `kr-service` — la frontera M2↔M1 sigue en
+//     pie, lo que desapareció es la SEGUNDA copia del contrato.
+//  2) Story / *Blok : el contrato de bloks de Storyblok (ADR-04) que este módulo produce. Este sí es
+//     propio del M1 y se sigue definiendo acá.
 
 export const CONTRACT_VERSION = "web.v0.1";
 
@@ -18,54 +20,15 @@ export type SearchIntent =
   | "informational"
   | "navigational";
 
-/** Página propuesta tal como la emite el brief del Módulo 2. */
-export interface KrProposedPage {
-  cluster_id: string;
-  tipo: PageType;
-  url_slug: string;
-  keyword_principal: string;
-  keywords_secundarias: string[];
-  intencion: SearchIntent;
-  local: boolean;
-  /** `null` = el research no obtuvo la métrica (≠ 0). Ver kr.v0.4. */
-  volumen: number | null;
-  /** `null` = el research no obtuvo la métrica (≠ 0). Ver kr.v0.4. */
-  dificultad: number | null;
-  /** kr.v0.5. `sin_validar` = ninguna keyword del cluster tiene volumen conocido. */
-  evidencia?: "datos_mercado" | "sin_validar";
-  /** kr.v0.5. 0..1 — baja cuando faltan datos. `< 0.5` = la página se apoya en poco o nada. */
-  score_confidence?: number;
-  opportunity_score: number;
-  seo: {
-    meta_title: string;
-    meta_description: string;
-    schema_type: SchemaType;
-    canonical: string;
-  };
-  content_brief: {
-    h1: string;
-    secciones_sugeridas: string[];
-    word_count_objetivo: number;
-    enlazado_interno: string[];
-    cta?: string;
-    tono?: string;
-    claims_permitidos?: string[];
-    claims_prohibidos?: string[];
-    competidores_serp?: string[];
-  };
-  preguntas_frecuentes: string[];
-  /** Aprobación por página (ADR-06): la publicación en vivo exige esto en true. */
-  approved: boolean;
-}
-
-/** Brief completo del Módulo 2 (solo los campos que consume el Módulo 1). */
-export interface KrBrief {
-  schema_version: string;
-  cliente: string;
-  market: { country: string; language_code: string; location_code: number };
-  status: "pending_approval" | "approved" | "rejected";
-  paginas_propuestas: KrProposedPage[];
-}
+// El M1 consume un SUBCONJUNTO del brief del M2. Los nombres `Kr*` se conservan porque los usan ~15
+// archivos de este paquete, pero ya no son una definición paralela: son el tipo del contrato.
+//
+// ⚠️ El tipo afirma más de lo que `consumoM1` valida, y eso es heredado de `parseBrief` (ver su
+// docstring en `contrato/src/esquema.ts`): `page_strategy` no se valida acá, y `evidencia` /
+// `score_confidence` son opcionales en el esquema aunque el tipo los declare obligatorios. Quien los
+// lea desde el M1 tiene que tolerar `undefined` — que es lo que ya hace `cli/build.ts` con
+// `p.score_confidence != null`.
+export type { KeywordResearchBrief as KrBrief, ProposedPage as KrProposedPage } from "contrato";
 
 // ---------------------------------------------------------------- 2) Salida (bloks Storyblok)
 /** SEO nativo de la página (mapea a los campos SEO de Storyblok / meta tags). */
