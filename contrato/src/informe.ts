@@ -27,11 +27,40 @@ function pct(n: number | null): string {
   return n === null ? "n/d" : `${Math.round(n * 100)}%`;
 }
 
+/*
+ * ESCAPADO. Todo lo que se interpola en el informe es texto generado por un LLM (h1, meta title y
+ * description, slug, keywords, secciones, FAQs), así que es un dato que NO puede convertirse en
+ * estructura del documento.
+ *
+ * No ejecuta nada —el parser del portal escapa el HTML y Angular no interpola markup— pero cambia el
+ * SIGNIFICADO: una keyword con `|` desalinea la tabla de ahí para abajo, un `\n##` inventa una
+ * sección, y una cerca de código sin cerrar se come el resto del informe. Con eso se puede ocultar o
+ * simular un aviso ⚠️ de evidencia, que es justamente el argumento de venta del entregable.
+ *
+ * Lo encontró la 14ª review externa, y el bug ya existía en el informe del CLI.
+ */
+
+/** Texto que va en una CELDA de tabla: además del escapado, la celda no puede tener saltos. */
+function celda(v: string): string {
+  return texto(v).replace(/\s*\n+\s*/g, " ");
+}
+
+/** Texto que va en cualquier otra parte del informe. */
+function texto(v: string): string {
+  return String(v)
+    .replace(/\\/g, "\\\\") // primero la barra, o se escapan las barras que agregamos abajo
+    .replace(/([|`*_#\[\]<>])/g, "\\$1")
+    // Un salto seguido de `#`, `-` o `>` en columna 0 inventa estructura: se le quita la columna 0.
+    .replace(/\n(?=[#\->])/g, "\n ");
+}
+
 /** Informe legible (Markdown) — el entregable humano de la compuerta (ADR-07). */
 export function renderReport(brief: KeywordResearchBrief): string {
   const l: string[] = [];
-  l.push(`# Keyword Research — ${brief.cliente}`);
-  l.push(`\n_${brief.market.country} · ${brief.market.language_code} · ${brief.generated_at}_\n`);
+  l.push(`# Keyword Research — ${texto(brief.cliente)}`);
+  l.push(
+    `\n_${texto(brief.market.country)} · ${texto(brief.market.language_code)} · ${brief.generated_at}_\n`,
+  );
   l.push(`- Keywords analizadas: **${brief.meta_run.keywords_analizadas}**`);
   l.push(`- Páginas propuestas: **${brief.meta_run.paginas_propuestas}**`);
 
@@ -106,8 +135,8 @@ export function renderReport(brief: KeywordResearchBrief): string {
     l.push(`|---|---|---|---|---|---|---|---|`);
     pages.forEach((p, i) => {
       l.push(
-        `| ${offset + i + 1} | ${p.tipo} | ${p.keyword_principal} | ${metric(p.volumen)} | ${metric(p.dificultad)} | ` +
-          `${p.opportunity_score} | ${p.score_confidence} | ${p.intencion}${p.local ? " (local)" : ""} |`,
+        `| ${offset + i + 1} | ${celda(p.tipo)} | ${celda(p.keyword_principal)} | ${metric(p.volumen)} | ${metric(p.dificultad)} | ` +
+          `${p.opportunity_score} | ${p.score_confidence} | ${celda(p.intencion)}${p.local ? " (local)" : ""} |`,
       );
     });
   };
@@ -141,26 +170,30 @@ export function renderReport(brief: KeywordResearchBrief): string {
 
   l.push(`\n## Detalle por página\n`);
   brief.paginas_propuestas.forEach((p, i) => {
-    l.push(`### ${i + 1}. ${p.content_brief.h1}`);
-    l.push(`- **Slug:** \`${p.url_slug}\` · **Tipo:** ${p.tipo} · **Schema:** ${p.seo.schema_type}`);
-    l.push(`- **Meta title:** ${p.seo.meta_title}`);
-    l.push(`- **Meta description:** ${p.seo.meta_description}`);
+    l.push(`### ${i + 1}. ${texto(p.content_brief.h1)}`);
     l.push(
-      `- **Keyword principal:** ${p.keyword_principal} (vol ${metric(p.volumen)} · KD ${metric(p.dificultad)})`,
+      `- **Slug:** \`${texto(p.url_slug)}\` · **Tipo:** ${texto(p.tipo)} · **Schema:** ${texto(p.seo.schema_type)}`,
     );
-    if (p.keywords_secundarias.length) l.push(`- **Secundarias:** ${p.keywords_secundarias.join(", ")}`);
+    l.push(`- **Meta title:** ${texto(p.seo.meta_title)}`);
+    l.push(`- **Meta description:** ${texto(p.seo.meta_description)}`);
+    l.push(
+      `- **Keyword principal:** ${texto(p.keyword_principal)} (vol ${metric(p.volumen)} · KD ${metric(p.dificultad)})`,
+    );
+    if (p.keywords_secundarias.length)
+      l.push(`- **Secundarias:** ${p.keywords_secundarias.map((v) => texto(v)).join(", ")}`);
     if (p.content_brief.secciones_sugeridas.length)
-      l.push(`- **Secciones:** ${p.content_brief.secciones_sugeridas.join(" · ")}`);
+      l.push(`- **Secciones:** ${p.content_brief.secciones_sugeridas.map((v) => texto(v)).join(" · ")}`);
     if (p.preguntas_frecuentes.length)
-      l.push(`- **FAQs:** ${p.preguntas_frecuentes.map((q) => `_${q}_`).join(" · ")}`);
+      l.push(`- **FAQs:** ${p.preguntas_frecuentes.map((q) => `_${texto(q)}_`).join(" · ")}`);
     if (p.content_brief.claims_prohibidos?.length)
-      l.push(`- ⚠️ **Claims prohibidos:** ${p.content_brief.claims_prohibidos.join(", ")}`);
+      l.push(`- ⚠️ **Claims prohibidos:** ${p.content_brief.claims_prohibidos.map((v) => texto(v)).join(", ")}`);
     l.push("");
   });
 
   if (brief.backlog.length) {
     l.push(`## Backlog (fases futuras)\n`);
-    for (const b of brief.backlog) l.push(`- ${b.keyword_principal} — score ${b.opportunity_score}`);
+    for (const b of brief.backlog)
+      l.push(`- ${texto(b.keyword_principal)} — score ${b.opportunity_score}`);
   }
   return l.join("\n") + "\n";
 }
