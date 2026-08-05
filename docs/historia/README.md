@@ -24,7 +24,7 @@ seguir compitiendo por atención con lo que falta hacer.
 | --- | --- | --- |
 | [modulo-2-keyword-research.md](modulo-2-keyword-research.md) | El alcance comercial del módulo | ⚠️ **Dice que el motor es SEMrush. No lo es: es DataForSEO** (ADR-04) |
 | [modulo-2-keyword-research-plan.md](modulo-2-keyword-research-plan.md) | El plan técnico v1.0: modelo de datos, esquemas de output, mercados, RGPD, riesgos, decisiones que estaban abiertas | El pipeline real tiene 11 pasos, no los 13 de acá |
-| [modulo-2-esquema/](modulo-2-esquema/) | El esquema tipo v0.2 que se usó de referencia: [DDL](modulo-2-esquema/schema.sql), [tipos](modulo-2-esquema/types.ts), [brief de ejemplo](modulo-2-esquema/ejemplo-brief.json) | El esquema real vive en `db/migrations/`; los tipos reales, en `kr-service/src/types.ts` |
+| [modulo-2-esquema/](modulo-2-esquema/) | El esquema tipo v0.2 que se usó de referencia: [DDL](modulo-2-esquema/schema.sql), [tipos](modulo-2-esquema/types.ts), [brief de ejemplo](modulo-2-esquema/ejemplo-brief.json) | El esquema real vive en `db/migrations/`; los tipos reales, en `contrato/src/tipos.ts` (desde KR-2a; `kr-service/src/types.ts` los reenvía) |
 
 **El estado real del módulo 2:**
 [`../proyecto/04-modulo-2-keyword-research.md`](../proyecto/04-modulo-2-keyword-research.md).

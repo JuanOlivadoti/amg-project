@@ -17,20 +17,21 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 698 tests (monorepo) + 235 (portal)
+## Cobertura actual: 734 tests (monorepo) + 235 (portal)
 
 > Las cifras de esta tabla se miden con `npm run verificar`, que las cuenta de la salida de
-> `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-04.
+> `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-05.
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
+| `contrato` | **34** | El contrato del brief compartido (KR-2a). Los **dos** validadores y por qué son dos: fixtures **negativos** de `emisionM2` (lo que el M2 debe rechazar) y de `consumoM1` (las cuatro `schema_version`), más el test de **inclusión** `emisionM2 ⊆ consumoM1` — lo único que impide que los dos se separen en silencio. El informe con **datos incompletos**: `n/d` en vez de `NaN`, la tabla de desglose que **no se pinta** sin datos, y `endpoints_degradados` distinguiendo `[]` ("ninguno falló") de `null` ("no se sabe"). El **escapado de delimitadores** de Markdown, que evita que una keyword con `|` desalinee la tabla o que un `\n##` invente una sección. Y dos tests de arquitectura: que **ningún paquete** defina su propio esquema del brief, y que ese barrido **no pueda quedar vacío** y pasar para siempre. |
 | `db` | **182** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto, **allowlist de `locations`/`menu` en `business_profile_publico`** (`0010`), y que la allowlist restrinja también la **forma** de cada valor —no solo el nombre de la clave— con tope de tamaño aplicado en la fuente (`app.texto_publico`, revisión externa Codex). |
 | `kr-service` | **146** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). Desde KR-3: el **map pack** del SERP corrigiendo `is_local`, el **percentil winsorizado** del volumen, el **orden en dos niveles**, y que el **destino del dataset no caiga en un directorio que git ignore**. |
 | `web-builder` | **96** | Contrato, handoff, render, XSS, idempotencia de publicación, marca por tenant, imágenes, **nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados** (con escape de `name`/`slug`/`price`), que **`locations` manda** sobre los campos clásicos (JSON-LD y footer, no solo cuando faltan), y que `parseProfile` rechace un perfil con más de 20 locales o 200 ítems de carta. |
 | `orchestrator` | **19** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
 | `api` | **95** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
 | `renderer` | **114** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web; **`locations`/`menu` sobreviven al validador y llegan al render**), **los límites del camino anónimo** (10ª review), y **navegación + home** (barra desde la Links API con las mismas defensas; **la nav falla → sin barra, no 503**; nav de preview en draft sin cachear; la raíz sin `home` **sintetiza un índice**, no 404; `/blog` no se autoenlaza aunque exista una story real con ese slug). |
-| `scripts` | **46** | El reparto de credenciales (`env-sync`) y el re-seed de producción. No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
+| `scripts` | **48** | El reparto de credenciales (`env-sync`) y el re-seed de producción. No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
 | `portal` | **235** | *(fuera del monorepo)* **169 con `node:test`** — el núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, **la separación por evidencia** (✅/⚠️), las **carreras asincrónicas** (`Vigencia`) y el **contraste WCAG AA** de los 17 pares × 2 temas leído de `styles.css`, más un test que recorre `src/app` y **falla si una plantilla incrusta un color**. Más el guard de config de producción: que `environment.prod.ts` esté **listo para desplegar** (sin placeholders, todo HTTPS) — importa porque el portal se despliega solo en cada push. Y **66 de componente con Karma** (`ng test`) para el DOM: tema, shell, y las pantallas de clientes y usuarios (incluido el `<select>` cuyo `[value]` se aplicaba antes de existir las `<option>`). Con `fetch` de mentira — los 169 corren sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
@@ -45,6 +46,25 @@ uno, y al mutarlas **por separado** salió que el test de `docs/private*` seguí
 todos sus casos eran `.zip`, así que **los cazaba la otra**. Verde por la razón equivocada, y la
 mutación fue lo único que lo dijo. La forma de la trampa se repite: cuando dos reglas se solapan, un
 test que las cubre juntas no prueba ninguna de las dos.
+
+#### Las tres veces que una mutación NO cayó (KR-2a, 2026-08-05), y por qué valen
+
+La regla dice que **una mutación que no tumba nada es un resultado, no un fallo del método**: o falta el
+test, o la línea no hace lo que su comentario dice. En KR-2a pasó **tres veces en nueve tareas**, y la
+respuesta fue distinta cada vez. Por eso quedan escritas: es el ejercicio real de la regla.
+
+| Mutación | ¿Cayó? | Cuál de las dos causas era |
+|---|---|---|
+| Borrar los `.extend()` de `emisionM2`, con los 6 tests que traía el plan | no | **Faltaban tests.** Se agregaron 3, y ahora caen exactamente esos 3. |
+| Agregar un valor de enum a `emisionM2` sin agregarlo en `consumoM1`, con los 3 casos del plan | no | **Faltaba un caso**, no un test. El cuarto recorre el otro extremo del vocabulario. La lección quedó en el código: *el test de inclusión solo cubre lo que sus fixtures ejercitan.* |
+| Quitar el colapso de saltos de `celda()` en el informe | no | **Tampoco era la línea, y tampoco era "falta un test genérico":** ninguno de los cuatro tests metía un `\n` **en una celda**. Se demostró que la línea sí hace algo —una keyword con `\n##` **parte la fila de la tabla en dos**, una de 3 columnas y una huérfana— y se escribió el test que faltaba. |
+
+Y una cuarta, que sí cayó pero enseñó lo contrario de lo que su comentario decía: en el gate de gasto de
+`run.ts`, el comentario afirmaba que leer el campo nullable **pasaba** el typecheck y que leer los locales
+**reventaba**. Medido en un worktree: es al revés (leer el campo → 4 errores y exit 2). **La conclusión del
+código era correcta y la justificación escrita estaba invertida** — y lo que sí era cierto es la mitad más
+instructiva: los 146 tests de `kr-service` pasan en **las tres** variantes, así que la red que atrapa eso es
+`tsc`, nunca la suite.
 
 ### `kr-service` (146 tests)
 

@@ -16,9 +16,9 @@ que van separados.
 | **Node.js** | ≥ 20 (probado con 24) | Se usa `fetch` nativo — no hay axios ni node-fetch. |
 | **TypeScript** | ^5.6 | ESM puro (`"type": "module"`), `strict: true`, `noUncheckedIndexedAccess: true`. |
 | **tsx** | ^4.19 | Ejecuta TypeScript directo, sin paso de build. Los CLIs corren con `tsx`. |
-| **npm workspaces** | — | **6 paquetes, un solo `npm install`.** Se importan **por nombre** (`import { PgStore } from "db"`), no por ruta relativa. |
+| **npm workspaces** | — | **7 paquetes, un solo `npm install`.** Se importan **por nombre** (`import { PgStore } from "db"`), no por ruta relativa. |
 
-### Los seis paquetes
+### Los siete paquetes
 
 | Paquete | Qué es | Dependencias de runtime |
 |---|---|---|

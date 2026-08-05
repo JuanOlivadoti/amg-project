@@ -11,6 +11,72 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-05 (tarde) — KR-2a: el paquete `contrato/`, y nueve tareas con un revisor detrás de cada una
+
+Ejecutado el plan de KR-2a con **subagentes**: una tarea por implementador, el `revisor` después de cada
+devolución, y una review de conjunto al final. **11 commits + una fix wave**, **734 tests** (venía de 698),
+`verificar` exit 0. El 7º workspace `contrato/` tiene los tipos del contrato del brief, los **dos**
+validadores Zod y `renderReport`.
+
+**La deuda del Zod duplicado quedó cerrada, pero no como el plan decía**, y el matiz es lo que más
+enseñó: al medir los dos esquemas campo por campo, **no eran dos copias del mismo contrato**. El del M1
+acepta cuatro `schema_version` y hace `evidencia`/`score_confidence` opcionales **a propósito** —para no
+rechazar briefs viejos que siguen siendo publicables—; el del M2 exige el brief completo. Fusionarlos
+obligaba a que uno perdiera su garantía. Y el criterio de cierre que yo había escrito en el plan ("los
+fixtures de los dos lados pasan contra el esquema unificado sin editarse") era **inalcanzable**: el fixture
+del M1 no trae `run_id`, `generated_at`, `backlog` ni `meta_run`. Se unificaron los tipos, el render y las
+piezas comunes, y quedaron tres lazos que impiden que se separen en silencio.
+
+**Lo que la etapa destapó, ninguno previsto en el plan:**
+
+- **Un riesgo de gasto real.** El gate que **aborta antes de pagar** leía `cobertura_volumen`, que pasó a
+  ser nullable. Con `null`, `null === 0` y `null < 0.3` son los dos `false`: el corte se apagaba **en
+  silencio** y el run seguía pagando sin un dato de mercado. La red que lo atrapa es `tsc`, no la suite —
+  los 146 tests de `kr-service` pasan en las tres variantes medidas.
+- **Un tipo que promete más de lo que su validador garantiza**, dos veces. `parseBrief` devolvía vía `as`
+  un tipo que exigía cuatro campos que `consumoM1` no valida, y el síntoma fue tener que **engordar los
+  fixtures** del M1 para que compilaran. Lo mismo con `coste_breakdown`, tipado con tres `number`
+  obligatorios contra un guard de runtime que se protege de que falten porque `{}` es el default de la
+  columna. Los dos arreglados haciendo que el tipo diga lo que el validador hace.
+- **Tres comentarios que afirmaban algo falso.** Uno describía su propia medición **al revés** (decía que
+  leer el campo pasaba el typecheck y que leer los locales reventaba, y era exactamente lo contrario); otro
+  nombraba como red un diferencial de 1101 casos que ya **no se podía correr**, porque el esquema contra el
+  que comparaba se había borrado en la misma etapa. Es la lección de la 13ª review un nivel más abajo: en el
+  código, no en las skills.
+- **Y el bug del informe que ya existía:** `renderReport` interpolaba texto de LLM sin escapar
+  delimitadores, así que una keyword con `|` desalineaba la tabla y un `\n##` inventaba una sección. KR-2
+  no lo introdujo — lo iba a hacer visible en una pantalla.
+
+**Tres veces una mutación no tumbó nada, y las tres veces la respuesta fue distinta.** Es lo que más vale
+de esta etapa: la regla ("una mutación que no cae dice una de dos cosas") se ejercitó de verdad.
+
+1. En T3, con los 6 tests del brief, borrar los `.extend()` de `emisionM2` **no rompía nada** → faltaban
+   tests, y se agregaron 3.
+2. En T5, la mutación del enum no caía con los tres casos del brief → faltaba un **cuarto caso**, y la
+   lección quedó escrita en el test: *el test de inclusión solo cubre lo que sus fixtures ejercitan*.
+3. En T8, quitar el colapso de saltos de `celda()` **no tumbaba nada** → tampoco era la línea: ninguno de
+   los cuatro tests metía un `\n` **en una celda**. Se demostró que la línea sí hacía algo (una keyword con
+   `\n##` **parte la fila en dos**) y se escribió el test que faltaba.
+
+**Dos hallazgos sobre mi propio plan, encontrados por los implementadores.** El comentario que el plan
+mandaba escribir en el test de arquitectura —"también cubre el paquete que alguien agregue mañana"— **era
+falso** con la lista fija de paquetes que el mismo plan daba: el test descubre *archivos*, no *paquetes*.
+Y ese test tenía un modo de fallo silencioso que el plan no vio: **un barrido que no encuentra archivos
+pasa**, y pasaría para siempre. Se demostró mutando el barrido a `return []` y viendo el test verde **sin
+leer un byte**.
+
+**La review de conjunto encontró siete bloqueantes que ninguna review por tarea podía ver**, y el peor era
+de documentación: el ritual estaba diferido "al cierre", y el cierre era ese commit. Encontró **17 filas**
+de drift, seis de ellas que mi propio ledger no tenía — entre ellas `AGENTS.md` y dos prompts de agentes
+diciendo "6 paquetes". Ese es el archivo que **lee todo agente al arrancar**: uno que lo leyera hoy no
+sabría que `contrato` existe, y ahí es donde se vuelve a escribir una segunda copia del contrato.
+
+**Y un hallazgo del arnés, no del código:** durante una review, el agente `revisor` **modificó código con
+Bash** para probar una mutación —no tiene `Edit`, pero sí `Bash`—, lo detectó cuando `permissions.deny` le
+bloqueó el `git checkout`, lo revirtió y lo reportó por su cuenta. Es la primera ocurrencia **real** de lo
+que la 13ª review señaló en teoría: las prohibiciones de los agentes son un **contrato, no un sandbox**. En
+las reviews siguientes usó un `git worktree` aparte. El árbol se verificó después de cada una.
+
 ## 2026-08-05 — La spec de KR-2, y la primera review externa de un diseño
 
 Nada de código. Se escribió la **spec de KR-2** (el informe legible del research, en el portal), se la

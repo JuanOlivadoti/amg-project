@@ -151,8 +151,15 @@ desincronice.
 
 ## Stack y estilo de código
 
-- **npm workspaces**, 6 paquetes: `db`, `kr-service` (M2), `web-builder` (M1), `orchestrator`, `api`,
-  `renderer`. Más `portal/` (Angular) **fuera del monorepo a propósito** (su toolchain no se mezcla).
+- **npm workspaces**, 7 paquetes: `contrato`, `db`, `kr-service` (M2), `web-builder` (M1),
+  `orchestrator`, `api`, `renderer`. Más `portal/` (Angular) **fuera del monorepo a propósito** (su
+  toolchain no se mezcla).
+- **`contrato/` es el contrato del brief de keyword research, compartido** (KR-2a, 2026-08-05): los tipos,
+  los **dos** validadores Zod y `renderReport`. Solo depende de `zod`; no conoce Postgres, ni HTTP, ni UI.
+  Los dos validadores son dos **a propósito** y no se fusionan: `emisionM2` valida lo que el M2 **emite**
+  (estricto, versión actual) y `consumoM1` lo que el M1 **puede recibir** (laxo, cuatro `schema_version`).
+  **Si vas a validar o renderizar un brief, salís de acá** — un `z.object` con `paginas_propuestas`
+  adentro escrito en otro paquete lo caza `contrato/src/una-sola-fuente.test.ts`.
 - **TypeScript ESM strict** + `noUncheckedIndexedAccess`. **`tsx`, sin paso de build.** Se importa
   **por nombre de paquete** (`import { PgStore } from "db"`), no por ruta relativa.
 - Tests con **`node:test` + `node:assert`** (runner nativo, cero dependencias nuevas). Los de
@@ -202,7 +209,7 @@ Seguros: no tocan nada de afuera y corren sin credenciales.
 npm install         # primero, o `npm test` falla con "Cannot find package 'tsx'" — no es un bug
 npm run verificar   # TODO lo de abajo de una: entorno, arnés, secretos, typecheck y tests (~50s)
 npm run verificar -- --rapido   # sin los tests (~5s), para iterar
-npm test            # los 6 paquetes + los tests de scripts/ (~42s). NO incluye portal/
+npm test            # los 7 paquetes + los tests de scripts/ (~45s). NO incluye portal/
 npm run typecheck   # tsc --noEmit en todos, incluido scripts/ (~5s)
 npm run dev:server -w api        # la API real sobre PGlite (verificar el portal)
 ```

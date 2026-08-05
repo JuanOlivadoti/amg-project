@@ -18,9 +18,13 @@ valida en runtime.
 
 El brief lleva `schema_version`. Hoy: **`kr.v0.5`**.
 
-- El Módulo 2 lo emite desde `SCHEMA_VERSION` (`kr-service/src/types.ts`).
-- El Módulo 1 declara qué versiones soporta en `SUPPORTED_SCHEMA_VERSIONS` (`web-builder/src/contract.ts`)
+- El Módulo 2 lo emite desde `SCHEMA_VERSION` (`contrato/src/tipos.ts`).
+- El Módulo 1 declara qué versiones soporta en `SUPPORTED_SCHEMA_VERSIONS` (`contrato/src/esquema.ts`)
   y **rechaza cualquier otra** con un error claro, en vez de intentar procesarla.
+
+Desde KR-2a (2026-08-05) las dos constantes viven en el **mismo paquete**, `contrato`. Que emisión y
+consumo estén al lado no las vuelve lo mismo: siguen siendo dos validadores con propósitos opuestos
+(ver la tabla de abajo).
 
 ### Historial
 
@@ -156,12 +160,33 @@ propuesta comercial.
 | Rol | Archivo |
 |---|---|
 | **Diseño canónico** (fuente de verdad) | [`../historia/modulo-2-esquema/types.ts`](../historia/modulo-2-esquema/types.ts) y [`schema.sql`](../historia/modulo-2-esquema/schema.sql) |
-| Ejemplo lleno | [`../modulo-2-esquema/ejemplo-brief.json`](../historia/modulo-2-esquema/ejemplo-brief.json) |
-| Tipos de implementación (M2) | `kr-service/src/types.ts` |
-| **Validación de salida** (M2) | `kr-service/src/validation/brief.schema.ts` (Zod) |
-| Tipos de consumo (M1) | `web-builder/src/types.ts` |
-| **Validación de entrada** (M1) | `web-builder/src/contract.ts` (Zod) |
+| Ejemplo lleno | [`../historia/modulo-2-esquema/ejemplo-brief.json`](../historia/modulo-2-esquema/ejemplo-brief.json) |
+| **Tipos del contrato** (los dos lados) | `contrato/src/tipos.ts` |
+| **Validación de salida** (M2) | `contrato/src/esquema.ts` → `emisionM2` (Zod, estricto) |
+| **Validación de entrada** (M1) | `contrato/src/esquema.ts` → `consumoM1` (Zod, laxo) + `parseBrief` |
+| **El informe legible** | `contrato/src/informe.ts` → `renderReport` |
+| Reenvíos, para no romper imports | `kr-service/src/types.ts`, `kr-service/src/lib/cost.ts`, `web-builder/src/types.ts`, `web-builder/src/contract.ts` — **re-exportan**, ya no definen |
+| Perfil de negocio (M1, **no** es del brief) | `web-builder/src/contract.ts` → `parseProfile` y `businessProfileSchema` |
 
-> **Deuda conocida:** el esquema Zod está **duplicado** en ambos módulos. Lo correcto a futuro es
-> extraerlo a un paquete compartido para tener una sola fuente de verdad. Está anotado como TODO
-> en `web-builder/src/contract.ts`.
+> ### ✅ La deuda del Zod duplicado, cerrada el 2026-08-05 (KR-2a)
+>
+> Hasta entonces el esquema vivía **dos veces**, copiado a mano: en `kr-service/src/validation/brief.schema.ts`
+> (borrado en `db8b255`) y en `web-builder/src/contract.ts`. Cambiar uno dejaba al otro mintiendo sin que
+> nada avisara.
+>
+> **Lo que NO se hizo, y es la parte que importa entender: no se fusionaron en uno.** Al medirlos campo
+> por campo resultó que no eran dos copias del mismo contrato, sino **dos contratos con propósitos
+> opuestos**: `consumoM1` acepta **cuatro** `schema_version` (`kr.v0.2`..`kr.v0.5`) y hace `evidencia` y
+> `score_confidence` opcionales **a propósito**, para no rechazar briefs viejos que siguen siendo
+> publicables; `emisionM2` exige el brief completo de la versión actual. Fusionarlos obligaba a que uno
+> perdiera su garantía.
+>
+> Lo que se unificó son los **tipos**, el **render** y las piezas comunes. Y la deuda no la cierra una
+> promesa: `contrato/src/una-sola-fuente.test.ts` recorre los paquetes buscando un `z.object` con
+> `paginas_propuestas` adentro y **falla nombrando el archivo** — descubre los paquetes desde los
+> `workspaces`, así que también cubre el que alguien agregue mañana. Un segundo test impide que el barrido
+> se quede vacío y pase para siempre.
+>
+> Y un tercer lazo, del lado de emisión: dos aserciones de tipos cruzadas entre `KeywordResearchBrief` y
+> `z.infer<typeof emisionM2>`, para que el tipo escrito a mano y el validador **no puedan** separarse en
+> silencio. Antes de eso, quitarle tres campos a `emisionM2` dejaba los 732 tests en verde.

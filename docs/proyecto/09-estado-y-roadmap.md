@@ -169,7 +169,7 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
      solo error en los logs.
 5. **Cerrar lo que ADR-19 dejó a medias antes de un SLA**: CDN en el borde, invalidación con más de
    una instancia, punto único de disponibilidad (ver §3 más abajo).
-6. **Deuda técnica menor, sin apuro**: esquema Zod duplicado M2/M1, ADR-11 (offboarding) reescrito
+6. **Deuda técnica menor, sin apuro**: ~~esquema Zod duplicado M2/M1~~ (✅ **cerrada el 2026-08-05**, KR-2a), ADR-11 (offboarding) reescrito
    sobre un frontend que ya no existe, y — de la revisión de Codex a la navegación del sitio — dos
    huecos de test documentados (falta un test positivo de que `/blog` muestra su link en una story
    normal, y la validación de forma de la allowlist de Postgres solo tiene test en un campo de ~20).
@@ -512,7 +512,7 @@ en orden de preferencia:
 | # | Pieza | Estado | Nota |
 |---|---|---|---|
 | **KR-1** | **El dataset crudo, recuperado o regenerado** | 🟠 **A medias** | El **destino durable** ✅ hecho. El **dato** falta: cuesta ~$0.31 y **decide Juan**. Ver arriba. |
-| **KR-2** | **El informe legible, en el portal** | 🟠 **Spec revisada y corregida, sin implementar** | Decisiones cerradas: **(b) paquete compartido**, **pantalla + descarga `.md`**, **el `.md` guardado**, y **el informe es un documento interno** (2026-08-05). La spec —[`2026-08-04-informe-kr-portal-design.md`](../superpowers/specs/2026-08-04-informe-kr-portal-design.md), partida en KR-2a y KR-2b— pasó por la **14ª review** (NO LISTO, 13 hallazgos, los 13 verificados y corregidos). Queda **una** decisión: el PDF de ADR-07. Ver abajo. |
+| **KR-2** | **El informe legible, en el portal** | 🟠 **KR-2a hecho; KR-2b sin empezar** | **KR-2a cerrado el 2026-08-05**: el paquete `contrato/` (7º workspace) con los tipos, los dos validadores Zod y `renderReport`; 11 commits + una fix wave, **734 tests** (venía de 698). Cierra la deuda del Zod duplicado. **KR-2b** —migración `0016`, los dos endpoints, la pantalla y el seed— sigue sin empezar, y su plan **se escribe con el paquete a la vista**. Decisiones: **(b) paquete compartido**, **pantalla + descarga `.md`**, **el `.md` guardado**, **el informe es interno**, y el **PDF trasladado** al entregable del restaurante (nota fechada en ADR-07). Detalle abajo. |
 | **KR-3** | **Las tres mejoras de calidad** | 🟠 **Implementadas, sin calibrar** | ✅ Las tres en `kr-service` (2026-08-02), y ✅ **el orden ya llega al portal** (2026-08-04, migración `0015`). Queda **una** cosa abierta: los parámetros no están barridos contra datos reales (necesita KR-1). |
 | **KR-4** | **El guion de dos niveles, escrito** | ⚪ Sin empezar | Qué se muestra, en qué orden, y dónde se corta si no hay interés técnico. |
 
@@ -586,6 +586,46 @@ Lo que el diseño destapó, y que no se sabía al tomar esas decisiones:
 
 Partida en dos etapas: **KR-2a** (el paquete `contrato/`, cero cambios visibles) y **KR-2b** (migración
 `0016`, endpoints, pantalla, seed).
+
+#### ✅ KR-2a — cerrado el 2026-08-05: el paquete `contrato/`
+
+El 7º workspace. Contiene los tipos del contrato del brief, **los dos** validadores Zod y `renderReport`;
+solo depende de `zod`. 11 commits por las 9 tareas del
+[plan](../superpowers/plans/2026-08-05-kr2a-paquete-contrato.md) —cada una con su review— más una fix wave
+de la review final de rama. **734 tests** (venía de 698), typecheck limpio en los 7 paquetes.
+
+**Cierra la deuda del Zod duplicado**, pero no como el plan imaginaba, y el matiz importa: al medir los dos
+esquemas campo por campo resultó que **no eran dos copias del mismo contrato**. `consumoM1` acepta cuatro
+`schema_version` y hace `evidencia`/`score_confidence` opcionales **a propósito**, para no rechazar briefs
+viejos que siguen siendo publicables; `emisionM2` exige el brief completo. Fusionarlos obligaba a que uno
+perdiera su garantía. Se unificaron los **tipos**, el **render** y las piezas comunes, y quedaron **tres
+lazos** que impiden que las piezas se separen en silencio: el test de inclusión `emisionM2 ⊆ consumoM1`,
+dos aserciones de tipos cruzadas del lado de emisión, y un test que recorre los paquetes buscando un
+`z.object` con `paginas_propuestas` adentro (más un segundo que impide que ese barrido quede vacío y pase
+para siempre).
+
+**Los tres arreglos de comportamiento** que la etapa traía, todos del informe: un dato ausente sale `n/d`
+y no `NaN`; sin desglose de coste **no se pinta la tabla** de desglose (se pinta el total, que sí es un
+dato, con la nota); y el informe **escapa los delimitadores de Markdown**, así que una keyword con `|` ya
+no desalinea la tabla ni un `\n##` inventa una sección. Ese último era un bug que **ya existía** en el
+`out/informe.md` del CLI.
+
+**Lo que destapó, y no estaba en el plan:**
+
+- **Un riesgo de gasto real.** El gate que **aborta antes de pagar** leía `cobertura_volumen`, que pasó a
+  ser nullable. Con `null`, `null === 0` y `null < 0.3` son los dos `false`: el corte **se desactivaba en
+  silencio** y el run seguía pagando intención, relevancia y contenido sin un dato de mercado. La red que
+  lo atrapa es `tsc`, no la suite — los 146 tests de `kr-service` pasan en las tres variantes medidas. Y
+  **sigue sin haber test del corte por cobertura 0** (deuda anotada en el propio comentario).
+- **Que un tipo puede prometer más de lo que su validador garantiza.** `parseBrief` devolvía, vía `as`, un
+  tipo que exigía `run_id`, `generated_at`, `backlog` y `meta_run` — campos que `consumoM1` no valida. El
+  síntoma fue tener que engordar los fixtures del M1 para que compilaran. Ahora devuelve
+  `z.infer<typeof consumoM1>`. El mismo defecto apareció una segunda vez en `coste_breakdown` (tres campos
+  `number` obligatorios contra un guard de runtime que se protege de que falten, porque `{}` es el default
+  de la columna) y se arregló igual.
+- **Tres comentarios que afirmaban algo falso**, incluido uno que describía su propia medición **al revés**
+  y otro que nombraba como red un diferencial que ya no se podía correr. Es la lección de la 13ª review, un
+  nivel más abajo: en el código, no en las skills.
 
 **Y lo que agregó la 14ª review** (la primera del proyecto sobre un documento de diseño; 13 hallazgos, los
 13 verificados — [`08` § tanda 20](08-testing-calidad.md)):
@@ -743,7 +783,7 @@ dos últimas quedan fuera. Lo que **sigue dependiendo de KR-1** no es implementa
 |---|---|---|
 | **El secreto legacy de Supabase sigue vivo, y no se puede revocar sin migrar antes el portal** | Supabase (Project Settings → API) · `portal/src/environments/environment.prod.ts` | Con ese secreto se puede acuñar un token `service_role` que **bypassea RLS por completo** — el radio de daño no depende de que nuestra API ya no lo acepte. Pero **no se puede revocar sin más**: el `anon key` del portal es un JWT legacy firmado con él (`alg: HS256`, verificado), así que revocarlo rompe el login. Hay que migrar el portal a las claves nuevas (*publishable*), desplegar, verificar, y recién ahí revocar. Ver [12-credenciales.md](12-credenciales.md). |
 | ~~**La compuerta de secretos dejaba pasar la carpeta de secretos empaquetada**~~ ✅ **cerrada (2026-08-03)** | `scripts/secretos.mts` | Dio **verde durante tres días** con `docs/private.zip` trackeado en un repo público (ver Riesgos abiertos). La causa no era que no mirara *dentro* del zip —decide por ruta, a propósito—: la regla de `docs/private/` comparaba el **segundo segmento de directorio**, y ahí `private.zip` era el **nombre del archivo**, así que ninguna regla lo miraba. Mismo error conceptual que tenía el `.gitignore`. Cerrado con dos reglas y dos tests: `docs/private*` como nombre, y **cualquier comprimido versionado** —opaco para un detector que decide por ruta—. Las dos caen por mutación. |
-| **Esquema Zod duplicado** entre M2 y M1 | `kr-service/src/validation/` y `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. Extraer a paquete compartido. |
+| ~~**Esquema Zod duplicado** entre M2 y M1~~ | ✅ **cerrada el 2026-08-05 (KR-2a)** | El contrato vive en `contrato/` (7º workspace). `kr-service/src/validation/brief.schema.ts` **se borró**. |
 | **Estimaciones del presupuesto sin calibrar** | `lib/budget.ts` | Las **tarifas de los modelos están verificadas** ✅, pero las estimaciones por fase **siguen a ojo**. Se calibran con `datasets/keywords.json` — **que hoy no está** (ver KR-1 en §2.b): la promesa de "calibrar es gratis" depende de regenerar ese dataset. |
 | **🟠 El dataset crudo del research no existe** | `datasets/keywords.json` | ✅ **El destino ya es durable** (versionado, con un test que se lo pregunta a `git check-ignore`). Lo que falta es **el dato**: el de la corrida del 2026-07-30 se perdió en `out/` y regenerarlo cuesta ~$0.31 en producción. Bloquea la **calibración** de las tres mejoras de calidad (§2.b) y la del presupuesto — ya no su implementación. |
 | **El orden del pipeline no sobrevive a la persistencia** | `db/src/store.ts:715,743` · `portal/src/app/core/cartera.ts:37` | `kr-service` ordena por evidencia y confianza; la base y el portal reordenan por `opportunity_score` crudo. La columna "Confianza" del dashboard sigue sin ordenar nada. Detalle y las dos salidas, en §2.b. |

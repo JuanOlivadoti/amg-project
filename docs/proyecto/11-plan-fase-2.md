@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-04** · **933 tests en verde** — **698** en el monorepo + **235** en
+> Última actualización: **2026-08-05** · **969 tests en verde** — **734** en el monorepo + **235** en
 > el portal (169 `node:test` + 66 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
 > siguientes fueron del agujero de la compuerta de secretos (2026-08-03), **once** de KR-3 —el orden del
 > brief persistido, migración `0015`— al estrenar el agente `datos`
@@ -114,7 +114,7 @@
 > ver la fila propia por completo, y esta pieza le agregó a esa fila columnas que son notas internas
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
-> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **933 tests** (698 monorepo + 235
+> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **969 tests** (734 monorepo + 235
 > portal), **13 migraciones** (la `0011` y la `0012` mergeadas, la `0015` de esta etapa; pendientes de aplicar en producción).
 
 ---
@@ -177,8 +177,8 @@ corre solo en local. *(La API y el portal están desplegados desde la etapa 5.3,
                                └────────────────┘
 ```
 
-- **6 paquetes** en workspaces npm: `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **698 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **7 paquetes** en workspaces npm: `contrato` (el contrato del brief, compartido), `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
+- **734 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
@@ -525,7 +525,8 @@ Todas con su ADR. Las que más condicionan lo que viene:
 | ~~Cuánto tarda un research real~~ | — | ✅ **Medido (2026-07-30): 16m15s** (55 keywords → 14 páginas, $0.3097), por encima del umbral de ~12 min. **Decisión:** la pieza D (research en vivo en la demo) queda desaconsejada tal como se imaginó — mostrarlo en vivo arriesga que Frank mire un spinner. Mejor correrlo antes (como acá) y mostrar el resultado publicado. El polling del portal (4s) sigue sin calibrar contra este número. |
 | ~~Navegación fija del sitio del cliente~~ | [spec](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente-design.md) · [plan](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente.md) | ✅ **Mergeada a `main` (2026-08-01).** 10 tasks (1-9 más la 6.5, migración `0010` no prevista en el plan original). Nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados, datos reales de La Birra Bar cargados. Revisión final de rama + revisión externa (Codex, 4 hallazgos reales corregidos). 516 tests. Ver §6.1 más arriba. |
 | **Plantillas de landing + manual de marca** | [spec](../superpowers/specs/2026-08-01-plantillas-landings-design.md) | 🟡 **Diseñado, sin empezar.** Shell fijo + catálogo de piezas + la plantilla como receta de contenido; migración `0014`; tres entregas (contrato → ensamblado con paridad → piezas nuevas y rediseño). Revisado por Codex el 2026-08-01. **Espera a las cuatro piezas del portal** por decisión del usuario, y hay una **colisión de contrato abierta** que la pieza 1 dejó a la vista: el formulario del portal guarda `logo_url`/`portada_url` en `contacto`, que es interno, y el renderizador solo lee `business_profile_publico` — sin cerrarla, la agencia carga la portada y la web nunca la muestra. **Enmendado el 2026-08-02** (sesión de diseño con un template de restaurante como referencia visual, sin adoptar nada suyo): **manual de marca** con tokens de color y roles tipográficos self-hosted —hoy la marca son tres campos y dos clientes se distinguen por un color de acento—, **carta con categorías** (foto por categoría, precios por ración, notas), y el resto del catálogo inventariado para después. Los **testimonios quedan descartados**, no aplazados: no hay reseñas reales de donde sacarlos e inventarlas son *fake reviews* en el JSON-LD. |
-| Esquema Zod duplicado M2/M1 | `kr-service/src/validation/`, `web-builder/src/contract.ts` | Dos fuentes de verdad del contrato. |
+| **KR-2 — el informe legible del research, en el portal** | [spec](../superpowers/specs/2026-08-04-informe-kr-portal-design.md) · [plan KR-2a](../superpowers/plans/2026-08-05-kr2a-paquete-contrato.md) | 🟡 **KR-2a cerrado el 2026-08-05; KR-2b sin empezar.** Es la pieza que falta para la demo del módulo de Keyword Research: hoy `renderReport` produce el mejor entregable del módulo y **solo existe como archivo local** tras correr el CLI. **KR-2a** extrajo el contrato del brief al 7º workspace `contrato/` (tipos + los **dos** validadores Zod + `renderReport`), cerró la deuda del Zod duplicado y arregló tres cosas del informe: `n/d` en vez de `NaN`, la tabla de desglose que no se pinta sin datos, y el **escapado de delimitadores** de Markdown (bug que ya existía en el CLI). 11 commits, 9 tareas con review cada una, **734 tests**. **KR-2b** —migración `0016` (`kr_informes`, con política `app.es_staff()` **y sus grants**), los dos endpoints, la pantalla con parser propio sin `innerHTML`, y el seed— **sin empezar**, y su plan se escribe con el paquete a la vista. Decisiones: el informe es **interno** de la agencia (lleva el coste, que ante Frank es argumento de venta), **pantalla + descarga `.md`**, el `.md` **guardado** ya renderizado, y el **PDF trasladado** al entregable del restaurante (nota fechada en ADR-07). |
+| ~~Esquema Zod duplicado M2/M1~~ | ✅ **cerrada el 2026-08-05 (KR-2a)** | El contrato vive en `contrato/`. **No** se fusionaron los dos validadores: son dos contratos con propósitos opuestos (ver [06 § Dónde vive el contrato](06-contrato-handoff.md)). Lo que se unificó son los tipos, el render y las piezas comunes, con tres tests que lo sostienen. |
 | `is_local` fuera de las cabezas de cluster | `pipeline/intent.ts` · `pipeline/local-signal.ts` | ✅ Corregido con el map pack del SERP (2026-08-02) **solo en las ~15 cabezas** que se observan; para el resto sigue la heurística, que sobre-detecta. |
 | `endpoints_degradados` incompleto | `meta_run` | Omite los fallos de suggestion/SERP. |
 | Sin tests de integración automatizados | — | El camino live se ejecutó **a mano** contra DataForSEO, OpenAI y Storyblok. |

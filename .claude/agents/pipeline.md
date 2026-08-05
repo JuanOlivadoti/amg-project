@@ -98,7 +98,7 @@ aunque además cargues otra.
 
 ```bash
 npm test -w kr-service -w orchestrator -w web-builder   # ~20s, providers mock, cero red
-npm run typecheck                                       # ~5s, los 6 paquetes
+npm run typecheck                                       # ~5s, los 7 paquetes
 npm run verificar                                       # entorno + arnés + secretos + typecheck + tests
 ```
 

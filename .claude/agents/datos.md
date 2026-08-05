@@ -145,7 +145,7 @@ no tenerlo, porque lo que certifica es una garantía de seguridad.
 ```bash
 npm test -w db -w api      # PGlite (Postgres real en WASM), cero red y cero credenciales
 npm test -w db             # la parte rápida: ~6s
-npm run typecheck          # los 6 paquetes + scripts/
+npm run typecheck          # los 7 paquetes + scripts/
 npm run verificar          # entorno + arnés + secretos + typecheck + tests
 ```
 

@@ -7,41 +7,15 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-05
-**En curso:** **KR-2 — el informe legible en el portal.** Spec escrita, revisada por la **14ª ronda
-externa** (NO LISTO, 13 hallazgos, los 13 verificados) y **corregida**, sin implementar:
-[`docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md`](../docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md).
-El relato de la ronda está en [`history.md`](history.md) y la contabilidad en
-[`08` § tanda 20](../docs/proyecto/08-testing-calidad.md).
+**En curso:** nada. Cerrado **KR-2a**: el paquete `contrato/` (7º workspace) con los tipos del contrato del
+brief, los **dos** validadores Zod y `renderReport`. 11 commits por las 9 tareas del
+[plan](../docs/superpowers/plans/2026-08-05-kr2a-paquete-contrato.md) —cada una con su review— más una fix
+wave de la review de conjunto. El relato está en [`history.md`](history.md).
+**Estado:** verificado en verde — **734 tests** del monorepo (venía de 698) + 235 del portal, typecheck
+limpio en los 7 paquetes, sin secretos entre los 419 archivos versionados.
 
-**El plan de KR-2a está escrito y sin ejecutar:**
-[`plans/2026-08-05-kr2a-paquete-contrato.md`](../docs/superpowers/plans/2026-08-05-kr2a-paquete-contrato.md)
-— **9 tareas** con ciclo TDD y mutación por garantía. Lo próximo es ejecutarlo.
-
-**El plan de KR-2b se escribe cuando KR-2a cierre**, a propósito: depende de las firmas reales que produzca
-el paquete, y escribirlas ahora sería inventar nombres que después no coinciden.
-
-**✅ El PDF de ADR-07, resuelto (2026-08-05).** La nota está escrita **en ADR-07 y antes de implementar**:
-el informe legible se sirve como **pantalla + Markdown**, y el **PDF se traslada al entregable del
-restaurante** (que no existe y no tiene fecha), porque con el informe convertido en documento interno el
-PDF perdió su motivo — era un formato de entrega hacia afuera.
-
-**Dos cosas que la ronda dejó anotadas y NO son de KR-2:**
-
-1. **El margen ya está expuesto al rol `cliente`.** `run_select` sobre `kr_runs` usa
-   `app.ve_cliente(client_id)` ([`0001_init.sql:441`](../db/migrations/0001_init.sql#L441)), así que un
-   `cliente` puede leer `coste_micros_usd` y `coste_breakdown` de su propio run: `GET /runs/:id` los
-   devuelve y la pantalla del brief los pinta. **No es fuga activa** —no hay usuarios con ese rol— pero es
-   real, y cerrarla toca `RunSummary` y la pantalla del brief.
-2. **El entregable que la agencia le pasa al restaurante no existe.** Sería el informe sin el bloque de
-   coste. Es una pieza de producto propia, y es la dueña natural del PDF.
-
-Antes, el 2026-08-04: cerrada la **etapa B** del [plan de agentes](../.claude/PLAN-AGENTES.md) — el agente
-`datos` (`db/` + `api/`) con `datos-postgres`, `datos-api` y `datos-testing`, estrenado con **KR-3** (el
-orden del brief, persistido) y pasado por la 13ª review.
-**Estado:** verificado en verde — **698 tests** del monorepo (venía de 684), 169 del portal, 66 de Karma,
-typecheck limpio, sin secretos entre los 405 archivos versionados. Pasó por **dos** revisiones: la interna
-del `revisor` (2 bloqueantes) y la **13ª ronda externa de Codex** (NO LISTO, 9 hallazgos). Los once
-resueltos; el detalle en [`08` § tanda 19](../docs/proyecto/08-testing-calidad.md).
+**No hubo sesión de navegador, y esta vez el motivo es estructural:** KR-2a no toca el portal ni el
+renderizador. Esa mitad del ritual le corresponde a **KR-2b**, que trae la pantalla.
 
 ---
 
@@ -57,59 +31,66 @@ también los directorios hermanos tipo `docs/private-backup/`—, pero **el obje
 GitHub** por decisión tomada: purgar no des-expone, lo que devuelve la seguridad es rotar.
 
 **La lista priorizada vive fuera del repo:** `docs/private/rotacion-credenciales.md` (gitignoreado).
-Está ahí y no acá a propósito — es un análisis de impacto ordenado por daño, o sea un mapa de qué
-buscar y por dónde empezar, y este repositorio es público. El hecho va al repo; el mapa, no.
 
 Cuando la rotación se complete, dejar acá una línea con la fecha. Eso sí es el hecho.
 
 ---
 
-## Lo que esta sesión dejó abierto
+## Lo próximo: KR-2b
 
-**La migración `0015` está escrita y NO desplegada.** Igual que la `0011` y la `0012`. Se aplica con
-`npm run migrate:deploy -w db` contra la base real — que **no** se corrió acá, y no se corre sin
-decidirlo. `0013` y `0014` siguen **reservadas** para las ramas de las piezas "ideas" y "fotos
-públicas", que se ejecutan en otra máquina: la reserva vive en
-`docs/superpowers/plans/2026-08-01-portal-agencia-programa.md` (§4), y **un número libre en el disco no
-es un número libre**.
+El plan **se escribe ahora**, con el paquete `contrato/` a la vista en vez de con firmas inventadas — que
+es la razón por la que no se escribió antes. Lo que trae, según la
+[spec](../docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md):
 
-**Lo que ningún script vio: la app en el navegador.** El ritual lo pide y esta vez **no se hizo**, con
-un motivo medido y no como excusa: con el seed actual la demo se ve **exactamente igual** que antes de
-la 0015 — los 14 scores de `PAGINAS_DEMO` son estrictamente descendentes, sin empates, con las 8
-respaldadas antes de las 6 sin validar, así que el orden del array coincide índice por índice con el de
-dos niveles. Una sesión de navegador **no podría distinguir** si el cambio funciona. Lo que sí queda sin
-comprobar visualmente es que la pantalla del brief siga pintando bien; los 66 tests de componentes
-pasan.
+- **Migración `0016`**: la tabla `kr_informes` con política `app.es_staff()` **y sus grants** — que faltaban
+  en la spec y los cazó la 14ª review: los grants del proyecto son listas explícitas por tabla, así que una
+  tabla nueva nace sin un solo privilegio y todo daría `42501`.
+- **`guardarInforme`** y el step del orquestador **entre `guardar-paginas` y `cerrar-run`**, que es lo que
+  hace enunciable el invariante *un run `pending_approval` siempre tiene informe*.
+- **Los dos endpoints** (`/runs/:id/informe` y `/runs/:id/informe.md`), con el `filename` saneado por
+  allowlist.
+- **La pantalla**, con parser propio de Markdown y **sin `innerHTML`**.
+- **El seed**, completado sin inventar los datos que no quedaron registrados.
 
-**KR-2 tiene spec aprobada y sigue sin implementar.** Las tres decisiones cerradas: paquete compartido
-(opción b, que de paso cierra la deuda del Zod duplicado M2/M1), **pantalla + descarga `.md`**, y el
-**`.md` guardado**. Lo que el diseño destapó y no se sabía antes: el **backlog no se persiste**, el run
-de la demo **lo siembra `sembrarDemo`** (no el pipeline), `renderReport` **emite `NaN`** con datos
-incompletos, el contrato **no admite "no sé"** en las coberturas, y el informe va en **tabla propia** con
-`app.es_staff()` porque una columna de `kr_runs` habría filtrado el coste interno al rol `cliente`.
-Detalle en la [spec](../docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md).
+**La próxima migración libre sigue siendo la `0016`.** `0013` y `0014` están **reservadas** para ramas que
+se ejecutan en otra máquina: un número libre en el disco no es un número libre.
+
+## Lo que quedó abierto de KR-2a (deuda con nombre, no silenciosa)
+
+- **No hay test del corte por cobertura 0** en el gate de gasto de `kr-service/src/pipeline/run.ts`. El
+  propio comentario lo declara: la red que atrapa un `null` ahí es `tsc`, **no la suite** — los 146 tests
+  pasan en las tres variantes que se midieron.
+- **`endpoints_degradados` sigue incompleto** como dato: omite los fallos de suggestion/SERP. Lo que KR-2a
+  arregló es que ahora **puede decir "no se sabe"** (`null`) en vez de afirmar `[]`.
+- **`web-builder/src/types.ts` conserva `SchemaType`/`PageType`/`SearchIntent` propios**, para el contrato
+  de **bloks** (`web.v0.1`), que es del M1 y va versionado aparte. Es un duplicado *nominal* del vocabulario
+  de `contrato`, pero **se autodelata**: si el contrato agrega un `PageType`, `pageToStory()` deja de
+  typecheckear. Falla fuerte, no en silencio.
 
 ## Lo que sigue pendiente de antes
 
+**Las migraciones `0011`, `0012` y `0015` están escritas y NO desplegadas.** Se aplican con
+`npm run migrate:deploy -w db` contra la base real, y no se corre sin decidirlo.
+
 **Decisión que no toma un agente:** **regenerar el dataset crudo** cuesta **~$0.31** y ~16 min contra
 DataForSEO en producción. Sin él, `VOLUMEN_PERCENTIL_TOPE = 0.9` y `PESO_CONFIANZA_ORDEN = 0.5` quedan
-sin calibrar y `TIPOS_MAP_PACK` sin verificar. El destino ya es durable, así que el dataset sobrevive.
-**Y si se corre, hay que volver a sandbox** en `kr-service/.env`.
+sin calibrar y `TIPOS_MAP_PACK` sin verificar. **Y si se corre, hay que volver a sandbox** en
+`kr-service/.env`. Con KR-2b esto se vuelve visible: el informe de la demo va a salir con **tres huecos**
+en `n/d` (el desglose de coste y las dos coberturas) hasta que exista el dataset.
 
-**Pendiente inmediato:** el **plan de implementación de KR-2** (writing-plans), y después KR-2a.
+**El margen de la agencia es legible por el rol `cliente`**, y no lo causa KR-2: `run_select` sobre
+`kr_runs` usa `app.ve_cliente(client_id)`, así que un `cliente` ve `coste_micros_usd` y `coste_breakdown`
+de su propio run. **No es fuga activa** —no hay usuarios con ese rol— pero el rol existe y RLS lo
+contempla. Cerrarlo toca `RunSummary` y la pantalla del brief: **es una pieza propia**.
 
-Sigue en la cola, sin apuro: la **etapa C** del [plan de agentes](../.claude/PLAN-AGENTES.md) — el agente
-`render` con `render-seguridad` y `render-cda-cache`. Va última a propósito y **no tiene trabajo real
-que la estrene**: lo que le queda al renderizador (CDN en el borde, cache compartida entre instancias)
-es decisión de despliegue, no código. Es razonable que espere a que aparezca trabajo real en vez de
-escribirse por completitud.
+**El entregable que la agencia le pasa al restaurante no existe.** Sería el informe **sin el bloque de
+coste**, y es la pieza dueña del **PDF** que ADR-07 pedía (ver la nota fechada en ADR-07).
 
-**Toda la configuración de skill-map es local a esta máquina.** `.skill-map/` está gitignoreado entero,
-así que `respectGitignore`, `ignore` y `referencePaths` **no viajan con el repo**. Si tiene que valer
-para todos, hay que versionar `.skill-map/settings.json`.
+**Toda la configuración de skill-map es local a esta máquina.** `.skill-map/` está gitignoreado entero, así
+que `respectGitignore`, `ignore` y `referencePaths` **no viajan con el repo**.
 
-**Sin verificar contra producción:** `docs/proyecto/README.md` afirma que hay **10 migraciones
-aplicadas en producción**, y en el repo hay **13**. No se puede confirmar sin credenciales.
+**Sin verificar contra producción:** `docs/proyecto/README.md` afirma que hay **10 migraciones aplicadas en
+producción**, y en el repo hay **13**. No se puede confirmar sin credenciales.
 
 ---
 
