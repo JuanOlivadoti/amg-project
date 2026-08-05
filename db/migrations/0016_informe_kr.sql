@@ -31,7 +31,11 @@
 -- condición que el programa exige declarar antes de mergear.
 -- =============================================================================
 
-create table if not exists kr_informes (
+-- `create table` PELADO, sin `if not exists`, igual que las 9 tablas de la 0001. El `if not exists` no
+-- protege de nada real —`migrarConRegistro` registra el checksum y no re-aplica— y sí esconde un fallo:
+-- si `kr_informes` ya existiera con OTRA forma, el `create` no fallaría y los grants y la política se
+-- aplicarían silenciosamente a esa tabla ajena. Que reviente es el comportamiento correcto.
+create table kr_informes (
   run_id       uuid primary key references kr_runs(id) on delete cascade,
   tenant_id    uuid not null references tenants(id) on delete cascade,
   client_id    uuid not null,
