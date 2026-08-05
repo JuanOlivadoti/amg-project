@@ -5,6 +5,7 @@
   "type": "module",
   "description": "AMG OS — plataforma multi-tenant para la agencia de marketing gastronómico.",
   "workspaces": [
+    "contrato",
     "db",
     "kr-service",
     "web-builder",

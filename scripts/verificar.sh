@@ -116,8 +116,17 @@ fi
 echo ""
 echo "── 4. Typecheck ──────────────────────────────────────────"
 
+# El conteo se DERIVA de los workspaces, no se escribe a mano: el "6 paquetes" que estaba acá quedó
+# viejo el día que apareció el 7º (`contrato`), y un mensaje que miente sobre cuánto verificó es peor
+# que no tenerlo. Mismo motivo que el piso del `find` de la sección 2: si no pude contar, no digo [OK].
+N_PAQUETES=$(node -e 'console.log(require("./package.json").workspaces.length)')
+if ! [ "$N_PAQUETES" -ge 1 ] 2>/dev/null; then
+  fail "no pude contar los workspaces del package.json de la raíz: el conteo de abajo sería una cifra inventada"
+  exit 1
+fi
+
 if npm run typecheck --silent > "$LOG_TYPECHECK" 2>&1; then
-  ok "typecheck limpio (6 paquetes + scripts/)"
+  ok "typecheck limpio ($N_PAQUETES paquetes + scripts/)"
 else
   fail "typecheck en rojo — últimas líneas:"; tail -15 "$LOG_TYPECHECK" | sed 's/^/          /'; SALIDA=1
 fi
@@ -137,7 +146,7 @@ if npm test --silent > "$LOG_TEST" 2>&1; then
   # Esta es LA cifra de tests del monorepo, medida. Si no coincide con la que declara la
   # documentación, la que está mal es la documentación: sincronizala (09-estado-y-roadmap.md,
   # 08-testing-calidad.md y el README de docs/proyecto/ la repiten).
-  ok "$(grep -hE '^# pass' "$LOG_TEST" | awk '{s+=$3} END {print s+0}') tests en verde (6 paquetes + scripts/)"
+  ok "$(grep -hE '^# pass' "$LOG_TEST" | awk '{s+=$3} END {print s+0}') tests en verde ($N_PAQUETES paquetes + scripts/)"
 else
   fail "tests en rojo — últimas líneas:"; tail -25 "$LOG_TEST" | sed 's/^/          /'; SALIDA=1
 fi

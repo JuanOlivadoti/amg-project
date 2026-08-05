@@ -1,0 +1,23 @@
+{
+  "name": "contrato",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Contrato compartido M2↔M1: tipos del brief, validación Zod (emisión y consumo) e informe legible.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
