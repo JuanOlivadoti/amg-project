@@ -8,19 +8,50 @@
 
 ## 1. Qué se construye, y para qué
 
-`renderReport()` produce **el mejor entregable del módulo 2**: el informe legible que recibe el
-restaurante — coste, calidad de los datos, páginas separadas por evidencia, detalle por página y
-backlog. Hoy solo existe como `out/informe.md` después de correr el CLI a mano, así que **no se puede
-mostrar**: el guion de la demo KR abre por el entregable ("entregable primero, pipeline después") y el
-entregable no está en ninguna pantalla.
+`renderReport()` produce **el informe de trabajo del módulo 2**: coste del research con su desglose,
+calidad de los datos, páginas separadas por evidencia, detalle por página y backlog. Hoy solo existe
+como `out/informe.md` después de correr el CLI a mano, así que **no se puede mostrar**: el guion de la
+demo KR abre por el entregable ("entregable primero, pipeline después") y no está en ninguna pantalla.
 
-KR-2 lo lleva al portal. Al terminar, la agencia abre un run y ve el informe; y se lo puede descargar
-como `.md` para mandárselo al cliente.
+KR-2 lo lleva al portal. La agencia abre un run, ve el informe, y puede descargarlo como `.md`.
+
+### 1.1 El informe es un DOCUMENTO INTERNO de la agencia (decidido 2026-08-05)
+
+La primera versión de esta spec decía que el `.md` servía "para mandárselo al cliente" **y** justificaba
+la tabla staff-only porque el informe revela el margen. Las dos cosas no pueden ser ciertas. Resuelto:
+**el informe es interno**. No es lo que recibe el restaurante.
+
+Lo que **sí** es correcto —y es el motivo por el que el coste tiene que estar— es que **Frank es la
+agencia**. El informe con el coste adentro no es una fuga hacia él: es el argumento de venta. "Este
+research te costó $0.31; lo que le cobrás al restaurante no lo limita la API." Mostrárselo en la demo es
+exactamente el punto.
+
+**Lo que esto deja abierto, fuera del alcance de KR-2:** el entregable que la agencia le pasa al
+restaurante **no existe todavía**. Sería este informe sin el bloque de coste, y probablemente en otro
+formato (ver §2.1). Es una pieza de producto propia, no una variante que se cuele acá.
 
 **Lo que KR-2 no es.** La pantalla del brief que ya existe
 ([`portal/src/app/pages/brief/brief.ts`](../../../portal/src/app/pages/brief/brief.ts)) es para
-**operar la compuerta**: aprobar y editar páginas. No muestra coste, ni calidad de datos, ni el detalle
-por página, ni el backlog. El informe no la duplica — la complementa.
+**operar la compuerta**: aprobar y editar páginas. Muestra el **coste total**
+([`brief.ts:29`](../../../portal/src/app/pages/brief/brief.ts#L29)) — la primera versión de esta spec
+decía que no mostraba coste, y era falso. Lo que no muestra es el **desglose**, la calidad de los datos,
+el detalle por página ni el backlog. El informe no la duplica: la complementa.
+
+> ### 🔴 El margen ya está expuesto al rol `cliente`, y no lo causa KR-2
+>
+> Verificado al comprobar lo anterior: `run_select` sobre `kr_runs` usa `app.ve_cliente(client_id)`
+> ([`0001_init.sql:441`](../../../db/migrations/0001_init.sql#L441)), que da **true** para un rol
+> `cliente` sobre su propio run. Así que un `cliente` puede leer `coste_micros_usd` y `coste_breakdown`
+> **hoy**: `GET /runs/:id` devuelve el `RunSummary` completo y la pantalla del brief lo pinta.
+>
+> `kr_informes` con `app.es_staff()` sigue siendo la decisión correcta —**no agrava**, y el informe lleva
+> mucho más que el total—, pero esta spec no puede presentarla como si cerrara la exposición del coste:
+> la exposición ya existía por otra vía. Afirmar lo contrario sería una garantía de seguridad más fuerte
+> de lo que el sistema cumple, que es el error que este proyecto persigue.
+>
+> **No hay usuarios con rol `cliente` hoy** (Frank `maestro`, Juan `equipo`), así que no es una fuga
+> activa. Cerrarla toca `RunSummary` y la pantalla del brief: **es otra pieza**, y queda anotada como
+> tal.
 
 ## 2. Las decisiones que ya estaban tomadas
 
@@ -33,25 +64,41 @@ por página, ni el backlog. El informe no la duplica — la complementa.
 | Markdown → HTML | **Parser propio**, sin `innerHTML` ni dependencia nueva | 2026-08-04 (Juan) |
 | Entrega | **Dos etapas**: KR-2a (paquete) y KR-2b (feature) | 2026-08-04 (Juan) |
 
-## 2.1 Qué dice ADR-07, y qué de eso cumple esta spec
+## 2.1 ADR-07 pedía «Markdown→PDF», y el PDF cambió de dueño
 
 **ADR-07 decidió un doble entregable: JSON estructurado + informe legible «Markdown→PDF»**
-([`decisiones-arquitectura.md`](../../decisiones-arquitectura.md) § ADR-07). Esta spec **cumple la mitad
-del informe legible y posterga el PDF**, y hay que decirlo en lugar de dejar la promesa flotando:
+([`decisiones-arquitectura.md:133`](../../decisiones-arquitectura.md#L133)). KR-2 entrega pantalla y
+`.md`, **no PDF**. La primera versión de esta spec proponía actualizar ADR-07 *después* de implementar,
+y eso está mal: sería cambiar una decisión aceptada con el trabajo ya hecho, que es la forma más
+cómoda de convertir una deuda en una decisión que nadie aprobó. Lo señaló la 14ª review.
 
-- ✅ El informe legible existe (`renderReport`) y ahora **llega a un humano sin correr un CLI**. Eso es
-  lo que ADR-07 quería del entregable.
-- ⏸️ **El PDF queda fuera** (§10). ADR-07 lo nombra como formato, no como requisito con fecha, y la
-  pantalla + `.md` cubren el caso de uso real (revisar en el portal, mandar el archivo). Si el PDF llega
-  a hacer falta, se genera **desde el mismo `.md`** y no obliga a rehacer nada de esto.
-- ❗ La alternativa que ADR-07 **descartó** fue "JSON + dashboard interactivo (queda para F3)". Una
-  pantalla que **muestra un informe** no es ese dashboard: no hay filtros, ni agregaciones, ni
-  exploración. Vale decirlo porque el parecido superficial invita a leer esta spec como una violación de
-  ADR-07, y no lo es.
+**Lo que hay que ver primero: la decisión de §1.1 le quitó el motivo al PDF.** ADR-07 pedía PDF porque
+el informe era el entregable de revisión para un humano, y el PDF es un formato de **entrega hacia
+afuera** — se manda, se archiva, se imprime. Un documento **interno** que se lee en una pantalla del
+portal no necesita PDF: necesita ser legible en el portal, que es exactamente lo que KR-2 hace.
 
-**Al implementar KR-2b hay que actualizar ADR-07** con el estado real del entregable: el Markdown se
-sirve, el PDF sigue diferido. Un ADR que promete un formato que nadie construyó es una promesa vieja que
-envejece sola.
+Y el PDF **sí va a hacer falta** el día que exista el entregable del restaurante (§1.1) — que es otro
+documento, sin el bloque de coste. Ahí el formato importa. **El PDF no desaparece: cambia de pieza.**
+
+Aparte, generarlo hoy costaría una dependencia que el proyecto no tiene en ningún paquete (headless
+Chrome o una librería de PDF) para la única superficie que la necesitaría, contra un invariante que dice
+`tsx` sin paso de build.
+
+> ### 📌 Recomendación, pendiente del OK de Juan
+>
+> **Registrar el cambio en ADR-07 con una nota fechada, ANTES de implementar KR-2b** — no un ADR nuevo:
+> el precedente del propio repo es el bloque `> **Cumplido a medias el 2026-08-02**` de ADR-10. La nota
+> dice tres cosas: que el informe legible se sirve como **pantalla + Markdown**, que el **PDF se traslada
+> a la pieza del entregable del cliente** (que no existe y no tiene fecha), y por qué (§1.1: el informe
+> es interno).
+>
+> Costo: un párrafo de documento, cero código. Lo que compra: que KR-2 no se cierre con una promesa
+> incumplida flotando, y que la decisión quede con su motivo escrito el día que se tomó.
+
+Y una cosa que ADR-07 **no** prohíbe, contra lo que el parecido sugiere: la alternativa que descartó fue
+"JSON + dashboard interactivo (queda para F3)". Una pantalla que **muestra un informe** no es ese
+dashboard —no tiene filtros, ni agregaciones, ni exploración— y la 14ª review lo confirmó
+explícitamente.
 
 ## 3. Lo que se midió antes de escribir esta spec
 
@@ -104,22 +151,24 @@ Lo que sí está registrado de esa corrida: **55 keywords → 14 páginas, $0.30
 ## 4. Arquitectura
 
 ```
-                        ┌──────────────────────────────────┐
-                        │  contrato/  (7º workspace)        │
-                        │  · tipos del brief                │
-                        │  · UN esquema Zod (M2 = M1)       │
-                        │  · renderReport()                 │
-                        │  dependencias: zod                │
-                        └──────────────────────────────────┘
-                          ▲          ▲          ▲        ▲
-              kr-service ─┘  web-builder │      api │    │ db (solo el seed)
-                                          └──────────┘
+                    ┌────────────────────────────────────────┐
+                    │  contrato/  (7º workspace)              │
+                    │  · tipos del brief        (compartidos) │
+                    │  · renderReport()         (compartido)  │
+                    │  · esquemaBase                          │
+                    │      ├─ emisionM2  (estricto)           │
+                    │      └─ consumoM1  (laxo, 4 versiones)  │
+                    │  dependencias: zod                      │
+                    └────────────────────────────────────────┘
+                      ▲          ▲          ▲        ▲
+          kr-service ─┘  web-builder │      api │    │ db (solo el seed)
+                                      └──────────┘
 
-  DOS productores de runs, UN método del store:
+  DOS productores del informe, UN render, DOS escrituras (§4.3):
 
-  orchestrator ─ al terminar el research ─┐
-                                           ├─→ PgStore.guardarInforme(ctx, runId, md)
-  sembrarDemo  ─ al sembrar la demo ──────┘         └─→ kr_informes  (migración 0016, solo staff)
+  orchestrator ─ step `guardar-informe` ──→ PgStore.guardarInforme(ctx, runId, md)
+  sembrarDemo  ─ dentro de SU transacción ─→ con.query("insert into kr_informes …")
+                                                  └─→ kr_informes  (0016, solo staff)
 
   UN consumidor:  api  ──→  GET /runs/:id/informe      (pantalla)
                             GET /runs/:id/informe.md   (descarga)
@@ -128,21 +177,45 @@ Lo que sí está registrado de esa corrida: **55 keywords → 14 páginas, $0.30
 
 ### 4.1 El paquete `contrato/`
 
-Nuevo workspace. Contiene los tipos del brief, **un** esquema Zod y `renderReport()`. Única
-dependencia de producción: `zod`. No conoce Postgres, ni HTTP, ni UI.
+Nuevo workspace. Contiene los tipos del brief, `renderReport()` y **una base de esquema con dos
+derivados**. Única dependencia de producción: `zod`. No conoce Postgres, ni HTTP, ni UI.
 
 No hay ciclo: `contrato` no depende de nadie, y hoy `kr-service → db`, `api → db`, `orchestrator →
 {db, kr-service, web-builder}`.
 
-**Cierra la deuda del Zod duplicado M2/M1** ([`09` § 4](../../proyecto/09-estado-y-roadmap.md)): hoy el
-contrato del brief vive en [`kr-service/src/validation/brief.schema.ts`](../../../kr-service/src/validation/brief.schema.ts)
-y en [`web-builder/src/contract.ts`](../../../web-builder/src/contract.ts).
+#### Los dos esquemas Zod NO se fusionan, y eso corrige esta spec
 
-> **Riesgo con nombre.** Si los dos esquemas divergieron, unificarlos **relaja uno o rompe el otro**.
-> Se diffean antes de tocar nada, la divergencia se escribe en el plan campo por campo, y los fixtures
-> de los dos lados tienen que pasar contra el esquema unificado **sin editarlos**. Si un fixture hay
-> que editarlo, eso no es un ajuste: es la divergencia, y se decide explícitamente cuál de los dos
-> lados tenía razón.
+La primera versión decía "**un** esquema Zod (M2 = M1)" y ponía como criterio de cierre que los fixtures
+de los dos lados pasaran **sin editarse**. **Las dos cosas eran imposibles**, y lo demostró la 14ª
+review:
+
+| | `kr-service/src/validation/brief.schema.ts` | `web-builder/src/contract.ts` |
+|---|---|---|
+| Versiones | la actual | **cuatro**: `kr.v0.2`…`kr.v0.5` ([`:17`](../../../web-builder/src/contract.ts#L17)) |
+| `evidencia`, `score_confidence` | exigidos | **`.optional()`** a propósito ([`:46-47`](../../../web-builder/src/contract.ts#L46)) |
+| `run_id`, `generated_at`, `backlog`, `meta_run` | exigidos | no los consume ni los pide |
+| Para qué existe | validar **lo que M2 emite** | aceptar **lo que M1 puede recibir**, incluido lo viejo |
+
+No son dos copias del mismo esquema: son **dos contratos con propósitos opuestos** que coinciden en la
+parte de en medio. Fusionarlos obliga a que uno pierda su garantía — o M1 deja de aceptar briefs
+históricos, o M2 deja de exigir campos que hoy exige. El comentario de `contract.ts` dice que la laxitud
+es deliberada, así que no es deriva: es diseño.
+
+**Lo que se comparte, entonces:** los **tipos** (una sola definición de `ProposedPage`,
+`KeywordResearchBrief`, `DataQuality`…), **`renderReport()`**, y una **`esquemaBase`** de la que salen
+`emisionM2` (estricta, versión actual) y `consumoM1` (laxa, multi-versión). La duplicación que se elimina
+es la de los **tipos y las formas comunes**; los dos validadores siguen siendo dos, ahora con un ancestro
+único en vez de dos archivos que se copiaron a mano.
+
+> **Esto redefine qué significa "cerrar la deuda del Zod duplicado M2/M1"** del
+> [`09` § 4](../../proyecto/09-estado-y-roadmap.md). La deuda real era *"dos fuentes de verdad del mismo
+> contrato"*: eso se cierra. Lo que **no** se cierra —porque no era la deuda— es que haya dos
+> validadores; son dos porque emitir y recibir no son la misma operación.
+
+**Criterio de cierre corregido:** los fixtures de cada lado pasan **contra su propio derivado** sin
+editarse. Y hay un test nuevo que fija la relación: **todo brief que valide `emisionM2` valida
+`consumoM1`** (lo que M2 emite, M1 lo acepta). Al revés no: hay briefs `kr.v0.2` que M1 acepta y M2 ya no
+emite, y eso es correcto.
 
 ### 4.2 `renderReport()` endurecido, y el contrato que admite "no sé"
 
@@ -155,8 +228,33 @@ Para eso hay que **relajar el contrato**: `DataQuality.cobertura_volumen` y `cob
 poner un número, y **poner un número que no se midió es inventarlo**. Es seguro porque el único lector
 que los interpreta es `renderReport`; el resto los pasa como `Record<string, unknown>`.
 
-`endpoints_degradados` **no** se relaja: un array vacío ya significa "ninguno falló", que es un dato, no
-una ausencia.
+**`endpoints_degradados` también admite ausencia, y esto corrige la spec.** La primera versión decía que
+no hacía falta relajarlo porque "un array vacío ya significa «ninguno falló», que es un dato, no una
+ausencia". Eso es cierto **para el pipeline**, que sabe si falló un endpoint; es **falso para el seed**,
+que no lo sabe — el registro de la corrida no lo conserva (§8). Sembrarlo como `[]` sería afirmar una
+calidad que nadie midió, que es exactamente el error que las tres filas de arriba evitan. Lo señaló la
+14ª review: yo trataba tres datos como desconocidos y **convertía el cuarto en certeza**.
+
+Así que: `endpoints_degradados: string[] | null`. `[]` = "ninguno falló" (lo dice el pipeline);
+`null` = "no se sabe" → el informe **omite** la advertencia y **dice que la omite**, en vez de callar.
+
+### 4.3 Dos productores, un render, dos escrituras
+
+La primera versión prometía "un solo método del store, dos llamadores". **No se puede**, y lo demostró la
+14ª review: `sembrarDemo(con: ConexionReservada)` abre su propio `begin`, escribe todo con `con.query(…)`
+y cierra con `commit` ([`seed-demo.ts:555`](../../../db/src/seed-demo.ts#L555)), mientras
+`PgStore.withTenant` **siempre abre `pool.transaction`** — otra conexión, que no vería el run sin
+confirmar. Llamarlo desde el seed fallaría por FK; llamarlo después del `commit` rompería la atomicidad
+del seed.
+
+| Productor | Cómo escribe |
+|---|---|
+| `orchestrator` | `PgStore.guardarInforme(ctx, runId, md)` — bajo RLS, rol `app_service`, dentro de `withTenant` (ADR-13) |
+| `sembrarDemo` | `con.query("insert into kr_informes …")` **dentro de su propia transacción**, igual que ya inserta `kr_runs` y `kr_pages` |
+
+**No es una excepción nueva: es el precedente que ya existe.** El seed inserta a mano todas sus tablas.
+Lo que **sí** tiene que ser único es el **render** (`renderReport` en `contrato/`) — la lógica del
+informe, no el `INSERT`. La unicidad importa donde vive una decisión, no donde vive una sentencia SQL.
 
 **Y una decisión de forma, no solo de valor:** cuando no hay desglose por proveedor, **no se pinta la
 tabla de desglose**. Se pinta el total —que sí es un dato— con una nota de que el desglose no quedó
@@ -191,11 +289,30 @@ create table kr_informes (
   informe_md   text not null,
   generado_at  timestamptz not null default now(),
   -- Misma FK compuesta que kr_pages: la fila no puede mentir sobre a qué run/tenant/cliente pertenece.
-  foreign key (run_id, tenant_id, client_id) references kr_runs (id, tenant_id, client_id) on delete cascade
+  foreign key (run_id, tenant_id, client_id) references kr_runs (id, tenant_id, client_id) on delete cascade,
+
+  /*
+   * TOPE DE TAMAÑO, en la base y no en un comentario. El informe de 14 páginas mide decenas de KB; el
+   * tope está una orden de magnitud arriba, así que solo lo toca un dato patológico (un LLM que
+   * devuelve una FAQ de 2 MB). Va acá porque es el ÚNICO punto de escritura: con la constraint puesta,
+   * ni el endpoint ni la pantalla necesitan lógica de tamaño — no pueden recibir algo que no entró.
+   */
+  constraint informe_tamano_razonable check (octet_length(informe_md) <= 262144)  -- 256 KiB
 );
 
 alter table kr_informes enable row level security;
 alter table kr_informes force  row level security;
+
+/*
+ * LOS GRANTS. Una política SIN grant no da acceso: Postgres rechaza con 42501 ANTES de evaluar RLS.
+ * Los grants del proyecto son listas EXPLÍCITAS por tabla (0001_init.sql:413 para app_user,
+ * 0002_auth.sql:93 para app_service) y no hay `on all tables` ni `alter default privileges` en
+ * ninguna migración: una tabla nueva nace SIN un solo privilegio para nadie.
+ *
+ * `app_render` NO recibe nada, y eso es la mitad de la decisión de ADR-19.
+ */
+grant select                         on kr_informes to app_user;     -- la API lee (staff, vía RLS)
+grant select, insert, update, delete on kr_informes to app_service;  -- el orquestador escribe
 
 -- `app.es_staff()` es una ALLOWLIST POSITIVA que falla cerrado: un rol NULL o desconocido no ve nada
 -- (0001_init.sql § FALLAR CERRADO). NO se usa `is distinct from 'cliente'`, que falla abierto.
@@ -204,6 +321,19 @@ create policy informe_staff on kr_informes
   using      (tenant_id = app.current_tenant_id() and app.es_staff())
   with check (tenant_id = app.current_tenant_id() and app.es_staff());
 ```
+
+> ### 🔴 Los grants faltaban, y era un bloqueante que ningún test habría atajado
+>
+> La primera versión de esta spec tenía la tabla, el `force RLS` y la política — **y ni un `grant`**. Lo
+> encontró la 14ª review midiéndolo en PGlite: `app_service` recibía `42501 permission denied for table
+> kr_informes` al insertar. La política autorizaba filas de una tabla a la que ninguno de los dos roles
+> podía llegar.
+>
+> **`kr_informes` es la primera tabla que el proyecto agrega desde que existen los cuatro logins**
+> (ADR-17, migración `0003`), así que el paso no estaba en ninguna rutina ni en ningún checklist. Queda
+> como fila propia en la matriz de garantías (§9) y como línea nueva en
+> [CHECKPOINTS.md](../../../CHECKPOINTS.md) al implementar: *toda tabla nueva necesita su `grant`, y el
+> test que lo prueba es un `insert`/`select` con el login real, no con el superuser*.
 
 **Un `cliente` no recibe un 403: no recibe la fila.** El endpoint devuelve `informe_md: null` y la API
 no tiene ni un `if` de rol — la autorización la impone Postgres (ADR-15). Que un run **sin** informe y
@@ -220,17 +350,60 @@ Cuando el informe era una columna de `kr_runs`, había que escribirlo **en sente
 lección de la etapa B: dentro del upsert de `savePages`, en el `where` habría revocado la aprobación de
 páginas que no cambiaron, y solo en el `set` no se habría escrito en un reintento.
 
-**Con la tabla propia esa trampa no existe:** el informe no toca `kr_pages`, así que no puede revocar
-una aprobación. La garantía pasó de **disciplinaria** (acordarse de la sentencia propia) a
-**estructural** (el esquema no lo permite).
+**Con la tabla propia, el acoplamiento ACCIDENTAL desaparece:** `guardarInforme` no comparte el upsert
+de páginas, así que no puede revocar una aprobación *de refilón*.
 
-Y por lo tanto **no hay mutación de una línea que la pruebe** — la única forma de reintroducir el bug
-sería mover la escritura dentro de `savePages`, que es un cambio de estructura, no una mutación. Se
-escribe así en el código, en lugar de dejar creer que hay un test cubriéndola. (Es el mismo criterio con
-que se documentó que PGlite serializa y por eso la carrera de `savePages` no tiene test.)
+> **Pero NO es una garantía estructural, y la primera versión de esta spec decía que sí.** Lo corrigió la
+> 14ª review: nada en el esquema impide que `guardarInforme` ejecute *además* un `update` sobre
+> `kr_pages` — `app_service` tiene ese privilegio
+> ([`0002_auth.sql:93`](../../../db/migrations/0002_auth.sql#L93)). Yo había convertido una garantía
+> **debilitada** en una garantía **inexistente**, y encima usé esa conclusión para justificar que no
+> hiciera falta un test. Es el patrón de la tanda 17, cometido en la sección que existe para evitarlo.
+>
+> **La mutación existe y va en la matriz (§9):** agregar
+> `update kr_pages set approved = false where run_id = $1` dentro de `guardarInforme` tiene que tumbar un
+> test que guarde un informe sobre un run con páginas aprobadas y verifique que **siguen aprobadas**.
+> Lo que la tabla propia compra es que el bug ahora requiere que alguien lo escriba a propósito, en vez
+> de heredarlo de un `where` compartido.
 
 `guardarInforme` sí es **idempotente**: `insert … on conflict (run_id) do update`. Un reintento del step
-del orquestador reescribe el informe en lugar de fallar por PK duplicada.
+del orquestador reescribe el informe en lugar de fallar por PK duplicada. **`generado_at` se reescribe con
+el reintento** (es la fecha del último render, no del primero): la pantalla la muestra, así que tiene que
+significar una sola cosa, y tiene fila en §9.
+
+### 5.3 Dónde va la escritura en el workflow, y el invariante que eso fija
+
+La primera versión no decía en qué punto del orquestador se guarda el informe. El workflow tiene **tres
+steps con transacciones separadas** ([`workflow.ts:174-204`](../../../orchestrator/src/workflow.ts#L174)):
+`research` → `guardar-paginas` → `cerrar-run`. Sin fijar el lugar, la 14ª review enumeró cuatro estados
+inconsistentes posibles — entre ellos que un run nuevo sin informe se viera igual que un run anterior a la
+`0016`.
+
+**Va como step propio, entre `guardar-paginas` y `cerrar-run`:**
+
+```
+research → guardar-paginas → guardar-informe → cerrar-run
+                                                  └─ status = 'pending_approval'
+```
+
+**El invariante que eso fija, y que es enunciable y testeable:** _un run en `pending_approval` (o
+posterior) **siempre** tiene informe._ El brief vive en la memoización de Inngest (`paso.run("research")`),
+así que un reintento del step lo tiene entero sin volver a pagar.
+
+Y con el invariante, el mensaje de la pantalla deja de ser ambiguo: un run **sin** informe es uno anterior
+a la `0016` o uno que **nunca llegó a `pending_approval`** — no un fallo silencioso de persistencia.
+
+Los cuatro estados, explícitos:
+
+| Estado del run | ¿Tiene informe? | Qué muestra la pantalla |
+|---|---|---|
+| `running` | no (todavía no se generó) | "el research está en curso" |
+| `pending_approval`, `approved` | **sí**, por el invariante | el informe |
+| `failed` | puede no tenerlo (cayó antes del step) | "el research falló; no hay informe" |
+| `rejected` | sí, si llegó a `pending_approval` | el informe, con el estado a la vista |
+
+Un run `failed` **que sí alcanzó a guardar informe lo conserva**: es evidencia de qué se pagó y qué se
+obtuvo antes de caer, y borrarlo perdería justamente lo que sirve para el post-mortem.
 
 **Quién NO puede leerlo.** Tres capas, y las tres se prueban:
 
@@ -266,9 +439,19 @@ hay archivo que bajar.
 
 > **El `filename` de la descarga es una superficie de inyección de header.** Sale del nombre del
 > cliente, que es texto que un humano escribe en el CRM: un `\r\n` ahí parte la respuesta HTTP, y un
-> `"` rompe el header. Se sanea con **allowlist** de caracteres (no con una lista de prohibidos), con
-> longitud tope, y con un fallback fijo si no queda nada. Test con un nombre que trae `\r\n`, `"` y
-> caracteres no-ASCII.
+> `"` rompe el header. Se sanea con **allowlist**, no con lista de prohibidos. Y con valores concretos,
+> porque un default sin número no es un default — la primera versión decía "longitud tope" y "fallback
+> fijo" sin decir cuáles:
+>
+> | | |
+> |---|---|
+> | Allowlist | `[A-Za-z0-9._-]`; todo lo demás → `-`, y los `-` consecutivos se colapsan |
+> | Longitud máxima | **60** caracteres del nombre, más el sufijo |
+> | Forma | `informe-<nombre-saneado>.md` |
+> | Fallback | `informe.md`, si tras sanear no queda ningún carácter de la allowlist |
+>
+> Test con un nombre que trae `\r\n`, `"`, caracteres no-ASCII (`Ñ`, acentos, emoji) y uno que **queda
+> vacío** después de sanear — ese último es el que ejercita el fallback, y es el que se olvida.
 
 ## 7. La pantalla
 
@@ -286,10 +469,42 @@ sugeridas. El paso Markdown → HTML es, por definición, **superficie de inyecc
 - **`bypassSecurityTrustHtml`** es exactamente lo que Angular tiene para no usar.
 
 Se hace así: **el Markdown se parsea a una estructura de datos y se pinta con `@if`/`@for`.** Angular
-escapa el texto por defecto, así que la inyección es **imposible por construcción**, no evitada por
-configuración. El subconjunto es cerrado porque **escribimos el generador**: encabezados `#`/`##`/`###`,
-tablas, listas `-`, blockquote `>`, `**negrita**`, `_cursiva_`, `` `código` ``. Cualquier cosa fuera de
-ese conjunto se pinta como **texto literal** — falla cerrado.
+escapa el texto por defecto, así que **la inyección de HTML/JS es imposible por construcción**, no
+evitada por configuración. El subconjunto es cerrado porque **escribimos el generador**: encabezados
+`#`/`##`/`###`, tablas, listas `-`, blockquote `>`, `**negrita**`, `_cursiva_`, `` `código` ``. Cualquier
+cosa fuera de ese conjunto se pinta como **texto literal** — falla cerrado.
+
+#### Hay una SEGUNDA clase de inyección, y el generador es el que la deja pasar
+
+La primera versión decía "la inyección es imposible por construcción" **sin delimitar de qué inyección
+hablaba**. Para HTML/JS es cierto. Para la **estructura del propio Markdown** es falso, y lo encontró la
+14ª review.
+
+`renderReport` interpola texto de LLM **sin escapar delimitadores**
+([`brief.ts:99-101`](../../../kr-service/src/pipeline/brief.ts#L99) para las celdas,
+[`:133-147`](../../../kr-service/src/pipeline/brief.ts#L133) para el detalle por página):
+
+```ts
+`| ${offset + i + 1} | ${p.tipo} | ${p.keyword_principal} | ${metric(p.volumen)} | …`
+```
+
+| Lo que trae el dato | Qué le hace al informe |
+|---|---|
+| una keyword con `\|` | agrega columnas: la tabla se desalinea de ahí para abajo |
+| un `h1` con `\n##` | inventa un encabezado y parte la sección |
+| un slug con `` ` `` | abre un bloque de código que se come el resto |
+| una FAQ con `_` o `**` | cambia el énfasis; en el peor caso simula una advertencia del sistema |
+
+No ejecuta nada, pero **altera el significado del entregable** y puede **simular u ocultar** secciones —
+incluidos los avisos de evidencia ⚠️, que son el argumento de venta.
+
+**El arreglo va en `renderReport`, no en el parser:** escapar los delimitadores al interpolar (en celdas,
+además, colapsar saltos de línea). El parser es el consumidor; el generador es el que produce el Markdown
+mal formado.
+
+> **Y esto es un bug que ya existe hoy**, en el `out/informe.md` del CLI: una keyword con `|` ya rompe la
+> tabla. **KR-2 no lo introduce — lo hace visible en una pantalla.** Va en KR-2a, con el resto del
+> endurecimiento de `renderReport`, porque es del generador y no de la feature.
 
 > **Esto no es la opción (c) que se descartó.** La (c) era que el portal *generara* el informe desde el
 > brief, duplicando qué secciones tiene y cómo se calculan. Acá el portal **pinta un Markdown ya
@@ -320,9 +535,15 @@ El run de la demo se siembra con campos que `renderReport` necesita y que hoy no
 | `coste_breakdown` | default `'{}'` | **nada**: el desglose de esa corrida no quedó registrado (§3.5). Se muestra el **total** `$0.3097`, que sí está medido, y se omite la tabla de desglose con una nota |
 | `calidad_datos.cobertura_volumen` | `0.571`, **por página** | **`null`**: el dato por keyword se perdió con `out/brief.json`. Sale `n/d` (§3.7) |
 | `calidad_datos.cobertura_kd` | ausente | **`null`** — no quedó registrado en ninguna parte. Sale `n/d` |
-| `calidad_datos.endpoints_degradados` | ausente | `[]` — la corrida no reportó fallos de endpoint |
+| `calidad_datos.endpoints_degradados` | ausente | **`null`**, no `[]` — ver abajo |
 | `keywords_analizadas` | no existe | **55** ([`09:428`](../../proyecto/09-estado-y-roadmap.md)) |
 | `backlog` | no existe | **`[]`**: qué clusters quedaron fuera no se registró. Con `[]` la sección no se pinta, que es correcto — **no se inventa un backlog plausible** |
+
+> **`endpoints_degradados: []` habría sido una certeza inventada.** La primera versión lo sembraba así
+> ("la corrida no reportó fallos"), y eso es falso: la corrida **no registró nada** sobre endpoints. `[]`
+> significa "ninguno falló" y lo habría afirmado sin fuente — el mismo error que las tres filas de arriba
+> evitan, cometido en la cuarta. Lo señaló la 14ª review: trataba tres datos como desconocidos y
+> **convertía el cuarto en dato**. Va `null`, y el informe dice que no lo sabe.
 
 `keywords_con_volumen: 8` y `keywords_totales: 14` se van: son campos que `DataQuality` no define (§3.8)
 y cuyo nombre miente (son páginas). El mock del portal
@@ -356,21 +577,66 @@ comentario dice — hay que averiguar cuál antes de tocar el test.
 
 | Garantía | Dónde | Mutación que la prueba |
 |---|---|---|
+| **Los dos logins pueden usar la tabla** (§5.1) | `db` | borrar los dos `grant` → `insert` y `select` con el login real fallan con 42501 |
+| `app_render` **no** puede leer `kr_informes` | `db` | los **dos** cambios juntos: `grant select … to app_render` **y** agregar `app_render` al `to` de la política |
 | Un tenant no lee el informe de otro | `db` | quitar el `tenant_id = app.current_tenant_id()` de la política |
 | El rol `cliente` **no** recibe el informe de su propio run | `db` | quitar `app.es_staff()` de la política |
 | Un rol **ausente o desconocido** tampoco lo recibe | `db` | cambiar `app.es_staff()` por `app.current_role() is distinct from 'cliente'` |
-| `app_render` **no** puede leer `kr_informes` | `db` | `grant select on kr_informes to app_render` |
+| **Guardar el informe NO revoca aprobaciones** (§5.2) | `db` | agregar `update kr_pages set approved = false where run_id = $1` dentro de `guardarInforme` |
 | Un reintento reescribe el informe en vez de fallar | `db` | quitar el `on conflict (run_id) do update` |
+| **Un reintento actualiza `generado_at`** | `db` | quitar `generado_at` del `do update set` → la fecha queda la del primer render |
+| **La fila no puede apuntar a un run de otro tenant/cliente** | `db` | bajar la FK compuesta a `references kr_runs(id)` a secas |
+| **Un informe de más de 256 KiB se rechaza** | `db` | quitar el `check informe_tamano_razonable` |
+| **Un run `pending_approval` siempre tiene informe** (§5.3) | `orchestrator` | mover el step `guardar-informe` **después** de `cerrar-run` |
 | Sin desglose, el informe **no** emite `NaN` ni una tabla de `n/d` | `contrato` | devolver `usdFromMicros(undefined)` sin el guard |
 | Una cobertura `null` sale **`n/d`**, no `NaN%` ni `0%` | `contrato` | volver `pct()` a `Math.round(n * 100)` sin el guard |
+| `endpoints_degradados: null` **omite la advertencia y lo dice**; `[]` la omite en silencio | `contrato` | tratar `null` como `[]` |
 | Un `backlog` vacío **no pinta** la sección | `contrato` | quitar el `if (brief.backlog.length)` |
-| Los fixtures de M2 **y** de M1 pasan el esquema unificado | `contrato` | relajar un campo que solo uno de los dos exigía |
-| El seed y el mock del portal siguen diciendo lo mismo | `db` | cambiar `calidad_datos` en un lado solo (lo caza `cartera-portal.test.ts`, que ya existe) |
-| Run sin informe → `200` con `null`, no `404` | `api` | devolver 404 cuando `informe_md` es null |
-| El `filename` no puede inyectar un header | `api` | cambiar la allowlist por una lista de prohibidos |
+| **Un `\|` en una keyword no agrega una columna** (§7.1) | `contrato` | quitar el escapado al interpolar la celda |
+| **Un `\n##` en un `h1` no inventa un encabezado** | `contrato` | quitar el colapso de saltos de línea |
+| **`emisionM2` ⊆ `consumoM1`**: todo lo que M2 emite, M1 lo acepta | `contrato` | agregar a `consumoM1` un campo requerido que `emisionM2` no emita |
+| **Cada derivado rechaza lo que debe** | `contrato` | fixtures **negativos**: a `emisionM2` un brief sin `meta_run`; a `consumoM1` un `schema_version` fuera de las cuatro |
+| **El seed y el mock del portal dicen lo mismo en `calidad_datos`** | `db` | cambiarlo en un lado solo — **hace falta un test nuevo**: `cartera-portal.test.ts` compara nueve campos de página y **no** mira `calidad_datos` |
+| Run sin informe → `200` con `null`, no `404` | `api` | devolver 404 cuando no hay fila |
+| **Un run que existe pero no es visible se ve igual que uno sin informe** | `api` | devolver 403 en vez de `200` con `null` |
+| El `filename` no puede inyectar un header | `api` | quitar el saneado → el test con `\r\n` parte la respuesta |
+| **El `filename` cae al fallback cuando el nombre queda vacío** | `api` | devolver el string vacío en vez de `informe.md` |
 | El parser **escapa** `<script>` y `<img onerror>` | `portal` | pintar la marca desconocida como HTML en vez de texto |
 | Ninguna plantilla usa `innerHTML` / `bypassSecurityTrustHtml` | `portal` | agregar uno y ver caer el test |
 | El link al informe existe en la pantalla del brief | `portal` | borrar el `routerLink` |
+| **El 7º workspace está en el verde** (§11) | `scripts` | quitar el script `test` de `contrato/package.json` → `--if-present` lo saltaría en silencio |
+
+> ### Cuatro mutaciones de la primera versión NO caían, y por qué importa
+>
+> Las corrigió la 14ª review, y son cuatro modos de fallo distintos del método:
+>
+> 1. **`grant select on kr_informes to app_render`** no destapaba nada: la política dice
+>    `to app_user, app_service`, así que para `app_render` **no hay política aplicable** y RLS devuelve
+>    cero filas de todas formas. Medido por Codex: `render_after_grant_rows=0`. La mutación real son los
+>    **dos** cambios juntos. Lección: con RLS, quitar un `grant` y quitar una política producen el mismo
+>    síntoma observable, y por eso una sola de las dos mutaciones no distingue qué garantía se está
+>    probando.
+> 2. **"Relajar un campo del esquema"** no hace fallar un fixture **positivo**: lo que ya era válido
+>    sigue siéndolo. Un validador se prueba con fixtures **negativos** — de ahí las dos filas nuevas.
+> 3. **`cartera-portal.test.ts` no ata `calidad_datos`.** Compara nueve campos de página
+>    ([`:76-81`](../../../db/src/cartera-portal.test.ts#L76)) y `grep calidad_datos` sobre el archivo no
+>    devuelve nada. La spec afirmaba que ese test ya lo cazaba: **hace falta escribirlo**.
+> 4. **"Cambiar la allowlist por una denylist"** no es una mutación exacta: una denylist completa puede
+>    seguir rechazando el único caso hostil del test. La mutación es **quitar el saneado**.
+
+> ⚠️ **Ninguno de los tests de política puede usar la conexión del seed.** `sembrarDemo` recibe una
+> `ConexionReservada` y **no pone contexto de tenant ni de rol**: el CLI conecta con
+> `DATABASE_URL_ADMIN` (el `postgres.<project-ref>` de Supabase) y en PGlite el usuario es superuser, así
+> que **RLS no lo alcanza** — ni siquiera con `force row level security`, que somete al _owner_, no al
+> superuser. Un test de la política escrito con esa conexión **pasa siempre y no prueba nada**. Los tests
+> de la tabla van con `app_user` y contexto puesto, como el resto de la batería de RLS.
+>
+> Esto también responde por qué la política no rompe el seed: el seed la esquiva por construcción. Es una
+> excepción que ya existe para las otras nueve tablas, no algo que la `0016` introduzca.
+>
+> **Y el test de los `grant` tampoco:** un `insert` como superuser pasa aunque no haya ni un privilegio
+> concedido. Ese test **tiene que** conectar con el login real (`amg_api` / `amg_orquestador`) o asumir el
+> rol con `set role`.
 
 > ⚠️ **Ninguno de los tests de política puede usar la conexión del seed.** `sembrarDemo` recibe una
 > `ConexionReservada` y **no pone contexto de tenant ni de rol**: el CLI conecta con
@@ -406,7 +672,8 @@ lote los informes de runs viejos · gráficos en el informe.
 | Riesgo | Mitigación |
 |---|---|
 | Los dos esquemas Zod divergieron y unificarlos relaja uno | Diff antes de tocar; los fixtures pasan **sin editarse** o la divergencia se decide explícitamente (§4.1) |
-| `scripts/verificar.sh` dice **"6 paquetes"** en dos mensajes (líneas 120 y 140) | Con el 7º workspace queda mintiendo. Se deriva el número en vez de escribirlo |
+| **El 7º workspace puede quedar FUERA del verde sin que nada falle** | `npm test` y `npm run typecheck` de la raíz usan `--workspaces --if-present`: si `contrato/package.json` no declara esos scripts, **se salta en silencio** y el arnés anuncia verde igual. Es el hallazgo real; lo de abajo era su síntoma cosmético |
+| `scripts/verificar.sh` dice **"6 paquetes"** en dos mensajes (líneas 120 y 140) | Con el 7º queda mintiendo. Se **deriva** el número de los workspaces declarados en vez de escribirlo, así el 8º no vuelve a requerir acordarse |
 | `scripts/env-sync.mts` reparte `.env` por paquete | `contrato/` no usa credenciales; hay que verificar que el reparto no falle con un paquete que no espera |
 | ~~El informe lleva coste interno y el rol `cliente` ve los runs de su negocio~~ | ✅ **Resuelto en la spec**: tabla propia con política `app.es_staff()` (§5.1). Era el único riesgo que podía cambiar el diseño, y lo cambió |
 | El informe de la demo sale con tres huecos | Consecuencia del dataset perdido, no del diseño (§8.1). Se acepta o se resuelve con KR-1 (~$0.31, decide Juan) |
@@ -421,8 +688,15 @@ Extracción de tipos + `renderReport`, unificación de los dos esquemas Zod, **`
 nullable** (§4.2), endurecimiento contra datos incompletos, y el 7º workspace enganchado al arnés.
 **Cero cambios visibles.**
 
-Se cierra con: `npm run verificar` en verde, y los tests de `kr-service` y `web-builder` pasando **sin
-editarse** (si hay que editarlos, es la divergencia del §4.1).
+**Criterio de cierre** (corregido tras la 14ª review — el anterior era inalcanzable, §4.1):
+
+1. `npm run verificar` en verde, y el conteo de paquetes que imprime **derivado**, no escrito a mano.
+2. `contrato/package.json` declara `test` y `typecheck`, con un test que lo **verifica** — si no, el
+   `--if-present` lo saltaría en silencio y el paquete compartido quedaría fuera del verde.
+3. Los tests de `kr-service` y `web-builder` pasan **sin editarse**, cada uno contra **su** derivado del
+   esquema (`emisionM2` / `consumoM1`). Que un fixture de M1 no valide contra `emisionM2` **no es un
+   fallo**: es el diseño (§4.1).
+4. El test de inclusión `emisionM2 ⊆ consumoM1` en verde, y los fixtures negativos de los dos derivados.
 
 ### KR-2b — la feature
 

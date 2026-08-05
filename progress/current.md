@@ -6,15 +6,37 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-04
-**En curso:** **KR-2 — el informe legible en el portal.** Spec escrita y aprobada, **sin implementar**:
+**Sesión:** 2026-08-05
+**En curso:** **KR-2 — el informe legible en el portal.** Spec escrita, revisada por la **14ª ronda
+externa** (NO LISTO, 13 hallazgos, los 13 verificados) y **corregida**, sin implementar:
 [`docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md`](../docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md).
-Lo próximo es el plan de implementación (writing-plans), partido en **KR-2a** (el paquete `contrato/`) y
+El relato de la ronda está en [`history.md`](history.md) y la contabilidad en
+[`08` § tanda 20](../docs/proyecto/08-testing-calidad.md).
+
+**Lo próximo:** el plan de implementación (writing-plans), partido en **KR-2a** (el paquete `contrato/`) y
 **KR-2b** (migración `0016` + endpoints + pantalla + seed).
 
-Antes, en esta misma sesión: cerrada la **etapa B** del [plan de agentes](../.claude/PLAN-AGENTES.md): el
-agente `datos` (`db/` + `api/`) con `datos-postgres`, `datos-api` y `datos-testing`, estrenado con
-**KR-3** —el orden del brief, persistido—. El relato está en [`history.md`](history.md).
+**🔴 Lo único que bloquea el plan: qué pasa con el PDF de ADR-07.** ADR-07 decide "informe legible
+(Markdown→PDF)" y KR-2 entrega pantalla + `.md`. Con el informe convertido en **documento interno**
+(decisión de Juan, 2026-08-05) el PDF pierde su motivo: era formato de entrega hacia afuera, y pasa a
+pertenecer al **entregable del restaurante**, que no existe. Recomendación pendiente de OK: registrarlo en
+ADR-07 con una nota fechada **antes** de implementar KR-2b —el precedente es el bloque
+`> Cumplido a medias` de ADR-10— porque hacerlo después es cambiar una decisión aceptada con el trabajo ya
+hecho.
+
+**Dos cosas que la ronda dejó anotadas y NO son de KR-2:**
+
+1. **El margen ya está expuesto al rol `cliente`.** `run_select` sobre `kr_runs` usa
+   `app.ve_cliente(client_id)` ([`0001_init.sql:441`](../db/migrations/0001_init.sql#L441)), así que un
+   `cliente` puede leer `coste_micros_usd` y `coste_breakdown` de su propio run: `GET /runs/:id` los
+   devuelve y la pantalla del brief los pinta. **No es fuga activa** —no hay usuarios con ese rol— pero es
+   real, y cerrarla toca `RunSummary` y la pantalla del brief.
+2. **El entregable que la agencia le pasa al restaurante no existe.** Sería el informe sin el bloque de
+   coste. Es una pieza de producto propia, y es la dueña natural del PDF.
+
+Antes, el 2026-08-04: cerrada la **etapa B** del [plan de agentes](../.claude/PLAN-AGENTES.md) — el agente
+`datos` (`db/` + `api/`) con `datos-postgres`, `datos-api` y `datos-testing`, estrenado con **KR-3** (el
+orden del brief, persistido) y pasado por la 13ª review.
 **Estado:** verificado en verde — **698 tests** del monorepo (venía de 684), 169 del portal, 66 de Karma,
 typecheck limpio, sin secretos entre los 405 archivos versionados. Pasó por **dos** revisiones: la interna
 del `revisor` (2 bloqueantes) y la **13ª ronda externa de Codex** (NO LISTO, 9 hallazgos). Los once

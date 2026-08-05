@@ -41,7 +41,7 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | **Tests** | **917** — 682 en el monorepo + 235 en el portal (169 `node:test` + 66 Karma). Los de seguridad, contra Postgres real. Medido con `npm run verificar` el 2026-08-02. |
 | **Migraciones** | 12 en `main` (`0001`..`0012`) · **las 10 primeras aplicadas en producción** (la `0010`, el 2026-08-01); la `0011` (CRM) y la `0012` (membresías) están mergeadas y **pendientes de aplicar** |
 | **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
-| **Reviews externas** | 12 rondas (Codex), 18 tandas de correcciones. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
+| **Reviews externas** | **14 rondas** (Codex), **20 tandas** de correcciones — la 13ª fue la primera sobre el arnés `.claude/` y la 14ª la primera sobre un **documento de diseño** (la spec de KR-2), antes de escribir código. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
 
 ## Qué funciona hoy
@@ -65,7 +65,7 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | ✅ | **El dashboard y el brief no pueden divergir en silencio**: un test ata las 14 páginas de `cartera-mock.ts` (portal) a `PAGINAS_DEMO` (seed), campo por campo y en orden. Estar fuera del monorepo impedía importar el paquete, no leer el archivo. |
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
-| ✅ | **Doce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
+| ✅ | **Catorce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
 | ✅ | **Gestión de clientes (CRM) en el portal — pieza 1 de 4, mergeada a `main` el 2026-08-01.** Listado, alta, perfil editable y vista con datos de ejemplo, sobre Postgres/RLS. La revisión final de la rama encontró y cerró una fuga real (el rol `cliente` podía leer notas internas de la agencia sobre sí mismo) antes de cerrar la pieza. Detalle arriba y en [11-plan-fase-2.md](11-plan-fase-2.md). |
 
 ## Próximos pasos
@@ -512,7 +512,7 @@ en orden de preferencia:
 | # | Pieza | Estado | Nota |
 |---|---|---|---|
 | **KR-1** | **El dataset crudo, recuperado o regenerado** | 🟠 **A medias** | El **destino durable** ✅ hecho. El **dato** falta: cuesta ~$0.31 y **decide Juan**. Ver arriba. |
-| **KR-2** | **El informe legible, en el portal** | 🟠 **Spec aprobada, sin implementar** | Las tres decisiones cerradas el 2026-08-04: **(b) paquete compartido**, **pantalla + descarga `.md`**, **el `.md` guardado**. La spec está en [`2026-08-04-informe-kr-portal-design.md`](../superpowers/specs/2026-08-04-informe-kr-portal-design.md), partida en KR-2a (el paquete) y KR-2b (la feature). Ver abajo. |
+| **KR-2** | **El informe legible, en el portal** | 🟠 **Spec revisada y corregida, sin implementar** | Decisiones cerradas: **(b) paquete compartido**, **pantalla + descarga `.md`**, **el `.md` guardado**, y **el informe es un documento interno** (2026-08-05). La spec —[`2026-08-04-informe-kr-portal-design.md`](../superpowers/specs/2026-08-04-informe-kr-portal-design.md), partida en KR-2a y KR-2b— pasó por la **14ª review** (NO LISTO, 13 hallazgos, los 13 verificados y corregidos). Queda **una** decisión: el PDF de ADR-07. Ver abajo. |
 | **KR-3** | **Las tres mejoras de calidad** | 🟠 **Implementadas, sin calibrar** | ✅ Las tres en `kr-service` (2026-08-02), y ✅ **el orden ya llega al portal** (2026-08-04, migración `0015`). Queda **una** cosa abierta: los parámetros no están barridos contra datos reales (necesita KR-1). |
 | **KR-4** | **El guion de dos niveles, escrito** | ⚪ Sin empezar | Qué se muestra, en qué orden, y dónde se corta si no hay interés técnico. |
 
@@ -587,6 +587,27 @@ Lo que el diseño destapó, y que no se sabía al tomar esas decisiones:
 Partida en dos etapas: **KR-2a** (el paquete `contrato/`, cero cambios visibles) y **KR-2b** (migración
 `0016`, endpoints, pantalla, seed).
 
+**Y lo que agregó la 14ª review** (la primera del proyecto sobre un documento de diseño; 13 hallazgos, los
+13 verificados — [`08` § tanda 20](08-testing-calidad.md)):
+
+- **La migración no concedía ni un `grant`**, y habría sido inoperable (`42501` al guardar y al leer). Los
+  grants del proyecto son listas explícitas por tabla y no hay `on all tables` en ninguna migración:
+  `kr_informes` es la **primera tabla nueva desde que existen los cuatro logins**, así que el paso no
+  estaba en ninguna rutina. Ningún test lo habría atajado, porque no había código.
+- **Los dos esquemas Zod NO se fusionan.** El de M1 acepta cuatro versiones y hace dos campos opcionales
+  **a propósito**; el de M2 exige el brief completo. Se comparten los **tipos** y `renderReport`, con una
+  `esquemaBase` y dos derivados (`emisionM2` / `consumoM1`). **Esto redefine qué significa "cerrar la deuda
+  del Zod duplicado"** de la §4 de este documento: la deuda era *dos fuentes de verdad del mismo
+  contrato*, y eso se cierra; que haya dos **validadores** no era la deuda.
+- **`renderReport` interpola texto de LLM sin escapar delimitadores de Markdown**, así que una keyword con
+  `|` rompe la tabla del informe. **Es un bug que ya existe hoy** en el `out/informe.md` del CLI; KR-2 solo
+  lo hace visible. Se arregla en KR-2a.
+- **El margen ya está expuesto al rol `cliente`** (ver la deuda conocida en §4): no lo causa KR-2, pero la
+  spec no podía presentar `kr_informes` como si cerrara una exposición que ya existía por otra vía.
+- **Queda una decisión abierta: el PDF de ADR-07.** Con el informe convertido en documento interno el PDF
+  pierde su motivo —era formato de entrega hacia afuera— y pasa a pertenecer al **entregable del
+  restaurante**, que no existe. La recomendación es registrarlo en ADR-07 **antes** de implementar.
+
 ### 🟡 3. Lo que ADR-19 dejó a medias y hay que cerrar antes de un SLA
 
 - **Una CDN delante del renderizador.** ADR-19 dice "cache en el borde"; lo construido es una cache
@@ -619,7 +640,18 @@ Partida en dos etapas: **KR-2a** (el paquete `contrato/`, cero cambios visibles)
   (`web-builder/src/storyblok/content.ts`) descarta el atributo `_editable` al normalizar el blok, y
   es de ahí de donde el Bridge saca el resaltado y el salto al campo. Se edita desde el panel de
   campos. Pesa poco si edita la agencia, y bastante si el día de mañana edita el cliente.
-- **Esquema Zod duplicado** entre M2 y M1: dos fuentes de verdad del contrato.
+- **Esquema Zod duplicado** entre M2 y M1: dos fuentes de verdad del contrato. **KR-2a lo cierra**, pero
+  no fusionándolos: el de M1 acepta cuatro `schema_version` y hace `evidencia`/`score_confidence`
+  opcionales **a propósito**, así que son dos contratos con propósitos opuestos. Lo que se comparte son los
+  **tipos** y `renderReport`, con dos derivados de una base común (ver la spec de KR-2 § 4.1).
+- **🔴 El coste del research (el margen de la agencia) es legible por el rol `cliente`.** `run_select` sobre
+  `kr_runs` usa `app.ve_cliente(client_id)` ([`0001_init.sql:441`](../../db/migrations/0001_init.sql#L441)),
+  así que un `cliente` ve `coste_micros_usd` y `coste_breakdown` de su propio run: `GET /runs/:id` los
+  devuelve y la pantalla del brief pinta el total. **No es fuga activa** —no hay usuarios con rol `cliente`
+  (Frank `maestro`, Juan `equipo`)— pero el rol existe y RLS lo contempla. Encontrado por la 14ª review;
+  cerrarlo toca `RunSummary` y la pantalla del brief, y **es una pieza propia**, no parte de KR-2.
+- **El entregable que la agencia le pasa al restaurante no existe.** Sería el informe de KR-2 **sin el
+  bloque de coste**. Es la pieza dueña del **PDF** que ADR-07 pedía (ver KR-2 § 2.1).
 - **Sin tests de integración**: el camino live se ejecutó a mano contra DataForSEO, OpenAI y
   Storyblok, pero no está automatizado.
 - **Calidad del research**: las tres mejoras están implementadas (2026-08-02) pero **sin calibrar

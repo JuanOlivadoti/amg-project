@@ -448,6 +448,49 @@ demo **por id** y lo afirma.
 > hipótesis no es "falta el test" — puede ser que **la línea que mutaste no haga lo que su comentario
 > dice**. Fue el caso de `nulls last`, que ya era el default de Postgres.
 
+### Tanda 20 — 14ª review: la primera **de diseño**, y encontró un bloqueante que ningún test habría atajado ✅
+
+Codex revisó la **spec de KR-2** (el informe legible en el portal) **antes de escribir una línea de
+código** — es la primera ronda del proyecto sobre un documento de diseño y no sobre un diff. Veredicto
+**NO LISTO**, **13 hallazgos**: 2 Critical, 8 Major, 3 Minor. **Los 13 verificados, ninguno refutado.**
+
+| Hallazgo | Por qué importaba |
+|---|---|
+| **[Critical] La migración no concedía ni un `grant`** | La spec tenía `create table`, `force RLS` y `create policy`. Los grants del proyecto son **listas explícitas por tabla** (`0001_init.sql:413`, `0002_auth.sql:93`) y no hay `on all tables` ni `default privileges` en ninguna migración: una tabla nueva nace sin un solo privilegio. Codex lo midió en PGlite —`42501 permission denied`— y el efecto habría sido que **ningún informe se guarda ni se lee**. `kr_informes` es la **primera tabla que el proyecto agrega desde que existen los cuatro logins** (ADR-17), así que el paso no estaba en ninguna rutina. Ningún test lo habría atajado: no había test porque no había código. |
+| **[Critical] El `.md` staff-only se ofrecía "para mandárselo al cliente"** | La spec movía el informe a una tabla `es_staff()` **porque revela el margen** y en la misma página lo presentaba como el archivo que se le manda al restaurante. Resuelto por decisión de Juan: **es un documento interno**. Y el encuadre correcto apareció ahí: **Frank es la agencia**, así que el coste en el informe no es una fuga hacia él — es el argumento de venta ("te costó $0.31"). Lo que queda abierto es que **el entregable del restaurante no existe**: es otra pieza. |
+| **[Major] "Un esquema Zod M2 = M1" era imposible** | El de M1 acepta **cuatro** versiones (`kr.v0.2`…`kr.v0.5`) y hace `evidencia`/`score_confidence` **opcionales a propósito**; el de M2 exige el brief completo de la versión actual. No son dos copias: son **dos contratos con propósitos opuestos**. Fusionarlos obliga a que uno pierda su garantía. Peor: el criterio de cierre que yo había escrito —"los fixtures de los dos lados pasan sin editarse"— era **inalcanzable**, porque el fixture de M1 no trae `run_id`, `generated_at`, `backlog` ni `meta_run`. Rediseñado: se comparten **tipos y `renderReport`**, y una `esquemaBase` con dos derivados (`emisionM2` estricto, `consumoM1` laxo), más un test de inclusión `emisionM2 ⊆ consumoM1`. |
+| **[Major] "No puede revocar aprobaciones" no era estructural** | La tabla propia elimina el acoplamiento **accidental** con el upsert de `savePages`, pero nada impide que `guardarInforme` haga *además* un `update kr_pages` — `app_service` tiene ese privilegio. Yo había convertido una garantía **debilitada** en una **inexistente**, y usé esa conclusión para justificar que no hiciera falta test. **La mutación existe** y ahora está en la matriz. |
+| **[Major] El seed no puede usar `PgStore.guardarInforme`** | `sembrarDemo` abre su propio `begin` y cierra con `commit` sobre una `ConexionReservada`; `withTenant` **siempre** abre `pool.transaction`, otra conexión que no ve el run sin confirmar. La promesa "un método, dos llamadores" era falsa. Corregido: el seed inserta con **su** conexión, como ya hace con `kr_runs` y `kr_pages`. Lo único que tiene que ser único es el **render**, no el `INSERT`. |
+| **[Major] Sin invariante entre estado del run y existencia del informe** | El workflow tiene **tres steps con transacciones separadas** y la spec no decía en cuál cae el guardado → cuatro estados inconsistentes, entre ellos que un run nuevo sin informe se vea igual que uno anterior a la `0016`. Fijado: step propio **entre `guardar-paginas` y `cerrar-run`**, lo que hace enunciable el invariante *un run `pending_approval` siempre tiene informe*, más los cuatro estados (`running`/`failed`/`rejected`/`approved`) explícitos. |
+| **[Major] El parser evitaba XSS, no la inyección estructural de Markdown** | `renderReport` interpola texto de LLM **sin escapar delimitadores**: una keyword con `\|` agrega columnas, un `h1` con `\n##` inventa un encabezado, un slug con backticks abre un bloque de código. No ejecuta nada, pero **altera el significado del entregable** y puede simular u ocultar los avisos de evidencia, que son el argumento de venta. Mi frase "inyección imposible por construcción" era cierta para HTML/JS y **no delimitaba su alcance**. **Y el bug ya existe hoy** en el `out/informe.md` del CLI: KR-2 no lo introduce, lo hace visible. |
+| **[Major] Cuatro mutaciones de la matriz no caían** | Cuatro modos de fallo distintos del método: (1) `grant select … to app_render` **no destapa nada** porque la política dice `to app_user, app_service` y sin política aplicable RLS niega igual —con RLS, quitar un grant y quitar una política dan el **mismo síntoma**, así que una sola mutación no distingue qué se prueba—; (2) relajar un campo no hace fallar un fixture **positivo** (un validador se prueba con **negativos**); (3) **`cartera-portal.test.ts` no ata `calidad_datos`** —compara nueve campos de página— y la spec afirmaba que ya lo cazaba; (4) "allowlist por denylist" no es exacta, la mutación es **quitar el saneado**. |
+| **[Major] ADR-07 decide «Markdown→PDF»** | KR-2 entrega pantalla y `.md`, y la spec proponía actualizar el ADR **después** de implementar: eso es cambiar una decisión aceptada con el trabajo hecho. Y hay una razón de fondo que la decisión de Juan destapó: **el PDF perdió su motivo**, porque era un formato de entrega hacia afuera y el informe pasó a ser interno. El PDF **cambia de pieza**, al entregable del restaurante. |
+| **[Major] El seed afirmaba `endpoints_degradados: []` sin fuente** | `[]` significa "ninguno falló" y la corrida **no registró nada** sobre endpoints. La spec trataba tres datos como desconocidos y **convertía el cuarto en certeza** — en la misma sección donde argumentaba por qué no hay que hacer eso. Va `null`. |
+| **[Minor] Sin topes con números** | `informe_md text` sin límite, y el `filename` descrito con "longitud tope" y "fallback fijo" **sin decir cuáles**. Un default sin número no es un default. Ahora: `check (octet_length(informe_md) <= 262144)` **en la base** —un solo punto de control, así el endpoint y la pantalla no necesitan lógica de tamaño— y allowlist `[A-Za-z0-9._-]`, 60 chars, fallback `informe.md`. |
+| **[Minor] El 7º workspace podía quedar fuera del verde** | `npm test` y `npm run typecheck` usan `--workspaces --if-present`: si `contrato/package.json` no declara esos scripts, **se salta en silencio** y el arnés anuncia verde. La spec solo hablaba de corregir los dos mensajes que dicen "6 paquetes", que era el síntoma cosmético. Ahora el conteo se **deriva** y hay un test de que el paquete declara sus scripts. |
+| **[Minor] "El brief no muestra coste" era falso** | `brief.ts:29` pinta `Coste: ${{ usd(...) }}`. Lo que falta es el **desglose**. |
+
+**El hallazgo propio que salió de verificar el último, y que es el más grave de la ronda:** si la pantalla
+del brief pinta el coste, ¿quién puede leerlo? `run_select` sobre `kr_runs` usa `app.ve_cliente(client_id)`
+(`0001_init.sql:441`), que da **true** para un rol `cliente` sobre su propio run. **El margen ya está
+expuesto al rol `cliente`, hoy, sin KR-2**: `GET /runs/:id` devuelve `coste_micros_usd` y `coste_breakdown`.
+Eso no invalida `kr_informes` —no agrava, y el informe lleva mucho más que el total— pero la spec la
+presentaba **como si cerrara la exposición del coste**, y la exposición ya existía por otra vía. No es fuga
+activa (no hay usuarios `cliente`), y cerrarla toca `RunSummary` y la pantalla del brief: **otra pieza**.
+
+> **Por qué esta ronda vale distinto de las trece anteriores.** Todas las otras miraron código escrito (y
+> la 13ª, el arnés). Esta miró un **diseño**, y encontró dos cosas que un review de código no habría
+> podido: un bloqueante que **ningún test habría atajado** —los grants, porque no había código que
+> testear— y **dos garantías que yo había declarado más fuertes de lo que eran** antes de que existieran
+> (la "estructural" del §5.2 y la "imposible por construcción" del §7.1). Revisar el diseño encontró los
+> errores mientras **corregirlos costaba editar un documento**, no revertir una migración desplegada.
+>
+> Y la lección de método: **de trece hallazgos, cuatro son afirmaciones mías sobre el código que el código
+> desmiente** (que el brief no muestra coste, que `cartera-portal.test.ts` ata `calidad_datos`, que el seed
+> podía usar el store, que los dos esquemas Zod eran dos copias del mismo contrato). Es el mismo modo de
+> fallo que la tanda 19 encontró en las skills, un nivel más arriba otra vez: **escribí sobre el código sin
+> volver a abrirlo**. La regla de `datos-testing` —medilo en el momento— no era solo para las cifras.
+
 ### 🔑 Acción humana — ✅ cerrada
 
 **#2 — Secretos:** la misma API key de OpenAI estaba duplicada en los dos `.env`. **Rotada el

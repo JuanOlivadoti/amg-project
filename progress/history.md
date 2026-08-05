@@ -11,6 +11,65 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-05 — La spec de KR-2, y la primera review externa de un diseño
+
+Nada de código. Se escribió la **spec de KR-2** (el informe legible del research, en el portal), se la
+pasó por la **14ª review externa** y se la corrigió. Trece hallazgos, los trece verificados.
+
+**Las decisiones de producto que faltaban, cerradas por Juan:** pantalla **+** descarga `.md`; el `.md`
+**guardado ya renderizado**; y —tras la review— que el informe es un **documento interno de la agencia**.
+
+**Lo que el diseño destapó antes de la review**, todo midiendo en vez de suponer: el `backlog` **no se
+persiste** en ninguna parte, así que un informe reconstruido desde la base perdería esa sección sin
+avisar; el run de la demo **lo siembra `sembrarDemo`**, no el pipeline, y el `out/informe.md` de la
+corrida real no existe en ninguna máquina; `renderReport` **emite `NaN`** con datos incompletos; el
+contrato **no admite "no sé"** en las coberturas; y el `cobertura_volumen: 0.571` del seed es **por
+página** aunque el informe lo etiquete como por keyword.
+
+**El cambio de fondo del diseño salió de aplicar un invariante, no de la review:** el informe iba a ser
+una columna `kr_runs.informe_md`, y se movió a **tabla propia con política `app.es_staff()`** porque
+**RLS es por fila, no por columna** — una columna habría dejado el coste interno de la agencia visible
+para el rol `cliente`, que ve los runs de su negocio.
+
+**Después, la 14ª review: la primera sobre un documento y no sobre un diff.** NO LISTO, 13 hallazgos.
+El detalle está en el [`08` § tanda 20](../docs/proyecto/08-testing-calidad.md); lo que cambió el rumbo:
+
+- **Un bloqueante que ningún test habría atajado: la migración no concedía ni un `grant`.** Los grants
+  del proyecto son listas explícitas por tabla y no hay `on all tables` en ninguna migración, así que
+  `kr_informes` habría nacido sin un solo privilegio: `42501` al guardar y al leer. Es la **primera tabla
+  que el proyecto agrega desde que existen los cuatro logins**, y por eso el paso no estaba en ninguna
+  rutina. No había test que lo cazara porque no había código.
+- **"Un esquema Zod M2 = M1" era imposible, y el criterio de cierre que yo escribí era inalcanzable.**
+  El de M1 acepta cuatro versiones y hace dos campos opcionales **a propósito**; el de M2 exige el brief
+  completo. Son dos contratos con propósitos opuestos, no dos copias. Rediseñado a `esquemaBase` con dos
+  derivados y un test de inclusión `emisionM2 ⊆ consumoM1`.
+- **Dos garantías que declaré más fuertes de lo que eran, antes de que existieran.** Que la tabla propia
+  hacía "estructural" el no-revocar-aprobaciones (falso: nada impide un `update kr_pages`, y usé esa
+  conclusión para justificar que no hiciera falta test), y que la inyección era "imposible por
+  construcción" (cierto para HTML/JS, falso para la estructura del Markdown — y **ese bug ya existe hoy**
+  en el informe del CLI: una keyword con `|` rompe la tabla).
+- **Cuatro mutaciones de la matriz no caían**, cada una por un motivo distinto. La más instructiva:
+  `grant select … to app_render` no destapa nada, porque la política dice `to app_user, app_service` y
+  sin política aplicable RLS niega igual. **Con RLS, quitar un grant y quitar una política producen el
+  mismo síntoma observable**, así que una sola mutación no distingue qué garantía se está probando.
+- **De trece hallazgos, cuatro eran afirmaciones mías sobre el código que el código desmiente** — entre
+  ellas que la pantalla del brief no muestra el coste (lo muestra) y que `cartera-portal.test.ts` ata
+  `calidad_datos` (no lo mira). Es el modo de fallo de la tanda 19 un nivel más arriba: **escribí sobre
+  el código sin volver a abrirlo.**
+
+**Y el hallazgo propio, que salió de verificar el último de la lista y es el más grave:** `run_select`
+sobre `kr_runs` usa `app.ve_cliente(client_id)`, que da true para un rol `cliente` sobre su propio run.
+**El margen ya está expuesto, hoy, sin KR-2** — `GET /runs/:id` devuelve `coste_micros_usd` y
+`coste_breakdown`, y la pantalla los pinta. No es fuga activa (no hay usuarios `cliente`), pero la spec
+presentaba la tabla propia **como si cerrara la exposición del coste**, y ya existía por otra vía.
+Cerrarla es otra pieza.
+
+**Lo que queda abierto:** qué pasa con el **PDF de ADR-07**. Con el informe convertido en documento
+interno el PDF pierde su motivo —era un formato de entrega hacia afuera— y pasa a pertenecer al
+entregable del restaurante, que no existe. La recomendación es registrarlo en ADR-07 con una nota
+fechada **antes** de implementar, no después: hacerlo después sería cambiar una decisión aceptada con el
+trabajo ya hecho.
+
 ## 2026-08-04 — Etapa B: el agente `datos`, y el orden del brief que se perdía en Postgres
 
 Cerrada la **etapa B** del plan de agentes: el agente `datos` (`db/` + `api/`) con sus tres skills
