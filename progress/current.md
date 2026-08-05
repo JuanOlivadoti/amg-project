@@ -55,6 +55,28 @@ es la razón por la que no se escribió antes. Lo que trae, según la
 **La próxima migración libre sigue siendo la `0016`.** `0013` y `0014` están **reservadas** para ramas que
 se ejecutan en otra máquina: un número libre en el disco no es un número libre.
 
+## 🔴 El arnés puede reportar "0 tests en verde" **en verde**, según la versión de Node
+
+Encontrado por el re-review de la fix wave y **medido al cerrar la etapa**, no de palabra:
+
+- `scripts/verificar.sh:149` cuenta los tests con `grep -hE '^# pass'`.
+- **Node 22** imprime `# pass 48`. **Node 24 imprime `ℹ pass 48`** — con `ℹ`, no con `#`.
+- Medido en esta máquina (`node --version` → **v24.18.1**):
+  `node --import tsx --test "scripts/*.test.mts" | grep -hcE '^# pass'` → **0 coincidencias**.
+
+Con lo cual, bajo Node 24 el arnés imprimiría **`[OK] 0 tests en verde`**: un `ok`, o sea verde, con la
+cifra en cero. Es **exactamente el patrón que esta etapa arregló dos veces** —el piso del `N_PAQUETES` (T1)
+y el barrido que no puede quedar vacío (T9)—: una cifra ausente disfrazada de verde.
+
+**Por qué las corridas de KR-2a sí contaron bien:** el propio `verificar` reporta `node v22.21.1` en su
+sección de entorno, así que **el script se ejecuta bajo 22** aunque el shell tenga 24. O sea el riesgo hoy
+no está activo — está a una resolución de PATH de estarlo, y nada avisaría.
+
+**No se arregló acá a propósito:** es del arnés, no de KR-2a, y un cambio en el contador de tests merece su
+propia verificación con las dos versiones de Node a la vista. El arreglo tiene dos mitades y la segunda es
+la que importa: aceptar los dos formatos, **y un piso que falle si el conteo es 0** — porque un contador que
+no cuenta no puede reportar `[OK]`.
+
 ## Lo que quedó abierto de KR-2a (deuda con nombre, no silenciosa)
 
 - **No hay test del corte por cobertura 0** en el gate de gasto de `kr-service/src/pipeline/run.ts`. El
