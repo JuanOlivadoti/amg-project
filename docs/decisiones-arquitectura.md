@@ -134,6 +134,32 @@
 **Decisión.** Doble entregable: **JSON estructurado** (alimenta al Módulo 1) + **informe legible** (Markdown→PDF) para revisión humana.
 **Alternativas descartadas.** Solo JSON (sin entregable de revisión); JSON + dashboard interactivo (más esfuerzo — queda como opción para F3).
 
+> ### 📌 Actualizado el 2026-08-05: el informe se sirve como pantalla + Markdown, y **el PDF cambia de dueño**
+>
+> Esto se escribe **antes** de implementar KR-2, no después. La 14ª review externa señaló —con razón— que
+> ajustar el ADR con el trabajo ya hecho no es documentar un avance: es cambiar una decisión aceptada sin
+> que nadie la haya aprobado.
+>
+> **Qué cambia.** El informe legible se entrega **en el portal (pantalla) y como archivo `.md`**. No hay
+> PDF, y no está diferido "para más adelante": **se traslada a otra pieza**.
+>
+> **Por qué.** Al escribir la spec de KR-2 hubo que decidir quién es el lector, y la respuesta cambió la
+> premisa de este ADR: **el informe es un documento interno de la agencia**, porque incluye el coste del
+> research —el margen— y lo que Frank necesita ver es justamente eso ("te costó $0.31"). El PDF era el
+> formato correcto para un entregable que **sale** hacia el cliente: se manda, se archiva, se imprime. Un
+> documento interno que se lee en una pantalla del portal no lo necesita.
+>
+> **Dónde queda el PDF.** En el **entregable del restaurante**, que es este mismo informe **sin el bloque
+> de coste** y que **todavía no existe** como pieza. Ahí el formato vuelve a importar, y ese trabajo es su
+> dueño natural. Anotado en [`09` § 4](proyecto/09-estado-y-roadmap.md) como deuda con nombre, sin fecha.
+>
+> **Lo que NO cambia.** La alternativa descartada sigue descartada: la pantalla de KR-2 **no** es el
+> "dashboard interactivo" de F3 —no tiene filtros, agregaciones ni exploración—, y la 14ª review lo
+> confirmó explícitamente. El doble entregable (JSON para el M1 + informe para el humano) se mantiene
+> intacto.
+>
+> Detalle y motivos en la [spec de KR-2 § 2.1](superpowers/specs/2026-08-04-informe-kr-portal-design.md).
+
 ## ADR-08 — Mercado del Módulo 2: ES-first, diseño market-aware
 **Contexto.** Se evaluó multi-idioma/internacional; se decidió acotar el arranque.
 **Decisión.** Arrancar **solo con España (es-ES), un mercado por corrida**, con el mercado **parametrizado** (`country`/`language_code`/`location_code`), no hardcodeado.

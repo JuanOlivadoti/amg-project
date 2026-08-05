@@ -84,16 +84,16 @@ Aparte, generarlo hoy costaría una dependencia que el proyecto no tiene en ning
 Chrome o una librería de PDF) para la única superficie que la necesitaría, contra un invariante que dice
 `tsx` sin paso de build.
 
-> ### 📌 Recomendación, pendiente del OK de Juan
+> ### ✅ Resuelto el 2026-08-05, y ya registrado
 >
-> **Registrar el cambio en ADR-07 con una nota fechada, ANTES de implementar KR-2b** — no un ADR nuevo:
-> el precedente del propio repo es el bloque `> **Cumplido a medias el 2026-08-02**` de ADR-10. La nota
-> dice tres cosas: que el informe legible se sirve como **pantalla + Markdown**, que el **PDF se traslada
-> a la pieza del entregable del cliente** (que no existe y no tiene fecha), y por qué (§1.1: el informe
-> es interno).
+> **La nota está escrita en ADR-07** ([`decisiones-arquitectura.md` § ADR-07](../../decisiones-arquitectura.md#L133)),
+> con fecha y **antes de implementar** — no un ADR nuevo: el precedente del propio repo es el bloque
+> `> **Cumplido a medias el 2026-08-02**` de ADR-10. Dice tres cosas: que el informe legible se sirve como
+> **pantalla + Markdown**, que el **PDF se traslada al entregable del restaurante** (que no existe y no
+> tiene fecha), y por qué (§1.1: el informe es interno).
 >
-> Costo: un párrafo de documento, cero código. Lo que compra: que KR-2 no se cierre con una promesa
-> incumplida flotando, y que la decisión quede con su motivo escrito el día que se tomó.
+> Costó un párrafo. Lo que compra: que KR-2 no se cierre con una promesa incumplida flotando, y que la
+> decisión quede con su motivo escrito el día que se tomó y no reconstruido después.
 
 Y una cosa que ADR-07 **no** prohíbe, contra lo que el parecido sugiere: la alternativa que descartó fue
 "JSON + dashboard interactivo (queda para F3)". Una pantalla que **muestra un informe** no es ese
