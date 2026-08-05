@@ -60,3 +60,48 @@ export function briefM2(over: Partial<KeywordResearchBrief> = {}): KeywordResear
     ...over,
   };
 }
+
+/**
+ * Brief válido de CONSUMO: la forma mínima que el M1 acepta. Es el `validBrief()` que vivía en
+ * `web-builder/src/fixtures.ts`, y NO trae `run_id`, `generated_at`, `backlog`, `meta_run` ni
+ * `page_strategy`. Que esto valide `consumoM1` y NO valide `emisionM2` es el diseño, no un fallo.
+ *
+ * No está tipado como `KeywordResearchBrief` a propósito: no lo es — le faltan campos obligatorios.
+ */
+export function briefM1(over: Record<string, unknown> = {}) {
+  return {
+    schema_version: "kr.v0.2",
+    cliente: "restaurante italiano madrid centro",
+    market: { country: "ES", language_code: "es", location_code: 2724 },
+    status: "pending_approval",
+    paginas_propuestas: [
+      {
+        cluster_id: "c1",
+        tipo: "landing_local",
+        url_slug: "/restaurante-italiano-madrid-centro",
+        keyword_principal: "restaurante italiano madrid centro",
+        keywords_secundarias: ["pizza napolitana madrid"],
+        intencion: "local",
+        local: true,
+        volumen: 1200,
+        dificultad: 25,
+        opportunity_score: 78,
+        seo: {
+          meta_title: "Restaurante Italiano en Madrid Centro",
+          meta_description: "Auténtica cocina italiana en el corazón de Madrid.",
+          schema_type: "LocalBusiness",
+          canonical: "/restaurante-italiano-madrid-centro",
+        },
+        content_brief: {
+          h1: "Restaurante Italiano en Madrid Centro",
+          secciones_sugeridas: ["Sobre Nosotros"],
+          word_count_objetivo: 1100,
+          enlazado_interno: ["/menu"],
+        },
+        preguntas_frecuentes: ["¿Tienen opciones sin gluten?"],
+        approved: false,
+      },
+    ],
+    ...over,
+  };
+}

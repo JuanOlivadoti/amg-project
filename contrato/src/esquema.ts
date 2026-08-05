@@ -10,6 +10,7 @@
  * deja de exigir campos que hoy exige. Lo que se comparte es `esquemaBase` y los tipos.
  */
 import { z } from "zod";
+import type { KeywordResearchBrief } from "./tipos.js";
 
 // ---------------------------------------------------------------------------------------------
 // `esquemaBase` — el piso común de los dos validadores.
@@ -159,3 +160,102 @@ export const emisionM2 = z.object({
     modelos_sin_precio: z.array(z.string()).optional(),
   }),
 });
+
+// ---------------------------------------------------------------------------------------------
+// `consumoM1` — lo que el M1 puede RECIBIR. Es el esquema que vivía en `web-builder/src/contract.ts`,
+// derivado del mismo piso: usa las piezas de `esquemaBase` (los enums, `seo`, `contentBrief`,
+// `market`) sin endurecer NINGUNA.
+//
+// Cada laxitud de acá es deliberada, no un descuido: el brief que llega puede ser de una versión
+// anterior del pipeline, venir de edición humana, o ser el que el orquestador RECONSTRUYE desde la
+// base (que no trae `meta_run`). Un endurecimiento accidental no rompe un test: hace que el M1
+// empiece a rechazar briefs que hoy publica.
+//
+// Lo que NO se comparte con `emisionM2` es la lista de campos de la página, escrita dos veces a
+// propósito: de los 17 campos, 9 difieren (`page_strategy`, `url_slug`, `volumen`, `dificultad`,
+// `opportunity_score`, `evidencia`, `score_confidence`, y `seo`/`content_brief` vía `.extend()`), así
+// que una página base común obligaría a fusionar dos objetos mentalmente para saber qué garantiza cada
+// validador — y la severidad del de emisión es la razón entera de que exista aparte.
+//
+// El riesgo de esa duplicación es olvidar un campo, que Zod entonces DESCARTA al parsear en silencio
+// (es el bug histórico de `evidencia`). Lo que lo cubre: el test que exige que `evidencia` y
+// `score_confidence` SOBREVIVAN al parseo, y el diferencial de 1101 casos contra el esquema viejo que
+// se corrió al mudarlo, que compara el JSON de salida y no solo si acepta.
+// ---------------------------------------------------------------------------------------------
+
+// v0.3 solo cambia `meta_run` (costo total + desglose), que el M1 no consume → compatible.
+// v0.4: `volumen`/`dificultad` nullable.
+// v0.5: `evidencia` + `score_confidence` por página. Ambos OPCIONALES acá para no romper los
+// briefs viejos, pero el M1 los usa para AVISAR: una página sin evidencia de mercado no puede
+// llegar a publicarse sin que quien aprueba lo sepa.
+export const SUPPORTED_SCHEMA_VERSIONS = ["kr.v0.2", "kr.v0.3", "kr.v0.4", "kr.v0.5"] as const;
+
+const paginaM1 = z.object({
+  cluster_id: z.string(),
+  tipo: pageType,
+  // `.min(1)` y no `.startsWith("/")` como el M2: exigirla acá rechazaría un brief que se publica
+  // IGUAL, porque `normalizeSlug` (web-builder/src/handoff/adapter.ts) le saca la barra de todos
+  // modos — Storyblok quiere el slug sin ella. El M2 sí la exige, sobre lo que él mismo emite.
+  url_slug: z.string().min(1),
+  keyword_principal: z.string().min(1),
+  keywords_secundarias: z.array(z.string()),
+  intencion: searchIntent,
+  local: z.boolean(),
+  // Nullable desde kr.v0.4: `null` = el proveedor no devolvió la métrica (≠ 0).
+  // Los briefs kr.v0.2/v0.3 traen number y siguen validando. Sin rango, a diferencia del M2: acá un
+  // valor fuera de 0..100 es un dato feo de un brief viejo, no motivo para no publicar la web.
+  volumen: z.number().nullable(),
+  dificultad: z.number().nullable(),
+  opportunity_score: z.number(),
+  // Desde kr.v0.5. Opcionales para no romper briefs anteriores, pero SON la señal de honestidad
+  // del research: sin ellos, quien aprueba la web no puede saber que una página se apoya en cero
+  // datos de mercado. Antes ni siquiera estaban en el esquema, así que Zod los DESCARTABA al
+  // parsear: el M2 los calculaba y el M1 los tiraba a la basura.
+  evidencia: evidencia.optional(),
+  score_confidence: z.number().min(0).max(1).optional(),
+  seo,
+  content_brief: contentBrief,
+  preguntas_frecuentes: z.array(z.string()),
+  approved: z.boolean(),
+});
+
+export const consumoM1 = z.object({
+  schema_version: z.string(),
+  cliente: z.string(),
+  market,
+  status: estado,
+  paginas_propuestas: z.array(paginaM1),
+});
+
+/**
+ * Valida y tipa el brief. Lanza con un mensaje claro si la forma o la versión no cuadran.
+ *
+ * El tipo de retorno es el del brief COMPLETO, pero `consumoM1` no exige `run_id`, `generated_at`,
+ * `backlog` ni `meta_run`: el M1 no los consume, y el brief que el orquestador reconstruye desde la
+ * base no trae `meta_run`. O sea que el `as` de abajo afirma más de lo que se validó. Quien lea uno de
+ * esos cuatro campos desde el M1 tiene que tratarlo como ausente aunque el tipo diga que está.
+ */
+export function parseBrief(raw: unknown): KeywordResearchBrief {
+  const parsed = consumoM1.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`Brief inválido: ${formatIssues(parsed.error)}`);
+  }
+  const version = parsed.data.schema_version;
+  if (!SUPPORTED_SCHEMA_VERSIONS.includes(version as (typeof SUPPORTED_SCHEMA_VERSIONS)[number])) {
+    throw new Error(
+      `schema_version "${version}" no soportada. Soportadas: ${SUPPORTED_SCHEMA_VERSIONS.join(", ")}. ` +
+        `Actualizá el adaptador o migrá el brief.`,
+    );
+  }
+  return parsed.data as KeywordResearchBrief;
+}
+
+// Se movió tal cual desde `web-builder/src/contract.ts`, con sus mensajes: son los que LEE UN HUMANO
+// cuando un brief no cuadra, y reescribirlos habría perdido información que ya estaba bien. El corte
+// en 5 issues es para que el error sea legible: un brief roto de raíz genera uno por página.
+function formatIssues(err: z.ZodError): string {
+  return err.issues
+    .slice(0, 5)
+    .map((i) => `${i.path.join(".") || "(raíz)"}: ${i.message}`)
+    .join("; ");
+}

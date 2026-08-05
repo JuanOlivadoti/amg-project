@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emisionM2 } from "./index.js";
-import { briefM2 } from "./fixtures.js";
+import { consumoM1, emisionM2, parseBrief, SUPPORTED_SCHEMA_VERSIONS } from "./index.js";
+import { briefM1, briefM2 } from "./fixtures.js";
 
 test("emisionM2 acepta el brief que el M2 produce hoy", () => {
   const r = emisionM2.safeParse(briefM2());
@@ -63,4 +63,40 @@ test("emisionM2 RECHAZA un location_code fraccionario", () => {
       .success,
     false,
   );
+});
+
+// --- `consumoM1` — el derivado LAXO. Lo que se prueba acá es lo que ACEPTA: cada laxitud es
+// --- deliberada (briefs viejos que siguen siendo publicables), así que un endurecimiento accidental
+// --- es el fallo a evitar, no el rechazo.
+
+test("consumoM1 acepta un brief kr.v0.2 sin meta_run ni evidencia", () => {
+  const r = consumoM1.safeParse(briefM1());
+  assert.equal(r.success, true, r.success ? "" : JSON.stringify(r.error.issues));
+});
+
+test("consumoM1 acepta las cuatro versiones soportadas", () => {
+  assert.deepEqual([...SUPPORTED_SCHEMA_VERSIONS], ["kr.v0.2", "kr.v0.3", "kr.v0.4", "kr.v0.5"]);
+  for (const v of SUPPORTED_SCHEMA_VERSIONS) {
+    assert.doesNotThrow(() => parseBrief(briefM1({ schema_version: v })), `falló con ${v}`);
+  }
+});
+
+test("parseBrief RECHAZA una schema_version fuera de las cuatro", () => {
+  assert.throws(() => parseBrief(briefM1({ schema_version: "kr.v0.9" })), /no soportada/);
+});
+
+test("parseBrief RECHAZA un brief con la forma mal", () => {
+  assert.throws(() => parseBrief({ schema_version: "kr.v0.5" }), /Brief inválido/);
+});
+
+test("consumoM1 CONSERVA evidencia y score_confidence cuando vienen", () => {
+  // El bug histórico: no estaban en el esquema, así que Zod los DESCARTABA al parsear — el M2 los
+  // calculaba y el M1 los tiraba. Son la señal de honestidad del research.
+  const b = briefM1();
+  (b.paginas_propuestas[0] as Record<string, unknown>).evidencia = "sin_validar";
+  (b.paginas_propuestas[0] as Record<string, unknown>).score_confidence = 0.2;
+  const r = consumoM1.safeParse(b);
+  assert.equal(r.success, true);
+  assert.equal(r.success && r.data.paginas_propuestas[0]?.evidencia, "sin_validar");
+  assert.equal(r.success && r.data.paginas_propuestas[0]?.score_confidence, 0.2);
 });

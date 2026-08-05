@@ -15,4 +15,10 @@ export type {
   CostBreakdown,
 } from "./tipos.js";
 export { usdFromMicros } from "./dinero.js";
-export { emisionM2, esquemaBase } from "./esquema.js";
+export {
+  emisionM2,
+  esquemaBase,
+  consumoM1,
+  parseBrief,
+  SUPPORTED_SCHEMA_VERSIONS,
+} from "./esquema.js";
