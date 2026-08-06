@@ -116,6 +116,84 @@ test("las respaldadas tienen volumen y las sin validar no (el dato honesto)", as
   }
 });
 
+test("🔴 el run de la demo tiene informe, y no costó $0.31", async () => {
+  const filas = await db.asService<{ informe_md: string }>(
+    "select informe_md from kr_informes where run_id = $1",
+    [r.runId],
+  );
+  assert.equal(filas.length, 1, "sembrar la demo deja el informe listo para la pantalla");
+  assert.match(filas[0]!.informe_md, /^# Keyword Research/);
+});
+
+/**
+ * 🔴 Los huecos del informe de la demo, uno por uno.
+ *
+ * El desglose de coste por proveedor y las dos coberturas se perdieron con `out/` (KR-1). El informe
+ * tiene que decir `n/d`, no un `0` ni un número plausible: el sistema dice lo que sabe y lo que no. Y de
+ * paso esto pone el camino de datos incompletos EN LA PANTALLA DE LA DEMO, así que si el endurecimiento
+ * de KR-2a estuviera mal, se ve enseguida.
+ *
+ * **Las aserciones son específicas a propósito.** Un `assert.match(md, /n\/d/)` a secas pasa con
+ * CUALQUIER `n/d` del documento, y casi ninguno es uno de estos huecos: el informe de la demo trae
+ * **27** `n/d` medidos, de los cuales solo **2** son las coberturas —doce en la tabla de páginas sin
+ * validar, doce más en su detalle por página y uno en la leyenda—. Así que la versión laxa no probaría
+ * nada de lo que este test promete. Cada hueco se comprueba en su lugar y con su texto.
+ */
+test("🔴 el informe de la demo declara sus huecos en vez de inventarlos", async () => {
+  const [fila] = await db.asService<{ informe_md: string }>(
+    "select informe_md from kr_informes where run_id = $1",
+    [r.runId],
+  );
+  const md = fila!.informe_md;
+
+  assert.doesNotMatch(md, /NaN/, "nunca NaN");
+  assert.match(md, /n\/d/, "los huecos se declaran");
+  assert.match(md, /0\.3097/, "el total SÍ está medido y se muestra");
+
+  // Hueco 1 — el desglose por proveedor. Sin los tres números NO se pinta la tabla (una tabla de tres
+  // `n/d` ocuparía el lugar del argumento comercial sin decirlo): se muestra el total y una nota.
+  assert.doesNotMatch(md, /\| DataForSEO \|/, "sin desglose no se pinta la tabla de desglose");
+  assert.match(md, /desglose\*\* por proveedor no quedó registrado/, "y se dice que falta");
+
+  // Huecos 2 y 3 — las dos coberturas, en la tabla de calidad de datos.
+  assert.match(md, /\| Keywords con \*\*volumen\*\* conocido \| \*\*n\/d\*\* \|/, "cobertura de volumen");
+  assert.match(md, /\| Keywords con \*\*dificultad \(KD\)\*\* conocida \| \*\*n\/d\*\* \|/, "cobertura de KD");
+
+  // `endpoints_degradados: null` (no `[]`): el informe OMITE la advertencia de fallo y dice que la omite.
+  assert.match(md, /\*\*No se registró\*\* si algún endpoint de datos falló/, "ni afirma ni niega fallos");
+
+  // Y el hueco que la spec no anticipó: el `h1` de cada página lo generó el LLM
+  // (`kr-service/src/pipeline/enrich-content.ts` lo sobrescribe) y se perdió con `out/`. El detalle por
+  // página lo declara en vez de reciclar el meta title, que sería afirmar que el h1 de la web ES el
+  // title. Si alguien "arregla" el encabezado inventando un h1 plausible, cae acá.
+  assert.match(md, /### 1\. \(h1 sin registrar\)/, "el h1 no se inventa");
+  assert.doesNotMatch(
+    md,
+    /### 1\. La Mejor Hamburguesa del Mundo en Madrid/,
+    "el meta title NO es el h1 de la página publicada",
+  );
+});
+
+test("🔴 `calidad_datos` de la demo no afirma lo que no se midió", async () => {
+  const [run] = await db.asService<{ calidad_datos: Record<string, unknown> }>(
+    "select calidad_datos from kr_runs where id = $1",
+    [r.runId],
+  );
+  const cd = run!.calidad_datos;
+
+  assert.equal(cd["cobertura_volumen"], null, "era 0.571 por PÁGINA, no por keyword: no se sabe");
+  assert.equal(cd["cobertura_kd"], null, "no quedó registrado");
+  assert.equal(
+    cd["endpoints_degradados"],
+    null,
+    "`[]` diría «ninguno falló», y la corrida no registró NADA sobre endpoints: es una certeza inventada",
+  );
+  assert.equal(cd["keywords_analizadas"], 55, "esto sí está medido");
+  // Los dos campos cuyo NOMBRE mentía (son páginas, no keywords) y que `DataQuality` no define.
+  assert.ok(!("keywords_con_volumen" in cd), "se fue");
+  assert.ok(!("keywords_totales" in cd), "se fue");
+});
+
 /**
  * El seed persiste la POSICIÓN de cada página en `PAGINAS_DEMO` (KR-3, migración 0015).
  *
@@ -264,10 +342,19 @@ test("sembrar dos veces es idempotente: no duplica tenant, cliente, run ni pági
     "select count(*)::text as n from kr_pages where tenant_id = $1",
     [r.tenantId],
   );
+  // El informe se inserta PELADO, sin `on conflict`: lo que lo hace re-sembrable es que
+  // `kr_informes.run_id` referencia a `kr_runs(id) on delete cascade` (0016), así que el `delete from
+  // kr_runs where id = <demo>` del seed se lo lleva antes. Si esa cascada desapareciera, el segundo
+  // `sembrarDemo` de este test revienta por PK duplicada — que es el fallo correcto, y visible.
+  const [informes] = await db.asService<{ n: string }>(
+    "select count(*)::text as n from kr_informes where run_id = $1",
+    [r.runId],
+  );
   assert.equal(tenants?.n, "1", "un solo tenant");
   assert.equal(clientes?.n, "1", "un solo cliente");
   assert.equal(runDemo?.n, "1", "un solo run de demo: el id es fijo y el upsert no lo duplica");
   assert.equal(pages?.n, "14", "las 14 páginas del run de demo, sin duplicar");
+  assert.equal(informes?.n, "1", "un solo informe del run de demo (la cascada lo repone, no lo duplica)");
 });
 
 test("re-sembrar NO destruye un run ajeno del mismo cliente (no es un delete por client_id)", async () => {

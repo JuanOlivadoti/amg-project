@@ -21,7 +21,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { COSTE_MICROS_DEMO, DEMO_CLIENT_ID, DEMO_RUN_ID, PAGINAS_DEMO } from "./seed-demo.js";
+import {
+  CALIDAD_DATOS_DEMO,
+  COSTE_MICROS_DEMO,
+  DEMO_CLIENT_ID,
+  DEMO_RUN_ID,
+  PAGINAS_DEMO,
+} from "./seed-demo.js";
 
 interface PaginaDelPortal {
   readonly keyword: string;
@@ -35,6 +41,12 @@ interface PaginaDelPortal {
   readonly confianza: number;
 }
 
+/** Lo mínimo del `RunSummary` del portal que hace falta acá. Se declara, no se importa: `db` no depende de `portal`. */
+interface RunDelPortal {
+  readonly id: string;
+  readonly calidad_datos: Record<string, unknown>;
+}
+
 interface MockDelPortal {
   readonly PAGINAS_REALES: readonly PaginaDelPortal[];
   readonly CLIENTE_REAL: {
@@ -42,6 +54,9 @@ interface MockDelPortal {
     readonly runId: string;
     readonly nombre: string;
     readonly costeMicros: number;
+  };
+  readonly generarCarteraMock: () => {
+    readonly clientes: readonly { readonly client_id: string; readonly runs: readonly RunDelPortal[] }[];
   };
 }
 
@@ -98,6 +113,40 @@ test("el split 8 respaldadas / 6 sin validar es el mismo de los dos lados", asyn
     respaldadasPortal.map((p) => p.slug),
     respaldadasSeed.map((p) => p.slug),
     "las respaldadas no son las mismas páginas de los dos lados",
+  );
+});
+
+/**
+ * 🔴 La calidad de datos, atada igual que las páginas.
+ *
+ * Este test **no existía**, y la spec de KR-2b afirmaba que este archivo ya ataba esto: compara nueve
+ * campos de PÁGINA y de `calidad_datos` no dice nada. Sin él, cambiar la calidad en un lado deja las
+ * dos copias del dato diciendo cosas distintas y nada avisa — el mismo fallo del 2026-08-01 con las
+ * keywords, en otro campo.
+ *
+ * Lo que ataja es el dato, no un pixel, y conviene no exagerarlo: hoy **ninguna plantilla del portal
+ * lee `calidad_datos`** (medido con grep sobre `portal/src/app`: solo aparece en el tipo `RunSummary`,
+ * en este mock y en un spec). La pantalla que lo va a pintar es de otra tarea, así que este test llega
+ * ANTES de que haya deriva que mirar — que es cuándo sirve.
+ *
+ * **Se lee a través de `generarCarteraMock()`, no de una constante exportada**, y eso es la mitad del
+ * test: `calidad_datos` vive DENTRO de `runReal()` (una función no exportada), así que lo único que
+ * prueba que el dashboard muestra esto es observar el objeto que el dashboard recibe. Comparar contra
+ * una constante exportada dejaría pasar exactamente la deriva que importa —alguien vuelve a poner un
+ * literal en `runReal()` y la constante sigue diciendo la verdad—. (El brief de la tarea pedía un
+ * `RUN_REAL` exportado, que no existe.)
+ */
+test("🔴 el seed y el mock del portal dicen lo MISMO en `calidad_datos`", async () => {
+  const { generarCarteraMock } = await cargarMock();
+
+  const cliente = generarCarteraMock().clientes.find((c) => c.client_id === DEMO_CLIENT_ID);
+  const run = cliente?.runs.find((x) => x.id === DEMO_RUN_ID);
+  assert.ok(run, `el mock ya no trae el run ${DEMO_RUN_ID} del cliente real ${DEMO_CLIENT_ID}`);
+
+  assert.deepEqual(
+    run.calidad_datos,
+    CALIDAD_DATOS_DEMO,
+    "la calidad de datos que muestra el portal es la que siembra el seed",
   );
 });
 

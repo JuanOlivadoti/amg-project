@@ -113,7 +113,22 @@ function runReal(): RunSummary {
     market_language: 'es',
     market_location_code: 2724,
     coste_micros_usd: CLIENTE_REAL.costeMicros,
-    calidad_datos: { cobertura_volumen: 0.571, keywords_con_volumen: 8, keywords_totales: 14 },
+    /*
+     * Los huecos de la corrida real, DECLARADOS. Copiado de `CALIDAD_DATOS_DEMO`
+     * (`db/src/seed-demo.ts`) y atado por `db/src/cartera-portal.test.ts`, que compara este objeto
+     * contra el del seed.
+     *
+     * Los tres `null` no son "sin datos todavía": el `0.571` que había acá era cobertura por PÁGINA (8
+     * de 14) y `DataQuality` define cobertura por KEYWORD, así que como dato de calidad mentía; la de KD
+     * no quedó registrada; y `endpoints_degradados` va `null` y no `[]` porque `[]` afirmaría "ninguno
+     * falló" y la corrida no registró nada sobre endpoints. `keywords_analizadas: 55` sí está medido.
+     */
+    calidad_datos: {
+      cobertura_volumen: null,
+      cobertura_kd: null,
+      endpoints_degradados: null,
+      keywords_analizadas: 55,
+    },
     config: { max_cost_usd: 1.0, max_pages: 14 },
     created_at: new Date(Date.UTC(2026, 6, 30)).toISOString(),
     finished_at: new Date(Date.UTC(2026, 6, 30, 0, 16, 15)).toISOString(),
