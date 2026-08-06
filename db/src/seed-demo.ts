@@ -485,6 +485,36 @@ const PROMPT_DEMO =
 const NOMBRE_CLIENTE_DEMO = "La Birra Bar";
 
 /**
+ * El objetivo del `satisfies` de `CALIDAD_DATOS_DEMO`, y por qué nombra los tres huecos como `null` en
+ * vez de conformarse con `DataQuality`.
+ *
+ * `DataQuality` los declara `number | null` y `string[] | null`, que es lo correcto **en el contrato**:
+ * una corrida real mide coberturas de verdad y puede reportar un array de endpoints caídos de verdad.
+ * Pero eso deja pasar `endpoints_degradados: []` **acá**, y en esta constante `[]` sería una mentira
+ * (afirma "ninguno falló", y la corrida no registró nada sobre endpoints).
+ *
+ * Medido con `tsc --strict`, porque la primera versión de esto afirmaba lo contrario: con `DataQuality`
+ * a secas el `satisfies` acepta `[]` **y** `["serp"]` sin una queja. Fijando los tres al literal `null`,
+ * un `[]` falla con `TS2322: Type 'readonly []' is not assignable to type 'null'`, y una
+ * `cobertura_volumen: 0.571` inventada falla igual. O sea que la honestidad de estos tres campos la
+ * impone **el compilador**, y el test de `seed-demo.test.ts` es la segunda línea, no la única.
+ *
+ * La fijación vive acá y **NO en `DataQuality`**: estrechar el contrato rompería a quien emite un array
+ * legítimo (el pipeline en una corrida con endpoints caídos, y los fixtures de `contrato`). Lo que es
+ * mentira es este `[]` concreto, no el tipo.
+ *
+ * Sigue intersecando `DataQuality` a propósito: si el contrato agrega un campo de calidad obligatorio,
+ * esta constante deja de compilar hasta que alguien decida qué dice la demo sobre él — que es
+ * exactamente cuándo hay que pensarlo.
+ */
+type HuecosDeLaCorridaReal = DataQuality & {
+  cobertura_volumen: null;
+  cobertura_kd: null;
+  endpoints_degradados: null;
+  keywords_analizadas: number;
+};
+
+/**
  * La calidad de datos de la corrida real, con sus huecos DECLARADOS.
  *
  * Se exporta porque el mock del portal tiene que decir lo mismo y hay un test que los ata
@@ -503,16 +533,19 @@ const NOMBRE_CLIENTE_DEMO = "La Birra Bar";
  * miente (son páginas, no keywords).
  *
  * `keywords_analizadas: 55` sí está medido (`docs/proyecto/09-estado-y-roadmap.md`) y es el cuarto
- * campo, fuera de `DataQuality` — por eso el `satisfies` lo nombra aparte, para que la comprobación de
- * los otros tres siga siendo exacta. Viaja DENTRO de esta columna porque `kr_runs` no tiene una para
- * él, y `meta_run.keywords_analizadas` lo lee de acá: dos copias que no pueden divergir.
+ * campo, fuera de `DataQuality` — por eso el objetivo del `satisfies` lo nombra aparte. Viaja DENTRO de
+ * esta columna porque `kr_runs` no tiene una para él, y `meta_run.keywords_analizadas` lo lee de acá:
+ * dos copias que no pueden divergir.
+ *
+ * Los tres `null` no son solo una convención de este archivo: los fija el tipo
+ * `HuecosDeLaCorridaReal` de arriba, así que rellenar cualquiera de ellos **no compila**.
  */
 export const CALIDAD_DATOS_DEMO = {
   cobertura_volumen: null,
   cobertura_kd: null,
   endpoints_degradados: null,
   keywords_analizadas: 55,
-} as const satisfies DataQuality & { keywords_analizadas: number };
+} as const satisfies HuecosDeLaCorridaReal;
 
 /**
  * El `h1` de las 14 páginas lo generó el LLM y se perdió con `out/`: el pipeline lo pone por defecto
