@@ -217,9 +217,16 @@ export async function workflowResearch(
      * con 23505.
      *
      * Si el informe NO se puede guardar, el step falla y el run no llega a `pending_approval`: es la
-     * decisión deliberada de fallar CERRADO. El caso realista es el tope de 256 KiB de la columna
-     * (`informe_tamano_razonable`), que solo alcanza un dato patológico. Tragarse ese error dejaría el
-     * run en la compuerta sin informe, que es justo la ventana que este step existe para cerrar.
+     * decisión deliberada de fallar CERRADO. El caso realista es el tope de la columna
+     * (`informe_tamano_razonable`), y el margen está MEDIDO: el informe de la demo —14 páginas, el brief
+     * más grande que existe hoy— pesa **13.718 bytes (13,4 KiB)** contra los **262.144** del `check`, o
+     * sea un factor de **19,1**. Medido el 2026-08-06 sembrando la demo contra PGlite y preguntando
+     * `octet_length(informe_md)`, que es lo que la constraint evalúa; en caracteres son 13.416, **302
+     * menos**, porque el informe va en español y con emoji — contar `.length` en JS habría subestimado.
+     *
+     * Con veinte veces de margen, lo que hace falta para tocar el tope no es un informe grande: es uno
+     * ROTO. Tragarse ese error dejaría el run en la compuerta sin informe, que es justo la ventana que
+     * este step existe para cerrar.
      *
      * Devuelve el TAMAÑO, no el Markdown: Inngest persiste el resultado de cada step, y devolver el
      * informe lo guardaría dos veces (en `kr_informes` y en la memoria del step). El número sirve de
