@@ -450,7 +450,14 @@ test("los 16 campos de la página llegan a la base sin cruzarse (`aFilaDePagina`
    * distintos en el fixture (`volumen` 390 / `dificultad` 15, `opportunity_score` 84 /
    * `score_confidence` 1): si fueran iguales, intercambiarlos no se vería.
    */
-  const pagina = paginaFalsa({ url_slug: "/pizza-napolitana-en-el-centro" });
+  /*
+   * `approved: true` es deliberado, y es lo que hace que la aserción de más abajo valga algo. Con el
+   * `false` del fixture, comprobar que la fila queda en `false` pasaba por COINCIDENCIA: el valor que
+   * entraba y el que la base escribe eran el mismo. Entrando en `true` —un brief que llega
+   * pre-aprobado, que es lo que un M2 con un bug produciría— la única forma de que la fila salga en
+   * `false` es que nada lo propague.
+   */
+  const pagina = paginaFalsa({ url_slug: "/pizza-napolitana-en-el-centro", approved: true });
   const espia = depsFalsas([pagina]);
 
   await correrHastaLaCompuerta(espia, runId);
@@ -459,9 +466,21 @@ test("los 16 campos de la página llegan a la base sin cruzarse (`aFilaDePagina`
   assert.equal(filas.length, 1);
 
   /*
-   * Los tres campos que `PaginaPropuesta` agrega NO se comparan contra la página del M2, y no es una
-   * exclusión silenciosa: ninguno de los tres viaja en el brief. Se comprueban aparte, abajo, porque
-   * cada uno afirma algo propio.
+   * Los tres campos que `PaginaPropuesta` agrega salen del `deepEqual`, y **cada uno por un motivo
+   * distinto**. No es una exclusión silenciosa: los tres se comprueban abajo, uno por uno.
+   *
+   *  · `id` y `orden_brief` **no existen en `ProposedPage`** (medido: tiene 17 campos y ninguno es
+   *    esos). El `id` lo pone el default de la columna —`savePages` no lo lista en el insert— y el
+   *    `orden_brief` lo deriva `savePages` del índice del array (`i` en el parámetro 20). No hay nada
+   *    del M2 contra lo que compararlos.
+   *
+   *  · `approved` es otro caso, y el motivo que había escrito acá era FALSO. Decía que no viaja en el
+   *    brief, y **sí viaja**: `ProposedPage` lo declara, los DOS validadores del contrato lo exigen
+   *    (`contrato/src/esquema.ts:129` y `:281`) y el M2 lo emite siempre en `false`. Lo que pasa es
+   *    otra cosa: `PageRow` no lleva el campo —así que la conversión no PUEDE propagarlo, lo impide el
+   *    tipo— y `savePages` lo escribe con un `false` literal en el `values`. O sea que la fila no es
+   *    función del valor que entró, y compararla contra `pagina.approved` afirmaría que se propaga:
+   *    exactamente lo contrario de la garantía. Por eso va aparte y en su propia aserción.
    */
   const { id, approved, orden_brief, ...persistida } = filas[0]!;
 
@@ -489,8 +508,13 @@ test("los 16 campos de la página llegan a la base sin cruzarse (`aFilaDePagina`
     preguntas_frecuentes: pagina.preguntas_frecuentes,
   });
 
-  assert.match(id, /^[0-9a-f-]{36}$/, "el `id` lo genera la base (gen_random_uuid), no viaja en el brief");
-  assert.equal(approved, false, "una página recién escrita NACE sin aprobar: el M2 no puede pre-aprobar");
+  assert.match(id, /^[0-9a-f-]{36}$/, "el `id` lo pone el default de la columna: no existe en ProposedPage");
+  assert.equal(
+    approved,
+    false,
+    "el brief llegó con approved: true y la fila quedó en false — la aprobación NO se propaga desde el " +
+      "M2: la escribe la compuerta cuando un humano mira",
+  );
   assert.equal(orden_brief, 0, "el orden lo deriva `savePages` del índice del array (KR-3, migración 0015)");
 });
 
