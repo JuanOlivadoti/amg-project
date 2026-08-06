@@ -512,7 +512,7 @@ en orden de preferencia:
 | # | Pieza | Estado | Nota |
 |---|---|---|---|
 | **KR-1** | **El dataset crudo, recuperado o regenerado** | 🟠 **A medias** | El **destino durable** ✅ hecho. El **dato** falta: cuesta ~$0.31 y **decide Juan**. Ver arriba. |
-| **KR-2** | **El informe legible, en el portal** | ✅ **completo** (KR-2a el 2026-08-05, KR-2b el 2026-08-06) | **KR-2a**: el paquete `contrato/` (7º workspace) con los tipos, los dos validadores Zod y `renderReport`; 11 commits + una fix wave, 734 tests entonces. Cierra la deuda del Zod duplicado. **KR-2b**: la tabla `kr_informes` (`0016`, solo staff), `guardarInforme`/`getInforme`, el step del orquestador **antes** de `cerrar-run`, los dos endpoints, el seed de la demo y la pantalla con parser propio de Markdown; **17 commits**, 7 tareas con su review cada una. Decisiones: **(b) paquete compartido**, **pantalla + descarga `.md`**, **el `.md` guardado**, **el informe es interno**, el **PDF trasladado** al entregable del restaurante (nota fechada en ADR-07), y **las dos fechas del informe se muestran las dos** con el aviso explicando cuál es cuál. Detalle abajo. |
+| **KR-2** | **El informe legible, en el portal** | ✅ **completo** (KR-2a el 2026-08-05, KR-2b el 2026-08-06) | **KR-2a**: el paquete `contrato/` (7º workspace) con los tipos, los dos validadores Zod y `renderReport`; 11 commits + una fix wave, 734 tests entonces. Cierra la deuda del Zod duplicado. **KR-2b**: la tabla `kr_informes` (`0016`, solo staff), `guardarInforme`/`getInforme`, el step del orquestador **antes** de `cerrar-run`, los dos endpoints, el seed de la demo y la pantalla con parser propio de Markdown; **22 commits**, 7 tareas con su review cada una. Decisiones: **(b) paquete compartido**, **pantalla + descarga `.md`**, **el `.md` guardado**, **el informe es interno**, el **PDF trasladado** al entregable del restaurante (nota fechada en ADR-07), y **las dos fechas del informe se muestran las dos** con el aviso explicando cuál es cuál. Detalle abajo. |
 | **KR-3** | **Las tres mejoras de calidad** | 🟠 **Implementadas, sin calibrar** | ✅ Las tres en `kr-service` (2026-08-02), y ✅ **el orden ya llega al portal** (2026-08-04, migración `0015`). Queda **una** cosa abierta: los parámetros no están barridos contra datos reales (necesita KR-1). |
 | **KR-4** | **El guion de dos niveles, escrito** | ⚪ Sin empezar | Qué se muestra, en qué orden, y dónde se corta si no hay interés técnico. |
 
@@ -650,7 +650,7 @@ no desalinea la tabla ni un `\n##` inventa una sección. Ese último era un bug 
 
 #### ✅ KR-2b — cerrado el 2026-08-06: el informe, en la pantalla
 
-**17 commits**, siete tareas con su review cada una y seis re-reviews, ejecutadas con un implementador
+**22 commits**, siete tareas con su review cada una y seis re-reviews, ejecutadas con un implementador
 fresco por tarea. Lo construido:
 
 | Pieza | Qué quedó |
@@ -704,7 +704,7 @@ todavía no estaba activo; **ya lo estaba** (el detalle de por qué, en la
 
 La lógica salió del bash a **`scripts/contar-tests.mts`** con **9 tests**: acepta cualquier prefijo de
 reporter —medidos los de v22.21.1 y v24.18.1— y, lo que importa, **falla si no puede contar** en vez de
-devolver 0. Los dos sitios que contaban (monorepo y portal) usan el mismo contador. **743 tests**, exit 0, y
+devolver 0. Los dos sitios que contaban (monorepo y portal) usan el mismo contador. **743 tests** *(la cifra de ese día — histórica, no sincronizar)*, exit 0, y
 las 4 mutaciones caen. La lección quedó en [`08` §
 el molde que ya apareció tres veces](08-testing-calidad.md) y un checkpoint nuevo en `C1`.
 
