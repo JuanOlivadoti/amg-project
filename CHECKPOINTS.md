@@ -41,6 +41,14 @@ Uno por uno, y solo si el cambio los toca:
 - [ ] Un proceso, un login, un rol, con `NOINHERIT` (ADR-17).
 - [ ] Ningún evento porta autoridad: la fila se crea bajo RLS y el evento se emite después (ADR-18).
 - [ ] Todo acceso a la base va por `Tx` con conexión reservada; ningún `query()` suelto (ADR-13).
+- [ ] **Si la migración crea una tabla, tiene sus `grant`** — y el test que lo prueba es un
+      `insert`/`select` con el **login real** (o `set role`), no con el superuser. *Por qué está acá:*
+      los grants de este proyecto son listas explícitas por tabla y no hay `on all tables` en ninguna
+      migración, así que **una tabla nueva nace sin un solo privilegio** y todo da `42501` antes de
+      evaluar RLS. `kr_informes` (`0016`) fue la primera tabla desde que existen los cuatro logins
+      (ADR-17), y el paso no estaba en ninguna rutina: la primera versión de su spec se lo olvidó.
+      Medido: un `insert` sin grants **pasa** como superuser y da `42501` tras `set local role`, así
+      que un test escrito con la conexión del seed pasaría siempre.
 - [ ] Si se agregó un campo al perfil público: está en la allowlist de `business_profile_publico`, o
       se filtra en silencio (ADR-19).
 - [ ] Storyblok: el orquestador escribe por Management API, el renderizador lee por CDA. No se

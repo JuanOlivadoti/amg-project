@@ -11,6 +11,80 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-06 — KR-2b: el informe llega a la pantalla, y el plan se equivocó en cada tarea
+
+Cerrada **KR-2b** en **17 commits**: la tabla `kr_informes` (`0016`, solo staff, con sus grants),
+`guardarInforme`/`getInforme`, el step del orquestador **antes de `cerrar-run`**, los dos endpoints, el seed
+de la demo con informe sin gastar $0.31, el parser de Markdown y la pantalla. **786 tests** en el monorepo
+(venía de 743) y **283** en el portal; `verificar --con-portal` exit 0. Siete tareas con un implementador
+fresco cada una, review después de cada devolución, seis re-reviews, y una review de rama al final que
+devolvió **cero defectos de lógica**.
+
+**Lo que hay que escribir primero, porque es el dato de la jornada: el plan tenía errores en las siete
+tareas.** Entre dos y siete por brief. Cuatro impedían compilar; uno pedía una mutación **imposible** (un
+`if` de rol que el diseño hace inescribible); otro omitía **media tarea** (que el parser tenía que deshacer
+el escapado del generador); y una aserción que yo escribí con un `*` **aceptaba el mismo valor que el test
+debía rechazar**. El plan se escribió el día anterior "con las firmas reales a la vista", y aun así.
+
+Lo que los encontró no fue leer código: fue **ejecutar**. Y el patrón de los defectos es uno solo.
+
+**Un test que pasa no es un test que prueba.** Cuatro veces un test estaba verde por la razón equivocada, y
+las cuatro se destapó mutando:
+
+| Qué parecía cubierto | Qué pasaba al mutar |
+|---|---|
+| Los tres tests negativos de la tabla (otro tenant, rol `cliente`, rol ausente) | pasaban **si la fila no existía**: comprobaban la ausencia de algo que nunca se creó |
+| El tope de 256 KiB | mover el límite en **cualquier** dirección no tumbaba nada |
+| El saneado del `filename` | el test era **unitario**: borrar el saneo del endpoint dejaba **la suite entera en verde** |
+| La distinción 404 / «no hay informe» | borrar la rama que las separa dejaba Karma en **75 SUCCESS** |
+
+El tercero es el que más importa: nada probaba que el endpoint **usara** la allowlist. Y el cuarto habría
+hecho que un run inexistente pintara *«Todavía no hay informe de este research»* — la pantalla afirmando que
+el run existe.
+
+**Siete afirmaciones sobre herramientas, escritas sin correrlas — y en una cadena se apilaron cuatro.** Un
+implementador afirmó que el tipo del portal «no va a avisar»; yo lo corregí prescribiendo `=== null`; una
+review escribió *mi prescripción literal* en una plantilla real y midió `TS2362`; yo añadí que el guard
+«tiene que vivir en el componente porque la plantilla no admite `typeof`», y el implementador midió que **sí
+lo admite**. Las cuatro capas tienen la misma forma: **razonar sobre una herramienta en vez de ejecutarla**,
+que se siente igual que saber. La capa 3 solo se salvó de propagarse porque venía marcada como inferencia y
+no como hecho. La formulación que dejó el implementador, y que va al `08`: *la regla de "lo medible tiene que
+estar medido" vale también para las instrucciones que recibís, y sobre todo cuando llegan envueltas en la
+corrección de un error propio, que es cuando menos ganas hay de dudar.*
+
+**Y la mutación tiene un modo de fallo que no está en la regla: que no se aplique.** Pasó tres veces —una
+aguja que era subcadena de otra línea, dos `perl` mal escapados— y las tres el síntoma fue un verde
+perfecto. La tercera variante es la más fina: `grep "exposeHeaders"` **seguía dando dos hits con la mutación
+puesta**, porque un comentario la nombraba. Así que la regla tiene dos mitades: confirmar que la aguja
+entró, **y** que el hit es la cosa.
+
+**Tres cosas las encontró el navegador, no los tests.** La peor: `hono/cors` no declaraba `exposeHeaders`,
+así que el browser **le escondía `Content-Disposition` a JavaScript** y el archivo bajaba como
+`informe-<runId>.md` — todo el saneado por allowlist, correcto y testeado, no llegaba al usuario. Ningún test
+podía verlo porque el header estaba bien construido; lo que fallaba era que el navegador no lo dejaba leer.
+
+**Dos hallazgos que corrigieron trabajo anterior.** El guardián que KR-2a puso para impedir una segunda
+fuente de verdad del brief **tiene un punto ciego**: solo barre esquemas Zod, así que no vio el
+`BriefDelPipeline` del orquestador, un mirror **de tipos** que recortaba cinco campos — justo los que el
+informe necesita. Y el parser podía **reabrir el agujero que KR-2a cerró**: `renderReport` escapa diez
+delimitadores, y partir celdas sin respetar el escape le devuelve a un `\|` hostil su columna extra.
+
+**Lo que los implementadores aportaron por encima del plan**, y conviene que quede porque contradice la idea
+de que el plan manda: un `satisfies` **no solo comprueba, también tipa contextualmente** —el objetivo laxo le
+daba al literal el tipo `string[]` y lo lavaba a mutable, y de ahí que el `as const` no protegiera—; que un
+fixture entrando en `approved: true` fija un campo **más fuerte** que meterlo en un `deepEqual`, porque la
+aserción anterior valía por coincidencia; y que un test del preflight de CORS habría quedado verde si alguien
+moviera la línea, así que el test correcto asevera sobre la **respuesta real**.
+
+Tres veces un implementador **rechazó con razón** algo que yo le pedí, y las tres midiéndolo primero.
+
+**Decisión del dueño del proyecto:** las dos fechas del informe —cuándo empezó el research y cuándo se
+guardó el render, 16 min 15 s de diferencia en la corrida real— **se muestran las dos**, con el aviso
+explicando cuál es cuál. Las otras dos salidas contradecían un test aprobado o el texto de la spec; ésta no
+oculta ninguna de las dos verdades.
+
+---
+
 ## 2026-08-05 (noche) — el arnés contaba 0 tests y lo decía en verde, y la nota de la tarde se equivocó al medirlo
 
 Arreglado el contador de tests de `verificar.sh`. La deuda estaba anotada esa misma tarde en `current.md`,

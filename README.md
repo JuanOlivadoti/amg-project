@@ -25,7 +25,7 @@ prompt → research → persistencia (RLS) → COMPUERTA HUMANA → contenido �
 | **[renderer/](renderer/)** | Sirve las webs de cliente: 1 servicio, N dominios (ADR-19) | ✅ | ✅ Railway *(2026-08-01)* |
 | **[portal/](portal/)** | SPA Angular — donde se aprueba la compuerta *(fuera del monorepo)* | ✅ | ✅ `bigballs.es` |
 
-- **743 tests en verde** (+235 en el portal: 169 `node:test` + 66 Karma) · typecheck limpio en los 7
+- **786 tests en verde** (+283 en el portal: 205 `node:test` + 78 Karma) · typecheck limpio en los 7
   paquetes · `npm test` desde la raíz.
 - Los tests de seguridad corren contra **Postgres real** (PGlite en WASM): sin Docker, sin cuenta.
 - Todo corre **sin una sola credencial**: providers mock + base en memoria.

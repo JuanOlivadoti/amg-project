@@ -5,7 +5,7 @@ description: Usar al tocar api/ — un endpoint nuevo, el middleware de autentic
 
 # La API de AMG OS
 
-`api/` es una fachada HTTP sobre la capa de datos: **Hono**, un middleware de autenticación y quince
+`api/` es una fachada HTTP sobre la capa de datos: **Hono**, un middleware de autenticación y diecisiete
 rutas (contá con `grep -cE "app\.(get|post|patch|put|delete)\(" api/src/app.ts` en vez de creerle a
 esta cifra). Lo que decide de verdad es poco, y conviene tenerlo nombrado:
 

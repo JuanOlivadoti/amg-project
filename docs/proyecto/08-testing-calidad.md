@@ -17,22 +17,22 @@ mock reproduciría mis suposiciones en vez de la realidad. Ya pasó: **tres de l
 críticas que encontraron las reviews eran suposiciones mías que Postgres no cumplía.** Sin Docker y
 sin cuenta.
 
-## Cobertura actual: 743 tests (monorepo) + 235 (portal)
+## Cobertura actual: 786 tests (monorepo) + 283 (portal)
 
 > Las cifras de esta tabla se miden con `npm run verificar`, que las cuenta de la salida de
-> `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-05.
+> `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: 2026-08-06.
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|
 | `contrato` | **34** | El contrato del brief compartido (KR-2a). Los **dos** validadores y por qué son dos: fixtures **negativos** de `emisionM2` (lo que el M2 debe rechazar) y de `consumoM1` (las cuatro `schema_version`), más el test de **inclusión** `emisionM2 ⊆ consumoM1` — lo único que impide que los dos se separen en silencio. El informe con **datos incompletos**: `n/d` en vez de `NaN`, la tabla de desglose que **no se pinta** sin datos, y `endpoints_degradados` distinguiendo `[]` ("ninguno falló") de `null` ("no se sabe"). El **escapado de delimitadores** de Markdown, que evita que una keyword con `|` desalinee la tabla o que un `\n##` invente una sección. Y dos tests de arquitectura: que **ningún paquete** defina su propio esquema del brief, y que ese barrido **no pueda quedar vacío** y pasar para siempre. |
-| `db` | **182** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto, **allowlist de `locations`/`menu` en `business_profile_publico`** (`0010`), y que la allowlist restrinja también la **forma** de cada valor —no solo el nombre de la clave— con tope de tamaño aplicado en la fuente (`app.texto_publico`, revisión externa Codex). |
+| `db` | **204** | RLS, aislamiento multi-tenant, compuerta de aprobación (aprobar **y editar**), **la seguridad de `kr_informes`** (los dos `grant` con el login real, el `cliente` que ve su run y **no** el informe, el rol ausente, `app_render` sin acceso, la FK compuesta y el tope de 256 KiB **en bytes**) y **`guardarInforme`** (idempotente, que no revoca aprobaciones, y que lanza si el run no es visible en vez de escribir cero filas en silencio), credenciales (`pg_has_role`, con caminos transitivos), idempotencia del gasto, **allowlist de `locations`/`menu` en `business_profile_publico`** (`0010`), y que la allowlist restrinja también la **forma** de cada valor —no solo el nombre de la clave— con tope de tamaño aplicado en la fuente (`app.texto_publico`, revisión externa Codex). |
 | `kr-service` | **146** | Pipeline, costos, presupuesto, HTTP, cache, registro de tareas, **la costura: que el POST facturable pase por el registro** (`client.test.ts`), **y que producción falle cerrado sin registro durable** (`getprovider-guard.test.ts`). Desde KR-3: el **map pack** del SERP corrigiendo `is_local`, el **percentil winsorizado** del volumen, el **orden en dos niveles**, y que el **destino del dataset no caiga en un directorio que git ignore**. |
 | `web-builder` | **96** | Contrato, handoff, render, XSS, idempotencia de publicación, marca por tenant, imágenes, **nav fijo de 4 secciones, footer NAP multi-local, `/menu` y `/blog` sintetizados** (con escape de `name`/`slug`/`price`), que **`locations` manda** sobre los campos clásicos (JSON-LD y footer, no solo cuando faltan), y que `parseProfile` rechace un perfil con más de 20 locales o 200 ítems de carta. |
-| `orchestrator` | **19** | Workflow durable, compuerta humana, autorización del evento, **cada cliente publica en SU space**, drafts no se marcan publicados. |
-| `api` | **95** | Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
+| `orchestrator` | **22** | Workflow durable, compuerta humana, autorización del evento, **el orden `guardar-paginas` → `guardar-informe` → `cerrar-run`** (el invariante: un run en `pending_approval` siempre tiene informe) y **los 16 campos de la conversión de página fijados contra la fila persistida**, **cada cliente publica en SU space**, drafts no se marcan publicados. |
+| `api` | **113** | Los **tres** resultados del informe (200 con `null` si no hay, 404 solo si no hay run, y el rol `cliente` indistinguible del primero **sin ningún `if` de rol**), el **`filename` por allowlist** con su fallback y su test end-to-end del header, y que el `Content-Disposition` esté **expuesto** por CORS. Auth (**JWT firmados de verdad**: exige `exp`/`sub`, verifica `aud`/`iss`, rechaza otro secreto), **comando compuesto: RLS rechaza → NO se emite el evento**, las dos audiencias (equipo escribe, cliente solo lee), aislamiento entre tenants, la compuerta doble (ADR-06), CORS. Contra PGlite, sin red ni Supabase. |
 | `renderer` | **114** | Resolución de dominio (**el `Host` como dato hostil**: inyección, IPs, puerto, `X-Forwarded-Host`), cache (colisión de slug entre spaces, TTL, LRU, invalidación por space), **webhook firmado** (sin firma / con otro secreto / sin secreto = cerrado), **preview firmado** (otro dominio, vencido, sin secreto, y que **no se cachee**), CDA (`../` e inyección de query, 404 vs 503, timeout), `perfilValido` (un NAP mal cargado degrada, no tira la web; **`locations`/`menu` sobreviven al validador y llegan al render**), **los límites del camino anónimo** (10ª review), y **navegación + home** (barra desde la Links API con las mismas defensas; **la nav falla → sin barra, no 503**; nav de preview en draft sin cachear; la raíz sin `home` **sintetiza un índice**, no 404; `/blog` no se autoenlaza aunque exista una story real con ese slug). |
 | `scripts` | **57** | El reparto de credenciales (`env-sync`), el re-seed de producción y **el contador de tests del propio arnés** (9, ver abajo: los dos formatos de reporter, el piso que impide reportar 0 en verde, y uno que corre el runner de verdad). No prueba la implementación: prueba la **compartimentación**. El `MAPA` debe coincidir exactamente con cada `.env.example` **en las dos direcciones** —agregar una clave a un example rompe el test hasta que alguien decida quién puede verla—, el renderizador nunca recibe el token de **escritura** de Storyblok ni una `DATABASE_URL_*`, y la API nunca recibe la conexión de admin (ADR-17). Verificado por mutación. |
-| `portal` | **235** | *(fuera del monorepo)* **169 con `node:test`** — el núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, **la separación por evidencia** (✅/⚠️), las **carreras asincrónicas** (`Vigencia`) y el **contraste WCAG AA** de los 17 pares × 2 temas leído de `styles.css`, más un test que recorre `src/app` y **falla si una plantilla incrusta un color**. Más el guard de config de producción: que `environment.prod.ts` esté **listo para desplegar** (sin placeholders, todo HTTPS) — importa porque el portal se despliega solo en cada push. Y **66 de componente con Karma** (`ng test`) para el DOM: tema, shell, y las pantallas de clientes y usuarios (incluido el `<select>` cuyo `[value]` se aplicaba antes de existir las `<option>`). Con `fetch` de mentira — los 169 corren sin navegador. |
+| `portal` | **283** | *(fuera del monorepo)* **205 con `node:test`** — el núcleo puro: cliente HTTP (headers, errores tipados, **refresh del token + retry en 401**), login de Supabase, **validación de la sesión guardada**, **la separación por evidencia** (✅/⚠️), las **carreras asincrónicas** (`Vigencia`) y el **contraste WCAG AA** de los 17 pares × 2 temas leído de `styles.css`, más un test que recorre `src/app` y **falla si una plantilla incrusta un color**. Más el guard de config de producción: que `environment.prod.ts` esté **listo para desplegar** (sin placeholders, todo HTTPS) — importa porque el portal se despliega solo en cada push. Y **78 de componente con Karma** (`ng test`) para el DOM: tema, shell, y las pantallas de clientes y usuarios (incluido el `<select>` cuyo `[value]` se aplicaba antes de existir las `<option>`). Desde KR-2b: el **parser de Markdown** (que el HTML crudo sale como **texto** y una marca desconocida **literal**, que **no existe** ninguna variante que transporte marcado, y que **deshace el escapado del generador sin reabrirlo** — un `\|` hostil no recupera su columna), un **barrido del árbol** que falla si alguna plantilla usa `innerHTML`/`bypassSecurityTrustHtml` (descubre archivos, así que cubre las pantallas futuras), y la pantalla del informe: los **tres** estados distinguidos —informe, run sin informe y run inexistente— con el par de tests que impide confundir los dos últimos. Con `fetch` de mentira — los 205 corren sin navegador. |
 
 ### La disciplina que más ha valido: **mutation testing**
 
@@ -103,6 +103,44 @@ Tiene que comprobar el **resultado**, porque el camino que no hace nada también
 el arreglo: se borran `NODE_TEST_CONTEXT` y `NODE_TEST_WORKER_ID` del entorno del hijo, **y** se afirma que
 su stderr no trae `recursively` — para que el día que Node renombre esas variables, el test lo diga en vez
 de volver a medir el vacío.
+
+#### La mutación que no se aplicó, y el verde que era su ausencia (KR-2b, 2026-08-06)
+
+La regla de mutar y ver qué cae tiene un modo de fallo que no está en la regla: **que la mutación no
+entre**. Pasó tres veces en KR-2b, y las tres el síntoma fue un verde perfecto.
+
+| Cómo falló el reemplazo | Qué pareció |
+|---|---|
+| La aguja de 4 espacios era **subcadena** de una línea de 6 | 22/22 verde: la mutación nunca se escribió |
+| `perl` con la aguja mal escapada (dos veces) | verde, cazado por el `grep` posterior |
+| `grep "exposeHeaders"` daba **dos hits con la mutación puesta** — un comentario y un marcador | el rojo parecía confirmado por la razón equivocada |
+
+**Las dos mitades de la regla, entonces:** antes de creerle al verde, confirmar con `grep` que **la aguja
+entró**; y confirmar que **el hit es la cosa**, no un comentario que la nombra. El tercer caso es el que
+enseña que "el grep lo encuentra" no equivale a "la mutación está".
+
+#### Cuatro capas de la misma equivocación, y ninguna era el código
+
+El defecto más repetido de KR-2b —**siete** veces— no fue código roto: fue una afirmación sobre una
+herramienta escrita sin ejecutarla. Y en un caso se apilaron cuatro:
+
+1. Un implementador afirmó que el tipo del portal «no va a avisar» de un `unknown`. **Razonado, no
+   compilado.**
+2. El coordinador lo corrigió y prescribió `=== null` como el estrechamiento correcto. **También razonado.**
+3. Una review escribió *esa prescripción literal* en una plantilla real y corrió `ngtsc`: `TS2362`. `=== null`
+   **no** estrecha `unknown` a `number`.
+4. El coordinador añadió que el guard «tiene que vivir en el componente porque la plantilla no admite
+   `typeof`». El implementador lo midió con dos controles positivos: **la plantilla sí lo admite y sí
+   estrecha**. Era preferencia de estilo disfrazada de exigencia del compilador.
+
+**La regla que deja, y es más amplia que "medí lo que escribís":** vale también para las **instrucciones que
+recibís** — y sobre todo cuando llegan envueltas en la corrección de un error propio, que es cuando menos
+ganas hay de dudar. La capa 3 solo se salvó de propagarse porque venía marcada como inferencia y no como
+hecho.
+
+Corolario práctico: **un control positivo en cada sonda.** La capa 4 se resolvió porque la sonda incluía un
+caso que *debía* fallar (`{{ valor * 100 }}` → `TS2571`); sin él, "compiló limpio" no distingue entre *el
+compilador lo aceptó* y *el compilador no miró el archivo*.
 
 ### `kr-service` (146 tests)
 

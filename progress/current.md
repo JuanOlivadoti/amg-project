@@ -6,17 +6,20 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-05
-**En curso:** nada. Cerrado **KR-2a**: el paquete `contrato/` (7º workspace) con los tipos del contrato del
-brief, los **dos** validadores Zod y `renderReport`. 11 commits por las 9 tareas del
-[plan](../docs/superpowers/plans/2026-08-05-kr2a-paquete-contrato.md) —cada una con su review— más una fix
-wave de la review de conjunto. El relato está en [`history.md`](history.md). Después, **arreglado el
-contador de tests del arnés**, que estaba reportando en cero (abajo).
-**Estado:** verificado en verde — **743 tests** del monorepo (venía de 734) + 235 del portal, typecheck
-limpio en los 7 paquetes, sin secretos entre los 419 archivos versionados.
+**Sesión:** 2026-08-06
+**En curso:** nada. Cerrado **KR-2b**: el informe de keyword research **en la pantalla del portal**. 17
+commits por las 7 tareas del [plan](../docs/superpowers/plans/2026-08-05-kr2b-informe-en-el-portal.md) —cada
+una con su review, seis con re-review— más dos piezas que aparecieron al final (el `exposeHeaders` del CORS
+y el aviso de las dos fechas) y la fix wave de la review de rama. El relato está en
+[`history.md`](history.md).
+**Estado:** verificado en verde — **786 tests** del monorepo (venía de 743) + **283** del portal (205
+`node:test` + 78 Karma) = **1069**, typecheck limpio en los 7 paquetes, sin secretos entre los 436 archivos
+versionados. `verificar --con-portal` exit 0.
 
-**No hubo sesión de navegador, y esta vez el motivo es estructural:** KR-2a no toca el portal ni el
-renderizador. Esa mitad del ritual le corresponde a **KR-2b**, que trae la pantalla.
+**Sí hubo sesión de navegador, y encontró tres cosas que ningún test veía:** que `hono/cors` le escondía
+`Content-Disposition` a JavaScript —así que el `filename` saneado no llegaba y el archivo bajaba con el
+`runId`—, un espacio antes de la puntuación, y el link al informe pegado al botón de aprobar como si fuera
+su etiqueta. Es la mitad del ritual que ningún script cubre, y esta vez se pagó sola.
 
 ---
 
@@ -37,24 +40,39 @@ Cuando la rotación se complete, dejar acá una línea con la fecha. Eso sí es 
 
 ---
 
-## Lo próximo: KR-2b
+## ✅ Cerrado — KR-2b: el informe, en la pantalla
 
-El plan **se escribe ahora**, con el paquete `contrato/` a la vista en vez de con firmas inventadas — que
-es la razón por la que no se escribió antes. Lo que trae, según la
-[spec](../docs/superpowers/specs/2026-08-04-informe-kr-portal-design.md):
+Las siete piezas están en `main` (sin desplegar la migración): la tabla `kr_informes` (`0016`, política
+`app.es_staff()` **y sus grants**), `guardarInforme`/`getInforme`, el step del orquestador **antes de
+`cerrar-run`**, los dos endpoints, el seed de la demo con informe sin gastar $0.31, el parser de Markdown y
+la pantalla. El detalle está en el
+[`09`](../docs/proyecto/09-estado-y-roadmap.md) y el relato en [`history.md`](history.md).
 
-- **Migración `0016`**: la tabla `kr_informes` con política `app.es_staff()` **y sus grants** — que faltaban
-  en la spec y los cazó la 14ª review: los grants del proyecto son listas explícitas por tabla, así que una
-  tabla nueva nace sin un solo privilegio y todo daría `42501`.
-- **`guardarInforme`** y el step del orquestador **entre `guardar-paginas` y `cerrar-run`**, que es lo que
-  hace enunciable el invariante *un run `pending_approval` siempre tiene informe*.
-- **Los dos endpoints** (`/runs/:id/informe` y `/runs/:id/informe.md`), con el `filename` saneado por
-  allowlist.
-- **La pantalla**, con parser propio de Markdown y **sin `innerHTML`**.
-- **El seed**, completado sin inventar los datos que no quedaron registrados.
+**La próxima migración libre es la `0017`.** `0013` y `0014` siguen **reservadas** para ramas que se
+ejecutan en otra máquina: un número libre en el disco no es un número libre.
 
-**La próxima migración libre sigue siendo la `0016`.** `0013` y `0014` están **reservadas** para ramas que
-se ejecutan en otra máquina: un número libre en el disco no es un número libre.
+## 🔴 Antes de sembrar en producción: hay que desplegar la `0016` primero
+
+`sembrarDemo` ahora inserta en `kr_informes`, y **el CLI de seed no corre migraciones**. O sea que
+`npm run seed:demo` / `reseed:demo` contra Supabase **falla** hasta que la `0016` esté aplicada. **Migrar
+primero, sembrar después** — y las cuatro migraciones pendientes (`0011`, `0012`, `0015`, `0016`) se aplican
+con `npm run migrate:deploy -w db`, que no se corre sin decidirlo.
+
+## Deuda con nombre que deja KR-2b
+
+- **Los `*.test.ts` del portal no los typechequea ningún tsconfig.** `tsconfig.app.json` los excluye y
+  `tsconfig.spec.json` solo incluye `*.spec.ts` — así que los **205** tests `node:test` del portal nunca
+  pasan por `tsc`. Medido metiendo un error de tipos descarado: el build pasa igual. Los `*.spec.ts` **sí**
+  están cubiertos. El arreglo es un `include`, y quedó fuera de alcance a propósito.
+- **`una-sola-fuente.test.ts` solo barre esquemas Zod.** No ve mirrors **de tipos**: por eso no pudo cazar el
+  `BriefDelPipeline` del orquestador, que recortaba cinco campos del brief. Ese mirror se eliminó, pero el
+  guardián sigue con el punto ciego — y hay un candidato nuevo, `ESCAPABLES` del portal contra el escapado de
+  `contrato`, hoy idénticos y sin nada que los ate.
+- **`force row level security` de `kr_informes` no tiene test propio.** La versión buena es un barrido de
+  todas las tablas, no enumerar ésta.
+- **El total del coste sigue visible para el rol `cliente`** en la pantalla del brief (`$0.3097`). No lo
+  causa KR-2b y el plan lo declaró fuera de alcance; lo que KR-2b sí hizo fue **corregir la copy** que
+  afirmaba lo contrario. Cerrarlo es una pieza propia: toca `RunSummary` y esa pantalla.
 
 ## ✅ Cerrado — el arnés reportaba "0 tests en verde", **en verde**
 
@@ -107,18 +125,20 @@ monorepo y el portal— usan el mismo contador.
 
 ## Lo que sigue pendiente de antes
 
-**Las migraciones `0011`, `0012` y `0015` están escritas y NO desplegadas.** Se aplican con
-`npm run migrate:deploy -w db` contra la base real, y no se corre sin decidirlo.
+**Las migraciones `0011`, `0012`, `0015` y `0016` están escritas y NO desplegadas** — las cuatro. Se
+aplican con `npm run migrate:deploy -w db` contra la base real, y no se corre sin decidirlo. Ojo con el
+orden: la `0016` tiene que estar aplicada **antes** de sembrar (arriba).
 
 **Decisión que no toma un agente:** **regenerar el dataset crudo** cuesta **~$0.31** y ~16 min contra
 DataForSEO en producción. Sin él, `VOLUMEN_PERCENTIL_TOPE = 0.9` y `PESO_CONFIANZA_ORDEN = 0.5` quedan
 sin calibrar y `TIPOS_MAP_PACK` sin verificar. **Y si se corre, hay que volver a sandbox** en
-`kr-service/.env`. Con KR-2b esto se vuelve visible: el informe de la demo va a salir con **tres huecos**
-en `n/d` (el desglose de coste y las dos coberturas) hasta que exista el dataset.
+`kr-service/.env`. Con KR-2b ya **es** visible: el informe de la demo sale con **tres huecos**
+en `n/d` (el desglose de coste y las dos coberturas) hasta que exista el dataset. El total, `$0.3097`, sí
+está medido y se muestra.
 
 **El margen de la agencia es legible por el rol `cliente`**, y no lo causa KR-2: `run_select` sobre
-`kr_runs` usa `app.ve_cliente(client_id)`, así que un `cliente` ve `coste_micros_usd` y `coste_breakdown`
-de su propio run. **No es fuga activa** —no hay usuarios con ese rol— pero el rol existe y RLS lo
+`kr_runs` usa `app.ve_cliente(client_id)`, así que un `cliente` ve `coste_micros_usd` de su propio run (el
+`coste_breakdown` no: `getRun` no lo selecciona, verificado en la review de rama). **No es fuga activa** —no hay usuarios con ese rol— pero el rol existe y RLS lo
 contempla. Cerrarlo toca `RunSummary` y la pantalla del brief: **es una pieza propia**.
 
 **El entregable que la agencia le pasa al restaurante no existe.** Sería el informe **sin el bloque de
@@ -128,7 +148,7 @@ coste**, y es la pieza dueña del **PDF** que ADR-07 pedía (ver la nota fechada
 que `respectGitignore`, `ignore` y `referencePaths` **no viajan con el repo**.
 
 **Sin verificar contra producción:** `docs/proyecto/README.md` afirma que hay **10 migraciones aplicadas en
-producción**, y en el repo hay **13**. No se puede confirmar sin credenciales.
+producción**, y en el repo hay **14**. No se puede confirmar sin credenciales.
 
 ---
 
