@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import type { PgStore, CambiosPagina, PgClientes, NuevoCliente, CambiosCliente, PgMembresias } from "db";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
+import { nombreArchivo } from "./informe-nombre.js";
 
 /**
  * Todo lo que la API necesita, INYECTADO. Ni el store, ni el emisor, ni la verificación del token se
@@ -92,6 +93,57 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     if (!run) return c.json({ error: "Run no encontrado." }, 404);
     const pages = await deps.store.getRunPages(ctx, id);
     return c.json({ run, pages });
+  });
+
+  /*
+   * GET /runs/:id/informe — el informe de keyword research para la pantalla (KR-2b).
+   *
+   * Tres resultados y son tres a propósito: 404 si el run no existe o no es visible; 200 con `null` si el
+   * run existe y no hay informe; 200 con el informe si hay y quien pregunta puede verlo. Un `cliente` cae
+   * en el segundo caso, porque la política `informe_staff` (0016) no le devuelve la fila — y esto NO se
+   * decide acá con un `if` de rol: lo decide Postgres (ADR-15). La API no debe revelar que existe algo que
+   * no puede mostrar, y el informe lleva el desglose de lo que la agencia le paga a DataForSEO.
+   *
+   * El 404 se decide con `getRun` y no con `getInforme` porque son dos preguntas distintas: "¿existe este
+   * run para mí?" y "¿hay informe?". Colapsarlas en un 404 haría que el portal no pueda decir cuál de las
+   * dos cosas pasa, y mostraría un error genérico donde debería decir "todavía no hay informe".
+   */
+  app.get("/runs/:id/informe", async (c) => {
+    const ctx = c.get("ctx");
+    const id = c.req.param("id");
+    const run = await deps.store.getRun(ctx, id);
+    if (!run) return c.json({ error: "Run no encontrado." }, 404);
+    const informe = await deps.store.getInforme(ctx, id);
+    return c.json({
+      informe_md: informe?.informe_md ?? null,
+      generado_at: informe?.generado_at ?? null,
+    });
+  });
+
+  /*
+   * GET /runs/:id/informe.md — la descarga. Acá la ausencia de informe SÍ es 404: no hay archivo que
+   * bajar. Las DOS razones por las que puede faltar —no se generó, o quien pide no puede verlo— dan
+   * exactamente la misma respuesta, por lo mismo que arriba.
+   *
+   * El `filename` sale del nombre del cliente y se sanea con ALLOWLIST (`nombreArchivo`), porque es texto
+   * que un humano escribe en el CRM y termina dentro de un header HTTP: un `\r\n` partiría la respuesta y
+   * un `"` cerraría el header antes de tiempo.
+   */
+  app.get("/runs/:id/informe.md", async (c) => {
+    const ctx = c.get("ctx");
+    const id = c.req.param("id");
+    const informe = await deps.store.getInforme(ctx, id);
+    if (!informe) return c.json({ error: "Informe no encontrado." }, 404);
+
+    // Dos lecturas más, bajo el MISMO contexto, solo para nombrar el archivo. Si alguna no devolviera
+    // fila, `nombreArchivo` cae a `informe.md` y la descarga sigue sirviendo: el nombre es comodidad,
+    // no autorización — lo que autoriza ya pasó en el `getInforme` de arriba.
+    const run = await deps.store.getRun(ctx, id);
+    const cliente = run ? await deps.store.getClient(ctx, run.client_id) : null;
+
+    c.header("Content-Type", "text/markdown; charset=utf-8");
+    c.header("Content-Disposition", `attachment; filename="${nombreArchivo(cliente?.nombre)}"`);
+    return c.body(informe.informe_md);
   });
 
   /** POST /pages/:id/approve — media compuerta: aprueba UNA página (ADR-06). */
