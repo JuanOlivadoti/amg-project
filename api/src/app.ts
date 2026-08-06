@@ -142,8 +142,11 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
    * exactamente la misma respuesta, por lo mismo que arriba.
    *
    * El `filename` sale del nombre del cliente y se sanea con ALLOWLIST (`nombreArchivo`), porque es texto
-   * que un humano escribe en el CRM y termina dentro de un header HTTP: un `\r\n` partiría la respuesta y
-   * un `"` cerraría el header antes de tiempo.
+   * que un humano escribe en el CRM y termina dentro de un header HTTP. Lo que esa allowlist para de
+   * verdad acá es la **comilla doble**, que undici y node:http aceptan tal cual y que cierra el `filename`
+   * antes de tiempo. El `\r\n` lo rechaza el runtime antes de llegar a la respuesta. Las dos cosas están
+   * MEDIDAS, con fecha y versión, en `informe-nombre.ts` — y viven solo ahí a propósito: dos copias de un
+   * hecho medido se desincronizan, que es exactamente cómo este comentario se había vuelto engañoso.
    */
   app.get("/runs/:id/informe.md", async (c) => {
     const ctx = c.get("ctx");

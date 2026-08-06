@@ -9,9 +9,12 @@ import type { VerificadorToken } from "./auth.js";
 
 /**
  * El `filename` del header de descarga es SUPERFICIE DE INYECCIÓN DE HEADER: sale del nombre del cliente,
- * que es texto que un humano escribe en el CRM. Un `\r\n` ahí parte la respuesta HTTP y un `"` rompe el
- * header. Se sanea con ALLOWLIST, no con lista de prohibidos: una denylist protege de lo que se le ocurrió
- * a quien la escribió.
+ * que es texto que un humano escribe en el CRM. Se sanea con ALLOWLIST, no con lista de prohibidos: una
+ * denylist protege de lo que se le ocurrió a quien la escribió.
+ *
+ * Qué para esta allowlist y qué para el runtime antes que ella —la comilla doble pasa las dos capas; el
+ * `\r\n` lo rechazan— está MEDIDO, con fecha y versión, en `informe-nombre.ts`. El nombre del test de acá
+ * abajo describe la clase de ataque, no lo que este stack hace con él.
  */
 test("🔴 un nombre con CRLF no puede partir la respuesta HTTP", () => {
   const n = nombreArchivo("Bar\r\nX-Inyectado: si");
