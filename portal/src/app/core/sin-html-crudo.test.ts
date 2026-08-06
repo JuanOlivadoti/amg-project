@@ -19,17 +19,19 @@ import { fileURLToPath } from 'node:url';
  */
 
 /*
- * Los patrones buscan el USO, no la MENCIÓN, y eso no es un detalle de estilo: medido sobre el árbol
- * de hoy (2026-08-06), un `/bypassSecurityTrustHtml|\.innerHTML/` a secas encuentra TRES líneas, y
- * las tres son comentarios que nombran la API justamente para explicar que el portal no la usa
- * (`core/markdown.ts:7`, `pages/clientes/cliente-recursos-card.ts:11` y `:13`). Un test que obliga a
- * borrar la explicación de una decisión de seguridad para poder pasar es un test que empeora el
- * código: se pagaría con un `// eslint-disable` mental, y la próxima persona no sabría por qué la
- * frase no se puede escribir.
+ * Los patrones buscan el USO, no la MENCIÓN, y eso no es un detalle de estilo. Medido corriendo el regex
+ * del plan —`/\[innerHTML\]|\.innerHTML|bypassSecurityTrustHtml/`— sobre `src/` el 2026-08-06: encuentra
+ * **DOS líneas**, y las dos son comentarios que nombran la API justamente para explicar que el portal NO
+ * la usa (`core/markdown.ts:7` y `pages/clientes/cliente-recursos-card.ts:11`). Un test que obliga a
+ * borrar la explicación de una decisión de seguridad para poder pasar es un test que empeora el código:
+ * se pagaría con un `// eslint-disable` mental, y la próxima persona no sabría por qué la frase no se
+ * puede escribir.
  *
- * Así que se exige la sintaxis con la que cada cosa se USA de verdad: el binding lleva `=`, la
- * escritura al DOM lleva `=`, y la función lleva paréntesis. `[innerHTML]` sin `=` es un atributo
- * muerto y `` `innerHTML` `` entre backticks es prosa.
+ * Así que se exige la sintaxis con la que cada cosa se USA de verdad: el binding lleva `=`, la escritura
+ * al DOM lleva `=`, y la función lleva paréntesis. `[innerHTML]` sin `=` es un atributo muerto, y
+ * `` `innerHTML` `` entre backticks es prosa — de hecho `cliente-recursos-card.ts:13` es exactamente eso,
+ * y por no llevar el punto delante NO lo caza ni el regex del plan (contarlo entre las líneas de arriba
+ * fue un error mío que la review corrigió: son dos, no tres).
  *
  * `.innerHTML ===` (una comparación, no una escritura) también cae, y se deja así a propósito: el
  * código de producción del portal no tiene ningún motivo para LEER innerHTML tampoco, y afinar el

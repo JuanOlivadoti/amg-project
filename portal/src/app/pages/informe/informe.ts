@@ -101,8 +101,11 @@ import { InformeInlineComponent } from './informe-inline';
               </blockquote>
             } @else {
               <!--
-                La TABLA scrollea sola. En 390 px las tablas del informe tienen 6 columnas: sin este
-                contenedor, lo que scrollea es la página entera y la navegación se rompe en móvil.
+                La TABLA scrollea sola. Las dos tablas grandes del informe tienen 8 columnas
+                (# / Tipo / Keyword principal / Vol. / KD / Score / Conf. / Intención, contadas sobre lo
+                que emite contrato/src/informe.ts:148). Medido en Chrome a 390 px: 761 px de contenido
+                contra 276 px visibles. Sin este contenedor, lo que scrollea es la página entera y la
+                navegación del portal se rompe en móvil.
                 w-full en el contenedor + min-w-full en la tabla es lo que hace que el ancho de
                 referencia sea el del contenedor y no el del contenido.
               -->

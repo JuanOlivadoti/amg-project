@@ -4,7 +4,7 @@ import { of } from 'rxjs';
 import { InformePage } from './informe';
 import { ApiService } from '../../services/api';
 import { DescargasService } from '../../shared/services/descargas';
-import type { ArchivoDescargado } from '../../core/api-core';
+import type { ApiError, ArchivoDescargado } from '../../core/api-core';
 import type { Informe } from '../../core/models';
 
 /**
@@ -34,7 +34,14 @@ const HOSTIL = [
   '> aviso con <svg onload="alert(1)"></svg>',
 ].join('\n');
 
-function render(informe: Informe, descargas?: Partial<DescargasService>) {
+/**
+ * El montaje, con el `verInforme` INYECTADO como función y no como valor.
+ *
+ * Que sea una función es lo que permite montar la pantalla con un `verInforme` que **rechaza**, que es el
+ * caso del run inexistente (404). Con un valor no había forma de ejercer la rama de error, y esa rama es
+ * justamente la que separa «no hay run» de «no hay informe».
+ */
+function montar(verInforme: () => Promise<Informe>, descargas?: Partial<DescargasService>) {
   TestBed.configureTestingModule({
     imports: [InformePage],
     providers: [
@@ -43,7 +50,7 @@ function render(informe: Informe, descargas?: Partial<DescargasService>) {
       {
         provide: ApiService,
         useValue: {
-          verInforme: async () => informe,
+          verInforme,
           descargarInformeMd: async (): Promise<ArchivoDescargado> => ({
             nombre: 'informe-run-1.md',
             blob: new Blob(['# Informe'], { type: 'text/markdown' }),
@@ -60,11 +67,26 @@ function render(informe: Informe, descargas?: Partial<DescargasService>) {
   return fixture;
 }
 
-async function renderEstable(informe: Informe, descargas?: Partial<DescargasService>) {
-  const fixture = render(informe, descargas);
+async function estabilizar(fixture: ReturnType<typeof montar>) {
   await fixture.whenStable();
   fixture.detectChanges();
   return { fixture, el: fixture.nativeElement as HTMLElement };
+}
+
+/** La API responde 200 con lo que se le pase. */
+function renderEstable(informe: Informe, descargas?: Partial<DescargasService>) {
+  return estabilizar(montar(async () => informe, descargas));
+}
+
+/** La API FALLA: `verInforme` rechaza con un `ApiError`, como con un run que no existe. */
+function renderEstableConFallo(status: number, mensaje: string) {
+  const err = new Error(mensaje) as ApiError;
+  err.status = status;
+  return estabilizar(
+    montar(async () => {
+      throw err;
+    }),
+  );
 }
 
 describe('InformePage — el informe se pinta como texto, nunca como HTML', () => {
@@ -128,7 +150,8 @@ describe('InformePage — el informe se pinta como texto, nunca como HTML', () =
   });
 
   it('🔴 la tabla vive en un contenedor que scrollea solo, no la página', async () => {
-    // En 390 px el informe real tiene tablas de 6 columnas. Si el scroll horizontal fuera de la página, la
+    // El informe real trae dos tablas de 8 columnas (`contrato/src/informe.ts:148`), que en 390 px miden
+    // 761 px contra 276 visibles — medido en Chrome. Si ese scroll horizontal fuera de la página, la
     // navegación del portal se rompería en móvil — y eso no lo ve ningún test que no mire el DOM.
     const { el } = await renderEstable({ informe_md: HOSTIL, generado_at: null });
     const tabla = el.querySelector('table');
@@ -143,6 +166,36 @@ describe('InformePage — el informe se pinta como texto, nunca como HTML', () =
     });
     expect(el.textContent).toContain('Informe generado el 30/07/2026, 00:16 UTC.');
     expect(el.textContent).toContain('las ediciones posteriores del revisor no están incluidas');
+  });
+
+  /*
+   * Los dos tests que siguen son UN PAR, y ninguno de los dos sirve solo.
+   *
+   * El endpoint devuelve TRES cosas y no dos: 404 si el run no existe o no es visible; 200 con
+   * `informe_md: null` si el run existe y no hay informe (o el rol no lo ve); y 200 con el informe. Los
+   * casos 1 y 2 significan cosas distintas para el revisor —«esta URL no apunta a nada» contra «este run
+   * todavía no tiene informe»—, y **la pantalla es lo único que decide cuál de los dos cuenta**: la API
+   * los distingue por status y el cliente HTTP los distingue por si lanza, pero entre esas dos capas y el
+   * usuario no hay nadie más.
+   *
+   * Sin el test del 404, borrar la rama `@else if (error())` de la plantilla deja la suite ENTERA en
+   * verde (medido: 75 SUCCESS) y hace que un run inexistente afirme «Todavía no hay informe de este
+   * research» — la pantalla jurando que el run existe. Por eso cada uno afirma las DOS mitades: el
+   * mensaje que corresponde, y la ausencia del otro.
+   */
+  it('🔴 un run que NO existe (404) muestra el error, y NO dice «todavía no hay informe»', async () => {
+    const { el } = await renderEstableConFallo(404, 'Run no encontrado.');
+
+    // Mitad 1: se ve el error de la API, con su mensaje y no uno inventado.
+    expect(el.textContent).toContain('Run no encontrado.');
+    // Mitad 2: y NO se cuenta el otro caso. Ésta es la que cae si alguien borra la rama de error.
+    expect(el.textContent)
+      .withContext('un run inexistente NO puede afirmar que el run existe y solo le falta el informe')
+      .not.toContain('Todavía no hay informe');
+    // El error termina la carga (si no, el mensaje quedaría debajo de un «Cargando…» eterno).
+    expect(el.textContent).not.toContain('Cargando…');
+    // Y no hay nada que bajar de un run que no existe.
+    expect(el.querySelector('button')).toBeNull();
   });
 
   it('🔴 con informe_md null muestra el mensaje: ni spinner infinito ni error', async () => {
