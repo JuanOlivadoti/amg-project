@@ -423,6 +423,78 @@ test("solo se publican las páginas que el humano aprobó, no todas las del run"
 });
 
 // ================================================================
+// La conversión de la página al escribir en la base
+// ================================================================
+
+/**
+ * Los 16 campos que `aFilaDePagina` traduce, fijados contra la fila **realmente persistida**.
+ *
+ * Este test existe porque una review midió que no existía. Al mover la conversión
+ * `ProposedPage`→`PageRow` de `deps.ts` a `workflow.ts` afirmé que "pasa a estar cubierta por tests", y
+ * era falso: con los 21 tests en verde se podía borrar `page_strategy`, intercambiar
+ * `volumen`↔`dificultad` o vaciar `preguntas_frecuentes` **sin que cayera nada**. El único campo que
+ * mordía era `url_slug`, y por dos tests de publicación que ya existían. Una conversión de 16 campos
+ * que ningún test fija es exactamente lo que se rompe en silencio en el cambio siguiente.
+ *
+ * Se compara lo RELEÍDO de la base (`getRunPages`), no el objeto que produce la conversión: comparar el
+ * intermedio contra sí mismo no prueba nada. Y el lado esperado nombra campo por campo de dónde sale
+ * cada valor — si dijera `aFilaDePagina(pagina)` estaría comparando la conversión consigo misma, que es
+ * el mismo error una capa más arriba.
+ */
+test("los 16 campos de la página llegan a la base sin cruzarse (`aFilaDePagina`)", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  /*
+   * El slug se cambia a propósito para que NO coincida con `seo.canonical`, que en el fixture son
+   * iguales: si coincidieran, una conversión que leyera `p.seo.canonical` en vez de `p.url_slug` pasaría
+   * este test. Por el mismo motivo importa que los pares que se podrían confundir lleven valores
+   * distintos en el fixture (`volumen` 390 / `dificultad` 15, `opportunity_score` 84 /
+   * `score_confidence` 1): si fueran iguales, intercambiarlos no se vería.
+   */
+  const pagina = paginaFalsa({ url_slug: "/pizza-napolitana-en-el-centro" });
+  const espia = depsFalsas([pagina]);
+
+  await correrHastaLaCompuerta(espia, runId);
+
+  const filas = await store.getRunPages(humano(tenantA), runId);
+  assert.equal(filas.length, 1);
+
+  /*
+   * Los tres campos que `PaginaPropuesta` agrega NO se comparan contra la página del M2, y no es una
+   * exclusión silenciosa: ninguno de los tres viaja en el brief. Se comprueban aparte, abajo, porque
+   * cada uno afirma algo propio.
+   */
+  const { id, approved, orden_brief, ...persistida } = filas[0]!;
+
+  assert.deepEqual(persistida, {
+    cluster_id: pagina.cluster_id,
+    tipo: pagina.tipo,
+    page_strategy: pagina.page_strategy,
+    url_slug: pagina.url_slug,
+    keyword_principal: pagina.keyword_principal,
+    keywords_secundarias: pagina.keywords_secundarias,
+    intencion: pagina.intencion,
+    local: pagina.local,
+    volumen: pagina.volumen,
+    dificultad: pagina.dificultad,
+    evidencia: pagina.evidencia,
+    // `opportunity_score` y `score_confidence` son `numeric` en Postgres, o sea `string` al leerlos. Lo
+    // que los devuelve como número es el `::float8` de `getRunPages`, no la conversión de acá: por eso
+    // se comparan con `===` a un número y no hace falta tolerancia (84 y 1 son exactos en float).
+    opportunity_score: pagina.opportunity_score,
+    score_confidence: pagina.score_confidence,
+    // Van por jsonb: vuelven como objeto, y `deepEqual` no mira el orden de las claves (jsonb no lo
+    // conserva). Lo que sí se compara es el contenido entero, campo por campo, sin recortes.
+    seo: { ...pagina.seo },
+    content_brief: { ...pagina.content_brief },
+    preguntas_frecuentes: pagina.preguntas_frecuentes,
+  });
+
+  assert.match(id, /^[0-9a-f-]{36}$/, "el `id` lo genera la base (gen_random_uuid), no viaja en el brief");
+  assert.equal(approved, false, "una página recién escrita NACE sin aprobar: el M2 no puede pre-aprobar");
+  assert.equal(orden_brief, 0, "el orden lo deriva `savePages` del índice del array (KR-3, migración 0015)");
+});
+
+// ================================================================
 // El informe del research (KR-2b)
 // ================================================================
 

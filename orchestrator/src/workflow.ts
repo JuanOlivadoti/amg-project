@@ -359,8 +359,15 @@ export async function workflowResearch(
  * `ContentBrief` son `interface`, y `tsc` rechaza una interface contra un `Record<string, unknown>` por
  * falta de index signature (medido). El objeto literal del spread sí la recibe.
  *
- * Vivía inline en `deps.ts`. Se mueve acá porque acá es donde se usa y porque en el composition root no
- * lo cubría ningún test: `deps.ts` solo corre en producción, y este archivo se testea contra PGlite.
+ * Vivía inline en `deps.ts`. Se mueve acá porque acá es donde se usa y porque en el composition root
+ * ningún test podía alcanzarla: `deps.ts` solo corre en producción.
+ *
+ * **Mudarla no la cubrió: lo que la cubre es un test, y hubo que escribirlo.** Con los 21 tests del
+ * paquete en verde, una review midió que se podía borrar `page_strategy`, intercambiar
+ * `volumen`↔`dificultad` o vaciar `preguntas_frecuentes` sin que cayera ninguno — y las tres mutaciones
+ * son type-safe (`page_strategy` es opcional en `PageRow`, y los dos números son `number | null`), así
+ * que `tsc` tampoco las ve. Quien fija los 16 campos, uno por uno y contra la fila **releída de la
+ * base**, es el test "los 16 campos de la página llegan a la base sin cruzarse".
  */
 function aFilaDePagina(p: ProposedPage): PageRow {
   return {
