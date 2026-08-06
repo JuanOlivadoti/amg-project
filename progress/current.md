@@ -12,8 +12,8 @@ commits por las 7 tareas del [plan](../docs/superpowers/plans/2026-08-05-kr2b-in
 una con su review, seis con re-review— más dos piezas que aparecieron al final (el `exposeHeaders` del CORS
 y el aviso de las dos fechas) y la fix wave de la review de rama. El relato está en
 [`history.md`](history.md).
-**Estado:** verificado en verde — **786 tests** del monorepo (venía de 743) + **283** del portal (205
-`node:test` + 78 Karma) = **1069**, typecheck limpio en los 7 paquetes, sin secretos entre los 436 archivos
+**Estado:** verificado en verde — **786 tests** del monorepo (venía de 743) + **285** del portal (207
+`node:test` + 78 Karma) = **1071**, typecheck limpio en los 7 paquetes, sin secretos entre los 436 archivos
 versionados. `verificar --con-portal` exit 0.
 
 **Sí hubo sesión de navegador, y encontró tres cosas que ningún test veía:** que `hono/cors` le escondía
@@ -61,7 +61,7 @@ con `npm run migrate:deploy -w db`, que no se corre sin decidirlo.
 ## Deuda con nombre que deja KR-2b
 
 - **Los `*.test.ts` del portal no los typechequea ningún tsconfig.** `tsconfig.app.json` los excluye y
-  `tsconfig.spec.json` solo incluye `*.spec.ts` — así que los **205** tests `node:test` del portal nunca
+  `tsconfig.spec.json` solo incluye `*.spec.ts` — así que los **207** tests `node:test` del portal nunca
   pasan por `tsc`. Medido metiendo un error de tipos descarado: el build pasa igual. Los `*.spec.ts` **sí**
   están cubiertos. El arreglo es un `include`, y quedó fuera de alcance a propósito.
 - **`una-sola-fuente.test.ts` solo barre esquemas Zod.** No ve mirrors **de tipos**: por eso no pudo cazar el

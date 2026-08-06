@@ -3,8 +3,8 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-06** · **1069 tests en verde** — **786** en el monorepo + **283** en
-> el portal (205 `node:test` + 78 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
+> Última actualización: **2026-08-06** · **1071 tests en verde** — **786** en el monorepo + **285** en
+> el portal (207 `node:test` + 78 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
 > siguientes fueron del agujero de la compuerta de secretos (2026-08-03), **once** de KR-3 —el orden del
 > brief persistido, migración `0015`— al estrenar el agente `datos`
 > ([plan de agentes](../../.claude/PLAN-AGENTES.md), etapa B, cerrada el 2026-08-04) y los **tres**
@@ -114,7 +114,7 @@
 > ver la fila propia por completo, y esta pieza le agregó a esa fila columnas que son notas internas
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
-> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **1069 tests** (786 monorepo + 283
+> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **1071 tests** (786 monorepo + 285
 > portal), **14 migraciones** (la `0011` y la `0012` mergeadas, la `0015` de KR-3 y la `0016` de KR-2b; las cuatro pendientes de aplicar en producción).
 
 ---

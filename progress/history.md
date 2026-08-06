@@ -16,7 +16,7 @@ haciendo ahora mismo: [`current.md`](current.md).
 Cerrada **KR-2b** en **17 commits**: la tabla `kr_informes` (`0016`, solo staff, con sus grants),
 `guardarInforme`/`getInforme`, el step del orquestador **antes de `cerrar-run`**, los dos endpoints, el seed
 de la demo con informe sin gastar $0.31, el parser de Markdown y la pantalla. **786 tests** en el monorepo
-(venía de 743) y **283** en el portal; `verificar --con-portal` exit 0. Siete tareas con un implementador
+(venía de 743) y **285** en el portal (207 `node:test` + 78 Karma); `verificar --con-portal` exit 0. Siete tareas con un implementador
 fresco cada una, review después de cada devolución, seis re-reviews, y una review de rama al final que
 devolvió **cero defectos de lógica**.
 

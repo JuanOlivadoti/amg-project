@@ -209,7 +209,7 @@ Esto permite responder, ante cualquier página publicada: *¿por qué existe est
 | Orquestación durable (`waitForEvent`, reintentos por paso) | Inngest (ADR-03, ADR-12) | ✅ **Construido** — `orchestrator/` |
 | Idempotencia del gasto | `payload_hash` (ADR-14) | ✅ **Construido** |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Construida** — `api/` (Hono), 113 tests |
-| **Portal** | **Angular + Tailwind** (ADR-16, ADR-21, *reemplaza* ADR-02/Next) | ✅ **Construido** — `portal/`, 283 tests (205 de núcleo + 78 de componente) |
+| **Portal** | **Angular + Tailwind** (ADR-16, ADR-21, *reemplaza* ADR-02/Next) | ✅ **Construido** — `portal/`, 285 tests (207 de núcleo + 78 de componente) |
 | **Despliegue** | Tres servicios Node de larga duración + una SPA estática | 🟡 **Fase 1 en producción** (API en Railway + portal en Hostinger + Supabase, 2026-07-25). **El orquestador y el renderizador siguen en `localhost`** — y falta aplicar la `0010` en la base |
 | **El renderizador** — servir la web del cliente en un dominio | **Servicio propio en runtime**, multi-tenant (ADR-19, *cierra OBS-03*) | ✅ **Construido** — `renderer/`, 114 tests |
 
