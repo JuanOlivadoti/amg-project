@@ -254,6 +254,46 @@ describe("GET /runs/:id/informe y /informe.md", () => {
     assert.match(await res.text(), /^# Keyword Research/);
   });
 
+  test("🔴 el `Content-Disposition` viaja EXPUESTO, o el navegador se lo esconde al portal", async () => {
+    /*
+     * El test de arriba prueba que el header está BIEN CONSTRUIDO en la respuesta HTTP. Éste prueba algo
+     * distinto y que ningún test de la respuesta podía ver: que el navegador se lo deje LEER al JavaScript
+     * del portal.
+     *
+     * Por CORS, un origen cruzado solo puede leer los siete headers de la safelist (`content-type`,
+     * `content-length`, `cache-control`, `expires`, `last-modified`, `pragma`, `content-language`).
+     * `Content-Disposition` NO está entre ellos, así que sin `Access-Control-Expose-Headers` el
+     * `headers.get('content-disposition')` del portal devuelve `null` —medido en Chrome por el
+     * implementador del portal— y la descarga cae a su nombre de fallback: todo el saneo por allowlist
+     * queda construido y nadie lo recibe.
+     *
+     * Se comprueba sobre la respuesta REAL y no sobre el preflight a propósito: el navegador lee
+     * `Access-Control-Expose-Headers` de la respuesta a la petición de verdad (Fetch §CORS), no del
+     * OPTIONS. Hono lo emite en las dos, pero la que gobierna es ésta.
+     */
+    const res = await pedir(`/runs/${runA1}/informe.md`, { user: equipoA, tenant: tenantA });
+    assert.equal(res.status, 200);
+
+    // Case-insensitive: los nombres de header lo son (RFC 9110) y el match de CORS también. Lo que la
+    // garantía dice es "está en la lista", no "está en minúsculas".
+    const expuestos = (res.headers.get("access-control-expose-headers") ?? "")
+      .split(",")
+      .map((h) => h.trim().toLowerCase())
+      .filter((h) => h.length > 0);
+
+    assert.ok(
+      expuestos.includes("content-disposition"),
+      `el header se construye pero el navegador no lo deja leer; expuestos = ${JSON.stringify(expuestos)}`,
+    );
+
+    /*
+     * Y es una ALLOWLIST POSITIVA, mismo criterio que `ROLES_ASIGNABLES`: se expone exactamente uno.
+     * Esta igualdad exacta es a propósito — exponer un header más (o un `*`) tiene que costar tocar este
+     * test y pensar qué se está dejando leer, no colarse en un `push`.
+     */
+    assert.deepEqual(expuestos, ["content-disposition"], "no se expone ningún header además de ése");
+  });
+
   test("🔴 el nombre del cliente NO llega crudo al header: se sanea end-to-end", async () => {
     /*
      * El test de `nombreArchivo` de arriba prueba la FUNCIÓN; éste prueba que el endpoint la usa. Sin

@@ -39,6 +39,22 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       origin: deps.corsOrigins ?? "*",
       allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
       allowHeaders: ["authorization", "content-type", "x-amg-tenant"],
+      /*
+       * Sin esto, el saneo del `filename` de la descarga del informe se construye y NADIE lo recibe.
+       *
+       * Un origen cruzado solo puede LEER los siete headers de la safelist de CORS (`content-type`,
+       * `content-length`, `cache-control`, `expires`, `last-modified`, `pragma`, `content-language`).
+       * `Content-Disposition` no está, así que el `headers.get('content-disposition')` del portal daba
+       * `null` (medido en Chrome) y la descarga caía a su nombre de fallback. El header estaba bien
+       * construido y bien saneado: el navegador se lo escondía a quien lo necesitaba.
+       *
+       * Es una ALLOWLIST POSITIVA y se expone exactamente uno: `hono/cors` emite el valor tal cual
+       * (`opts.exposeHeaders.join(",")`) y defaultea a `[]`, así que agregar éste no habilita ningún
+       * otro. No amplía quién puede leerlo: para recibir esta respuesta ya hay que haber pasado el JWT
+       * y la política `informe_staff`, y quien la recibe ya tiene el CUERPO del informe —el desglose
+       * del coste— en las manos. El nombre del cliente es estrictamente menos que eso.
+       */
+      exposeHeaders: ["content-disposition"],
     }),
   );
 
