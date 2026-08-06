@@ -5,7 +5,7 @@ import { ApiService } from '../../services/api';
 import { DescargasService } from '../../shared/services/descargas';
 import type { Informe } from '../../core/models';
 import { type Bloque, parsearMarkdown } from '../../core/markdown';
-import { avisoCongelado } from '../../core/informe-vista';
+import { avisoCongelado, fechaDelResearch } from '../../core/informe-vista';
 import { Vigencia } from '../../core/vigencia';
 import { InformeInlineComponent } from './informe-inline';
 
@@ -22,7 +22,11 @@ import { InformeInlineComponent } from './informe-inline';
  *    `informe_md: null` cuando el run existe y no hay informe —y también cuando quien pregunta es un rol
  *    `cliente`, indistinguible a propósito—. Un spinner infinito ahí sería una mentira que además no
  *    termina, y un cartel rojo culparía al usuario de algo que no pasó. Se dice con palabras.
- * 3. **Dice que está congelado.** Ver `core/informe-vista.ts`.
+ * 3. **Dice que está congelado, y distingue sus DOS fechas.** La del research (cuándo se hizo, en el
+ *    encabezado del documento) y la de guardado de este render (`generado_at`) son dos hechos distintos, y
+ *    entre ellas hay la duración del research —16 min 15 s en la corrida real, días en la demo—. El aviso
+ *    lo dice con palabras: un revisor que las ve juntas sin explicación concluye que el sistema se
+ *    contradice. Ver `core/informe-vista.ts`.
  *
  * No hace polling, a diferencia del brief: un informe no cambia. El que no existe se genera cuando el
  * research termina, y para eso el revisor ya tiene la pantalla del brief actualizándose sola.
@@ -184,11 +188,29 @@ export class InformePage implements OnInit, OnDestroy {
   readonly errorDescarga = signal('');
 
   readonly hayInforme = computed(() => this.informe()?.informe_md != null);
-  readonly aviso = computed(() => avisoCongelado(this.informe()?.generado_at ?? null));
   readonly bloques = computed<Bloque[]>(() => {
     const md = this.informe()?.informe_md;
     return md == null ? [] : parsearMarkdown(md);
   });
+
+  /**
+   * La fecha del research, leída del encabezado del propio documento — **no** derivada de `generado_at`,
+   * que es la otra cosa (cuándo se guardó este render). Devuelve `null` si el documento no la ofrece sin
+   * ambigüedad, y entonces el aviso cambia de redacción en vez de inventarla. Ver `core/informe-vista.ts`.
+   */
+  readonly fechaResearch = computed(() => {
+    const md = this.informe()?.informe_md;
+    return md == null ? null : fechaDelResearch(md);
+  });
+
+  /**
+   * El orden de los argumentos es load-bearing: primero **cuándo se guardó el render**, después **cuándo
+   * se hizo el research**. Intercambiarlos compila (los dos son `string | null`) y produce un aviso que
+   * miente con las dos fechas correctas — lo tumba el spec de esta pantalla.
+   */
+  readonly aviso = computed(() =>
+    avisoCongelado(this.informe()?.generado_at ?? null, this.fechaResearch()),
+  );
 
   ngOnInit(): void {
     this.sub = this.route.paramMap.subscribe((params) => {

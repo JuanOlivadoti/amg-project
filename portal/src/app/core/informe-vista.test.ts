@@ -1,6 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { avisoCongelado, fechaLegible } from './informe-vista';
+import { avisoCongelado, fechaDelResearch, fechaLegible } from './informe-vista';
+
+/**
+ * La cabecera REAL que emite `renderReport`, copiada del informe de la demo bajado del `dev-server` el
+ * 2026-08-06 (`GET /runs/:id/informe.md`, 13.718 bytes). Es una copia y no un import: el portal no depende
+ * de `contrato` a propósito (ADR-21), así que lo que se fija acá es «la forma que el generador emite hoy»,
+ * y si el generador cambia, lo que pasa está medido abajo: `fechaDelResearch` devuelve `null` y el aviso
+ * cambia de redacción, nunca de fecha.
+ */
+const CABECERA_REAL = [
+  '# Keyword Research — La Birra Bar',
+  '',
+  '_ES · es · 2026-07-30T00:16:15.000Z_',
+  '',
+  '- Keywords analizadas: **55**',
+  '- Páginas propuestas: **14**',
+].join('\n');
 
 test('fechaLegible: el ISO de la API se lee como fecha y hora, con la zona escrita', () => {
   // El instante real del informe de la demo (`db/src/seed-demo.ts`).
@@ -17,29 +33,118 @@ test('🔴 fechaLegible NO inventa una fecha con una entrada que no es ISO: la m
   assert.equal(fechaLegible(''), '');
 });
 
-test('🔴 el aviso dice que el informe está congelado, con la fecha, y la frase completa', () => {
+// ------------------------------------------------------------------ la fecha del research
+
+test('fechaDelResearch la encuentra en la cabecera REAL que emite el generador', () => {
+  assert.equal(fechaDelResearch(CABECERA_REAL), '2026-07-30T00:16:15.000Z');
+});
+
+test('🔴 con DOS candidatas en la cabecera devuelve null: no elige, y no adivina', () => {
   /*
-   * Esto es el contrato con el revisor, no un texto de relleno: el informe refleja el brief del momento
-   * en que se generó, así que si alguien editó una keyword después, la pantalla y el informe NO coinciden.
-   * La frase es lo único que evita que quien encuentre la discrepancia crea que el sistema se equivocó.
-   * Se fija acá —y no en un test de Karma— porque es una cadena, no un render.
+   * El caso que decide si esta función es honesta. Si el generador algún día imprime otra fecha en la
+   * cabecera —o el nombre de un cliente trae una—, hay dos candidatas y ninguna razón para preferir una.
+   * Devolver la primera sería inventar precisión, y una fecha equivocada DENTRO del aviso que explica cuál
+   * fecha es cuál es peor que no mostrarla: el aviso pasa a su otra redacción y no pierde ninguna verdad.
    */
+  const ambigua = CABECERA_REAL.replace(
+    '- Keywords analizadas: **55**',
+    '- Actualizado: 2026-08-01T10:00:00Z',
+  );
+  assert.equal(fechaDelResearch(ambigua), null);
+});
+
+test('🔴 no la busca fuera de la cabecera: una fecha en el cuerpo no es la del research', () => {
+  // Sin el tope de líneas, cualquier ISO que apareciera en una meta description o en una FAQ pasaría por
+  // ser la fecha del research. Medido sobre el informe real (2026-08-06): hoy hay UN solo token ISO en los
+  // 13.718 bytes, así que este límite no descarta nada real — descarta lo que podría aparecer mañana.
+  const conFechaAbajo = [
+    '# Keyword Research — Bar X',
+    '',
+    '_ES · es_',
+    '',
+    '- Keywords analizadas: **10**',
+    '',
+    '## Detalle',
+    '',
+    'Meta description: promo válida hasta 2026-09-01T00:00:00Z.',
+  ].join('\n');
+  assert.equal(fechaDelResearch(conFechaAbajo), null);
+});
+
+test('sin ninguna fecha en la cabecera devuelve null', () => {
+  assert.equal(fechaDelResearch('# Keyword Research — Bar X\n\n_ES · es_\n'), null);
+  assert.equal(fechaDelResearch(''), null);
+});
+
+// ------------------------------------------------------------------ el aviso
+
+test('🔴 el aviso nombra las DOS fechas y dice que son dos hechos distintos', () => {
+  /*
+   * Esto es el contrato con el revisor, no un texto de relleno, y tiene dos mitades.
+   *
+   * La primera: el informe refleja el brief del momento en que se generó, así que si alguien editó una
+   * keyword después, la pantalla y el informe NO coinciden. Esa frase es lo único que evita que quien
+   * encuentre la discrepancia crea que el sistema se equivocó.
+   *
+   * La segunda, decidida el 2026-08-06: las DOS fechas se muestran y el aviso explica cuál es cuál. Entre
+   * ellas hay la duración del research (16 min 15 s en la corrida real; días en el dataset sembrado, donde
+   * `generado_at` es cuándo corrió el seed). Un revisor que las ve juntas sin explicación concluye que el
+   * sistema se contradice, y ahí pierde la confianza en el informe entero.
+   */
+  const aviso = avisoCongelado('2026-08-06T17:42:00.000Z', '2026-07-30T00:16:15.000Z');
   assert.equal(
-    avisoCongelado('2026-07-30T00:16:15.597Z'),
-    'Informe generado el 30/07/2026, 00:16 UTC. Refleja el brief original; ' +
-      'las ediciones posteriores del revisor no están incluidas.',
+    aviso,
+    'Research hecho el 30/07/2026, 00:16 UTC. Este render del informe se guardó el ' +
+      '06/08/2026, 17:42 UTC: son dos fechas distintas, no una que cambió. ' +
+      'Refleja el brief original; las ediciones posteriores del revisor no están incluidas.',
   );
 });
 
-test('🔴 sin fecha, el aviso sigue avisando y no imprime "null"', () => {
+test('🔴 el orden de los argumentos no es simétrico: intercambiarlos cambia lo que el aviso afirma', () => {
+  // El fallo más peligroso de esta función es el que NO parece un fallo: las dos fechas correctas, cada una
+  // pegada a la etiqueta de la otra. `assert.notEqual` es lo que convierte «primero guardado, después
+  // research» en una propiedad y no en una convención que alguien recuerde.
+  const bien = avisoCongelado('2026-08-06T17:42:00.000Z', '2026-07-30T00:16:15.000Z');
+  const alReves = avisoCongelado('2026-07-30T00:16:15.000Z', '2026-08-06T17:42:00.000Z');
+  assert.notEqual(bien, alReves);
+  assert.match(bien, /Research hecho el 30\/07\/2026/);
+  assert.match(bien, /se guardó el 06\/08\/2026/);
+});
+
+test('🔴 sin la fecha del research, el aviso remite a la del documento en vez de callarla', () => {
+  // `fechaDelResearch` devuelve null cuando el documento no la ofrece sin ambigüedad. El aviso NO se queda
+  // solo con la de guardado presentándola como «la» fecha: dice de qué es, y dónde está la otra.
+  const aviso = avisoCongelado('2026-08-06T17:42:00.000Z', null);
+  assert.equal(
+    aviso,
+    'Este render del informe se guardó el 06/08/2026, 17:42 UTC; la fecha del research —cuándo se ' +
+      'hizo— es la que el informe muestra en su encabezado, y son dos fechas distintas. ' +
+      'Refleja el brief original; las ediciones posteriores del revisor no están incluidas.',
+  );
+});
+
+test('🔴 sin ninguna fecha, el aviso sigue avisando y no imprime "null"', () => {
   // `kr_informes.generado_at` es `not null` (0016), así que en el contrato esto solo puede pasar si no hay
-  // informe. Pero el tipo lo admite, y un `Informe generado el null.` en la cara del revisor sería el
-  // resultado. Lo importante —que el texto está congelado— se dice igual.
-  const aviso = avisoCongelado(null);
+  // informe. Pero el tipo lo admite, y un `se guardó el null` en la cara del revisor sería el resultado.
+  const aviso = avisoCongelado(null, null);
   assert.ok(!aviso.includes('null'), aviso);
   assert.equal(
     aviso,
-    'Informe congelado en el momento en que se generó. Refleja el brief original; ' +
-      'las ediciones posteriores del revisor no están incluidas.',
+    'Informe congelado: es un render guardado, no una vista en vivo. ' +
+      'Refleja el brief original; las ediciones posteriores del revisor no están incluidas.',
   );
+});
+
+test('🔴 las tres formas del aviso llevan SIEMPRE la frase que la spec pide', () => {
+  // La frase es el motivo por el que el aviso existe. Se afirma sobre las tres ramas juntas para que
+  // agregar una cuarta sin ella no pase desapercibida.
+  const avisos = [
+    avisoCongelado('2026-08-06T17:42:00.000Z', '2026-07-30T00:16:15.000Z'),
+    avisoCongelado('2026-08-06T17:42:00.000Z', null),
+    avisoCongelado(null, null),
+    avisoCongelado(null, '2026-07-30T00:16:15.000Z'), // sin guardado pero con research: cae en la 3ª
+  ];
+  for (const a of avisos) {
+    assert.match(a, /Refleja el brief original; las ediciones posteriores del revisor no están incluidas\.$/);
+  }
 });

@@ -159,13 +159,60 @@ describe('InformePage — el informe se pinta como texto, nunca como HTML', () =
     expect(contenedor?.className).toContain('overflow-x-auto');
   });
 
-  it('muestra el aviso de que el informe está congelado, con su fecha', async () => {
+  it('muestra el aviso de que el informe está congelado, con la frase que la spec pide', async () => {
     const { el } = await renderEstable({
       informe_md: '# Informe',
-      generado_at: '2026-07-30T00:16:15.597Z',
+      generado_at: '2026-08-06T17:42:00.000Z',
     });
-    expect(el.textContent).toContain('Informe generado el 30/07/2026, 00:16 UTC.');
+    expect(el.textContent).toContain('Este render del informe se guardó el 06/08/2026, 17:42 UTC');
     expect(el.textContent).toContain('las ediciones posteriores del revisor no están incluidas');
+  });
+
+  it('🔴 las DOS fechas se ven, cada una con su etiqueta, y no se confunden entre sí', async () => {
+    /*
+     * El caso más confuso posible, y es el de la demo: entre las dos fechas hay DÍAS.
+     *
+     *  · la del research (cuándo se hizo) sale del encabezado del propio documento;
+     *  · la de guardado de este render es `generado_at`, que en la demo es cuándo corrió el seed y en
+     *    producción cuándo terminó el step —y un reintento la mueve, por el test de T2—.
+     *
+     * Sin este test, intercambiar los dos argumentos de `avisoCongelado` en el componente compila (los dos
+     * son `string | null`) y deja un aviso con las dos fechas CORRECTAS y las etiquetas cruzadas: el fallo
+     * que no parece un fallo. Cada assert ata una fecha a su etiqueta, no solo comprueba que hay dos.
+     */
+    const { el } = await renderEstable({
+      informe_md: '# Keyword Research — La Birra Bar\n\n_ES · es · 2026-07-30T00:16:15.000Z_\n',
+      generado_at: '2026-08-06T17:42:00.000Z',
+    });
+    const aviso = el.querySelector('header p')!.textContent!;
+
+    expect(aviso).toContain('Research hecho el 30/07/2026, 00:16 UTC');
+    expect(aviso).toContain('Este render del informe se guardó el 06/08/2026, 17:42 UTC');
+    // La mitad que caza el intercambio: cada fecha con la etiqueta de la otra sería esto.
+    expect(aviso)
+      .withContext('las etiquetas quedaron cruzadas: la fecha de guardado se está contando como research')
+      .not.toContain('Research hecho el 06/08/2026');
+    expect(aviso)
+      .withContext('las etiquetas quedaron cruzadas: la fecha del research se está contando como guardado')
+      .not.toContain('se guardó el 30/07/2026');
+    // Y se dice que son dos hechos distintos, que es el punto de todo esto.
+    expect(aviso).toContain('son dos fechas distintas, no una que cambió');
+  });
+
+  it('🔴 si el documento no ofrece la fecha del research sin ambigüedad, el aviso NO la inventa', async () => {
+    // Dos candidatas en la cabecera ⇒ `fechaDelResearch` devuelve null. El aviso cambia de REDACCIÓN, no de
+    // fecha: sigue diciendo de qué es la que muestra y remite a la del encabezado. Lo que no puede pasar es
+    // que elija una de las dos y la presente como la del research.
+    const { el } = await renderEstable({
+      informe_md:
+        '# Keyword Research — Bar X\n\n_ES · es · 2026-07-30T00:16:15.000Z_\n\n- Actualizado: 2026-09-01T00:00:00Z\n',
+      generado_at: '2026-08-06T17:42:00.000Z',
+    });
+    const aviso = el.querySelector('header p')!.textContent!;
+
+    expect(aviso).toContain('la fecha del research —cuándo se hizo— es la que el informe muestra');
+    expect(aviso).not.toContain('Research hecho el');
+    expect(aviso).toContain('las ediciones posteriores del revisor no están incluidas');
   });
 
   /*
