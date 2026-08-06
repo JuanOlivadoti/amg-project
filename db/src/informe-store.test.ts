@@ -243,9 +243,12 @@ test("un run sin informe devuelve null, no lanza", async () => {
  *
  * El tipo `InformeRow` no puede probar nada de esto: `tx.query<T>` no valida, así que el `T` es una
  * promesa que nadie comprueba, y el driver entrega los `timestamptz` como `Date` de JS. Un contrato que
- * dijera `string` con un `Date` dentro haría que `generado_at.slice(0, 10)` —lo que T4 necesita para el
- * nombre del archivo de descarga— pasara `tsc` y reventara en producción. Es el defecto que KR-2a arregló
- * dos veces (`parseBrief`, `coste_breakdown`).
+ * dijera `string` con un `Date` dentro haría que **cualquier** operación de cadena sobre el campo —`slice`,
+ * `split`, `startsWith`— pasara `tsc` y lanzara un `TypeError` en producción. Es el defecto que KR-2a
+ * arregló dos veces (`parseBrief`, `coste_breakdown`).
+ *
+ * Ningún consumidor de hoy opera la cadena (el único lee el campo y lo pasa al JSON), así que este test no
+ * cubre un fallo en curso: fija el contrato para el primero que sí la opere.
  *
  * Por eso los asserts miran `typeof`, la FORMA de la cadena, que el instante no se haya movido, y que una
  * operación de string real funcione. Sin la conversión de `getInforme`, los cuatro se caen.
@@ -278,9 +281,10 @@ test("🔴 `generado_at` es un string ISO en RUNTIME, no el `Date` que da el dri
   );
 
   /*
-   * Y la operación concreta que T4 va a escribir para el `filename` de la descarga. Va explícita y no
-   * como comentario porque es el síntoma real: sobre un `Date` esto lanza `TypeError: ... is not a
-   * function`, y ese es el fallo que el tipo no atajaba.
+   * Y una operación de cadena de verdad, que es la FORMA que el fallo tomaría: sobre un `Date` esto lanza
+   * `TypeError: ... is not a function`, y es justo lo que el tipo no atajaba. `slice` no está acá porque
+   * ningún consumidor la use —ninguno la usa hoy—, sino porque es la operación más corta que distingue un
+   * `string` de un `Date` en runtime.
    */
   assert.equal(informe!.generado_at.slice(0, 10).length, 10, "se puede operar como string de verdad");
 });

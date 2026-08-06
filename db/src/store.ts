@@ -206,10 +206,17 @@ export interface RunSummary {
  *
  * **Y es un `string` ISO 8601 de verdad, no un `Date` disfrazado.** El driver entrega los `timestamptz`
  * como `Date` de JS (medido en PGlite; `node-postgres` hace lo mismo), así que `getInforme` convierte en
- * el borde. Si el tipo dijera `string` y el runtime diera un `Date`, `generado_at.slice(0, 10)` —justo lo
- * que hace falta para armar el nombre del archivo de descarga— pasaría `tsc` y reventaría en producción.
- * Es el defecto que KR-2a ya arregló dos veces (`parseBrief`, `coste_breakdown`): un tipo que promete algo
- * que el runtime no cumple es peor que no tenerlo, porque desactiva al único que podía avisar.
+ * el borde. Sin esa conversión el tipo diría `string` con un `Date` dentro, y **cualquier** operación de
+ * cadena sobre el campo —`slice`, `split`, `startsWith`— pasaría `tsc` y lanzaría un `TypeError` en
+ * producción. Es el defecto que KR-2a ya arregló dos veces (`parseBrief`, `coste_breakdown`): un tipo que
+ * promete algo que el runtime no cumple es peor que no tenerlo, porque desactiva al único que podía avisar.
+ *
+ * Para que quede dicho sin inflarlo: **hoy ningún consumidor hace esa operación.** El único que lee este
+ * campo es `GET /runs/:id/informe` (`api/src/app.ts`), que lo pasa tal cual al JSON — y ahí un `Date` se
+ * serializaría a la misma cadena ISO, así que la conversión no arregla ningún fallo en curso. Lo que hace
+ * es quitar la trampa antes de que la pise el primer consumidor que sí opere la cadena. El de la pantalla
+ * del informe (T7) todavía no existe. (La descarga `informe.md` no la usa: su `filename` sale del nombre
+ * del cliente, saneado por allowlist, y no lleva fecha.)
  *
  * ⚠️ `RunSummary.created_at` / `finished_at` **siguen teniendo ese defecto** (dicen `string`, entregan
  * `Date`). Es deuda vieja y anotada; se arregla cuando alguien toque ese contrato. No se propaga a éste.
