@@ -87,4 +87,29 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     const el = await render(true, true);
     expect(el.textContent).toContain('Aprobar el run y publicar');
   });
+
+  /**
+   * El link al informe (KR-2b).
+   *
+   * Es lo ÚNICO que hace descubrible la pantalla del informe: no está en el sidebar (cuelga de un run, no
+   * del portal) y nadie va a escribir la URL a mano. Y aparece **siempre**, también para un rol que no
+   * pueda ver el informe y para un run que todavía no tenga uno: el destino sabe explicar qué pasa, y
+   * esconder el link haría que la función no exista para quien la necesita.
+   *
+   * Sin este test, borrar el link deja la suite entera en verde y la funcionalidad inalcanzable.
+   */
+  it('🔴 el link al informe está, apuntando a runs/:id/informe', async () => {
+    const el = await render(true, false);
+    const link = el.querySelector<HTMLAnchorElement>('a[href="/runs/run-1/informe"]');
+    expect(link).withContext('no encontré el link al informe del research').not.toBeNull();
+    expect(link!.textContent).toContain('Ver el informe');
+  });
+
+  it('🔴 el link al informe aparece también para un rol que NO es equipo', async () => {
+    // Un rol `cliente` ve el brief de su propio run pero no el informe (política `informe_staff`, 0016).
+    // El link sigue estando: la pantalla del informe le dice con palabras que no está disponible, que es
+    // mejor que un link que aparece y desaparece según quién mira.
+    const el = await render(false, false);
+    expect(el.querySelector('a[href="/runs/run-1/informe"]')).not.toBeNull();
+  });
 });

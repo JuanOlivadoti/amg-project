@@ -1,9 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { crearApi, type ApiError } from './api-core';
+import { crearApi, nombreDeDescarga, type ApiError } from './api-core';
 
-/** Captura la última request y devuelve lo que se le configure. Sin red. */
-function fakeFetch(respuesta: { status?: number; body?: unknown }) {
+/**
+ * Captura la última request y devuelve lo que se le configure. Sin red.
+ *
+ * `crudo: true` manda el body TAL CUAL en vez de serializarlo a JSON, y `headers` agrega cabeceras de
+ * respuesta: las dos cosas hacen falta para la descarga del informe, que es `text/markdown` con un
+ * `Content-Disposition` y no un JSON.
+ */
+function fakeFetch(respuesta: {
+  status?: number;
+  body?: unknown;
+  crudo?: boolean;
+  headers?: Record<string, string>;
+}) {
   const capturado: { url?: string; method?: string; headers?: Record<string, string>; body?: string } = {};
   const fn = (async (url: string, init: RequestInit = {}) => {
     capturado.url = url;
@@ -11,9 +22,18 @@ function fakeFetch(respuesta: { status?: number; body?: unknown }) {
     capturado.headers = init.headers as Record<string, string>;
     capturado.body = init.body as string;
     const status = respuesta.status ?? 200;
-    return new Response(respuesta.body === undefined ? null : JSON.stringify(respuesta.body), {
+    const cuerpo =
+      respuesta.body === undefined
+        ? null
+        : respuesta.crudo
+          ? String(respuesta.body)
+          : JSON.stringify(respuesta.body);
+    return new Response(cuerpo, {
       status,
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': respuesta.crudo ? 'text/markdown; charset=utf-8' : 'application/json',
+        ...respuesta.headers,
+      },
     });
   }) as unknown as typeof fetch;
   return { fn, capturado };
@@ -77,6 +97,106 @@ test('aprobarPagina / editarPagina / aprobarRun usan el método y la ruta correc
     assert.equal(capturado.method, 'POST');
     assert.equal(capturado.url, 'http://api.test/runs/run-9/approve');
   }
+});
+
+// ---------------------------------------------------------------- el informe (KR-2b)
+
+test('verInforme pega a GET /runs/:id/informe con el id escapado', async () => {
+  const { fn, capturado } = fakeFetch({ body: { informe_md: '# Informe', generado_at: '2026-07-30T00:16:15.000Z' } });
+  const res = await crearApi(opts(fn)).verInforme('run 9/../otro');
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/runs/run%209%2F..%2Fotro/informe');
+  assert.equal(capturado.headers!['authorization'], 'Bearer tok-123');
+  assert.deepEqual(res, { informe_md: '# Informe', generado_at: '2026-07-30T00:16:15.000Z' });
+});
+
+test('🔴 verInforme devuelve informe_md:null tal cual: NO es un error', async () => {
+  // El caso que la pantalla tiene que distinguir del 404. Un run que existe y todavía no tiene informe
+  // —o cuyo informe no ve este rol, indistinguible a propósito— responde 200 con los dos campos en null.
+  // Si esto lanzara, la pantalla mostraría un cartel de error en el estado más normal que hay.
+  const { fn } = fakeFetch({ body: { informe_md: null, generado_at: null } });
+  const res = await crearApi(opts(fn)).verInforme('run-9');
+  assert.deepEqual(res, { informe_md: null, generado_at: null });
+});
+
+test('verInforme propaga el 404 (no hay run) con su status, para poder separarlo del null', async () => {
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Run no encontrado.' } });
+  await assert.rejects(
+    () => crearApi(opts(fn)).verInforme('inexistente'),
+    (e: ApiError) => {
+      assert.equal(e.status, 404);
+      assert.equal(e.message, 'Run no encontrado.');
+      return true;
+    },
+  );
+});
+
+test('descargarInformeMd pide el .md AUTENTICADO y devuelve el blob con su nombre', async () => {
+  // El token va en el header, nunca en la URL: en la query string quedaría en los logs del servidor y en
+  // el historial del navegador. Este assert es lo que impide que alguien "simplifique" a un <a href>.
+  const { fn, capturado } = fakeFetch({
+    body: '# Informe\n',
+    crudo: true,
+    headers: { 'content-disposition': 'attachment; filename="informe-Bella-Napoli.md"' },
+  });
+  const archivo = await crearApi(opts(fn)).descargarInformeMd('run-9');
+  assert.equal(capturado.url, 'http://api.test/runs/run-9/informe.md');
+  assert.equal(capturado.headers!['authorization'], 'Bearer tok-123');
+  assert.ok(!capturado.url!.includes('tok-123'), 'el token NO puede viajar en la URL');
+  assert.equal(archivo.nombre, 'informe-Bella-Napoli.md');
+  assert.equal(await archivo.blob.text(), '# Informe\n');
+});
+
+test('🔴 un 401 al bajar el .md también refresca y reintenta: la descarga usa la MISMA política', async () => {
+  // La descarga no hace su propio `fetch`, y esto es lo que lo fija. Con una segunda ruta HTTP paralela,
+  // un token vencido le daría al usuario un error de la nada justo en el botón de descargar.
+  const { fn, llamadas } = fakeSecuencia([{ status: 401 }, { status: 200, body: '# ok' }]);
+  let refrescos = 0;
+  const api = crearApi({
+    baseUrl: 'http://api.test',
+    getToken: () => 'tok',
+    getTenant: () => 't',
+    fetchFn: fn,
+    refrescar: async () => {
+      refrescos++;
+      return true;
+    },
+  });
+  const archivo = await api.descargarInformeMd('run-9');
+  assert.equal(refrescos, 1, 'refrescó una vez');
+  assert.equal(llamadas(), 2, 'reintentó el request');
+  assert.ok(archivo.blob.size > 0, 'el reintento trajo el cuerpo, no un blob vacío');
+});
+
+test('nombreDeDescarga: usa el filename del header cuando viene', () => {
+  assert.equal(
+    nombreDeDescarga('attachment; filename="informe-Bella-Napoli.md"', 'informe-run-9.md'),
+    'informe-Bella-Napoli.md',
+  );
+});
+
+test('🔴 nombreDeDescarga cae al fallback cuando el header no llega — que es el caso que CORRE hoy', () => {
+  // `api/src/app.ts` monta `hono/cors` sin `exposeHeaders`, así que en una petición de otro origen el
+  // navegador le esconde `Content-Disposition` a JavaScript y `headers.get()` devuelve null. El fallback
+  // no es una rama defensiva: es la que se ejecuta. Si esto devolviera '' o 'null', el archivo bajaría
+  // sin nombre.
+  assert.equal(nombreDeDescarga(null, 'informe-run-9.md'), 'informe-run-9.md');
+  assert.equal(nombreDeDescarga('attachment', 'informe-run-9.md'), 'informe-run-9.md');
+  assert.equal(nombreDeDescarga('attachment; filename=""', 'informe-run-9.md'), 'informe-run-9.md');
+});
+
+test('🔴 nombreDeDescarga sanea el header Y el fallback con la misma allowlist', () => {
+  // Defensa en profundidad: el servidor ya sanea, pero este código no puede comprobar que siga
+  // haciéndolo. Y el fallback lo arma el portal con el `runId` de la URL, que es entrada del usuario: si
+  // la allowlist se aplicara solo al header, la rama que corre sería la no saneada.
+  assert.equal(nombreDeDescarga('attachment; filename="../../etc/passwd"', 'x.md'), 'etc-passwd.md');
+  assert.equal(nombreDeDescarga(null, '../../evil'), 'evil.md');
+  assert.equal(nombreDeDescarga('attachment; filename="🍕🍕"', '🍕🍕'), 'informe.md');
+  // Un nombre largo NO pierde la extensión: 60 caracteres saneados + "informe-" + ".md" son 71, y el
+  // tope de acá (80) los deja pasar enteros. Con 60 el archivo bajaría cortado y sin `.md`.
+  const largo = `informe-${'A'.repeat(60)}.md`;
+  assert.equal(nombreDeDescarga(`attachment; filename="${largo}"`, 'x.md'), largo);
+  assert.ok(nombreDeDescarga('attachment; filename="' + 'B'.repeat(200) + '"', 'x.md').endsWith('.md'));
 });
 
 test('un error de la API se propaga con status y el mensaje del body', async () => {

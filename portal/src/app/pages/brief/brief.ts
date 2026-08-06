@@ -28,6 +28,23 @@ import { Vigencia } from '../../core/vigencia';
           <p class="mt-1 text-xs text-texto-tenue">
             Estado: {{ b.run.status }} · Coste: \${{ usd(b.run.coste_micros_usd) }}
           </p>
+          <!--
+            El link al informe aparece SIEMPRE, incluso si este run no tiene informe. Esconderlo haría
+            que nadie descubra que la función existe —y la pantalla del informe sabe explicar con
+            palabras por qué no hay uno—, así que el que decide qué se cuenta es el destino, no el link.
+            Lo fija un test: ver brief.spec.ts.
+          -->
+          <!--
+            block w-fit y no inline-block: con inline-block el link se pegaba en la MISMA línea que el
+            botón «Aprobar el run y publicar» y se leía como su etiqueta (visto en el navegador, no en
+            los tests). w-fit mantiene el área clickeable del ancho del texto y no de la tarjeta.
+          -->
+          <a
+            [routerLink]="['/runs', b.run.id, 'informe']"
+            class="mt-2 block w-fit text-sm text-texto hover:underline"
+          >
+            Ver el informe del research →
+          </a>
           @if (puedeAprobarRunUI()) {
             <button
               (click)="aprobarRun()"

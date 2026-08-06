@@ -17,6 +17,13 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/brief/brief').then((m) => m.BriefPage),
       },
       {
+        // Va DESPUÉS de `runs/:id` y no antes, y no cambia nada: el router de Angular no hace prefijo
+        // parcial con una ruta sin hijas, así que `/runs/x/informe` no lo puede atrapar `runs/:id`.
+        // El orden es por legibilidad —la pantalla que cuelga de la de arriba— no por precedencia.
+        path: 'runs/:id/informe',
+        loadComponent: () => import('./pages/informe/informe').then((m) => m.InformePage),
+      },
+      {
         path: 'cartera',
         loadComponent: () => import('./pages/cartera/cartera').then((m) => m.CarteraPage),
       },

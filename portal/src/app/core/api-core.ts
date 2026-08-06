@@ -4,6 +4,7 @@ import type {
   CambiosClienteAgencia,
   CambiosPagina,
   ClienteAgencia,
+  Informe,
   Miembro,
   NuevoClienteAgencia,
   NuevoRun,
@@ -13,6 +14,63 @@ import type {
 /** Error de la API con el status HTTP, para que la UI distinga 401 (relogin) de 403/409/500. */
 export interface ApiError extends Error {
   status: number;
+}
+
+/** Un archivo bajado de la API: el contenido y con qué nombre guardarlo. */
+export interface ArchivoDescargado {
+  nombre: string;
+  blob: Blob;
+}
+
+/*
+ * ALLOWLIST del nombre de archivo, del lado del cliente. Es la MISMA que `api/src/informe-nombre.ts`
+ * aplica al emitir el header, repetida acá a propósito: defensa en profundidad, el mismo criterio por el
+ * que el renderizador revalida lo que ya validó el emisor. El valor sale del nombre que un humano
+ * escribió en el CRM, y este código no puede comprobar que el saneado del servidor siguiera puesto.
+ *
+ * Lo que se evita concretamente es un `nombre` con separadores de ruta o con `..` acabando en el atributo
+ * `download` de un `<a>`. Los navegadores lo neutralizan, pero eso es una propiedad del navegador, no una
+ * del portal — y este archivo no depende de propiedades que no impone.
+ */
+const NOMBRE_PERMITIDOS = /[^A-Za-z0-9._-]/g;
+/*
+ * 80 y no 60: el nombre que emite la API ya está saneado y su contrato tope es `"informe-" + 60 + ".md"`
+ * = 71 caracteres (`api/src/informe-nombre.ts`). Con 60 acá, un cliente de nombre largo bajaría el archivo
+ * TRUNCADO y sin extensión — un saneado que rompe el caso legítimo en vez del hostil.
+ */
+const NOMBRE_LARGO_MAXIMO = 80;
+
+/**
+ * El nombre con el que se guarda una descarga: el `filename` del `Content-Disposition` si viene y
+ * sobrevive a la allowlist, y si no el `fallback`.
+ *
+ * ⚠️ **Hoy el header NO llega**, y no es un bug del portal: `api/src/app.ts` monta `hono/cors` sin
+ * `exposeHeaders`, así que en una petición de otro origen (portal en :4200, API en :3000) el navegador
+ * **oculta** `Content-Disposition` a JavaScript — `headers.get(...)` devuelve `null`. Medido en Chrome el
+ * 2026-08-06 con el `dev-server` levantado. Por eso el `fallback` no es un adorno defensivo: es el camino
+ * que corre. Se conserva la lectura del header para el día que la API lo exponga (una línea allá), y para
+ * cuando el portal se sirva del mismo origen detrás de un proxy.
+ */
+export function nombreDeDescarga(contentDisposition: string | null, fallback: string): string {
+  const delHeader = /filename="([^"]*)"/.exec(contentDisposition ?? '')?.[1] ?? '';
+  // El `fallback` pasa por la MISMA allowlist que el header, y no es simetría decorativa: hoy lo arma el
+  // portal con el `runId` de la URL, que es entrada del usuario. Si el saneado se aplicara solo a una de
+  // las dos ramas, la rama que corre sería justo la no saneada.
+  return sanearNombreArchivo(delHeader) || sanearNombreArchivo(fallback) || 'informe.md';
+}
+
+/** Vacío si no queda nada de la allowlist. Lo que devuelve **siempre** termina en `.md`. */
+function sanearNombreArchivo(crudo: string): string {
+  const base = crudo
+    .replace(NOMBRE_PERMITIDOS, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, NOMBRE_LARGO_MAXIMO)
+    .replace(/[-.]+$/g, '');
+  if (base === '') return '';
+  // La extensión se garantiza acá: sin `.md` el sistema operativo no sabe qué acaba de bajar, y el corte
+  // de largo de arriba se la puede haber comido.
+  return base.endsWith('.md') ? base : `${base}.md`;
 }
 
 export interface ApiOpts {
@@ -42,6 +100,17 @@ export interface ClienteApi {
   listarRuns(clientId?: string): Promise<RunSummary[]>;
   crearRun(nuevo: NuevoRun): Promise<string>;
   verBrief(runId: string): Promise<Brief>;
+  /**
+   * El informe del run. **`informe_md: null` NO es un error**: es «todavía no hay informe» (o el rol no
+   * lo ve, que es indistinguible y así debe quedar). Un run que no existe o no es visible lanza 404.
+   */
+  verInforme(runId: string): Promise<Informe>;
+  /**
+   * El `.md` para bajar. **No es un `<a href>`**: la API exige `Authorization`, y un token en la query
+   * string queda en los logs del servidor y en el historial del navegador. Así que se pide con `fetch`
+   * autenticado y quien llama guarda el `Blob` (ver `DescargasService`). Un run sin informe lanza 404.
+   */
+  descargarInformeMd(runId: string): Promise<ArchivoDescargado>;
   aprobarPagina(pageId: string): Promise<void>;
   editarPagina(pageId: string, cambios: CambiosPagina): Promise<void>;
   aprobarRun(runId: string): Promise<void>;
@@ -64,7 +133,21 @@ export interface ClienteApi {
 export function crearApi(opts: ApiOpts): ClienteApi {
   const fetchFn = opts.fetchFn ?? fetch;
 
-  async function pedir<T>(method: string, path: string, body?: unknown, yaReintento = false): Promise<T> {
+  /**
+   * La petición autenticada, **sin interpretar el cuerpo**: headers, la política de 401 → refrescar →
+   * reintentar-una-vez, y el mapeo de un `!ok` a `ApiError`. Devuelve la `Response` cruda.
+   *
+   * Está separada de `pedir` porque la descarga del informe necesita **exactamente esta política** con un
+   * `Blob` en vez de JSON. Si la descarga hiciera su propio `fetch`, el token vencido no se refrescaría
+   * ahí y el 401 llegaría al usuario como un error de la nada — la clase de agujero que se abre cuando la
+   * segunda ruta HTTP no pasa por la primera.
+   */
+  async function pedirRes(
+    method: string,
+    path: string,
+    body?: unknown,
+    yaReintento = false,
+  ): Promise<Response> {
     const headers: Record<string, string> = {};
     const token = opts.getToken();
     const tenant = opts.getTenant();
@@ -81,7 +164,7 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     // Token vencido: refrescar UNA vez y reintentar. `getToken` se relee, así que el retry ya lleva
     // el token nuevo. Una sola vez: si el refresh no alcanza, el 401 se propaga (no un bucle).
     if (res.status === 401 && opts.refrescar && !yaReintento) {
-      if (await opts.refrescar()) return pedir<T>(method, path, body, true);
+      if (await opts.refrescar()) return pedirRes(method, path, body, true);
     }
 
     if (!res.ok) {
@@ -97,6 +180,12 @@ export function crearApi(opts: ApiOpts): ClienteApi {
       throw err;
     }
 
+    return res;
+  }
+
+  /** Lo mismo, ya desenvuelto como JSON. Es lo que usan todos los endpoints menos la descarga. */
+  async function pedir<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const res = await pedirRes(method, path, body);
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   }
@@ -113,6 +202,19 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     },
     verBrief(runId) {
       return pedir<Brief>('GET', `/runs/${encodeURIComponent(runId)}`);
+    },
+    verInforme(runId) {
+      return pedir<Informe>('GET', `/runs/${encodeURIComponent(runId)}/informe`);
+    },
+    async descargarInformeMd(runId) {
+      const res = await pedirRes('GET', `/runs/${encodeURIComponent(runId)}/informe.md`);
+      return {
+        // El fallback lleva el runId y no un `informe.md` a secas: bajar dos informes de dos runs
+        // distintos tiene que dar dos archivos distinguibles, y hoy el fallback es el camino normal
+        // (ver `nombreDeDescarga`: el header no cruza el CORS de la API).
+        nombre: nombreDeDescarga(res.headers.get('content-disposition'), `informe-${runId}.md`),
+        blob: await res.blob(),
+      };
     },
     async aprobarPagina(pageId) {
       await pedir('POST', `/pages/${encodeURIComponent(pageId)}/approve`);

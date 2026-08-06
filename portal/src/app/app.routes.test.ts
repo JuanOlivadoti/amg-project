@@ -24,6 +24,21 @@ test('runs, runs/:id y cartera son hijas de la ruta del shell, protegidas por au
   assert.ok(hijos.includes('cartera'), 'cartera debe ser hija del shell');
 });
 
+test('runs/:id/informe es hija del shell (y del authGuard), y carga la pantalla del informe', async () => {
+  // El informe lleva el desglose de lo que la agencia le paga a DataForSEO. Que la ruta cuelgue del shell
+  // no es lo que lo protege —eso lo hace la política `informe_staff` (0016) dentro de Postgres— pero una
+  // ruta hermana de `/login` quedaría fuera del authGuard, y sería la única pantalla del portal sin puerta.
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const informe = (shell?.children ?? []).find((r) => r.path === 'runs/:id/informe');
+  assert.ok(informe, 'runs/:id/informe debe ser hija del shell');
+  assert.equal(informe?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+
+  // Y que el `loadComponent` resuelva de verdad: un import mal escrito no rompe el build (es una función
+  // perezosa), se rompe al navegar. Acá se paga el import una vez y se sabe.
+  const cargado = await informe?.loadComponent?.();
+  assert.equal((cargado as { name?: string })?.name, 'InformePage');
+});
+
 test('ninguna ruta hija repite su propio authGuard — lo hereda del padre', () => {
   const shell = routes.find((r) => r.path === '' && r.children);
   for (const hijo of shell?.children ?? []) {

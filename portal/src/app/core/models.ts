@@ -22,6 +22,26 @@ export interface RunSummary {
   finished_at: string | null;
 }
 
+/**
+ * El informe del research ya renderizado, tal como lo devuelve `GET /runs/:id/informe` (KR-2b).
+ *
+ * Los dos campos son `| null` **juntos**: `null` significa «no hay informe para vos», y son DOS causas
+ * indistinguibles a propósito — el run todavía no lo generó, o quien pregunta es un rol `cliente` y la
+ * política `informe_staff` (0016) no le devuelve la fila. La API no revela cuál de las dos es (el informe
+ * lleva el desglose de lo que la agencia le paga a DataForSEO), así que **el portal tampoco puede
+ * distinguirlas, y no debe intentarlo**: las dos se cuentan con el mismo mensaje.
+ *
+ * Lo que sí es distinto es el **404**: ahí no hay RUN. `informe_md: null` llega con 200 y NO es un error.
+ *
+ * `generado_at` es un `string` ISO 8601 en UTC de verdad, no un `Date` disfrazado: `PgStore.getInforme`
+ * convierte en el borde y tiene un test que lo fija. Se puede operar como cadena. (Ojo: `RunSummary`
+ * created_at/finished_at NO tienen esa garantía — deuda vieja, anotada en `db/src/store.ts`.)
+ */
+export interface Informe {
+  informe_md: string | null;
+  generado_at: string | null;
+}
+
 /** Una página propuesta, tal como la ve el revisor: con su `id` y su estado de aprobación. */
 export interface PaginaPropuesta {
   id: string;
