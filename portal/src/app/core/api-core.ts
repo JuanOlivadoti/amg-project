@@ -44,12 +44,16 @@ const NOMBRE_LARGO_MAXIMO = 80;
  * El nombre con el que se guarda una descarga: el `filename` del `Content-Disposition` si viene y
  * sobrevive a la allowlist, y si no el `fallback`.
  *
- * ⚠️ **Hoy el header NO llega**, y no es un bug del portal: `api/src/app.ts` monta `hono/cors` sin
- * `exposeHeaders`, así que en una petición de otro origen (portal en :4200, API en :3000) el navegador
- * **oculta** `Content-Disposition` a JavaScript — `headers.get(...)` devuelve `null`. Medido en Chrome el
- * 2026-08-06 con el `dev-server` levantado. Por eso el `fallback` no es un adorno defensivo: es el camino
- * que corre. Se conserva la lectura del header para el día que la API lo exponga (una línea allá), y para
- * cuando el portal se sirva del mismo origen detrás de un proxy.
+ * **El header llega, y el camino normal es el del header.** `api/src/app.ts` declara
+ * `exposeHeaders: ["content-disposition"]` en su `cors()`, que es lo que permite leerlo desde otro origen
+ * (portal en :4200, API en :3000): sin esa línea el navegador se lo esconde a JavaScript y
+ * `headers.get(...)` devuelve `null` — así estaba cuando esta función se escribió, medido en Chrome, y por
+ * eso existe el `fallback`.
+ *
+ * Así que el `fallback` es lo que su nombre dice: una **rama defensiva**, no la que corre. Sigue haciendo
+ * falta y tiene test propio, porque el portal no puede comprobar desde acá que el header venga: un proxy
+ * que filtre cabeceras, un `exposeHeaders` que alguien recorte, o un `filename` que no sobreviva a la
+ * allowlist dejan la descarga sin nombre. Con el fallback, baja igual y se distingue de las demás.
  */
 export function nombreDeDescarga(contentDisposition: string | null, fallback: string): string {
   const delHeader = /filename="([^"]*)"/.exec(contentDisposition ?? '')?.[1] ?? '';
@@ -209,9 +213,9 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     async descargarInformeMd(runId) {
       const res = await pedirRes('GET', `/runs/${encodeURIComponent(runId)}/informe.md`);
       return {
-        // El fallback lleva el runId y no un `informe.md` a secas: bajar dos informes de dos runs
-        // distintos tiene que dar dos archivos distinguibles, y hoy el fallback es el camino normal
-        // (ver `nombreDeDescarga`: el header no cruza el CORS de la API).
+        // El fallback lleva el runId y no un `informe.md` a secas: si el header no llega —un proxy que
+        // filtre cabeceras, un `exposeHeaders` recortado—, bajar dos informes de dos runs distintos tiene
+        // que seguir dando dos archivos distinguibles. Ver `nombreDeDescarga`.
         nombre: nombreDeDescarga(res.headers.get('content-disposition'), `informe-${runId}.md`),
         blob: await res.blob(),
       };

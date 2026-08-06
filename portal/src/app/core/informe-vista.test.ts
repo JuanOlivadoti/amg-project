@@ -76,6 +76,37 @@ test('sin ninguna fecha en la cabecera devuelve null', () => {
   assert.equal(fechaDelResearch(''), null);
 });
 
+test('🔴 un ISO que NO es UTC devuelve null: no se etiqueta como UTC algo que no lo es', () => {
+  /*
+   * `contrato/src/esquema.ts:137` tipa `generated_at` como `z.string()` PELADO: no exige ISO, no exige UTC.
+   * Que hoy llegue un instante UTC es propiedad de los productores (`toISOString()`), no del contrato.
+   *
+   * Medido con la versión anterior de esta función, que hacía la `Z` opcional: `2026-07-30T02:16:15+02:00`
+   * devolvía `2026-07-30T02:16:15` (el offset se quedaba afuera del match) y la pantalla imprimía
+   * «30/07/2026, 02:16 UTC» — dos horas de error, con la etiqueta UTC puesta encima. El instante real es
+   * `2026-07-30T00:16:15.000Z`. Por eso la `Z` es obligatoria: sin zona explícita, esta función no sabe qué
+   * instante es, y el aviso pasa a su redacción sin fecha.
+   */
+  const conOffset = '# KR — Bar\n\n_ES · es · 2026-07-30T02:16:15+02:00_\n';
+  const sinZona = '# KR — Bar\n\n_ES · es · 2026-07-30T02:16:15_\n';
+  assert.equal(fechaDelResearch(conOffset), null);
+  assert.equal(fechaDelResearch(sinZona), null);
+  // Y el instante real de ese offset, para que quede escrito que los 02:16 NO eran las 02:16 UTC.
+  assert.equal(new Date('2026-07-30T02:16:15+02:00').toISOString(), '2026-07-30T00:16:15.000Z');
+});
+
+test('🔴 una fecha en el NOMBRE del cliente (línea 1) no se confunde con la del research', () => {
+  // El h1 es `# Keyword Research — ${cliente}`, y `cliente` es texto que un humano escribió en el CRM: el
+  // único texto libre de la cabecera. Medido con la versión anterior, que miraba desde la línea 1: con
+  // `generated_at` no-ISO y este nombre, devolvía la fecha DEL NOMBRE y la pantalla la presentaba como la
+  // del research. Ahora la línea 1 no se mira.
+  const md = '# Keyword Research — Bar 2026-07-30T00:00:00Z\n\n_ES · es · hace un rato_\n';
+  assert.equal(fechaDelResearch(md), null);
+  // Y con el nombre hostil PERO una fecha válida en su sitio, sigue encontrando la correcta y no la del nombre.
+  const conAmbas = '# Keyword Research — Bar 2026-01-01T00:00:00Z\n\n_ES · es · 2026-07-30T00:16:15.000Z_\n';
+  assert.equal(fechaDelResearch(conAmbas), '2026-07-30T00:16:15.000Z');
+});
+
 // ------------------------------------------------------------------ el aviso
 
 test('🔴 el aviso nombra las DOS fechas y dice que son dos hechos distintos', () => {
@@ -111,16 +142,22 @@ test('🔴 el orden de los argumentos no es simétrico: intercambiarlos cambia l
   assert.match(bien, /se guardó el 06\/08\/2026/);
 });
 
-test('🔴 sin la fecha del research, el aviso remite a la del documento en vez de callarla', () => {
-  // `fechaDelResearch` devuelve null cuando el documento no la ofrece sin ambigüedad. El aviso NO se queda
-  // solo con la de guardado presentándola como «la» fecha: dice de qué es, y dónde está la otra.
+test('🔴 sin la fecha del research, el aviso dice de qué ES la que muestra y no remite a ninguna parte', () => {
+  /*
+   * `fechaDelResearch` devuelve null por DOS causas —cero candidatas (o ninguna en UTC) y ≥2—, y la
+   * redacción tiene que servir para las dos. La versión anterior decía «es la que el informe muestra en su
+   * encabezado»: verdad con ≥2 candidatas, falsa con cero, porque ahí el encabezado NO la tiene y el
+   * revisor iba a buscar algo que no está. Ahora no remite a ningún sitio: dice de qué es la fecha que
+   * muestra, que la del research es otra, y que no se pudo leer.
+   */
   const aviso = avisoCongelado('2026-08-06T17:42:00.000Z', null);
   assert.equal(
     aviso,
-    'Este render del informe se guardó el 06/08/2026, 17:42 UTC; la fecha del research —cuándo se ' +
-      'hizo— es la que el informe muestra en su encabezado, y son dos fechas distintas. ' +
+    'Este render del informe se guardó el 06/08/2026, 17:42 UTC: es cuándo se guardó, no cuándo se ' +
+      'hizo el research, que es otra fecha y no se pudo leer de este informe. ' +
       'Refleja el brief original; las ediciones posteriores del revisor no están incluidas.',
   );
+  assert.ok(!aviso.includes('encabezado'), 'no puede remitir a un encabezado que puede no tener la fecha');
 });
 
 test('🔴 sin ninguna fecha, el aviso sigue avisando y no imprime "null"', () => {

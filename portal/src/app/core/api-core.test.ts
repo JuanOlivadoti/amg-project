@@ -175,11 +175,12 @@ test('nombreDeDescarga: usa el filename del header cuando viene', () => {
   );
 });
 
-test('🔴 nombreDeDescarga cae al fallback cuando el header no llega — que es el caso que CORRE hoy', () => {
-  // `api/src/app.ts` monta `hono/cors` sin `exposeHeaders`, así que en una petición de otro origen el
-  // navegador le esconde `Content-Disposition` a JavaScript y `headers.get()` devuelve null. El fallback
-  // no es una rama defensiva: es la que se ejecuta. Si esto devolviera '' o 'null', el archivo bajaría
-  // sin nombre.
+test('🔴 nombreDeDescarga cae al fallback si el header falta o no trae filename usable', () => {
+  // El header SÍ llega hoy: `api/src/app.ts` declara `exposeHeaders: ["content-disposition"]`, y sin esa
+  // línea el navegador se lo escondía a JavaScript (`headers.get()` → null, medido en Chrome). Esta rama
+  // es defensiva y sigue haciendo falta: el portal no puede comprobar desde acá que el header venga —un
+  // proxy que filtre cabeceras, un `exposeHeaders` recortado, o un `filename` vacío lo dejan sin nombre—.
+  // Si esto devolviera '' o 'null', el archivo bajaría sin nombre en vez de con uno peor pero utilizable.
   assert.equal(nombreDeDescarga(null, 'informe-run-9.md'), 'informe-run-9.md');
   assert.equal(nombreDeDescarga('attachment', 'informe-run-9.md'), 'informe-run-9.md');
   assert.equal(nombreDeDescarga('attachment; filename=""', 'informe-run-9.md'), 'informe-run-9.md');

@@ -60,28 +60,46 @@ export function fechaLegible(iso: string): string {
  * `GET /runs/:id/informe` devuelve dos campos —`informe_md` y `generado_at`— y **ninguno es la fecha del
  * research**. La única copia que el portal tiene delante es la que `renderReport` imprime en el encabezado
  * del propio Markdown (`_ES · es · 2026-07-30T00:16:15.000Z_`). Así que sí, esto lee prosa de un paquete
- * del que el portal no depende a propósito (ADR-21), y por eso la regla es deliberadamente mezquina:
+ * del que el portal no depende a propósito (ADR-21), y por eso la regla es deliberadamente mezquina.
  *
- *   · se mira SOLO la cabecera (las primeras líneas, donde el generador la emite);
- *   · tiene que haber EXACTAMENTE UN timestamp ISO ahí. Cero o dos ⇒ `null`.
+ * ── QUÉ IMPONE ESTA REGLA, MEDIDO (2026-08-06) Y NO SUPUESTO ──────────────────────────────────────────
  *
- * Con eso, **el modo de fallo "fecha equivocada" no existe**: o hay una sola candidata sin ambigüedad, o
- * no hay ninguna y el aviso pasa a la redacción que remite a la fecha que el documento ya muestra. Una
- * fecha equivocada DENTRO de un aviso que explica cuál fecha es cuál sería el peor resultado posible, peor
- * que no mostrarla.
+ * La premisa que NO se puede dar por buena: `contrato/src/esquema.ts:137` tipa `generated_at` como
+ * **`z.string()` pelado**. No exige ISO 8601, no exige UTC, no exige nada. Que hoy llegue un instante UTC
+ * es una propiedad de los PRODUCTORES (`kr-service` y el seed usan `toISOString()`), no del contrato.
  *
- * Medido sobre el informe real de la demo el 2026-08-06 (13.718 bytes, 14 páginas): en TODO el documento
- * hay **un solo** token con forma ISO 8601, y está en la línea 3. No es que la cabecera sea el único sitio
- * donde podría aparecer uno — es que hoy no aparece en ningún otro, y si algún día aparece dentro de la
- * cabecera, esta función devuelve `null` en vez de adivinar.
+ * Así que la regla no elimina «mostrar una fecha equivocada» en general — **eso el portal no lo puede
+ * garantizar desde acá**. Lo que elimina son estos caminos concretos, cada uno con su test:
+ *
+ *   1. **Elegir entre dos candidatas.** Cero o ≥2 tokens ⇒ `null`. Nunca «la primera».
+ *   2. **Leer una fecha del CUERPO** (una promo en una meta description, una FAQ): solo se mira la cabecera.
+ *   3. **Leer el nombre del CLIENTE**: la línea 1 se excluye. Es el único texto libre que un humano escribe
+ *      en la cabecera, y medido: con `generated_at` no-ISO y un cliente llamado `Bar 2026-07-30T00:00:00Z`,
+ *      la versión anterior de esta función devolvía la fecha DEL NOMBRE.
+ *   4. **Presentar como UTC algo que no lo es.** Se exige la `Z` final. Medido con la versión anterior, que
+ *      la hacía opcional: `2026-07-30T02:16:15+02:00` daba `30/07/2026, 02:16 UTC` cuando el instante real
+ *      es `00:16 UTC` — dos horas de error, con la etiqueta «UTC» puesta encima. Un ISO sin zona hacía lo
+ *      mismo. Los dos ahora caen a `null`, y ésa es la razón por la que la `Z` no es opcional.
+ *
+ * **Lo que QUEDA en pie:** si un `renderReport` futuro pusiera OTRO timestamp UTC en las líneas 2-5 y
+ * ninguno más, esta función lo devolvería creyendo que es la fecha del research. No hay forma de
+ * distinguirlo sin que el contrato publique el campo. Es un riesgo declarado, no cubierto.
+ *
+ * Y sobre el volumen real: medido sobre el informe de la demo (13.718 bytes, 14 páginas) hay **un solo**
+ * token con forma ISO en TODO el documento, en la línea 3. Los límites de arriba no descartan nada que hoy
+ * exista — descartan lo que podría aparecer mañana.
  */
-const ISO_EN_TEXTO = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z?/g;
-/** El generador emite el h1 en la 1, un blanco en la 2 y la línea de mercado+fecha en la 3. 5 da holgura. */
+const ISO_UTC_EN_TEXTO = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z/g;
+/**
+ * El generador emite el h1 en la 1, un blanco en la 2 y la línea de mercado+fecha en la 3; 5 da holgura.
+ * **Se empieza en la 2 y no en la 1** a propósito: la 1 lleva el nombre del cliente, que es texto libre.
+ */
+const PRIMERA_LINEA_MIRADA = 1; // índice 0-based: se saltea la línea 1
 const LINEAS_DE_CABECERA = 5;
 
 export function fechaDelResearch(md: string): string | null {
-  const cabecera = md.split('\n', LINEAS_DE_CABECERA).join('\n');
-  const hallados = [...cabecera.matchAll(ISO_EN_TEXTO)].map((m) => m[0]);
+  const cabecera = md.split('\n', LINEAS_DE_CABECERA).slice(PRIMERA_LINEA_MIRADA).join('\n');
+  const hallados = [...cabecera.matchAll(ISO_UTC_EN_TEXTO)].map((m) => m[0]);
   return hallados.length === 1 ? (hallados[0] ?? null) : null;
 }
 
@@ -95,8 +113,12 @@ const REFLEJA_EL_BRIEF =
  * Tres formas, según cuánto se sabe, y ninguna esconde lo que sí se sabe:
  *
  *  1. **Las dos fechas** → se nombran las dos y se dice que son dos hechos distintos.
- *  2. **Solo la de guardado** (no se pudo leer la del research del documento) → se dice de qué es esa
- *     fecha, y se remite a la del encabezado del informe, que está en pantalla unas líneas más abajo.
+ *  2. **Solo la de guardado** → se dice de qué es esa fecha y que la del research es otra, **sin remitir a
+ *     ninguna parte**. La versión anterior mandaba a leerla «en el encabezado del informe», y eso cubría
+ *     UNA de las dos causas del `null`: si `fechaDelResearch` devolvió `null` porque encontró ≥2 candidatas,
+ *     el encabezado la muestra; si fue porque encontró CERO —o una que no era UTC, que se descarta—, el
+ *     encabezado no la tiene y la frase mandaba al revisor a buscar algo que no está. Una redacción que
+ *     depende de cuál de las dos causas se dio es una redacción que se equivoca la mitad de las veces.
  *  3. **Ninguna** —solo posible sin informe, porque `kr_informes.generado_at` es `not null` (0016)— → se
  *     dice lo esencial sin inventar ninguna fecha.
  *
@@ -115,8 +137,8 @@ export function avisoCongelado(guardadoAt: string | null, researchAt: string | n
   }
   if (guardado !== null) {
     return (
-      `Este render del informe se guardó el ${guardado}; la fecha del research —cuándo se hizo— es la ` +
-      `que el informe muestra en su encabezado, y son dos fechas distintas. ${REFLEJA_EL_BRIEF}`
+      `Este render del informe se guardó el ${guardado}: es cuándo se guardó, no cuándo se hizo el ` +
+      `research, que es otra fecha y no se pudo leer de este informe. ${REFLEJA_EL_BRIEF}`
     );
   }
   return `Informe congelado: es un render guardado, no una vista en vivo. ${REFLEJA_EL_BRIEF}`;

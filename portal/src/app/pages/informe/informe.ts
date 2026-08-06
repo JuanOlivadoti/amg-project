@@ -150,10 +150,18 @@ import { InformeInlineComponent } from './informe-inline';
             tenés permiso» sería adivinar; callarse la segunda causa dejaría a un dueño de negocio
             esperando un informe que no le va a aparecer nunca.
           -->
+          <!--
+            Dice «el DESGLOSE por proveedor» y no «el coste», y la diferencia es medible: la pantalla del
+            brief le muestra el coste TOTAL a cualquier rol que vea el run (brief.ts, sin compuerta), así
+            que decir que el informe se reserva por llevar «el coste» sería falso — el total ya se vio en
+            la pantalla anterior. Lo que de verdad no le llega es coste_breakdown: RUN_SUMMARY_COLS
+            (db/src/store.ts) no lo selecciona, así que no viaja en ningún endpoint de runs, y dentro del
+            informe sí está. Si el total debería o no ser visible es otra pieza, y no ésta.
+          -->
           <p class="text-sm text-texto-medio">
             El informe se genera solo, cuando el research termina y queda esperando aprobación. Si este
-            research ya terminó, entonces el informe no está disponible para tu rol: incluye el desglose
-            de coste de la agencia, y eso lo ve el equipo.
+            research ya terminó, entonces el informe no está disponible para tu rol: lleva el desglose por
+            proveedor de lo que la agencia paga por los datos, y eso lo ve el equipo.
           </p>
           <p class="text-sm text-texto-tenue">
             El brief —las páginas propuestas, con su evidencia— sí está disponible en la pantalla

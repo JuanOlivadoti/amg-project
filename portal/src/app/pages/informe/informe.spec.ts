@@ -210,8 +210,11 @@ describe('InformePage — el informe se pinta como texto, nunca como HTML', () =
     });
     const aviso = el.querySelector('header p')!.textContent!;
 
-    expect(aviso).toContain('la fecha del research —cuándo se hizo— es la que el informe muestra');
+    expect(aviso).toContain('no cuándo se hizo el research, que es otra fecha y no se pudo leer');
     expect(aviso).not.toContain('Research hecho el');
+    // Y no manda al revisor a buscarla al encabezado: con CERO candidatas el encabezado no la tiene, y la
+    // pantalla no puede saber cuál de las dos causas del null se dio. Ver `core/informe-vista.ts`.
+    expect(aviso).not.toContain('encabezado');
     expect(aviso).toContain('las ediciones posteriores del revisor no están incluidas');
   });
 

@@ -81,7 +81,7 @@ function textoDe(b: Bloque): string {
 }
 
 // ---------------------------------------------------------------------------
-// Los siete tests del brief
+// Los seis tests del brief (contados en el plan de T6: son seis bloques `test(...)`, no siete)
 // ---------------------------------------------------------------------------
 
 test('encabezados de los tres niveles', () => {
