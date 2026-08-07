@@ -773,7 +773,19 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 ### 🔴 Lo que depende de Juan
 
-**Todo lo que dependía de cuentas, saldo y credenciales está hecho.** Las cuatro se cerraron:
+**Lo que hay ABIERTO hoy (2026-08-07):**
+
+| Tarea | Por qué depende de él | Costo |
+|---|---|---|
+| **Desplegar el orquestador** | Cuenta de Inngest + servicio en Railway. Es la última pieza de Fase 2 sin desplegar, y significa que **el pipeline real nunca corrió en producción** | Se puede desplegar y verificar con el provider **mock**, sin gastar |
+| **Regenerar el dataset crudo** (KR-1) | Gasta dinero real contra DataForSEO. Llena los tres `n/d` del informe y calibra dos parámetros hoy sin dato | **~$0.31**, ~16 min. **Volver a sandbox después** (`kr-service/.env`) |
+| **Rotar las credenciales expuestas** | Solo él puede. Pospuesto por decisión propia el 2026-08-04; sigue abierto, no cerrado | — |
+
+Y el detalle de los candidatos de trabajo, con su costo comparado, en
+[`progress/current.md` § Lo próximo](../../progress/current.md).
+
+**Lo que se cerró antes** — todo lo que dependía de cuentas, saldo y credenciales **para la demo con
+Frank**. Las cuatro:
 
 | Tarea | Por qué | Costo |
 |---|---|---|

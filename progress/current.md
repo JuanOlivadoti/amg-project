@@ -75,6 +75,37 @@ aborta con `permission denied for schema auth`. Arreglado en `78523b8` consultan
 Que un helper de tests se ejecute en el camino de producción y afirme sin medir cómo se comporta ahí es el
 mismo patrón que KR-2b persiguió doce veces. Éste solo podía aparecer desplegando.
 
+## ▶️ Lo próximo — cuatro candidatos, y por qué
+
+**Ninguno está empezado.** Se eligió KR-2 y se cerró; esto es lo que queda sobre la mesa, con lo que cuesta
+cada uno. La decisión es de Juan.
+
+| Candidato | Qué desbloquea | Qué cuesta |
+|---|---|---|
+| **Desplegar el orquestador** *(recomendado)* | Cierra Fase 2. Hoy **el pipeline real nunca corrió en producción**: todo lo que hay en Supabase está sembrado a mano | Cuenta de Inngest + servicio en Railway. Se puede desplegar y verificar con el provider **mock**, sin gastar |
+| **El entregable del restaurante** | La única pieza que **Frank ve**. Es el informe *sin* el bloque de coste, y es la dueña del **PDF** que ADR-07 pedía | Solo código. Gran parte se reutiliza de KR-2b (mismo `renderReport`, misma tabla, misma pantalla) |
+| **El margen legible por el rol `cliente`** | Cierra la deuda 🔴 del `09`. No es fuga activa (no hay usuarios con ese rol), pero la demo ya está en producción | Toca `RunSummary` y la pantalla del brief |
+| **KR-1/KR-3: el dataset** | Llena los tres `n/d` del informe y calibra `VOLUMEN_PERCENTIL_TOPE` y `PESO_CONFIANZA_ORDEN`, hoy puestos sin dato | **~$0.31** y ~16 min contra DataForSEO en producción. **Y hay que volver a sandbox después** |
+
+**Por qué el orquestador primero, y no por completitud:** es donde queda más superficie sin estrenar. El
+step `guardar-informe` de KR-2b tiene 22 tests y **jamás se ejecutó fuera de PGlite**. El 2026-08-07 se
+midió lo que eso vale: un helper con 204 tests en verde murió en el primer contacto con Supabase, porque
+afirmaba sin medir cómo se comportaba en el único camino que ningún test recorre. El orquestador tiene esa
+misma clase de superficie, entera.
+
+## Deuda menor que dejó el despliegue del 2026-08-07
+
+- **`env:sync` avisa de cuatro claves «en la fuente pero sin destino»** y no distingue las deliberadas de la
+  basura. Tres lo son a propósito —`DATABASE_URL_RENDER`, `PREVIEW_SECRET` y `STORYBLOK_WEBHOOK_SECRET` no
+  se reparten al renderizador, y hay un test que lo **impone**: *"el renderizador NUNCA recibe una
+  credencial de base de datos"*—, pero **`SUPABASE_JWT_SECRET` sí es basura**: `api/src/auth.ts:84` dice que
+  la firma se verifica contra el JWKS público desde hace tiempo. El aviso genera la misma duda cada vez que
+  alguien corre el comando.
+- **El CLI de despliegue no dice en qué punto falló** cuando el error es anterior al bucle de migraciones.
+  El runner prefija sus fallos con *"La migración X falló y se revirtió"*, así que un error pelado significa
+  *"falló antes"* — pero eso hay que deducirlo leyendo el código. Diagnosticar el fallo del 2026-08-07 costó
+  cuatro lecturas por no tener esa línea.
+
 ## Deuda con nombre que deja KR-2b
 
 - **Los `*.test.ts` del portal no los typechequea ningún tsconfig.** `tsconfig.app.json` los excluye y
