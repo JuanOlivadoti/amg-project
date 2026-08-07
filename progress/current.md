@@ -20,10 +20,12 @@ versionados. `verificar --con-portal` exit 0 y Karma aparte, medidos al cerrar.
 **PDF sale del navegador**, así que la hoja impresa *es* el producto: medido en Chrome 151, el texto del
 tema oscuro daba **1.10:1** sobre papel blanco (AA pide 4.5:1), porque el navegador no imprime fondos.
 
-> ⚠️ **Lo único que falta y no lo puede hacer un agente:** abrir **Ctrl+P** y mirar el preview de
-> impresión. El MCP no expone `Emulation.setEmulatedMedia`, así que se compensó forzando las reglas
-> `@media print` a pantalla y midiendo las propiedades `break-*` computadas (15/15 encabezados, 11/11
-> filas, 47/47 items), pero **el corte de página real entre hoja 1 y hoja 2 no lo vio nadie**.
+> ✅ **La media verificación que faltaba, hecha por Juan el 2026-08-07: el PDF se descarga sin
+> problemas.** Era la única casilla que ningún agente podía marcar —el MCP no expone
+> `Emulation.setEmulatedMedia`, así que se había compensado forzando las reglas `@media print` a
+> pantalla y midiendo las propiedades `break-*` computadas (15/15 encabezados, 11/11 filas, 47/47
+> items)—. Con esto, **el camino completo está probado de punta a punta**: la vista imprimible produce
+> un PDF real y descargable, que es lo que ADR-07 pedía y lo que la agencia le manda al restaurante.
 
 Para el **tramo A** no hubo navegador y es `n/a` justificado (no toca UI). Su equivalente —**arrancar el
 proceso de verdad**— sí se hizo, en cinco escenarios: Railway simulado con y sin variables, dev sin

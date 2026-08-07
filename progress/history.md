@@ -60,10 +60,16 @@ comentario puse los identificadores SQL entre backticks dentro de un template li
 errores de compilación, cazados por el diagnóstico del IDE apuntando a una línea que yo no había tocado.
 Descartarlo por no cuadrar con mi modelo habría commiteado un portal roto.
 
-**Lo que queda, y no lo puede hacer un agente:** abrir **Ctrl+P** y mirar el preview. El MCP no expone
-`Emulation.setEmulatedMedia`, así que se compensó forzando las reglas de impresión a pantalla y midiendo
-las propiedades `break-*` computadas una por una — pero el corte de página real entre hoja 1 y hoja 2 no
-lo vio nadie, y conviene que eso quede dicho en vez de dado por bueno.
+**Lo que no podía hacer un agente, y lo cerró Juan el mismo día: el PDF se descarga sin problemas.**
+Quedaba pendiente porque el MCP no expone `Emulation.setEmulatedMedia` — se había compensado forzando
+las reglas de impresión a pantalla y midiendo las propiedades `break-*` computadas una por una, pero el
+documento impreso de verdad no lo había visto nadie. Con la descarga verificada, el camino que ADR-07
+pedía está probado de punta a punta: pantalla → `@media print` → PDF real en la mano.
+
+Vale la pena señalar por qué esta media hora de espera era el diseño y no una molestia: **la decisión de
+que el PDF lo genere el navegador convirtió al humano en la última milla de la verificación**. Un PDF de
+servidor se habría podido testear entero sin nadie mirando… y también habría escondido el 1.10:1 de la
+hoja, porque el CSS de pantalla no habría llegado nunca al papel.
 
 ---
 

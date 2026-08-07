@@ -185,6 +185,12 @@
 > con un parámetro **obligatorio y sin default**, porque las dos respuestas son correctas para
 > documentos distintos. Taparlo en la vista habría mandado el margen al navegador igual.
 >
+> **Verificado por un humano el mismo día: el PDF se descarga sin problemas.** No es un detalle de
+> ceremonia. Elegir que lo genere el navegador puso al humano en la última milla —ningún agente podía
+> cerrar esa casilla, porque el MCP no expone `Emulation.setEmulatedMedia`—, y es la misma decisión que
+> hizo aparecer el 1.10:1 de contraste sobre papel: con un PDF de servidor, el CSS de pantalla nunca
+> habría llegado a la hoja, y el defecto tampoco se habría visto.
+>
 > Detalle en la [spec del entregable](superpowers/specs/2026-08-07-entregable-restaurante-design.md).
 
 ## ADR-08 — Mercado del Módulo 2: ES-first, diseño market-aware
