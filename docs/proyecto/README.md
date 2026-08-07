@@ -15,7 +15,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 >
 > ✅ **Y el renderizador, desde el 2026-08-01**: la web del cliente se sirve en
 > [`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app), leyendo
-> de Supabase con el rol más pobre del sistema. Las **10** migraciones están aplicadas en producción.
+> de Supabase con el rol más pobre del sistema. Las **14** migraciones están aplicadas en producción (verificado el 2026-08-07).
 > Procedimiento y tropiezos en el
 > [runbook § desplegar el renderizador](14-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
 >

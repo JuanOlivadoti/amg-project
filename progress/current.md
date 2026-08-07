@@ -42,7 +42,7 @@ Cuando la rotación se complete, dejar acá una línea con la fecha. Eso sí es 
 
 ## ✅ Cerrado — KR-2b: el informe, en la pantalla
 
-Las siete piezas están en `main` (sin desplegar la migración): la tabla `kr_informes` (`0016`, política
+Las siete piezas están en `main`, y la migración **ya está desplegada** (2026-08-07): la tabla `kr_informes` (`0016`, política
 `app.es_staff()` **y sus grants**), `guardarInforme`/`getInforme`, el step del orquestador **antes de
 `cerrar-run`**, los dos endpoints, el seed de la demo con informe sin gastar $0.31, el parser de Markdown y
 la pantalla. El detalle está en el
@@ -51,12 +51,23 @@ la pantalla. El detalle está en el
 **La próxima migración libre es la `0017`.** `0013` y `0014` siguen **reservadas** para ramas que se
 ejecutan en otra máquina: un número libre en el disco no es un número libre.
 
-## 🔴 Antes de sembrar en producción: hay que desplegar la `0016` primero
+## ✅ Desplegado el 2026-08-07 — y lo que el primer despliegue real destapó
 
-`sembrarDemo` ahora inserta en `kr_informes`, y **el CLI de seed no corre migraciones**. O sea que
-`npm run seed:demo` / `reseed:demo` contra Supabase **falla** hasta que la `0016` esté aplicada. **Migrar
-primero, sembrar después** — y las cuatro migraciones pendientes (`0011`, `0012`, `0015`, `0016`) se aplican
-con `npm run migrate:deploy -w db`, que no se corre sin decidirlo.
+Las **14** migraciones están aplicadas en producción, verificado contra la base. Se aplicaron tres (la
+`0011` ya estaba, contra lo que decía esta nota). El orden importaba y sigue importando para el futuro:
+`sembrarDemo` inserta en `kr_informes` y **el CLI de seed no corre migraciones**, así que migrar va primero.
+
+**Lo que el despliegue encontró, y es la lección que vale guardar:** el runner moría **antes de la primera
+migración**, en `asegurarAuthStandIn` — un stand-in de `auth.users` que existe para PGlite y que hacía
+`create table if not exists auth.users`. Su comentario afirmaba que en Supabase era «un no-op porque el
+`if not exists` no toca nada», y **nunca se había medido contra Supabase**: ahí el schema `auth` es de
+`supabase_auth_admin`, y evaluar el `if not exists` **igual exige mirar dentro del schema**. Sin `usage`,
+aborta con `permission denied for schema auth`. Arreglado en `78523b8` consultando `pg_class`/`pg_namespace`
+—catálogos que se leen sin `usage`—, con la mutación que lo prueba: invertir el `if` deja 5 tests en pie de
+187.
+
+Que un helper de tests se ejecute en el camino de producción y afirme sin medir cómo se comporta ahí es el
+mismo patrón que KR-2b persiguió doce veces. Éste solo podía aparecer desplegando.
 
 ## Deuda con nombre que deja KR-2b
 
@@ -125,9 +136,9 @@ monorepo y el portal— usan el mismo contador.
 
 ## Lo que sigue pendiente de antes
 
-**Las migraciones `0011`, `0012`, `0015` y `0016` están escritas y NO desplegadas** — las cuatro. Se
-aplican con `npm run migrate:deploy -w db` contra la base real, y no se corre sin decidirlo. Ojo con el
-orden: la `0016` tiene que estar aplicada **antes** de sembrar (arriba).
+**~~Las migraciones `0011`, `0012`, `0015` y `0016` están escritas y NO desplegadas~~ — desplegadas el
+2026-08-07.** Se aplicaron tres (la `0011` ya estaba), y la base quedó con las **14**, verificado contra
+producción. No queda ninguna pendiente.
 
 **Decisión que no toma un agente:** **regenerar el dataset crudo** cuesta **~$0.31** y ~16 min contra
 DataForSEO en producción. Sin él, `VOLUMEN_PERCENTIL_TOPE = 0.9` y `PESO_CONFIANZA_ORDEN = 0.5` quedan
@@ -147,8 +158,8 @@ coste**, y es la pieza dueña del **PDF** que ADR-07 pedía (ver la nota fechada
 **Toda la configuración de skill-map es local a esta máquina.** `.skill-map/` está gitignoreado entero, así
 que `respectGitignore`, `ignore` y `referencePaths` **no viajan con el repo**.
 
-**Sin verificar contra producción:** `docs/proyecto/README.md` afirma que hay **10 migraciones aplicadas en
-producción**, y en el repo hay **14**. No se puede confirmar sin credenciales.
+**~~Sin verificar contra producción~~ — verificado el 2026-08-07:** hay **14** migraciones aplicadas, que
+son las 14 del repo. El `README` de `docs/proyecto/` decía 10 y quedó corregido.
 
 ---
 

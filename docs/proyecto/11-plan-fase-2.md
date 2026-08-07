@@ -115,7 +115,7 @@
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
 > [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **1071 tests** (786 monorepo + 285
-> portal), **14 migraciones** (la `0011` y la `0012` mergeadas, la `0015` de KR-3 y la `0016` de KR-2b; las cuatro pendientes de aplicar en producción).
+> portal), **14 migraciones**, todas aplicadas en producción el 2026-08-07 (la `0012`, la `0015` y la `0016` ese día; la `0011` ya estaba).
 
 ---
 
