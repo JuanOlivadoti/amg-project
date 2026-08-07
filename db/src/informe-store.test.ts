@@ -159,8 +159,11 @@ test("🔴 guardar el informe NO revoca las aprobaciones de las páginas", async
     { tenantId: s.tenantA },
     `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, page_strategy, url_slug,
                            keyword_principal, intencion, local, evidencia, approved, retirada)
-     values ($1, $2, $3, gen_random_uuid(), 'servicio', 'nueva', '/aprobada', 'kw', 'transaccional',
-             false, 'respaldada', true, false)`,
+     -- El vocabulario es el del CONTRATO, y ya no es una convención: lo imponen los cuatro checks de
+     -- la 0017. Este fixture decía 'nueva'/'transaccional'/'respaldada' —tres palabras que no existen
+     -- en ningún vocabulario del sistema— y la base las aceptaba porque las columnas eran text pelado.
+     values ($1, $2, $3, gen_random_uuid(), 'servicio', 'single', '/aprobada', 'kw', 'transactional',
+             false, 'datos_mercado', true, false)`,
     [s.tenantA, s.runA1, s.clientA1],
   );
 

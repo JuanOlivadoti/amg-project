@@ -863,7 +863,7 @@ test("🔴 las filas sin orden_brief (previas a la 0015) caen al final, y el des
     await pg.query(
       `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug,
                              keyword_principal, intencion, evidencia, opportunity_score)
-       values ($1, $2, $3, gen_random_uuid(), 'blog', $4, 'kw', 'informacional', 'sin_validar', 99)`,
+       values ($1, $2, $3, gen_random_uuid(), 'blog', $4, 'kw', 'informational', 'sin_validar', 99)`,
       [tenantA, runId, clientA1, slug],
     );
   }
@@ -886,7 +886,7 @@ test("🔴 la base rechaza una posición negativa (check de la 0015)", async () 
       pg.query(
         `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug,
                                keyword_principal, intencion, evidencia, orden_brief)
-         values ($1, $2, $3, gen_random_uuid(), 'blog', '/negativa', 'kw', 'informacional',
+         values ($1, $2, $3, gen_random_uuid(), 'blog', '/negativa', 'kw', 'informational',
                  'sin_validar', -1)`,
         [tenantA, runId, clientA1],
       ),
@@ -914,7 +914,7 @@ test("🔴 la base rechaza una retirada CON posición (check de la 0015)", async
       pg.query(
         `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug,
                                keyword_principal, intencion, evidencia, retirada, orden_brief)
-         values ($1, $2, $3, gen_random_uuid(), 'blog', '/retirada-con-puesto', 'kw', 'informacional',
+         values ($1, $2, $3, gen_random_uuid(), 'blog', '/retirada-con-puesto', 'kw', 'informational',
                  'sin_validar', true, 3)`,
         [tenantA, runId, clientA1],
       ),

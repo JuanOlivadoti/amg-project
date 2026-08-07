@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { renderReport, SCHEMA_VERSION } from "contrato";
 import type {
   DataQuality,
@@ -65,11 +66,21 @@ export interface ResultadoSeed {
  * `intencion: intent`, y el clasificador produce `commercial`/`navigational`/`informational`) y
  * `PageStrategy` sin `hub`/`spoke` sueltos (`single | hub_spoke | merge | backlog`).
  *
- * O sea que `kr_pages.intencion` dice `comercial` en la demo y diría `commercial` en una corrida real.
- * Es una divergencia PREEXISTENTE del seed —la columna es `text` sin check, así que la base acepta las
- * dos— y corregirla cambia lo que el portal muestra, que es de otra tarea. Acá se traduce solo para
- * armar el brief del informe. `keyof typeof` es lo que sostiene el mapeo: agregar un valor nuevo a
- * `PAGINAS_DEMO` sin traducirlo NO compila, que es exactamente el papel que un `as` habría anulado.
+ * **Dónde se aplica la traducción, y por qué eso cambió.** Hasta el 2026-08-07 se aplicaba SOLO para
+ * armar el brief del informe: el `insert` de `sembrarDemo` escribía `p.intencion` y `p.estrategia` en
+ * crudo, así que `kr_pages` guardaba `comercial` y `hub`. Este comentario decía que era "una
+ * divergencia PREEXISTENTE que la base acepta porque la columna es `text` sin check" y que corregirla
+ * era de otra tarea — y esa frase es exactamente la que dejó el bug vivo. No era una divergencia
+ * inocua: el brief que el orquestador reconstruye desde la base (`briefDesdeLaBase`) lo RECHAZA
+ * `parseBrief` en el M1. Hoy la base tampoco lo acepta (cuatro `check`, migración 0017) y la traducción
+ * se aplica una sola vez, en `aPaginaPropuesta`, de donde lee el insert.
+ *
+ * `PAGINAS_DEMO` sigue guardando el español: es la fuente que el dashboard del portal espeja campo por
+ * campo (`db/src/cartera-portal.test.ts`), y traducirla ahí movería el problema en vez de resolverlo.
+ * Lo que se traduce es lo que SALE hacia el contrato — la fila y el brief, que ahora son lo mismo.
+ *
+ * `keyof typeof` es lo que sostiene el mapeo: agregar un valor nuevo a `PAGINAS_DEMO` sin traducirlo NO
+ * compila, que es exactamente el papel que un `as` habría anulado.
  */
 const INTENCION_DEL_CONTRATO = {
   comercial: "commercial",
@@ -569,20 +580,25 @@ export const CALIDAD_DATOS_DEMO = {
 const H1_SIN_REGISTRAR = "(h1 sin registrar)";
 
 /**
- * `PaginaSeed` → `ProposedPage`. Es la inversa de `aFilaDePagina` (`orchestrator/src/workflow.ts`), y
- * existe por una sola razón: `renderReport` toma un `KeywordResearchBrief`, así que para que el informe
- * de la demo lo genere el MISMO render que el del orquestador hay que rearmar el brief desde lo que el
- * seed guarda. Que el render tenga un solo dueño es el punto; el `insert` no (ver `sembrarDemo`).
+ * `PaginaSeed` → `ProposedPage`. Es la inversa de `aFilaDePagina` (`orchestrator/src/workflow.ts`).
  *
- * **Lo que este objeto NO es: una fila.** Vive lo que dura la llamada a `renderReport` —lo único que se
- * persiste es el Markdown—, así que ningún consumidor lo lee. Eso es lo que hace aceptables los rellenos
- * de más abajo, y por eso está escrito acá y no en un comentario suelto.
+ * **Es LA fuente de la fila y del brief, y hasta el 2026-08-07 solo era la del brief.** Nació para que
+ * el informe de la demo lo generase el MISMO `renderReport` que el del orquestador; el `insert` de
+ * `sembrarDemo`, mientras tanto, escribía sus propios valores tomados de `PaginaSeed` en crudo. O sea:
+ * dos verdades del mismo dato, a 130 líneas de distancia, en el mismo archivo. Ganaba la equivocada —
+ * la base terminaba con `page_strategy = 'hub'`, `intencion = 'comercial'`, `seo = {title, description}`
+ * y `content_brief = {schema_type}`, y el brief que el orquestador reconstruye desde ahí
+ * (`briefDesdeLaBase`) lo rechazaba `parseBrief` en el M1. Ver la migración 0017.
+ *
+ * Ahora el insert lee **de este objeto**, así que la traducción ocurre una vez o no ocurre.
  *
  * ### Lo que se DERIVA, y de qué
  *
- * - `cluster_id`: el que Postgres acaba de generar para ESTA fila (`returning cluster_id`), no uno
- *   nuevo. Los cluster_id de la corrida real se perdieron; usar el de la fila deja una sola copia en vez
- *   de dos que se contradigan.
+ * - `cluster_id`: se genera en TypeScript (`randomUUID`) y se le PASA a la fila, en vez de dejar que lo
+ *   genere Postgres y devolverlo con `returning`. Los cluster_id de la corrida real se perdieron, así
+ *   que cualquiera de los dos sirve; lo que decide es la dirección: con el uuid en la mano, la página
+ *   del contrato se puede construir ANTES del insert y ser su única fuente. Con `returning` había que
+ *   insertar primero, y por eso el insert tenía que inventarse sus propios valores.
  * - `intencion` / `page_strategy`: traducidos (ver los dos mapas de arriba).
  * - `seo.canonical`: el slug, y no es una conjetura — el pipeline construye los dos con la MISMA
  *   expresión (`slugify(head.keyword)` en `cluster-map.ts`), así que `canonical === url_slug` es su
@@ -715,43 +731,60 @@ export async function sembrarDemo(
      * Hoy los dos órdenes coinciden (el array está por score descendente y el split 8/6 cae junto), así
      * que la demo se ve igual que antes. Lo que cambia es que **deja de depender de esa coincidencia**:
      * si el array se reordena por evidencia y confianza, el portal lo muestra en ese orden.
+     *
+     * ## Una sola verdad: la fila se escribe DESDE la página del contrato
+     *
+     * El insert lee de `aPaginaPropuesta(p, …)` y no de `p`. La versión anterior hacía lo contrario
+     * —insertaba `p.estrategia`, `p.intencion`, `p.seo` y `p.brief` en crudo y recién después construía
+     * la página del contrato para el informe— y por eso la base guardaba `hub`, `comercial`,
+     * `{title, description}` y `{schema_type}`, todo fuera del contrato, mientras el informe del mismo
+     * seed decía lo correcto. Ver la migración 0017, que además lo impone con cuatro `check`.
+     *
+     * De `p` no se lee ya NINGÚN campo de la fila: los 19 salen de `pagina`. Lo único que el insert
+     * toma de fuera es la POSICIÓN `i`, y es correcto que así sea — `orden_brief` es el puesto de la
+     * página EN EL BRIEF, no un atributo de la página, y por eso `ProposedPage` no lo tiene.
      */
     const paginasDelBrief: ProposedPage[] = [];
     for (const [i, p] of PAGINAS_DEMO.entries()) {
-      const { rows: pagina } = await con.query<{ cluster_id: string }>(
+      // El uuid se genera acá y se le PASA a la fila (antes lo ponía `gen_random_uuid()` y volvía por
+      // `returning`). Invertir esa dirección es lo que permite construir la página ANTES del insert, y
+      // que el insert deje de tener que inventarse sus propios valores. Sigue habiendo una sola copia.
+      const pagina = aPaginaPropuesta(p, randomUUID());
+      await con.query(
         `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, page_strategy,
                                url_slug, keyword_principal, keywords_secundarias, intencion, local,
                                volumen, dificultad, evidencia, opportunity_score, score_confidence,
                                seo, content_brief, preguntas_frecuentes, approved, retirada,
                                orden_brief)
-         values ($1, $2, $3, gen_random_uuid(), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                 $15, $16::jsonb, $17::jsonb, $18, false, false, $19)
-         returning cluster_id`,
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+                 $16, $17::jsonb, $18::jsonb, $19, $20, false, $21)`,
         [
           tenantId,
           runId,
           clientId,
-          p.tipo,
-          p.estrategia,
-          p.slug,
-          p.keyword,
-          p.secundarias,
-          p.intencion,
-          p.local,
-          p.volumen,
-          p.dificultad,
-          p.evidencia,
-          p.score,
-          p.confianza,
-          JSON.stringify(p.seo),
-          JSON.stringify(p.brief),
-          p.faqs,
+          pagina.cluster_id,
+          pagina.tipo,
+          pagina.page_strategy,
+          pagina.url_slug,
+          pagina.keyword_principal,
+          pagina.keywords_secundarias,
+          pagina.intencion,
+          pagina.local,
+          pagina.volumen,
+          pagina.dificultad,
+          pagina.evidencia,
+          pagina.opportunity_score,
+          pagina.score_confidence,
+          JSON.stringify(pagina.seo),
+          JSON.stringify(pagina.content_brief),
+          pagina.preguntas_frecuentes,
+          // La compuerta (ADR-06) la cruza Frank: la página del contrato ya nace `approved: false`, así
+          // que el `false` tampoco se escribe dos veces.
+          pagina.approved,
           i,
         ],
       );
-      // El `cluster_id` lo genera Postgres, así que el brief del informe usa EL DE ESTA FILA en vez de
-      // inventarse otro: una sola copia, y no dos que digan cosas distintas del mismo cluster.
-      paginasDelBrief.push(aPaginaPropuesta(p, pagina[0]!.cluster_id));
+      paginasDelBrief.push(pagina);
     }
 
     /*

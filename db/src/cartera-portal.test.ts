@@ -17,6 +17,24 @@
  *
  * Es el mismo criterio que ya ataba el perfil del negocio entre el seed y
  * `web-builder/business-profile.json`. Faltaba el otro extremo del hilo.
+ *
+ * ## Qué ata de verdad, desde la 0017 — porque ya no es lo mismo que la fila
+ *
+ * Ata el mock contra **`PAGINAS_DEMO`**, que es la fuente del seed, no contra lo que queda escrito en
+ * `kr_pages`. Hasta el 2026-08-07 la distinción no existía: el insert copiaba `PAGINAS_DEMO` en crudo,
+ * así que fuente y fila decían lo mismo. Desde la `0017` el insert traduce al vocabulario del contrato
+ * (`comercial` → `commercial`), y entonces **el mock coincide con la fuente y difiere de la fila**.
+ *
+ * Para los 8 campos que este test compara eso da igual salvo en uno: **`intencion`**. El mock dice
+ * `comercial` y la API devuelve `commercial`, y este test no lo puede ver porque los dos lados que
+ * compara son el mismo eslabón. O sea: **la red contra la deriva dashboard↔brief dejó de cubrir
+ * `intencion`**, y decirlo acá es la mitad del arreglo.
+ *
+ * La otra mitad no es de este archivo: la pantalla de Cartera se alimenta hoy de `generarCarteraMock()`
+ * y no de la API, así que no hay nada roto que ver en el navegador. El día que se conecte,
+ * `portal/src/app/pages/cartera/cartera-tabla.ts` pinta `{{ p.intencion }}` crudo y la columna dirá
+ * inglés. Cerrarlo cruza `db/` y `portal/`, y necesita que se decida antes dónde vive el mapa de
+ * etiquetas — que es una decisión de producto, no de este test.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";

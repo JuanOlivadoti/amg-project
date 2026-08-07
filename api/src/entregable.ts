@@ -33,8 +33,12 @@ import type { DatosEntregable, PageRow } from "db";
  *    con `{}` —el default de la columna, y lo que siembran varios tests— hacía que `renderReport` leyera
  *    `content_brief.secciones_sugeridas.length` sobre `undefined` y **reventara con TypeError**. No es
  *    hipotético: es el mismo `{}` que ya hizo emitir `$NaN` en el bloque de coste (KR-2a).
- *  · `tipo`, `intencion` y `evidencia` son `text` PELADO (`0001_init.sql:225,229,236`): ninguna constraint
- *    los ata al vocabulario cerrado del contrato.
+ *  · `tipo`, `intencion`, `page_strategy` y `evidencia` NACIERON como `text` PELADO
+ *    (`0001_init.sql:225,229,236`), sin nada que los atara al vocabulario cerrado del contrato — y esa
+ *    grieta se usó: el seed de la demo escribió `intencion = 'comercial'` durante meses. **Desde la
+ *    migración 0017 hay un `check` por columna**, así que hoy una fila nueva no puede traer una palabra
+ *    de fuera. Lo que la 0017 NO alcanza son las filas jsonb ya escritas (`seo`, `content_brief`), que
+ *    siguen sin constraint de forma a propósito: por eso la normalización de abajo no sobra.
  *
  * Es la misma disciplina que el renderizador aplica con lo que sale a internet (ADR-19, defensa en
  * profundidad): el borde revalida lo que la base no puede garantizar.

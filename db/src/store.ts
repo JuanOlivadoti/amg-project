@@ -112,7 +112,14 @@ export interface KeywordRow {
 export interface PageRow {
   cluster_id: string;
   tipo: string;
-  /** `single` | `hub` | `spoke`. El M2 la calcula y la capa de datos la TIRABA. */
+  /**
+   * `single` | `hub_spoke` | `merge` | `backlog` — el vocabulario del contrato (`PageStrategy`), y lo
+   * impone el check `estrategia_del_contrato` (migración 0017), no esta línea. Decía
+   * "`single` | `hub` | `spoke`", que son los PAPELES de una página en un hub y no una estrategia: es el
+   * vocabulario que el seed de la demo escribía en la base y que el M1 rechaza al reconstruir el brief.
+   *
+   * `null` = el brief no la traía (`consumoM1` ni siquiera valida este campo).
+   */
   page_strategy?: string | null;
   url_slug: string;
   keyword_principal: string;

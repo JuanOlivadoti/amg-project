@@ -11,6 +11,69 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-07 (cierre) — el seed escribía cuatro campos fuera del contrato, y la base no tenía cómo avisar
+
+La cuarta pieza del día, y la única que empezó **midiendo antes de opinar**. El estado listaba "el seed
+de la demo escribe `kr_pages` con la forma equivocada" como tercer candidato, con dos campos y un
+`ruta:línea`. Antes de recomendar un orden fui a comprobarlo, y la nota estaba mal **en las dos
+direcciones**.
+
+**Peor:** eran cuatro campos, no dos. Además de los dos `jsonb`, el insert escribía `page_strategy` e
+`intencion` **en crudo** —`hub`, `comercial`— mientras el mismo archivo, 130 líneas más arriba, ya los
+traducía en `aPaginaPropuesta()` con dos mapas escritos a propósito. Dos verdades del mismo dato, en el
+mismo archivo, y ganaba la equivocada. Y la prueba no salió de leer: salió de sembrar la demo en PGlite,
+reconstruir el brief igual que `briefDesdeLaBase` y pasarlo por `parseBrief`, que es el validador que
+corre de verdad en el M1. **Lanza.** El síntoma no vivía en `db` ni en `api` — vivía en producción, con
+el research ya pagado.
+
+**Más chico:** no podía explotar en la demo. La compuerta humana es un `waitForEvent` de Inngest, y el
+run sembrado se insertó **directo en la base**: no hay ningún workflow durmiendo sobre él, así que
+aprobarlo no publica nada. Esa comprobación tumbó mi propia hipótesis quince minutos después de
+formularla. Y la nota decía que esos campos los leía "la pantalla del brief": también falso — el portal
+tipa `intencion: string` y no lee `meta_title` ni `h1`. Donde sí se ven es en el entregable que se había
+cerrado seis horas antes, y lo que impide que reviente es la normalización que se escribió ahí **sin
+saber que este bug existía**. Una mitigación que ya era portante para un defecto que nadie había
+nombrado.
+
+**La decisión que ordena la pieza: el síntoma es el seed, la enfermedad es que nada lo impedía.**
+`tipo`, `intencion`, `page_strategy` y `evidencia` eran `text` pelado desde la `0001`, y el store las lee
+casteando a los tipos del contrato — un cast que `tsc` no puede desmentir porque el dato viene del
+driver. Arreglar el insert cierra el caso conocido; el `check` cierra la clase. Por eso la `0017` repara
+las filas viejas **y después** les pone cuatro `check`, y por eso el `case` de reparación va **sin
+`else`**: si quedara un valor que el mapeo no cubre, la migración se revierte entera y el despliegue se
+detiene con el nombre de la constraint. Inventarle una traducción taparía el hallazgo justo cuando el
+sistema por fin lo puede ver.
+
+**El precio de la pieza es una copia**, y conviene decirlo: el vocabulario pasa a vivir en el `.sql` y en
+`contrato/`, porque un `.sql` no puede importar un enum de TypeScript. Lo ata un test que extrae los
+literales del `.sql` y los compara contra `emisionM2` introspeccionado en runtime — sin exportar los
+enums, que `contrato/src/index.ts` prohíbe en una línea explícita. **Y el control positivo de ese test no
+es ceremonia:** la primera versión ancló el regex mal, matcheó el `where` del `update` de reparación y
+comparó el vocabulario **viejo** contra el del contrato. Un test que mira el sitio equivocado se ve igual
+de verde que uno que mira el correcto.
+
+**Tres correcciones a lo que yo había afirmado, y ninguna la encontré yo.**
+
+1. Escribí que el `content_brief` equivocado "falla en silencio". Falso: `parseBrief` lo rechaza igual.
+   Lo que pasa es que `formatIssues` recorta el mensaje a **cinco issues**, y los cuatro de
+   `content_brief` se caían del texto — no de la validación. Medí el mensaje creyendo que medía la
+   validación, que es la versión de bolsillo del error que este proyecto persigue hace tres días.
+2. La revisión midió que el mapeo cubría lo que el seed escribe **hoy**, no todo lo que pudo escribir:
+   hasta `f0c1387` producía `transaccional`. Hoy no queda ninguna fila así, pero el `update` corre contra
+   una base que persiste desde julio, y comprobar que no queda ninguna cuesta más que traducirla.
+3. La misma revisión señaló que `cartera-portal.test.ts` —el test que existe para que el dashboard y el
+   brief no diverjan en silencio— **dejó de cubrir `intencion`**, porque compara el mock contra
+   `PAGINAS_DEMO` y no contra la fila, y hasta hoy los dos decían lo mismo. Su docstring seguía
+   prometiendo la garantía entera. Es exactamente el modo de fallo que `AGENTS.md` nombra, aparecido
+   dentro de la pieza que vino a cerrarlo.
+
+Y un error de método mío que no costó nada porque el siguiente comando lo destapó: tres `grep` volvieron
+vacíos y casi concluyo que ningún código de producción valida los briefs leídos de la base. Estaban
+vacíos porque un `cd portal` anterior me había dejado el shell en otro directorio. Un `grep` vacío se lee
+igual que una ausencia real.
+
+---
+
 ## 2026-08-07 (noche) — el entregable del restaurante: la frontera del coste, cerrada por los dos lados a la vez
 
 El `09` las listaba como dos deudas separadas —*el entregable del restaurante no existe* y *🔴 el margen es

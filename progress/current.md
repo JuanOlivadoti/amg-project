@@ -7,13 +7,14 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-07
-**En curso:** nada. **Dos piezas cerradas** en el día: el **tramo A del despliegue del orquestador** (el
-código quedó listo para que desplegar sea ejecutar un runbook) y **el entregable del restaurante + el
-margen del rol `cliente`**, hechos juntos porque eran la misma frontera desde dos lados. Cada una con sus
-agentes de área y su revisión interna —las dos devolvieron **3 bloqueantes**— y su segunda vuelta. El
-relato está en [`history.md`](history.md).
-**Estado:** verificado en verde — **863 tests** del monorepo (venía de 786) + **318** del portal (224
-`node:test` + 94 Karma) = **1181**, typecheck limpio en los 7 paquetes, sin secretos entre los 436 archivos
+**En curso:** nada. **Tres piezas cerradas** en el día: el **tramo A del despliegue del orquestador** (el
+código quedó listo para que desplegar sea ejecutar un runbook), **el entregable del restaurante + el
+margen del rol `cliente`** —hechos juntos porque eran la misma frontera desde dos lados— y **el
+vocabulario de `kr_pages`, que ahora lo impone Postgres** (`0017`). Cada una con sus agentes de área y su
+revisión interna —las tres devolvieron bloqueantes— y su segunda vuelta. El relato está en
+[`history.md`](history.md).
+**Estado:** verificado en verde — **869 tests** del monorepo (venía de 863) + **318** del portal (224
+`node:test` + 94 Karma) = **1187**, typecheck limpio en los 7 paquetes, sin secretos entre los 450 archivos
 versionados. `verificar --con-portal` exit 0 y Karma aparte, medidos al cerrar.
 
 **Sesión de navegador: sí, y encontró lo que ningún test veía.** El entregable se maneja en el portal y su
@@ -147,16 +148,81 @@ mientras la API lo seguía devolviendo, que no es una frontera sino un adorno.
   el endpoint, o el link del brief se deshabilita?
 - **No hay descarga `.md`** del entregable: el camino es Ctrl+P. Barato de agregar si se pide.
 
+## ✅ Cerrado — el vocabulario de `kr_pages` lo impone Postgres (2026-08-07)
+
+El tercer candidato de la lista de abajo, y resultó ser **peor y más chico** de lo que esta nota decía.
+El seed no escribía dos campos mal: escribía **cuatro** (`page_strategy = 'hub'`,
+`intencion = 'comercial'`, `seo = {title, description}`, `content_brief = {schema_type}`), y el propio
+archivo ya construía las formas correctas 130 líneas más arriba, en `aPaginaPropuesta()`. **Dos verdades
+del mismo dato, en el mismo archivo, y ganaba la equivocada.**
+
+**Cómo se midió, porque leer el código no alcanzaba:** sembrar la demo en PGlite, reconstruir el brief
+igual que `briefDesdeLaBase` (`orchestrator/src/workflow.ts:411-441`) y pasarlo por `parseBrief` — el
+mismo validador que corre en el M1. **Lanza.** O sea que el síntoma no vivía en `db` ni en `api`: vivía
+en producción, con el research ya pagado.
+
+**Y más chico de lo que la nota temía:** no puede explotar en la demo. La compuerta es un
+`waitForEvent` de Inngest y el run sembrado se insertó directo en la base, así que **no hay workflow
+durmiendo sobre él**: aprobarlo no publica nada. La nota también decía que lo leía "la pantalla del
+brief" — es falso, medido: el portal tipa `intencion: string` y no lee `meta_title` ni `h1`.
+
+**Lo que se hizo, y por qué no fue solo arreglar el seed.** Arreglar el insert cierra el caso conocido;
+el `check` cierra la clase. La `0017` repara las filas viejas y **después** pone cuatro `check` (`tipo`,
+`intencion`, `page_strategy`, `evidencia`) contra el vocabulario del contrato. El `case` va **sin
+`else`**: si quedara un valor que el mapeo no cubre, la migración se revierte entera y el despliegue se
+detiene, en vez de inventarle una traducción.
+
+**El vocabulario ahora vive en dos sitios** (el `.sql` y `contrato/src/esquema.ts`) — un `.sql` no puede
+importar un enum de TypeScript. Lo ata un test que extrae los literales del `.sql` y los compara contra
+`emisionM2` **introspeccionado en runtime**, sin exportar los enums (que `contrato/src/index.ts` prohíbe
+explícitamente). Con **control positivo por constraint**: si el regex no matchea, cae ahí en vez de
+comparar dos listas vacías. Ese control positivo no es decorado: la primera versión del test **ancló mal**
+y matcheó el `where` del `update` de reparación, comparando el vocabulario viejo contra el del contrato.
+
+**Dos correcciones a lo que yo había afirmado**, las dos medidas por otros:
+
+1. Dije que el `content_brief` equivocado **fallaba en silencio**. Falso: `parseBrief` lo rechaza igual.
+   Lo que pasaba es que `formatIssues` (`contrato/src/esquema.ts:338`) recorta el mensaje a **5 issues**,
+   y los cuatro de `content_brief` quedaban fuera del texto, no de la validación. Medir el mensaje no es
+   medir la validación.
+2. La revisión encontró que el mapeo cubría lo que el seed escribe **hoy**, no todo lo que pudo escribir:
+   hasta `f0c1387` producía `transaccional`, que el `case` no traducía. Hoy no queda ninguna fila así
+   (producción se re-sembró dos veces desde entonces), pero el `update` corre contra una base que
+   persiste desde julio y comprobarlo cuesta más que traducirlo. Añadido.
+
+**⚠️ Esto NO está desplegado, y son dos pasos.** `migrate:deploy` **y después** `reseed:demo`: la
+migración **no arregla los dos `jsonb` ya escritos**, porque reconstruirlos exigiría inventar
+`schema_type`, `h1` y `word_count_objetivo`. Sin el re-seed, el brief de producción sigue sin pasar
+`parseBrief` aunque el vocabulario ya esté bien. El detalle está en el paso **0.d** del
+[`09`](../docs/proyecto/09-estado-y-roadmap.md#próximos-pasos), que es donde tiene que vivir.
+
+**Deuda que deja, con nombre:**
+
+- **La forma de los dos `jsonb` de `kr_pages` no está impuesta por la base.** Deliberado: `emisionM2`
+  endurece `seo` y `content_brief` por encima de `consumoM1`, y un `check` tendría que elegir uno de los
+  dos niveles sin que nadie haya tomado esa decisión. Lo cubre el test de `parseBrief`, que es más ancho
+  (mira los dos jsonb enteros) y más estrecho (solo las filas que siembra).
+- **`db/src/cartera-portal.test.ts` dejó de cubrir `intencion`.** Ata el mock del portal contra
+  `PAGINAS_DEMO` (español), no contra la fila (que ahora dice inglés). Hasta hoy los dos coincidían. El
+  docstring ya lo dice; cerrarlo cruza `db/` y `portal/` y necesita decidir antes dónde vive el mapa de
+  etiquetas. Hoy no se ve nada roto: Cartera se alimenta de `generarCarteraMock()`, no de la API.
+- **Deriva declarada del portal** (de `front`, no se tocó): `cartera-mock.ts:147` genera
+  `page_strategy: 'hub'/'spoke'`, valores que **la base ya no puede contener**; y
+  `cartera-tabla.ts:29` pinta `{{ p.intencion }}` crudo, así que el día que esa pantalla se conecte a la
+  API la columna dirá inglés.
+
 ## ▶️ Lo próximo
 
-De los cuatro candidatos del 2026-08-07, **dos se cerraron ese mismo día** (el entregable del restaurante
-y el margen del rol `cliente`, juntos, porque eran la misma frontera desde dos lados). Quedan:
+De los cuatro candidatos del 2026-08-07, **tres se cerraron ese mismo día** (el entregable del restaurante
+y el margen del rol `cliente`, juntos, porque eran la misma frontera desde dos lados; y la forma del seed).
+Queda:
 
 | Candidato | Qué desbloquea | Qué cuesta |
 |---|---|---|
 | **Desplegar el orquestador — tramo B** *(recomendado)* | Cierra Fase 2. Hoy **el pipeline real nunca corrió en producción**: todo lo que hay en Supabase está sembrado a mano. El **tramo A está hecho** (2026-08-07): el código ya no arranca mal configurado y el runbook tiene el paso a paso | Cuenta de Inngest + servicio en Railway. Se despliega y verifica con el provider **mock**, sin gastar. **Empieza por la API**, que ya no levanta sin `INNGEST_EVENT_KEY` |
 | **KR-1/KR-3: el dataset** | Llena los tres `n/d` del informe y calibra `VOLUMEN_PERCENTIL_TOPE` y `PESO_CONFIANZA_ORDEN`, hoy puestos sin dato | **~$0.31** y ~16 min contra DataForSEO en producción. **Y hay que volver a sandbox después** |
-| **El seed de la demo escribe `kr_pages` con la forma equivocada** | Los datos que están **en producción**: `seo.meta_title` y `content_brief.h1` no existen en la fila (`seed-demo.ts:746` inserta los jsonb crudos de `PAGINAS_DEMO`, no las formas del contrato que el propio archivo construye). Lo leen la pantalla del brief y `web-builder` | Pieza chica, solo código. Tiene tests atados a `PAGINAS_DEMO` que hay que mover con cuidado |
+| **El entregable sin páginas aprobadas** *(decidido, sin hacer)* | Hoy sale una hoja con dos títulos vacíos, y el riesgo es humano: mandar ese PDF sin mirarlo. **Decisión de Juan (2026-08-07): las dos cosas** — la API responde 409 con motivo Y el portal deshabilita el link. La UI evita el clic inútil; el backend impone la regla para quien llame al endpoint directo | Pieza chica que cruza `api/` y `portal/`: hay que fijar el contrato del 409 antes de partirla |
+| **`renderReport` pasa de flags a audiencia** *(decidido, sin hacer)* | El entregable imprime `_ES · es · 2026-08-07T12:15:36.712Z_`: metadato del pipeline delante de un dueño de restaurante. **Decisión de Juan (2026-08-07): quitar la línea del entregable**, no formatearla — formatearla dejaría bonito un dato que ahí no va, y en el informe interno los tres datos sí sirven. Es la misma forma que el bloque de coste: un bloque que se genera o no según la audiencia | `contrato/`. Con dos booleanos las cuatro combinaciones no significan nada, así que el parámetro pasa a ser `audiencia: "agencia" \| "restaurante"` (sin default, como ADR-20 ya nombra la división). Hoy son 6 sitios de llamada: barato ahora, caro después |
 
 **Por qué el orquestador primero, y no por completitud:** es donde queda más superficie sin estrenar. El
 step `guardar-informe` de KR-2b tiene 22 tests y **jamás se ejecutó fuera de PGlite**. El 2026-08-07 se
