@@ -132,6 +132,12 @@ function runReal(): RunSummary {
     config: { max_cost_usd: 1.0, max_pages: 14 },
     created_at: new Date(Date.UTC(2026, 6, 30)).toISOString(),
     finished_at: new Date(Date.UTC(2026, 6, 30, 0, 16, 15)).toISOString(),
+    /*
+     * `false`, igual que en la base: el run de la demo lo siembra `sembrarDemo` con un `insert`
+     * directo, así que nunca tuvo una ejecución durable esperando su aprobación (bloque C0). Poner
+     * `true` acá haría que el mock contara una demo que la base no puede reproducir.
+     */
+    tiene_workflow: false,
   };
 }
 
@@ -177,6 +183,9 @@ function runMuestra(clientIdx: number, runIdx: number, clientId: string, nombre:
     config: {},
     created_at: new Date(Date.UTC(2026, 6, dia)).toISOString(),
     finished_at: new Date(Date.UTC(2026, 6, dia, 0, 20)).toISOString(),
+    // Los de muestra nacen `approved`, y un run aprobado del mundo nuevo pasó por el pipeline: si no,
+    // nadie habría podido aprobarlo. `false` acá describiría un estado que C0 vuelve inalcanzable.
+    tiene_workflow: true,
   };
 }
 

@@ -10,7 +10,7 @@ import type {
   NuevoRun,
   RunSummary,
 } from './models';
-import { SIN_PAGINAS_APROBADAS } from './codigos';
+import { RUN_SIN_WORKFLOW, SIN_PAGINAS_APROBADAS } from './codigos';
 
 /**
  * Error de la API con el status HTTP, para que la UI distinga 401 (relogin) de 403/409/500.
@@ -36,6 +36,20 @@ export interface ApiError extends Error {
  */
 export function esSinPaginasAprobadas(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as ApiError).codigo === SIN_PAGINAS_APROBADAS;
+}
+
+/**
+ * ¿Este error es el 409 de «nadie está esperando la aprobación de este run»? (bloque C0).
+ *
+ * El portal apaga el botón por adelantado leyendo `run.tiene_workflow`, así que llegar acá significa
+ * que la pantalla y la base **no coincidían**: otra pestaña, el endpoint llamado a mano, o un dato
+ * pintado desde algo que no era la base. La UI es un atajo, la autoridad es el backend — y cuando se
+ * contradicen, gana el backend y hay que contarlo con palabras.
+ *
+ * Mismo criterio que arriba: el **código**, nunca la frase ni el status.
+ */
+export function esRunSinWorkflow(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as ApiError).codigo === RUN_SIN_WORKFLOW;
 }
 
 /** Un archivo bajado de la API: el contenido y con qué nombre guardarlo. */

@@ -7,6 +7,8 @@ import { ApiService } from '../../services/api';
 import { MembresiaService } from '../../services/membresia';
 import type { Brief, PaginaPropuesta } from '../../core/models';
 import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
+import { motivoNoAprobable } from '../../core/aprobar-run';
+import { esRunSinWorkflow } from '../../core/api-core';
 import { mostrarAprobarRun } from '../../core/features';
 import { usdDeMicros } from '../../core/dinero';
 import { environment } from '../../../environments/environment';
@@ -72,7 +74,9 @@ import { Vigencia } from '../../core/vigencia';
           -->
           <!--
             Sin ninguna página aprobada NO hay link, y lo que se muestra es un <span> apagado con el
-            motivo en el tooltip.
+            motivo en el tooltip. Ojo: la condición es SOLO la de las páginas — un run que no lanzó el
+            pipeline (sin tiene_workflow) igual tiene entregable, porque la hoja del restaurante se
+            genera de las páginas aprobadas y no depende de que haya algo esperando publicar.
 
             · POR QUÉ NO SE OFRECE: el endpoint responde 409 (el backend impone la regla), y antes de
               que la impusiera devolvía una hoja con dos títulos de sección y nada debajo. El riesgo no
@@ -86,10 +90,13 @@ import { Vigencia } from '../../core/vigencia';
             · POR QUÉ NO SE ESCONDE: esta pantalla es el único sitio desde donde se descubre que existe
               una hoja para el restaurante (no está en el sidebar: cuelga de un run). Escondiéndolo,
               quien no aprobó nada no se entera ni de que existe ni de qué le falta.
-            · LA CONDICIÓN ES puedeAprobar(), la MISMA del botón de aprobar el run, a propósito:
-              "hay algo que entregar" y "hay algo que aprobar" son la misma pregunta
+            · LA CONDICIÓN ES puedeAprobar(), y es la MISMA que la primera del botón de aprobar el
+              run, a propósito: "hay algo que entregar" y "hay algo que aprobar" son la misma pregunta
               (puedeAprobarseRun). Dos definiciones separadas no fallan el día que se escriben, fallan
               el día que alguien cambia una y la otra se queda atrás. Lo fija un test de brief.spec.ts.
+              Lo que el botón tiene DE MÁS (que el run lo haya lanzado el pipeline) no se le agrega
+              acá: son preguntas distintas, y un run sembrado con páginas aprobadas SÍ tiene una hoja
+              que mandarle al restaurante aunque no haya nada que publicar.
           -->
           @if (membresia.esEquipo()) {
             @if (puedeAprobar()) {
@@ -108,16 +115,34 @@ import { Vigencia } from '../../core/vigencia';
               </span>
             }
           }
+          <!--
+            El botón, y UN SOLO motivo cuando está apagado (bloque C0).
+
+            · POR QUÉ disabled Y NO UN <span>, al revés que el entregable de arriba: acá el elemento
+              ya es un <button>, y un botón deshabilitado no navega, no recibe el clic y no se activa
+              con Enter — el navegador lo impone. El <span> hizo falta allá porque un <a href> apagado
+              con una clase sigue navegando de tres maneras distintas.
+            · POR QUÉ NO SE ESCONDE: quien mira tiene que poder enterarse de por qué no puede. Un
+              botón que desaparece deja a alguien preguntándose si la función existe.
+            · POR QUÉ EL MOTIVO SALE DE UNA FUNCIÓN Y NO DE DOS @if: los dos motivos pueden darse a la
+              vez (un run sembrado sin páginas aprobadas) y pintados juntos se contradicen. Cuál gana
+              lo decide motivoNoAprobable() (core/aprobar-run.ts), donde se prueba sin navegador.
+            · POR QUÉ EL MISMO TEXTO EN EL <p> Y EN EL title: el <p> es lo que se lee sin hacer nada;
+              el title es lo que aparece donde la persona está mirando cuando descubre que el botón no
+              responde. Salen de la MISMA señal, así que no pueden decir cosas distintas.
+          -->
           @if (puedeAprobarRunUI()) {
             <button
               (click)="aprobarRun()"
-              [disabled]="!puedeAprobar() || trabajando()"
+              [disabled]="motivoNoAprobar() !== null || trabajando()"
+              [attr.title]="motivoNoAprobar()"
+              [attr.aria-describedby]="motivoNoAprobar() ? 'motivo-aprobar-run' : null"
               class="mt-4 rounded-md bg-respaldo text-texto-invertido px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-40"
             >
               Aprobar el run y publicar
             </button>
-            @if (!puedeAprobar()) {
-              <p class="mt-2 text-xs text-texto-tenue">Aprobá al menos una página antes de aprobar el run.</p>
+            @if (motivoNoAprobar(); as motivo) {
+              <p id="motivo-aprobar-run" class="mt-2 text-xs text-texto-tenue">{{ motivo }}</p>
             }
           }
         </header>
@@ -256,6 +281,38 @@ export class BriefPage implements OnInit, OnDestroy {
   readonly puedeAprobar = computed(() => (this.brief() ? puedeAprobarseRun(this.brief()!.pages) : false));
 
   /**
+   * Lo que dijo el SERVIDOR al rechazar una aprobación con 409 `RUN_SIN_WORKFLOW`, y **gana** sobre
+   * lo que traía el brief.
+   *
+   * Se conserva puesto hasta que se cambie de run: un `refetch` que volviera a traer
+   * `tiene_workflow: true` estaría contradiciendo al único que puede saberlo de verdad, y volver a
+   * encender el botón después de que la API lo rechazó es exactamente el bucle que C0 vino a cerrar.
+   */
+  private readonly rechazadoSinWorkflow = signal(false);
+
+  /**
+   * ¿Hay una ejecución durable esperando la aprobación de ESTE run? (bloque C0, migración 0019).
+   *
+   * Falla cerrado en los dos casos en que no se sabe: sin brief cargado, y con un `tiene_workflow`
+   * que no llegue —una API vieja, un mock incompleto—. Ofrecer una acción que no hace nada es peor
+   * que no ofrecerla.
+   */
+  private readonly tieneWorkflow = computed(
+    () => !this.rechazadoSinWorkflow() && (this.brief()?.run.tiene_workflow ?? false),
+  );
+
+  /**
+   * Por qué no se puede aprobar, o `null` si se puede. **Una sola frase**: cuál gana cuando se dan
+   * los dos motivos lo decide `core/aprobar-run.ts`, con su test.
+   */
+  readonly motivoNoAprobar = computed(() =>
+    motivoNoAprobable({
+      tieneWorkflow: this.tieneWorkflow(),
+      hayPaginaAprobada: this.puedeAprobar(),
+    }),
+  );
+
+  /**
    * ¿Se muestra el botón "Aprobar el run y publicar"? Equipo + flag de Fase 1. En Fase 1 está
    * apagado: aprobar el run emite un evento sin orquestador detrás (ver `features.ts`). La aprobación
    * de PÁGINAS —abajo, en cada tarjeta— sigue visible: es lo que demuestra la compuerta.
@@ -283,6 +340,9 @@ export class BriefPage implements OnInit, OnDestroy {
       this.brief.set(null);
       this.editando.set(null);
       this.error.set('');
+      // El rechazo era del run ANTERIOR. Sin esto, Angular reutiliza la instancia al navegar de
+      // /runs/A a /runs/B y el botón de B quedaría apagado por un 409 que no era suyo.
+      this.rechazadoSinWorkflow.set(false);
       void this.cargar();
     });
   }
@@ -378,8 +438,36 @@ export class BriefPage implements OnInit, OnDestroy {
     return this.conTrabajo(() => this.api.editarPagina(p.id, cambios));
   }
 
-  aprobarRun(): Promise<void> {
-    return this.conTrabajo(() => this.api.aprobarRun(this.runId));
+  /**
+   * No usa `conTrabajo` porque necesita tratar UN error distinto del resto (bloque C0).
+   *
+   * El 409 `RUN_SIN_WORKFLOW` no es un fallo: es el estado del run, y tiene su propio sitio en la
+   * pantalla —la línea bajo el botón—. Mandarlo a `error` lo pintaría en la rama de error del
+   * template, que **reemplaza la pantalla entera**: quien lo lee se quedaría sin el brief y sin el
+   * botón al que el mensaje se refiere. Es el mismo criterio que la pantalla del entregable con su
+   * propio 409, con una diferencia: allá el 409 llega al cargar y acá al actuar, así que el aviso va
+   * al lado de la acción y no en lugar del contenido.
+   *
+   * Llegar acá significa que la pantalla y la base no coincidían (otra pestaña, el endpoint a mano):
+   * el botón ya se apaga por adelantado con `run.tiene_workflow`. Se ramifica por el **código** y
+   * nunca por la frase — ver `core/codigos.ts`.
+   */
+  async aprobarRun(): Promise<void> {
+    const pedido = this.runId; // a qué run corresponde ESTA aprobación
+    this.trabajando.set(true);
+    this.error.set('');
+    try {
+      await this.api.aprobarRun(pedido);
+      await this.refetch(); // recarga SIN el spinner de página (la acción ya terminó)
+    } catch (e) {
+      // Si ya nos fuimos a otro run, el resultado de éste no puede pintar nada: apagaría el botón de
+      // una pantalla que no es la suya.
+      if (this.vigencia.obsoleta(pedido)) return;
+      if (esRunSinWorkflow(e)) this.rechazadoSinWorkflow.set(true);
+      else this.error.set((e as Error).message);
+    } finally {
+      if (!this.vigencia.obsoleta(pedido)) this.trabajando.set(false);
+    }
   }
 
   /** `null` = no hay coste que mostrar, y entonces la línea no se pinta. Ver `core/dinero.ts`. */

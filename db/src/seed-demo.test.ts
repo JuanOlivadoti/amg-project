@@ -93,6 +93,31 @@ test("el brief tiene 14 páginas, TODAS sin aprobar (la compuerta certifica que 
   );
 });
 
+/**
+ * 🔴 El run de la demo NO es publicable, y eso es la VERDAD sobre él, no un defecto del seed.
+ *
+ * `sembrarDemo` inserta el run directo en la base: nunca hubo un `research/solicitado`, así que no
+ * hay ninguna ejecución durable esperando el `research/aprobado`. Aprobarlo devolvía 200 y no
+ * publicaba nada (bloque C0; migración 0019 + `PgStore.approveRun`).
+ *
+ * Este test existe para que a nadie se le ocurra "arreglarlo" poniéndole la marca al seed: eso
+ * volvería a fabricar el 200 falso, ahora con una columna que lo respalda. El portal muestra el botón
+ * apagado, que es lo correcto.
+ */
+test("🔴 el run de la demo NO tiene marca de solicitud: nadie está esperando su aprobación", async () => {
+  const runs = await db.asUser<{ tiene_marca: boolean }>(
+    { tenantId: r.tenantId, userId: FRANK },
+    "select solicitud_emitida_at is not null as tiene_marca from kr_runs where id = $1",
+    [r.runId],
+  );
+  assert.equal(runs.length, 1, "el run sembrado tiene que estar ahí (si no, este test no mide nada)");
+  assert.equal(
+    runs[0]?.tiene_marca,
+    false,
+    "el seed NO puede marcar el run como solicitado: no hay ningún workflow durmiendo sobre él",
+  );
+});
+
 test("el split de honestidad: exactamente 8 respaldadas por datos y 6 sin validar", async () => {
   const rows = await db.asUser<{ evidencia: string; n: string }>(
     { tenantId: r.tenantId, userId: FRANK },

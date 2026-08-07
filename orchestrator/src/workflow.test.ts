@@ -270,23 +270,28 @@ function depsFalsas(paginas: ProposedPage[]): Espia {
 const entrada = (runId: string, tenantId: string) => ({ runId, tenantId });
 
 /**
- * Crea el run como lo hará la API: **bajo RLS, con la identidad del humano**.
+ * Crea el run como lo hace la API: **bajo RLS, con la identidad del humano, y marcando la emisión**.
  *
  * Es donde ocurre la autorización. Si esa persona no tiene membresía en el tenant, Postgres rechaza
  * el insert y no se emite ningún evento — o sea que el orquestador nunca llega a gastar.
+ *
+ * **La marca no es decorado del fixture** (C0, migración `0019`): `solicitarResearch` la escribe
+ * después de que `send()` tenga éxito, y `approveRun` la exige. Sin ella estos tests estarían
+ * ejercitando un run que en producción **no se puede aprobar** — un run insertado directo en la base,
+ * sin nadie esperando su aprobación—, y el workflow que despierta con `research/aprobado` no existiría.
+ * El orden acá reproduce el de la API: fila → (evento) → marca.
  */
 async function crearRunComoHumano(tenantId: string, clientId: string, userId: string): Promise<string> {
   const runId = randomUUID();
-  await store.createRun(
-    { tenantId, userId },
-    {
-      runId,
-      clientId,
-      schemaVersion: "kr.v0.5",
-      prompt: "Restaurante italiano en Madrid centro",
-      market: { country: "ES", language_code: "es", location_code: 2724 },
-    },
-  );
+  const ctx = { tenantId, userId };
+  await store.createRun(ctx, {
+    runId,
+    clientId,
+    schemaVersion: "kr.v0.5",
+    prompt: "Restaurante italiano en Madrid centro",
+    market: { country: "ES", language_code: "es", location_code: 2724 },
+  });
+  await store.marcarSolicitudEmitida(ctx, runId);
   return runId;
 }
 

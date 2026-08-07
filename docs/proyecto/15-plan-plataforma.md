@@ -268,7 +268,15 @@ división, **sin default** (conservando la propiedad que hizo bien `incluirCoste
 **Es el único tramo del circuito que sigue siendo una promesa.** El resto se probó el 2026-08-07; esto
 no, porque **escribe en el espacio real de Storyblok del cliente**.
 
-### C0. El botón no puede devolver 200 sobre un run que nadie va a publicar — **precondición**
+### C0. El botón no puede devolver 200 sobre un run que nadie va a publicar — ✅ **hecho el 2026-08-08**
+
+> **Hecho, y con esto cae el único hallazgo que le dio a la 15ª review el veredicto NO LISTO.**
+> Migración **`0019`**: `kr_runs.solicitud_emitida_at`, nullable, **sin relleno** —los runs que ya
+> existen quedan nulos, que es la verdad sobre ellos—. `solicitarResearch` la escribe **después** del
+> `send()` (fila → evento → marca), `approveRun` la exige lanzando `RunSinWorkflowError`, el endpoint
+> responde **409 `RUN_SIN_WORKFLOW`**, y `tiene_workflow` viaja por los tres lectores para que el
+> portal apague el botón por adelantado con un motivo accionable. **⚠️ La `0019` no está desplegada.**
+> Lo de abajo queda como el razonamiento.
 
 Lo encontró la 15ª review (H1) y es lo único que devolvió el veredicto NO LISTO. Verificado contra el
 código, no solo contra la nota que ya lo describía:

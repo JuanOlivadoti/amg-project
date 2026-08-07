@@ -2,7 +2,7 @@
  * Punto de entrada del paquete `db`. Es lo único que los demás paquetes deberían importar: el
  * resto de los archivos son detalle interno.
  */
-export { PgStore, PLAZO_RUN_COLGADO } from "./store.js";
+export { PgStore, PLAZO_RUN_COLGADO, RunSinWorkflowError } from "./store.js";
 export type {
   TenantContext,
   NewRun,

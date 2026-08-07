@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { renderReport } from "contrato";
+import { RunSinWorkflowError } from "db";
 import type { PgStore, CambiosPagina, PgClientes, NuevoCliente, CambiosCliente, PgMembresias } from "db";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
-import { SIN_PAGINAS_APROBADAS } from "./codigos.js";
+import { SIN_PAGINAS_APROBADAS, RUN_SIN_WORKFLOW } from "./codigos.js";
 
 /**
  * Todo lo que la API necesita, INYECTADO. Ni el store, ni el emisor, ni la verificación del token se
@@ -409,6 +410,21 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     // cliente, no del servidor. Se mapea a 400 en vez de un 500 que mentiría sobre de quién es la culpa.
     if (code && ["22P02", "23502", "23503", "23514"].includes(code)) {
       return c.json({ error: "Petición inválida: revisá clientId, market y los campos obligatorios." }, 400);
+    }
+    /*
+     * `POST /runs/:id/approve` sobre un run que nadie va a publicar (bloque C0, migración 0019).
+     *
+     * **409 y no 500**: el run existe, quien pregunta puede verlo y la petición es legítima — lo que
+     * falla es el estado del recurso, igual que el 409 del entregable. Y **no 403**: no es una
+     * cuestión de permisos; el `maestro` del tenant tampoco puede aprobarlo, porque no hay nada que
+     * despertar.
+     *
+     * Se distingue por CLASE y no por el texto del mensaje (ver `RunSinWorkflowError`): el portal
+     * ramifica sobre el `codigo`, así que la distinción es contrato y no puede depender de una frase.
+     * Va antes que la de "ninguna página aprobada" nada más porque es la más específica de las dos.
+     */
+    if (err instanceof RunSinWorkflowError) {
+      return c.json({ error: err.message, codigo: RUN_SIN_WORKFLOW }, 409);
     }
     // Reglas de negocio del store que no son un 500: son estados, no fallas.
     if (err.message.includes("ninguna página aprobada")) return c.json({ error: err.message }, 409);

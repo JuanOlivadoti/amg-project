@@ -101,6 +101,27 @@ export async function solicitarResearch(
     throw fallo;
   }
 
+  /*
+   * TERCER paso, y va DESPUÉS del `send()` a propósito: **fila → evento → marca** (ADR-18 extendido).
+   *
+   * Es la única prueba, y nuestra, de que hay una ejecución durable esperando el `research/aprobado`
+   * de este run. Sin ella, `approveRun` se niega (`RunSinWorkflowError` → 409 `RUN_SIN_WORKFLOW`),
+   * que es lo que impide aprobar un run insertado directo en la base — el bug del bloque C0. Ver
+   * `db/migrations/0019_marca_solicitud_emitida.sql`.
+   *
+   * Escribirla ANTES del `send()` la volvería una mentira en cuanto el envío fallara: el `catch` de
+   * arriba marca el run `failed`, pero un `failed` con marca es un run que alguien podría aprobar si
+   * el estado cambiara. Acá abajo, el camino del fallo sale por el `throw` y no llega nunca.
+   *
+   * **No lleva `try/catch`, y eso es una decisión.** Si esto lanza, el evento YA salió y el workflow
+   * está vivo: no hay nada que compensar (marcar `failed` sería mentir sobre un run que está
+   * corriendo). La petición devuelve 500, el operador se entera, y el run queda **no aprobable**
+   * hasta que alguien escriba la marca a mano. Falla cerrado, que es la dirección correcta: la
+   * alternativa —tragarse el error y devolver 201— deja al usuario con un run que parece normal y un
+   * botón de aprobar que le va a dar 409 sin explicación.
+   */
+  await storeHumano.marcarSolicitudEmitida(ctx, runId);
+
   return runId;
 }
 

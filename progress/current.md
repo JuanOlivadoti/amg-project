@@ -15,20 +15,31 @@
 cinco verificados, uno aceptado por juicio, **una mutación refutada**. Ninguno contradice una decisión
 del usuario. El relato está en [`history.md`](history.md).
 
-**Lo que ya se hizo de esta ronda:**
+**Lo que ya se hizo de esta ronda** (seis commits, todos pusheados):
 
-- **La documentación que mentía.** Siete afirmaciones repartidas en el `09`, el `README` de
-  `docs/proyecto/` y este archivo seguían diciendo que falta desplegar el orquestador. Corregidas.
-- **`current.md` reseteado.** Estaba entero duplicado en las seis entradas del 2026-08-07 de la
-  bitácora. Antes de vaciarlo se rescató lo que solo vivía acá: dos deudas de KR-2a pasaron al bloque
-  **I** del plan, y el generador de credenciales ganó su entrada en `history.md`.
-- **El plan, enmendado**: **A1** y **A2** con garantías de verdad, **C0** como precondición
-  bloqueante de C, **A3** detrás de **A4**, **D** con las dos deudas que el `09` le atribuía, y el
-  bloque **J** (piezas 3 y 4 del portal), que no existía.
+| Commit | Qué |
+| --- | --- |
+| `152854b` | **La documentación que mentía.** Siete afirmaciones en el `09`, el `README` de `docs/proyecto/` y este archivo seguían diciendo que falta desplegar el orquestador. Y el plan quedó enmendado: **A1**/**A2** con garantías de verdad, **C0** como precondición bloqueante de C, **A3** detrás de **A4**, **D** con las dos deudas que el `09` le atribuía, y el bloque **J** (piezas 3 y 4 del portal), que no existía |
+| `29625e6` | **H5** (la fila `transaccional` del fixture) y la **guarda de `finishRun`** — el bug de hoy que destapó verificar un hallazgo sobre código futuro |
+| `18790f0` | **A2**: el barrido de runs colgados. Migración `0018` con la primera `security definer` del proyecto y un rol propio, `app_barrido` |
+| `f47a1b4` | **A1**: `/_health` con sonda por `Tx`, y el log de la transición sano→degradado |
+| `9e06576` | **B2**: `renderReport` pasa de flags a `audiencia`, y el entregable pierde la línea de metadatos |
+| `3e71767` | **B1**: 409 con código en la API, link apagado en el portal |
 
-**Pendiente inmediato, en orden:** H5 (la fila `transaccional` del fixture) → **A2** (la guarda de
-`finishRun`, que es un bug de hoy, y el barrido) → **A1** (`/_health` con sonda por `Tx`) → **B1 + B2**
-→ **C0 + C**.
+**`current.md` se reseteó** al empezar: estaba entero duplicado en las seis entradas del 2026-08-07 de
+la bitácora. Antes de vaciarlo se rescató lo que solo vivía acá — dos deudas de KR-2a pasaron al
+bloque **I** del plan, y el generador de credenciales ganó su entrada en `history.md`.
+
+**Pendiente inmediato:** **C0** (la condición durable de publicabilidad) y después **C** (aprobar →
+publicar en `dry-run`), que ya no es código: hay que mirar `WEB_PUBLISH_MODE` en Railway.
+
+## ⏳ Lo que espera a Juan
+
+| Qué | Por qué él | Bloquea |
+| --- | --- | --- |
+| **Desplegar la `0018`** (`migrate:deploy -w db`) | Toca Supabase real | El barrido está en el código y **no corre** hasta que se aplique. Mirá que `alter function … owner to app_barrido` pase |
+| **Abrir la lectura de `**/.env.example`** | Es una línea de `.claude/settings.json` | El bloque **A4** (el `MAPA` y el `.env.example` del orquestador van juntos) |
+| **Un token de solo lectura de Railway** | Es una credencial | El bloque **A3**, que además va **después** de A4 |
 
 ---
 

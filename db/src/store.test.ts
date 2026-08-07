@@ -1,9 +1,11 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { PgStore, PLAZO_RUN_COLGADO } from "./store.js";
+import { PgStore, PLAZO_RUN_COLGADO, RunSinWorkflowError } from "./store.js";
 import { PglitePool } from "./pool.js";
-import { aplicarMigraciones } from "./migrate.js";
+import { aplicarMigraciones, MIGRATIONS_DIR, asegurarAuthStandIn } from "./migrate.js";
 import { leerKeywordsCrudo, leerPaginasCrudo, sqlCrudo } from "./testing.js";
 import type { KeywordRow, PageRow, TenantContext } from "./store.js";
 
@@ -113,6 +115,20 @@ const nuevoRun = (clientId: string) => ({
   prompt: "Restaurante italiano en Madrid centro",
   market: { country: "ES", language_code: "es", location_code: 2724 },
 });
+
+/**
+ * Un run como los que NACEN DEL PIPELINE: creado bajo RLS **y** con la marca de que la API consiguió
+ * emitir `research/solicitado` (migración 0019). Es lo que hace `solicitarResearch` en dos pasos.
+ *
+ * Existe porque `createRun` a secas produce un run **no aprobable**, que es correcto y es lo que
+ * prueban los tests de la 0019 más abajo. Los tests de la compuerta quieren ejercitar la compuerta,
+ * no esa precondición, así que parten de un run completo — igual que en producción.
+ */
+async function runConWorkflow(ctx: TenantContext, clientId: string): Promise<string> {
+  const runId = await store.createRun(ctx, nuevoRun(clientId));
+  await store.marcarSolicitudEmitida(ctx, runId);
+  return runId;
+}
 
 // ---------------------------------------------------------------- ciclo de vida
 
@@ -253,14 +269,14 @@ test("compuerta: las páginas nacen SIEMPRE sin aprobar", async () => {
 });
 
 test("compuerta: no se puede aprobar un run si NINGUNA página fue aprobada", async () => {
-  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const runId = await runConWorkflow(ctxA(), clientA1);
   await store.savePages(ctxA(), runId, clientA1, [page()]);
 
   await assert.rejects(() => store.approveRun(ctxA(), runId), /ninguna página aprobada/i);
 });
 
 test("compuerta: aprobar el run NO aprueba sus páginas (la compuerta es doble)", async () => {
-  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const runId = await runConWorkflow(ctxA(), clientA1);
   await store.savePages(ctxA(), runId, clientA1, [page(), page({ url_slug: "/otra", cluster_id: "22222222-2222-4222-8222-222222222222" })]);
 
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where url_slug = '/pizza-napolitana-madrid'");
@@ -283,6 +299,153 @@ test("compuerta: con el run SIN aprobar, ninguna página es publicable aunque es
   const publicables = await store.getPublishablePages(ctxA(), runId);
 
   assert.equal(publicables.length, 0);
+});
+
+// ------------------------------------------- la marca de solicitud emitida (0019, bloque C0)
+
+/*
+ * La compuerta humana es un `esperarEvento("research/aprobado")` DENTRO del workflow, y no hay
+ * ningún listener suelto de ese evento. Sobre un run insertado directo en la base —el seed de la
+ * demo, una importación— nadie está durmiendo: aprobarlo dejaba el estado en `approved` para
+ * siempre y emitía un evento que nadie consumía. 200 y nada publicado.
+ *
+ * La condición es durable y NUESTRA (`kr_runs.solicitud_emitida_at`): preguntarle a Inngest en el
+ * momento de aprobar metería un tercero en el camino, y su caída impediría aprobar algo que ya está
+ * en nuestra base.
+ */
+
+test("🔴 un run insertado DIRECTO en la base no se puede aprobar: nadie espera esa aprobación", async () => {
+  // `createRun` a secas es exactamente lo que hace el seed: la fila, sin el evento y sin la marca.
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.approvePage(ctxA(), rows[0]!.id); // la compuerta de página SÍ pasa: no es lo que falta
+
+  await assert.rejects(
+    () => store.approveRun(ctxA(), runId),
+    (e: unknown) => e instanceof RunSinWorkflowError && e.runId === runId,
+    "tiene que ser el error tipado, que es sobre lo que la API responde 409 RUN_SIN_WORKFLOW",
+  );
+
+  // Y no basta con que lance: el estado NO puede haberse movido.
+  assert.equal((await store.getRun(ctxA(), runId))?.status, "running", "el run no quedó aprobado");
+});
+
+test("con la marca escrita, el MISMO run se aprueba (control positivo de la 0019)", async () => {
+  // Sin este test, una condición que bloqueara TODA aprobación dejaría verde al de arriba.
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.approvePage(ctxA(), rows[0]!.id);
+
+  assert.equal(await store.marcarSolicitudEmitida(ctxA(), runId), true, "la marca se escribió");
+  assert.equal(await store.approveRun(ctxA(), runId), true);
+  assert.equal((await store.getRun(ctxA(), runId))?.status, "approved");
+});
+
+test("marcarSolicitudEmitida es idempotente y conserva la PRIMERA emisión", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+
+  assert.equal(await store.marcarSolicitudEmitida(ctxA(), runId), true);
+  const { rows: primera } = await pg.query<{ t: Date }>(
+    "select solicitud_emitida_at as t from kr_runs where id = $1",
+    [runId],
+  );
+
+  assert.equal(await store.marcarSolicitudEmitida(ctxA(), runId), false, "ya estaba marcado");
+  const { rows: segunda } = await pg.query<{ t: Date }>(
+    "select solicitud_emitida_at as t from kr_runs where id = $1",
+    [runId],
+  );
+  assert.deepEqual(segunda[0]!.t, primera[0]!.t, "el hecho es cuándo EMPEZÓ a haber alguien escuchando");
+});
+
+/**
+ * 🔴 "No lo veo" NO es lo mismo que "no tiene marca".
+ *
+ * Bajo RLS, el run de otro tenant devuelve cero filas. Contestarle a B que *ese run no tiene
+ * workflow* sería afirmarle algo sobre una fila que no le corresponde. Cuando no hay fila se sigue
+ * de largo y cae en la precondición de ADR-06, que es lo que respondía antes de la 0019: el
+ * contrato de un run invisible no cambia.
+ */
+test("🔴 un run de OTRO tenant no revela si tiene marca: sigue dando el error de ADR-06", async () => {
+  const runId = await runConWorkflow(ctxA(), clientA1); // el de A SÍ tiene marca
+  await store.savePages(ctxA(), runId, clientA1, [page()]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.approvePage(ctxA(), rows[0]!.id);
+
+  await assert.rejects(() => store.approveRun(ctxB(), runId), /ninguna página aprobada/i);
+  assert.equal((await store.getRun(ctxA(), runId))?.status, "running", "B no movió nada");
+});
+
+test("🔴 `tiene_workflow` viaja por los TRES lectores de runs (es UNA definición de columnas)", async () => {
+  // `RUN_SUMMARY_COLS` es una sola constante para getRun / listRuns / listAllRuns. Este test impide
+  // que alguien agregue el campo en uno y deje los otros dos mintiendo con `undefined`.
+  const sinMarca = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const conMarca = await runConWorkflow(ctxA(), clientA2);
+
+  assert.equal((await store.getRun(ctxA(), sinMarca))?.tiene_workflow, false);
+  assert.equal((await store.getRun(ctxA(), conMarca))?.tiene_workflow, true);
+
+  const porCliente = await store.listRuns(ctxA(), clientA2);
+  assert.equal(porCliente.find((r) => r.id === conMarca)?.tiene_workflow, true);
+
+  const todos = await store.listAllRuns(ctxA());
+  assert.equal(todos.find((r) => r.id === sinMarca)?.tiene_workflow, false);
+  assert.equal(todos.find((r) => r.id === conMarca)?.tiene_workflow, true);
+});
+
+/**
+ * 🔴 La 0019 NO rellena las filas que ya existen, y esa mitad ningún otro test la puede ver:
+ * `aplicarMigraciones` corre sobre una base vacía, así que ahí no hay nada que rellenar y agregarle
+ * un `update ... set solicitud_emitida_at = created_at` a la migración no tumbaría nada.
+ *
+ * Pero en producción la base PERSISTE y tiene el run de la demo en `pending_approval`. Un relleno lo
+ * volvería aprobable en silencio — exactamente el bug que la 0019 cierra. Mismo patrón que
+ * `seed-contrato.test.ts` usa con la 0017: migraciones hasta la N-1, sembrar, aplicar la N.
+ */
+test("🔴 la 0019 deja NULAS las filas que ya existían (rellenarlas las volvería publicables)", async () => {
+  const otra = new PGlite();
+  try {
+    await asegurarAuthStandIn(otra);
+    const archivos = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
+    const hasta0018 = archivos.filter((f) => f < "0019");
+    const la0019 = archivos.filter((f) => f.startsWith("0019_"));
+    // Control positivo del recorte: si el filtro dejara de matchear, el test aplicaría "nada" y
+    // luego "nada", y pasaría en verde sin haber ejercitado la migración.
+    assert.ok(hasta0018.length >= 16, `esperaba las migraciones previas y encontré ${hasta0018.length}`);
+    assert.equal(la0019.length, 1, "la 0019 tiene que ser exactamente un archivo");
+
+    for (const f of hasta0018) await otra.exec(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
+
+    const { rows: t } = await otra.query<{ id: string }>(
+      "insert into tenants (nombre, slug) values ('T', 't') returning id",
+    );
+    const { rows: c } = await otra.query<{ id: string }>(
+      "insert into clients (tenant_id, nombre) values ($1, 'C') returning id",
+      [t[0]!.id],
+    );
+    // Un run VIEJO, como el de la demo en producción: creado hace un mes y ya en la compuerta.
+    const { rows: r } = await otra.query<{ id: string }>(
+      `insert into kr_runs (tenant_id, client_id, schema_version, status, prompt,
+                            market_country, market_language, market_location_code, created_at)
+       values ($1,$2,'kr.v0.5','pending_approval','el run sembrado de la demo','ES','es',2724,
+               now() - interval '30 days')
+       returning id`,
+      [t[0]!.id, c[0]!.id],
+    );
+
+    await otra.exec(readFileSync(join(MIGRATIONS_DIR, la0019[0]!), "utf8"));
+
+    const { rows } = await otra.query<{ marca: string | null }>(
+      "select solicitud_emitida_at as marca from kr_runs where id = $1",
+      [r[0]!.id],
+    );
+    assert.equal(rows.length, 1, "la fila sigue ahí");
+    assert.equal(rows[0]!.marca, null, "la 0019 no puede inventar que alguien esperaba este run");
+  } finally {
+    await otra.close();
+  }
 });
 
 // ---------------------------------------------------------------- aislamiento
@@ -648,7 +811,7 @@ test("compuerta: un reintento IDÉNTICO conserva la aprobación (no molesta al r
  * anterior del brief, que el research actual ya no respalda.
  */
 test("🔴 una página que desaparece del research deja de ser publicable (se retira)", async () => {
-  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const runId = await runConWorkflow(ctxA(), clientA1);
   await store.savePages(ctxA(), runId, clientA1, [
     page(),
     page({ url_slug: "/menu-del-dia", cluster_id: "22222222-2222-4222-8222-222222222222" }),
@@ -670,7 +833,7 @@ test("🔴 una página que desaparece del research deja de ser publicable (se re
 
 /** Un research que no propone NADA tiene que retirar todo, no dejar lo viejo publicable. */
 test("🔴 un research sin páginas RETIRA las anteriores (no las deja aprobadas)", async () => {
-  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const runId = await runConWorkflow(ctxA(), clientA1);
   await store.savePages(ctxA(), runId, clientA1, [page()]);
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
   await store.approvePage(ctxA(), rows[0]!.id);
@@ -710,7 +873,7 @@ test("🔴 un cambio en el score también revoca la aprobación (el WHERE estaba
  * workflow no puede deshacer un hecho del mundo: solo se pisa el estado si SEGUÍA corriendo.
  */
 test("🔴 failRun NO pisa un run ya aprobado (el fallo no deshace lo publicado)", async () => {
-  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const runId = await runConWorkflow(ctxA(), clientA1);
   await store.savePages(ctxA(), runId, clientA1, [page()]);
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
   await store.approvePage(ctxA(), rows[0]!.id);
@@ -793,7 +956,7 @@ test("🔴 getRunPages devuelve el orden DEL BRIEF, no el del opportunity_score"
 });
 
 test("🔴 getPublishablePages también publica en el orden del brief", async () => {
-  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  const runId = await runConWorkflow(ctxA(), clientA1);
   await store.savePages(ctxA(), runId, clientA1, briefDosNiveles());
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
   for (const r of rows) await store.approvePage(ctxA(), r.id);

@@ -234,6 +234,22 @@ export interface RunSummary {
   config: Record<string, unknown>;
   created_at: string;
   finished_at: string | null;
+  /**
+   * ¿Hay una ejecución durable esperando el `research/aprobado` de este run? (migración 0019)
+   *
+   * `false` = el run se insertó directo en la base (el seed de la demo, una importación) y nadie está
+   * durmiendo sobre él: `approveRun` se niega y la API responde 409 `RUN_SIN_WORKFLOW`. **El portal lo
+   * necesita para deshabilitar el botón** — sin este campo, la única forma de enterarse sería
+   * apretarlo y recibir el 409, que es justo la experiencia que C0 existe para evitar.
+   *
+   * Es un booleano y no el `timestamptz`: la fecha exacta en que la API emitió el evento no es un
+   * dato del producto, y exponerla invita a hacer aritmética con ella. Lo que el consumidor necesita
+   * saber es si el run es aprobable, y eso es un sí o un no.
+   *
+   * No va detrás de `app.es_staff()`: no revela nada del margen ni del research. Un `cliente` que lo
+   * vea sigue sin poder aprobar — eso lo impide RLS (`run_write`), no este campo.
+   */
+  tiene_workflow: boolean;
 }
 
 /**
@@ -354,7 +370,36 @@ const ORDEN_DEL_BRIEF = `order by p.orden_brief asc nulls last, p.opportunity_sc
 const RUN_SUMMARY_COLS = `id, client_id, status, prompt, schema_version,
        market_country, market_language, market_location_code,
        case when app.es_staff() then coste_micros_usd::int end as coste_micros_usd,
-       calidad_datos, config, created_at, finished_at`;
+       calidad_datos, config, created_at, finished_at,
+       solicitud_emitida_at is not null as tiene_workflow`;
+
+/**
+ * `approveRun` sobre un run que **nadie va a publicar**: no tiene la marca de `solicitud_emitida_at`,
+ * o sea que la API nunca emitió `research/solicitado` por él y no hay ninguna ejecución durable
+ * esperando el `research/aprobado` (ver `0019_marca_solicitud_emitida.sql`).
+ *
+ * ## Por qué una CLASE y no un mensaje que la API reconozca por texto
+ *
+ * La otra precondición de la compuerta (ADR-06, "ninguna página aprobada") la distingue el `onError`
+ * de la API mirando dentro del mensaje. Eso funciona porque el mensaje es nuestro y está en un solo
+ * idioma, pero es la misma forma que la 9ª review ya cazó con los errores de Postgres: **una
+ * corrección de redacción se convierte en un cambio de código HTTP**, y `tsc` no dice nada. Acá el
+ * portal ramifica sobre el 409 (deshabilita el botón y pinta el motivo), así que la distinción es
+ * parte del contrato y no puede depender de una frase.
+ *
+ * Con una clase, renombrarla o dejar de exportarla rompe la compilación de `api/`, que es el aviso
+ * que un `includes()` no da.
+ */
+export class RunSinWorkflowError extends Error {
+  constructor(readonly runId: string) {
+    super(
+      `No se puede aprobar el run ${runId}: no hay ninguna ejecución esperando la aprobación. ` +
+        `Este run no lo creó el pipeline (se insertó directo en la base), así que aprobarlo no ` +
+        `publicaría nada. Lanzá un research nuevo desde el portal.`,
+    );
+    this.name = "RunSinWorkflowError";
+  }
+}
 
 export class PgStore {
   /**
@@ -1042,18 +1087,69 @@ export class PgStore {
   }
 
   /**
+   * Escribe la marca de que la API consiguió emitir `research/solicitado` por este run.
+   *
+   * **Va DESPUÉS del `send()`, nunca antes** (`api/src/solicitar.ts`): es el tercer paso del orden de
+   * ADR-18, *fila → evento → marca*. Escribirla antes marcaría como "tiene workflow" un run cuyo
+   * evento después falló, que es el mismo bug con más pasos.
+   *
+   * El `and solicitud_emitida_at is null` la hace idempotente conservando la PRIMERA emisión: si el
+   * mismo `runId` se reprocesara (`createRun` es idempotente por id), el hecho que interesa es cuándo
+   * empezó a haber alguien escuchando, no cuándo se reintentó.
+   *
+   * Devuelve si escribió. `false` significa "ya estaba marcado" **o** "RLS no me dejó tocar la fila":
+   * el llamador no puede distinguirlos y no lo necesita —quien acaba de crear el run bajo RLS pasa el
+   * mismo `using` de `run_write` para el update—, pero por eso mismo no se usa como prueba de nada.
+   */
+  async marcarSolicitudEmitida(ctx: TenantContext, runId: string): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update kr_runs set solicitud_emitida_at = now()
+          where id = $1 and solicitud_emitida_at is null
+          returning id`,
+        [runId],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
    * Aprueba el run. NO aprueba sus páginas: es la mitad global de la compuerta doble.
    *
-   * Se niega a aprobar un run sin ninguna página aprobada — publicar "todo" cuando el revisor no
-   * aceptó nada sería justo el accidente que la compuerta existe para evitar.
+   * Se niega en DOS casos, y son de naturaleza distinta:
+   *
+   * 1. **Nadie está esperando la aprobación** (`solicitud_emitida_at` nula, migración 0019). La
+   *    compuerta humana es un `esperarEvento` DENTRO del workflow, y no hay ningún listener suelto de
+   *    `research/aprobado`: sobre un run insertado directo en la base, aprobar dejaba el estado en
+   *    `approved` para siempre y emitía un evento que nadie consumía. 200 y nada publicado.
+   * 2. **Ninguna página aprobada** (ADR-06) — publicar "todo" cuando el revisor no aceptó nada sería
+   *    justo el accidente que la compuerta existe para evitar.
+   *
+   * ## Por qué la marca se comprueba PRIMERO, y solo si el run se ve
+   *
+   * Primero porque es una propiedad del run y no de su contenido: al que aprueba le sirve más
+   * enterarse de que este run no se puede publicar **antes** de ponerse a aprobar páginas que no
+   * servirían de nada.
+   *
+   * Y solo si el run se ve porque **"no lo veo" no es lo mismo que "no tiene marca"**. Bajo RLS, un
+   * run de otro tenant devuelve cero filas acá; afirmarle a quien pregunta que "este run no tiene
+   * workflow" sería contarle algo sobre una fila que no le corresponde. Cuando no hay fila se sigue
+   * de largo y cae en el caso 2, que es exactamente lo que respondía antes de la 0019 — el contrato
+   * de un run invisible no cambia.
    *
    * Devuelve `false` si el `update` no tocó ninguna fila. **Esto importa para un lector-no-escritor**
-   * (el rol `cliente`): RLS lo deja VER el run —así que pasa el conteo de páginas— pero no
+   * (el rol `cliente`): RLS lo deja VER el run —así que pasa las dos condiciones de arriba— pero no
    * ACTUALIZARLO, con lo que el update afecta 0 filas **en silencio**. Sin este booleano, la API
    * creería que aprobó, devolvería 200 y **despertaría al workflow** por algo que la base no cambió.
    */
   async approveRun(ctx: TenantContext, runId: string): Promise<boolean> {
     return this.withTenant(ctx, async (tx) => {
+      const { rows: propio } = await tx.query<{ emitida: boolean }>(
+        "select solicitud_emitida_at is not null as emitida from kr_runs where id = $1",
+        [runId],
+      );
+      if (propio[0] && !propio[0].emitida) throw new RunSinWorkflowError(runId);
+
       const { rows } = await tx.query<{ n: string }>(
         "select count(*)::text as n from kr_pages where run_id = $1 and approved and not retirada",
         [runId],

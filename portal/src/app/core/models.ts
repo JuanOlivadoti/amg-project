@@ -31,6 +31,25 @@ export interface RunSummary {
   config: Record<string, unknown>;
   created_at: string;
   finished_at: string | null;
+  /**
+   * ¿Hay una ejecución durable **esperando** la aprobación de este run? (bloque C0, migración 0019).
+   *
+   * En la base es `solicitud_emitida_at is not null` (`RUN_SUMMARY_COLS` en `db/src/store.ts`), y la
+   * API escribe esa marca recién **después** de que el `send()` del evento haya salido bien. Un run
+   * insertado directo —el seed de la demo, una importación— la deja nula por construcción: nadie
+   * tiene que acordarse de nada.
+   *
+   * Es el dato con el que esta pantalla apaga «Aprobar el run y publicar» **por adelantado**. Sin él,
+   * el botón se veía normal, la API respondía 200 y no se publicaba nada: un botón que parece
+   * funcionar y no hace nada es peor que no tenerlo (15ª review, H1).
+   *
+   * **No es una compuerta de permisos**: un rol `cliente` lo recibe igual (no revela ni el margen ni
+   * el research) y sigue sin poder aprobar, porque eso lo impide RLS (`run_write`) y no este campo.
+   *
+   * Es **requerido**, no opcional, a propósito: `boolean | undefined` dejaría que un fixture nuevo se
+   * olvidara de decidir y que `!run.tiene_workflow` diera `true` sin que nadie lo hubiera pensado.
+   */
+  tiene_workflow: boolean;
 }
 
 /**

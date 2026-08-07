@@ -6,6 +6,7 @@ import type { TenantContext } from "db";
 import { createApp } from "./app.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
+import { RUN_SIN_WORKFLOW } from "./codigos.js";
 
 /**
  * La API entera contra Postgres REAL (PGlite), sin red y sin Supabase.
@@ -153,6 +154,46 @@ async function req(
 }
 
 const ctxServicio = (): TenantContext => ({ tenantId: tenantA });
+
+/**
+ * Un run **nacido del pipeline**: creado por `POST /runs`, o sea con el `send()` de
+ * `research/solicitado` cumplido y la marca `solicitud_emitida_at` escrita (migración 0019). Es lo
+ * ÚNICO que se puede aprobar.
+ *
+ * Se pasa por el endpoint a propósito y no por `store.marcarSolicitudEmitida`: lo que hay que fijar
+ * es que **el camino real** deja el run aprobable. Escribiendo la marca a mano, el test seguiría
+ * verde aunque `solicitarResearch` se olvidara de escribirla — que es justo el fallo que dejaría el
+ * botón muerto en producción.
+ *
+ * La página se inserta con el superusuario porque el research de verdad lo escribe el orquestador
+ * (`app_service`), que acá no corre. Lo que este helper monta es el ESTADO, no el camino.
+ */
+async function runNacidoDelPipeline(): Promise<{ runId: string; pageId: string }> {
+  const res = await req("POST", "/runs", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { clientId: clientA1, prompt: "Restaurante italiano en Madrid centro" },
+  });
+  assert.equal(res.status, 201, "el control positivo empieza por poder crear el run");
+  const { runId } = (await res.json()) as { runId: string };
+  eventos.length = 0; // el `research/solicitado` de recién no es lo que se mide después
+
+  const pageId = (
+    await sql<{ id: string }>(
+      `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug,
+                             keyword_principal, keywords_secundarias, intencion, local, volumen,
+                             dificultad, evidencia, opportunity_score, score_confidence, seo,
+                             content_brief, preguntas_frecuentes, approved, retirada)
+       values ($1,$2,$3, gen_random_uuid(), 'landing_local', '/pizza-del-pipeline',
+               'pizza napolitana madrid', array['pizza napolitana'], 'local', true, 390,
+               15, 'datos_mercado', 84, 1, '{}'::jsonb, '{}'::jsonb, array['¿Reservan?'],
+               false, false) returning id`,
+      [tenantA, runId, clientA1],
+    )
+  )[0]!.id;
+
+  return { runId, pageId };
+}
 
 // ---------------------------------------------------------------- autenticación
 
@@ -302,8 +343,8 @@ test("🔴 POST /runs: si el evento no se puede emitir, el run NO queda huérfan
   // El usuario se entera: un 201 mentiría diciendo que el research arrancó.
   assert.equal(res.status, 500, "el fallo del evento se propaga, no se traga");
 
-  const filas = await sql<{ status: string; error: string | null }>(
-    "select status, error from kr_runs where prompt = 'run que nadie va a procesar'",
+  const filas = await sql<{ status: string; error: string | null; marca: string | null }>(
+    "select status, error, solicitud_emitida_at as marca from kr_runs where prompt = 'run que nadie va a procesar'",
     [],
   );
   assert.equal(filas.length, 1, "la fila se creó bajo RLS: ADR-18 no se invierte");
@@ -313,6 +354,29 @@ test("🔴 POST /runs: si el evento no se puede emitir, el run NO queda huérfan
     "quedó en `running` esperando a un orquestador que nunca fue avisado",
   );
   assert.match(filas[0]!.error ?? "", /event key/, "el motivo real queda escrito en la fila");
+  // 🔴 Y SIN MARCA (0019): el orden es fila → evento → marca. Si la marca se escribiera antes del
+  // `send()`, este run —que nadie va a procesar— quedaría marcado como "tiene workflow", y el bug de
+  // C0 volvería con una columna respaldándolo.
+  assert.equal(filas[0]!.marca, null, "el send() falló: no hay ninguna ejecución esperando este run");
+});
+
+test("🔴 POST /runs escribe la marca DESPUÉS del send(): fila → evento → marca (0019)", async () => {
+  const res = await req("POST", "/runs", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { clientId: clientA1, prompt: "run que sí arranca" },
+  });
+  assert.equal(res.status, 201);
+  const { runId } = (await res.json()) as { runId: string };
+
+  assert.equal(eventos.length, 1, "el evento salió");
+  assert.equal(eventos[0]!.name, "research/solicitado");
+
+  const [fila] = await sql<{ marca: string | null }>(
+    "select solicitud_emitida_at as marca from kr_runs where id = $1",
+    [runId],
+  );
+  assert.notEqual(fila!.marca, null, "sin esto el botón de aprobar quedaría muerto para SIEMPRE");
 });
 
 test("🔴 POST /runs: si TAMBIÉN falla el marcado, se propaga el error del EVENTO, no el del marcado", async () => {
@@ -379,15 +443,23 @@ test("POST /runs/:id/approve sin ninguna página aprobada → 409 y NO despierta
   assert.equal(eventos.length, 0, "no se emite research/aprobado si la compuerta no se cumplió");
 });
 
+/**
+ * EL CONTROL POSITIVO de la 0019, y es obligatorio: sin él, una condición que bloqueara TODA
+ * aprobación dejaría verdes a los tests de más abajo (que solo exigen que no se apruebe).
+ *
+ * El run nace de `POST /runs`, así que lleva la marca de `solicitud_emitida_at`.
+ */
 test("aprobar página y run: recién ahí se emite research/aprobado", async () => {
-  const a = await req("POST", `/pages/${pageA1}/approve`, { user: equipoA, tenant: tenantA });
+  const { runId, pageId } = await runNacidoDelPipeline();
+
+  const a = await req("POST", `/pages/${pageId}/approve`, { user: equipoA, tenant: tenantA });
   assert.equal(a.status, 200);
 
-  const b = await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA });
+  const b = await req("POST", `/runs/${runId}/approve`, { user: equipoA, tenant: tenantA });
   assert.equal(b.status, 200);
   assert.equal(eventos.length, 1);
   assert.equal(eventos[0]!.name, "research/aprobado");
-  assert.deepEqual(eventos[0]!.data, { runId: runA1, aprobadoPor: equipoA });
+  assert.deepEqual(eventos[0]!.data, { runId, aprobadoPor: equipoA });
 });
 
 test("🔴 PATCH /pages/:id REVOCA la aprobación (ADR-06)", async () => {
@@ -414,15 +486,60 @@ test("🔴 PATCH /pages/:id REVOCA la aprobación (ADR-06)", async () => {
 test("🔴 un CLIENTE no puede aprobar el RUN aunque vea una página aprobada → 403, sin evento", async () => {
   // El equipo aprueba una página; el cliente ve el run (RLS de lectura) pero NO puede actualizarlo.
   // Sin el booleano de approveRun, esto daría 200 y despertaría al workflow con un update de 0 filas.
-  await req("POST", `/pages/${pageA1}/approve`, { user: equipoA, tenant: tenantA });
+  //
+  // El run tiene que ser uno NACIDO DEL PIPELINE: sobre el run sembrado, el 409 de la 0019 saltaría
+  // antes y este test dejaría de medir lo que su nombre promete (un 403 por RLS).
+  const { runId, pageId } = await runNacidoDelPipeline();
+  await req("POST", `/pages/${pageId}/approve`, { user: equipoA, tenant: tenantA });
   eventos.length = 0; // ignorar lo anterior; medimos SOLO el approve-run del cliente
 
-  const res = await req("POST", `/runs/${runA1}/approve`, { user: duenoA1, tenant: tenantA });
+  const res = await req("POST", `/runs/${runId}/approve`, { user: duenoA1, tenant: tenantA });
   assert.equal(res.status, 403);
   assert.equal(eventos.length, 0, "el cliente no puede despertar el workflow");
 
+  const [r] = await sql<{ status: string }>("select status from kr_runs where id = $1", [runId]);
+  assert.equal(r!.status, "running", "el run NO quedó aprobado");
+});
+
+/**
+ * 🔴 EL BUG DEL BLOQUE C0, en el borde HTTP.
+ *
+ * `runA1` es el run que el `beforeEach` inserta DIRECTO en la base — igual que `sembrarDemo` en
+ * producción. No hubo `research/solicitado`, así que no hay ningún `esperarEvento` durmiendo: antes
+ * de la 0019 esto devolvía **200**, dejaba el run en `approved` para siempre y emitía un evento que
+ * nadie consumía. Un botón que parece funcionar y no hace nada.
+ *
+ * **409 y no 403**: no es una cuestión de permisos —`equipoA` puede aprobar de sobra—, es el estado
+ * del recurso. Y el `codigo` es lo que el portal lee: ramificar sobre la frase en español convertiría
+ * una corrección de redacción en un bug de comportamiento.
+ */
+test("🔴 aprobar un run insertado DIRECTO en la base → 409 RUN_SIN_WORKFLOW, sin evento", async () => {
+  await req("POST", `/pages/${pageA1}/approve`, { user: equipoA, tenant: tenantA });
+  eventos.length = 0; // medimos SOLO el approve-run
+
+  const res = await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA });
+
+  assert.equal(res.status, 409);
+  const cuerpo = (await res.json()) as { error: string; codigo: string };
+  assert.equal(cuerpo.codigo, RUN_SIN_WORKFLOW, "el portal ramifica sobre el CÓDIGO, no sobre la frase");
+  assert.match(cuerpo.error, /esperando la aprobación/i, "y el humano lee QUÉ pasa");
+
+  assert.equal(eventos.length, 0, "no se despierta a nadie: no hay nadie a quien despertar");
   const [r] = await sql<{ status: string }>("select status from kr_runs where id = $1", [runA1]);
-  assert.equal(r!.status, "pending_approval", "el run NO quedó aprobado");
+  assert.equal(r!.status, "pending_approval", "el estado NO se movió");
+});
+
+test("🔴 GET /runs/:id dice si el run es aprobable (`tiene_workflow`), para el botón del portal", async () => {
+  // Sin este campo, la única forma de enterarse sería apretar el botón y comerse el 409 — justo la
+  // experiencia que C0 existe para evitar. Los dos casos, en la misma respuesta del mismo endpoint.
+  const sembrado = await req("GET", `/runs/${runA1}`, { user: equipoA, tenant: tenantA });
+  const { run: rSembrado } = (await sembrado.json()) as { run: { tiene_workflow: boolean } };
+  assert.equal(rSembrado.tiene_workflow, false, "el run del seed no lo espera nadie");
+
+  const { runId } = await runNacidoDelPipeline();
+  const delPipeline = await req("GET", `/runs/${runId}`, { user: equipoA, tenant: tenantA });
+  const { run: rPipeline } = (await delPipeline.json()) as { run: { tiene_workflow: boolean } };
+  assert.equal(rPipeline.tiene_workflow, true);
 });
 
 test("🔴 un CLIENTE no puede aprobar una página (ADR-20) → 404 bajo RLS, sin efecto", async () => {

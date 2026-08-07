@@ -24,6 +24,8 @@ function run(coste: number | null, dia: number): RunSummary {
     config: {},
     created_at: `2026-07-0${dia}T00:00:00.000Z`,
     finished_at: null,
+    // La cartera no lee este campo: acá está solo porque `RunSummary` lo exige (ver `models.ts`).
+    tiene_workflow: true,
   };
 }
 
