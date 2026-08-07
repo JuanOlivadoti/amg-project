@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { crearApi, nombreDeDescarga, type ApiError } from './api-core';
+import { crearApi, esSinPaginasAprobadas, nombreDeDescarga, type ApiError } from './api-core';
+import { SIN_PAGINAS_APROBADAS } from './codigos';
 
 /**
  * Captura la última request y devuelve lo que se le configure. Sin red.
@@ -225,6 +226,73 @@ test('🔴 un 401 al pedir el entregable también refresca y reintenta', async (
   assert.ok((await api.verEntregableMd('run-9')).includes('# ok'), 'el reintento trajo el cuerpo');
   assert.equal(refrescos, 1, 'refrescó una vez');
   assert.equal(llamadas(), 2, 'reintentó el request');
+});
+
+// ------------------------------------ el 409 «no hay ninguna página aprobada» (B1, 2026-08-07)
+
+/** La respuesta exacta del endpoint, copiada de `api/src/app.ts`. */
+const CUERPO_409 = {
+  error:
+    'Este research no tiene ninguna página aprobada, así que el entregable saldría vacío. ' +
+    'Aprobá al menos una página antes de generarlo.',
+  codigo: SIN_PAGINAS_APROBADAS,
+};
+
+test('🔴 el 409 del entregable llega con su CÓDIGO, no solo con la frase', async () => {
+  /*
+   * Sin el `codigo` en el `ApiError`, la pantalla solo tiene el mensaje en español para decidir qué
+   * hacer — y decidir comparando la frase convierte una corrección de redacción en un bug de
+   * comportamiento. El status tampoco alcanza como sustituto: hoy este endpoint tiene un solo 409, pero
+   * el día que tenga dos, ramificar por status confundiría uno con el otro.
+   */
+  const { fn } = fakeFetch({ status: 409, body: CUERPO_409 });
+  await assert.rejects(
+    () => crearApi(opts(fn)).verEntregableMd('run-sin-aprobadas'),
+    (e: ApiError) => {
+      assert.equal(e.status, 409);
+      assert.equal(e.codigo, 'SIN_PAGINAS_APROBADAS');
+      // El mensaje sigue siendo el del servidor: el código es para el programa, la frase para el humano.
+      assert.equal(e.message, CUERPO_409.error);
+      return true;
+    },
+  );
+});
+
+test('🔴 un error SIN código no se inventa uno', async () => {
+  // El 404 del entregable —run inexistente, otro tenant, o rol `cliente`— no lleva `codigo`, y no puede
+  // salir de acá con uno. Si `codigo` cayera a una cadena vacía o al status, `esSinPaginasAprobadas`
+  // dejaría de significar algo.
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Run no encontrado.' } });
+  await assert.rejects(
+    () => crearApi(opts(fn)).verEntregableMd('inexistente'),
+    (e: ApiError) => {
+      assert.equal(e.codigo, undefined);
+      return true;
+    },
+  );
+});
+
+test('🔴 esSinPaginasAprobadas mira el CÓDIGO y nunca la frase', () => {
+  /*
+   * Los dos casos que separan una implementación de la otra, y ninguno sirve solo:
+   *
+   * · el mismo código con el mensaje reescrito **sigue** siendo el caso (si la comparación fuera por
+   *   texto, retocar la redacción del servidor apagaría la rama en silencio);
+   * · el mensaje exacto sin código **no** lo es (el mensaje se puede repetir en otro endpoint, o
+   *   llegar de un proxy, y ahí la pantalla mandaría al usuario a aprobar páginas de la nada).
+   */
+  const conCodigo = Object.assign(new Error('otra redacción cualquiera'), {
+    status: 409,
+    codigo: SIN_PAGINAS_APROBADAS,
+  }) as ApiError;
+  assert.equal(esSinPaginasAprobadas(conCodigo), true);
+
+  const soloLaFrase = Object.assign(new Error(CUERPO_409.error), { status: 409 }) as ApiError;
+  assert.equal(esSinPaginasAprobadas(soloLaFrase), false);
+
+  // Y no explota con lo que no es un error de la API: el `catch` recibe `unknown`.
+  assert.equal(esSinPaginasAprobadas(null), false);
+  assert.equal(esSinPaginasAprobadas('SIN_PAGINAS_APROBADAS'), false);
 });
 
 test('nombreDeDescarga: usa el filename del header cuando viene', () => {

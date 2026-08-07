@@ -3,6 +3,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
 import { ImpresionService } from '../../shared/services/impresion';
+import { esSinPaginasAprobadas } from '../../core/api-core';
 import { type Bloque, parsearMarkdown } from '../../core/markdown';
 import { partirEncabezado } from '../../core/entregable-vista';
 import { fechaDelResearch, fechaLegible } from '../../core/informe-vista';
@@ -90,6 +91,25 @@ import { InformeInlineComponent } from '../../shared/components/informe-inline';
       <div class="max-w-4xl mx-auto px-4 py-6 print:max-w-none print:px-0 print:py-0">
         @if (cargando()) {
           <p class="text-sm text-texto-tenue">Cargando…</p>
+        } @else if (sinPaginasAprobadas()) {
+          <!--
+            El 409 del endpoint, y va ANTES de la rama de error genérica a propósito: no es un fallo,
+            es un estado normal del run con una acción concreta. Pintado en rojo de error, quien lo ve
+            piensa que algo se rompió y avisa; pintado así, aprueba una página y sigue.
+
+            El mensaje que se muestra es el del SERVIDOR (la señal error), no una copia congelada acá:
+            una sola redacción, la que ya viaja en la respuesta. Lo que el portal agrega es la acción,
+            que es lo que el servidor no puede saber (adónde ir).
+          -->
+          <div class="bg-superficie rounded-xl border border-borde p-6 space-y-3">
+            <p class="text-sm text-alerta">{{ error() }}</p>
+            <a
+              [routerLink]="['/runs', runId()]"
+              class="block w-fit text-sm text-texto hover:underline"
+            >
+              Ir al brief y aprobar páginas →
+            </a>
+          </div>
         } @else if (error()) {
           <p class="text-sm text-error">{{ error() }}</p>
         } @else if (!hayDocumento()) {
@@ -238,6 +258,19 @@ export class EntregablePage implements OnInit, OnDestroy {
   readonly cargando = signal(true);
   readonly error = signal('');
 
+  /**
+   * El 409 `SIN_PAGINAS_APROBADAS`: el run existe y se puede ver, pero no tiene nada que entregar.
+   *
+   * **Es un estado, no un fallo**, y por eso tiene su propia señal en vez de mezclarse con `error()`:
+   * la pantalla lo cuenta en tono de aviso y ofrece la acción que lo resuelve. El mensaje sigue
+   * viviendo en `error()` —es el del servidor— y esto solo decide el TRATAMIENTO.
+   *
+   * Se llega acá aunque el brief deshabilite el link, y por eso la rama no es redundante con la UI:
+   * entre que alguien abre el brief y pulsa, otro miembro del equipo puede retirar la última página
+   * aprobada. También se llega con un link viejo abierto en otra pestaña, o escribiendo la URL.
+   */
+  readonly sinPaginasAprobadas = signal(false);
+
   private readonly documento = computed(() => {
     const md = this.md();
     return partirEncabezado(md === null ? [] : parsearMarkdown(md));
@@ -273,6 +306,7 @@ export class EntregablePage implements OnInit, OnDestroy {
       // puede pasar es que la hoja siga mostrando el entregable del cliente anterior bajo otra URL.
       this.md.set(null);
       this.error.set('');
+      this.sinPaginasAprobadas.set(false);
       void this.cargar(id);
     });
   }
@@ -290,6 +324,9 @@ export class EntregablePage implements OnInit, OnDestroy {
       this.md.set(md);
     } catch (e) {
       if (this.vigencia.obsoleta(pedido)) return;
+      // Se asigna el booleano, no un `if`: así un fallo posterior de otro tipo apaga la rama solo, en
+      // vez de dejar la pantalla ofreciendo «aprobá páginas» sobre un error que no tiene que ver.
+      this.sinPaginasAprobadas.set(esSinPaginasAprobadas(e));
       this.error.set((e as Error).message);
     } finally {
       if (!this.vigencia.obsoleta(pedido)) this.cargando.set(false);

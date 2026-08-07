@@ -10,10 +10,32 @@ import type {
   NuevoRun,
   RunSummary,
 } from './models';
+import { SIN_PAGINAS_APROBADAS } from './codigos';
 
-/** Error de la API con el status HTTP, para que la UI distinga 401 (relogin) de 403/409/500. */
+/**
+ * Error de la API con el status HTTP, para que la UI distinga 401 (relogin) de 403/409/500.
+ *
+ * `codigo` es opcional porque **solo los 409 lo llevan** (`api/src/codigos.ts` lo dice y acota el
+ * alcance): los 400/403/404 que ya existían responden `{ error }` a secas y el portal no ramifica
+ * sobre ellos. Ausente significa ausente — no se rellena con el status ni con una cadena vacía, o
+ * dejaría de poder distinguirse «este 409 es aquel caso» de «este 409 es cualquier otro».
+ */
 export interface ApiError extends Error {
   status: number;
+  codigo?: string;
+}
+
+/**
+ * ¿Este error es el 409 de «el run no tiene ninguna página aprobada»?
+ *
+ * Mira el **código** y nunca el mensaje, por el motivo que explica `core/codigos.ts`. Y tampoco el
+ * status: hoy el endpoint tiene un solo 409, pero el día que tenga dos, ramificar por status
+ * confundiría uno con el otro sin que nada avise.
+ *
+ * Recibe `unknown` porque eso es lo que le llega a un `catch`.
+ */
+export function esSinPaginasAprobadas(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as ApiError).codigo === SIN_PAGINAS_APROBADAS;
 }
 
 /** Un archivo bajado de la API: el contenido y con qué nombre guardarlo. */
@@ -190,14 +212,19 @@ export function crearApi(opts: ApiOpts): ClienteApi {
 
     if (!res.ok) {
       let mensaje = `${res.status} ${res.statusText}`;
+      let codigo: string | undefined;
       try {
-        const j = (await res.json()) as { error?: string };
+        const j = (await res.json()) as { error?: string; codigo?: string };
         if (j?.error) mensaje = j.error;
+        // Solo si viene y es una cadena: un `codigo` inventado acá haría que la pantalla eligiera una
+        // rama por un dato que el servidor no mandó.
+        if (typeof j?.codigo === 'string') codigo = j.codigo;
       } catch {
         /* el cuerpo no era JSON; nos quedamos con el status */
       }
       const err = new Error(mensaje) as ApiError;
       err.status = res.status;
+      if (codigo !== undefined) err.codigo = codigo;
       throw err;
     }
 

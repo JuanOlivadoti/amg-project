@@ -219,7 +219,14 @@ direcciones**.
 
 Las dos decisiones están tomadas (Juan, 2026-08-07). No hay nada que consultar: hay que hacerlas.
 
-### B1. El entregable sin páginas aprobadas
+### B1. El entregable sin páginas aprobadas — ✅ **hecho el 2026-08-07**
+
+> **Hecho, con las dos mitades y verificado en el navegador.** La API responde **409** con
+> `codigo: "SIN_PAGINAS_APROBADAS"` (`api/src/codigos.ts`, nuevo) y el portal apaga el link con un
+> `<span>` —no un `<a>` con clase de apagado, que seguiría navegando—, reusando `puedeAprobar()`, la
+> **misma** señal del botón de aprobar el run. El ciclo se manejó en vivo: link apagado → aprobar una
+> página → se enciende sin recargar → editarla (revoca, ADR-06) → se apaga solo. **+5 tests de núcleo,
+> +7 de Karma, +3 de API**, con 10 mutaciones.
 
 **Hoy** sale una hoja con dos títulos de sección vacíos. El backend hace lo correcto —genera lo
 aprobado, que es nada— y el riesgo es humano: mandar ese PDF sin mirarlo.
@@ -234,7 +241,11 @@ La UI evita el clic inútil; el backend impone la regla para quien llame al endp
 - **Verificación:** test de API que exige 409 sobre un run sin páginas aprobadas y 200 con una;
   test de componente que exige el botón deshabilitado. Navegador para el tooltip.
 
-### B2. `renderReport` pasa de flags a audiencia
+### B2. `renderReport` pasa de flags a audiencia — ✅ **hecho el 2026-08-07**
+
+> **Hecho.** El plan decía "6 sitios de llamada (3 de producción, 3 de test)" y **las dos cifras
+> estaban mal**: son **4 de producción** —el CLI de `kr-service` y el seed de `db` no figuraban— y ~24
+> en tests. Contado al migrarlo.
 
 **Hoy** el entregable imprime `_ES · es · 2026-08-07T18:35:27.490Z_` bajo la fecha legible: metadato
 del pipeline delante de un dueño de restaurante. **Decidido: quitar la línea del entregable**, no

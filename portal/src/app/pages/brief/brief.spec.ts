@@ -66,6 +66,9 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     brief: Brief = BRIEF,
   ): Promise<HTMLElement> {
     environment.features.aprobarRun = aprobarHabilitado;
+    // Un `it` puede renderizar DOS veces (los dos lados de la misma condición), y el TestBed no se
+    // deja reconfigurar una vez instanciado. Resetear acá es lo mismo que Karma hace entre specs.
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [BriefPage],
       providers: [
@@ -86,6 +89,15 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
   const conCoste = (coste: number | null): Brief => ({
     ...BRIEF,
     run: { ...BRIEF.run, coste_micros_usd: coste },
+  });
+
+  /**
+   * El mismo brief con su única página aprobada. `BRIEF` la trae SIN aprobar, que es el estado en el
+   * que un run llega a esta pantalla: recién terminado el research, antes de que nadie mire nada.
+   */
+  const conPaginaAprobada = (): Brief => ({
+    ...BRIEF,
+    pages: [{ ...BRIEF.pages[0]!, approved: true }],
   });
 
   it('Fase 1 (equipo, flag apagado): el botón de aprobar-run NO se renderiza', async () => {
@@ -136,17 +148,73 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
   it('🔴 el link al entregable está para el equipo, apuntando a runs/:id/entregable', async () => {
     // Sin este test, borrar el link deja la suite en verde y la pantalla imprimible inalcanzable: no
     // está en el sidebar (cuelga de un run) y nadie va a escribir la URL a mano.
-    const el = await render(true, false);
+    // Con una página aprobada: sin ninguna, el entregable saldría vacío y deja de ser un link (abajo).
+    const el = await render(true, false, conPaginaAprobada());
     const link = el.querySelector<HTMLAnchorElement>('a[href="/runs/run-1/entregable"]');
     expect(link).withContext('no encontré el link al entregable del restaurante').not.toBeNull();
     expect(link!.textContent).toContain('entregable del restaurante');
   });
 
   it('🔴 el link al entregable NO aparece para un rol que no es equipo', async () => {
-    const el = await render(false, false);
+    const el = await render(false, false, conPaginaAprobada());
     expect(el.querySelector('a[href="/runs/run-1/entregable"]'))
       .withContext('se le está insinuando al cliente una pantalla que la API le va a negar con un 404')
       .toBeNull();
+    // Ni siquiera apagado: la variante deshabilitada tampoco puede nombrarle el entregable a un cliente.
+    expect(el.textContent)
+      .withContext('el cliente no tiene por qué enterarse de que existe una hoja para él')
+      .not.toContain('entregable del restaurante');
+  });
+
+  /*
+   * El entregable sin ninguna página aprobada (B1, 2026-08-07).
+   *
+   * El endpoint responde 409 —el backend impone la regla— y acá se evita el viaje. Los dos tests van
+   * juntos: «no navega» y «se sigue viendo, con el motivo» son afirmaciones distintas, y una sola de
+   * las dos se cumple borrando el link, que es justo lo que no queremos.
+   */
+  it('🔴 sin ninguna página aprobada, el entregable NO navega: no hay ningún <a> que lleve ahí', async () => {
+    // Un `<a>` con clase de apagado sigue navegando —y sigue abriéndose en una pestaña nueva con el
+    // clic del medio—, así que lo que se comprueba es que NO EXISTE el ancla, no que se vea gris.
+    const el = await render(true, false);
+    expect(el.querySelector('a[href="/runs/run-1/entregable"]'))
+      .withContext('el link lleva a un 409: el entregable saldría vacío')
+      .toBeNull();
+    expect(el.querySelector('[href*="entregable"]'))
+      .withContext('ningún elemento puede seguir apuntando al entregable de un run sin aprobar')
+      .toBeNull();
+  });
+
+  it('🔴 sin páginas aprobadas el entregable sigue a la vista, con el motivo en el tooltip', async () => {
+    // Esconderlo sería la otra forma de equivocarse: quien mira la pantalla no descubriría nunca que
+    // existe una hoja para el restaurante, ni qué le falta para poder generarla.
+    const el = await render(true, false);
+    // Se busca por el tooltip y no por la etiqueta HTML: lo que el usuario tiene que recibir es el
+    // MOTIVO, y de qué elemento cuelgue es implementación. (Hoy el `title` es el único de la pantalla.)
+    const apagado = el.querySelector<HTMLElement>('[title]');
+    expect(apagado).withContext('el entregable se apagó sin decir por qué').not.toBeNull();
+    expect(apagado!.textContent)
+      .withContext('el tooltip cuelga de otra cosa: no es el del entregable')
+      .toContain('entregable del restaurante');
+    expect(apagado!.title).toContain('página aprobada');
+  });
+
+  it('🔴 el entregable y el botón de aprobar el run se apagan JUNTOS: es la misma condición', async () => {
+    /*
+     * «Hay algo que entregar» y «hay algo que aprobar» son la MISMA pregunta (`puedeAprobarseRun`), y
+     * este test existe para que sigan siéndolo. Dos definiciones separadas no fallan el día que se
+     * escriben: fallan el día que alguien cambia una —«no retirada», «no vencida»— y la otra se queda
+     * atrás, y entonces el portal ofrece generar un entregable que la API va a rechazar con un 409.
+     */
+    // `header button` y no `button` a secas: las tarjetas de página tienen los suyos («Aprobar»,
+    // «Editar»), y el del run es el de la cabecera.
+    const sinAprobar = await render(true, true);
+    expect(sinAprobar.querySelector<HTMLButtonElement>('header button')!.disabled).toBe(true);
+    expect(sinAprobar.querySelector('a[href="/runs/run-1/entregable"]')).toBeNull();
+
+    const conAprobada = await render(true, true, conPaginaAprobada());
+    expect(conAprobada.querySelector<HTMLButtonElement>('header button')!.disabled).toBe(false);
+    expect(conAprobada.querySelector('a[href="/runs/run-1/entregable"]')).not.toBeNull();
   });
 
   /*

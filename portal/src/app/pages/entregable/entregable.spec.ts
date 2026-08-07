@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 import { EntregablePage } from './entregable';
 import { ApiService } from '../../services/api';
 import { ImpresionService } from '../../shared/services/impresion';
@@ -77,15 +77,24 @@ function render(md: string, impresion?: Partial<ImpresionService>) {
   return estabilizar(montar(async () => md, impresion));
 }
 
-function renderConFallo(status: number, mensaje: string) {
+function renderConFallo(status: number, mensaje: string, codigo?: string) {
   const err = new Error(mensaje) as ApiError;
   err.status = status;
+  if (codigo !== undefined) err.codigo = codigo;
   return estabilizar(
     montar(async () => {
       throw err;
     }),
   );
 }
+
+/** La respuesta exacta del endpoint cuando el run no tiene nada aprobado (`api/src/app.ts`). */
+const MENSAJE_409 =
+  'Este research no tiene ninguna página aprobada, así que el entregable saldría vacío. ' +
+  'Aprobá al menos una página antes de generarlo.';
+
+/** La acción que SOLO ofrece la rama del 409. Es lo que la distingue de un error genérico. */
+const ACCION_409 = 'Ir al brief y aprobar páginas';
 
 describe('EntregablePage — la hoja que se le manda al restaurante', () => {
   it('🔴 un documento con <script> NO mete un <script> en el DOM, y el texto sí se ve', async () => {
@@ -186,6 +195,94 @@ describe('EntregablePage — la hoja que se le manda al restaurante', () => {
     expect(el.querySelector('button'))
       .withContext('no hay nada que imprimir de un run que no se puede ver')
       .toBeNull();
+    // Control negativo de la rama del 409: un fallo sin código no puede mandar a nadie a aprobar
+    // páginas de un run que no existe.
+    expect(el.textContent).not.toContain(ACCION_409);
+  });
+
+  /*
+   * El 409 «este run no tiene ninguna página aprobada» (B1, 2026-08-07).
+   *
+   * La UI del brief evita el clic —el link llega deshabilitado—, pero la UI no es la regla: entre que
+   * alguien abre el brief y pulsa, otro miembro del equipo puede retirar la última página aprobada. Con
+   * el link viejo en una pestaña, o escribiendo la URL, se llega igual. Lo que esta pantalla no puede
+   * hacer es tratar ese caso como un error cualquiera: es un estado normal con una acción concreta.
+   */
+  it('🔴 un 409 sin páginas aprobadas explica qué falta y ofrece ir a aprobarlas', async () => {
+    const { el } = await renderConFallo(409, MENSAJE_409, 'SIN_PAGINAS_APROBADAS');
+
+    expect(el.textContent).toContain('no tiene ninguna página aprobada');
+    const accion = Array.from(el.querySelectorAll('a')).find((a) =>
+      a.textContent!.includes(ACCION_409),
+    );
+    expect(accion).withContext('sin la acción, el usuario sabe qué falta pero no adónde ir').toBeTruthy();
+    expect(accion!.getAttribute('href')).toBe('/runs/run-1');
+    expect(el.querySelector('button'))
+      .withContext('no se ofrece imprimir un documento que el servidor se negó a generar')
+      .toBeNull();
+  });
+
+  it('🔴 la rama se elige por el CÓDIGO, no por la frase: con el mensaje reescrito sigue igual', async () => {
+    /*
+     * EL test de la pieza. El mensaje del servidor es para el humano y se puede corregir cualquier día
+     * —una tilde, un «Aprueba» por «Aprobá»—; si esta pantalla comparara el texto, esa corrección
+     * apagaría la rama en silencio y la descarga volvería a fallar como un error genérico. El código es
+     * contrato (`core/codigos.ts`, atado por test al de la API), y es lo único que se compara.
+     */
+    const { el } = await renderConFallo(409, 'Otra redacción cualquiera.', 'SIN_PAGINAS_APROBADAS');
+    expect(el.textContent).toContain(ACCION_409);
+    // Y el mensaje que se pinta es el del servidor, no una copia congelada acá.
+    expect(el.textContent).toContain('Otra redacción cualquiera.');
+  });
+
+  it('🔴 al pasar a OTRO run, el aviso del anterior no se queda pegado', async () => {
+    /*
+     * Angular REUTILIZA la instancia al navegar de `/runs/A/entregable` a `/runs/B/entregable`: no se
+     * dispara `ngOnInit` de nuevo. Si el aviso del 409 no se limpia con el parámetro, el run B —que sí
+     * tiene páginas aprobadas y sí trae documento— se pinta con el cartel de «aprobá páginas» encima
+     * del run equivocado. Es la misma clase de bug que ya obligó a poner la vigencia en esta pantalla.
+     */
+    const err = Object.assign(new Error(MENSAJE_409), {
+      status: 409,
+      codigo: 'SIN_PAGINAS_APROBADAS',
+    }) as ApiError;
+    const params = new BehaviorSubject(convertToParamMap({ id: 'run-1' }));
+    TestBed.configureTestingModule({
+      imports: [EntregablePage],
+      providers: [
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { paramMap: params } },
+        {
+          provide: ApiService,
+          useValue: {
+            verEntregableMd: async (id: string) => {
+              if (id === 'run-1') throw err;
+              return REAL;
+            },
+          },
+        },
+        { provide: ImpresionService, useValue: { imprimir: () => {} } },
+      ],
+    });
+    const fixture = TestBed.createComponent(EntregablePage);
+    fixture.detectChanges(); // el primero es el que corre ngOnInit y suscribe al paramMap
+    const { el } = await estabilizar(fixture);
+    expect(el.textContent).toContain(ACCION_409);
+
+    params.next(convertToParamMap({ id: 'run-2' }));
+    await estabilizar(fixture);
+    expect(el.textContent)
+      .withContext('el aviso del run anterior sigue puesto sobre el documento del nuevo')
+      .not.toContain(ACCION_409);
+    expect(el.textContent).toContain('La Birra Bar');
+  });
+
+  it('🔴 un 409 SIN código no se trata como «sin páginas aprobadas»', async () => {
+    // La mitad simétrica: ramificar por status confundiría este 409 con el otro el día que el endpoint
+    // tenga dos, y el usuario iría a aprobar páginas por un conflicto que no tiene nada que ver.
+    const { el } = await renderConFallo(409, 'Otro conflicto distinto.');
+    expect(el.textContent).toContain('Otro conflicto distinto.');
+    expect(el.textContent).not.toContain(ACCION_409);
   });
 
   it('🔴 un documento vacío se cuenta con palabras, no con una hoja en blanco', async () => {

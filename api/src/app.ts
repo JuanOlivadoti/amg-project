@@ -6,6 +6,7 @@ import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
+import { SIN_PAGINAS_APROBADAS } from "./codigos.js";
 
 /**
  * Todo lo que la API necesita, INYECTADO. Ni el store, ni el emisor, ni la verificación del token se
@@ -197,6 +198,33 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     const ctx = c.get("ctx");
     const datos = await deps.store.getDatosEntregable(ctx, c.req.param("id"));
     if (!datos) return c.json({ error: "Run no encontrado." }, 404);
+
+    /*
+     * Sin páginas aprobadas NO se genera el documento: 409.
+     *
+     * El backend hacía lo correcto —generar lo aprobado, que es nada— y salía una hoja con dos títulos
+     * de sección vacíos. El riesgo no es técnico: es **humano**, mandarle ese PDF a un restaurante sin
+     * mirarlo. Un documento vacío que se descarga sin protestar parece un documento.
+     *
+     * Va acá **además** del link deshabilitado del portal (decisión de Juan, 2026-08-07: las dos
+     * cosas), y la división es la de siempre: la UI evita el clic inútil, el backend impone la regla
+     * para quien llame al endpoint directo. Una regla que solo vive en la pantalla no es una regla.
+     *
+     * **409 y no 404**: el run existe, quien pregunta puede verlo, y la petición es legítima — lo que
+     * falla es el estado del recurso. Un 404 acá mentiría sobre la existencia y mandaría al portal a
+     * la rama de "este run no existe". Y no 422: no hay nada malformado en la petición.
+     */
+    if (datos.paginas.length === 0) {
+      return c.json(
+        {
+          error:
+            "Este research no tiene ninguna página aprobada, así que el entregable saldría vacío. " +
+            "Aprobá al menos una página antes de generarlo.",
+          codigo: SIN_PAGINAS_APROBADAS,
+        },
+        409,
+      );
+    }
 
     const md = renderReport(briefDelEntregable(datos), { audiencia: "restaurante" });
 

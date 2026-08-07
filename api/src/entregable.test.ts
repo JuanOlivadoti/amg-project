@@ -8,6 +8,7 @@ import { createApp } from "./app.js";
 import { briefDelEntregable } from "./entregable.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { VerificadorToken } from "./auth.js";
+import { SIN_PAGINAS_APROBADAS } from "./codigos.js";
 
 /**
  * `GET /runs/:id/entregable.md` — el documento que la agencia le manda al RESTAURANTE.
@@ -40,6 +41,7 @@ describe("GET /runs/:id/entregable.md", () => {
   let runA1: string; // con páginas aprobadas y coste
   let runA2: string; // del cliente de nombre hostil
   let runB1: string; // del tenant B
+  let clientB1: string; // del tenant B, para el test de que el 409 no filtra existencia
 
   const UUID_INEXISTENTE = "00000000-0000-4000-8000-000000000000";
   const NOMBRE_HOSTIL = 'Bar "El Bueno"\r\nX-Inyectado: si';
@@ -152,7 +154,7 @@ describe("GET /runs/:id/entregable.md", () => {
 
     clientA1 = await mkCliente(tenantA, "Bella Napoli");
     clientA2 = await mkCliente(tenantA, NOMBRE_HOSTIL);
-    const clientB1 = await mkCliente(tenantB, "Sushi Zen");
+    clientB1 = await mkCliente(tenantB, "Sushi Zen");
 
     equipoA = await mkMembresia(tenantA, "equipo", null);
     duenoA1 = await mkMembresia(tenantA, "cliente", clientA1);
@@ -274,6 +276,66 @@ describe("GET /runs/:id/entregable.md", () => {
     assert.deepEqual(await res.json(), await inexistente.json());
   });
 
+  // ------------------------------------------------------------------------- nada que entregar
+
+  /**
+   * 🔴 Sin páginas aprobadas: **409, no una hoja vacía**.
+   *
+   * El backend hacía lo correcto —generar lo aprobado, que es nada— y salía un documento con dos
+   * títulos de sección y nada debajo. El riesgo no es técnico sino **humano**: mandarle ese PDF a un
+   * restaurante sin mirarlo. Un documento vacío que se descarga sin protestar parece un documento.
+   *
+   * El 409 va **además** del link deshabilitado del portal (decisión de Juan, 2026-08-07: las dos
+   * cosas). La UI evita el clic inútil; esto impone la regla para quien llame al endpoint directo, que
+   * es lo que hace que sea una regla y no una sugerencia de la pantalla.
+   */
+  test("🔴 un run sin ninguna página aprobada → 409, y NO un documento vacío", async () => {
+    const vacio = await mkRun(tenantA, clientA1);
+    await mkPagina(tenantA, vacio, clientA1, "/propuesta", { orden: 0, aprobada: false });
+
+    const res = await pedir(`/runs/${vacio}/entregable.md`, { user: equipoA, tenant: tenantA });
+
+    assert.equal(res.status, 409, "409 y no 404: el run existe y quien pregunta puede verlo");
+    const cuerpo = (await res.json()) as { error: string; codigo: string };
+    assert.equal(cuerpo.codigo, SIN_PAGINAS_APROBADAS, "el portal ramifica sobre el CÓDIGO, no sobre la frase");
+    assert.match(cuerpo.error, /página aprobada/i, "y el humano recibe una frase que dice qué hacer");
+  });
+
+  /**
+   * 🔴 El control positivo del de arriba, y no es ceremonia.
+   *
+   * Sin él, un 409 devuelto SIEMPRE dejaría el test anterior en verde y rompería el entregable entero.
+   * `runA1` tiene dos páginas aprobadas y una sin aprobar, así que además fija que la condición mira
+   * las **aprobadas** y no el total.
+   */
+  test("🔴 con una sola página aprobada el entregable sale igual (el 409 es por CERO, no por 'faltan')", async () => {
+    const unaSola = await mkRun(tenantA, clientA1);
+    await mkPagina(tenantA, unaSola, clientA1, "/la-unica", { orden: 0, aprobada: true });
+    await mkPagina(tenantA, unaSola, clientA1, "/sin-aprobar", { orden: 1, aprobada: false });
+
+    const res = await pedir(`/runs/${unaSola}/entregable.md`, { user: equipoA, tenant: tenantA });
+
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /## Páginas propuestas/);
+  });
+
+  /**
+   * 🔴 Y el 409 no puede filtrar la existencia de un run que no se puede ver.
+   *
+   * Es el riesgo que introduce cualquier código de estado nuevo en este endpoint: si un run **de otro
+   * tenant** sin páginas aprobadas devolviera 409 en vez de 404, el 409 se convertiría en un oráculo
+   * de existencia. Sigue siendo 404 porque el orden importa — `getDatosEntregable` devuelve `null`
+   * antes, y esa consulta lleva `app.es_staff()` en el predicado (ADR-15).
+   */
+  test("🔴 un run sin aprobar de OTRO tenant sigue dando 404, no 409 (el 409 no es un oráculo)", async () => {
+    const ajenoVacio = await mkRun(tenantB, clientB1);
+    await mkPagina(tenantB, ajenoVacio, clientB1, "/ajena-sin-aprobar", { orden: 0, aprobada: false });
+
+    const res = await pedir(`/runs/${ajenoVacio}/entregable.md`, { user: equipoA, tenant: tenantA });
+
+    assert.equal(res.status, 404, "un 409 acá diría 'este run existe' a quien no puede verlo");
+  });
+
   test("🔴 un run de OTRO tenant → 404, en las dos direcciones", async () => {
     const aVeB = await pedir(`/runs/${runB1}/entregable.md`, { user: equipoA, tenant: tenantA });
     assert.equal(aVeB.status, 404);
@@ -338,15 +400,15 @@ describe("GET /runs/:id/entregable.md", () => {
     assert.deepEqual(expuestos, ["content-disposition"]);
   });
 
-  test("un run SIN ninguna página aprobada da un documento vacío, no un 500", async () => {
-    // Es un estado normal: la agencia todavía no aprobó nada. El documento lo dice en vez de reventar.
-    const vacio = await mkRun(tenantA, clientA1, 1000);
-    const res = await pedir(`/runs/${vacio}/entregable.md`, { user: equipoA, tenant: tenantA });
-    assert.equal(res.status, 200);
-    const md = await res.text();
-    assert.match(md, /- Páginas propuestas: \*\*0\*\*/);
-    assert.doesNotMatch(md, /Coste del research/);
-  });
+  /*
+   * ⚠️ Acá vivía «un run SIN ninguna página aprobada da un documento vacío, no un 500», que fijaba el
+   * comportamiento viejo: 200 con `- Páginas propuestas: **0**`. Era correcto —el backend generaba lo
+   * aprobado, que es nada— y **es justo lo que esta pieza cambia** (decisión de Juan, 2026-08-07).
+   *
+   * Se reemplaza en vez de borrarse: el caso sigue cubierto, arriba, en «nada que entregar», con el
+   * 409 y sus dos controles. Lo que aquel test garantizaba de verdad —que no revienta con un 500—
+   * sigue garantizado: 409 tampoco es 500.
+   */
 });
 
 /* ---------------------------------------------------------------------------------------------------

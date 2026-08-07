@@ -70,13 +70,43 @@ import { Vigencia } from '../../core/vigencia';
 
             Esconderlo es UX, no seguridad: quien escriba la URL a mano igual recibe el 404 de Postgres.
           -->
+          <!--
+            Sin ninguna página aprobada NO hay link, y lo que se muestra es un <span> apagado con el
+            motivo en el tooltip.
+
+            · POR QUÉ NO SE OFRECE: el endpoint responde 409 (el backend impone la regla), y antes de
+              que la impusiera devolvía una hoja con dos títulos de sección y nada debajo. El riesgo no
+              era técnico sino humano: que alguien se descargue ese PDF y se lo mande a un restaurante
+              sin mirarlo. La división es la de siempre — la UI ahorra el viaje, el backend impone la
+              regla para quien llame al endpoint directo.
+            · POR QUÉ UN <span> Y NO UN <a> APAGADO: un <a href> con clase de "deshabilitado" sigue
+              navegando —con el clic del medio, con Enter desde el teclado, con «abrir en pestaña
+              nueva»—; lo único que hace la clase es que no lo parezca. Sin href no hay destino, no hay
+              foco y el Router no se entera.
+            · POR QUÉ NO SE ESCONDE: esta pantalla es el único sitio desde donde se descubre que existe
+              una hoja para el restaurante (no está en el sidebar: cuelga de un run). Escondiéndolo,
+              quien no aprobó nada no se entera ni de que existe ni de qué le falta.
+            · LA CONDICIÓN ES puedeAprobar(), la MISMA del botón de aprobar el run, a propósito:
+              "hay algo que entregar" y "hay algo que aprobar" son la misma pregunta
+              (puedeAprobarseRun). Dos definiciones separadas no fallan el día que se escriben, fallan
+              el día que alguien cambia una y la otra se queda atrás. Lo fija un test de brief.spec.ts.
+          -->
           @if (membresia.esEquipo()) {
-            <a
-              [routerLink]="['/runs', b.run.id, 'entregable']"
-              class="mt-1 block w-fit text-sm text-texto hover:underline"
-            >
-              Ver el entregable del restaurante (sin coste) →
-            </a>
+            @if (puedeAprobar()) {
+              <a
+                [routerLink]="['/runs', b.run.id, 'entregable']"
+                class="mt-1 block w-fit text-sm text-texto hover:underline"
+              >
+                Ver el entregable del restaurante (sin coste) →
+              </a>
+            } @else {
+              <span
+                class="mt-1 block w-fit text-sm text-texto-tenue cursor-not-allowed"
+                title="Este research no tiene ninguna página aprobada, así que el entregable saldría vacío. Aprobá al menos una página."
+              >
+                Ver el entregable del restaurante (sin coste) →
+              </span>
+            }
           }
           @if (puedeAprobarRunUI()) {
             <button
