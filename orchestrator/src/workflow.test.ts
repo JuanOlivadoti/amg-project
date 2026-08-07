@@ -121,9 +121,12 @@ class StoreQueAnota extends PgStore {
     this.informes.push({ runId, md });
   }
 
-  override async finishRun(...args: Parameters<PgStore["finishRun"]>): Promise<void> {
-    await super.finishRun(...args);
+  // Devuelve lo que devuelve el real: si el doble se tragara el booleano, el workflow vería `undefined`
+  // —falsy— y este espía haría creer que `cerrar-run` nunca mueve el estado.
+  override async finishRun(...args: Parameters<PgStore["finishRun"]>): Promise<boolean> {
+    const movio = await super.finishRun(...args);
     this.orden.push("cerrar-run");
+    return movio;
   }
 }
 

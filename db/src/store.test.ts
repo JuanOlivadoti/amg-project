@@ -149,6 +149,55 @@ test("store: failRun registra el error en vez de dejarlo colgado en 'running'", 
   assert.equal(run?.status, "failed");
 });
 
+/*
+ * 🔴 Los dos que atan la MITAD QUE FALTABA de la simetría con `failRun`.
+ *
+ * `failRun` es compare-and-set desde que se midió que un fallo del workflow podía deshacer una
+ * publicación ya hecha. `finishRun` no lo era: `where id = $1` pelado, así que pisaba cualquier estado.
+ *
+ * Hoy no muerde porque nada más escribe el estado mientras el workflow vive. Pero el barrido de runs
+ * colgados del bloque A2 es exactamente eso, y sin esta guarda el escenario es: el barrido marca
+ * `failed` un research lento, el workflow termina cinco minutos después y lo devuelve a
+ * `pending_approval` — con `finished_at` reescrito. Lo señaló la 15ª review externa sobre el DISEÑO del
+ * barrido; verificarlo destapó que la mitad del bug ya estaba en el código.
+ */
+test("🔴 finishRun NO resucita un run que ya salió de 'running' (el barrido lo marcó failed)", async () => {
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+  await store.failRun(ctxA(), runId, "el barrido lo dio por colgado");
+
+  const movio = await store.finishRun(ctxA(), runId, {
+    costeMicros: 310_800,
+    costeBreakdown: { dataforseo_micros: 252_200 },
+    calidadDatos: { cobertura_volumen: 0.71 },
+    modelosSinPrecio: [],
+  });
+
+  const run = await store.getRun(ctxA(), runId);
+  assert.equal(movio, false, "finishRun tiene que DECIR que no movió el estado, no fingir que sí");
+  assert.equal(run?.status, "failed", "el estado terminal es un hecho: no se pisa");
+  assert.equal(
+    run?.coste_micros_usd,
+    310_800,
+    "pero el COSTE sí se anota: el dinero se gastó de verdad, y no registrarlo lo perdería",
+  );
+});
+
+test("🔴 finishRun sí mueve el estado por el camino sano (control positivo de la guarda)", async () => {
+  // Sin este, una guarda que bloqueara TODO dejaría el test de arriba en verde.
+  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
+
+  const movio = await store.finishRun(ctxA(), runId, {
+    costeMicros: 1_000,
+    costeBreakdown: {},
+    calidadDatos: {},
+    modelosSinPrecio: [],
+  });
+
+  const run = await store.getRun(ctxA(), runId);
+  assert.equal(movio, true);
+  assert.equal(run?.status, "pending_approval");
+});
+
 test("store: guardar keywords dos veces NO duplica (idempotente ante un reintento)", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
 

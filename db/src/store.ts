@@ -723,7 +723,30 @@ export class PgStore {
     });
   }
 
-  /** Cierra el run: pasa a `pending_approval` y queda esperando a un humano (ADR-06). */
+  /**
+   * Cierra el run: pasa a `pending_approval` y queda esperando a un humano (ADR-06).
+   *
+   * ## Pero SOLO si todavía estaba corriendo — la simetría con `failRun`
+   *
+   * Antes movía el estado fuera cual fuera (`where id = $1` pelado). Hoy nada más lo escribe mientras
+   * el workflow vive, así que no mordía; el **barrido de runs colgados** (bloque A2 del plan) es
+   * exactamente eso, y sin esta guarda el escenario sería: el barrido marca `failed` un research
+   * legítimamente lento, el workflow termina cinco minutos después y lo devuelve a `pending_approval`,
+   * con `finished_at` reescrito. La red de seguridad quedaría deshecha por lo que vigila.
+   *
+   * Es la misma regla que `failRun` ya aplicaba desde el otro lado: **un estado terminal es un hecho y
+   * no se pisa.** Lo destapó verificar un hallazgo de la 15ª review sobre el diseño del barrido, que
+   * todavía no existe.
+   *
+   * ## Lo que SÍ se escribe igual, y por qué
+   *
+   * El `case` guarda **solo el estado**. El coste, el desglose y la calidad se anotan pase lo que pase:
+   * ese dinero se gastó de verdad contra DataForSEO y el LLM, y no registrarlo lo perdería de la
+   * contabilidad — un run `failed` que costó $0.31 costó $0.31. `finished_at` va con el estado, porque
+   * es el sello de la transición y no un hecho del mundo.
+   *
+   * Devuelve si **movió el estado**, para que el llamador no dé por hecha una compuerta que no se abrió.
+   */
   async finishRun(
     ctx: TenantContext,
     runId: string,
@@ -733,25 +756,48 @@ export class PgStore {
       calidadDatos: Record<string, unknown>;
       modelosSinPrecio: string[];
     },
-  ): Promise<void> {
-    await this.withTenant(ctx, async (tx) => {
-      await tx.query(
+  ): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const datos = [
+        runId,
+        meta.costeMicros,
+        JSON.stringify(meta.costeBreakdown),
+        JSON.stringify(meta.calidadDatos),
+        meta.modelosSinPrecio,
+      ];
+
+      const { rows } = await tx.query<{ id: string }>(
         `update kr_runs set
            status = 'pending_approval',
+           finished_at = now(),
            coste_micros_usd = $2,
            coste_breakdown = $3::jsonb,
            calidad_datos = $4::jsonb,
-           modelos_sin_precio = $5,
-           finished_at = now()
-         where id = $1`,
-        [
-          runId,
-          meta.costeMicros,
-          JSON.stringify(meta.costeBreakdown),
-          JSON.stringify(meta.calidadDatos),
-          meta.modelosSinPrecio,
-        ],
+           modelos_sin_precio = $5
+         where id = $1 and status = 'running'
+         returning id`,
+        datos,
       );
+      if (rows.length > 0) return true;
+
+      /*
+       * Ya no estaba corriendo. El estado no se pisa, pero el gasto sí se anota.
+       *
+       * Dos sentencias y no un `case … returning`: `RETURNING` ve la fila NUEVA, así que un
+       * `returning (status = 'pending_approval')` diría `true` en un reintento sobre un run que ya
+       * estaba en `pending_approval` — o sea, mentiría justo en el caso que este booleano existe para
+       * distinguir. `RETURNING OLD` lo resolvería en una, pero es de PG18 y esto corre contra 16.4.
+       */
+      await tx.query(
+        `update kr_runs set
+           coste_micros_usd = $2,
+           coste_breakdown = $3::jsonb,
+           calidad_datos = $4::jsonb,
+           modelos_sin_precio = $5
+         where id = $1 and status <> 'running'`,
+        datos,
+      );
+      return false;
     });
   }
 

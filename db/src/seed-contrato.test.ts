@@ -173,13 +173,23 @@ test("🔴 la 0017 repara las filas ya escritas antes de poder ponerles el check
       )
     ).rows as [{ id: string }];
 
-    // Las cinco combinaciones que el seed viejo pudo dejar escritas, más una fila YA correcta para
-    // comprobar que el `update` es idempotente y no la toca.
+    /*
+     * Las CINCO intenciones que el seed viejo pudo dejar escritas, más una fila YA correcta para
+     * comprobar que el `update` es idempotente y no la toca.
+     *
+     * `/e` (`transaccional`) la agregó la 15ª review externa, que midió que faltaba: el fixture
+     * cubría las tres que el seed escribía el último día y no la cuarta, que se escribió hasta
+     * `f0c1387`. Y la mutación NO es benigna — `intencion` es `not null` (`0001_init.sql:229`), así
+     * que un `case` sin esa rama devuelve NULL y el `update` aborta con violación de not-null. O sea
+     * que sin esta fila la migración explota **en producción**, contra la base que persiste desde
+     * julio, en vez de acá. Que es literalmente para lo que existe este test.
+     */
     const viejas: [string, string, string][] = [
       ["/a", "hub", "comercial"],
       ["/b", "spoke", "navegacional"],
       ["/c", "single", "informacional"],
       ["/d", "hub", "comercial"],
+      ["/e", "single", "transaccional"],
       ["/ya-correcta", "single", "commercial"],
     ];
     for (const [slug, estrategia, intencion] of viejas) {
@@ -205,6 +215,7 @@ test("🔴 la 0017 repara las filas ya escritas antes de poder ponerles el check
         ["/b", "hub_spoke", "navigational"],
         ["/c", "single", "informational"],
         ["/d", "hub_spoke", "commercial"],
+        ["/e", "single", "transactional"],
         ["/ya-correcta", "single", "commercial"],
       ],
       "el mapeo es determinista y la fila que ya estaba bien no se toca",

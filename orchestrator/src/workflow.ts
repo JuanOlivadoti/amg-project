@@ -238,8 +238,16 @@ export async function workflowResearch(
       return md.length;
     });
 
+    /*
+     * El step devuelve lo que PASÓ, no lo que se pretendía.
+     *
+     * Devolvía la cadena `"pending_approval"` fija. Desde que `finishRun` es compare-and-set eso puede
+     * ser falso —si algo sacó al run de `running` mientras corría el research, el estado no se movió—,
+     * e Inngest **persiste el resultado de cada step**: sería una mentira guardada, en el único sitio
+     * donde se mira cuando algo salió raro.
+     */
     await paso.run("cerrar-run", async () => {
-      await deps.store.finishRun(ctx, runId, {
+      const movio = await deps.store.finishRun(ctx, runId, {
         costeMicros: brief.meta_run.coste_micros_usd,
         costeBreakdown: brief.meta_run.coste_breakdown,
         // El spread NO es una copia defensiva: `DataQuality` es una `interface`, y una interface no
@@ -250,6 +258,12 @@ export async function workflowResearch(
         calidadDatos: { ...brief.meta_run.calidad_datos },
         modelosSinPrecio: brief.meta_run.modelos_sin_precio ?? [],
       });
+      if (!movio) {
+        // El coste quedó anotado igual (`finishRun` lo escribe pase lo que pase): el dinero se gastó.
+        // Lo que no se sabe desde acá es QUIÉN lo sacó de `running`, así que se dice el hecho y ya.
+        log(`[run ${runId}] el research terminó pero el run YA NO estaba en 'running': el estado no se tocó`);
+        return "sin_cambio";
+      }
       return "pending_approval";
     });
   } else {
