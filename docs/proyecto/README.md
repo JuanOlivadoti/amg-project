@@ -41,10 +41,11 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
 | 8 | [Testing y calidad](08-testing-calidad.md) | Suite de tests, typecheck, la review externa y qué se corrigió. |
 | 9 | 🧭 [**Estado y roadmap**](09-estado-y-roadmap.md) | **Empezá por acá si retomás.** Qué funciona hoy, qué queda por delante (ordenado por lo que bloquea), deudas y riesgos abiertos. |
 | ~~10~~ | ✅ [Acciones del lado del usuario](../historia/10-acciones-pendientes.md) | Lo que **solo Juan podía hacer** (keys, saldo, cuentas, alcance). **Las seis están cerradas**, así que el documento se archivó en [`../historia/`](../historia/); queda como registro de qué desbloqueó cada una. El número 10 queda libre a propósito: renumerar el 11 rompería demasiados enlaces entrantes. |
-| 11 | 🧭 [**Plan de la Fase 2**](11-plan-fase-2.md) | **Empezá por acá si retomás.** De dónde venimos, en qué punto exacto estamos, qué falta y en qué orden. |
+| 11 | 🏁 [Plan de la Fase 2](11-plan-fase-2.md) | **Cerrado el 2026-08-07.** Queda como la historia de esa fase: cómo se planificó y qué se fue cerrando. No se actualiza más. |
 | 12 | [Credenciales y roles](12-credenciales.md) | Los cuatro logins de Postgres, qué puede cada uno y **qué NO puede**. Cómo se reparten los secretos. |
 | 13 | [Despliegue de la Fase 1](13-despliegue-fase-1.md) | La decisión de dónde se hostea cada pieza y por qué. |
 | 14 | [**Runbook de despliegue**](14-runbook-despliegue.md) | El paso a paso real, con los tropiezos que hubo. Incluye cómo actualizar una instalación ya viva. |
+| 15 | 🧭 [**Plan de la plataforma**](15-plan-plataforma.md) | **Empezá por acá si retomás.** Lo que queda, por bloques, con qué archivos toca cada uno, cómo se verifica y qué cuesta. Sucede al `11`. |
 
 ## Contexto adicional
 

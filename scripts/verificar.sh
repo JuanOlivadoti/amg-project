@@ -71,7 +71,7 @@ echo "── 2. Archivos del arnés ──────────────�
 
 for f in AGENTS.md CLAUDE.md CHECKPOINTS.md \
          docs/proyecto/09-estado-y-roadmap.md \
-         docs/proyecto/11-plan-fase-2.md \
+         docs/proyecto/15-plan-plataforma.md \
          docs/decisiones-arquitectura.md \
          progress/current.md progress/history.md; do
   if [ -f "$f" ]; then ok "$f"; else fail "falta $f"; SALIDA=1; fi

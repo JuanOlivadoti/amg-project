@@ -1,5 +1,13 @@
 # 11. Plan de la Fase 2 — plataforma
 
+> ## 🏁 CERRADO el 2026-08-07 — el plan de la fase en curso es [`15-plan-plataforma.md`](15-plan-plataforma.md)
+>
+> Este documento queda como **la historia de Fase 2**: cómo se planificó y qué se fue cerrando. No se
+> actualiza más — lo que falta de aquí en adelante vive en el `15`, y el estado global en el
+> [`09`](09-estado-y-roadmap.md).
+>
+> ---
+>
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
