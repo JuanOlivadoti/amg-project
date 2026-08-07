@@ -15,7 +15,18 @@ export interface RunSummary {
   market_country: string;
   market_language: string;
   market_location_code: number;
-  coste_micros_usd: number;
+  /**
+   * Lo que la agencia pagó por el research — **el margen**, y por eso es `| null`.
+   *
+   * `RUN_SUMMARY_COLS` lo envuelve en `case when app.es_staff() then coste_micros_usd::int end`
+   * (`db/src/store.ts`), así que la decisión de mostrarlo la toma **Postgres** derivando el rol de
+   * `memberships` (ADR-15), no un `if` de la API ni una compuerta de esta pantalla. Quien no es staff
+   * recibe `null` y el número nunca viaja al navegador.
+   *
+   * **`null` NO es cero.** Pintar `$0.00` acá afirmaría que el research salió gratis. Quien lo
+   * muestre pasa por `usdDeMicros` (`core/dinero.ts`) y no pinta la línea cuando devuelve `null`.
+   */
+  coste_micros_usd: number | null;
   calidad_datos: Record<string, unknown>;
   config: Record<string, unknown>;
   created_at: string;

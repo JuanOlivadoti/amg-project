@@ -54,7 +54,7 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | | |
 |---|---|
 | **Paquetes** | 7 workspaces (`contrato`, `db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **1118** — 833 en el monorepo + 285 en el portal (207 `node:test` + 78 Karma). Los de seguridad, contra Postgres real. Medido el **2026-08-07**: el monorepo con `npm run verificar` tras el tramo A (venía de 786), el portal con `-- --con-portal` y Karma aparte, sin cambios. |
+| **Tests** | **1181** — 863 en el monorepo + 318 en el portal (224 `node:test` + 94 Karma). Los de seguridad, contra Postgres real. Medido el **2026-08-07**: el monorepo con `npm run verificar` tras el tramo A (venía de 786), el portal con `-- --con-portal` y Karma aparte, sin cambios. |
 | **Migraciones** | 14 en `main` (`0001`..`0012` + `0015` + `0016`) · **las 14 aplicadas en producción**, ninguna pendiente — *verificado el 2026-08-07 contra la base real: `select count(*) from app.migraciones_aplicadas` → 14, última `0016_informe_kr.sql`*. La `0012`, la `0015` y la `0016` se aplicaron ese día; la `0011` ya estaba (esta tabla decía que las cuatro estaban pendientes, y eran tres). La próxima libre es la **`0017`**: `0013` y `0014` están **reservadas** para ramas que corren en otra máquina |
 | **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
 | **Reviews externas** | **14 rondas** (Codex), **20 tandas** de correcciones — la 13ª fue la primera sobre el arnés `.claude/` y la 14ª la primera sobre un **documento de diseño** (la spec de KR-2), antes de escribir código. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
@@ -77,7 +77,7 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **833 tests en verde** (+285 en el portal) + typecheck limpio en los 7 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **863 tests en verde** (+318 en el portal) + typecheck limpio en los 7 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **El dashboard y el brief no pueden divergir en silencio**: un test ata las 14 páginas de `cartera-mock.ts` (portal) a `PAGINAS_DEMO` (seed), campo por campo y en orden. Estar fuera del monorepo impedía importar el paquete, no leer el archivo. |
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
@@ -760,14 +760,23 @@ el molde que ya apareció tres veces](08-testing-calidad.md) y un checkpoint nue
   no fusionándolos: el de M1 acepta cuatro `schema_version` y hace `evidencia`/`score_confidence`
   opcionales **a propósito**, así que son dos contratos con propósitos opuestos. Lo que se comparte son los
   **tipos** y `renderReport`, con dos derivados de una base común (ver la spec de KR-2 § 4.1).
-- **🔴 El coste del research (el margen de la agencia) es legible por el rol `cliente`.** `run_select` sobre
-  `kr_runs` usa `app.ve_cliente(client_id)` ([`0001_init.sql:441`](../../db/migrations/0001_init.sql#L441)),
-  así que un `cliente` ve `coste_micros_usd` y `coste_breakdown` de su propio run: `GET /runs/:id` los
-  devuelve y la pantalla del brief pinta el total. **No es fuga activa** —no hay usuarios con rol `cliente`
-  (Frank `maestro`, Juan `equipo`)— pero el rol existe y RLS lo contempla. Encontrado por la 14ª review;
-  cerrarlo toca `RunSummary` y la pantalla del brief, y **es una pieza propia**, no parte de KR-2.
-- **El entregable que la agencia le pasa al restaurante no existe.** Sería el informe de KR-2 **sin el
-  bloque de coste**. Es la pieza dueña del **PDF** que ADR-07 pedía (ver KR-2 § 2.1).
+- ~~**🔴 El coste del research (el margen de la agencia) es legible por el rol `cliente`.**~~ ✅ **Cerrado
+  el 2026-08-07.** Lo recorta **Postgres**, no la API: `RUN_SUMMARY_COLS` trae
+  `case when app.es_staff() then coste_micros_usd::int end`
+  ([`store.ts:330`](../../db/src/store.ts#L330)), sin `else`, así que los tres casos medidos caen del
+  mismo lado — `true` para staff, `false` para `cliente` y **`NULL`** para quien no tiene membresía (un
+  usuario sin membresía **no** da `false`: `app.current_role()` es NULL y `NULL in (…)` es NULL; medido en
+  los dos majors, 16.4 y 18.3). Como vive en la única definición que usan `getRun`, `listRuns` y
+  `listAllRuns`, el próximo endpoint que lea runs lo hereda. `RunSummary.coste_micros_usd` es ahora
+  `number | null`, y el portal **no pinta la línea** cuando falta: `$0.00` afirmaría que el research fue
+  gratis.
+- ~~**El entregable que la agencia le pasa al restaurante no existe.**~~ ✅ **Existe desde el 2026-08-07**:
+  `GET /runs/:id/entregable.md` (solo staff, con el 404 decidido por Postgres) más una vista imprimible en
+  el portal. Es el informe **sin el bloque de coste**, y ese bloque **no se genera** —
+  `renderReport(brief, { incluirCoste })` con el parámetro obligatorio y sin default—, no se oculta: taparlo
+  en la vista habría mandado el margen al navegador igual. Cierra el **PDF** de ADR-07, por la vía del
+  navegador (`@media print` + Ctrl+P) y sin dependencias nuevas. Ver
+  [la spec](../superpowers/specs/2026-08-07-entregable-restaurante-design.md) y la nota fechada en ADR-07.
 - **Sin tests de integración**: el camino live se ejecutó a mano contra DataForSEO, OpenAI y
   Storyblok, pero no está automatizado.
 - **Calidad del research**: las tres mejoras están implementadas (2026-08-02) pero **sin calibrar
@@ -841,7 +850,7 @@ reales, no solo contra tests.
 | **Persistencia + multi-tenancy** (Postgres, RLS por `tenant_id`) | ADR-01, ADR-10, ADR-13 | ✅ **Hecho.** Esquema, RLS con `FORCE`, cache de métricas/SERP con `expires_at`, y **204 tests** contra Postgres real (PGlite). Acceso solo por transacción con conexión reservada. |
 | **Orquestación con Inngest** | ADR-03, ADR-12 | ✅ **Hecho.** `waitForEvent` para la compuerta humana, concurrencia global (el rate limit de DataForSEO es por cuenta), idempotencia por `runId`, `onFailure` que no deja runs colgados. |
 | **API REST autenticada** | ADR-15, ADR-17, ADR-18, ADR-22 | ✅ **Hecho.** Hono. Crea el run bajo RLS (ahí se autoriza) y emite el evento; comandos compuestos, CORS, login `amg_api`, JWT con `exp`/`aud`/`alg` impuestos. **113 tests** contra PGlite. Desde la pieza A la firma se verifica contra el **JWKS público** del emisor (ES256), sin secreto compartido, y un fallo de infraestructura responde **503** en vez de confundirse con un token inválido. |
-| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **285 tests** (207 de núcleo `node:test` + 78 de componente Karma, las pantallas de research incluidas); el flujo, verificado en un navegador real. **Falta:** calibrar el polling contra los 16m15s medidos. |
+| **Portal Angular** | ADR-16, ADR-21 | ✅ **Hecho** (funcional). Login + lista + brief por evidencia + compuerta doble + refresh del token + polling, y las carreras asincrónicas cerradas (`Vigencia`). **318 tests** (224 de núcleo `node:test` + 94 de componente Karma, las pantallas de research incluidas); el flujo, verificado en un navegador real. **Falta:** calibrar el polling contra los 16m15s medidos. |
 | **Renderizador público** (la web del cliente) | ADR-19, ADR-04 | ✅ **Hecho.** `renderer/`: 1 servicio, N dominios. Hono, lee la Content Delivery API y sirve `renderStory()`. Cache con invalidación por webhook firmado, preview firmado + Bridge para el Visual Editor, y el rol de BD más pobre del sistema (`app_render`, sin escritura). Endurecido tras la 10ª review (límites del camino anónimo, timeouts de BD, replay). **114 tests**; **verificado contra el Storyblok REAL** con `npm run demo -w renderer`. ✅ **Desplegado el 2026-08-01** en Railway (servicio aparte del de la API): sirve `amg-renderer-production.up.railway.app` leyendo de Supabase con `amg_render` → `app_render`, verificado en el navegador. **Falta:** el dominio propio del cliente (el plan de Railway está en su límite de custom domains) y una CDN delante. |
 | **Diseño de las webs** (marca + imágenes + navegación) | ADR-04, ADR-11 | ✅ **Hecho.** Tema por tenant (color/fuente/logo desde `business_profile.brand`, allowlist en `0009`) → cada web se ve **propia**. Imágenes editables en los bloks `hero`/`section` (campos `asset`). **Nav fijo de 4 secciones** (Inicio/Menú/Ubicaciones/Contacto, cada una condicionada a que el perfil tenga el dato — reemplaza a la barra vieja derivada de las páginas SEO publicadas) + **footer compartido** con NAP multi-local (`locations`) y link a Blog + `/menu`/`/blog` sintetizados desde el perfil (allowlist en `0010`, ver [spec](../superpowers/ejecutados/2026-07-31-navegacion-sitio-cliente-design.md)) + **home sintetizada** en la raíz (la raíz ya no da 404; si el cliente crea su `home`, esa gana). Validación anti-inyección en tres capas, también en el `name`/`slug` de la nav y en NAP/carta. **Falta (deuda):** republicar desde un brief pisa las imágenes que suba el cliente — **el nav/footer/menú/blog YA NO dependen del brief**: se calculan en vivo desde `business_profile` en cada request, así que republicar no los toca. **Lo "hecho" es la infraestructura de marca, no el aspecto:** las landings publicadas se ven sin terminar (ni una foto, CTA que es un párrafo, siete secciones idénticas) y eso tiene su propio diseño, 🟡 **sin empezar** — [spec de plantillas de landing](../superpowers/specs/2026-08-01-plantillas-landings-design.md), migración `0014`, tres entregas. **Enmendado el 2026-08-02** con el **manual de marca** (tokens de color y roles tipográficos self-hosted, en vez de los tres campos actuales) y el **rediseño de la carta** (categorías con foto, precios por ración), tomando como referencia visual un template real de restaurante sin adoptar ni una línea suya. |
 | **La costura publish→serve** (`fromStoryblokContent`) | ADR-19 | ✅ **Hecho.** El contenido que Storyblok guarda está **aplanado** y `renderStory` esperaba la forma anidada → daba 503. Lo cazó la demo, no un test (era OBS-03: nadie leía de vuelta lo publicado). Adaptador inverso + tests de ida-y-vuelta. |

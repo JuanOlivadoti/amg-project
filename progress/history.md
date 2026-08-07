@@ -11,6 +11,62 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-07 (noche) — el entregable del restaurante: la frontera del coste, cerrada por los dos lados a la vez
+
+El `09` las listaba como dos deudas separadas —*el entregable del restaurante no existe* y *🔴 el margen es
+legible por el rol `cliente`*— y son **la misma pregunta desde dos lados**: qué ve alguien que no es la
+agencia. Hacerlas por separado tenía un riesgo concreto y conocido: que la pantalla dejara de pintar el
+coste mientras la API lo siguiera devolviendo. Eso no es una frontera, es un adorno.
+
+**La decisión que ordena todo lo demás: el coste no se oculta, no se genera.** `renderReport(brief,
+{ incluirCoste })` lleva el parámetro **obligatorio y sin default**, porque las dos respuestas son
+correctas para documentos distintos —el informe interno lleva el margen, que ante Frank es el argumento
+de venta; el entregable no— y ninguna es "la normal". Un default `true` haría que quien lo olvide filtre;
+uno `false`, que el informe interno pierda su argumento en silencio. Es la misma forma que `PIPELINE_MODO`
+del tramo A, doce horas antes: cuando la opción segura y la útil son distintas, no hay default correcto.
+
+Y del lado de la base, el margen lo recorta **Postgres**: `case when app.es_staff() then
+coste_micros_usd::int end`, **sin `else`**, dentro de la única definición de columnas que comparten
+`getRun`, `listRuns` y `listAllRuns`. Los tres casos medidos caen del mismo lado, y el tercero es el que
+se olvida: un usuario **sin membresía** no da `false`, da **`NULL`** —`app.current_role()` es NULL y
+`NULL in (…)` es NULL—. Medido en los dos majors (16.4 en `db/`, 18.3 en `api/`), porque uno no se
+extrapola del otro. Ningún `if` de rol en TypeScript: el único `if` del handler es `if (!datos) return
+404`, y eso es el resultado de lo que Postgres decidió.
+
+**Lo que encontró el navegador, y ningún test podía ver.** El PDF sale del navegador (Ctrl+P sobre una
+vista con `@media print`) — decisión del dueño del proyecto, para no meter la primera dependencia de PDF
+del repo contra el invariante de `tsx` sin build. Eso significa que **el CSS de pantalla llega al papel**:
+medido en Chrome 151, el navegador no imprime fondos, así que la hoja salía blanca con el texto del tema
+oscuro en `#f3f4f6` — **1.10:1**, cuando AA pide 4.5:1. La hoja era ilegible y nadie lo había pedido. El
+arreglo es un `@media print` que redefine los 17 tokens, atado por el test de contraste como un **tercer
+tema**. Cuando el entregable *es* la hoja impresa, la hoja impresa es la pieza.
+
+**Dos documentos de la agencia contradiciéndose.** Generando el entregable real contra el seed y
+leyéndolo: decía *"0 keywords analizadas"* donde el informe interno del mismo run dice **55**. Hay dos
+fuentes del número —una declarada en `calidad_datos`, otra contada sobre `kr_keywords`— y ninguna cubre
+todos los runs. No lo veía ningún test: hay que generar el documento y leerlo.
+
+**Y un comentario que envejeció hasta decir lo contrario.** En la pantalla del informe había un párrafo
+que razonaba sobre esta misma frontera: *"la pantalla del brief le muestra el coste TOTAL a cualquier rol
+que vea el run (…) si el total debería o no ser visible es otra pieza, y no ésta"*. Era cierto cuando se
+escribió. **Esa "otra pieza" es ésta**, y lo dejó falso — quien lo leyera después concluiría que al
+`cliente` ya le llega el total y que no hace falta cuidarlo. Lo cazó la revisión interna, no el
+implementador que tenía el archivo abierto.
+
+Tres errores míos en la jornada, y los tres del mismo tipo: **filtré el output de un comando y llamé
+verde a lo que no había mirado**. `npm run typecheck | tail -6` me mostró la cola limpia mientras arriba
+había tres errores de los callers de `renderReport` que yo no había actualizado. Y al reescribir aquel
+comentario puse los identificadores SQL entre backticks dentro de un template literal de Angular: 10
+errores de compilación, cazados por el diagnóstico del IDE apuntando a una línea que yo no había tocado.
+Descartarlo por no cuadrar con mi modelo habría commiteado un portal roto.
+
+**Lo que queda, y no lo puede hacer un agente:** abrir **Ctrl+P** y mirar el preview. El MCP no expone
+`Emulation.setEmulatedMedia`, así que se compensó forzando las reglas de impresión a pantalla y midiendo
+las propiedades `break-*` computadas una por una — pero el corte de página real entre hoja 1 y hoja 2 no
+lo vio nadie, y conviene que eso quede dicho en vez de dado por bueno.
+
+---
+
 ## 2026-08-07 (tarde) — el tramo A del orquestador: preparar el despliegue destapó que `POST /runs` ya estaba roto
 
 El orquestador es la última pieza de Fase 2 sin desplegar, y el estado decía que solo faltaban las

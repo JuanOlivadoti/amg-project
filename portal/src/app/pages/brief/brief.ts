@@ -8,6 +8,7 @@ import { MembresiaService } from '../../services/membresia';
 import type { Brief, PaginaPropuesta } from '../../core/models';
 import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
 import { mostrarAprobarRun } from '../../core/features';
+import { usdDeMicros } from '../../core/dinero';
 import { environment } from '../../../environments/environment';
 import { Vigencia } from '../../core/vigencia';
 
@@ -25,8 +26,19 @@ import { Vigencia } from '../../core/vigencia';
       } @else if (brief(); as b) {
         <header class="bg-superficie rounded-xl border border-borde p-6">
           <h1 class="text-lg font-semibold text-texto">{{ b.run.prompt }}</h1>
+          <!--
+            El coste se pinta SOLO si llegó. coste_micros_usd es number | null, y el null lo decide
+            app.es_staff() dentro de Postgres: quien no es staff no recibe el número, no es que lo
+            tenga tapado. Pintar $0.00 ahí afirmaría que el research fue gratis.
+            El "as" sobre usd(...) es seguro porque devuelve la cadena "0.00" —no vacía, y por lo
+            tanto truthy— cuando el coste es cero de verdad: un @if sobre el NÚMERO sí escondería ese
+            caso legítimo. Ver core/dinero.ts.
+          -->
           <p class="mt-1 text-xs text-texto-tenue">
-            Estado: {{ b.run.status }} · Coste: \${{ usd(b.run.coste_micros_usd) }}
+            Estado: {{ b.run.status }}
+            @if (usd(b.run.coste_micros_usd); as coste) {
+              · Coste: \${{ coste }}
+            }
           </p>
           <!--
             El link al informe aparece SIEMPRE, incluso si este run no tiene informe. Esconderlo haría
@@ -45,6 +57,27 @@ import { Vigencia } from '../../core/vigencia';
           >
             Ver el informe del research →
           </a>
+          <!--
+            El entregable del restaurante, SOLO para el equipo — y acá el criterio es al revés que en
+            el link de arriba, a propósito.
+
+            El del informe aparece siempre porque su destino sabe explicar con palabras por qué no hay
+            informe. Éste no: para un rol cliente el endpoint responde 404 —el mismo que un run que no
+            existe, porque app.es_staff() va en el predicado de la consulta— y la pantalla solo podría
+            decir "Run no encontrado", que es confuso y además falso a medias. Y la decisión del dueño
+            (spec, 2026-08-07) es que el entregable lo manda la AGENCIA: no es una pantalla del
+            cliente, así que no se le insinúa que existe.
+
+            Esconderlo es UX, no seguridad: quien escriba la URL a mano igual recibe el 404 de Postgres.
+          -->
+          @if (membresia.esEquipo()) {
+            <a
+              [routerLink]="['/runs', b.run.id, 'entregable']"
+              class="mt-1 block w-fit text-sm text-texto hover:underline"
+            >
+              Ver el entregable del restaurante (sin coste) →
+            </a>
+          }
           @if (puedeAprobarRunUI()) {
             <button
               (click)="aprobarRun()"
@@ -319,7 +352,6 @@ export class BriefPage implements OnInit, OnDestroy {
     return this.conTrabajo(() => this.api.aprobarRun(this.runId));
   }
 
-  usd(micros: number): string {
-    return (micros / 1_000_000).toFixed(2);
-  }
+  /** `null` = no hay coste que mostrar, y entonces la línea no se pinta. Ver `core/dinero.ts`. */
+  readonly usd = usdDeMicros;
 }

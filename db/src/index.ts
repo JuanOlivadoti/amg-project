@@ -15,6 +15,7 @@ export type {
   CambiosPagina,
   RunSummary,
   InformeRow,
+  DatosEntregable,
 } from "./store.js";
 
 export { PgSitios, MemSitios } from "./sitios.js";

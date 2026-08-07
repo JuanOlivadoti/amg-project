@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { renderReport } from "contrato";
 import type { PgStore, CambiosPagina, PgClientes, NuevoCliente, CambiosCliente, PgMembresias } from "db";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
 import { nombreArchivo } from "./informe-nombre.js";
+import { briefDelEntregable } from "./entregable.js";
 
 /**
  * Todo lo que la API necesita, INYECTADO. Ni el store, ni el emisor, ni la verificación del token se
@@ -161,8 +163,46 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     const cliente = run ? await deps.store.getClient(ctx, run.client_id) : null;
 
     c.header("Content-Type", "text/markdown; charset=utf-8");
-    c.header("Content-Disposition", `attachment; filename="${nombreArchivo(cliente?.nombre)}"`);
+    c.header("Content-Disposition", `attachment; filename="${nombreArchivo(cliente?.nombre, "informe")}"`);
     return c.body(informe.informe_md);
+  });
+
+  /*
+   * GET /runs/:id/entregable.md — el documento que la agencia le manda al RESTAURANTE.
+   *
+   * Es el informe de keyword research **sin el bloque de coste**, que es el margen de la agencia. Tres
+   * decisiones, y ninguna vive en este handler:
+   *
+   *  · **El coste no se oculta: NO SE GENERA.** Lo decide `renderReport(brief, { incluirCoste: false })`
+   *    en `contrato`, donde está probado por mutación. Si la exclusión se hiciera acá —tapando el bloque,
+   *    o recortando el Markdown ya renderizado— el margen dependería de que un encabezado no cambie de
+   *    nombre, y en la variante de pantalla ya habría viajado al navegador.
+   *
+   *  · **El 404 del no-staff NO es un `if`.** `getDatosEntregable` lleva `app.es_staff()` en el predicado
+   *    de su consulta (ADR-15), así que para el rol `cliente` devuelve cero filas y este endpoint no
+   *    puede distinguir ese caso de un run inexistente ni de uno de otro tenant. Los tres dan el MISMO
+   *    404, que es lo que impide filtrar que el run existe.
+   *
+   *  · **Se genera al vuelo, no se guarda.** El informe interno (`kr_informes`) se congela al terminar el
+   *    run y para él está bien. El entregable tiene que reflejar lo que pasó la compuerta —las páginas
+   *    aprobadas, con las ediciones que un humano les hizo—; congelarlo mandaría el brief original. Por
+   *    eso no hay tabla ni migración nueva. (El comentario de la 0016 preveía que una variante para el
+   *    cliente exigiría migración: la exigiría si se GUARDARA, y no se guarda.)
+   *
+   * El `filename` reusa la allowlist de `nombreArchivo`, con el prefijo `entregable`. El
+   * `Content-Disposition` viaja gracias al `exposeHeaders` del CORS de arriba: sin él el navegador se lo
+   * esconde al JavaScript del portal y el archivo baja nombrado con el uuid del run.
+   */
+  app.get("/runs/:id/entregable.md", async (c) => {
+    const ctx = c.get("ctx");
+    const datos = await deps.store.getDatosEntregable(ctx, c.req.param("id"));
+    if (!datos) return c.json({ error: "Run no encontrado." }, 404);
+
+    const md = renderReport(briefDelEntregable(datos), { incluirCoste: false });
+
+    c.header("Content-Type", "text/markdown; charset=utf-8");
+    c.header("Content-Disposition", `attachment; filename="${nombreArchivo(datos.cliente, "entregable")}"`);
+    return c.body(md);
   });
 
   /** POST /pages/:id/approve — media compuerta: aprueba UNA página (ADR-06). */

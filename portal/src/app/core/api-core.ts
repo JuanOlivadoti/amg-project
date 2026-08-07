@@ -115,6 +115,23 @@ export interface ClienteApi {
    * autenticado y quien llama guarda el `Blob` (ver `DescargasService`). Un run sin informe lanza 404.
    */
   descargarInformeMd(runId: string): Promise<ArchivoDescargado>;
+  /**
+   * El **entregable del restaurante**: el mismo research SIN el bloque de coste, en Markdown.
+   *
+   * Devuelve el TEXTO y no un `ArchivoDescargado` porque su destino es la pantalla imprimible, que lo
+   * parsea a bloques (`core/markdown.ts`) y lo dibuja. La API lo manda con `Content-Disposition:
+   * attachment` —está pensado para bajarse—, pero eso solo importa cuando el navegador navega a la
+   * URL; leído con `fetch`, el cuerpo es el cuerpo.
+   *
+   * **El coste no viene, y no es este cliente quien lo saca**: la API llama a `renderReport(brief,
+   * { incluirCoste: false })` y el bloque no se genera. Si alguna vez hace falta filtrar un coste
+   * desde acá, algo se rompió aguas arriba.
+   *
+   * Lanza 404 —con la MISMA forma— si el run no existe, si es de otro tenant o si quien pregunta no
+   * es staff: lo decide `app.es_staff()` en el predicado de la consulta, no un `if` de la API, así
+   * que el portal no puede distinguir los tres casos ni debe intentarlo.
+   */
+  verEntregableMd(runId: string): Promise<string>;
   aprobarPagina(pageId: string): Promise<void>;
   editarPagina(pageId: string, cambios: CambiosPagina): Promise<void>;
   aprobarRun(runId: string): Promise<void>;
@@ -219,6 +236,14 @@ export function crearApi(opts: ApiOpts): ClienteApi {
         nombre: nombreDeDescarga(res.headers.get('content-disposition'), `informe-${runId}.md`),
         blob: await res.blob(),
       };
+    },
+    async verEntregableMd(runId) {
+      // `pedirRes` y no `pedir`: el cuerpo es `text/markdown`, no JSON. Pasa por la MISMA política de
+      // 401 → refrescar → reintentar que todo lo demás, que es el motivo por el que `pedirRes` existe
+      // separado (ver su comentario): una segunda ruta HTTP que no pasara por ahí dejaría el token
+      // vencido sin refrescar justo en esta pantalla.
+      const res = await pedirRes('GET', `/runs/${encodeURIComponent(runId)}/entregable.md`);
+      return res.text();
     },
     async aprobarPagina(pageId) {
       await pedir('POST', `/pages/${encodeURIComponent(pageId)}/approve`);

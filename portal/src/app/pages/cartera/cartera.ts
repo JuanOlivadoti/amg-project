@@ -16,7 +16,12 @@ import { kpisDeCartera, topOportunidades, serieTemporalCoste } from '../../core/
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <app-stat-box titulo="Sitios activos" [valor]="kpis.sitiosActivos" />
         <app-stat-box titulo="Opportunity score promedio" [valor]="kpis.opportunityScorePromedio" />
-        <app-stat-box titulo="Coste total (USD)" [valor]="kpis.costeTotalUsd" />
+        <!--
+          n/d y no 0 cuando el coste no está: es la misma palabra que el informe usa para una métrica
+          que no se conoce (contrato/src/informe.ts, metric()). Un rol que no es staff recibe el coste
+          en null desde Postgres, y un tile en 0 le afirmaría que la cartera de research fue gratis.
+        -->
+        <app-stat-box titulo="Coste total (USD)" [valor]="kpis.costeTotalUsd ?? 'n/d'" />
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -54,8 +54,32 @@ function texto(v: string): string {
     .replace(/\n(?=[#\->])/g, "\n ");
 }
 
-/** Informe legible (Markdown) — el entregable humano de la compuerta (ADR-07). */
-export function renderReport(brief: KeywordResearchBrief): string {
+/** Qué documento se está produciendo. Ver {@link renderReport}. */
+export interface OpcionesInforme {
+  /**
+   * ¿Incluir el bloque «Coste del research»?
+   *
+   * **Es el margen de la agencia**, y de él dependen dos documentos distintos: el informe **interno**
+   * lo lleva —ante Frank es el argumento de venta, "te costó $0.31"— y el **entregable del
+   * restaurante** no.
+   */
+  readonly incluirCoste: boolean;
+}
+
+/**
+ * Informe legible (Markdown) — el entregable humano de la compuerta (ADR-07).
+ *
+ * ## Por qué `opciones` es obligatorio y no tiene default
+ *
+ * Porque las dos respuestas son correctas para documentos distintos, y ninguna es "la normal". Un
+ * default `true` haría que quien lo olvide **filtre el margen** al restaurante; un default `false`
+ * haría que el informe interno pierda en silencio su argumento comercial. Sin default, cada llamada
+ * declara qué documento está produciendo y `tsc` no deja pasar la duda.
+ *
+ * Es la misma forma que `PIPELINE_MODO` en el orquestador: cuando la opción segura y la opción útil
+ * son distintas, no hay default correcto — hay una decisión que alguien tiene que escribir.
+ */
+export function renderReport(brief: KeywordResearchBrief, opciones: OpcionesInforme): string {
   const l: string[] = [];
   l.push(`# Keyword Research — ${texto(brief.cliente)}`);
   l.push(
@@ -64,55 +88,11 @@ export function renderReport(brief: KeywordResearchBrief): string {
   l.push(`- Keywords analizadas: **${brief.meta_run.keywords_analizadas}**`);
   l.push(`- Páginas propuestas: **${brief.meta_run.paginas_propuestas}**`);
 
-  // El desglose por proveedor es el argumento comercial del research (81% DataForSEO / 19% LLM), pero
-  // solo si están los TRES números. Con `coste_breakdown: {}` —el default de la columna en Postgres
-  // (`db/migrations/0001_init.sql:133`: `not null default '{}'::jsonb`), y lo que el seed de la demo
-  // deja— cada fila salía `$NaN`.
-  //
-  // Este chequeo NO es defensivo: es OBLIGATORIO, y lo impone `tsc`. El tipo declara los tres campos
-  // opcionales (`Partial<CostBreakdown>`, ver `tipos.ts`), así que sin el guard cada `usdFromMicros`
-  // de abajo recibe `number | undefined` y el typecheck cae. Antes el tipo los declaraba obligatorios y
-  // este guard era la única pieza que sabía que podían faltar: un tipo y un guard contradiciéndose
-  // dentro del mismo paquete, con el guard teniendo razón. Lo arregló la review final de rama de KR-2a.
-  //
-  // Se desestructura, y eso también es a propósito: con los tres en `const` el estrechamiento por
-  // condición aliaseada de TS aplica dentro del `if`, así que el guard y el uso no pueden separarse.
-  // La CLAVE `coste_breakdown` sí se accede directo, sin `?.`: es obligatoria en el tipo, `emisionM2`
-  // la exige y la columna es `not null`. Un `?.` acá volvería a afirmar que puede faltar algo que
-  // ninguna de las tres capas permite faltar.
-  //
-  // Y la decisión no es solo de valor, es de forma: sin desglose NO se pinta la tabla. Una tabla de
-  // tres `n/d` ocupa el lugar del argumento sin decirlo, y se lee como un fallo del sistema en vez de
-  // como un dato que falta. El TOTAL sí se conoce, así que se muestra igual: es lo que el cliente
-  // necesita, y es un dato, no una conjetura.
-  const { dataforseo_micros, llm_generation_micros, llm_embeddings_micros } =
-    brief.meta_run.coste_breakdown;
-  const desgloseCompleto =
-    typeof dataforseo_micros === "number" &&
-    typeof llm_generation_micros === "number" &&
-    typeof llm_embeddings_micros === "number";
-
-  l.push(`\n### Coste del research\n`);
-  if (desgloseCompleto) {
-    l.push(`| Proveedor | Coste |`);
-    l.push(`|---|---|`);
-    l.push(`| DataForSEO | $${usdFromMicros(dataforseo_micros)} |`);
-    l.push(`| LLM (generación) | $${usdFromMicros(llm_generation_micros)} |`);
-    l.push(`| LLM (embeddings) | $${usdFromMicros(llm_embeddings_micros)} |`);
-    l.push(`| **TOTAL** | **$${usdFromMicros(brief.meta_run.coste_micros_usd)}** |`);
-  } else {
-    l.push(`- Coste total: **$${usdFromMicros(brief.meta_run.coste_micros_usd)}**`);
-    l.push(
-      `\n> El **desglose** por proveedor no quedó registrado en esta corrida. El total sí, y es el ` +
-        `de arriba: lo que falta es saber en qué se repartió.`,
-    );
-  }
-  if (brief.meta_run.modelos_sin_precio?.length) {
-    l.push(
-      `\n> ⚠️ Coste **incompleto**: sin tarifa configurada para ${brief.meta_run.modelos_sin_precio.join(", ")}.`,
-    );
-  }
-  l.push("");
+  // El coste es lo ÚNICO que separa el informe interno del entregable del restaurante, y por eso vive
+  // en su propia función: la exclusión es un bloque que NO SE GENERA, no unas líneas que alguien tacha
+  // después. Si se filtrara sobre el texto ya renderizado, la frontera dependería de un `split` sobre
+  // Markdown — y el margen de la agencia no puede depender de que un encabezado no cambie de nombre.
+  if (opciones.incluirCoste) l.push(...bloqueDeCoste(brief));
 
   // Calidad de los datos del run. Va ARRIBA de las páginas a propósito: quien aprueba tiene que
   // saber sobre qué base está aprobando ANTES de mirar la lista.
@@ -210,4 +190,68 @@ export function renderReport(brief: KeywordResearchBrief): string {
       l.push(`- ${texto(b.keyword_principal)} — score ${b.opportunity_score}`);
   }
   return l.join("\n") + "\n";
+}
+
+/**
+ * El bloque «Coste del research» — **el margen de la agencia**.
+ *
+ * Solo lo lleva el informe interno (`incluirCoste: true`). El entregable del restaurante se genera
+ * sin él, y "sin él" quiere decir que estas líneas **no existen** en su Markdown: no se ocultan en la
+ * pantalla ni se tapan con CSS, porque eso las habría mandado igual al navegador.
+ */
+function bloqueDeCoste(brief: KeywordResearchBrief): string[] {
+  const l: string[] = [];
+
+  // El desglose por proveedor es el argumento comercial del research (81% DataForSEO / 19% LLM), pero
+  // solo si están los TRES números. Con `coste_breakdown: {}` —el default de la columna en Postgres
+  // (`db/migrations/0001_init.sql:133`: `not null default '{}'::jsonb`), y lo que el seed de la demo
+  // deja— cada fila salía `$NaN`.
+  //
+  // Este chequeo NO es defensivo: es OBLIGATORIO, y lo impone `tsc`. El tipo declara los tres campos
+  // opcionales (`Partial<CostBreakdown>`, ver `tipos.ts`), así que sin el guard cada `usdFromMicros`
+  // de abajo recibe `number | undefined` y el typecheck cae. Antes el tipo los declaraba obligatorios y
+  // este guard era la única pieza que sabía que podían faltar: un tipo y un guard contradiciéndose
+  // dentro del mismo paquete, con el guard teniendo razón. Lo arregló la review final de rama de KR-2a.
+  //
+  // Se desestructura, y eso también es a propósito: con los tres en `const` el estrechamiento por
+  // condición aliaseada de TS aplica dentro del `if`, así que el guard y el uso no pueden separarse.
+  // La CLAVE `coste_breakdown` sí se accede directo, sin `?.`: es obligatoria en el tipo, `emisionM2`
+  // la exige y la columna es `not null`. Un `?.` acá volvería a afirmar que puede faltar algo que
+  // ninguna de las tres capas permite faltar.
+  //
+  // Y la decisión no es solo de valor, es de forma: sin desglose NO se pinta la tabla. Una tabla de
+  // tres `n/d` ocupa el lugar del argumento sin decirlo, y se lee como un fallo del sistema en vez de
+  // como un dato que falta. El TOTAL sí se conoce, así que se muestra igual: es lo que el cliente
+  // necesita, y es un dato, no una conjetura.
+  const { dataforseo_micros, llm_generation_micros, llm_embeddings_micros } =
+    brief.meta_run.coste_breakdown;
+  const desgloseCompleto =
+    typeof dataforseo_micros === "number" &&
+    typeof llm_generation_micros === "number" &&
+    typeof llm_embeddings_micros === "number";
+
+  l.push(`\n### Coste del research\n`);
+  if (desgloseCompleto) {
+    l.push(`| Proveedor | Coste |`);
+    l.push(`|---|---|`);
+    l.push(`| DataForSEO | $${usdFromMicros(dataforseo_micros)} |`);
+    l.push(`| LLM (generación) | $${usdFromMicros(llm_generation_micros)} |`);
+    l.push(`| LLM (embeddings) | $${usdFromMicros(llm_embeddings_micros)} |`);
+    l.push(`| **TOTAL** | **$${usdFromMicros(brief.meta_run.coste_micros_usd)}** |`);
+  } else {
+    l.push(`- Coste total: **$${usdFromMicros(brief.meta_run.coste_micros_usd)}**`);
+    l.push(
+      `\n> El **desglose** por proveedor no quedó registrado en esta corrida. El total sí, y es el ` +
+        `de arriba: lo que falta es saber en qué se repartió.`,
+    );
+  }
+  // El aviso de tarifas faltantes también habla de coste, así que también es del informe interno: al
+  // restaurante no le importa —ni le corresponde— saber que nos falta configurar el precio de un modelo.
+  if (brief.meta_run.modelos_sin_precio?.length) {
+    l.push(
+      `\n> ⚠️ Coste **incompleto**: sin tarifa configurada para ${brief.meta_run.modelos_sin_precio.join(", ")}.`,
+    );
+  }
+  l.push("");
+  return l;
 }

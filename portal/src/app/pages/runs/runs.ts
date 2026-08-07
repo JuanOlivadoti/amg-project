@@ -6,6 +6,7 @@ import { ApiService } from '../../services/api';
 import { MembresiaService } from '../../services/membresia';
 import type { RunStatus, RunSummary } from '../../core/models';
 import { mostrarLanzarResearch } from '../../core/features';
+import { usdDeMicros } from '../../core/dinero';
 import { environment } from '../../../environments/environment';
 
 const ETIQUETA: Record<RunStatus, string> = {
@@ -74,8 +75,12 @@ const ETIQUETA: Record<RunStatus, string> = {
                       {{ etiqueta(run.status) }}
                     </span>
                   </div>
+                  <!-- Sin coste no hay línea de coste: ver el comentario equivalente en brief.ts. -->
                   <p class="mt-1 text-xs text-texto-tenue">
-                    {{ run.created_at | date: 'short' }} · \${{ usd(run.coste_micros_usd) }}
+                    {{ run.created_at | date: 'short' }}
+                    @if (usd(run.coste_micros_usd); as coste) {
+                      · \${{ coste }}
+                    }
                   </p>
                 </a>
               </li>
@@ -143,9 +148,8 @@ export class RunsPage implements OnInit {
     return ETIQUETA[s];
   }
 
-  usd(micros: number): string {
-    return (micros / 1_000_000).toFixed(2);
-  }
+  /** `null` = no hay coste que mostrar, y entonces la línea no se pinta. Ver `core/dinero.ts`. */
+  readonly usd = usdDeMicros;
 
   estadoClase(s: RunStatus): string {
     if (s === 'approved') return 'bg-respaldo-suave text-respaldo';

@@ -114,3 +114,49 @@ input::placeholder,
 textarea::placeholder {
   color: var(--texto-tenue);
 }
+
+/*
+ * EL PAPEL NO TIENE TEMA.
+ *
+ * Medido en Chrome 151 el 2026-08-07, con el tema oscuro activo y la vista del entregable abierta:
+ * el navegador **no imprime los fondos** (background-graphics viene apagado por defecto), así que la
+ * hoja sale blanca y el texto conserva su color de pantalla. `--texto` en oscuro es `#f3f4f6`, y eso
+ * contra papel blanco da **1.10:1** — AA pide 4.5:1. La hoja salía en blanco con marcas grises.
+ *
+ * No es un detalle estético: la vista imprimible del entregable ES el documento que se le manda al
+ * restaurante, y quién lo imprima no tiene por qué haber pensado en qué tema tenía puesto el portal.
+ * Un tercer juego de valores es más barato que una condición en cada plantilla.
+ *
+ * Los `-suave` (fondos de badge) van a blanco A PROPÓSITO, no por pereza: son justamente los que el
+ * navegador no va a imprimir, así que declararlos blancos es describir lo que va a pasar. Su par de
+ * texto se oscurece hasta llegar a AA contra el blanco de la hoja, que es el contraste real.
+ *
+ * `:root.oscuro` (0,2,0) le gana a `.oscuro` (0,1,0) por especificidad, y `:root` de acá le gana al
+ * `:root` de arriba por orden. `core/contraste.test.ts` lo trata como un TERCER tema y le exige los
+ * mismos 17 tokens y el mismo AA: sin eso, esta copia se desincronizaría en silencio, que es
+ * exactamente lo que le pasa a las copias que nadie ata.
+ */
+@media print {
+  :root,
+  :root.oscuro {
+    color-scheme: light;
+
+    --fondo: #ffffff;
+    --superficie: #ffffff;
+    --superficie-2: #ffffff;
+    --texto: #000000;
+    --texto-medio: #1f2937;
+    --texto-tenue: #4b5563;
+    --texto-invertido: #ffffff;
+    --borde: #9ca3af;
+    --borde-fuerte: #4b5563;
+    --accion: #000000;
+    --respaldo: #14532d;
+    --respaldo-suave: #ffffff;
+    --alerta: #713f12;
+    --alerta-suave: #ffffff;
+    --error: #7f1d1d;
+    --error-suave: #ffffff;
+    --velo: #ffffff;
+  }
+}

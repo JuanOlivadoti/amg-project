@@ -168,6 +168,65 @@ test('🔴 un 401 al bajar el .md también refresca y reintenta: la descarga usa
   assert.ok(archivo.blob.size > 0, 'el reintento trajo el cuerpo, no un blob vacío');
 });
 
+// ------------------------------------------- el entregable del restaurante (2026-08-07)
+
+test('verEntregableMd pide GET /runs/:id/entregable.md autenticado y devuelve el TEXTO', async () => {
+  const { fn, capturado } = fakeFetch({
+    body: '# Keyword Research — La Birra Bar\n',
+    crudo: true,
+    headers: { 'content-disposition': 'attachment; filename="entregable-La-Birra-Bar.md"' },
+  });
+  const md = await crearApi(opts(fn)).verEntregableMd('run 9/../otro');
+  assert.equal(capturado.method, 'GET');
+  // El id se escapa: es un segmento de ruta, y viene de la URL del navegador.
+  assert.equal(capturado.url, 'http://api.test/runs/run%209%2F..%2Fotro/entregable.md');
+  assert.equal(capturado.headers!['authorization'], 'Bearer tok-123');
+  assert.ok(!capturado.url!.includes('tok-123'), 'el token NO puede viajar en la URL');
+  // Texto, no Blob: el destino es la pantalla imprimible, que lo parsea a bloques.
+  assert.equal(md, '# Keyword Research — La Birra Bar\n');
+});
+
+test('🔴 el 404 del entregable se propaga con su status: no-staff y run inexistente son lo MISMO', async () => {
+  /*
+   * El endpoint responde 404 en tres casos —run inexistente, run de otro tenant, y quien pregunta no es
+   * staff— y con la misma forma, porque `app.es_staff()` va en el PREDICADO de la consulta y devuelve
+   * cero filas (`db/src/store.ts`, `getDatosEntregable`). Este test fija que el cliente no inventa una
+   * cuarta respuesta: si algún día devolviera `''` en vez de lanzar, la pantalla imprimible pintaría un
+   * documento vacío en vez de decir qué pasó.
+   */
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Run no encontrado.' } });
+  await assert.rejects(
+    () => crearApi(opts(fn)).verEntregableMd('inexistente'),
+    (e: ApiError) => {
+      assert.equal(e.status, 404);
+      assert.equal(e.message, 'Run no encontrado.');
+      return true;
+    },
+  );
+});
+
+test('🔴 un 401 al pedir el entregable también refresca y reintenta', async () => {
+  // Misma política que todo lo demás. Sin esto, la pantalla imprimible sería la única del portal que
+  // le muestra al usuario un error de la nada cuando el token vence mientras la mira.
+  const { fn, llamadas } = fakeSecuencia([{ status: 401 }, { status: 200, body: '# ok' }]);
+  let refrescos = 0;
+  const api = crearApi({
+    baseUrl: 'http://api.test',
+    getToken: () => 'tok',
+    getTenant: () => 't',
+    fetchFn: fn,
+    refrescar: async () => {
+      refrescos++;
+      return true;
+    },
+  });
+  // `includes` y no `equal`: `fakeSecuencia` serializa el body a JSON, así que el cuerpo llega con
+  // comillas alrededor. Lo que importa acá es que sea el cuerpo del REINTENTO y no una cadena vacía.
+  assert.ok((await api.verEntregableMd('run-9')).includes('# ok'), 'el reintento trajo el cuerpo');
+  assert.equal(refrescos, 1, 'refrescó una vez');
+  assert.equal(llamadas(), 2, 'reintentó el request');
+});
+
 test('nombreDeDescarga: usa el filename del header cuando viene', () => {
   assert.equal(
     nombreDeDescarga('attachment; filename="informe-Bella-Napoli.md"', 'informe-run-9.md'),

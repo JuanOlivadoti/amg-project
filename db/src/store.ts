@@ -189,7 +189,19 @@ export interface RunSummary {
   market_country: string;
   market_language: string;
   market_location_code: number;
-  coste_micros_usd: number;
+  /**
+   * Lo que la agencia le pagó a los proveedores por este run, en micros de USD — **su margen**.
+   *
+   * `null` = quien pregunta NO es staff. No es "el run salió gratis" ni "todavía no se sabe": es la
+   * ausencia del dato, y por eso el tipo la nombra en vez de mandar un 0 que un consumidor sumaría.
+   * Quien lo pinta tiene que NO pintar nada cuando es `null`; `$0.00` sería afirmar que el research
+   * fue gratis.
+   *
+   * La decisión la toma Postgres dentro del `select` (`app.es_staff()`, ver `RUN_SUMMARY_COLS`), no un
+   * `if` de la API: el rol se DERIVA de `memberships` (ADR-15). El rol `cliente` VE sus runs
+   * —`run_select` usa `app.ve_cliente(client_id)`— así que la fila le llega entera salvo esta columna.
+   */
+  coste_micros_usd: number | null;
   calidad_datos: Record<string, unknown>;
   /** Config del run (topes de gasto y de páginas). Es de donde el orquestador los lee: del evento
    *  NO puede leerlos, porque el evento no porta autoridad. */
@@ -231,6 +243,47 @@ export interface InformeRow {
 }
 
 /**
+ * Los datos crudos con los que se arma el **entregable del restaurante** (el informe SIN el bloque de
+ * coste). Lo lee la API, que los convierte en un `KeywordResearchBrief` y lo pasa por `renderReport`.
+ *
+ * ## Por qué esto no es un `RunSummary` y por qué no se guarda
+ *
+ * El informe interno (`kr_informes`) se congela al terminar el run, y para él está bien: describe lo que
+ * el research produjo. El entregable tiene que reflejar **lo que pasó la compuerta** — las páginas que un
+ * humano aprobó, con las ediciones que les hizo. Congelarlo mandaría al restaurante el brief original en
+ * vez de lo aprobado. Por eso se genera al vuelo y no hay tabla ni migración nueva.
+ *
+ * ## Lo que NO viene acá
+ *
+ * `prompt` y `config` no viajan: el prompt es cómo la agencia le pidió el research al sistema, y el
+ * documento del restaurante no lo lleva. Que no estén en el tipo es más barato que acordarse de no
+ * imprimirlos.
+ *
+ * `coste_micros_usd` y `coste_breakdown` SÍ vienen, y esa es una decisión con motivo — ver
+ * `getDatosEntregable`.
+ */
+export interface DatosEntregable {
+  run_id: string;
+  schema_version: string;
+  status: RunStatus;
+  /** El NOMBRE del cliente (no su uuid): es el encabezado del documento que lee el restaurante. */
+  cliente: string;
+  market_country: string;
+  market_language: string;
+  market_location_code: number;
+  /** ISO 8601 en UTC, garantizado por `getDatosEntregable` (el driver entrega `Date`). */
+  generated_at: string;
+  /** `kr_runs.calidad_datos` tal cual. Es jsonb: puede ser `{}`, y la API lo normaliza. */
+  calidad_datos: Record<string, unknown>;
+  /** Micros de USD. Llega porque quien pregunta ya demostró ser staff; NO se imprime. */
+  coste_micros_usd: number;
+  coste_breakdown: Record<string, unknown>;
+  keywords_analizadas: number;
+  /** Las páginas APROBADAS y no retiradas, en el orden del brief. */
+  paginas: PageRow[];
+}
+
+/**
  * El orden en que se ven las páginas de un run. **Una sola definición** para las dos lecturas: si el
  * brief y lo que se publica se ordenaran distinto, el revisor aprobaría una lista y se publicaría otra.
  *
@@ -249,10 +302,33 @@ export interface InformeRow {
  */
 const ORDEN_DEL_BRIEF = `order by p.orden_brief asc nulls last, p.opportunity_score desc, p.url_slug asc`;
 
-/** Las columnas de `RunSummary`. Una sola definición: el select no puede quedar desalineado. */
+/**
+ * Las columnas de `RunSummary`. Una sola definición: el select no puede quedar desalineado.
+ *
+ * ## El `case when` del coste NO es cosmético: es dónde vive el margen de la agencia
+ *
+ * `coste_micros_usd` es lo que la agencia le paga a DataForSEO y al LLM. La política `run_select`
+ * (`0001_init.sql`) usa `app.ve_cliente(client_id)`, así que el rol `cliente` —el dueño del
+ * restaurante— **ve la fila de su propio run**, y con ella veía esta columna. No era fuga activa (no
+ * hay usuarios con ese rol todavía) pero el rol existe, RLS lo contempla y la demo está en producción.
+ *
+ * Se cierra donde se cierran las cosas en este proyecto: **en Postgres**. `app.es_staff()` deriva el rol
+ * de `memberships` (ADR-15); un `if (rol === 'cliente')` en la API sería la misma decisión tomada donde
+ * nadie la audita, y habría que acordarse de repetirla en el próximo endpoint que lea runs.
+ *
+ * **Medido** (PostgreSQL 16.4 en `db/`, 18.3 en `api/` — los dos majors, porque uno no se puede
+ * extrapolar del otro): `app.es_staff()` es evaluable en la lista del `select` con el rol `app_user` y
+ * devuelve `true` para staff, `false` para `cliente` y **`null`** para quien no tiene membresía. Los
+ * tres fallan cerrado: sin `else`, el `case` da NULL para todo lo que no sea TRUE.
+ *
+ * RLS es por FILA, no por columna, y esto no la contradice: la fila sigue llegando (tiene que llegar,
+ * es su run) y lo que se recorta es una celda. El caso en que la columna entera es el secreto —el
+ * informe con su desglose— sí se llevó una tabla propia con su política (`kr_informes`, 0016).
+ */
 const RUN_SUMMARY_COLS = `id, client_id, status, prompt, schema_version,
        market_country, market_language, market_location_code,
-       coste_micros_usd::int as coste_micros_usd, calidad_datos, config, created_at, finished_at`;
+       case when app.es_staff() then coste_micros_usd::int end as coste_micros_usd,
+       calidad_datos, config, created_at, finished_at`;
 
 export class PgStore {
   /**
@@ -917,6 +993,89 @@ export class PgStore {
          * descartado el driver antes de llegar hasta acá.
          */
         generado_at: new Date(fila.generado_at).toISOString(),
+      };
+    });
+  }
+
+  /**
+   * Los datos del **entregable del restaurante**, o `null` si quien pregunta no puede producirlo.
+   *
+   * ## El `and app.es_staff()` del `where` ES el control de acceso, y por eso vive ahí
+   *
+   * El entregable lo envía la agencia: decide cuándo el research está listo para mostrarse (decisión del
+   * dueño del proyecto, 2026-08-07). Para el rol `cliente` esta consulta devuelve **cero filas**, no un
+   * error — así el endpoint responde 404 sin poder distinguirlo de un run inexistente, y de paso no
+   * filtra que el run existe. Un `if (rol === 'cliente')` en la API daría el mismo 404 y sería una
+   * segunda fuente de verdad que alguien tiene que acordarse de repetir; acá la decisión la toma el
+   * mismo mecanismo que ya gobierna todo lo demás (ADR-15).
+   *
+   * **La consulta de las páginas NO lleva el mismo guard, a propósito.** Solo corre si la de arriba
+   * devolvió fila, así que sería una condición que ninguna mutación puede tumbar — ceremonia con filo. Y
+   * las páginas no son el secreto: `getRunPages` ya se las muestra al `cliente`, que tiene derecho a ver
+   * el brief de su propio negocio. Lo que es de la agencia es el DOCUMENTO.
+   *
+   * ## Qué páginas entran: `approved and not retirada`
+   *
+   * Las que pasaron la compuerta de página (ADR-06). **No** se exige además `run.status = 'approved'`:
+   * esa es la condición para PUBLICAR (`getPublishablePages`), y publicar es otra acción. Quien lee esto
+   * ya es staff, y tiene que poder ver el entregable antes de cerrar el run — es justo el control
+   * editorial que la decisión de arriba le da.
+   *
+   * ## Por qué el coste viaja hasta acá si el documento no lo lleva
+   *
+   * Porque quien excluye el coste es `renderReport(brief, { incluirCoste: false })`, en `contrato`, donde
+   * está probado por mutación — **una garantía, un lugar**. Si en cambio esta consulta no leyera el
+   * coste, la API tendría que inventar un `0` para satisfacer el tipo del brief, y el día que alguien
+   * invirtiera esa opción el documento imprimiría **«$0.00»**: afirmarle al restaurante que el research
+   * fue gratis, en silencio y sin que ningún test lo viera. Con el número real, esa misma equivocación
+   * imprime el coste de verdad y **cae el test** que exige que no aparezca.
+   */
+  async getDatosEntregable(ctx: TenantContext, runId: string): Promise<DatosEntregable | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<Omit<DatosEntregable, "paginas" | "generated_at"> & {
+        generated_at: Date | string;
+      }>(
+        `select r.id as run_id, r.schema_version, r.status,
+                c.nombre as cliente,
+                r.market_country, r.market_language, r.market_location_code,
+                r.created_at as generated_at,
+                r.calidad_datos,
+                -- bigint: sin el cast el driver lo entrega como STRING y una resta empieza a concatenar.
+                r.coste_micros_usd::int as coste_micros_usd,
+                r.coste_breakdown,
+                -- count(*) es bigint por la misma razón. El número sale del DATO y no del brief: es lo
+                -- que de verdad quedó guardado del research que se pagó.
+                (select count(*)::int from kr_keywords k where k.run_id = r.id) as keywords_analizadas
+           from kr_runs r
+           join clients c on c.id = r.client_id
+          where r.id = $1
+            and app.es_staff()`,
+        [runId],
+      );
+      const run = rows[0];
+      if (!run) return null;
+
+      const { rows: paginas } = await tx.query<PageRow>(
+        `select p.cluster_id, p.tipo, p.page_strategy, p.url_slug, p.keyword_principal,
+                p.keywords_secundarias, p.intencion, p.local, p.volumen, p.dificultad, p.evidencia,
+                -- numeric: sin el cast llegan como string, y una comparacion empieza a ordenar texto.
+                p.opportunity_score::float8 as opportunity_score,
+                p.score_confidence::float8 as score_confidence,
+                p.seo, p.content_brief, p.preguntas_frecuentes
+           from kr_pages p
+          where p.run_id = $1
+            and p.approved
+            and not p.retirada
+          ${ORDEN_DEL_BRIEF}`,
+        [runId],
+      );
+
+      return {
+        ...run,
+        // El driver entrega los `timestamptz` como `Date`. La conversión va en el borde del store, igual
+        // que en `getInforme`: si viviera en la API, el próximo consumidor heredaría la trampa entera.
+        generated_at: new Date(run.generated_at).toISOString(),
+        paginas,
       };
     });
   }

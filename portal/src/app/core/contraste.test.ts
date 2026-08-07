@@ -6,10 +6,31 @@ import { fileURLToPath } from 'node:url';
 import { AA_TEXTO_NORMAL, PARES, TOKENS, luminancia, parsearTokens, ratio } from './contraste';
 
 const css = readFileSync(new URL('../../styles.css', import.meta.url), 'utf8');
+/*
+ * TRES temas, no dos. El tercero es el PAPEL (`@media print`), y existe porque el navegador no
+ * imprime los fondos: con el tema oscuro puesto, la hoja sale blanca y el texto conserva su color de
+ * pantalla — medido en Chrome 151 el 2026-08-07, `--texto` (#f3f4f6) sobre papel daba **1.10:1**.
+ *
+ * Se ancla en `:root.oscuro` porque es el único selector que aparece una sola vez en el archivo: el
+ * bloque de impresión los declara como lista (`:root, :root.oscuro`), así que pedir `:root` o
+ * `.oscuro` sigue devolviendo los bloques de pantalla —que es lo que las dos primeras filas quieren—
+ * y esta tercera no puede robárselos por accidente.
+ */
 const TEMAS = [
   ['claro', parsearTokens(css, ':root')],
   ['oscuro', parsearTokens(css, '.oscuro')],
+  ['impreso', parsearTokens(css, ':root.oscuro')],
 ] as const;
+
+test('🔴 los tres temas son TRES bloques distintos, no el mismo leído tres veces', () => {
+  // El fallo silencioso que `parsearTokens` ya sufrió una vez: si dos anclas resolvieran al mismo
+  // bloque, las aserciones de AA compararían un tema contra sí mismo y pasarían siempre. Se afirma
+  // sobre un token que vale distinto en los tres, y no sobre la identidad de los objetos.
+  const [claro, oscuro, impreso] = TEMAS.map(([, t]) => t['texto']);
+  assert.equal(claro, '#111827');
+  assert.equal(oscuro, '#f3f4f6');
+  assert.equal(impreso, '#000000');
+});
 
 test('luminancia y ratio: los extremos conocidos de WCAG', () => {
   assert.equal(luminancia('#ffffff'), 1);
@@ -45,9 +66,11 @@ test('🔴 @theme inline expone exactamente los mismos tokens', () => {
   }
 });
 
-test('🔴 los dos temas definen exactamente los mismos tokens', () => {
+test('🔴 los tres temas definen exactamente los mismos tokens', () => {
   // Un token que falte en `.oscuro` NO da error: hereda el valor claro de `:root` y se ve mal en
-  // silencio. Por eso se afirma la igualdad de los dos juegos de nombres, no solo su presencia.
+  // silencio. Por eso se afirma la igualdad de los juegos de nombres, no solo su presencia. Vale igual
+  // para el bloque de `@media print`, que es una TERCERA copia de la tabla y por lo tanto una tercera
+  // oportunidad de que alguien agregue un token y se olvide de uno de los tres lugares.
   for (const [nombre, tokens] of TEMAS) {
     assert.deepEqual(
       Object.keys(tokens).sort(),
@@ -57,7 +80,7 @@ test('🔴 los dos temas definen exactamente los mismos tokens', () => {
   }
 });
 
-test('🔴 los 17 pares de la UI llegan a AA en los dos temas', () => {
+test('🔴 los 17 pares de la UI llegan a AA en los tres temas', () => {
   for (const [nombre, tokens] of TEMAS) {
     for (const [frente, fondo] of PARES) {
       const a = tokens[frente];

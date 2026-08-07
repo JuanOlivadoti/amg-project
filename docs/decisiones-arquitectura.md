@@ -160,6 +160,33 @@
 >
 > Detalle y motivos en la [spec de KR-2 § 2.1](superpowers/specs/2026-08-04-informe-kr-portal-design.md).
 
+> ### ✅ Cumplido el 2026-08-07 — el entregable existe, y el PDF sale por una vía que este ADR no había previsto
+>
+> **Qué se hizo.** El entregable del restaurante es este mismo informe **sin el bloque de coste**, y ya
+> se sirve: `GET /runs/:id/entregable.md` (solo staff) con una vista imprimible en el portal. Con eso
+> el doble entregable de ADR-07 queda completo: JSON para el M1, informe legible para el humano, y el
+> documento que **sale** hacia el cliente.
+>
+> **Cómo se genera el PDF, que es lo que hay que registrar.** ADR-07 decía "Markdown→PDF" dando por
+> supuesto que alguien lo *produciría*. No lo produce nadie: lo produce **el navegador**, desde una
+> vista con `@media print` (Ctrl+P → Guardar como PDF). Decisión del dueño del proyecto, y el motivo es
+> el mismo que la spec de KR-2 §2.1 ya había anotado — una librería de PDF o headless Chrome sería la
+> primera dependencia de su clase en el repo, para la única superficie que la necesitaría, contra el
+> invariante de `tsx` sin paso de build. El PDF que sale es real: texto seleccionable y enlaces vivos.
+>
+> **Lo que esa vía trajo, y que un PDF de servidor no habría tenido.** Como la hoja la pinta el
+> navegador, el CSS de pantalla llega al papel: medido en Chrome 151, el texto del tema oscuro daba
+> **1.10:1** contra papel blanco (AA pide 4.5:1), porque el navegador no imprime fondos. El arreglo es
+> un `@media print` que redefine los 17 tokens para papel, atado por el test de contraste como un
+> **tercer tema**. Si algún día el PDF pasa a generarse en el servidor, ese bloque deja de ser el que
+> manda — y conviene saberlo antes, no descubrirlo con un entregable ilegible.
+>
+> **Y el coste no se oculta: no se genera.** `renderReport(brief, { incluirCoste })` toma la decisión
+> con un parámetro **obligatorio y sin default**, porque las dos respuestas son correctas para
+> documentos distintos. Taparlo en la vista habría mandado el margen al navegador igual.
+>
+> Detalle en la [spec del entregable](superpowers/specs/2026-08-07-entregable-restaurante-design.md).
+
 ## ADR-08 — Mercado del Módulo 2: ES-first, diseño market-aware
 **Contexto.** Se evaluó multi-idioma/internacional; se decidió acotar el arranque.
 **Decisión.** Arrancar **solo con España (es-ES), un mercado por corrida**, con el mercado **parametrizado** (`country`/`language_code`/`location_code`), no hardcodeado.

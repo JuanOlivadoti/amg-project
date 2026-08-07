@@ -17,33 +17,46 @@ import type { VerificadorToken } from "./auth.js";
  * abajo describe la clase de ataque, no lo que este stack hace con él.
  */
 test("🔴 un nombre con CRLF no puede partir la respuesta HTTP", () => {
-  const n = nombreArchivo("Bar\r\nX-Inyectado: si");
+  const n = nombreArchivo("Bar\r\nX-Inyectado: si", "informe");
   assert.doesNotMatch(n, /[\r\n]/, "ni un solo carácter de control sobrevive");
   assert.equal(n, "informe-Bar-X-Inyectado-si.md");
 });
 
 test("🔴 una comilla doble no puede cerrar el header", () => {
-  assert.doesNotMatch(nombreArchivo('Bar "El Bueno"'), /"/);
+  assert.doesNotMatch(nombreArchivo('Bar "El Bueno"', "informe"), /"/);
 });
 
 test("los acentos, la Ñ y los emoji se reemplazan, no se cuelan", () => {
-  const n = nombreArchivo("Señor Ñandú 🍕");
+  const n = nombreArchivo("Señor Ñandú 🍕", "informe");
   assert.match(n, /^informe-[A-Za-z0-9._-]+\.md$/, "solo caracteres de la allowlist");
   assert.doesNotMatch(n, /[ÑñúÚ🍕]/);
 });
 
 test("🔴 si tras sanear no queda nada, cae al fallback `informe.md`", () => {
   // El caso que se olvida. Un nombre entero fuera de la allowlist dejaría `informe-.md`, o peor, `informe-`.
-  assert.equal(nombreArchivo("🍕🍕🍕"), "informe.md");
-  assert.equal(nombreArchivo("---"), "informe.md");
-  assert.equal(nombreArchivo(""), "informe.md");
-  assert.equal(nombreArchivo(null), "informe.md");
-  assert.equal(nombreArchivo(undefined), "informe.md");
+  assert.equal(nombreArchivo("🍕🍕🍕", "informe"), "informe.md");
+  assert.equal(nombreArchivo("---", "informe"), "informe.md");
+  assert.equal(nombreArchivo("", "informe"), "informe.md");
+  assert.equal(nombreArchivo(null, "informe"), "informe.md");
+  assert.equal(nombreArchivo(undefined, "informe"), "informe.md");
+});
+
+test("🔴 el prefijo distingue los dos documentos, y la función NO lo elige", () => {
+  /*
+   * `informe` lleva el coste (el margen de la agencia) y `entregable` no. Que el prefijo sea un parámetro
+   * OBLIGATORIO y de tipo cerrado es lo que impide dos cosas: que un endpoint nuevo herede el nombre del
+   * otro documento por olvido, y que el prefijo se vuelva una segunda vía de inyección en el header —
+   * entra crudo, sin pasar por la allowlist que sanea el nombre del cliente.
+   */
+  assert.equal(nombreArchivo("Bella Napoli", "informe"), "informe-Bella-Napoli.md");
+  assert.equal(nombreArchivo("Bella Napoli", "entregable"), "entregable-Bella-Napoli.md");
+  // Y el fallback también es del documento: `entregable.md`, no `informe.md`.
+  assert.equal(nombreArchivo("🍕🍕🍕", "entregable"), "entregable.md");
 });
 
 test("los guiones consecutivos se colapsan y el largo se acota a 60", () => {
-  assert.equal(nombreArchivo("A   B"), "informe-A-B.md");
-  const largo = nombreArchivo("a".repeat(200));
+  assert.equal(nombreArchivo("A   B", "informe"), "informe-A-B.md");
+  const largo = nombreArchivo("a".repeat(200), "informe");
   assert.equal(largo.length, "informe-".length + 60 + ".md".length);
 });
 

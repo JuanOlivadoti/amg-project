@@ -3,8 +3,8 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-07** · **1118 tests en verde** — **833** en el monorepo + **285** en
-> el portal (207 `node:test` + 78 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
+> Última actualización: **2026-08-07** · **1181 tests en verde** — **863** en el monorepo + **318** en
+> el portal (224 `node:test` + 94 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
 > siguientes fueron del agujero de la compuerta de secretos (2026-08-03), **once** de KR-3 —el orden del
 > brief persistido, migración `0015`— al estrenar el agente `datos`
 > ([plan de agentes](../../.claude/PLAN-AGENTES.md), etapa B, cerrada el 2026-08-04) y los **tres**
@@ -114,7 +114,7 @@
 > ver la fila propia por completo, y esta pieza le agregó a esa fila columnas que son notas internas
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
-> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **1118 tests** (833 monorepo + 285
+> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **1181 tests** (863 monorepo + 318
 > portal), **14 migraciones**, todas aplicadas en producción el 2026-08-07 (la `0012`, la `0015` y la `0016` ese día; la `0011` ya estaba).
 
 ---
@@ -146,6 +146,35 @@ por la que se eligió Storyblok* por fin se cobra ([ADR-19](../decisiones-arquit
 OBS-03). Y desde el **2026-08-01 está desplegado**: la web del cliente se sirve desde internet, no
 desde `localhost`. **Lo que sigue faltando es el orquestador**, que es la única pieza que todavía
 corre solo en local. *(La API y el portal están desplegados desde la etapa 5.3, Fase 1.)*
+
+### El entregable del restaurante y el margen del rol `cliente` (2026-08-07)
+
+Dos deudas con nombre del `09`, cerradas **juntas** porque eran la misma pregunta desde dos lados: *qué
+ve alguien que no es la agencia*. Por separado corrían el riesgo clásico —la pantalla dejando de pintar
+el coste mientras la API lo seguía devolviendo—, que no es una frontera sino un adorno.
+
+- **El entregable existe**: `GET /runs/:id/entregable.md`, solo staff, es el informe **sin el bloque de
+  coste**. Se genera **al vuelo** desde lo aprobado, no se guarda: congelarlo habría hecho que el
+  restaurante recibiera el brief original en vez de lo que pasó la compuerta.
+- **El margen ya no le llega al rol `cliente`**, y lo decide **Postgres**: `case when app.es_staff()`
+  dentro de `RUN_SUMMARY_COLS`, la única definición que comparten `getRun`, `listRuns` y `listAllRuns`.
+  Ningún `if` de rol en TypeScript (ADR-15).
+- **Cierra el PDF de ADR-07**, por la vía del navegador (`@media print` + Ctrl+P) y **sin dependencias
+  nuevas** — decisión del dueño del proyecto, ver la nota fechada en el ADR.
+
+Tres cosas que valen más que el resultado, y que salieron de mirar y no de razonar:
+
+1. **El coste no se oculta: no se genera.** `renderReport(brief, { incluirCoste })` tiene el parámetro
+   **obligatorio y sin default**, porque las dos respuestas son correctas para documentos distintos.
+   Taparlo en la vista lo habría mandado al navegador igual.
+2. **La hoja salía ilegible y nadie lo había pedido.** Medido en Chrome 151: el navegador no imprime
+   fondos, así que el texto del tema oscuro daba **1.10:1** sobre papel blanco (AA pide 4.5:1). Como el
+   PDF *es* el entregable, el `@media print` con sus 17 tokens es parte de la pieza, no un retoque.
+3. **Dos documentos de la agencia se contradecían**: el entregable decía "0 keywords analizadas" donde
+   el informe interno del mismo run decía **55**, porque hay dos fuentes del número y ninguna cubre
+   todos los runs. Solo se ve generando el documento y leyéndolo.
+
+Detalle en [la spec](../superpowers/specs/2026-08-07-entregable-restaurante-design.md).
 
 ### El tramo A del despliegue del orquestador (2026-08-07)
 
@@ -209,7 +238,7 @@ direcciones. Se expone en `/_health` para poder auditarla sin entrar al panel de
 ```
 
 - **7 paquetes** en workspaces npm: `contrato` (el contrato del brief, compartido), `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **833 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **863 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.

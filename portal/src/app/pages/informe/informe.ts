@@ -7,7 +7,7 @@ import type { Informe } from '../../core/models';
 import { type Bloque, parsearMarkdown } from '../../core/markdown';
 import { avisoCongelado, fechaDelResearch } from '../../core/informe-vista';
 import { Vigencia } from '../../core/vigencia';
-import { InformeInlineComponent } from './informe-inline';
+import { InformeInlineComponent } from '../../shared/components/informe-inline';
 
 /**
  * El informe de keyword research, en pantalla.
@@ -151,17 +151,24 @@ import { InformeInlineComponent } from './informe-inline';
             esperando un informe que no le va a aparecer nunca.
           -->
           <!--
-            Dice «el DESGLOSE por proveedor» y no «el coste», y la diferencia es medible: la pantalla del
-            brief le muestra el coste TOTAL a cualquier rol que vea el run (brief.ts, sin compuerta), así
-            que decir que el informe se reserva por llevar «el coste» sería falso — el total ya se vio en
-            la pantalla anterior. Lo que de verdad no le llega es coste_breakdown: RUN_SUMMARY_COLS
-            (db/src/store.ts) no lo selecciona, así que no viaja en ningún endpoint de runs, y dentro del
-            informe sí está. Si el total debería o no ser visible es otra pieza, y no ésta.
+            Desde el 2026-08-07 el rol cliente no ve NINGUNA de las dos mitades del coste, así que la
+            razón que da este texto es la entera y no una parte:
+              · el TOTAL lo recorta Postgres — RUN_SUMMARY_COLS trae un
+                "case when app.es_staff() then coste_micros_usd::int end" (db/src/store.ts), SIN else, así
+                que llega null por getRun, listRuns y listAllRuns, y brief.ts ya no pinta la línea;
+              · el DESGLOSE nunca viajó: coste_breakdown no está en RUN_SUMMARY_COLS.
+
+            La versión anterior de este comentario decía lo contrario —«la pantalla del brief le muestra
+            el coste TOTAL a cualquier rol que vea el run (…) si el total debería o no ser visible es otra
+            pieza, y no ésta»—. Era cierto cuando se escribió; esa «otra pieza» se hizo y lo dejó falso.
+            Se deja anotado porque el modo de fallo importa más que la corrección: un comentario que
+            razona sobre una frontera de seguridad envejece en silencio, y el que lo lea después va a
+            confiar en él.
           -->
           <p class="text-sm text-texto-medio">
             El informe se genera solo, cuando el research termina y queda esperando aprobación. Si este
-            research ya terminó, entonces el informe no está disponible para tu rol: lleva el desglose por
-            proveedor de lo que la agencia paga por los datos, y eso lo ve el equipo.
+            research ya terminó, entonces el informe no está disponible para tu rol: lleva lo que la
+            agencia paga por los datos —el total y el desglose por proveedor—, y eso lo ve el equipo.
           </p>
           <p class="text-sm text-texto-tenue">
             El brief —las páginas propuestas, con su evidencia— sí está disponible en la pantalla

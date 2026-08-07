@@ -1,4 +1,16 @@
 /**
+ * Cuál de los dos documentos se está bajando. **Es un tipo cerrado, no un `string`, a propósito:** este
+ * valor entra CRUDO en el `filename` del header (no pasa por la allowlist de abajo, que solo sanea el
+ * nombre del cliente), así que si fuera un `string` libre sería una segunda superficie de inyección de
+ * header — la primera es justo la que esta función existe para cerrar. Con la unión, `tsc` no deja
+ * escribir ahí nada que no sea una de estas dos palabras.
+ *
+ * Y **no tiene default**, por el mismo motivo que `renderReport(brief, { incluirCoste })` no lo tiene:
+ * son dos documentos distintos y ninguno es "el normal". Quien llama declara cuál está produciendo.
+ */
+export type Documento = "informe" | "entregable";
+
+/**
  * El `filename` del `Content-Disposition` de la descarga del informe.
  *
  * ALLOWLIST, no denylist: el valor sale del nombre del cliente, que lo escribe un humano en el CRM, y
@@ -24,7 +36,7 @@
 const PERMITIDOS = /[^A-Za-z0-9._-]/g;
 const LARGO_MAXIMO = 60;
 
-export function nombreArchivo(nombreCliente: string | null | undefined): string {
+export function nombreArchivo(nombreCliente: string | null | undefined, documento: Documento): string {
   const base = (nombreCliente ?? "")
     .replace(PERMITIDOS, "-") // todo lo que no está en la allowlist, incluidos control y multibyte
     .replace(/-{2,}/g, "-") // "Bar   El Bueno" no se convierte en un tren de guiones
@@ -34,5 +46,5 @@ export function nombreArchivo(nombreCliente: string | null | undefined): string 
 
   // Si tras sanear no queda ningún carácter de la allowlist, NO se devuelve "informe-.md": el nombre del
   // cliente puede ser entero no-ASCII, y ese es el caso que se olvida.
-  return base ? `informe-${base}.md` : "informe.md";
+  return base ? `${documento}-${base}.md` : `${documento}.md`;
 }

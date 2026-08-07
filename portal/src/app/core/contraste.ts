@@ -6,7 +6,12 @@
  * esto, la legibilidad la impone un test, y retocar un color por gusto falla ruidosamente.
  */
 
-/** Los 16 nombres de rol. Si se agrega uno, va acá y a los dos bloques de `styles.css`. */
+/**
+ * Los 17 nombres de rol. Si se agrega uno, va acá y a **los tres** bloques de `styles.css`: claro,
+ * oscuro y **papel** (`@media print`, desde el 2026-08-07). El de papel no es decorativo — el navegador
+ * no imprime fondos, así que sin él el texto del tema oscuro sale a **1.10:1** sobre hoja blanca, y el
+ * PDF *es* el entregable del restaurante.
+ */
 export const TOKENS: readonly string[] = [
   'fondo',
   'superficie',

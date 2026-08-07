@@ -26,6 +26,7 @@ export class ApiService {
   readonly verBrief = this.cliente.verBrief;
   readonly verInforme = this.cliente.verInforme;
   readonly descargarInformeMd = this.cliente.descargarInformeMd;
+  readonly verEntregableMd = this.cliente.verEntregableMd;
   readonly aprobarPagina = this.cliente.aprobarPagina;
   readonly editarPagina = this.cliente.editarPagina;
   readonly aprobarRun = this.cliente.aprobarRun;

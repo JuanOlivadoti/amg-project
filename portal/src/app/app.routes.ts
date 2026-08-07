@@ -7,6 +7,25 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/login/login').then((m) => m.LoginPage),
   },
   {
+    /*
+     * El entregable del restaurante cuelga de la RAÍZ, no del shell, y el orden acá **sí** es
+     * load-bearing (a diferencia del de `runs/:id/informe` dentro del shell): tiene que ir ANTES de la
+     * ruta `''`, que es la que intenta emparejar todo lo demás.
+     *
+     * Fuera del shell porque es una HOJA, no una pantalla: sin sidebar, sin header y sin el `lg:pl-64`
+     * del contenedor. La spec pedía eso «con `@media print`»; sacarlo del shell lo hace verdad de
+     * estructura en vez de verdad de CSS, y elimina los bugs de impresión que vienen de un sidebar
+     * `fixed` y un margen que la hoja hereda. Ver la cabecera de `EntregablePage`.
+     *
+     * Lleva `authGuard` propio: al salir del shell, deja de heredar el suyo. Sin esta línea la hoja
+     * sería alcanzable sin sesión (la API igual respondería 401, pero la pantalla sería una promesa
+     * rota en vez de un redirect al login).
+     */
+    path: 'runs/:id/entregable',
+    canActivate: [authGuard],
+    loadComponent: () => import('./pages/entregable/entregable').then((m) => m.EntregablePage),
+  },
+  {
     path: '',
     canActivate: [authGuard],
     loadComponent: () => import('./shared/layout/app-shell').then((m) => m.AppShellComponent),

@@ -7,19 +7,28 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-07
-**En curso:** nada. Cerrado el **tramo A del despliegue del orquestador**: el código quedó listo para que
-desplegar sea ejecutar un runbook. Lo hicieron dos agentes en paralelo (`datos` en `api/`, `pipeline` en
-`orchestrator/`), con una revisión interna que devolvió **3 bloqueantes** y su segunda vuelta. El relato
-está en [`history.md`](history.md).
-**Estado:** verificado en verde — **833 tests** del monorepo (venía de 786) + **285** del portal (207
-`node:test` + 78 Karma) = **1118**, typecheck limpio en los 7 paquetes, sin secretos entre los 436 archivos
-versionados. `npm run verificar` exit 0, medido tras la segunda vuelta.
+**En curso:** nada. **Dos piezas cerradas** en el día: el **tramo A del despliegue del orquestador** (el
+código quedó listo para que desplegar sea ejecutar un runbook) y **el entregable del restaurante + el
+margen del rol `cliente`**, hechos juntos porque eran la misma frontera desde dos lados. Cada una con sus
+agentes de área y su revisión interna —las dos devolvieron **3 bloqueantes**— y su segunda vuelta. El
+relato está en [`history.md`](history.md).
+**Estado:** verificado en verde — **863 tests** del monorepo (venía de 786) + **318** del portal (224
+`node:test` + 94 Karma) = **1181**, typecheck limpio en los 7 paquetes, sin secretos entre los 436 archivos
+versionados. `verificar --con-portal` exit 0 y Karma aparte, medidos al cerrar.
 
-**No hubo sesión de navegador, y es `n/a` justificado:** no se tocó `portal/` ni `renderer/`. El
-equivalente para un servicio sin UI —**arrancar el proceso de verdad**— sí se hizo, en cinco escenarios:
-Railway simulado con y sin variables, dev sin credenciales, cloud con la base inalcanzable, y una petición
-**firmada** contra `/api/inngest`. El último destapó el bloqueante de la clave de firma, que ningún test
-de la suite veía.
+**Sesión de navegador: sí, y encontró lo que ningún test veía.** El entregable se maneja en el portal y su
+**PDF sale del navegador**, así que la hoja impresa *es* el producto: medido en Chrome 151, el texto del
+tema oscuro daba **1.10:1** sobre papel blanco (AA pide 4.5:1), porque el navegador no imprime fondos.
+
+> ⚠️ **Lo único que falta y no lo puede hacer un agente:** abrir **Ctrl+P** y mirar el preview de
+> impresión. El MCP no expone `Emulation.setEmulatedMedia`, así que se compensó forzando las reglas
+> `@media print` a pantalla y midiendo las propiedades `break-*` computadas (15/15 encabezados, 11/11
+> filas, 47/47 items), pero **el corte de página real entre hoja 1 y hoja 2 no lo vio nadie**.
+
+Para el **tramo A** no hubo navegador y es `n/a` justificado (no toca UI). Su equivalente —**arrancar el
+proceso de verdad**— sí se hizo, en cinco escenarios: Railway simulado con y sin variables, dev sin
+credenciales, cloud con la base inalcanzable, y una petición **firmada** contra `/api/inngest`. El último
+destapó el bloqueante de la clave de firma, que ningún test de la suite veía.
 
 ---
 
@@ -103,17 +112,49 @@ yo en dos documentos; otra vez estaba en un comentario **y** en el código, dond
 validaba, se trimeaba y nunca llegaba a `serve()` — medido: **401 en toda invocación**, con `/_health`
 diciendo `{"ok":true,"modo":"cloud"}`.
 
-## ▶️ Lo próximo — cuatro candidatos, y por qué
+## ✅ Cerrado — el entregable del restaurante y el margen del rol `cliente` (2026-08-07)
 
-**Ninguno está empezado.** Se eligió KR-2 y se cerró; esto es lo que queda sobre la mesa, con lo que cuesta
-cada uno. La decisión es de Juan.
+Dos deudas del `09` cerradas **juntas**, porque eran la misma pregunta desde dos lados: *qué ve alguien
+que no es la agencia*. Por separado corrían el riesgo de que la pantalla dejara de pintar el coste
+mientras la API lo seguía devolviendo, que no es una frontera sino un adorno.
+
+- **El entregable existe**: `GET /runs/:id/entregable.md`, solo staff, generado **al vuelo** desde lo
+  aprobado. Congelarlo habría hecho que el restaurante recibiera el brief original y no lo que pasó la
+  compuerta. Cierra el **PDF de ADR-07** por la vía del navegador, sin dependencias nuevas.
+- **El margen ya no le llega al rol `cliente`**, y lo decide Postgres: `case when app.es_staff()` sin
+  `else`, dentro de `RUN_SUMMARY_COLS`. Los tres casos medidos caen del mismo lado — `true` staff,
+  `false` cliente, **`NULL`** sin membresía (medido en los dos majors: 16.4 y 18.3).
+
+**Las tres cosas que no salieron de razonar sino de mirar:**
+
+1. **La hoja impresa era ilegible y nadie lo había pedido.** El navegador no imprime fondos: el texto del
+   tema oscuro daba **1.10:1** sobre blanco. Como el PDF *es* el entregable, el `@media print` con sus 17
+   tokens es parte de la pieza. Atado por el test de contraste como un **tercer tema**.
+2. **Dos documentos de la agencia se contradecían**: el entregable decía "0 keywords analizadas" donde el
+   informe interno del mismo run decía **55**. Solo se ve generando el documento y leyéndolo.
+3. **Un comentario del portal razonaba sobre la frontera del coste y decía lo contrario** de lo que esta
+   pieza hizo — era cierto cuando se escribió, y esta pieza lo dejó falso. Lo cazó el `revisor`.
+
+**Deuda que deja, con nombre:**
+
+- **El entregable imprime el timestamp ISO crudo** (`_ES · es · 2026-08-07T12:15:36.712Z_`) debajo de la
+  fecha legible del encabezado. El arreglo es de `contrato/` (que `renderReport` formatee la fecha), y
+  toca la zona que KR-2b resolvió con cuidado con las dos fechas y su aviso.
+- **Un entregable sin páginas aprobadas sale como una hoja con dos secciones vacías.** El backend hace lo
+  correcto; el riesgo es humano (mandar ese PDF sin mirarlo). Decisión de producto sin tomar: ¿lo avisa
+  el endpoint, o el link del brief se deshabilita?
+- **No hay descarga `.md`** del entregable: el camino es Ctrl+P. Barato de agregar si se pide.
+
+## ▶️ Lo próximo
+
+De los cuatro candidatos del 2026-08-07, **dos se cerraron ese mismo día** (el entregable del restaurante
+y el margen del rol `cliente`, juntos, porque eran la misma frontera desde dos lados). Quedan:
 
 | Candidato | Qué desbloquea | Qué cuesta |
 |---|---|---|
 | **Desplegar el orquestador — tramo B** *(recomendado)* | Cierra Fase 2. Hoy **el pipeline real nunca corrió en producción**: todo lo que hay en Supabase está sembrado a mano. El **tramo A está hecho** (2026-08-07): el código ya no arranca mal configurado y el runbook tiene el paso a paso | Cuenta de Inngest + servicio en Railway. Se despliega y verifica con el provider **mock**, sin gastar. **Empieza por la API**, que ya no levanta sin `INNGEST_EVENT_KEY` |
-| **El entregable del restaurante** | La única pieza que **Frank ve**. Es el informe *sin* el bloque de coste, y es la dueña del **PDF** que ADR-07 pedía | Solo código. Gran parte se reutiliza de KR-2b (mismo `renderReport`, misma tabla, misma pantalla) |
-| **El margen legible por el rol `cliente`** | Cierra la deuda 🔴 del `09`. No es fuga activa (no hay usuarios con ese rol), pero la demo ya está en producción | Toca `RunSummary` y la pantalla del brief |
 | **KR-1/KR-3: el dataset** | Llena los tres `n/d` del informe y calibra `VOLUMEN_PERCENTIL_TOPE` y `PESO_CONFIANZA_ORDEN`, hoy puestos sin dato | **~$0.31** y ~16 min contra DataForSEO en producción. **Y hay que volver a sandbox después** |
+| **El seed de la demo escribe `kr_pages` con la forma equivocada** | Los datos que están **en producción**: `seo.meta_title` y `content_brief.h1` no existen en la fila (`seed-demo.ts:746` inserta los jsonb crudos de `PAGINAS_DEMO`, no las formas del contrato que el propio archivo construye). Lo leen la pantalla del brief y `web-builder` | Pieza chica, solo código. Tiene tests atados a `PAGINAS_DEMO` que hay que mover con cuidado |
 
 **Por qué el orquestador primero, y no por completitud:** es donde queda más superficie sin estrenar. El
 step `guardar-informe` de KR-2b tiene 22 tests y **jamás se ejecutó fuera de PGlite**. El 2026-08-07 se
@@ -231,13 +272,13 @@ sin calibrar y `TIPOS_MAP_PACK` sin verificar. **Y si se corre, hay que volver a
 en `n/d` (el desglose de coste y las dos coberturas) hasta que exista el dataset. El total, `$0.3097`, sí
 está medido y se muestra.
 
-**El margen de la agencia es legible por el rol `cliente`**, y no lo causa KR-2: `run_select` sobre
-`kr_runs` usa `app.ve_cliente(client_id)`, así que un `cliente` ve `coste_micros_usd` de su propio run (el
-`coste_breakdown` no: `getRun` no lo selecciona, verificado en la review de rama). **No es fuga activa** —no hay usuarios con ese rol— pero el rol existe y RLS lo
-contempla. Cerrarlo toca `RunSummary` y la pantalla del brief: **es una pieza propia**.
+**~~El margen de la agencia es legible por el rol `cliente`~~ — cerrado el 2026-08-07**, y lo cierra
+Postgres: `case when app.es_staff() then coste_micros_usd::int end`, sin `else`, dentro de la única
+definición de columnas que comparten `getRun`, `listRuns` y `listAllRuns`.
 
-**El entregable que la agencia le pasa al restaurante no existe.** Sería el informe **sin el bloque de
-coste**, y es la pieza dueña del **PDF** que ADR-07 pedía (ver la nota fechada en ADR-07).
+**~~El entregable que la agencia le pasa al restaurante no existe~~ — existe desde el 2026-08-07.** El
+informe sin el bloque de coste, servido por `GET /runs/:id/entregable.md` (solo staff) y con vista
+imprimible en el portal. Cierra el PDF de ADR-07 por la vía del navegador, sin dependencias nuevas.
 
 **Toda la configuración de skill-map es local a esta máquina.** `.skill-map/` está gitignoreado entero, así
 que `respectGitignore`, `ignore` y `referencePaths` **no viajan con el repo**.

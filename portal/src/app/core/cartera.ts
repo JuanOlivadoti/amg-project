@@ -3,7 +3,14 @@ import type { CarteraDashboard } from './cartera-mock';
 export interface KpisCartera {
   readonly sitiosActivos: number;
   readonly opportunityScorePromedio: number;
-  readonly costeTotalUsd: number;
+  /**
+   * `null` = **no disponible**, no «cero».
+   *
+   * Pasa cuando ningún run de la cartera trae coste, que es lo que ve un rol no-staff: `app.es_staff()`
+   * lo decide dentro de Postgres (`db/src/store.ts`) y el número no viaja. Un `0` acá afirmaría que la
+   * cartera entera de research no costó nada.
+   */
+  readonly costeTotalUsd: number | null;
 }
 
 // Suma TODO el coste de la cartera, sin filtrar por mes: el mock es un dataset estático (siempre
@@ -16,14 +23,21 @@ export function kpisDeCartera(dashboard: CarteraDashboard): KpisCartera {
   const scores = dashboard.pages.map((p) => p.opportunity_score);
   const promedio = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
-  const costeMicros = dashboard.clientes
+  // Solo los runs que TRAEN coste. El filtro se hace antes de sumar y no con un `?? 0` dentro del
+  // reduce, porque hace falta saber si quedó alguno: sin ninguno, el total no es 0 — no existe.
+  // (Y ojo: `acc + null` no da NaN, da `acc`. Este `| null` no rompe ruidosamente, se suma como cero,
+  // que es justo lo que lo vuelve peligroso.)
+  const conCoste = dashboard.clientes
     .flatMap((c) => c.runs)
-    .reduce((acc, r) => acc + r.coste_micros_usd, 0);
+    .map((r) => r.coste_micros_usd)
+    .filter((c): c is number => c !== null);
 
   return {
     sitiosActivos: dashboard.clientes.length,
     opportunityScorePromedio: Math.round(promedio * 10) / 10,
-    costeTotalUsd: Math.round((costeMicros / 1_000_000) * 100) / 100,
+    costeTotalUsd: conCoste.length
+      ? Math.round((conCoste.reduce((a, b) => a + b, 0) / 1_000_000) * 100) / 100
+      : null,
   };
 }
 
@@ -44,13 +58,27 @@ export interface PuntoCosteRun {
   readonly costeUsd: number;
 }
 
+/**
+ * Un punto por run **con coste conocido**. Los runs sin coste no aparecen en la serie.
+ *
+ * Omitir y no poner en 0: `Math.round((null / 1e6) * 100) / 100` devuelve **0**, no `NaN` —`null` se
+ * coacciona a cero en aritmética—, así que el fallo no se vería como un error sino como una corrida
+ * gratis en el gráfico. Un punto que no se conoce no se dibuja; si el rol no ve ningún coste, el
+ * gráfico queda vacío, que es la verdad.
+ */
 export function serieTemporalCoste(dashboard: CarteraDashboard): PuntoCosteRun[] {
   return dashboard.clientes
     .flatMap((c) => c.runs)
     .slice()
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
-    .map((r) => ({
-      fecha: r.created_at.slice(0, 10),
-      costeUsd: Math.round((r.coste_micros_usd / 1_000_000) * 100) / 100,
-    }));
+    .flatMap((r) =>
+      r.coste_micros_usd === null
+        ? []
+        : [
+            {
+              fecha: r.created_at.slice(0, 10),
+              costeUsd: Math.round((r.coste_micros_usd / 1_000_000) * 100) / 100,
+            },
+          ],
+    );
 }

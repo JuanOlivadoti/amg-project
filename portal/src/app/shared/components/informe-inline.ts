@@ -4,6 +4,11 @@ import type { Inline } from '../../core/markdown';
 /**
  * Un tramo de texto del informe: las cuatro variantes de `Inline` de `core/markdown.ts`.
  *
+ * Vive en `shared/components/` y no bajo `pages/informe/` porque lo usan DOS documentos: el informe
+ * interno (`pages/informe/`, con su coste) y el entregable del restaurante (`pages/entregable/`, sin
+ * él). El nombre se conserva —el selector `app-informe-inline` está citado en comentarios y specs—
+ * aunque hoy sea el inline de los dos.
+ *
  * Existe porque el mismo dibujo hace falta en cinco lugares (encabezado, párrafo, cita, ítem de lista y
  * celda de tabla) y la alternativa era un `<ng-template>` con `let-`, donde la variable es `any` y
  * `strictTemplates` deja de mirar. Acá el `input()` está tipado, y eso compra una garantía que se midió

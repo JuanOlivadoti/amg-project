@@ -126,7 +126,7 @@ async function main() {
   }
 
   await writeFile("out/brief.json", JSON.stringify(brief, null, 2), "utf8");
-  await writeFile("out/informe.md", renderReport(brief), "utf8");
+  await writeFile("out/informe.md", renderReport(brief, { incluirCoste: true }), "utf8");
   const kwCount = dataset ? ` (${dataset.keywords.length} keywords)` : "";
   const rutaDataset = relative(process.cwd(), destinoDataset) || destinoDataset;
   console.log(`\n📄 Escrito: out/brief.json · out/informe.md · ${rutaDataset}${kwCount}`);
