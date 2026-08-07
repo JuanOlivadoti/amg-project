@@ -912,7 +912,7 @@ un céntimo**. Recién con eso verde, decidí si se conecta la cuenta real.
 | **Deploy del portal:** `Missing script: "build:portal"`                                                    | Directorio raíz y build command no se corresponden      | Con raíz `portal` el comando es `npm run build`. Con raíz `./`, `npm run build:portal`. Ver la tabla en C.6.                                       |
 | **Deploy del portal:** instala ~300 paquetes que no usa                                                    | Directorio raíz en `./` en vez de `portal`              | Poné la raíz en `portal`: Hostinger instala solo sus deps, no los 6 workspaces.                                                                    |
 | El `app_metadata` no se puede editar desde el dashboard                                                    | Supabase no expone `raw_app_meta_data` en la UI         | Va por SQL Editor, y **fusionando** con el operador de concatenación de `jsonb`: asignar el objeto entero borra `provider` y rompe el login.       |
-| Frank SÍ ve el botón "lanzar research"                                                                     | El portal se buildeó en modo development                | El build tiene que ser `npm run build -w portal` (producción, `features.lanzarResearch=false`).                                                    |
+| Frank NO ve el botón "lanzar research" ni "aprobar y publicar"                                             | Portal desplegado desde antes del 2026-08-07            | Los dos flags se encendieron ese día al desplegar el orquestador. Re-desplegá el portal desde `main`.                                              |
 
 ### Dos que no caben en una fila, porque el fix es entender qué pasó
 

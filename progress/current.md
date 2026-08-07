@@ -13,8 +13,8 @@ margen del rol `cliente`** —hechos juntos porque eran la misma frontera desde 
 vocabulario de `kr_pages`, que ahora lo impone Postgres** (`0017`). Cada una con sus agentes de área y su
 revisión interna —las tres devolvieron bloqueantes— y su segunda vuelta. El relato está en
 [`history.md`](history.md).
-**Estado:** verificado en verde — **880 tests** del monorepo (venía de 863) + **318** del portal (224
-`node:test` + 94 Karma) = **1198**, typecheck limpio en los 7 paquetes, sin secretos entre los 450 archivos
+**Estado:** verificado en verde — **880 tests** del monorepo (venía de 863) + **319** del portal (225
+`node:test` + 94 Karma) = **1199**, typecheck limpio en los 7 paquetes, sin secretos entre los 450 archivos
 versionados. `verificar --con-portal` exit 0 y Karma aparte, medidos al cerrar.
 
 **Sesión de navegador: sí, y encontró lo que ningún test veía.** El entregable se maneja en el portal y su
@@ -234,6 +234,47 @@ cadenas viven dentro de un DSN y una `@` sin escapar no da error — conecta a o
 **11 tests**, con las dos mutaciones que importan medidas: `base64url` → `base64` tumba 2 (los dos de
 alfabeto seguro), y quitar el `=` del ancla del upsert tumba exactamente 1 (el que impide que
 `DATABASE_URL` pise a `DATABASE_URL_API`).
+
+## 🚀 EL ORQUESTADOR ESTÁ DESPLEGADO (2026-08-07) — Fase 2 entera en producción
+
+La última pieza sin desplegar dejó de estarlo. `amg-orchestrator-production.up.railway.app` responde
+`{"ok":true,"funciones":1,"modo":"cloud","pipeline":"mock"}` y la app quedó **sincronizada con
+Inngest** (`{"message":"Successfully registered","modified":true}`).
+
+Ese "Successfully registered" es más que un OK: para registrarse, el SDK **tuvo que autenticarse
+contra la API de Inngest con `INNGEST_SIGNING_KEY`**. O sea que la clave de firma funciona —que era
+exactamente el bloqueante que el tramo A destapó por la mañana, cuando la clave se validaba, se
+trimeaba y nunca llegaba a `serve()`—. Antes del sync no se podía saber: un `GET /api/inngest` sin
+firmar devuelve **401**, y ese 401 no distingue "te rechaza a vos" de "va a rechazar a Inngest".
+
+**También se cerraron los dos pasos de producción de la `0017`** (migrar y re-sembrar, en ese orden),
+verificados por consulta y no por el "✔" de los comandos: 15 migraciones, los cuatro `check`, el
+vocabulario ya en el del contrato, y **14/14 páginas** con `seo.meta_title`, `seo.canonical` y
+`content_brief.h1`, con **cero** rastros de la forma vieja.
+
+### Los dos flags del portal, encendidos — y lo que eso NO arregla
+
+`lanzarResearch` y `aprobarRun` estaban en `false` desde Fase 1 con el motivo escrito de *"no hay
+orquestador detrás del botón"*. Ese motivo caducó, así que se encendieron, con sus dos tests
+reescritos: **siguen fijando el valor** (una vuelta atrás accidental cae igual), ahora en `true`.
+
+**El hallazgo que apareció al mirarlo, y hay que saberlo antes de una demo:** `aprobarRun` encendido
+**no hace que el run sembrado publique**. La compuerta es un `paso.esperarEvento` **dentro** del
+workflow, y el orquestador registra una sola función, disparada por `research/solicitado`; no hay
+listener suelto de `research/aprobado`. El run de `sembrarDemo` se insertó **directo en la base**, así
+que nunca tuvo un workflow durmiendo: aprobarlo emite un evento que **no espera nadie**. La API
+responde bien y no se publica nada — un botón que parece funcionar y no hace nada, que es peor que no
+tenerlo.
+
+Lo cubre un test nuevo del portal: con `aprobarRun` encendido y `lanzarResearch` apagado, **cae**,
+porque esa combinación deja el seed como única fuente de runs. Y está escrito en
+`environment.prod.ts` y en `features.ts`, que es donde lo va a leer quien pulse el botón.
+
+**Decisión de producto abierta: qué se le enseña a Frank.** Para que "aprobar → publica" funcione, el
+run tiene que haber nacido del pipeline. En `mock` corre rápido y gratis pero con keywords
+**inventadas**; en `live` son reales y cuestan **~$0.31 y ~16 min**, y el `09` ya decidió que no se
+corre research en vivo durante la demo. Las dos salidas son legítimas —correr un research antes de la
+demo y enseñar ése, o aceptar que la demo llega hasta la aprobación de páginas— pero hay que elegir.
 
 ## ▶️ Lo próximo
 

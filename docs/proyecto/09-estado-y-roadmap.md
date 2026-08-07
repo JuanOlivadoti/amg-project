@@ -30,10 +30,17 @@ con RLS forzada en Supabase (`eu-west-2`). De Fase 2, el **renderizador** desde 
 ([`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app), Railway,
 servicio aparte): la web del cliente se sirve desde internet.
 
-**Qué falta para cerrar Fase 2:** el **orquestador** (la última pieza sin desplegar), el **dominio
-propio del cliente** —el plan de Railway está en su límite de custom domains— y una **CDN** delante
-del renderizador. El detalle, ordenado por lo que realmente bloquea, en
-[Lo que queda por delante](#lo-que-queda-por-delante).
+> 🚀 **El orquestador está DESPLEGADO desde el 2026-08-07**, y con él **las cuatro piezas de Fase 2
+> están en producción**. `amg-orchestrator-production.up.railway.app` responde
+> `{"ok":true,"funciones":1,"modo":"cloud","pipeline":"mock"}` y su app quedó **sincronizada con
+> Inngest** (`{"message":"Successfully registered","modified":true}`) — que es, de paso, la prueba de
+> que `INNGEST_SIGNING_KEY` funciona: para registrarse, el SDK tuvo que autenticarse contra Inngest.
+> Los dos flags del portal (`lanzarResearch`, `aprobarRun`), apagados toda la Fase 1 porque "no había
+> orquestador detrás", se encendieron ese día.
+
+**Qué falta para cerrar Fase 2:** el **dominio propio del cliente** —el plan de Railway está en su
+límite de custom domains— y una **CDN** delante del renderizador. El detalle, ordenado por lo que
+realmente bloquea, en [Lo que queda por delante](#lo-que-queda-por-delante).
 
 > **El orquestador, al 2026-08-07: el código está listo, falta el despliegue.** El trabajo se partió en
 > dos y el **tramo A** —sin cuentas y sin gastar— está hecho: la API y el orquestador ya **no arrancan**
@@ -54,7 +61,7 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | | |
 |---|---|
 | **Paquetes** | 7 workspaces (`contrato`, `db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **1198** — 880 en el monorepo + 318 en el portal (224 `node:test` + 94 Karma). Los de seguridad, contra Postgres real. Medido el **2026-08-07**: el monorepo con `npm run verificar` tras la `0017` y el generador de credenciales (venía de 863), el portal con `-- --con-portal` y Karma aparte, sin cambios. |
+| **Tests** | **1199** — 880 en el monorepo + 319 en el portal (225 `node:test` + 94 Karma). Los de seguridad, contra Postgres real. Medido el **2026-08-07**: el monorepo con `npm run verificar` tras la `0017` y el generador de credenciales (venía de 863), el portal con `-- --con-portal` y Karma aparte, sin cambios. |
 | **Migraciones** | 15 en `main` (`0001`..`0012` + `0015` + `0016` + `0017`) · **14 aplicadas en producción y la `0017` PENDIENTE** — *las 14 verificadas el 2026-08-07 contra la base real: `select count(*) from app.migraciones_aplicadas` → 14, última `0016_informe_kr.sql`*. La `0017` se escribió ese mismo día y **todavía no se desplegó**; no basta por sí sola (ver [Próximos pasos](#próximos-pasos)). La próxima libre es la **`0018`**: `0013` y `0014` siguen **reservadas** para ramas que corren en otra máquina |
 | **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
 | **Reviews externas** | **14 rondas** (Codex), **20 tandas** de correcciones — la 13ª fue la primera sobre el arnés `.claude/` y la 14ª la primera sobre un **documento de diseño** (la spec de KR-2), antes de escribir código. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
@@ -77,7 +84,8 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **880 tests en verde** (+318 en el portal) + typecheck limpio en los 7 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **880 tests en verde** (+319 en el portal) + typecheck limpio en los 7 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **El orquestador, desplegado** (2026-08-07): Railway + Inngest Cloud, app sincronizada, `/_health` en 200 con `modo:cloud` y `pipeline:mock`. Con él, **las cuatro piezas de Fase 2 están en producción**. |
 | ✅ | **El vocabulario de `kr_pages` lo impone la base** (`0017`): `tipo`, `intencion`, `page_strategy` y `evidencia` con `check` contra el contrato, atado por test a `emisionM2` para que las dos copias no puedan divergir en silencio. |
 | ✅ | **El dashboard y el brief no pueden divergir en silencio**: un test ata las 14 páginas de `cartera-mock.ts` (portal) a `PAGINAS_DEMO` (seed), campo por campo y en orden. Estar fuera del monorepo impedía importar el paquete, no leer el archivo. |
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
@@ -133,8 +141,12 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
    > 74"—, a dos clics de distancia. El re-seed desde `HEAD` lo cerró, y ahora un test impide que
    > vuelva a pasar (ver `db/src/cartera-portal.test.ts` en «Qué funciona hoy»).
 
-0.d ⚠️ **PENDIENTE — la `0017` y el re-seed, en ese orden** (escrita el 2026-08-07, sin desplegar). Son
-   **dos pasos, no uno**, y el segundo no es opcional:
+0.d ✅ **HECHO el 2026-08-07 — la `0017` y el re-seed, en ese orden.** Eran **dos pasos, no uno**, y el
+   segundo no era opcional. **Verificado por consulta contra la base**, no por el "✔" de los comandos:
+   15 migraciones (última `0017_vocabulario_kr_pages.sql`), los **cuatro `check`** presentes, el
+   vocabulario de las filas ya en el del contrato (`hub_spoke`, `commercial`…), y las **14/14 páginas**
+   con `seo.meta_title`, `seo.canonical` y `content_brief.h1` — con **cero** rastros del `seo.title`
+   viejo. 0 aprobadas, que es lo correcto (ADR-06). Lo que se hizo:
 
    1. `npm run migrate:deploy -w db` — aplica la `0017`. Repara las 14 filas de la demo, que hoy tienen
       `page_strategy = 'hub'/'spoke'` e `intencion` en español, y recién entonces les pone los cuatro
@@ -316,7 +328,7 @@ renderizador, los dos en Railway y en servicios separados); falta el orquestador
 | Qué | Puerto dev | Necesita | Desplegado |
 |---|---|---|---|
 | `api/` | 3000 | `DATABASE_URL_API`, `SUPABASE_JWT_ISS`, `CORS_ORIGINS` | ✅ `api.bigballs.es` |
-| `orchestrator/` | — | `DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, Inngest | ⚪ no |
+| `orchestrator/` | — | `DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, `INNGEST_SIGNING_KEY`, `PIPELINE_MODO` | ✅ `amg-orchestrator-production.up.railway.app` |
 | `renderer/` | 8080 | `DATABASE_URL_RENDER`, `STORYBLOK_WEBHOOK_SECRET`, `PREVIEW_SECRET`, `TRUST_PROXY` | ✅ `amg-renderer-production.up.railway.app` |
 | `portal/` | 4200 | estático, se compila con AOT | ✅ `bigballs.es` |
 

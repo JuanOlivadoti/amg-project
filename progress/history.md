@@ -11,6 +11,57 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-07 (noche cerrada) — el orquestador desplegado: Fase 2 entera en producción, y un botón que no hace nada
+
+La quinta pieza del día y la que cierra Fase 2. El orquestador —la única de las cuatro que nunca
+había corrido fuera de una máquina de desarrollo— está en Railway, y su app **sincronizada con
+Inngest**.
+
+**La verificación que valió por todas.** `{"message":"Successfully registered","modified":true}` no es
+un OK cualquiera: para registrarse, el SDK **tuvo que autenticarse contra la API de Inngest** con
+`INNGEST_SIGNING_KEY`. Esa era la incógnita que quedaba de la mañana, cuando el tramo A encontró que
+la clave se validaba, se trimeaba y **nunca llegaba a `serve()`** — 401 en toda invocación, con el
+health check diciendo `{"ok":true}`. Y hasta el sync no se podía saber: un `GET /api/inngest` sin
+firmar devuelve **401**, y ese 401 **no distingue** "te rechaza a vos, que no sos Inngest" de "va a
+rechazar también a Inngest". Medir lo que no separa los dos casos da un resultado limpio y falso; es
+el mismo error que casi se comete por la mañana midiendo la clave saliente en vez de la entrante.
+
+**Lo que el camino costó, y no estaba en el runbook.** Tres cosas, y las tres eran documentación que
+afirmaba sin haberse ejecutado:
+
+1. **`psql` no está instalado en la máquina de desarrollo.** El runbook mandaba comprobar cada DSN con
+   `psql -c 'select current_user'` antes de desplegar, y llamaba a ese paso *el tropiezo número uno del
+   despliegue del renderizador*. O sea: el paso que existía para evitar el error más común **no se
+   podía ejecutar**. Se reemplazó por `npm run probar-dsn`, que usa `pg` —ya dependencia de `db`— y
+   además **comprueba** el rol en vez de imprimirlo, porque el fallo real no es no conectar: es
+   conectar con el rol equivocado, que conecta perfectamente y se lee como éxito.
+2. **El runbook decía "no hace falta custom domain"**, que se lee como "no hace falta dominio". El
+   servicio quedó sin URL pública y el `curl` de verificación apuntaba a un host inexistente. Son dos
+   cosas distintas: no hace falta un dominio **propio**, pero **público sí**, porque Inngest le pega
+   desde internet.
+3. **`amg-orchestrator.railway.internal` no resuelve desde fuera** (medido: `NXDOMAIN`). Es la red
+   privada de Railway. Un servicio que solo tiene ese nombre está vivo y sordo.
+
+**Y el hallazgo que importa para la demo.** Encender `aprobarRun` —apagado toda la Fase 1 con el
+motivo escrito de "no hay orquestador detrás"— **no hace que el run sembrado publique**. La compuerta
+es un `paso.esperarEvento` **dentro** del workflow, y el orquestador registra **una sola función**,
+disparada por `research/solicitado`: no hay listener suelto de `research/aprobado`. El run de
+`sembrarDemo` se insertó directo en la base, así que jamás tuvo un workflow durmiendo. Aprobarlo emite
+un evento que no espera nadie: la API responde bien y no se publica nada.
+
+Un botón que parece funcionar y no hace nada es peor que no tenerlo, y delante de un cliente es peor
+todavía. Quedó escrito en los dos sitios donde alguien lo leería (`environment.prod.ts` y
+`features.ts`) y atado por un test: con `aprobarRun` encendido y `lanzarResearch` apagado, **cae**,
+porque esa combinación deja el seed como única fuente de runs. La decisión de producto que abre —qué
+se le enseña a Frank, si un research en `mock` con keywords inventadas o uno `live` de $0.31 y 16
+minutos— **no la toma un agente**, y está anotada sin resolver.
+
+Nota de método, tercera vez en el día: filtré con `head -60` la salida de la verificación contra
+producción y me perdí justo las dos consultas que había ido a mirar. La lección lleva escrita desde la
+mañana y aun así.
+
+---
+
 ## 2026-08-07 (cierre) — el seed escribía cuatro campos fuera del contrato, y la base no tenía cómo avisar
 
 La cuarta pieza del día, y la única que empezó **midiendo antes de opinar**. El estado listaba "el seed
