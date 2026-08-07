@@ -618,10 +618,14 @@ que no sea string en un campo de texto **no** sobreviva (`app.texto_publico`, ta
 
 ## Desplegar el orquestador (Fase 2) — la última pieza
 
-> **Sin hacer al 2026-08-07.** El código quedó preparado ese día (tramo A); lo que sigue es el
-> procedimiento. A diferencia de los anteriores, este runbook se escribió **antes** del despliegue, así
-> que lo que dice está medido contra el código y **no** contra Railway: los tropiezos reales se agregan
-> el día que se ejecute, como se hizo con el renderizador.
+> **A medias al 2026-08-07.** El código quedó preparado ese día (tramo A), y esa misma tarde se
+> ejecutaron **§1 y §2**: la cuenta de Inngest existe, sus dos claves están emitidas y la API ya corre
+> en Railway con `INNGEST_EVENT_KEY` (verificado desde afuera: `/health` 200, `/runs` 401). Falta
+> **§3–§6**, que es el servicio del orquestador.
+>
+> Este runbook se escribió **antes** del despliegue, así que lo que decía estaba medido contra el código
+> y **no** contra Railway. Los tropiezos reales se van agregando el día que se ejecuta cada paso, como
+> se hizo con el renderizador: el primero ya está, en §2, y costó un rato de sitio caído.
 
 ### ⚠️ Este despliegue NO es aditivo: toca la API
 
@@ -662,11 +666,82 @@ la API lo hace a propósito para validar y usar la misma lectura — ver
 [12-credenciales.md](12-credenciales.md#las-dos-claves-de-inngest). Para el despliegue no cambia nada:
 poné la variable.)
 
+**`docs/private/credenciales.env` no despliega nada.** Es la fuente privada de verdad y ahí conviene que
+estén las dos, pero la API lee del **panel de Railway**. Y `env:sync` tampoco las reparte: las tres
+variables nuevas de Inngest no están en el `MAPA` (deuda declarada en
+[12-credenciales.md](12-credenciales.md)). En producción no molesta —las variables van al panel—; en
+local sí, y por eso la deuda tiene nombre.
+
+**El entorno importa, y hoy todavía no.** Inngest separa las claves **por entorno** (Production y los de
+rama). Una cuenta recién creada tiene **solo Production**, así que al principio no hay dónde
+equivocarse. Cuando aparezcan entornos de rama sí lo hay, y el fallo es **silencioso**: la API emite el
+evento sin error contra el entorno equivocado y el orquestador —que vive en Production— no lo ve nunca.
+La pista está en el prefijo de la signing key, que nombra el entorno (`signkey-prod-…`).
+
+#### El filtro de eventos de la Event Key: allowlist de nombres, sí; de IPs, no
+
+Inngest deja acotar una Event Key por **nombre de evento** y por **IP de origen**. Sobre nombres, la
+lista es exactamente ésta y sale de medir `grep '\.send(' api/src` (2026-08-07):
+
+| Evento permitido | Quién lo emite |
+| --- | --- |
+| `research/solicitado` | `api/src/solicitar.ts` |
+| `research/aprobado` | `api/src/app.ts` |
+
+**`research/rechazado` NO va en la lista.** Está declarado en el tipo (`orchestrator/src/events.ts`) pero
+**nadie lo emite y ninguna función lo escucha**: ponerlo sería pre-autorizar algo que no existe.
+
+Por qué acotarla, si ADR-18 ya dice que un evento no porta autoridad: precisamente porque eso es lo que
+hace _pequeño_ el daño de una fuga, no nulo. Con la clave robada no se publica nada que un humano no
+haya aprobado (`getPublishablePages` exige la compuerta doble) ni se re-paga un research ya hecho (el
+workflow lo salta por `status`), pero **sí** se puede inyectar cualquier nombre de evento en el entorno.
+Hoy nadie escucha otros; el día que se agregue una función, la clave filtrada ya la puede disparar.
+
+**El allowlist de IPs no se pone.** Railway no garantiza IP de salida estable en el plan actual, así que
+sería una guarda que se rompe sola cuando el contenedor se mueva, en el camino que emite eventos y con
+un error de red que no dice "cambió tu IP". El beneficio es marginal cuando la clave ya está acotada por
+nombre; el modo de fallo, no.
+
+> ⚠️ **Esta garantía es TEXTUAL, no impuesta, y conviene saberlo.** El allowlist vive en el dashboard de
+> Inngest, fuera del repo: **ningún test lo puede ver**. Si algún día se agrega un evento nuevo, son
+> **dos** sitios —el código y el allowlist— y el olvido se manifiesta como un fallo de permisos en
+> `send()` que no se parece en nada a "te falta una entrada en el allowlist". Es la misma clase de
+> guarda declarada-como-textual que `AGENTS.md` admite para el `permissions.deny`: decirlo es la mitad
+> del arreglo.
+
 ### 2. La API: la variable y el redeploy
 
 En el servicio de la API en Railway, agregá `INNGEST_EVENT_KEY` y redesplegá. Verificá que **arrancó**
-(`/health` responde 200) antes de seguir: si falta la variable, el log lo dice al arrancar y con el
-nombre exacto.
+antes de seguir:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://api.bigballs.es/health   # 200
+curl -s -o /dev/null -w "%{http_code}\n" https://api.bigballs.es/runs     # 401 (el auth vive)
+```
+
+Si falta la variable, el log lo dice al arrancar y con el nombre exacto.
+
+> #### ⚠️ Lo que pasó de verdad el 2026-08-07, y no estaba previsto acá
+>
+> **La API autodespliega con CADA push a `main`** (ver el paso 2 de la pieza A, más arriba). O sea que
+> la guarda del tramo A no espera a que alguien redespliegue a propósito: **se dispara con cualquier
+> commit**. Ese día un commit que solo tocaba `db/` —la migración `0017`, nada que ver con la API— llenó
+> Railway de reinicios y dejó `api.bigballs.es` en crash loop.
+>
+> Y el radio fue mucho mayor que el problema: `INNGEST_EVENT_KEY` la necesita **un endpoint**
+> (`POST /runs`), pero se validaba como si la necesitara **el proceso**, así que se cayeron también el
+> login, `/runs`, `/clients` — todo lo que el portal lee para pintar una pantalla, nada de lo cual toca
+> Inngest. Un endpoint que además **no puede funcionar hasta que el orquestador esté desplegado** tumbó
+> la demo que sí funcionaba.
+>
+> **La lección, que vale más allá de Inngest:** una capacidad que falta debe deshabilitar **esa
+> capacidad**, no el proceso. Fallar ruidoso está bien; fallar _ancho_ no es lo mismo que fallar
+> ruidoso. Se arregló poniendo la clave (medido: `/health` 200, `/runs` 401), y la guarda pasa a
+> devolver **503 en `POST /runs`** en vez de impedir el arranque.
+>
+> Si te vuelve a pasar antes de tener la cuenta de Inngest: la salida NO es `INNGEST_DEV=1` — fuerza
+> modo dev y desactiva todas las validaciones de producción (está en la lista de variables prohibidas
+> de §4). La salida es poner la Event Key, que son cinco minutos y la vas a necesitar igual.
 
 ### 3. El servicio del orquestador en Railway
 
@@ -814,6 +889,23 @@ un céntimo**. Recién con eso verde, decidí si se conecta la cuenta real.
 | **Deploy del portal:** instala ~300 paquetes que no usa                                                    | Directorio raíz en `./` en vez de `portal`              | Poné la raíz en `portal`: Hostinger instala solo sus deps, no los 6 workspaces.                                                                    |
 | El `app_metadata` no se puede editar desde el dashboard                                                    | Supabase no expone `raw_app_meta_data` en la UI         | Va por SQL Editor, y **fusionando** con el operador de concatenación de `jsonb`: asignar el objeto entero borra `provider` y rompe el login.       |
 | Frank SÍ ve el botón "lanzar research"                                                                     | El portal se buildeó en modo development                | El build tiene que ser `npm run build -w portal` (producción, `features.lanzarResearch=false`).                                                    |
+
+### Dos que no caben en una fila, porque el fix es entender qué pasó
+
+**La API entra en crash loop tras un push que ni siquiera tocaba la API**, con `Falta INNGEST_EVENT_KEY`
+en el log. La causa no es el commit: **la API autodespliega con cada push a `main`**, así que un cambio
+en `db/` la redespliega igual, y hasta el 2026-08-07 esa clave ausente impedía **arrancar**. El fix es
+poner `INNGEST_EVENT_KEY` en el servicio de la API (§1–§2). **No uses `INNGEST_DEV=1`** como atajo:
+fuerza modo dev y desactiva todas las validaciones de producción (§4 la lista como prohibida). Desde ese
+día la guarda devuelve **503 en `POST /runs`** en vez de tumbar el proceso, así que el síntoma no
+debería repetirse — pero el mecanismo (cualquier push redespliega la API) sigue vigente para el resto de
+las variables obligatorias.
+
+**Un evento sale sin error y el workflow nunca despierta.** Los dos sospechosos fallan **en silencio**,
+que es lo que los hace caros: o la Event Key es de otro **entorno** de Inngest (comprobá el prefijo de
+la signing key: `signkey-prod-…`), o el nombre del evento no está en el **allowlist** de la clave (§1).
+En los dos casos `send()` devuelve OK y no hay nada en los logs de la API: hay que mirarlo del lado de
+Inngest, en el stream de eventos del entorno.
 
 ---
 
