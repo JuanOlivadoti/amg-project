@@ -18,6 +18,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p scripts",
     "test": "npm run test --workspaces --if-present && node --import tsx --test \"scripts/*.test.mts\"",
     "credencial": "tsx scripts/credencial.mts",
+    "probar-dsn": "tsx scripts/probar-dsn.mts",
     "env:sync": "tsx scripts/env-sync.mts",
     "reseed:demo": "tsx scripts/reseed-demo.mts",
     "build:portal": "npm --prefix portal ci && npm --prefix portal run build"

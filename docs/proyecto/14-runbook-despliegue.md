@@ -755,10 +755,24 @@ DATABASE_URL_CACHE       = postgresql://amg_cache.<project-ref>:PASS@aws-1-eu-we
 ```
 
 **Puerto 6543 (transaction pooler)**, por lo mismo que el renderizador: todo acceso va por transacción
-con conexión reservada (ADR-13), que es justo lo que ese modo soporta. Y **comprobá `select
-current_user` con cada DSN antes de desplegar** — el tropiezo #1 del renderizador fue copiar el DSN y
-cambiar la password pero no el usuario, que además de no arrancar se lee como "problema de credencial"
-en vez de "estás usando el rol equivocado".
+con conexión reservada (ADR-13), que es justo lo que ese modo soporta.
+
+**Y comprobá cada DSN antes de desplegar:**
+
+```bash
+npm run credencial -- DATABASE_URL_ORQUESTADOR --ref=<ref> --host=<host>   # la crea y la guarda
+npm run probar-dsn -- DATABASE_URL_ORQUESTADOR                             # y la comprueba
+```
+
+`probar-dsn` lee el DSN de la fuente (así no queda en el historial de la shell), conecta con el mismo
+driver que usa la app y **comprueba que el rol sea el que se espera**. Esa última parte es el punto:
+el tropiezo #1 del renderizador fue copiar el DSN y cambiar la password pero no el usuario — eso
+**conecta perfectamente** y se lee como éxito, así que un `select current_user` que solo imprime el
+nombre depende de que el humano note que está mal.
+
+> Antes acá decía `psql`. **No está instalado en la máquina de desarrollo** (medido el 2026-08-07), o
+> sea que este paso —el que el propio runbook llama el tropiezo #1— no se podía ejecutar. `probar-dsn`
+> usa `pg`, que ya es dependencia de `db`: no instala nada.
 
 | Campo | Valor |
 | --- | --- |

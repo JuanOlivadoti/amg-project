@@ -346,11 +346,13 @@ ${
  3. Comprobalo ANTES de desplegar:
 =============================================================================
 
-psql '${valor}' -c 'select current_user;'
+npm run probar-dsn -- ${nombre}
 
- Tiene que devolver \`${rol}\`. Si devuelve otra cosa, cambiaste la password pero
- no el usuario: es el tropiezo número uno del despliegue del renderizador, y no
- se lee como "rol equivocado" sino como "problema de credencial".
+ Lee el DSN de la fuente (no hace falta pegarlo, y así no queda en el historial
+ de la shell), conecta con el mismo driver que usa la app y comprueba que el rol
+ sea \`${rol}\`. Esa comprobación es el punto: conectar con el rol EQUIVOCADO no
+ da error —pasa cuando se copia un DSN y se le cambia la password pero no el
+ usuario— y se lee como éxito. Es el tropiezo número uno del renderizador.
 `
     : ""
 }

@@ -102,6 +102,29 @@ plausible y equivocado es peor que no producir nada.**
 - **Guardarla en la fuente no la reparte.** `env:sync` solo entrega a un paquete las claves que su
   entrada del `MAPA` declara.
 
+### Comprobar un DSN: `npm run probar-dsn`
+
+```bash
+npm run probar-dsn -- DATABASE_URL_ORQUESTADOR
+```
+
+Lee el DSN de la fuente —así no hay que pegarlo y no queda en el historial de la shell—, conecta con
+`pg` (**el mismo driver que usa la aplicación**: si esto entra, la app entra) y **comprueba que el rol
+sea el que el catálogo espera**.
+
+Esa última parte es la que lo hace útil. El modo de fallo real no es no poder conectar: es conectar
+**con el rol equivocado**, porque alguien copió un DSN y le cambió la password pero no el usuario. Eso
+conecta perfectamente y se lee como éxito — es el tropiezo #1 del despliegue del renderizador. Un
+`select current_user` que solo imprime el nombre depende de que el humano note que está mal; acá la
+comparación la hace el programa. También avisa si el puerto no es el 6543 (ADR-13), que conecta igual
+por el pooler de sesión y falla más tarde y peor.
+
+El DSN no se imprime nunca, ni siquiera en los errores: lleva la password dentro.
+
+> Antes esto era `psql … -c 'select current_user'` en el runbook. **`psql` no está instalado en la
+> máquina de desarrollo** (medido el 2026-08-07), o sea que el paso que el propio runbook llama el
+> tropiezo #1 no se podía ejecutar. `pg` ya es dependencia de `db`: esto no instala nada.
+
 **Por qué no un único `.env` en la raíz que carguen todos.** Sería más simple y borraría la
 duplicación igual, pero le daría a cada proceso el entorno completo: el renderizador —el único
 expuesto a internet anónimo (ADR-19)— tendría a mano la password de `amg_api` y el token de escritura
