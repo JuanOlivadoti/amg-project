@@ -55,6 +55,53 @@ Los valores se escriben **en un solo archivo**, `docs/private/credenciales.env` 
 npm run env:sync    # docs/private/credenciales.env → api/.env, db/.env, kr-service/.env, …
 ```
 
+### Crear una credencial: `npm run credencial`
+
+Escribe en la fuente la credencial nueva y te dice qué hacer con ella. Sin argumentos, lista el
+catálogo entero:
+
+```bash
+npm run credencial                                   # qué existe y de qué familia es cada una
+npm run credencial -- PREVIEW_SECRET                 # una cadena opaca
+npm run credencial -- DATABASE_URL_ORQUESTADOR --ref=<ref> --host=<host-del-pooler>
+npm run credencial -- <lo-que-sea> --dry-run         # mirar sin tocar
+```
+
+**Un solo comando con argumento, y no un `create-credential:<nombre>` por credencial.** Un script de
+npm por cada una obliga a editar `package.json` cada vez que aparece una, y el día que alguien se
+olvide, el comando sencillamente no existe sin que nada avise. Acá el catálogo vive en un sitio
+(`CATALOGO`, en `scripts/credencial.mts`) y **un test lo ata al `MAPA` de `env-sync.mts`**: agregar
+una clave al reparto sin clasificarla rompe la suite.
+
+**Las cuatro familias, que no son burocracia:**
+
+| Familia | Qué hace el script |
+| --- | --- |
+| `dsn` | Genera la password del rol y arma la cadena de conexión (puerto **6543**, el transaction pooler: ADR-13) |
+| `secreto` | Una cadena opaca al azar, compartida entre procesos nuestros |
+| `tercero` | **No genera nada.** Dice quién la emite y dónde sacarla |
+| `config` | No es un secreto. Un valor al azar sería basura con formato de credencial |
+
+La familia `tercero` es la razón de ser del catálogo. Un generador ingenuo, ante `OPENAI_API_KEY`,
+devolvería 32 caracteres al azar: algo que **parece** una key, entra en la fuente sin chistar y falla
+mucho después con un 401 del proveedor que nadie relaciona con haberla "generado". **Producir algo
+plausible y equivocado es peor que no producir nada.**
+
+**Lo que el script hace por seguridad y conviene saber:**
+
+- Los valores generados son **URL-safe** (`base64url`, 192 bits). No es un detalle estético: viven
+  dentro de un DSN, y una `@` o una `/` sin escapar rompen la URL — a veces conectando a otro sitio en
+  vez de dar error.
+- **Reemplazar pide confirmación escrita** y deja el valor anterior en un `.bak-<timestamp>` al lado
+  (gitignoreado por `docs/private*`). Añadir una clave nueva no puede perder nada; reemplazarla
+  invalida una password que los servicios ya desplegados están usando **ahora mismo**.
+- La escritura es **atómica** (temporal + `rename`). Este archivo no está en git: un `writeFileSync`
+  interrumpido lo dejaría truncado y no habría de dónde recuperarlo.
+- **No corre el `alter role` ni toca la base.** Te imprime el SQL para que lo ejecutes vos: cambiar una
+  credencial en producción no lo decide un script.
+- **Guardarla en la fuente no la reparte.** `env:sync` solo entrega a un paquete las claves que su
+  entrada del `MAPA` declara.
+
 **Por qué no un único `.env` en la raíz que carguen todos.** Sería más simple y borraría la
 duplicación igual, pero le daría a cada proceso el entorno completo: el renderizador —el único
 expuesto a internet anónimo (ADR-19)— tendría a mano la password de `amg_api` y el token de escritura

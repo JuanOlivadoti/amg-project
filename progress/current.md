@@ -13,8 +13,8 @@ margen del rol `cliente`** —hechos juntos porque eran la misma frontera desde 
 vocabulario de `kr_pages`, que ahora lo impone Postgres** (`0017`). Cada una con sus agentes de área y su
 revisión interna —las tres devolvieron bloqueantes— y su segunda vuelta. El relato está en
 [`history.md`](history.md).
-**Estado:** verificado en verde — **869 tests** del monorepo (venía de 863) + **318** del portal (224
-`node:test` + 94 Karma) = **1187**, typecheck limpio en los 7 paquetes, sin secretos entre los 450 archivos
+**Estado:** verificado en verde — **880 tests** del monorepo (venía de 863) + **318** del portal (224
+`node:test` + 94 Karma) = **1198**, typecheck limpio en los 7 paquetes, sin secretos entre los 450 archivos
 versionados. `verificar --con-portal` exit 0 y Karma aparte, medidos al cerrar.
 
 **Sesión de navegador: sí, y encontró lo que ningún test veía.** El entregable se maneja en el portal y su
@@ -210,6 +210,30 @@ migración **no arregla los dos `jsonb` ya escritos**, porque reconstruirlos exi
   `page_strategy: 'hub'/'spoke'`, valores que **la base ya no puede contener**; y
   `cartera-tabla.ts:29` pinta `{{ p.intencion }}` crudo, así que el día que esa pantalla se conecte a la
   API la columna dirá inglés.
+
+## ✅ Cerrado — `npm run credencial` (2026-08-07)
+
+Salió de necesitar el DSN del orquestador y descubrir que **no existía en ningún lado**: el `MAPA` de
+`env-sync.mts` no tiene entrada para `orchestrator` — los cinco paquetes que sí la tienen son `api`,
+`db`, `kr-service`, `renderer` y `web-builder`. Nunca se le repartió nada porque nunca se desplegó.
+
+Un script con argumento, no un `create-credential:<nombre>` por credencial: una lista de scripts npm
+envejece sin que nada avise. Acá el catálogo vive en un sitio y **un test lo ata al `MAPA`** — agregar
+una clave al reparto sin clasificarla rompe la suite.
+
+**Lo que de verdad justifica el catálogo es la familia `tercero`.** Ante `OPENAI_API_KEY` un generador
+ingenuo devolvería 32 caracteres al azar: algo que **parece** una key, entra en `credenciales.env` sin
+chistar y falla mucho más tarde con un 401 que nadie relaciona con haberla "generado". El script se
+niega y dice dónde sacarla. Producir algo plausible y equivocado es peor que no producir nada.
+
+Escribe en la fuente (pedido de Juan), y por eso: escritura **atómica** (temporal + `rename`, porque
+ese archivo no está en git y un write truncado no se recupera de ningún lado), **confirmación escrita**
+al reemplazar, y `.bak-<timestamp>` al lado. Lo generado es **URL-safe** (`base64url`, 192 bits): estas
+cadenas viven dentro de un DSN y una `@` sin escapar no da error — conecta a otro sitio.
+
+**11 tests**, con las dos mutaciones que importan medidas: `base64url` → `base64` tumba 2 (los dos de
+alfabeto seguro), y quitar el `=` del ancla del upsert tumba exactamente 1 (el que impide que
+`DATABASE_URL` pise a `DATABASE_URL_API`).
 
 ## ▶️ Lo próximo
 

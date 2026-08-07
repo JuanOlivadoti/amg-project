@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-07** · **1187 tests en verde** — **869** en el monorepo + **318** en
+> Última actualización: **2026-08-07** · **1198 tests en verde** — **880** en el monorepo + **318** en
 > el portal (224 `node:test` + 94 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
 > siguientes fueron del agujero de la compuerta de secretos (2026-08-03), **once** de KR-3 —el orden del
 > brief persistido, migración `0015`— al estrenar el agente `datos`
@@ -114,7 +114,7 @@
 > ver la fila propia por completo, y esta pieza le agregó a esa fila columnas que son notas internas
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
-> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **1187 tests** (869 monorepo + 318
+> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **1198 tests** (880 monorepo + 318
 > portal), **15 migraciones**: 14 aplicadas en producción el 2026-08-07 (la `0012`, la `0015` y la `0016` ese día; la `0011` ya estaba) y la **`0017` pendiente**, que va con un re-seed detrás (ver «Próximos pasos» del `09`).
 
 ---
@@ -238,7 +238,7 @@ direcciones. Se expone en `/_health` para poder auditarla sin entrar al panel de
 ```
 
 - **7 paquetes** en workspaces npm: `contrato` (el contrato del brief, compartido), `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **869 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **880 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.
