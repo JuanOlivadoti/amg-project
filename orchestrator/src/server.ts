@@ -2,7 +2,7 @@ import { serve } from "inngest/node";
 import { crearServidor, opcionesDeServe } from "./app.js";
 import { leerConfig } from "./config.js";
 import { crearDeps, crearConexiones } from "./deps.js";
-import { crearFuncionResearch, inngest } from "./functions.js";
+import { crearFuncionBarrido, crearFuncionResearch, inngest } from "./functions.js";
 
 /**
  * Expone las funciones del orquestador para que Inngest las invoque.
@@ -20,7 +20,10 @@ const config = leerConfig();
 
 const cx = await crearConexiones(config);
 const deps = crearDeps(cx);
-const funciones = [crearFuncionResearch(deps)];
+// Dos: el workflow del research y el barrido programado. `/_health` reporta el número, así que tras
+// desplegar esto tiene que decir `funciones: 2` — y en el panel de Inngest se ven tres, porque cuenta
+// el `onFailure` del research como una función aparte.
+const funciones = [crearFuncionResearch(deps), crearFuncionBarrido(deps)];
 
 const server = crearServidor({
   // La `signingKey` validada viaja acá dentro. Si se dejara al SDK releer el entorno, lo comprobado

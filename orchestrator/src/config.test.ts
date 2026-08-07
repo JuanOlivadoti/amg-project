@@ -548,3 +548,111 @@ test("🔴 crearConexiones aborta si hay Postgres real sin DATABASE_URL_CACHE", 
     process.env = orig;
   }
 });
+
+/*
+ * ---------------------------------------------------------------------------------------------
+ * 🔴 El barrido de runs colgados (bloque A2). La lógica está fuera de `createFunction` justo para
+ * que estos tests puedan correrla — igual que `CONCURRENCIA`.
+ * ---------------------------------------------------------------------------------------------
+ */
+
+/**
+ * 🔴 El plazo se IMPORTA de `db`, no se escribe a mano en el orquestador.
+ *
+ * Es la regla del proyecto —*un default de producción sin test es una decisión sin dueño*— aplicada a
+ * un caso donde el dueño es otro paquete. Si alguien escribiera `"3 hours"` acá, el test del default
+ * de `db` seguiría verde mientras producción usa otro número, y las dos mitades divergirían sin que
+ * nada avise. Este test cae si el literal se duplica.
+ */
+test("🔴 barrido: el plazo que usa el orquestador es EXACTAMENTE el de `db`", async () => {
+  const { barrerRunsColgados } = await import("./functions.js");
+  const { PLAZO_RUN_COLGADO } = await import("db");
+
+  const pedidos: string[] = [];
+  const store = {
+    expirarRunsColgados: async (plazo: string) => {
+      pedidos.push(plazo);
+      return [];
+    },
+  } as unknown as Parameters<typeof barrerRunsColgados>[0]["store"];
+
+  await barrerRunsColgados({ store });
+
+  assert.deepEqual(pedidos, [PLAZO_RUN_COLGADO]);
+  assert.equal(PLAZO_RUN_COLGADO, "3 hours", "si esto cambia, cambialo también en `db` y decí por qué");
+});
+
+/**
+ * 🔴 El barrido loguea TAMBIÉN cuando no encuentra nada.
+ *
+ * Es la mitad que se olvida. Un barrido que solo habla cuando encuentra algo es indistinguible de un
+ * cron que dejó de dispararse — y el fallo mudo es exactamente lo que este barrido existe para no
+ * repetir. La línea horaria de "ningún run colgado" es la prueba de vida.
+ */
+test("🔴 barrido: dice algo aunque no haya nada colgado (si no, no se distingue de un cron muerto)", async () => {
+  const { barrerRunsColgados } = await import("./functions.js");
+
+  const dicho: string[] = [];
+  const store = {
+    expirarRunsColgados: async () => [],
+  } as unknown as Parameters<typeof barrerRunsColgados>[0]["store"];
+
+  const r = await barrerRunsColgados({ store }, (m) => dicho.push(m));
+
+  assert.equal(r.expirados, 0);
+  assert.equal(dicho.length, 1, "una línea, siempre");
+  assert.match(dicho[0]!, /ningún run colgado/);
+});
+
+test("🔴 barrido: nombra cada run expirado con su tenant (sin el tenant no se puede rastrear)", async () => {
+  const { barrerRunsColgados } = await import("./functions.js");
+
+  const dicho: string[] = [];
+  const store = {
+    expirarRunsColgados: async () => [
+      { id: "run-a", tenantId: "tenant-1" },
+      { id: "run-b", tenantId: "tenant-2" },
+    ],
+  } as unknown as Parameters<typeof barrerRunsColgados>[0]["store"];
+
+  const r = await barrerRunsColgados({ store }, (m) => dicho.push(m));
+
+  assert.equal(r.expirados, 2);
+  assert.equal(dicho.length, 2);
+  // El tenant importa: el barrido es lo único cross-tenant del sistema, así que un id suelto no dice
+  // de quién es el run que se acaba de matar.
+  assert.match(dicho[0]!, /run-a.*tenant-1/);
+  assert.match(dicho[1]!, /run-b.*tenant-2/);
+});
+
+/**
+ * 🔴 El cron es un default de producción como cualquier otro, y encima de los que no fallan ruidoso:
+ * una expresión mal escrita no revienta, simplemente **no se dispara nunca**.
+ */
+test("🔴 barrido: el cron es horario y no una expresión que no dispara nunca", async () => {
+  const { CRON_BARRIDO } = await import("./functions.js");
+
+  assert.equal(CRON_BARRIDO, "0 * * * *");
+  assert.equal(CRON_BARRIDO.split(/\s+/).length, 5, "cinco campos, el formato que Inngest espera");
+  // El plazo (3 h) tiene que ser MAYOR que el intervalo del barrido: si barriera cada tres horas o
+  // más, un run podría quedarse colgado hasta el doble del plazo antes de que alguien lo mire.
+  assert.equal(CRON_BARRIDO.startsWith("0 *"), true, "cada hora en punto");
+});
+
+/**
+ * 🔴 Las dos funciones quedan registradas, y `/_health` tiene que poder decirlo.
+ *
+ * `server.ts` no se puede importar en un test (arranca el proceso y lee el entorno), así que lo que
+ * se fija acá es que las dos fábricas existan y produzcan funciones con ids distintos. El número que
+ * reporta `/_health` sale de `funciones.length` en `server.ts`; tras desplegar esto tiene que decir 2.
+ */
+test("🔴 barrido: la fábrica produce una función con id propio, distinta de la del research", async () => {
+  const { crearFuncionBarrido, crearFuncionResearch } = await import("./functions.js");
+  const deps = {} as Parameters<typeof crearFuncionBarrido>[0];
+
+  const barrido = crearFuncionBarrido(deps);
+  const research = crearFuncionResearch(deps);
+
+  assert.notEqual(barrido.id(), research.id(), "dos funciones distintas, dos ids distintos");
+  assert.match(barrido.id(), /barrido/);
+});

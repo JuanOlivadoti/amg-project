@@ -93,7 +93,13 @@ es el mismo defecto un piso más arriba. Lo que sí existe son los **logs de Rai
   primero rojo; hacer la sonda con `query()` suelto en vez de `Tx` deja rojo el que niega el rol.
 - **Coste:** pieza chica, un solo paquete.
 
-### A2. Un run no puede quedarse en `running` para siempre
+### A2. Un run no puede quedarse en `running` para siempre — ✅ **el código, hecho el 2026-08-07**
+
+> **Hecho, con una casilla operativa abierta.** La guarda de `finishRun` (`29625e6`) y el barrido
+> completo —migración `0018`, `app.expirar_runs_colgados`, `PLAZO_RUN_COLGADO = "3 hours"` y la función
+> programada de Inngest cada hora— están en `main` con 16 tests y sus mutaciones verificadas.
+> **Falta desplegar la `0018`**: hasta entonces el barrido está en el código y no corre. Es un paso de
+> Juan (`migrate:deploy` toca Supabase). Lo de abajo queda como el razonamiento que produjo el diseño.
 
 **El problema, medido.** El `onFailure` del workflow existe para que un run no quede colgado, y su
 única acción es `failRun()` — o sea **escribir en Postgres**. Cuando el workflow muere porque no

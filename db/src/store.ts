@@ -65,6 +65,25 @@ export type RolConexion = "app_user" | "app_service";
 
 export type RunStatus = "running" | "pending_approval" | "approved" | "rejected" | "failed";
 
+/**
+ * Cuánto puede estar un run en `running` antes de que el barrido lo dé por muerto.
+ *
+ * **De dónde sale el número, porque un umbral sin origen es un número inventado.** La única duración
+ * real medida de un research es **16m15s** (2026-07-30, corrida contra DataForSEO en producción).
+ * Tres horas es ~11x eso: no puede matar trabajo legítimo ni con reintentos y backoff encima, y un
+ * run parado tres horas está muerto de verdad.
+ *
+ * **NO se deriva de `PLAZO_APROBACION`** (`"7d"`, en `orchestrator/src/workflow.ts`), y la confusión
+ * es fácil: ése es el plazo de la espera POSTERIOR, cuando el run ya llegó a `pending_approval` y
+ * espera a un humano. Éste mide la fase de research, que dura minutos. Atarlos dejaría un run colgado
+ * una semana antes de que nadie se enterara.
+ *
+ * Es un **default de producción**, así que tiene test propio (`store.test.ts`): el que lo consume es
+ * la función programada del orquestador, y si el test eligiera el valor no estaría fijando nada.
+ * El formato es un `interval` de Postgres, no milisegundos: lo parsea la base.
+ */
+export const PLAZO_RUN_COLGADO = "3 hours";
+
 /** El market es parte de la IDENTIDAD del run (ADR-10: 1 run = 1 market), no un adorno. */
 export interface RunMarket {
   country: string;
@@ -830,6 +849,64 @@ export class PgStore {
         [runId, error.slice(0, 2000)],
       );
       return false;
+    });
+  }
+
+  /**
+   * El barrido de runs colgados: marca `failed` los que siguen en `running` pasado el plazo, en
+   * TODOS los tenants, y devuelve cuáles fueron.
+   *
+   * ## Por qué existe, si ya está `failRun`
+   *
+   * `failRun` lo llama el `onFailure` del workflow, y su única acción es escribir en Postgres. Cuando
+   * el workflow muere porque no alcanza la base, el manejador muere por lo mismo: **la red de
+   * seguridad comparte su punto de fallo con lo que protege** (medido en producción el 2026-08-07). Y
+   * si nadie llega a consumir el evento del run, el workflow ni siquiera arranca — el único plazo del
+   * sistema (`PLAZO_APROBACION`) vive dentro del workflow, así que no hay reloj. Éste es el reloj de
+   * afuera.
+   *
+   * ## Por qué no lleva `TenantContext`
+   *
+   * Porque no hay ninguno que sea verdad: un barrido es cross-tenant por naturaleza y del otro lado no
+   * hay ninguna persona. Inventarle un tenant sería un control autoexpedido, igual que en `PgSitios`
+   * (que tampoco tiene contexto, por el mismo motivo, y ver el comentario de esa clase).
+   *
+   * Lo que sí hay es un ROL: `app_service`. Si un `PgStore` construido con `app_user` llama a esto,
+   * **Postgres lo rechaza con 42501** (la función solo tiene `grant execute` para `app_service`); no
+   * hay ningún `if` mío en el medio, y hay un test que lo exige.
+   *
+   * El cruce de tenants NO lo hace este método: lo hace `app.expirar_runs_colgados`, una
+   * `security definer` cuyo cuerpo entero es esta operación. Ver `0018_barrido_runs_colgados.sql`
+   * para por qué es la única forma que no exige un rol que vea todos los tenants.
+   *
+   * @param plazo  Intervalo de Postgres (`"3 hours"`). En producción va `PLAZO_RUN_COLGADO`; la base
+   *               impone un piso de 1 hora y rechaza cualquier cosa por debajo con 22023, así que un
+   *               plazo mal calculado no puede matar trabajo vivo.
+   */
+  async expirarRunsColgados(plazo: string): Promise<Array<{ id: string; tenantId: string }>> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ id: string; tenant_id: string }>(
+        "select id, tenant_id from app.expirar_runs_colgados($1::interval)",
+        [plazo],
+      );
+      return rows.map((r) => ({ id: r.id, tenantId: r.tenant_id }));
+    });
+  }
+
+  /**
+   * Como `withTenant`, pero SIN identidad: aplica el rol del proceso y nada más.
+   *
+   * No es un atajo para saltarse el contexto — es que hay una operación (el barrido) donde no existe
+   * ninguno. Que no reciba `TenantContext` es la misma garantía en el tipo que da `asRender` al no
+   * aceptarlo: no se puede llamar accidentalmente con la identidad de alguien.
+   *
+   * Sigue siendo una transacción con conexión reservada (ADR-13): el `set local role` es local a la
+   * transacción igual que el contexto, y sin la conexión reservada podría irse a otra conexión.
+   */
+  private sinTenant<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return this.pool.transaction(async (tx) => {
+      await tx.exec(`set local role ${this.rol}`);
+      return fn(tx);
     });
   }
 

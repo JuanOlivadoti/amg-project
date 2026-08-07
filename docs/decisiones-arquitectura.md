@@ -598,6 +598,42 @@ código— y por mutación: conceder los dos roles al mismo login hace caer el t
 
 Ver [`docs/proyecto/12-credenciales.md`](proyecto/12-credenciales.md).
 
+> ### Nota del 2026-08-07 — `app_barrido`, un rol que NO es un proceso (migración `0018`)
+>
+> El barrido de runs colgados es **cross-tenant por naturaleza**: tiene que expirar runs de todos los
+> clientes, y ninguna sesión con identidad puede hacerlo, porque RLS en `kr_runs` exige
+> `tenant_id = app.current_tenant_id()`. Se resolvió con la **primera `security definer` del
+> proyecto**, `app.expirar_runs_colgados(interval)`, cuyo dueño es un rol nuevo: `app_barrido`.
+>
+> **No contradice esta decisión, y la distinción es la que importa: `app_barrido` no es un proceso.**
+> No tiene login, ningún login lo tiene concedido, y no hay forma de llegar a él salvo llamando a la
+> función — que solo `app_service` puede ejecutar (`revoke … from public` + `grant … to app_service`).
+> Los cuatro logins siguen siendo `amg_api`, `amg_orquestador`, `amg_cache` y `amg_render`, cada uno
+> con su único rol. Hay un test que lo exige con `pg_has_role(login, 'app_barrido', 'SET')` para los
+> cuatro, más `rolcanlogin`/`rolbypassrls`/`rolsuper` todos en `false`.
+>
+> **Por qué el dueño no puede ser quien corre la migración, que es la parte contraintuitiva.**
+> `kr_runs` lleva `force row level security`, y FORCE significa que **ni el dueño de la tabla salta
+> las políticas**. En PGlite las migraciones corren como `postgres`, que ahí **sí** es superusuario y
+> salta RLS pase lo que pase; en **Supabase alojado `postgres` no es superusuario** — este repo ya lo
+> pagó una vez, cuando `force` + cero políticas sobre `app.migraciones_aplicadas` auto-bloqueó al
+> propio runner ([`db/src/deploy.ts:80-83`](../db/src/deploy.ts#L80-L83), 10ª review). Con el dueño
+> por defecto, el barrido daría **verde en los tests y cero filas en producción, en silencio** — que
+> es el modo de fallo que este proyecto persigue, y el peor posible acá, porque el barrido existe
+> justo para arreglar un silencio.
+>
+> Con un rol propio, el permiso de cruzar tenants es una **política explícita y auditable**
+> (`pg_policies`) en vez de un privilegio implícito del dueño, y el comportamiento es **el mismo** en
+> PGlite y en Supabase. La política concede en **una sola dirección** (`using status = 'running'`,
+> `with check status = 'failed'`): este rol no puede aprobar, ni resucitar, ni devolver nada a
+> `running`. Y sus grants sobre `kr_runs` son **por columna**, así que el `prompt`, el coste y la
+> config quedan fuera de su alcance.
+>
+> ⚠️ **Lo que no se pudo medir acá:** que `alter function … owner to app_barrido` funcione en
+> Supabase. Si el rol que migra tiene `CREATEROLE`, PG16 le da membresía con `ADMIN OPTION` sobre los
+> roles que crea y debería pasar. Si no, **la migración falla ruidosamente** — que es infinitamente
+> mejor que el silencio que evita. Es lo primero a mirar al desplegar la `0018`.
+
 ## ADR-18 — Un evento no porta autoridad: la API crea el run, el evento lo pone en marcha
 
 **El agujero.** `research/solicitado` llevaba `tenantId` y `clientId` **elegidos por quien emitía el

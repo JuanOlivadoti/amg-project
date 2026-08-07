@@ -1,7 +1,7 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { PgStore } from "./store.js";
+import { PgStore, PLAZO_RUN_COLGADO } from "./store.js";
 import { PglitePool } from "./pool.js";
 import { aplicarMigraciones } from "./migrate.js";
 import { leerKeywordsCrudo, leerPaginasCrudo, sqlCrudo } from "./testing.js";
@@ -1096,4 +1096,306 @@ test("marcarPublicadas registra el hecho externo (story_id + cuándo)", async ()
   );
   assert.equal(rows[0]!.storyblok_story_id, "story-123");
   assert.ok(rows[0]!.published_at, "queda la marca temporal");
+});
+
+// =============================================================================
+// El barrido de runs colgados (migración 0018)
+//
+// El modelo de amenaza acá no es un atacante: es el silencio. Un run que se queda en `running` para
+// siempre no da error en ningún lado — el portal muestra "en curso" y nadie se entera. Por eso los
+// tests que importan son los NEGATIVOS (qué NO toca el barrido) y el cross-tenant (que de verdad
+// cruza), no el camino feliz.
+// =============================================================================
+
+/** Envejece un run a mano: `createRun` siempre lo pone en `now()`, y acá la edad es el dato. */
+const envejecer = async (runId: string, edad: string) => {
+  await pg.query("update kr_runs set created_at = now() - $2::interval where id = $1", [runId, edad]);
+};
+
+const estadoDe = async (runId: string) => {
+  const { rows } = await pg.query<{ status: string; error: string | null; fin: boolean }>(
+    "select status, error, finished_at is not null as fin from kr_runs where id = $1",
+    [runId],
+  );
+  return rows[0]!;
+};
+
+test("barrido: un run 'running' VIEJO se marca failed y sale en la lista", async () => {
+  const runId = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA1));
+  await envejecer(runId, "5 hours");
+
+  const expirados = await storeServicio.expirarRunsColgados("3 hours");
+
+  assert.deepEqual(
+    expirados,
+    [{ id: runId, tenantId: tenantA }],
+    "devuelve el id CON su tenant: el orquestador no tiene contexto para deducirlo",
+  );
+  const run = await estadoDe(runId);
+  assert.equal(run.status, "failed");
+  assert.equal(run.fin, true, "finished_at es el sello de la transición");
+  assert.match(run.error ?? "", /barrido/i, "el error dice QUIÉN lo mató, o hay que adivinarlo");
+});
+
+/*
+ * El test que de verdad puede caer. Sin `created_at <` en la función, el barrido mata cualquier run
+ * vivo — incluido el research que arrancó hace un minuto y ya se le pagó a DataForSEO.
+ */
+test("barrido: un run 'running' RECIENTE no se toca", async () => {
+  const viejo = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA1));
+  await envejecer(viejo, "5 hours");
+  const reciente = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA2));
+  await envejecer(reciente, "2 minutes");
+
+  const expirados = await storeServicio.expirarRunsColgados("3 hours");
+
+  // Control positivo: si el barrido no expirara NADA, este assert de abajo pasaría solo.
+  assert.deepEqual(expirados.map((e) => e.id), [viejo], "expira el viejo y SOLO el viejo");
+  assert.equal((await estadoDe(reciente)).status, "running", "el run vivo sigue vivo");
+});
+
+/*
+ * Un estado terminal NO es un run colgado. `pending_approval` es un run que TERMINÓ y espera a un
+ * humano (hasta `PLAZO_APROBACION`, 7 días): expirarlo por antigüedad borraría la compuerta humana.
+ */
+test("barrido: los estados que NO son 'running' quedan intactos aunque sean viejísimos", async () => {
+  const esperando = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA1));
+  await storeServicio.finishRun(ctxServicio(), esperando, {
+    costeMicros: 310_800,
+    costeBreakdown: {},
+    calidadDatos: {},
+    modelosSinPrecio: [],
+  });
+  await envejecer(esperando, "9 days");
+
+  const aprobado = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA2));
+  await pg.query("update kr_runs set status = 'approved' where id = $1", [aprobado]);
+  await envejecer(aprobado, "9 days");
+
+  const expirados = await storeServicio.expirarRunsColgados("3 hours");
+
+  assert.deepEqual(expirados, [], "ni el que espera aprobación ni el aprobado son runs colgados");
+  assert.equal((await estadoDe(esperando)).status, "pending_approval");
+  assert.equal((await estadoDe(aprobado)).status, "approved");
+});
+
+/**
+ * 🔴 LO ÚNICO QUE PRUEBA QUE LA `security definer` SIRVE PARA LO QUE EXISTE.
+ *
+ * RLS en `kr_runs` exige `tenant_id = app.current_tenant_id()`, y un barrido es cross-tenant por
+ * naturaleza. Sin este test, la función podría estar filtrando por tenant —o el `security definer`
+ * podría estar frenado por FORCE RLS, que es lo que pasaría en producción si la función perteneciera
+ * al dueño de la tabla— y todos los tests de arriba seguirían en verde: usan un solo tenant.
+ */
+test("🔴 barrido: expira los runs colgados de TODOS los tenants, no solo los del contexto", async () => {
+  const runA = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA1));
+  const runB = await storeServicio.createRun({ tenantId: tenantB }, nuevoRun(clientB1));
+  await envejecer(runA, "5 hours");
+  await envejecer(runB, "5 hours");
+
+  const expirados = await storeServicio.expirarRunsColgados("3 hours");
+
+  // Comparar dos listas vacías pasa y no prueba nada: primero se exige que haya DOS.
+  assert.equal(expirados.length, 2, "los dos tenants tienen un run colgado y los dos se expiran");
+  assert.deepEqual(
+    [...expirados].sort((x, y) => x.id.localeCompare(y.id)),
+    [{ id: runA, tenantId: tenantA }, { id: runB, tenantId: tenantB }].sort((x, y) =>
+      x.id.localeCompare(y.id),
+    ),
+    "cada id viaja con SU tenant",
+  );
+  assert.equal((await estadoDe(runA)).status, "failed");
+  assert.equal((await estadoDe(runB)).status, "failed", "🔴 el run del OTRO tenant también se expira");
+});
+
+/**
+ * 🔴 El grant, probado. `app.expirar_runs_colgados` es el ÚNICO privilegio cross-tenant del sistema:
+ * si la API pudiera llamarlo, cualquier bug de ruta se convertiría en "marcar failed los runs de toda
+ * la plataforma".
+ *
+ * Se exige el RECHAZO del motor (42501), no cero filas: en Postgres `execute` es de PUBLIC por
+ * defecto, así que sin el `revoke execute ... from public` de la 0018 esto pasa. Medido.
+ */
+test("🔴 barrido: la API (app_user) NO puede ejecutar la función del barrido", async () => {
+  const runId = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA1));
+  await envejecer(runId, "5 hours");
+
+  await assert.rejects(
+    () => store.expirarRunsColgados("3 hours"),
+    /permission denied for function/i,
+    "🔴 el rol de la API no tiene execute sobre el barrido",
+  );
+  assert.equal((await estadoDe(runId)).status, "running", "y no llegó a tocar nada");
+});
+
+/**
+ * 🔴 `app_barrido` existe solo como DUEÑO de la función. Si algún login pudiera asumirlo, el rol
+ * dejaría de ser "el cuerpo de una función" y pasaría a ser una credencial cross-tenant.
+ *
+ * Se le pregunta a Postgres con `pg_has_role(..., 'SET')` y no a `pg_auth_members`, por lo mismo que
+ * el test de credenciales de más arriba: la pregunta es sobre el GRAFO, no sobre mi modelo del grafo.
+ */
+test("🔴 barrido: ningún login puede asumir app_barrido, y el rol no ve datos de cliente", async () => {
+  const { rows } = await pg.query<{ login: string; puede: boolean }>(
+    `select rolname as login, pg_has_role(rolname, 'app_barrido', 'SET') as puede
+       from pg_roles where rolname in ('amg_api','amg_orquestador','amg_cache','amg_render')`,
+  );
+  assert.equal(rows.length, 4, "los cuatro logins existen (si no, este test no comprueba nada)");
+  for (const r of rows) assert.equal(r.puede, false, `🔴 ${r.login} NO puede asumir app_barrido`);
+
+  const { rows: attr } = await pg.query<{ rolcanlogin: boolean; rolbypassrls: boolean; rolsuper: boolean }>(
+    "select rolcanlogin, rolbypassrls, rolsuper from pg_roles where rolname = 'app_barrido'",
+  );
+  assert.deepEqual(
+    attr[0],
+    { rolcanlogin: false, rolbypassrls: false, rolsuper: false },
+    "🔴 sin login y sin bypassrls: su permiso es una POLÍTICA auditable, no un privilegio implícito",
+  );
+
+  // Y lo que el rol puede leer por su cuenta: nada del negocio. `prompt` es dato del cliente.
+  await pg.exec("begin");
+  await pg.exec("set local role app_barrido");
+  await assert.rejects(
+    () => pg.query("select prompt from kr_runs"),
+    /permission denied/i,
+    "🔴 el grant por columna deja fuera el prompt del cliente",
+  );
+  await pg.exec("rollback");
+});
+
+/**
+ * 🔴 LA GARANTÍA QUE ESTE PAQUETE NO PUEDE PROBAR EJECUTANDO NADA. Se prueba mirando el catálogo, y
+ * ése es el único modo honesto.
+ *
+ * En PGlite las migraciones corren como `postgres`, que ahí **sí es superusuario**, y un superusuario
+ * salta RLS pase lo que pase. Así que si la función quedara con el dueño por defecto, todos los tests
+ * del barrido de arriba **seguirían en verde** — medido: quitar el `alter function ... owner to
+ * app_barrido` no tumba ninguno.
+ *
+ * En Supabase alojado, en cambio, `postgres` NO es superusuario (este repo ya lo pagó con
+ * `app.migraciones_aplicadas`), y `kr_runs` lleva `force row level security`: el dueño de la tabla
+ * queda sujeto a las políticas, así que el barrido devolvería CERO FILAS en silencio. Verde acá, roto
+ * allá — el modo de fallo que este proyecto persigue.
+ *
+ * Por eso lo que se exige es el CONTRATO ESTRUCTURAL: de quién es la función, si es definer, y que
+ * tenga `search_path` fijado (una `security definer` sin él es la escalada de privilegios clásica:
+ * el llamador antepone un schema propio y le hace ejecutar SU código al dueño).
+ */
+test("🔴 barrido: la función es SECURITY DEFINER de app_barrido, con search_path fijado", async () => {
+  const { rows } = await pg.query<{
+    owner: string;
+    prosecdef: boolean;
+    proconfig: string[] | null;
+  }>(
+    `select pg_get_userbyid(p.proowner) as owner, p.prosecdef, p.proconfig
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'app' and p.proname = 'expirar_runs_colgados'`,
+  );
+  assert.equal(rows.length, 1, "la función existe (si no, el resto no comprueba nada)");
+  const fn = rows[0]!;
+
+  assert.equal(
+    fn.owner,
+    "app_barrido",
+    "🔴 NO puede pertenecer a quien corre la migración: en producción ese rol está sujeto a FORCE RLS",
+  );
+  assert.equal(fn.prosecdef, true, "🔴 sin security definer no hay barrido cross-tenant");
+  assert.ok(
+    (fn.proconfig ?? []).some((c) => c.startsWith("search_path=")),
+    "🔴 una security definer sin search_path fijado es una escalada de privilegios",
+  );
+});
+
+/*
+ * El índice del barrido, comprobado en el catálogo porque no hay otra forma: quitarlo no rompe NADA
+ * funcionalmente (medido — los 59 tests siguen verdes sin él), solo convierte cada pasada del barrido
+ * en un seq scan sobre todos los runs que la plataforma haya hecho jamás. Un coste que crece solo y
+ * que no avisa es exactamente lo que este test existe para que alguien note al borrarlo.
+ *
+ * Lo que se exige es el PREDICADO, no el nombre: sin `where status = 'running'` el índice indexaría el
+ * histórico entero y dejaría de ser barato, que es su única razón de ser.
+ */
+test("barrido: el índice parcial existe y es PARCIAL (si no, no compra nada)", async () => {
+  const { rows } = await pg.query<{ indexdef: string }>(
+    "select indexdef from pg_indexes where tablename = 'kr_runs' and indexname = 'kr_runs_colgados'",
+  );
+  assert.equal(rows.length, 1, "el índice del barrido existe");
+  assert.match(rows[0]!.indexdef, /WHERE \(status = 'running'/i, "es parcial: solo los runs vivos");
+  assert.match(rows[0]!.indexdef, /created_at/, "y ordena por la columna que el barrido filtra");
+});
+
+/**
+ * 🔴 El piso del plazo, impuesto por la BASE.
+ *
+ * Con `'0 seconds'` la función mataría todos los runs vivos de la plataforma, y sería una llamada
+ * perfectamente válida. El piso está en la función y no en TypeScript porque el privilegio también
+ * está ahí: un `if` en el llamador lo tendría que repetir el próximo llamador.
+ */
+test("🔴 barrido: la base RECHAZA un plazo por debajo de una hora (y NULL)", async () => {
+  const runId = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA1));
+  await envejecer(runId, "5 hours");
+
+  for (const plazo of ["0 seconds", "30 minutes"]) {
+    await assert.rejects(
+      () => storeServicio.expirarRunsColgados(plazo),
+      /plazo demasiado corto/i,
+      `🔴 '${plazo}' no puede expirar nada`,
+    );
+  }
+  assert.equal((await estadoDe(runId)).status, "running", "ningún run vivo murió por el intento");
+
+  // El plazo de producción sí pasa el piso: sin esto, el piso podría estar rompiendo el caso real.
+  assert.equal((await storeServicio.expirarRunsColgados(PLAZO_RUN_COLGADO)).length, 1);
+});
+
+/**
+ * El escenario que la 15ª review anticipó: el barrido mata un workflow lento y el workflow, al
+ * terminar, lo resucita. No pasa porque `finishRun` es compare-and-set (`where status = 'running'`),
+ * y este test es quien lo ata al barrido — sin él, quitar esa guarda no rompería nada de esta sección.
+ */
+test("🔴 barrido: un run ya expirado NO vuelve a pending_approval cuando el workflow termina tarde", async () => {
+  const runId = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA1));
+  await envejecer(runId, "5 hours");
+  await storeServicio.expirarRunsColgados("3 hours");
+
+  const movio = await storeServicio.finishRun(ctxServicio(), runId, {
+    costeMicros: 310_800,
+    costeBreakdown: { dataforseo_micros: 252_200 },
+    calidadDatos: {},
+    modelosSinPrecio: [],
+  });
+
+  assert.equal(movio, false, "finishRun avisa de que NO movió el estado");
+  assert.equal((await estadoDe(runId)).status, "failed", "🔴 el barrido gana: el run sigue muerto");
+  // Pero el gasto se anota igual: ese dinero se pagó de verdad.
+  const run = await storeServicio.getRun(ctxServicio(), runId);
+  assert.equal(run?.coste_micros_usd, 310_800, "el coste se registra aunque el estado no se mueva");
+});
+
+/**
+ * 🔴 EL DEFAULT DE PRODUCCIÓN. Lo consume la función programada del orquestador; si el test eligiera
+ * el valor, no estaría fijando el que corre en prod.
+ *
+ * Los dos asserts prueban cosas distintas a propósito: el primero fija el literal, el segundo fija la
+ * DECISIÓN (que el umbral esté muy por encima de la duración real de un research). Cambiar el literal
+ * a algo defendible tumba solo el primero; cambiarlo a "20 minutes" tumba los dos.
+ */
+test("🔴 PLAZO_RUN_COLGADO: el default de producción son 3 horas, ~11x el research más largo medido", async () => {
+  assert.equal(PLAZO_RUN_COLGADO, "3 hours");
+
+  const { rows } = await pg.query<{ seg: number }>(
+    "select extract(epoch from $1::interval)::int as seg",
+    [PLAZO_RUN_COLGADO],
+  );
+  const segundos = rows[0]!.seg;
+
+  // La única duración real medida de un research: 16m15s (2026-07-30, DataForSEO producción).
+  const RESEARCH_MEDIDO_SEG = 16 * 60 + 15;
+  assert.ok(
+    segundos >= 10 * RESEARCH_MEDIDO_SEG,
+    `el umbral (${segundos}s) tiene que dejar margen de sobra sobre ${RESEARCH_MEDIDO_SEG}s`,
+  );
+  // Y NO puede ser el plazo de la espera posterior (PLAZO_APROBACION = 7d): un run colgado una
+  // semana es una semana sin que nadie se entere.
+  assert.ok(segundos < 24 * 3600, "un run colgado se detecta el mismo día, no a los 7");
 });

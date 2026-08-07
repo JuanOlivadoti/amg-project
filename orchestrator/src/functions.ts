@@ -1,5 +1,6 @@
 import { Inngest } from "inngest";
 import type { GetStepTools } from "inngest";
+import { PLAZO_RUN_COLGADO } from "db";
 import type { Eventos } from "./events.js";
 import type { Deps, Pasos } from "./workflow.js";
 import { workflowResearch } from "./workflow.js";
@@ -91,5 +92,72 @@ export function crearFuncionResearch(deps: Deps) {
         deps,
       );
     },
+  );
+}
+
+/**
+ * Cada cuánto barre. **No es el plazo**: el plazo lo decide `PLAZO_RUN_COLGADO` (3 h, en `db`).
+ *
+ * Cada hora es holgado de sobra. Lo que se ganaría bajándolo es enterarse antes de algo que ya lleva
+ * tres horas muerto; lo que se paga es una consulta por corrida contra un índice parcial. Un run
+ * colgado no urge — lo que urge es que deje de ser invisible.
+ */
+export const CRON_BARRIDO = "0 * * * *";
+
+/**
+ * El barrido de runs colgados: **la mitad que no comparte punto de fallo con lo que protege**.
+ *
+ * `onFailure` existe para que un run no quede en `running` para siempre, y su única acción es
+ * `failRun()` — o sea, escribir en Postgres. Cuando el workflow muere porque no alcanza la base, el
+ * manejador muere por lo mismo: la red de seguridad se rompe justo cuando hace falta. Pasó el
+ * 2026-08-07 en producción. Y hay un caso que `onFailure` no cubre ni estando sano: que el evento se
+ * emita, no lo consuma nadie, y entonces **ninguna función de Inngest llegue a existir** para ese run.
+ *
+ * Por eso esto es una función PROGRAMADA y no un reintento: no la dispara el run que falló.
+ *
+ * ## Por qué la lógica vive acá afuera
+ *
+ * Mismo motivo que `CONCURRENCIA`: los tests corren la lógica, no la función de Inngest. Un cron mal
+ * escrito o un plazo cambiado a mano no lo caza ningún test que ejercite `createFunction`.
+ *
+ * **`PLAZO_RUN_COLGADO` se IMPORTA de `db`, no se escribe acá.** Si el literal `"3 hours"` viviera en
+ * dos sitios, el test del default dejaría de fijar el que corre en producción — que es la definición
+ * de un default sin dueño.
+ */
+export async function barrerRunsColgados(
+  deps: Pick<Deps, "store">,
+  log: (msg: string) => void = () => {},
+): Promise<{ expirados: number }> {
+  const runs = await deps.store.expirarRunsColgados(PLAZO_RUN_COLGADO);
+
+  /*
+   * El silencio se loguea igual que el ruido, y a propósito: "ningún run colgado" cada hora es la
+   * señal de que el barrido CORRE. Sin esa línea no habría forma de distinguir "no había nada
+   * colgado" de "el cron dejó de dispararse" — que es exactamente la clase de fallo mudo que este
+   * barrido existe para no repetir.
+   */
+  if (runs.length === 0) {
+    log(`[barrido] ningún run colgado (plazo ${PLAZO_RUN_COLGADO})`);
+  } else {
+    for (const r of runs) {
+      log(`[barrido] run ${r.id} (tenant ${r.tenantId}) llevaba más de ${PLAZO_RUN_COLGADO} en running → failed`);
+    }
+  }
+  return { expirados: runs.length };
+}
+
+export function crearFuncionBarrido(deps: Deps) {
+  return inngest.createFunction(
+    {
+      id: "barrido-runs-colgados",
+      // Uno a la vez: dos barridos simultáneos harían el mismo UPDATE y el segundo no vería nada. No
+      // rompe nada —el `where status = 'running'` lo hace idempotente—, pero es trabajo tirado.
+      concurrency: [{ limit: 1 }],
+      // Sin reintentos: si falla, el del próximo ciclo hace exactamente lo mismo una hora después.
+      // Reintentar en caliente contra una base que no responde es lo que ya sabemos que no sirve.
+      retries: 0,
+    },
+    { cron: CRON_BARRIDO },
+    async ({ step }) => step.run("expirar", () => barrerRunsColgados(deps, console.log)),
   );
 }
