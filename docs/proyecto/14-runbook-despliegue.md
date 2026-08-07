@@ -782,8 +782,18 @@ nombre depende de que el humano note que está mal.
 
 **No pongas `PORT`**: lo inyecta Railway y `server.ts` ya lo lee.
 
-**No hace falta custom domain.** Al orquestador solo lo llama Inngest, así que el
-`*.up.railway.app` alcanza — y esos no cuentan contra el límite del plan, que ya se alcanzó con dos.
+**Sí hace falta un dominio PÚBLICO, y Railway no lo crea solo.** Andá a **Settings → Networking →
+Public Networking → Generate Domain**: sale un `*.up.railway.app` gratis, que no cuenta contra el
+límite de custom domains del plan (ya alcanzado con dos).
+
+Lo que **no** hace falta es un dominio **propio** (tipo `orquestador.bigballs.es`): al orquestador no
+lo visita ninguna persona. Pero público tiene que ser igual, porque **Inngest Cloud le pega a
+`/api/inngest` desde internet**. Sin URL pública el proceso queda vivo y sordo: no se puede sincronizar
+la app y no le llega ni una invocación.
+
+> Esta distinción confundió de verdad el 2026-08-07. Acá decía "no hace falta custom domain", que se
+> lee como "no hace falta dominio", y el servicio quedó sin URL — con el `curl` de §B5 apuntando a un
+> host que no existía.
 
 ### 4. Las credenciales: el orquestador es el proceso con MÁS del sistema
 
