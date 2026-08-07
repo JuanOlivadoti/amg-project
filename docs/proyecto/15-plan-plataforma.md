@@ -58,7 +58,15 @@ pendientes, que se pueden hacer seguidas. El **C** es el único tramo del produc
 media de fallos y ninguno fue del código**. Todo lo de este bloque sale de ahí, y su valor no es
 teórico: es el tiempo que costó, medido.
 
-### A1. `/_health` del orquestador tiene que decir la verdad sobre Postgres
+### A1. `/_health` del orquestador tiene que decir la verdad sobre Postgres — ✅ **hecho el 2026-08-07**
+
+> **Hecho, y verificado manejando el proceso, no solo con tests.** `orchestrator/src/salud.ts` (sonda
+> con cache, timeout y log de transición) + `PgStore.comprobarAcceso()`, 13 tests nuevos.
+> **Se reprodujo el incidente**: arrancando el orquestador con el host `base` —el DSN exacto que rompió
+> producción el 2026-08-07— `/_health` devuelve
+> `{"ok":true,…,"degradado":["postgres"]}` con **una sola** línea `[salud] DEGRADADO: postgres no
+> responde — getaddrinfo ENOTFOUND base`, pese a tres consultas cruzando el TTL. Lo de abajo queda como
+> el razonamiento.
 
 **El problema.** Responde `{"ok":true}` con la base inalcanzable. Está escrito así a propósito —para
 que el health check no dependa de terceros— pero **para el orquestador la base no es un tercero: es

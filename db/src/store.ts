@@ -894,6 +894,24 @@ export class PgStore {
   }
 
   /**
+   * ¿Puede este proceso hacer lo que hace? Lanza si no. **La sonda de `/_health`.**
+   *
+   * Un `select 1` sobre la conexión cruda habría probado que hay TCP y que la contraseña es correcta,
+   * y **nada más**. Lo que el orquestador hace de verdad es abrir una transacción con conexión
+   * reservada y asumir `app_service` (ADR-13, ADR-17), y ese `set local role` es exactamente lo que
+   * falla cuando el login no tiene el rol concedido — un fallo que el `select 1` declararía sano.
+   *
+   * Por eso la sonda va por `sinTenant`: recorre el mismo camino, no uno parecido. Sigue siendo
+   * baratísima (una transacción vacía), y **no toca ninguna tabla de tenant**: no hay contexto que
+   * poner, así que RLS no dejaría ver nada aunque se intentara.
+   */
+  async comprobarAcceso(): Promise<void> {
+    await this.sinTenant(async (tx) => {
+      await tx.query("select 1");
+    });
+  }
+
+  /**
    * Como `withTenant`, pero SIN identidad: aplica el rol del proceso y nada más.
    *
    * No es un atajo para saltarse el contexto — es que hay una operación (el barrido) donde no existe

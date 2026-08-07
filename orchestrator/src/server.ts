@@ -3,6 +3,7 @@ import { crearServidor, opcionesDeServe } from "./app.js";
 import { leerConfig } from "./config.js";
 import { crearDeps, crearConexiones } from "./deps.js";
 import { crearFuncionBarrido, crearFuncionResearch, inngest } from "./functions.js";
+import { crearSonda } from "./salud.js";
 
 /**
  * Expone las funciones del orquestador para que Inngest las invoque.
@@ -32,6 +33,9 @@ const server = crearServidor({
   funciones: funciones.length,
   modo: config.esProduccion ? "cloud" : "dev",
   pipeline: config.pipeline,
+  // La sonda va por el STORE, no por el pool: así recorre el mismo `set local role app_service` que
+  // hace el trabajo real, y no solo el TCP. Ver `salud.ts` y `PgStore.comprobarAcceso`.
+  sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso() }),
 });
 
 server.listen(config.puerto, () => {

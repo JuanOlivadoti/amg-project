@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { serve } from "inngest/node";
 import type { ConfigOrquestador, ModoPipeline } from "./config.js";
+import type { Salud } from "./salud.js";
 
 /**
  * El servidor HTTP del orquestador. Igual que `renderer/src/app.ts` y `api/src/app.ts`, es una
@@ -58,41 +59,58 @@ export interface OpcionesServidor {
   modo: "cloud" | "dev";
   /** Lo declarado en `PIPELINE_MODO`. Se reporta para poder auditarlo sin entrar al panel. */
   pipeline: ModoPipeline;
+  /**
+   * Comprueba las dependencias sin las que este proceso no sirve (hoy: Postgres). Ver `salud.ts`
+   * para las tres decisiones —200 aunque esté degradado, el log de la transición, la cache—.
+   *
+   * Es **opcional** para no romper a quien levante el servidor sin base (un test del enrutado, un
+   * dev-server). Sin ella, `/_health` reporta lo mismo que antes: que el proceso está vivo.
+   */
+  sonda?: () => Promise<Salud>;
 }
 
 const ARRANQUE = Date.now();
 
 export function crearServidor(opciones: OpcionesServidor): Server {
-  const { manejadorInngest, funciones, modo, pipeline } = opciones;
+  const { manejadorInngest, funciones, modo, pipeline, sonda } = opciones;
 
   return createServer((req, res) => {
     /*
-     * Salud del proceso. **No toca la base ni Inngest, a propósito** — mismo criterio que el
-     * renderizador (`renderer/src/app.ts`), que es el precedente más nuevo:
+     * Salud del proceso, y **sí toca la base** desde el 2026-08-07.
      *
-     *  · Un chequeo que depende de una dependencia declara ENFERMO un proceso que sirve: si Postgres
-     *    está de mantenimiento, Railway mataría y reiniciaría un orquestador que solo tenía que
-     *    esperar. Inngest reintenta los runs solo; reiniciar no arregla nada y sí tira el proceso.
-     *  · Y al revés, peor: uno que sí la toca puede declarar SANO un proceso que no sirve —la base
-     *    responde, el proceso está trabado— porque mide la dependencia y no a sí mismo.
+     * Este comentario decía lo contrario, con el argumento del renderizador: que un health check no
+     * dependa de terceros, porque si Postgres está de mantenimiento Railway mataría un proceso que
+     * solo tenía que esperar. El argumento sigue siendo bueno **para el renderizador** y es falso
+     * acá: para el orquestador la base no es un tercero, es todo lo que hace. Un orquestador que no
+     * la alcanza no puede leer el run, ni escribir keywords, ni cerrar nada.
      *
-     * Lo que sí reporta es lo que se puede saber sin preguntarle a nadie: cuántas funciones quedaron
-     * registradas (cero = arriba e inútil), en qué modo cree estar, y hace cuánto arrancó.
+     * Lo que se conserva de aquel razonamiento es lo que valía: **el código sigue siendo 200**, para
+     * que Railway no reinicie en bucle un proceso que solo necesita que la base vuelva. Lo que
+     * cambia es que ahora el cuerpo lo dice, y el log lo grita. Ver `salud.ts`.
      *
      * El chequeo va PRIMERO, antes de la delegación: si cayera después, un `/api/inngest*` mal
      * enrutado se lo comería y la salud del proceso dependería del SDK.
      */
     if (req.url === "/_health") {
-      const cuerpo = JSON.stringify({
-        ok: true,
-        funciones,
-        modo,
-        // Que `PIPELINE_MODO` se pueda leer desde afuera es la mitad de su valor: una declaración
-        // que solo vive en el panel de variables no se puede auditar mirando el servicio.
-        pipeline,
-        uptimeSegundos: Math.round((Date.now() - ARRANQUE) / 1000),
-      });
-      res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(cuerpo);
+      void (async () => {
+        // Si la propia sonda revienta (no debería: atrapa adentro), se reporta degradado en vez de
+        // tumbar el request. Un health check que devuelve 500 por su propio bug es lo peor de los
+        // dos mundos: Railway reinicia y el motivo no aparece por ningún lado.
+        const salud = sonda ? await sonda().catch(() => ({ degradado: ["sonda"] })) : {};
+        const cuerpo = JSON.stringify({
+          ok: true,
+          funciones,
+          modo,
+          // Que `PIPELINE_MODO` se pueda leer desde afuera es la mitad de su valor: una declaración
+          // que solo vive en el panel de variables no se puede auditar mirando el servicio.
+          pipeline,
+          uptimeSegundos: Math.round((Date.now() - ARRANQUE) / 1000),
+          // Ausente cuando todo responde. Un `degradado: []` obligaría a leer el array para saber
+          // que está sano, y lo que se quiere es que la presencia del campo sea la señal.
+          ...salud,
+        });
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(cuerpo);
+      })();
       return;
     }
 

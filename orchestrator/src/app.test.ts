@@ -9,6 +9,7 @@ import { PgStore } from "db";
 import type { DbPool } from "db";
 import { crearServidor, opcionesDeServe } from "./app.js";
 import { crearFuncionResearch, inngest } from "./functions.js";
+import { crearSonda, DEPENDENCIA_BASE } from "./salud.js";
 import type { Deps } from "./workflow.js";
 
 /**
@@ -16,8 +17,18 @@ import type { Deps } from "./workflow.js";
  *
  * Hasta ahora respondía 404 a todo lo que no fuera `/api/inngest`, así que no había health check y
  * el PaaS solo podía saber "el puerto acepta conexiones". La API tiene `/health` y el renderizador
- * `/_health`; acá se sigue al renderizador, que es el precedente más nuevo y el que dejó escrito el
- * porqué de que el chequeo **no toque sus dependencias**.
+ * `/_health`.
+ *
+ * ⚠️ **Este bloque decía que acá se sigue al renderizador, "que dejó escrito el porqué de que el
+ * chequeo no toque sus dependencias". Era cierto y dejó de serlo el 2026-08-07.** El argumento del
+ * renderizador es bueno para el renderizador y falso para el orquestador: para él la base **no es un
+ * tercero, es todo lo que hace**. `/_health` ahora la comprueba —y sigue respondiendo **200**, que es
+ * lo que de verdad valía de aquel razonamiento: si devolviera 503, Railway reiniciaría en bucle un
+ * proceso cuyo único problema es que Postgres no responde.
+ *
+ * El comportamiento de la sonda (cache, timeout, log de la transición) se prueba en `salud.test.ts`,
+ * que puede inyectarle el reloj. Acá se prueba lo que solo se ve por HTTP: que el 200 se mantiene y
+ * que el campo llega al cuerpo.
  */
 
 const HOST = "127.0.0.1";
@@ -36,10 +47,11 @@ async function conServidor<T>(server: Server, fn: (base: string) => Promise<T>):
 /**
  * Las dependencias del orquestador con **la base caída**: cualquier transacción lanza.
  *
- * No es un adorno del test: es la única forma de probar el contrato del health check. Un chequeo que
- * consultara Postgres devolvería 503 acá, y eso es exactamente lo que no queremos — que Railway mate
- * y reinicie un proceso cuyo único problema es que la base está de mantenimiento, cuando lo correcto
- * es que el proceso siga vivo esperando a que vuelva (los runs de Inngest se reintentan solos).
+ * No es un adorno del test: es la única forma de probar el contrato del health check. Lo que se exige
+ * es la combinación —**200 Y `degradado`**—, y las dos mitades importan por motivos opuestos: el 200
+ * evita que Railway mate y reinicie un proceso cuyo único problema es que la base está de
+ * mantenimiento (los runs de Inngest se reintentan solos), y el `degradado` evita lo que pasó el
+ * 2026-08-07: hora y media con `{"ok":true}` y el orquestador sin alcanzar Postgres.
  */
 const CAIDA = "la base está caída (a propósito, en este test)";
 const poolCaido: DbPool = {
@@ -59,11 +71,20 @@ function depsSobreBaseCaida(): Deps {
   };
 }
 
-test("🔴 /_health responde 200 con la base CAÍDA: el chequeo no depende de sus dependencias", async () => {
-  // Composición real: las funciones de Inngest montadas sobre unas deps cuya base lanza siempre.
-  const funciones = [crearFuncionResearch(depsSobreBaseCaida())];
+test("🔴 /_health con la base CAÍDA: 200 por fuera, `degradado` por dentro", async () => {
+  // Composición real: las funciones de Inngest montadas sobre unas deps cuya base lanza siempre, y la
+  // sonda de verdad construida sobre el MISMO store. Si la sonda no pasara por el store, este test
+  // seguiría verde con un `/_health` que no comprueba nada.
+  const deps = depsSobreBaseCaida();
+  const funciones = [crearFuncionResearch(deps)];
   const manejadorInngest = serve({ client: inngest, functions: funciones });
-  const server = crearServidor({ manejadorInngest, funciones: funciones.length, modo: "dev", pipeline: "mock" });
+  const server = crearServidor({
+    manejadorInngest,
+    funciones: funciones.length,
+    modo: "dev",
+    pipeline: "mock",
+    sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso(), log: () => {} }),
+  });
 
   await conServidor(server, async (base) => {
     const r = await fetch(`${base}/_health`);
@@ -74,7 +95,73 @@ test("🔴 /_health responde 200 con la base CAÍDA: el chequeo no depende de su
     // arriba con CERO funciones registradas está sano por dentro y es completamente inútil.
     assert.equal(cuerpo["funciones"], 1);
     assert.equal(cuerpo["modo"], "dev");
+    // Y la mitad nueva: el 200 ya no puede significar "todo bien".
+    assert.deepEqual(
+      cuerpo["degradado"],
+      [DEPENDENCIA_BASE],
+      "sin esto, el 200 vuelve a ser la mentira que costó hora y media el 2026-08-07",
+    );
+    // El motivo NO viaja: `/_health` es público y el mensaje de Postgres lleva host y usuario.
+    assert.equal(JSON.stringify(cuerpo).includes(CAIDA), false);
   });
+});
+
+/**
+ * 🔴 Con la base SANA, el campo no aparece — el control positivo del test de arriba.
+ *
+ * Sin éste, una sonda que devolviera `degradado` **siempre** dejaría verde al anterior, y `/_health`
+ * pasaría de mentir en un sentido a mentir en el otro.
+ */
+test("🔴 /_health con la base sana: NI RASTRO del campo `degradado`", async () => {
+  const server = crearServidor({
+    manejadorInngest: (_req, res) => {
+      res.writeHead(200).end("inngest");
+    },
+    funciones: 2,
+    modo: "cloud",
+    pipeline: "mock",
+    sonda: crearSonda({ comprobar: async () => undefined }),
+  });
+
+  await conServidor(server, async (base) => {
+    const cuerpo = (await (await fetch(`${base}/_health`)).json()) as Record<string, unknown>;
+    assert.equal(cuerpo["ok"], true);
+    assert.equal("degradado" in cuerpo, false);
+  });
+});
+
+/**
+ * 🔴 La sonda recorre el `set local role`, no solo el TCP.
+ *
+ * Es el punto de fondo de la 15ª review: un `select 1` sobre la conexión cruda prueba que hay red y
+ * contraseña, y **no** que el proceso pueda asumir su rol (ADR-17). El fallo del rol es justo el que
+ * un `select 1` declararía sano. Se comprueba por el EFECTO —qué SQL acaba ejecutando— y no leyendo
+ * un campo privado, que es la misma técnica que fija `app_service` en `config.test.ts`.
+ */
+test("🔴 la sonda pasa por el rol del proceso (un `select 1` pelado no probaría ADR-17)", async () => {
+  const ejecutado: string[] = [];
+  const poolEspia: DbPool = {
+    transaction: async <T>(fn: (tx: never) => Promise<T>): Promise<T> => {
+      const tx = {
+        exec: async (sql: string) => {
+          ejecutado.push(sql);
+        },
+        query: async (sql: string) => {
+          ejecutado.push(sql);
+          return { rows: [] };
+        },
+      };
+      return fn(tx as never);
+    },
+  };
+
+  await new PgStore(poolEspia, "app_service").comprobarAcceso();
+
+  assert.ok(
+    ejecutado.some((s) => s.includes("set local role app_service")),
+    `la sonda tiene que asumir el rol real. SQL ejecutado: ${JSON.stringify(ejecutado)}`,
+  );
+  assert.ok(ejecutado.some((s) => s.includes("select 1")), "y después comprobar que la base contesta");
 });
 
 test("🔴 /_health no pasa por el manejador de Inngest", async () => {
