@@ -51,6 +51,12 @@ la pantalla. El detalle está en el
 **La próxima migración libre es la `0017`.** `0013` y `0014` siguen **reservadas** para ramas que se
 ejecutan en otra máquina: un número libre en el disco no es un número libre.
 
+## ✅ La demo está VIVA en producción (2026-08-07)
+
+Desplegadas las migraciones y sembrada la demo contra Supabase real. **El informe se ve en el portal**:
+las 14 páginas, el total de `$0.3097`, los tres `n/d` honestos, el aviso con las dos fechas y la descarga
+bajando `informe-La-Birra-Bar.md`. Es la primera vez que el código de KR-2b toca datos reales y no PGlite.
+
 ## ✅ Desplegado el 2026-08-07 — y lo que el primer despliegue real destapó
 
 Las **14** migraciones están aplicadas en producción, verificado contra la base. Se aplicaron tres (la

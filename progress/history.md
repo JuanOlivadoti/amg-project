@@ -11,6 +11,35 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-07 — el primer despliegue real, y el bug que solo podía aparecer desplegando
+
+Aplicadas las migraciones pendientes contra Supabase y sembrada la demo: **el informe de KR-2b se ve en
+producción**. Las 14 migraciones quedan aplicadas —se aplicaron tres, porque la `0011` ya estaba, contra lo
+que la doc afirmaba— y el estado pasa de *"no se puede confirmar sin credenciales"* a verificado.
+
+**El despliegue murió antes de la primera migración**, con `permission denied for schema auth` y sin decir
+dónde. Lo que lo delató fue lo que el mensaje NO traía: el runner prefija sus fallos con *"La migración X
+falló y se revirtió"*, así que un error pelado significaba que el fallo era **anterior al bucle**.
+
+Era `asegurarAuthStandIn`, un stand-in de `auth.users` que existe para que PGlite tenga esa tabla en los
+tests, y que hacía `create table if not exists auth.users`. Su comentario afirmaba que en Supabase era **un
+no-op, «porque el `if not exists` no toca nada»** — y nunca se había medido contra Supabase. Ahí el schema
+`auth` pertenece a `supabase_auth_admin`, y **evaluar el `if not exists` igual exige mirar dentro del
+schema**: sin `usage`, aborta. Arreglado consultando `pg_class`/`pg_namespace`, catálogos que se leen sin
+`usage` — por eso la comprobación funciona donde el `create` no.
+
+Es el mismo patrón que KR-2b persiguió doce veces —una afirmación sobre una herramienta escrita sin
+ejecutarla— con dos vueltas de tuerca: vivía en un **helper de tests que corre en el camino de producción**,
+y afirmaba precisamente cómo se comportaba en el único camino que ningún test recorre. **Solo podía
+aparecer el día que alguien desplegara.**
+
+Y dos predicciones mías fallaron en el diagnóstico, las dos por leer en vez de medir: dije que el
+`grant usage on schema auth` de la `0012` probablemente era innecesario (el archivo documenta, con test,
+que sin él ni el camino legítimo funciona), y anticipé que ese grant sería el segundo muro (pasó sin
+problema: el rol no puede *crear* en `auth`, pero sí *otorgar* sobre él).
+
+---
+
 ## 2026-08-06 — KR-2b: el informe llega a la pantalla, y el plan se equivocó en cada tarea
 
 Cerrada **KR-2b** en **17 commits**: la tabla `kr_informes` (`0016`, solo staff, con sus grants),
