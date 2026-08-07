@@ -11,6 +11,48 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-07 (madrugada) — el circuito entero corrió en producción, y hora y media de fallos que no fueron del código
+
+Un research lanzado desde el portal recorrió `POST /runs` → Inngest → orquestador → `kr-service` →
+Postgres → informe → `pending_approval`: **124 keywords, 25 páginas, 1 informe, $0.00**, en menos de
+diez segundos. Es lo último que no se había probado nunca — hasta hoy, todo lo que había en Supabase
+estaba sembrado a mano, y el step `guardar-informe` de KR-2b tenía **22 tests sin haber salido jamás
+de PGlite**.
+
+**Entre el despliegue y eso hubo hora y media de fallos, y ninguno fue del código.** Los tres
+servicios se rompieron por edición manual de variables en el panel de Railway: el orquestador arrancó
+con `@base:` de host (`getaddrinfo ENOTFOUND base`), al corregirlo se borraron las dos variables
+enteras, y al renderizador le desaparecieron las suyas porque se editó el servicio equivocado. Eso
+último tardó en verse porque **la web siguió sirviendo 200**: Railway mantiene el contenedor viejo
+mientras el nuevo falla, así que "responde" y "está desplegado" dejaron de ser lo mismo.
+
+**El dato del día, y no es agradable: cuatro hipótesis mías, las cuatro refutadas por la medición
+siguiente.** Que faltaba el `alter role` —los dos DSN conectaban—. Que las claves eran de entornos
+distintos —el evento estaba en production—. Que Inngest no llegaba —la función corrió y falló—. Que
+el login no podía asumir su rol —`set local role app_service` funcionaba—. Lo cerró **el mensaje de
+error** cuando por fin lo pedí, no el razonamiento; y cada hipótesis costó una vuelta entera.
+
+**Lo que sí se ganó razonando** fue predecir, antes de tener el error, que el `onFailure` moriría con
+el workflow: su única acción es `failRun()`, o sea escribir en la base, y el fallo era la base. La red
+de seguridad que existe para que un run no se quede en `running` **comparte su punto de fallo con lo
+que protege**. El stack del error lo confirmó línea por línea (`functions.ts:81`).
+
+**Y dos veces en el mismo día, `/_health` dijo `{"ok":true}` sobre un servicio inservible**: por la
+mañana con el 401 de la firma, por la noche con la base inalcanzable. Está escrito así a propósito
+—que no dependa de terceros— pero para el orquestador la base no es un tercero: es todo lo que hace.
+
+**El mock zanjó una decisión de producto que llevaba abierta desde la tarde.** Para un prompt de
+hamburguesería gourmet argentina devolvió *pizzería madrid recomendado*, *mejor menú del día madrid
+barato*, *pasta fresca madrid menú*. No son datos falsos plausibles: son de **otro negocio**. En mock
+el circuito se prueba y no se enseña, así que la demo con Frank o corre un research `live` (~$0.31,
+~16 min) o llega solo hasta la aprobación de páginas.
+
+De paso, una herramienta nació coja: `probar-dsn`, escrito esa misma tarde, verifica el DSN de
+`credenciales.env` — **la fuente**, no lo que tiene el proceso desplegado. Dio verde mientras Railway
+tenía basura. No está mal, pero su nombre promete más de lo que mide.
+
+---
+
 ## 2026-08-07 (noche cerrada) — el orquestador desplegado: Fase 2 entera en producción, y un botón que no hace nada
 
 La quinta pieza del día y la que cierra Fase 2. El orquestador —la única de las cuatro que nunca

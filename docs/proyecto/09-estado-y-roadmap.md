@@ -30,6 +30,12 @@ con RLS forzada en Supabase (`eu-west-2`). De Fase 2, el **renderizador** desde 
 ([`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app), Railway,
 servicio aparte): la web del cliente se sirve desde internet.
 
+> ✅✅ **El circuito entero corrió en producción el 2026-08-07, y es lo último que no se había probado
+> nunca.** Un research lanzado desde el portal recorrió `POST /runs` → Inngest → orquestador →
+> `kr-service` → Postgres → informe → `pending_approval`: **124 keywords, 25 páginas, 1 informe,
+> $0.00**, en menos de diez segundos, con los providers en mock. Verificado en la base **y en la
+> pantalla**. Hasta ese día todo lo que había en Supabase estaba sembrado a mano.
+>
 > 🚀 **El orquestador está DESPLEGADO desde el 2026-08-07**, y con él **las cuatro piezas de Fase 2
 > están en producción**. `amg-orchestrator-production.up.railway.app` responde
 > `{"ok":true,"funciones":1,"modo":"cloud","pipeline":"mock"}` y su app quedó **sincronizada con

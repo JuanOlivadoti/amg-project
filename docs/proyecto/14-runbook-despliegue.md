@@ -878,14 +878,60 @@ credencial de proveedor, así que se puede comprobar que el evento llega, que lo
 run queda en `pending_approval` con su informe y que la compuerta despierta al workflow — **sin gastar
 un céntimo**. Recién con eso verde, decidí si se conecta la cuenta real.
 
+### 5.b Sincronizar la app en Inngest — el paso que faltaba acá
+
+Registrar las funciones es un `PUT` **a tu propio servicio**: el SDK se introspecciona y **envía** el
+manifiesto a la API de Inngest, autenticándose con `INNGEST_SIGNING_KEY`.
+
+```bash
+curl -X PUT https://<tu-orquestador>.up.railway.app/api/inngest
+# {"message":"Successfully registered","modified":true}
+```
+
+> **Lo que ese OK prueba, y lo que no.** Prueba la dirección **saliente** (orquestador → Inngest), o
+> sea que la signing key es válida. **No** prueba la entrante, que es la que usa Inngest para
+> invocar funciones — y es justo la que el tramo A tenía rota. Un `GET /api/inngest` sin firmar
+> devuelve **401**, y ese 401 no distingue "te rechaza a vos" de "va a rechazar a Inngest". Lo único
+> que separa los dos casos es el §6.3.
+>
+> En el panel, la app aparece con **2 funciones**: nuestro código registra una, e Inngest cuenta el
+> manejador `onFailure` como otra. No es una discrepancia con el `funciones: 1` del health check.
+
 ### 6. Verificación
 
-1. `/_health` responde 200 (no prueba que funcione: prueba que el proceso vive).
+1. `/_health` responde 200 (no prueba que funcione: prueba que el proceso vive — ver el aviso de
+   abajo).
 2. En el panel de Inngest, la app aparece **sincronizada** y lista sus funciones.
 3. Lanzá un research desde el portal con los providers en mock: el run tiene que pasar de `running` a
    `pending_approval` **con su informe**, y el brief verse en el portal.
 4. Aprobá el run y comprobá que el workflow **despierta** y publica.
 5. Mirá los logs del servicio: no tiene que haber ni un `Cannot find package` ni una caída a PGlite.
+
+> **Hecho el 2026-08-07, del 1 al 3:** 124 keywords, 25 páginas, 1 informe, $0.00, en menos de diez
+> segundos. El paso 4 (aprobar → publicar) quedó **sin probar**: escribe en el espacio real de
+> Storyblok del cliente y hay que decidir antes en qué modo está `WEB_PUBLISH_MODE`.
+
+> ### 🔴 Lo que costó hora y media, y no fue el código
+>
+> Los tres servicios se rompieron **editando variables a mano en el panel de Railway**: el orquestador
+> arrancó con `@base:` de host (`getaddrinfo ENOTFOUND base`), al corregirlo se borraron las dos
+> variables enteras, y al renderizador le desaparecieron las suyas porque se editó el servicio
+> equivocado.
+>
+> **Tres cosas que hacen esto difícil de ver, y conviene tenerlas presentes:**
+>
+> 1. **`/_health` responde `{"ok":true}` con la base inalcanzable.** No la toca a propósito. Para el
+>    orquestador eso significa que se declara sano sin poder hacer nada.
+> 2. **Un servicio que responde 200 puede tener el deploy en rojo.** Railway mantiene el contenedor
+>    anterior mientras el nuevo falla: "responde" y "está desplegado" no son lo mismo. La verdad está
+>    en la pestaña **Deployments**, no en un `curl`.
+> 3. **`npm run probar-dsn` verifica la FUENTE, no el despliegue.** Da verde con
+>    `docs/private/credenciales.env` correcto aunque Railway tenga basura. Son dos afirmaciones
+>    distintas y hoy la que importaba era la segunda.
+>
+> Y una cuarta, del diseño: cuando el workflow falla porque no alcanza la base, el `onFailure`
+> —cuya única acción es `failRun()`, o sea **escribir en la base**— falla por lo mismo, y el run se
+> queda en `running` para siempre. La red de seguridad comparte su punto de fallo con lo que protege.
 
 ---
 

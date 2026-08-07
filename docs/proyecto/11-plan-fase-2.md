@@ -3,6 +3,12 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
+> ✅✅ **2026-08-07 — Fase 2 cerrada: las cuatro piezas desplegadas y el circuito probado de punta a
+> punta en producción.** Un research lanzado desde el portal recorrió `POST /runs` → Inngest →
+> orquestador → `kr-service` → Postgres → informe → `pending_approval` (124 keywords, 25 páginas,
+> $0.00 con providers en mock). Falta **un solo tramo sin probar**: aprobar → publicar, que escribe
+> en el Storyblok real del cliente.
+>
 > Última actualización: **2026-08-07** · **1199 tests en verde** — **880** en el monorepo + **319** en
 > el portal (225 `node:test` + 94 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
 > siguientes fueron del agujero de la compuerta de secretos (2026-08-03), **once** de KR-3 —el orden del

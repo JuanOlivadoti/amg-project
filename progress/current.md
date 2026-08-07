@@ -235,6 +235,55 @@ cadenas viven dentro de un DSN y una `@` sin escapar no da error — conecta a o
 alfabeto seguro), y quitar el `=` del ancla del upsert tumba exactamente 1 (el que impide que
 `DATABASE_URL` pise a `DATABASE_URL_API`).
 
+## ✅✅ EL CIRCUITO ENTERO CORRIÓ EN PRODUCCIÓN (2026-08-07) — y era la única cosa que no se había probado nunca
+
+```text
+portal → POST /runs → Inngest → orquestador → kr-service → Postgres → informe → pending_approval
+```
+
+**124 keywords, 25 páginas, 1 informe, $0.00, en menos de diez segundos.** Verificado en la base y
+**en la pantalla**. Hasta hoy todo lo que había en Supabase estaba sembrado a mano: el pipeline real
+nunca había corrido en producción, y el step `guardar-informe` de KR-2b tenía **22 tests y jamás se
+había ejecutado fuera de PGlite**. Ahora sí, con su aviso de las dos fechas y su descarga.
+
+### Lo que costó llegar, que es la parte que vale guardar
+
+Entre el despliegue y esto hubo **hora y media de fallos, y ninguno fue del código**. Los tres
+servicios se rompieron por edición manual de variables en el panel de Railway:
+
+1. **El orquestador arrancó con `@base:` como host** — un DSN que no era el de `credenciales.env`.
+   Error: `getaddrinfo ENOTFOUND base`. Y el `onFailure` —cuya única acción es `failRun()`, o sea
+   **escribir en la base**— murió por lo mismo, así que el run quedó huérfano en `running`.
+2. **Al corregirlo se borraron las dos variables enteras**, y el proceso dejó de arrancar.
+3. **Al renderizador le desaparecieron `DATABASE_URL_RENDER` y `STORYBLOK_WEBHOOK_SECRET`** — se
+   editó el servicio equivocado. La web siguió sirviendo 200 desde el contenedor viejo, que es
+   exactamente lo que hace difícil darse cuenta.
+
+**El diagnóstico costó cuatro hipótesis mías, todas refutadas por la medición siguiente:** que faltaba
+el `alter role` (los dos DSN conectaban), que las claves eran de entornos distintos (el evento estaba
+en production), que Inngest no llegaba (la función corrió y falló), que el rol no se podía asumir
+(`set local role app_service` funcionaba). Lo cerró **el mensaje de error**, no el razonamiento.
+
+### Y el mock decide la pregunta del guion de la demo
+
+Para un prompt de **hamburguesería gourmet argentina**, el mock devolvió: *pizzería madrid
+recomendado*, *mejor menú del día madrid barato*, *pasta fresca madrid menú*. **No son datos falsos
+plausibles: son de otro negocio.** En `mock` el circuito se prueba, pero **no se enseña**.
+
+Las dos salidas reales, y hay que elegir: correr un research **`live`** antes de la demo (~$0.31,
+~16 min) y enseñar ése, o que la demo llegue hasta la **aprobación de páginas** sobre el run sembrado
+y no hasta la publicación.
+
+### Limpieza hecha
+
+Los **dos runs de prueba se borraron** de producción (`0c61b46b` huérfano y `0cb13858`), con su
+cascade verificado: 0 páginas, 0 keywords, 0 informes colgando. Queda solo el run de la demo.
+
+### Lo que NO se probó todavía
+
+**Aprobar → publicar.** Es escritura en el espacio real de Storyblok del cliente, así que se paró
+antes. Falta comprobar en qué modo está `WEB_PUBLISH_MODE` antes de tocarlo.
+
 ## 🚀 EL ORQUESTADOR ESTÁ DESPLEGADO (2026-08-07) — Fase 2 entera en producción
 
 La última pieza sin desplegar dejó de estarlo. `amg-orchestrator-production.up.railway.app` responde
