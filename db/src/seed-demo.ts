@@ -848,7 +848,7 @@ export async function sembrarDemo(
     await con.query(
       `insert into kr_informes (run_id, tenant_id, client_id, informe_md)
        values ($1, $2, $3, $4)`,
-      [runId, tenantId, clientId, renderReport(briefDemo, { incluirCoste: true })],
+      [runId, tenantId, clientId, renderReport(briefDemo, { audiencia: "agencia" })],
     );
 
     await con.exec("commit");

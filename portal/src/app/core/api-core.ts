@@ -124,7 +124,7 @@ export interface ClienteApi {
    * URL; leído con `fetch`, el cuerpo es el cuerpo.
    *
    * **El coste no viene, y no es este cliente quien lo saca**: la API llama a `renderReport(brief,
-   * { incluirCoste: false })` y el bloque no se genera. Si alguna vez hace falta filtrar un coste
+   * { audiencia: "restaurante" })` y el bloque no se genera. Si alguna vez hace falta filtrar un coste
    * desde acá, algo se rompió aguas arriba.
    *
    * Lanza 404 —con la MISMA forma— si el run no existe, si es de otro tenant o si quien pregunta no

@@ -16,7 +16,7 @@ import { InformeInlineComponent } from '../../shared/components/informe-inline';
  * ── LO QUE ESTA PANTALLA NO HACE, Y ES EL PUNTO DE LA PIEZA ENTERA ────────────────────────────────
  *
  * **No oculta el coste. El servidor no lo manda.** `GET /runs/:id/entregable.md` llama a
- * `renderReport(brief, { incluirCoste: false })` y el bloque **no se genera** (`contrato/src/informe.ts`).
+ * `renderReport(brief, { audiencia: "restaurante" })` y el bloque **no se genera** (`contrato/src/informe.ts`).
  * Si esta pantalla lo tapara con CSS o con un `@if`, el margen de la agencia ya habría viajado al
  * navegador y estaría en el DOM, en la caché y en el «ver código fuente». La diferencia entre ocultar
  * y no enviar es la pieza entera. **Si alguien se encuentra escribiendo un filtro de coste acá, algo

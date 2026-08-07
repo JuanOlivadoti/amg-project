@@ -1171,7 +1171,7 @@ export class PgStore {
    *
    * ## Por qué el coste viaja hasta acá si el documento no lo lleva
    *
-   * Porque quien excluye el coste es `renderReport(brief, { incluirCoste: false })`, en `contrato`, donde
+   * Porque quien excluye el coste es `renderReport(brief, { audiencia: "restaurante" })`, en `contrato`, donde
    * está probado por mutación — **una garantía, un lugar**. Si en cambio esta consulta no leyera el
    * coste, la API tendría que inventar un `0` para satisfacer el tipo del brief, y el día que alguien
    * invirtiera esa opción el documento imprimiría **«$0.00»**: afirmarle al restaurante que el research

@@ -14,7 +14,7 @@ import type { ApiError } from '../../core/api-core';
  *    llegue. `core/sin-html-crudo.test.ts` prohíbe las herramientas; esto comprueba el resultado en un
  *    DOM de verdad.
  * 2. **La pantalla NO filtra el coste.** El coste no aparece en el entregable porque el servidor no lo
- *    genera (`renderReport(brief, { incluirCoste: false })`), no porque acá haya un `@if`. La forma de
+ *    genera (`renderReport(brief, { audiencia: "restaurante" })`), no porque acá haya un `@if`. La forma de
  *    demostrarlo es al revés de como suena: se le da a la pantalla un Markdown que SÍ trae el bloque
  *    de coste y se exige que lo pinte. Si alguien "endurece" esto agregando un filtro en el cliente,
  *    este test cae — y tiene que caer, porque un filtro acá significaría que el dato ya viajó.
@@ -107,7 +107,7 @@ describe('EntregablePage — la hoja que se le manda al restaurante', () => {
     /*
      * EL test de la pieza, y el más contraintuitivo de leer.
      *
-     * El entregable no lleva coste porque `renderReport` no genera el bloque (`incluirCoste: false`,
+     * El entregable no lleva coste porque `renderReport` no genera el bloque (`audiencia: "restaurante"`,
      * `contrato/src/informe.ts`) — la decisión vive donde el dato todavía no salió del servidor. Si
      * en cambio esta pantalla lo escondiera con un `@if` o con CSS, el margen de la agencia ya estaría
      * en el DOM, en la caché del navegador y en el «ver código fuente»: oculto, no ausente.

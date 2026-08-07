@@ -82,7 +82,7 @@ test("el informe muestra 'n/d' para la métrica ausente, nunca '0'", () => {
     25,
   );
 
-  const report = renderReport(briefWith(pages), { incluirCoste: true });
+  const report = renderReport(briefWith(pages), { audiencia: "agencia" });
 
   assert.match(report, /n\/d/);
   assert.match(report, /No es un 0/);
@@ -139,7 +139,7 @@ test("el informe SEPARA las páginas respaldadas de las que son una apuesta", ()
   const sinDatos = kw({ keyword: "brunch fin de semana", volume: null, difficulty: null, opportunity_score: 50 });
   const conDatos = kw({ keyword: "pizza napolitana madrid", volume: 390, difficulty: 15, opportunity_score: 84 });
 
-  const report = renderReport(briefWith(mapClustersToPages([cluster(sinDatos), cluster(conDatos)], 25).pages), { incluirCoste: true });
+  const report = renderReport(briefWith(mapClustersToPages([cluster(sinDatos), cluster(conDatos)], 25).pages), { audiencia: "agencia" });
 
   assert.match(report, /Respaldadas por datos de mercado \(1\)/);
   assert.match(report, /Sin validar \(1\)/);

@@ -563,7 +563,7 @@ test("🔴 un run que llega a `pending_approval` SIEMPRE tiene informe", async (
    */
   const md = espia.store.informes[0]!.md;
   assert.match(md, /^# Keyword Research/, "es el Markdown de renderReport, no otra cosa");
-  assert.equal(md, renderReport(briefFalso(paginas), { incluirCoste: true }), "es el informe de ESTE brief, no de otro");
+  assert.equal(md, renderReport(briefFalso(paginas), { audiencia: "agencia" }), "es el informe de ESTE brief, no de otro");
 
   // Y no solo se pidió: quedó en la base, y lo lee el staff con `app_user` — el camino del endpoint.
   const fila = await store.getInforme(humano(tenantA), runId);

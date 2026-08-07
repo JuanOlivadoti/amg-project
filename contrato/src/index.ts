@@ -16,6 +16,10 @@ export type {
 } from "./tipos.js";
 export { usdFromMicros } from "./dinero.js";
 export { renderReport } from "./informe.js";
+// `Audiencia` SÍ se exporta —a diferencia de los enums del esquema— porque los llamadores tienen que
+// poder nombrarla: un `audiencia: "agencia"` inline funciona, pero quien guarde la decisión en una
+// variable o la pase por parámetro necesita el tipo, y sin él acabaría escribiendo un `string`.
+export type { Audiencia, OpcionesInforme } from "./informe.js";
 // Las piezas compartidas del piso (los enums, `market`, `seo`, `contentBrief`) NO se exportan: ver el
 // comentario de `esquema.ts`. Desde afuera el contrato se usa por estos cuatro nombres y por nada más.
 export { emisionM2, consumoM1, parseBrief, SUPPORTED_SCHEMA_VERSIONS } from "./esquema.js";

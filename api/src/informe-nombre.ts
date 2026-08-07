@@ -5,7 +5,7 @@
  * header — la primera es justo la que esta función existe para cerrar. Con la unión, `tsc` no deja
  * escribir ahí nada que no sea una de estas dos palabras.
  *
- * Y **no tiene default**, por el mismo motivo que `renderReport(brief, { incluirCoste })` no lo tiene:
+ * Y **no tiene default**, por el mismo motivo que `renderReport(brief, { audiencia })` no lo tiene:
  * son dos documentos distintos y ninguno es "el normal". Quien llama declara cuál está produciendo.
  */
 export type Documento = "informe" | "entregable";

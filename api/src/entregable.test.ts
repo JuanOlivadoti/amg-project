@@ -15,7 +15,7 @@ import type { VerificadorToken } from "./auth.js";
  * Dos garantías, y las dos son de negocio antes que de código:
  *
  *  1. **El margen no sale de la agencia.** El documento se genera SIN el bloque de coste
- *     (`incluirCoste: false`), y el test lo comprueba contra un run que SÍ tiene coste — si el número
+ *     (`audiencia: "restaurante"`), y el test lo comprueba contra un run que SÍ tiene coste — si el número
  *     fuera 0 el test pasaría por el motivo equivocado y no cazaría a quien invierta la opción.
  *  2. **El entregable lo produce solo la agencia.** No con un `if` de rol: `getDatosEntregable` lleva
  *     `app.es_staff()` en el predicado, así que el `cliente` recibe el mismo 404 que un run inexistente.
@@ -209,7 +209,7 @@ describe("GET /runs/:id/entregable.md", () => {
 
   test("🔴 el entregable NO lleva el bloque de coste, y el run SÍ tiene coste", async () => {
     // Precondición, y es LA que hace que este test muerda: con coste 0 el documento no imprimiría el
-    // número igual, y quien invirtiera `incluirCoste` seguiría pasando.
+    // número igual, y quien invirtiera la audiencia seguiría pasando.
     const crudo = await sql<{ c: string }>("select coste_micros_usd::text as c from kr_runs where id = $1", [
       runA1,
     ]);
@@ -399,7 +399,7 @@ function datos(over: Partial<DatosEntregable> = {}): DatosEntregable {
   };
 }
 
-const documento = (d: DatosEntregable): string => renderReport(briefDelEntregable(d), { incluirCoste: false });
+const documento = (d: DatosEntregable): string => renderReport(briefDelEntregable(d), { audiencia: "restaurante" });
 
 test("🔴 un `seo`/`content_brief` vacío (el default `{}` de la columna) no revienta ni imprime basura", () => {
   /*
@@ -450,7 +450,7 @@ test("el desglose de coste se lee de la base, pero el entregable no lo imprime",
   assert.equal(brief.meta_run.coste_micros_usd, 312_500);
   assert.equal(brief.meta_run.coste_breakdown.dataforseo_micros, 250_000);
 
-  const md = renderReport(brief, { incluirCoste: false });
+  const md = renderReport(brief, { audiencia: "restaurante" });
   assert.doesNotMatch(md, /Coste del research|DataForSEO|0\.3125/);
 });
 

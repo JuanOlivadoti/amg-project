@@ -54,16 +54,31 @@ function texto(v: string): string {
     .replace(/\n(?=[#\->])/g, "\n ");
 }
 
+/**
+ * **Para quién es el documento.** No qué bloques lleva: eso se deriva de acá.
+ *
+ * Era `{ incluirCoste: boolean }`, un flag. Con un solo bloque condicional daba igual; en cuanto
+ * apareció el segundo (la línea de metadatos del pipeline) quedaron **cuatro combinaciones de las
+ * que solo dos significan algo**, y nada impedía pedir la tercera. Un llamador no tiene por qué
+ * saber qué bloques distinguen a los dos documentos — tiene que saber a quién se lo manda.
+ *
+ * Es la división que ADR-20 ya nombra, y ahora el tipo la nombra igual.
+ */
+export type Audiencia = "agencia" | "restaurante";
+
 /** Qué documento se está produciendo. Ver {@link renderReport}. */
 export interface OpcionesInforme {
   /**
-   * ¿Incluir el bloque «Coste del research»?
+   * Quién lo va a leer. **Sin default, a propósito** (ver {@link renderReport}).
    *
-   * **Es el margen de la agencia**, y de él dependen dos documentos distintos: el informe **interno**
-   * lo lleva —ante Frank es el argumento de venta, "te costó $0.31"— y el **entregable del
-   * restaurante** no.
+   * - `"agencia"` — el informe **interno**. Lleva el bloque «Coste del research» —ante Frank es el
+   *   argumento de venta, "te costó $0.31"— y la línea de mercado/idioma/timestamp, que identifica
+   *   la corrida cuando hay varias del mismo cliente.
+   * - `"restaurante"` — el **entregable**. Ninguna de las dos cosas: el margen de la agencia no es
+   *   suyo, y el `2026-08-07T18:35:27.490Z` de un pipeline delante de un dueño de restaurante es
+   *   ruido con aspecto de error.
    */
-  readonly incluirCoste: boolean;
+  readonly audiencia: Audiencia;
 }
 
 /**
@@ -72,27 +87,59 @@ export interface OpcionesInforme {
  * ## Por qué `opciones` es obligatorio y no tiene default
  *
  * Porque las dos respuestas son correctas para documentos distintos, y ninguna es "la normal". Un
- * default `true` haría que quien lo olvide **filtre el margen** al restaurante; un default `false`
- * haría que el informe interno pierda en silencio su argumento comercial. Sin default, cada llamada
- * declara qué documento está produciendo y `tsc` no deja pasar la duda.
+ * default `"agencia"` haría que quien lo olvide **filtre el margen** al restaurante; uno
+ * `"restaurante"` haría que el informe interno pierda en silencio su argumento comercial. Sin
+ * default, cada llamada declara qué documento está produciendo y `tsc` no deja pasar la duda.
  *
  * Es la misma forma que `PIPELINE_MODO` en el orquestador: cuando la opción segura y la opción útil
  * son distintas, no hay default correcto — hay una decisión que alguien tiene que escribir.
+ *
+ * ## Y por qué es una AUDIENCIA y ya no una lista de flags
+ *
+ * `{ incluirCoste: boolean }` funcionaba mientras el coste fuera lo único que separaba los dos
+ * documentos. Al aparecer el segundo bloque condicional —la línea de metadatos— habría hecho falta
+ * un `{ incluirCoste, incluirMetadatos }`: **cuatro combinaciones de las que dos no significan
+ * nada**, y ningún tipo impidiendo pedirlas. Peor, la decisión de qué bloque va en qué documento se
+ * habría repartido entre todos los sitios de llamada en vez de vivir acá.
+ *
+ * Con la audiencia, agregar un tercer bloque condicional se hace **en un solo sitio** y ningún
+ * llamador se entera.
+ *
+ * Son **4 llamadas de producción** —el CLI (`kr-service/src/cli/spike.ts`), el seed
+ * (`db/src/seed-demo.ts`), el workflow (`orchestrator/src/workflow.ts`) y el entregable
+ * (`api/src/app.ts`)— más ~24 en tests. **Contado, no estimado**: el plan decía "6 (3 de producción,
+ * 3 de test)" y las dos cifras estaban mal; migrarlo destapó dos paquetes que ni figuraban.
  */
 export function renderReport(brief: KeywordResearchBrief, opciones: OpcionesInforme): string {
+  const paraLaAgencia = opciones.audiencia === "agencia";
+
   const l: string[] = [];
   l.push(`# Keyword Research — ${texto(brief.cliente)}`);
-  l.push(
-    `\n_${texto(brief.market.country)} · ${texto(brief.market.language_code)} · ${brief.generated_at}_\n`,
-  );
+  /*
+   * La línea de mercado · idioma · timestamp: **solo para la agencia**.
+   *
+   * En el entregable salía `_ES · es · 2026-08-07T18:35:27.490Z_` bajo el título, y ahí es metadato
+   * de pipeline delante de un dueño de restaurante. La decisión (Juan, 2026-08-07) fue **quitar la
+   * línea, no formatearla**: formatear la fecha dejaría bonito un dato que en ese documento no va,
+   * mientras que en el informe interno los tres sirven —identifican mercado y momento cuando hay
+   * varios runs del mismo cliente.
+   *
+   * El documento no se queda sin fecha: la lleva el encabezado que ya pinta el portal, con las dos
+   * fechas y su aviso (KR-2b).
+   */
+  if (paraLaAgencia) {
+    l.push(
+      `\n_${texto(brief.market.country)} · ${texto(brief.market.language_code)} · ${brief.generated_at}_\n`,
+    );
+  }
   l.push(`- Keywords analizadas: **${brief.meta_run.keywords_analizadas}**`);
   l.push(`- Páginas propuestas: **${brief.meta_run.paginas_propuestas}**`);
 
-  // El coste es lo ÚNICO que separa el informe interno del entregable del restaurante, y por eso vive
-  // en su propia función: la exclusión es un bloque que NO SE GENERA, no unas líneas que alguien tacha
-  // después. Si se filtrara sobre el texto ya renderizado, la frontera dependería de un `split` sobre
-  // Markdown — y el margen de la agencia no puede depender de que un encabezado no cambie de nombre.
-  if (opciones.incluirCoste) l.push(...bloqueDeCoste(brief));
+  // El coste vive en su propia función porque la exclusión es un bloque que NO SE GENERA, no unas
+  // líneas que alguien tacha después. Si se filtrara sobre el texto ya renderizado, la frontera
+  // dependería de un `split` sobre Markdown — y el margen de la agencia no puede depender de que un
+  // encabezado no cambie de nombre.
+  if (paraLaAgencia) l.push(...bloqueDeCoste(brief));
 
   // Calidad de los datos del run. Va ARRIBA de las páginas a propósito: quien aprueba tiene que
   // saber sobre qué base está aprobando ANTES de mirar la lista.
@@ -195,7 +242,7 @@ export function renderReport(brief: KeywordResearchBrief, opciones: OpcionesInfo
 /**
  * El bloque «Coste del research» — **el margen de la agencia**.
  *
- * Solo lo lleva el informe interno (`incluirCoste: true`). El entregable del restaurante se genera
+ * Solo lo lleva el informe interno (`audiencia: "agencia"`). El entregable del restaurante se genera
  * sin él, y "sin él" quiere decir que estas líneas **no existen** en su Markdown: no se ocultan en la
  * pantalla ni se tapan con CSS, porque eso las habría mandado igual al navegador.
  */

@@ -98,7 +98,7 @@ function calidadDeDatos(raw: Record<string, unknown>): DataQuality {
  *
  * Parcial y no completo porque la columna tiene default `'{}'`: un run viejo, o uno que no llegó a
  * cerrarse, trae el objeto vacío legítimamente. `renderReport` ya sabe distinguirlo (con desglose pinta la
- * tabla, sin él pinta solo el total). En el entregable **nada de esto se imprime** —`incluirCoste: false`—
+ * tabla, sin él pinta solo el total). En el entregable **nada de esto se imprime** —`audiencia: "restaurante"`—
  * pero el tipo del brief lo pide, y llenarlo con la verdad es más barato que llenarlo con ceros.
  */
 function desgloseDeCoste(raw: Record<string, unknown>): Partial<CostBreakdown> {

@@ -173,7 +173,7 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
    * Es el informe de keyword research **sin el bloque de coste**, que es el margen de la agencia. Tres
    * decisiones, y ninguna vive en este handler:
    *
-   *  · **El coste no se oculta: NO SE GENERA.** Lo decide `renderReport(brief, { incluirCoste: false })`
+   *  · **El coste no se oculta: NO SE GENERA.** Lo decide `renderReport(brief, { audiencia: "restaurante" })`
    *    en `contrato`, donde está probado por mutación. Si la exclusión se hiciera acá —tapando el bloque,
    *    o recortando el Markdown ya renderizado— el margen dependería de que un encabezado no cambie de
    *    nombre, y en la variante de pantalla ya habría viajado al navegador.
@@ -198,7 +198,7 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     const datos = await deps.store.getDatosEntregable(ctx, c.req.param("id"));
     if (!datos) return c.json({ error: "Run no encontrado." }, 404);
 
-    const md = renderReport(briefDelEntregable(datos), { incluirCoste: false });
+    const md = renderReport(briefDelEntregable(datos), { audiencia: "restaurante" });
 
     c.header("Content-Type", "text/markdown; charset=utf-8");
     c.header("Content-Disposition", `attachment; filename="${nombreArchivo(datos.cliente, "entregable")}"`);

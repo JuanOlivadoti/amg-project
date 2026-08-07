@@ -233,7 +233,7 @@ export async function workflowResearch(
      * rastro en el panel.
      */
     await paso.run("guardar-informe", async () => {
-      const md = renderReport(brief, { incluirCoste: true });
+      const md = renderReport(brief, { audiencia: "agencia" });
       await deps.store.guardarInforme(ctx, runId, md);
       return md.length;
     });
