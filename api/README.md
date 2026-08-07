@@ -75,7 +75,13 @@ una API a medio configurar es un riesgo, no una comodidad.
 | `SUPABASE_JWT_ISS` | **obligatoria** | `iss` del proyecto Supabase (`https://<proy>.supabase.co/auth/v1`). De acá sale el JWKS contra el que se verifica la firma ES256, y amarra el emisor: cierra la puerta a un token válido de OTRO proyecto Supabase. |
 | `SUPABASE_JWT_AUD` | `authenticated` | `aud` esperado. Es lo que emite Supabase para un usuario logueado. |
 | `CORS_ORIGINS` | **obligatoria, sin default** | Orígenes del portal, coma-separados, cada uno una URL http(s) completa. `leerConfig` **rechaza `*` explícitamente**: aunque la auth por header (no cookies) haría `*` inofensivo en teoría, un default abierto en la única pieza autenticada expuesta a internet es la clase de cosa que no debe depender de que nadie se olvide de configurarla. |
+| `INNGEST_EVENT_KEY` | **obligatoria en producción** | Con la que la API emite `research/solicitado` y `research/aprobado`. Sin ella, en modo cloud `inngest.send()` **lanza**, así que `POST /runs` fallaría en cada petición — y como la fila del run se crea antes de emitir (ADR-18), cada intento dejaría un run que nace muerto. Por eso se exige al arrancar. Localmente, `INNGEST_DEV=1` desactiva la exigencia. |
 | `PORT` | `3000` | |
+
+> **"Producción" no lo decide un `NODE_ENV` nuestro**, lo decide el SDK de Inngest, que ya infiere el
+> modo de ~7 señales de distintos PaaS. Importa porque **Railway no define `NODE_ENV`**: define
+> `RAILWAY_GIT_BRANCH`. Un `NODE_ENV.startsWith("prod")` escrito a mano diría "desarrollo" mientras el
+> proceso habla con Inngest Cloud. Ver `exigirEventKeySiEsCloud` en `src/deps.ts`.
 
 > 🔐 **Al token se le exige `exp` y `sub`, no solo la firma.** `jwtVerify` valida la expiración *si el
 > claim está*, pero no lo exige: un token firmado con el secreto correcto y **sin `exp` era eterno**.

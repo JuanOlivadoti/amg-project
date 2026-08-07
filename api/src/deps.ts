@@ -25,6 +25,12 @@ export interface ConfigApi {
   emisor: EmisorSupabase;
   /** Id de la app Inngest emisora. La API es una app distinta del orquestador: solo envía eventos. */
   inngestId?: string;
+  /**
+   * Clave de escritura de Inngest (`INNGEST_EVENT_KEY`). **Obligatoria si el SDK está en modo cloud**
+   * — ver `exigirEventKeySiEsCloud`. Viaja por la config, y no se deja que el SDK la lea sola del
+   * entorno, para que lo que se valida al arrancar y lo que se usa al emitir sean **el mismo valor**.
+   */
+  inngestEventKey?: string;
   /** Orígenes CORS permitidos (coma-separados en `CORS_ORIGINS`). Sin esto: `*` (ver `app.ts`). */
   corsOrigins?: string[];
   /** `aud` esperado del JWT. Default `authenticated` (lo que emite Supabase). */
@@ -71,12 +77,69 @@ export function leerConfig(): ConfigApi {
   // Valida y canoniza acá, al arrancar: si el issuer está mal, la API no levanta. Es preferible a
   // levantar y rechazar todos los logins, que es como se ve el mismo error desde afuera.
   const emisor = emisorSupabase(issCrudo as string);
+  // Mismo razonamiento para Inngest: sin event key en cloud, `POST /runs` falla en cada petición.
+  const inngestEventKey = exigirEventKeySiEsCloud();
   return {
     databaseUrl: databaseUrl as string,
     emisor,
     corsOrigins,
     ...(aud ? { jwtAudience: aud } : {}),
+    ...(inngestEventKey ? { inngestEventKey } : {}),
   };
+}
+
+/**
+ * Si el SDK de Inngest va a hablar con Inngest **Cloud**, `INNGEST_EVENT_KEY` es obligatoria: sin
+ * ella `inngest.send()` LANZA en cada llamada (`components/Inngest.js`: `if (this.mode.isCloud &&
+ * !this.eventKeySet()) throw`).
+ *
+ * Por qué al arrancar y no en el primer `POST /runs`: es exactamente el argumento que ya está escrito
+ * arriba para el issuer. Un despliegue sin esta variable **levanta sano** —`/health` responde 200, el
+ * PaaS lo da por bueno— y falla recién cuando alguien pide un research; y como la fila del run se crea
+ * ANTES de emitir (ADR-18), cada intento deja un run que nace muerto. Mejor no levantar.
+ *
+ * ## Cómo se decide "es cloud", y por qué NO se reimplementa
+ *
+ * El SDK infiere el modo de una lista de ~7 variables de varios PaaS (`NODE_ENV` que empiece con
+ * `prod`, `RAILWAY_GIT_BRANCH`, `VERCEL_ENV`, `CF_PAGES`, `CONTEXT`…), y `INNGEST_DEV` lo fija a mano.
+ * Copiar esa lista acá sería un `if` que se desincroniza de la librería en el próximo `npm update`,
+ * **en silencio y hacia el lado inseguro** (una variable nueva que el SDK cuente como cloud y nosotros
+ * no ⇒ vuelve el bug que esto arregla). Así que no se copia: se le pregunta al SDK.
+ *
+ * El problema es que no hay forma soportada de preguntárselo. Medido contra `inngest@3.54.2`:
+ * `getMode`/`Mode` existen en `helpers/env.js` pero **el mapa `exports` del paquete no los publica**
+ * (`import("inngest/helpers/env")` → `ERR_PACKAGE_PATH_NOT_EXPORTED`), y en la clase el campo es
+ * `private get mode()` (`components/Inngest.d.ts:154`), o sea TS2341.
+ *
+ * De las dos opciones malas se elige la que falla RUIDOSA: se construye un cliente sonda (no hace
+ * red — el modo sale de `process.env` en el constructor) y se lee `mode.isCloud` por un cast estrecho,
+ * comprobando la forma. Si una versión futura renombra el campo, esto **lanza al arrancar** en vez de
+ * asumir "dev" y volver a dejar pasar el despliegue roto.
+ *
+ * Lo que ata la duplicación que así no hace falta: los tests de `deps.test.ts` no simulan el modo —
+ * ponen `RAILWAY_GIT_BRANCH` y `NODE_ENV=production` de verdad y dejan que el SDK decida. Si el SDK
+ * cambia cómo infiere, o dónde guarda el modo, esos tests se ponen rojos.
+ */
+function exigirEventKeySiEsCloud(): string | undefined {
+  const eventKey = process.env["INNGEST_EVENT_KEY"]?.trim();
+  const sonda = new Inngest({ id: "amg-os-sonda-de-modo" });
+  const modo = (sonda as unknown as { mode?: { isCloud?: unknown } }).mode;
+  if (typeof modo?.isCloud !== "boolean") {
+    throw new Error(
+      "No se pudo leer el modo del SDK de Inngest (`mode.isCloud` ya no está donde se lo esperaba). " +
+        "Revisá `exigirEventKeySiEsCloud` en api/src/deps.ts contra la versión instalada de `inngest`.",
+    );
+  }
+  if (modo.isCloud && !eventKey) {
+    throw new Error(
+      "Falta INNGEST_EVENT_KEY: el SDK de Inngest está en modo cloud y sin esa clave `send()` lanza, " +
+        "así que POST /runs fallaría en cada petición.\n" +
+        "  - Ponela en las variables del servicio de la API en Railway (la Event Key del entorno, " +
+        "desde el dashboard de Inngest).\n" +
+        "  - Si esto es un arranque LOCAL contra el dev server de Inngest, exportá INNGEST_DEV=1.",
+    );
+  }
+  return eventKey;
 }
 
 /**
@@ -112,7 +175,16 @@ export async function crearDeps(
 
   // Inngest como emisor. La API solo ENVÍA (`research/solicitado`, `research/aprobado`); las funciones
   // suscritas viven en el orquestador. `send({name, data})` ya cumple la interfaz `EmisorEventos`.
-  const inngest = new Inngest({ id: config.inngestId ?? "amg-os-api" });
+  //
+  // La `eventKey` se pasa EXPLÍCITA aunque el SDK sepa leer `INNGEST_EVENT_KEY` solo
+  // (`Inngest.js:187` — `options.eventKey || env[InngestEventKey] || ""`). El motivo es que
+  // `leerConfig` ya validó ese valor: si acá el SDK volviera a leer el entorno por su cuenta, lo
+  // comprobado y lo usado serían dos lecturas distintas, y una restricción validada sobre otra cosa
+  // no es una restricción.
+  const inngest = new Inngest({
+    id: config.inngestId ?? "amg-os-api",
+    ...(config.inngestEventKey ? { eventKey: config.inngestEventKey } : {}),
+  });
   const emisor: EmisorEventos = {
     send: (evento) => inngest.send({ name: evento.name, data: evento.data }),
   };

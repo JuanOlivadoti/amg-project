@@ -11,6 +11,71 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-07 (tarde) — el tramo A del orquestador: preparar el despliegue destapó que `POST /runs` ya estaba roto
+
+El orquestador es la última pieza de Fase 2 sin desplegar, y el estado decía que solo faltaban las
+cuentas. **Era falso.** El despliegue se partió en dos —tramo A: todo lo que es código y no cuesta
+nada; tramo B: cuenta de Inngest y servicio en Railway— y el A encontró tres cosas que el B habría
+pagado en caliente.
+
+**`POST /runs` está roto en producción desde que la API vive en Railway, y nada lo dice.** El SDK de
+Inngest lanza en `send()` cuando el modo es *cloud* y no hay `INNGEST_EVENT_KEY`
+(`components/Inngest.js:563`), y el modo se infiere como cloud por `RAILWAY_GIT_BRANCH` — no por
+`NODE_ENV`, que Railway ni define. No había ninguna clave de Inngest en el repo: `grep` sobre `api/src`,
+`orchestrator/src`, `docs` y `scripts` daba **cero**. Y como la fila del run se crea **antes** de emitir
+(ADR-18), cada intento dejaba un **run huérfano** en `running` que el portal polleaba para siempre,
+mientras el usuario veía un error sin enterarse de que su run existía. Ahora la API no arranca sin la
+clave, y si el evento falla igual, el run se marca `failed` con el motivo.
+
+**El orquestador caía a PGlite en memoria** cuando no encontraba su DSN: un proceso que se declara
+sano, acepta el evento, **paga el research** y lo escribe en una base que se evapora. En producción
+ahora está prohibido — y `DATABASE_URL` tampoco alcanza, porque en Railway es el DSN que el plugin de
+Postgres inyecta solo, apuntando al **dueño** de la base: aceptarlo dejaría al orquestador con un login
+capaz de asumir cualquier rol, el `set local role app_service` seguiría funcionando, y ADR-17 pasaría a
+ser una coincidencia de nombres sin que nada fallara.
+
+**El patrón que se repitió tres veces, incluido en mí.** La afirmación *"el SDK lee las claves solo de
+`process.env`"* la escribí yo en dos documentos sin ejecutarla; era falsa (`eventKey` es opción pública
+y **gana** sobre el entorno). La corrigió quien fue a medirla. Y entonces la misma frase apareció otra
+vez, escrita por otro, para `INNGEST_SIGNING_KEY` — y ahí no era solo doc: la clave se validaba, se
+trimeaba, y **nunca llegaba a `serve()`**, así que una key pegada del dashboard con espacios pasaba la
+validación y el SDK usaba el valor sucio. Medido: **HTTP 401, "Invalid signature"**, en toda invocación
+de Inngest Cloud, con `/_health` respondiendo `{"ok":true,"modo":"cloud"}`. Un servicio que se declara
+sano y no sirve para nada — el mismo modo de fallo que esta etapa vino a cerrar, adentro de la etapa.
+
+Las tres veces el origen fue idéntico: leer `helpers/consts.js`, que solo lista **nombres** de
+variables, y deducir de ahí que era el único camino. Deducir de una lectura parcial se siente igual que
+medir.
+
+**Y una que casi se reporta como "no reproduce".** La primera sonda del arreglo miró
+`client.inngestApi.signingKey` y vio el valor sucio en los dos casos, lo que parecía refutar el
+hallazgo. No: `inngestApi` es la clave **saliente**, sembrada cruda en el constructor; la verificación
+de firmas **entrantes** usa otro campo. Medir el campo equivocado da un resultado limpio y falso.
+
+**Decisión del dueño del proyecto: `PIPELINE_MODO`.** Quedaba un fallo silencioso hermano del de
+PGlite: un despliegue sin `DATAFORSEO_MODE=live` corre entero, genera keywords **inventadas** por el
+mock, las escribe en la base **real** del cliente y deja el run en `pending_approval` con su informe,
+indistinguible de un research legítimo — un volumen de búsqueda falso es un número plausible en una
+columna que nadie audita a ojo. Ahora `PIPELINE_MODO` es obligatoria en producción y **no tiene
+default**: no enciende nada, **declara**, y el arranque aborta si contradice a `DATAFORSEO_MODE` en
+cualquiera de las dos direcciones (research falso presentado como real, o gasto en un despliegue
+anotado como gratuito). Se expone en `/_health`, porque una declaración que solo vive en el panel de
+Railway no se puede auditar mirando el servicio.
+
+**La revisión interna encontró un test que era un adorno**, y la mutación lo probó de la única forma
+que vale: el test de fidelidad de la sonda comparaba dos veredictos que en la suite valen los dos
+`false`. Con el test viejo puesto, la mutación que debía cazar (`isDev: true` en el cliente real) dejaba
+**32/32 en verde**; con el nuevo, cae. Y al volverse `PIPELINE_MODO` obligatoria, el barrido de
+combinaciones habría pasado **sin comprobar nada** —las 8 abortaban antes de la aserción—, así que
+ahora lleva un contador que exige que al menos una llegue.
+
+De paso, dos errores de doc que costaban dinero: el runbook decía `DATAFORSEO_MODE=production`, un
+valor que **no existe** (`index.ts:26` compara contra `"live"`), o sea que daba mock creyéndose en vivo;
+y `api/README.md` afirmaba una lista completa de variables a la que le faltaba la que hace que la API
+no arranque.
+
+---
+
 ## 2026-08-07 — el primer despliegue real, y el bug que solo podía aparecer desplegando
 
 Aplicadas las migraciones pendientes contra Supabase y sembrada la demo: **el informe de KR-2b se ve en

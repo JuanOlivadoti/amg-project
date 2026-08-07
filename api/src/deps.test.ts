@@ -18,7 +18,19 @@ afterEach(() => {
 /** Deja el entorno con EXACTA­MENTE las vars dadas (borra las que la API mira). */
 function conEntorno(vars: Record<string, string>): void {
   process.env = { ...GUARDADO };
-  for (const k of ["DATABASE_URL_API", "CORS_ORIGINS", "SUPABASE_JWT_AUD", "SUPABASE_JWT_ISS"]) {
+  for (const k of [
+    "DATABASE_URL_API",
+    "CORS_ORIGINS",
+    "SUPABASE_JWT_AUD",
+    "SUPABASE_JWT_ISS",
+    // El SDK de Inngest infiere su modo del entorno: si la máquina que corre los tests tuviera
+    // `NODE_ENV=production` o `RAILWAY_GIT_BRANCH`, la mitad de estos tests cambiaría de resultado
+    // sin que nadie tocara el código. Se limpian, y cada test declara el entorno que quiere probar.
+    "INNGEST_DEV",
+    "INNGEST_EVENT_KEY",
+    "NODE_ENV",
+    "RAILWAY_GIT_BRANCH",
+  ]) {
     delete process.env[k];
   }
   Object.assign(process.env, vars);
@@ -27,6 +39,10 @@ function conEntorno(vars: Record<string, string>): void {
 const BASE = {
   DATABASE_URL_API: "postgres://amg_api@host/db",
   SUPABASE_JWT_ISS: "https://proyecto.supabase.co/auth/v1",
+  // Modo dev EXPLÍCITO. `INNGEST_DEV` gana sobre toda la inferencia del SDK (medido), así que estos
+  // tests —que no van sobre Inngest— dan igual en un portátil que en un CI que se crea producción.
+  // Los que SÍ van sobre el modo lo borran y ponen las variables del PaaS de verdad.
+  INNGEST_DEV: "1",
 };
 
 test("falla cerrado si falta CORS_ORIGINS (no arranca con `*` en algo expuesto)", () => {
@@ -86,4 +102,75 @@ test("acepta varios orígenes https válidos", () => {
   conEntorno({ ...BASE, CORS_ORIGINS: "https://app.tudominio.com,http://localhost:4200" });
   const config = leerConfig();
   assert.deepEqual(config.corsOrigins, ["https://app.tudominio.com", "http://localhost:4200"]);
+});
+
+// ------------------------------------------------------------------ INNGEST_EVENT_KEY (modo cloud)
+//
+// `Inngest.send()` LANZA si el SDK está en modo cloud y no hay event key. La API la usa en `POST
+// /runs` DESPUÉS de crear la fila (ADR-18), así que un despliegue sin esa variable levanta sano,
+// pasa el health-check, y recién falla cuando alguien pide un research. Estos tests fijan que no
+// levante.
+//
+// Ninguno simula el modo: ponen las variables del PaaS de verdad y dejan que el SDK infiera. Es lo
+// que ata que no estemos reimplementando su heurística en un `if` propio (ver `deps.ts`).
+
+const CORS = "https://app.tudominio.com";
+/** Lo mismo que `BASE` pero SIN el `INNGEST_DEV=1`: acá se deja que el SDK infiera el modo. */
+const { INNGEST_DEV: _sinModoExplicito, ...BASE_INFERIDO } = BASE;
+
+test("🔴 modo cloud (Railway) sin INNGEST_EVENT_KEY: la API NO levanta", () => {
+  // `RAILWAY_GIT_BRANCH` es lo que hay en el servicio real, y el SDK lo cuenta como cloud.
+  conEntorno({ ...BASE_INFERIDO, CORS_ORIGINS: CORS, RAILWAY_GIT_BRANCH: "main" });
+  assert.throws(() => leerConfig(), /INNGEST_EVENT_KEY/);
+});
+
+test("🔴 el mensaje dice qué variable falta y DÓNDE ponerla", () => {
+  // Un "faltan variables" a secas manda a alguien a leer el código a las 3 de la mañana.
+  conEntorno({ ...BASE_INFERIDO, CORS_ORIGINS: CORS, RAILWAY_GIT_BRANCH: "main" });
+  assert.throws(() => leerConfig(), /Railway/);
+});
+
+test("🔴 NODE_ENV=production también cuenta como cloud (no solo Railway)", () => {
+  // Si acá hubiera un `if (RAILWAY_GIT_BRANCH)` escrito a mano, este test seguiría rojo hasta que
+  // alguien agregara el segundo `if`. Al preguntarle al SDK, sale gratis.
+  conEntorno({ ...BASE_INFERIDO, CORS_ORIGINS: CORS, NODE_ENV: "production" });
+  assert.throws(() => leerConfig(), /INNGEST_EVENT_KEY/);
+});
+
+test("modo cloud CON la event key: levanta, y la clave viaja en la config", () => {
+  // Viaja en la config a propósito: `crearDeps` se la pasa al cliente en vez de dejar que el SDK
+  // relea el entorno, para que lo validado y lo usado sean el mismo valor.
+  conEntorno({
+    ...BASE_INFERIDO,
+    CORS_ORIGINS: CORS,
+    RAILWAY_GIT_BRANCH: "main",
+    INNGEST_EVENT_KEY: "  clave-real  ",
+  });
+  const config = leerConfig();
+  assert.equal(config.inngestEventKey, "clave-real");
+});
+
+test("modo dev (un portátil, sin variables de PaaS) NO exige la event key", () => {
+  // El otro lado del default: si esto fallara, `npm run serve` en local dejaría de arrancar.
+  conEntorno({ ...BASE_INFERIDO, CORS_ORIGINS: CORS });
+  const config = leerConfig();
+  assert.equal(config.inngestEventKey, undefined);
+});
+
+test("INNGEST_DEV=1 desactiva la exigencia aunque el PaaS diga producción", () => {
+  // La salida documentada en el propio mensaje de error, para un arranque local contra el dev server.
+  conEntorno({ ...BASE, CORS_ORIGINS: CORS, RAILWAY_GIT_BRANCH: "main" });
+  assert.doesNotThrow(() => leerConfig());
+});
+
+test("🔴 una event key en blanco no cuenta como puesta", () => {
+  // `INNGEST_EVENT_KEY=` en el panel del PaaS es un error de tipeo, no una decisión: el SDK la
+  // trataría como ausente (`options.eventKey || …`) y `send()` lanzaría igual.
+  conEntorno({
+    ...BASE_INFERIDO,
+    CORS_ORIGINS: CORS,
+    RAILWAY_GIT_BRANCH: "main",
+    INNGEST_EVENT_KEY: "   ",
+  });
+  assert.throws(() => leerConfig(), /INNGEST_EVENT_KEY/);
 });

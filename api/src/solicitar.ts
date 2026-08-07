@@ -71,10 +71,40 @@ export async function solicitarResearch(
   });
 
   // El evento no lleva ni el prompt ni el cliente: el orquestador los lee de la fila.
-  await emisor.send({
-    name: "research/solicitado",
-    data: { runId, tenantId: ctx.tenantId },
-  });
+  try {
+    await emisor.send({
+      name: "research/solicitado",
+      data: { runId, tenantId: ctx.tenantId },
+    });
+  } catch (fallo) {
+    /*
+     * El hueco propio del orden de ADR-18: la fila YA existe y el evento no salió, así que nadie va a
+     * procesar este run. Sin esto queda en `running` para siempre — el portal lo pollea eternamente y
+     * el usuario ve un error sin enterarse de que su run existe.
+     *
+     * El orden NO se invierte para taparlo (emitir antes de escribir dejaría al orquestador
+     * arrancando a nombre de un run que la base nunca autorizó). Se compensa: se marca el run como
+     * `failed` con el motivo, que es lo mismo que hace el orquestador cuando el workflow muere.
+     *
+     * Está medido que `app_user` PUEDE hacerlo: quien acaba de pasar el `with check` de `run_write`
+     * para el insert cumple el mismo `using` para el update. No hace falta ningún privilegio extra.
+     */
+    try {
+      await storeHumano.failRun(ctx, runId, `No se pudo emitir research/solicitado: ${mensajeDe(fallo)}`);
+    } catch (fallaElMarcado) {
+      // Si el marcado también falla no hay nada más que hacer acá, pero el operador tiene que poder
+      // verlo: es el caso en que el run SÍ queda huérfano.
+      console.error(`[api] el run ${runId} quedó en 'running' y no se pudo marcar failed:`, fallaElMarcado);
+    }
+    // Se propaga el error ORIGINAL: el del evento es el que explica qué pasó (típicamente, falta
+    // `INNGEST_EVENT_KEY`). El del marcado sería un síntoma de segundo orden que esconde la causa.
+    throw fallo;
+  }
 
   return runId;
+}
+
+/** El texto de un throw que puede no ser un `Error`. Va a parar a `kr_runs.error` y a la pantalla. */
+function mensajeDe(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }

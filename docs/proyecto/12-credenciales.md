@@ -191,8 +191,54 @@ DATABASE_URL_RENDER=postgres://amg_render:...@host/db   # ← LA LEE EL CÓDIGO 
 > la base** (`clients.storyblok_public_token` / `storyblok_preview_token`), no en el entorno. Tienen
 > que ser así porque hay uno por space y ADR-04 da **un space por cliente**.
 
-> **Sin ninguna de las cuatro**, el sistema arranca igual con **PGlite en memoria**. Es deliberado:
-> todo el proyecto corre sin una sola credencial.
+> **Sin ninguna de las cuatro**, el sistema arranca igual con **PGlite en memoria** — **fuera de
+> producción**. Es deliberado: todo el proyecto corre sin una sola credencial. Lo que **no** es
+> deliberado es que eso siga pasando en un servidor desplegado, donde una variable mal escrita
+> arrancaría un proceso que se declara sano y trabaja contra una base efímera, sin un solo error. Por
+> eso en producción la caída a PGlite está prohibida y el arranque falla ruidoso (tramo A, 2026-08-07).
+
+### Las dos claves de Inngest
+
+```bash
+# La API: autentica el ENVÍO de eventos (`research/solicitado`, `research/aprobado`).
+INNGEST_EVENT_KEY=...
+
+# El orquestador: verifica que quien le pega a /api/inngest es Inngest de verdad.
+INNGEST_SIGNING_KEY=...
+```
+
+**No son intercambiables y cada proceso lleva la suya**, por el mismo principio de compartimentación
+que separa los cuatro DSN: quien solo emite no necesita poder verificar, y al revés.
+
+En Railway van al entorno del servicio, que es de donde el SDK las toma por defecto. Pero **la event key
+también se puede pasar por parámetro**, y eso importa: `eventKey` es opción pública de `ClientOptions`
+(`node_modules/inngest/types.d.ts:639`) y **tiene precedencia sobre el entorno**
+(`components/Inngest.js:187`). La API lo aprovecha: `leerConfig()` la lee y valida, y `crearDeps` se la
+pasa explícita al cliente, para que **lo que se valida y lo que se usa sean la misma lectura** — si
+fueran dos, podrían discrepar.
+
+> *(Una versión anterior de este documento afirmaba que el SDK las leía "únicamente de `process.env`,
+> sin dónde pasarlas por parámetro". Estaba escrito sin medirlo, y era falso. Lo corrigió quien fue a
+> ejecutarlo.)*
+
+> ⚠️ **Hueco conocido del reparto — igual que el del renderizador, y por el mismo motivo.** `env:sync`
+> **no** reparte `INNGEST_EVENT_KEY` (api) ni `INNGEST_SIGNING_KEY` / `PIPELINE_MODO` (orquestador): no
+> están en el `MAPA` de `scripts/env-sync.mts`, y `orchestrator/` **no tiene `.env.example`** — es el
+> único de los seis paquetes sin plantilla. En producción no molesta, porque las variables se cargan en
+> Railway; sí molesta para correr el orquestador real en local.
+>
+> Cerrarlo exige tocar el `MAPA` y el `.env.example` **juntos** (`scripts/env-sync.test.mts` los ata en
+> las dos direcciones), y quedó pendiente porque el `permissions.deny` del arnés cubre `.env*` y bloqueó
+> a los agentes incluso para **leer** la plantilla. Está anotado acá y no solo en `progress/current.md`
+> a propósito: ese archivo se vacía al cerrar la etapa siguiente, y éste es donde alguien busca qué
+> variable necesita un proceso.
+
+> 🔴 **Ninguna de las dos existe todavía, y eso rompe `POST /runs` en producción.** Medido el
+> 2026-08-07 leyendo el SDK: `components/Inngest.js:563` lanza en `send()` cuando el modo es **cloud** y
+> no hay event key, y el modo se infiere como cloud por `RAILWAY_GIT_BRANCH` o `NODE_ENV=production`
+> (`helpers/env.js`, `getMode`). La API corre en Railway. Ver el
+> [runbook del orquestador](14-runbook-despliegue.md#desplegar-el-orquestador-fase-2--la-última-pieza),
+> que **empieza por la API** justamente por esto.
 
 **Las contraseñas no van en el repositorio, ni en las migraciones, ni en un mensaje.** Se ponen al
 desplegar:

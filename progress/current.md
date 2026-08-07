@@ -6,20 +6,20 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-06
-**En curso:** nada. Cerrado **KR-2b**: el informe de keyword research **en la pantalla del portal**. 17
-commits por las 7 tareas del [plan](../docs/superpowers/plans/2026-08-05-kr2b-informe-en-el-portal.md) —cada
-una con su review, seis con re-review— más dos piezas que aparecieron al final (el `exposeHeaders` del CORS
-y el aviso de las dos fechas) y la fix wave de la review de rama. El relato está en
-[`history.md`](history.md).
-**Estado:** verificado en verde — **786 tests** del monorepo (venía de 743) + **285** del portal (207
-`node:test` + 78 Karma) = **1071**, typecheck limpio en los 7 paquetes, sin secretos entre los 436 archivos
-versionados. `verificar --con-portal` exit 0.
+**Sesión:** 2026-08-07
+**En curso:** nada. Cerrado el **tramo A del despliegue del orquestador**: el código quedó listo para que
+desplegar sea ejecutar un runbook. Lo hicieron dos agentes en paralelo (`datos` en `api/`, `pipeline` en
+`orchestrator/`), con una revisión interna que devolvió **3 bloqueantes** y su segunda vuelta. El relato
+está en [`history.md`](history.md).
+**Estado:** verificado en verde — **833 tests** del monorepo (venía de 786) + **285** del portal (207
+`node:test` + 78 Karma) = **1118**, typecheck limpio en los 7 paquetes, sin secretos entre los 436 archivos
+versionados. `npm run verificar` exit 0, medido tras la segunda vuelta.
 
-**Sí hubo sesión de navegador, y encontró tres cosas que ningún test veía:** que `hono/cors` le escondía
-`Content-Disposition` a JavaScript —así que el `filename` saneado no llegaba y el archivo bajaba con el
-`runId`—, un espacio antes de la puntuación, y el link al informe pegado al botón de aprobar como si fuera
-su etiqueta. Es la mitad del ritual que ningún script cubre, y esta vez se pagó sola.
+**No hubo sesión de navegador, y es `n/a` justificado:** no se tocó `portal/` ni `renderer/`. El
+equivalente para un servicio sin UI —**arrancar el proceso de verdad**— sí se hizo, en cinco escenarios:
+Railway simulado con y sin variables, dev sin credenciales, cloud con la base inalcanzable, y una petición
+**firmada** contra `/api/inngest`. El último destapó el bloqueante de la clave de firma, que ningún test
+de la suite veía.
 
 ---
 
@@ -75,6 +75,34 @@ aborta con `permission denied for schema auth`. Arreglado en `78523b8` consultan
 Que un helper de tests se ejecute en el camino de producción y afirme sin medir cómo se comporta ahí es el
 mismo patrón que KR-2b persiguió doce veces. Éste solo podía aparecer desplegando.
 
+## ✅ Cerrado — el tramo A del orquestador (2026-08-07)
+
+El despliegue se partió en dos. El **A** —todo código, sin cuentas y sin gastar— está hecho; el **B** es
+la cuenta de Inngest y el servicio en Railway, con
+[runbook](../docs/proyecto/14-runbook-despliegue.md#desplegar-el-orquestador-fase-2--la-última-pieza)
+escrito paso a paso.
+
+Se hizo porque "solo faltan las cuentas" era falso. Lo que apareció al preparar el despliegue:
+
+- **`POST /runs` ya estaba roto en producción**, y nada lo decía. Sin `INNGEST_EVENT_KEY` el SDK lanza en
+  modo cloud —que se infiere por `RAILWAY_GIT_BRANCH`, no por `NODE_ENV`, que Railway ni define— y como
+  la fila se crea antes de emitir (ADR-18), cada intento dejaba un **run huérfano** en `running`.
+- **El orquestador caía a PGlite en memoria** sin su DSN: pagaba el research y lo escribía en una base
+  que se evapora. Ahora en producción está prohibido, y `DATABASE_URL` tampoco alcanza (es el DSN del
+  **dueño** que Railway inyecta solo: aceptarlo volvería ADR-17 una coincidencia de nombres).
+- **No tenía health check.** `/_health` responde sin tocar Postgres ni Inngest.
+- **`PIPELINE_MODO=mock|live`**, obligatoria en producción y sin default, decidida por Juan. No enciende
+  nada: **declara**, y el arranque aborta si contradice a `DATAFORSEO_MODE` en cualquiera de las dos
+  direcciones. Cierra el hermano del fallo de PGlite: un despliegue en mock escribiendo keywords
+  **inventadas** en la base real, indistinguibles de un research legítimo.
+
+**La lección que dejó, y que se repitió tres veces en la misma jornada:** afirmar el comportamiento de
+una herramienta leyendo una parte de ella. Las tres veces el origen fue `helpers/consts.js`, que solo
+lista **nombres** de variables, y de ahí se dedujo que el entorno era el único camino. Una vez lo escribí
+yo en dos documentos; otra vez estaba en un comentario **y** en el código, donde la clave de firma se
+validaba, se trimeaba y nunca llegaba a `serve()` — medido: **401 en toda invocación**, con `/_health`
+diciendo `{"ok":true,"modo":"cloud"}`.
+
 ## ▶️ Lo próximo — cuatro candidatos, y por qué
 
 **Ninguno está empezado.** Se eligió KR-2 y se cerró; esto es lo que queda sobre la mesa, con lo que cuesta
@@ -82,7 +110,7 @@ cada uno. La decisión es de Juan.
 
 | Candidato | Qué desbloquea | Qué cuesta |
 |---|---|---|
-| **Desplegar el orquestador** *(recomendado)* | Cierra Fase 2. Hoy **el pipeline real nunca corrió en producción**: todo lo que hay en Supabase está sembrado a mano | Cuenta de Inngest + servicio en Railway. Se puede desplegar y verificar con el provider **mock**, sin gastar |
+| **Desplegar el orquestador — tramo B** *(recomendado)* | Cierra Fase 2. Hoy **el pipeline real nunca corrió en producción**: todo lo que hay en Supabase está sembrado a mano. El **tramo A está hecho** (2026-08-07): el código ya no arranca mal configurado y el runbook tiene el paso a paso | Cuenta de Inngest + servicio en Railway. Se despliega y verifica con el provider **mock**, sin gastar. **Empieza por la API**, que ya no levanta sin `INNGEST_EVENT_KEY` |
 | **El entregable del restaurante** | La única pieza que **Frank ve**. Es el informe *sin* el bloque de coste, y es la dueña del **PDF** que ADR-07 pedía | Solo código. Gran parte se reutiliza de KR-2b (mismo `renderReport`, misma tabla, misma pantalla) |
 | **El margen legible por el rol `cliente`** | Cierra la deuda 🔴 del `09`. No es fuga activa (no hay usuarios con ese rol), pero la demo ya está en producción | Toca `RunSummary` y la pantalla del brief |
 | **KR-1/KR-3: el dataset** | Llena los tres `n/d` del informe y calibra `VOLUMEN_PERCENTIL_TOPE` y `PESO_CONFIANZA_ORDEN`, hoy puestos sin dato | **~$0.31** y ~16 min contra DataForSEO en producción. **Y hay que volver a sandbox después** |
@@ -92,6 +120,25 @@ step `guardar-informe` de KR-2b tiene 22 tests y **jamás se ejecutó fuera de P
 midió lo que eso vale: un helper con 204 tests en verde murió en el primer contacto con Supabase, porque
 afirmaba sin medir cómo se comportaba en el único camino que ningún test recorre. El orquestador tiene esa
 misma clase de superficie, entera.
+
+## Deuda que deja el tramo A
+
+- **Las tres variables obligatorias nuevas no están en ninguna plantilla del repo.**
+  `INNGEST_EVENT_KEY` (api) y `INNGEST_SIGNING_KEY` + `PIPELINE_MODO` (orquestador) no están en el
+  `MAPA` de `scripts/env-sync.mts`, y `orchestrator/` no tiene `.env.example` (los otros cinco paquetes
+  sí). **No es un olvido: el `permissions.deny` cubre `.env*`** y bloqueó a los tres agentes y a la
+  sesión principal, incluso para leer. Van los dos juntos o ninguno —`scripts/env-sync.test.mts` ata el
+  `MAPA` al `.env.example`—, así que queda para cuando el permiso se abra. En producción no bloquea (las
+  variables se cargan en Railway); molesta para correr el orquestador real en local.
+- **La sonda del modo del SDK está duplicada** en `api/src/deps.ts` y `orchestrator/src/config.ts`, las
+  dos leyendo la API privada `cliente["mode"]`. La revisión midió que **los dos chequeos de forma son
+  equivalentes** hoy, y que nada los mantiene sincronizados mañana. Unificarlas no es un refactor: el
+  único paquete compartido es `contrato/`, y `AGENTS.md` dice que solo depende de `zod`.
+- **La coherencia de `PIPELINE_MODO` solo se comprueba contra DataForSEO**, no contra el LLM ni
+  Storyblok. Es deliberado —la prosa mock se lee como mock y el publisher en dry-run reporta
+  `published: false`; un volumen de búsqueda inventado es el único que pasa por dato real—, pero si
+  alguien quiere cerrarlo, el lugar es `verificarCoherencia` y el costo es que `LLM_PROVIDER` pase a ser
+  obligatoria en `live`.
 
 ## Deuda menor que dejó el despliegue del 2026-08-07
 

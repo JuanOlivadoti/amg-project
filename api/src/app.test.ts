@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias } from "db";
 import type { TenantContext } from "db";
 import { createApp } from "./app.js";
-import type { EmisorEventos } from "./solicitar.js";
+import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
 
 /**
@@ -256,6 +256,85 @@ test("POST /runs con clientId que no es uuid → 400 (no 500)", async () => {
   });
   assert.equal(res.status, 400);
   assert.equal(eventos.length, 0);
+});
+
+/*
+ * ------------------------------------------------- el evento falla DESPUÉS de que la fila ya existe
+ *
+ * ADR-18 obliga a este orden —fila primero, evento después— y no se invierte. Pero el orden tiene un
+ * hueco propio: si el `send()` lanza, la fila **ya está creada** y nadie la va a procesar. El run
+ * queda en `running` para siempre, el portal lo pollea eternamente, y el usuario ve un error sin
+ * enterarse de que su run existe.
+ *
+ * No es hipotético: en Railway el SDK de Inngest infiere modo `cloud`, y `Inngest.send()` LANZA si no
+ * hay `INNGEST_EVENT_KEY` (`components/Inngest.js`: `if (this.mode.isCloud && !this.eventKeySet())
+ * throw`). Esa variable no estaba declarada en ninguna parte del repo.
+ */
+
+/** Emisor que siempre falla, con el error EXACTO que tira el SDK sin event key. */
+function emisorQueLanza(fallo: Error): EmisorEventos {
+  return {
+    send: async () => {
+      throw fallo;
+    },
+  };
+}
+
+test("🔴 POST /runs: si el evento no se puede emitir, el run NO queda huérfano en `running`", async () => {
+  const fallo = new Error("Failed to send event: we couldn't find an event key");
+  const appSinInngest = createApp({
+    store,
+    clientes,
+    membresias,
+    verificar,
+    emisor: emisorQueLanza(fallo),
+  });
+  const res = await appSinInngest.request("/runs", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer valid:${equipoA}`,
+      "x-amg-tenant": tenantA,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ clientId: clientA1, prompt: "run que nadie va a procesar" }),
+  });
+
+  // El usuario se entera: un 201 mentiría diciendo que el research arrancó.
+  assert.equal(res.status, 500, "el fallo del evento se propaga, no se traga");
+
+  const filas = await sql<{ status: string; error: string | null }>(
+    "select status, error from kr_runs where prompt = 'run que nadie va a procesar'",
+    [],
+  );
+  assert.equal(filas.length, 1, "la fila se creó bajo RLS: ADR-18 no se invierte");
+  assert.equal(
+    filas[0]!.status,
+    "failed",
+    "quedó en `running` esperando a un orquestador que nunca fue avisado",
+  );
+  assert.match(filas[0]!.error ?? "", /event key/, "el motivo real queda escrito en la fila");
+});
+
+test("🔴 POST /runs: si TAMBIÉN falla el marcado, se propaga el error del EVENTO, no el del marcado", async () => {
+  // El error original es el que explica qué pasó ("falta la event key"). Si se propagara el del
+  // marcado, el operador leería un síntoma de segundo orden y perdería la causa.
+  const fallo = new Error("Failed to send event: we couldn't find an event key");
+  const delMarcado = new Error("la base tampoco responde");
+
+  const storeSinMarcado = new PgStore(new PglitePool(pg)); // amg_api → app_user, como en producción
+  storeSinMarcado.failRun = async () => {
+    throw delMarcado;
+  };
+
+  await assert.rejects(
+    () =>
+      solicitarResearch(storeSinMarcado, emisorQueLanza(fallo), { tenantId: tenantA, userId: equipoA }, {
+        clientId: clientA1,
+        prompt: "run con doble fallo",
+      }),
+    (e: unknown) => e === fallo,
+    "tiene que salir el error del evento, por identidad — no el del marcado",
+  );
 });
 
 // ---------------------------------------------------------------- lectura + aislamiento

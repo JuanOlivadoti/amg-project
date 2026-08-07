@@ -35,10 +35,26 @@ propio del cliente** —el plan de Railway está en su límite de custom domains
 del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 [Lo que queda por delante](#lo-que-queda-por-delante).
 
+> **El orquestador, al 2026-08-07: el código está listo, falta el despliegue.** El trabajo se partió en
+> dos y el **tramo A** —sin cuentas y sin gastar— está hecho: la API y el orquestador ya **no arrancan**
+> mal configurados, `/_health` existe, y el
+> [runbook](14-runbook-despliegue.md#desplegar-el-orquestador-fase-2--la-última-pieza) tiene el paso a
+> paso. Lo destapó preparar el despliegue en vez de darlo por trivial: **`POST /runs` estaba roto en
+> producción** desde que la API vive en Railway —el SDK de Inngest lanza sin `INNGEST_EVENT_KEY` en modo
+> cloud— y cada intento dejaba un **run huérfano** en `running`, porque la fila se crea antes de emitir
+> (ADR-18).
+>
+> Cuatro variables nuevas son **obligatorias en producción**, y sin ellas los procesos ya no arrancan:
+> `INNGEST_EVENT_KEY` (api), y `INNGEST_SIGNING_KEY`, `DATABASE_URL_ORQUESTADOR`/`DATABASE_URL_CACHE` y
+> **`PIPELINE_MODO`** (orquestador). La última es la que cierra el fallo silencioso de los providers:
+> `mock` o `live`, sin default, y el arranque aborta si contradice a `DATAFORSEO_MODE` en cualquiera de
+> las dos direcciones —research inventado presentado como real, o gasto en un despliegue anotado como
+> gratuito—. El **tramo B** es de Juan: cuenta de Inngest y servicio en Railway.
+
 | | |
 |---|---|
 | **Paquetes** | 7 workspaces (`contrato`, `db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **1071** — 786 en el monorepo + 285 en el portal (207 `node:test` + 78 Karma). Los de seguridad, contra Postgres real. Medido con `npm run verificar -- --con-portal` el 2026-08-06. |
+| **Tests** | **1118** — 833 en el monorepo + 285 en el portal (207 `node:test` + 78 Karma). Los de seguridad, contra Postgres real. Medido el **2026-08-07**: el monorepo con `npm run verificar` tras el tramo A (venía de 786), el portal con `-- --con-portal` y Karma aparte, sin cambios. |
 | **Migraciones** | 14 en `main` (`0001`..`0012` + `0015` + `0016`) · **las 14 aplicadas en producción**, ninguna pendiente — *verificado el 2026-08-07 contra la base real: `select count(*) from app.migraciones_aplicadas` → 14, última `0016_informe_kr.sql`*. La `0012`, la `0015` y la `0016` se aplicaron ese día; la `0011` ya estaba (esta tabla decía que las cuatro estaban pendientes, y eran tres). La próxima libre es la **`0017`**: `0013` y `0014` están **reservadas** para ramas que corren en otra máquina |
 | **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
 | **Reviews externas** | **14 rondas** (Codex), **20 tandas** de correcciones — la 13ª fue la primera sobre el arnés `.claude/` y la 14ª la primera sobre un **documento de diseño** (la spec de KR-2), antes de escribir código. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
@@ -61,7 +77,7 @@ del renderizador. El detalle, ordenado por lo que realmente bloquea, en
 | ✅ | **Costo completo del research** (DataForSEO + LLM) con desglose, y **presupuesto preflight** que aborta antes de gastar. |
 | ✅ | **Resiliencia**: timeouts, reintentos con backoff y `Retry-After` — **probados contra un 429 real de Storyblok**. |
 | ✅ | **Idempotencia**: republicar produce los mismos `story:` IDs, cero duplicados. Verificado en vivo. |
-| ✅ | **786 tests en verde** (+285 en el portal) + typecheck limpio en los 7 paquetes. Los de seguridad, contra Postgres real. |
+| ✅ | **833 tests en verde** (+285 en el portal) + typecheck limpio en los 7 paquetes. Los de seguridad, contra Postgres real. |
 | ✅ | **El dashboard y el brief no pueden divergir en silencio**: un test ata las 14 páginas de `cartera-mock.ts` (portal) a `PAGINAS_DEMO` (seed), campo por campo y en orden. Estar fuera del monorepo impedía importar el paquete, no leer el archivo. |
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
@@ -722,7 +738,7 @@ el molde que ya apareció tres veces](08-testing-calidad.md) y un checkpoint nue
 ### 🟢 4. Deuda conocida, ninguna bloqueante
 
 - **Tests de componente del portal** (Karma). El núcleo está cubierto (**207** tests `node:test`) y
-  hay **66** de componente en Karma. Ya no es deuda: cubren el tema y el shell, las pantallas de
+  hay **78** de componente en Karma *(medido el 2026-08-07)*. Ya no es deuda: cubren el tema y el shell, las pantallas de
   clientes y usuarios, **y las de research** (`runs.spec.ts`, `brief.spec.ts`). Lo que sigue sin red
   de componente son las pantallas que se agreguen de acá en adelante — la regla está en la skill
   `portal-testing`.
@@ -777,7 +793,7 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 | Tarea | Por qué depende de él | Costo |
 |---|---|---|
-| **Desplegar el orquestador** | Cuenta de Inngest + servicio en Railway. Es la última pieza de Fase 2 sin desplegar, y significa que **el pipeline real nunca corrió en producción** | Se puede desplegar y verificar con el provider **mock**, sin gastar |
+| **Desplegar el orquestador** (tramo B) | Cuenta de Inngest + servicio en Railway. Es la última pieza de Fase 2 sin desplegar, y significa que **el pipeline real nunca corrió en producción**. El **tramo A está hecho** (2026-08-07): el código ya no arranca mal configurado, y el procedimiento está escrito paso a paso | Se puede desplegar y verificar con el provider **mock**, sin gastar. **Empezá por la API**: necesita `INNGEST_EVENT_KEY` y sin ella ya no levanta |
 | **Regenerar el dataset crudo** (KR-1) | Gasta dinero real contra DataForSEO. Llena los tres `n/d` del informe y calibra dos parámetros hoy sin dato | **~$0.31**, ~16 min. **Volver a sandbox después** (`kr-service/.env`) |
 | **Rotar las credenciales expuestas** | Solo él puede. Pospuesto por decisión propia el 2026-08-04; sigue abierto, no cerrado | — |
 

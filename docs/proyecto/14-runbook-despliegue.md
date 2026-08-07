@@ -616,6 +616,180 @@ que no sea string en un campo de texto **no** sobreviva (`app.texto_publico`, ta
 
 ---
 
+## Desplegar el orquestador (Fase 2) — la última pieza
+
+> **Sin hacer al 2026-08-07.** El código quedó preparado ese día (tramo A); lo que sigue es el
+> procedimiento. A diferencia de los anteriores, este runbook se escribió **antes** del despliegue, así
+> que lo que dice está medido contra el código y **no** contra Railway: los tropiezos reales se agregan
+> el día que se ejecute, como se hizo con el renderizador.
+
+### ⚠️ Este despliegue NO es aditivo: toca la API
+
+El del renderizador se pudo hacer con una demo el mismo día porque era un servicio nuevo que no tocaba
+nada. **Éste no.** La API tiene que aprender a hablar con Inngest Cloud, y eso es una variable nueva
+(`INNGEST_EVENT_KEY`) más un redeploy del servicio que hoy sostiene el portal entero.
+
+**El orden importa y no es el intuitivo:**
+
+1. Cuenta de Inngest y claves (§1) — no toca nada.
+2. **La API primero** (§2), con `INNGEST_EVENT_KEY`. Sin esto el orquestador no recibe ni un evento,
+   porque nadie los emite.
+3. El orquestador (§3–§5).
+
+> #### Lo que pasa hoy, antes de nada de esto
+>
+> Medido el 2026-08-07 leyendo el SDK: `Inngest.js:563` lanza en `send()` cuando el modo es **cloud** y
+> no hay event key, y el modo se infiere como cloud por `RAILWAY_GIT_BRANCH` o `NODE_ENV=production`
+> (`helpers/env.js`, `getMode`). La API corre en Railway y **no tiene ninguna de las dos claves**.
+>
+> O sea: **`POST /runs` en producción está roto hoy**, y el arreglo del tramo A hace que la API deje de
+> arrancar hasta que la variable esté. Es a propósito —el precedente es el issuer del JWT, mismo
+> archivo— pero implica que **si redesplegás la API sin poner la key primero, no levanta**. Por eso la
+> API va en el paso 2 y no al final.
+
+### 1. Inngest Cloud: la app y las dos claves
+
+Cuenta gratis en [inngest.com](https://www.inngest.com). Del proyecto salen **dos** claves distintas, y
+no son intercambiables:
+
+| Clave | Quién la usa | Para qué |
+| --- | --- | --- |
+| `INNGEST_EVENT_KEY` | **La API** (y el orquestador, si alguna vez emite) | Autentica el **envío** de eventos |
+| `INNGEST_SIGNING_KEY` | **El orquestador** | Verifica que quien le pega a `/api/inngest` es Inngest de verdad |
+
+En Railway las dos van al **entorno del servicio**. (La event key además se puede pasar por parámetro, y
+la API lo hace a propósito para validar y usar la misma lectura — ver
+[12-credenciales.md](12-credenciales.md#las-dos-claves-de-inngest). Para el despliegue no cambia nada:
+poné la variable.)
+
+### 2. La API: la variable y el redeploy
+
+En el servicio de la API en Railway, agregá `INNGEST_EVENT_KEY` y redesplegá. Verificá que **arrancó**
+(`/health` responde 200) antes de seguir: si falta la variable, el log lo dice al arrancar y con el
+nombre exacto.
+
+### 3. El servicio del orquestador en Railway
+
+`amg_orquestador` ya tiene password si se siguió C.2. Si no, ponésela ahora y armá los **dos** DSN que
+el proceso necesita — son dos credenciales distintas a propósito (ADR-17), y esa separación es la mitad
+del modelo de seguridad:
+
+```
+DATABASE_URL_ORQUESTADOR = postgresql://amg_orquestador.<project-ref>:PASS@aws-1-eu-west-2.pooler.supabase.com:6543/postgres
+DATABASE_URL_CACHE       = postgresql://amg_cache.<project-ref>:PASS@aws-1-eu-west-2.pooler.supabase.com:6543/postgres
+```
+
+**Puerto 6543 (transaction pooler)**, por lo mismo que el renderizador: todo acceso va por transacción
+con conexión reservada (ADR-13), que es justo lo que ese modo soporta. Y **comprobá `select
+current_user` con cada DSN antes de desplegar** — el tropiezo #1 del renderizador fue copiar el DSN y
+cambiar la password pero no el usuario, que además de no arrancar se lee como "problema de credencial"
+en vez de "estás usando el rol equivocado".
+
+| Campo | Valor |
+| --- | --- |
+| Root Directory | **vacío** (la raíz del repo) |
+| Start command | `npm run serve -w orchestrator` |
+| Healthcheck path | `/_health` |
+
+**No pongas `PORT`**: lo inyecta Railway y `server.ts` ya lo lee.
+
+**No hace falta custom domain.** Al orquestador solo lo llama Inngest, así que el
+`*.up.railway.app` alcanza — y esos no cuentan contra el límite del plan, que ya se alcanzó con dos.
+
+### 4. Las credenciales: el orquestador es el proceso con MÁS del sistema
+
+Es el reverso exacto del renderizador. El renderizador es el rol más pobre porque está expuesto a
+internet anónimo; el orquestador es el **composition root** y importa `kr-service` y `web-builder`, así
+que necesita lo de los tres módulos a la vez.
+
+**Obligatorias — sin ellas el proceso no arranca** (lo impone `leerConfig()`, y el mensaje las nombra
+una por una):
+
+| Variable | Valor |
+| --- | --- |
+| `DATABASE_URL_ORQUESTADOR` | login `amg_orquestador` → rol `app_service` |
+| `DATABASE_URL_CACHE` | login `amg_cache`: solo caches, sin tablas de tenant |
+| `INNGEST_SIGNING_KEY` | del proyecto de Inngest Cloud |
+| `PIPELINE_MODO` | `mock` o `live`, **sin default**: declará qué está corriendo este despliegue (§5) |
+
+**Del pipeline — el proceso arranca sin ellas y corre en modo mock:** `DATAFORSEO_MODE`,
+`DATAFORSEO_BASE_URL`, `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`, `LLM_PROVIDER`, `OPENAI_API_KEY` (o
+`ANTHROPIC_API_KEY`), `WEB_PUBLISH_MODE`, `STORYBLOK_MANAGEMENT_TOKEN` (el de **escritura** — el que el
+renderizador nunca ve), `STORYBLOK_REGION`.
+
+> Los **embeddings son solo de OpenAI**: sin `OPENAI_API_KEY`, el clustering usa embeddings mock aunque
+> el LLM sea Anthropic (`kr-service/src/config.ts:66`). Y los modelos de Anthropic están
+> **hardcodeados**, no son variables de entorno.
+
+**🔴 Las que NO hay que poner:**
+
+| Variable | Por qué |
+| --- | --- |
+| `INNGEST_EVENT_KEY` | El orquestador **no emite eventos** (medido: `grep '\.send('` en `orchestrator/src` da cero). Es de la API |
+| `DATABASE_URL` | En Railway es el nombre que el plugin de Postgres inyecta solo, y apunta al **dueño** de la base: aceptarlo le daría al orquestador un login capaz de asumir cualquier rol, y ADR-17 pasaría a ser una coincidencia de nombres. En producción el código la **rechaza** |
+| `STORYBLOK_SPACE_ID` | El space sale de `clients.storyblok_space_id` bajo RLS, por cliente (ADR-04) |
+| `INNGEST_DEV` | Fuerza modo dev y **desactiva todas las validaciones de producción**. Es la escotilla local, no una variable de despliegue |
+| `DFS_PERMITIR_REPAGO` | Autoriza pagar dos veces. Lo decide un humano mirando el panel |
+
+> **Cómo llegan esas variables en local:** `kr-service/src/config.ts:1` hace `import "dotenv/config"`,
+> que carga el `.env` del **cwd del proceso**. Medido: `npm run serve -w orchestrator` corre con cwd
+> `orchestrator/`, así que lee `orchestrator/.env` — aunque su `package.json` no declare `--env-file`.
+> En Railway no aplica: ahí las variables se inyectan al entorno.
+
+### 5. ⚠️ Antes de conectar DataForSEO en vivo, decidilo a propósito
+
+El valor es **exactamente `DATAFORSEO_MODE=live`**, y conviene saber por qué se dice así: cualquier
+otro valor —`production`, `prod`, un typo— devuelve el **mock** sin avisar
+(`kr-service/src/dataforseo/index.ts:26`: `if (config.dataforseo.mode !== "live") return new
+MockProvider()`). _(Este runbook decía `production` cuando se escribió. Lo cazó midiendo el código
+quien implementó el tramo A, no quien lo escribió.)_ Sandbox o producción es una **segunda** variable:
+`DATAFORSEO_BASE_URL`, cuyo default es sandbox y donde `isSandbox` se decide por si la URL contiene la
+palabra.
+
+Con las dos puestas de verdad, **cada research lanzado desde el portal cuesta ~$0.31 y tarda ~16
+minutos** (medido en la Acción 06). Con el orquestador desplegado, ese botón deja de ser una demo: lo
+aprieta cualquiera con rol `equipo` y se paga solo.
+
+> #### `PIPELINE_MODO`: por qué tenés que declarar qué estás desplegando
+>
+> Al revés también duele, y peor. Un despliegue **sin** `DATAFORSEO_MODE=live` corría entero y sin un
+> solo error, generaba keywords **inventadas** por el `MockProvider`, las escribía en la base **real**
+> del cliente y dejaba el run en `pending_approval` con su informe. **Nadie podía distinguir eso de un
+> research legítimo mirando el portal** — un volumen de búsqueda falso es un número plausible en una
+> columna que nadie audita a ojo. (La prosa mock sí se nota leyéndola, y el publisher en dry-run
+> reporta `published: false`; DataForSEO era el único invisible, y es el 81% del costo.)
+>
+> Por eso `PIPELINE_MODO` es **obligatoria en producción y no tiene default**. No enciende ni apaga
+> nada: `DATAFORSEO_MODE` sigue siendo quien manda. Es una **declaración del operador** que el arranque
+> contrasta contra la configuración real, y aborta si se contradicen **en cualquiera de las dos
+> direcciones**:
+>
+> | Contradicción | Por qué aborta |
+> | --- | --- |
+> | `PIPELINE_MODO=live` + DataForSEO en mock | Research falso presentado como real en la base del cliente |
+> | `PIPELINE_MODO=mock` + DataForSEO en vivo | **Se gasta en un despliegue anotado como gratuito** |
+>
+> Así, desplegar primero en mock —el paso de acá arriba— sigue siendo legítimo, pero pasa a ser una
+> decisión escrita en vez de un olvido. El modo activo se ve en `/_health`
+> (`{"modo":"cloud","pipeline":"mock"}`): una declaración que solo viviera en el panel de variables de
+> Railway no se podría auditar mirando el servicio.
+
+**Desplegá primero en modo sandbox/mock y verificá el circuito entero.** El pipeline corre sin una sola
+credencial de proveedor, así que se puede comprobar que el evento llega, que los steps corren, que el
+run queda en `pending_approval` con su informe y que la compuerta despierta al workflow — **sin gastar
+un céntimo**. Recién con eso verde, decidí si se conecta la cuenta real.
+
+### 6. Verificación
+
+1. `/_health` responde 200 (no prueba que funcione: prueba que el proceso vive).
+2. En el panel de Inngest, la app aparece **sincronizada** y lista sus funciones.
+3. Lanzá un research desde el portal con los providers en mock: el run tiene que pasar de `running` a
+   `pending_approval` **con su informe**, y el brief verse en el portal.
+4. Aprobá el run y comprobá que el workflow **despierta** y publica.
+5. Mirá los logs del servicio: no tiene que haber ni un `Cannot find package` ni una caída a PGlite.
+
+---
+
 ## Troubleshooting (los errores que más probablemente veas)
 
 | Síntoma                                                                                                    | Causa probable                                          | Fix                                                                                                                                                |

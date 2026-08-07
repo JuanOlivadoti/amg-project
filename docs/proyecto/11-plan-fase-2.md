@@ -3,7 +3,7 @@
 > **Este documento responde tres preguntas: de dónde venimos, dónde estamos exactamente ahora, y
 > qué falta.** Si retomás el proyecto, empezá por acá.
 >
-> Última actualización: **2026-08-06** · **1071 tests en verde** — **786** en el monorepo + **285** en
+> Última actualización: **2026-08-07** · **1118 tests en verde** — **833** en el monorepo + **285** en
 > el portal (207 `node:test` + 78 Karma). Subió de 766 al mergear la pieza 2 (usuarios); los dos
 > siguientes fueron del agujero de la compuerta de secretos (2026-08-03), **once** de KR-3 —el orden del
 > brief persistido, migración `0015`— al estrenar el agente `datos`
@@ -114,7 +114,7 @@
 > ver la fila propia por completo, y esta pieza le agregó a esa fila columnas que son notas internas
 > de la agencia. Cerrado el mismo día con un `case when app.es_staff() then <col> else null end` en la
 > consulta —la garantía vive en Postgres, no en un `if`— y verificado por mutación. Detalle completo en
-> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **1071 tests** (786 monorepo + 285
+> [09-estado-y-roadmap.md](09-estado-y-roadmap.md). **1118 tests** (833 monorepo + 285
 > portal), **14 migraciones**, todas aplicadas en producción el 2026-08-07 (la `0012`, la `0015` y la `0016` ese día; la `0011` ya estaba).
 
 ---
@@ -130,7 +130,7 @@ real y un portal donde el equipo de la agencia trabaje.
 | # | Etapa | Estado |
 |---|---|---|
 | 1 | **Persistencia + multi-tenancy** — esquema, RLS, cache y registro de tareas en Postgres | ✅ Hecha |
-| 2 | **Orquestador durable** — Inngest: steps, reintentos, compuerta humana con `waitForEvent` | ✅ Hecha |
+| 2 | **Orquestador durable** — Inngest: steps, reintentos, compuerta humana con `waitForEvent` | ✅ Hecha · 🟡 **sin desplegar** — código **listo para desplegar** desde el 2026-08-07 (tramo A), falta el tramo B (cuenta de Inngest + servicio en Railway) |
 | 3 | **Idempotencia del gasto** — que un reintento no vuelva a pagarle a DataForSEO | ✅ Hecha |
 | 4 | **Monorepo + Auth** — workspaces npm; el rol se deriva de `memberships`, no se declara | ✅ Hecha |
 | 5 | **API + Portal** — REST autenticada + SPA Angular donde se aprueba la compuerta | ✅ **Hecha** (5.1 API · 5.2 portal · **5.3 desplegada** el 2026-07-25, login verificado el 2026-07-30) |
@@ -146,6 +146,37 @@ por la que se eligió Storyblok* por fin se cobra ([ADR-19](../decisiones-arquit
 OBS-03). Y desde el **2026-08-01 está desplegado**: la web del cliente se sirve desde internet, no
 desde `localhost`. **Lo que sigue faltando es el orquestador**, que es la única pieza que todavía
 corre solo en local. *(La API y el portal están desplegados desde la etapa 5.3, Fase 1.)*
+
+### El tramo A del despliegue del orquestador (2026-08-07)
+
+El despliegue se partió en dos, y el primer tramo —**todo código, sin cuentas y sin gastar**— está
+hecho. Lo que queda es el tramo B: cuenta de Inngest y servicio en Railway, ejecutando
+[el runbook](14-runbook-despliegue.md#desplegar-el-orquestador-fase-2--la-última-pieza).
+
+Se hizo porque "solo faltan las cuentas" era falso, y lo que faltaba era de la clase que no se ve
+hasta que se despliega:
+
+- **`POST /runs` ya estaba roto en producción, sin que nada lo dijera.** El SDK de Inngest lanza en
+  `send()` cuando el modo es cloud y no hay `INNGEST_EVENT_KEY`, y el modo se infiere como cloud por
+  `RAILWAY_GIT_BRANCH`. Peor: como la fila del run se crea **antes** de emitir (ADR-18), cada intento
+  dejaba un run huérfano en `running` que el portal polleaba para siempre. Ahora la API **no arranca**
+  sin esa clave, y si el evento falla igual, el run se marca `failed` con el motivo.
+- **El orquestador caía a PGlite en memoria** si no encontraba su DSN: un proceso que se declara sano
+  y procesa research real contra una base que se evapora. En producción ahora está prohibido, y
+  `DATABASE_URL` —el DSN del **dueño** que Railway inyecta solo— tampoco alcanza, porque aceptarlo
+  convertiría ADR-17 en una coincidencia de nombres.
+- **No tenía health check**: `/_health` responde sin tocar Postgres ni Inngest.
+
+Las dos exigencias nuevas se validan **al arrancar**, no en la primera petición, por el mismo
+argumento que ya regía para el issuer del JWT: un proceso que levanta sano y falla recién cuando
+alguien lo usa es peor que uno que no levanta.
+
+**Lo que quedaba abierto, y se cerró en la misma etapa:** un despliegue sin `DATAFORSEO_MODE=live`
+generaba keywords **inventadas** por el mock, las escribía en la base **real** y dejaba el run en
+`pending_approval` con su informe, indistinguible de un research legítimo. Lo cierra
+**`PIPELINE_MODO=mock|live`**, obligatoria en producción y sin default: no enciende nada —`DATAFORSEO_MODE`
+sigue mandando—, **declara**, y el arranque aborta si las dos se contradicen en cualquiera de las dos
+direcciones. Se expone en `/_health` para poder auditarla sin entrar al panel de Railway.
 
 ---
 
@@ -178,7 +209,7 @@ corre solo en local. *(La API y el portal están desplegados desde la etapa 5.3,
 ```
 
 - **7 paquetes** en workspaces npm: `contrato` (el contrato del brief, compartido), `kr-service` (M2), `web-builder` (M1), `db`, `orchestrator`, `api`, `renderer` — más `portal/` (Angular), fuera del monorepo a propósito.
-- **786 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
+- **833 tests** (monorepo). Los de seguridad corren contra Postgres real (PGlite en WASM), sin Docker ni cuenta.
 - **Corre entero sin una sola credencial**: providers mock + PGlite en memoria.
 - El flujo `research → persistir → esperar aprobación humana → publicar` **funciona de punta a
   punta** y está probado.

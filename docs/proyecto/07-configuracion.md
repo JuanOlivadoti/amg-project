@@ -15,10 +15,12 @@ verdad.
 
 | Variable | Default | Para qué |
 |---|---|---|
-| `DATABASE_URL_ORQUESTADOR` | *(PGlite en memoria)* | Postgres del orquestador. Login `amg_orquestador` → rol `app_service`. |
+| `DATABASE_URL_ORQUESTADOR` | *(PGlite en memoria)* · **obligatoria en producción** | Postgres del orquestador. Login `amg_orquestador` → rol `app_service`. |
 | `DATABASE_URL_CACHE` | **obligatoria con Postgres real** | Caches y registro de tareas. Login `amg_cache`: **sin acceso a ninguna tabla de tenant**. |
-| `DATABASE_URL` | — | *Fallback* de `DATABASE_URL_ORQUESTADOR`. Cómodo en dev, **no usar en producción**. |
-| `PORT` | `3100` | Puerto del servidor de Inngest (`/api/inngest`). |
+| `INNGEST_SIGNING_KEY` | **obligatoria en producción** | Con ella el SDK verifica que quien invoca las funciones es Inngest Cloud. Se le pasa a `serve()` desde la config validada: el parámetro **gana** sobre el entorno, así que si no viajara, lo validado y lo usado serían dos lecturas distintas. |
+| `PIPELINE_MODO` | **obligatoria en producción, sin default** | `mock` o `live`. No enciende nada: **declara** qué está corriendo este despliegue, y el arranque aborta si contradice a `DATAFORSEO_MODE` en cualquiera de las dos direcciones. |
+| `DATABASE_URL` | — | *Fallback* de `DATABASE_URL_ORQUESTADOR` **solo en desarrollo**: en producción el código la **rechaza** (ver abajo). |
+| `PORT` | `3100` | Puerto del servidor de Inngest (`/api/inngest`). Se **valida**: un valor no numérico aborta el arranque. |
 
 > ⚠️ **`DATABASE_URL_CACHE` NO hereda de la del orquestador.** Antes lo hacía, y era un bug (5ª
 > review, #9): el login `amg_orquestador` **no puede tocar las caches** por diseño, así que heredar
@@ -30,8 +32,21 @@ verdad.
 > credenciales, los `GRANT` y qué puede cada una están en **[12. Credenciales](12-credenciales.md)**.
 > No es una convención del código: **la frontera la impone Postgres**.
 
-**Sin ninguna de estas variables el sistema arranca igual**, con PGlite en memoria. Es deliberado y
-es lo que permite que los 786 tests corran en CI sin Docker, sin cuenta y sin red.
+> ⚠️ **En producción, PGlite está prohibido y `DATABASE_URL` no alcanza** (tramo A, 2026-08-07). Los
+> dos son el mismo fallo silencioso. Sin el guard, una variable mal escrita en Railway arrancaba un
+> proceso que se declaraba sano y procesaba research real contra una base **efímera**, sin un solo
+> error. Y `DATABASE_URL` es el nombre que el plugin de Postgres de Railway inyecta solo, apuntando al
+> **dueño** de la base: aceptarlo le daría al orquestador un login capaz de asumir cualquier rol, con
+> lo que el `set local role app_service` seguiría funcionando y ADR-17 pasaría a ser una coincidencia
+> de nombres. Nada fallaría. Por eso lo impone el código y ya no este renglón.
+>
+> "Producción" no se decide con un `NODE_ENV` propio: se le pregunta al SDK de Inngest, que es quien
+> ya lo infiere — y **Railway no define `NODE_ENV`, define `RAILWAY_GIT_BRANCH`**, así que un
+> `NODE_ENV.startsWith("prod")` escrito a mano diría "desarrollo" mientras el proceso habla con
+> Inngest Cloud.
+
+**Sin ninguna de estas variables el sistema arranca igual fuera de producción**, con PGlite en
+memoria. Es deliberado y es lo que permite que la suite corra en CI sin Docker, sin cuenta y sin red.
 
 ---
 

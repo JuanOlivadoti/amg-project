@@ -10,6 +10,7 @@ import {
   renderStory,
 } from "web-builder";
 import type { BusinessProfile } from "web-builder";
+import { leerConfig, type ConfigOrquestador } from "./config.js";
 import type { Deps, KeywordParaGuardar } from "./workflow.js";
 
 /**
@@ -44,33 +45,30 @@ export interface Conexiones {
   cerrar: () => Promise<void>;
 }
 
-export async function crearConexiones(): Promise<Conexiones> {
-  const urlOrq = process.env["DATABASE_URL_ORQUESTADOR"] ?? process.env["DATABASE_URL"];
-  const urlCache = process.env["DATABASE_URL_CACHE"];
+/**
+ * Abre las conexiones que la config ya decidió. **No lee el entorno**: eso es de `leerConfig()`, que
+ * corre al arrancar y falla cerrado (`config.ts`). Acá solo se cumple lo decidido, y se revalida lo
+ * único que no se puede dejar pasar.
+ */
+export async function crearConexiones(
+  config: ConfigOrquestador = leerConfig(),
+): Promise<Conexiones> {
+  if (config.persistencia.tipo === "pglite-en-memoria") {
+    /*
+     * DEFENSA EN PROFUNDIDAD. `leerConfig()` ya garantiza que en producción esto no puede pasar, pero
+     * la config es un objeto que cualquiera puede armar a mano (un dev-server, un test, un refactor
+     * que se saltee `leerConfig`). El que abre la base es el último que puede negarse, y una base
+     * efímera en producción es exactamente el fallo que no avisa: el research se paga igual y los
+     * resultados se evaporan al reiniciar. Mismo criterio que `getProvider()` con el registro durable.
+     */
+    if (config.esProduccion) {
+      throw new Error(
+        "PGlite EN MEMORIA con el SDK de Inngest en modo producción (cloud). No se arranca: el " +
+          "research se pagaría de verdad y se escribiría en una base que se evapora al reiniciar. " +
+          "Definí DATABASE_URL_ORQUESTADOR y DATABASE_URL_CACHE, o poné INNGEST_DEV=1 si esto es dev.",
+      );
+    }
 
-  /*
-   * Con Postgres real, `DATABASE_URL_CACHE` es OBLIGATORIA. No tiene fallback, y el fallback que
-   * tenía era imposible de cumplir:
-   *
-   *   `urlCache = DATABASE_URL_CACHE ?? urlOrq`
-   *
-   * O sea que sin esa variable la cache se abría con `amg_orquestador` — un login que, POR DISEÑO,
-   * no tiene permiso sobre las caches ni sobre el registro de tareas (0003_credenciales.sql). El
-   * primer acceso explotaba. Falla cerrado, sí, pero explotaba **en producción, en el primer
-   * research**, con una configuración que parecía válida.
-   *
-   * Mejor abortar al arrancar y decir exactamente qué falta.
-   */
-  if (urlOrq && !urlCache) {
-    throw new Error(
-      "Falta DATABASE_URL_CACHE. Con Postgres real es obligatoria y NO hereda de " +
-        "DATABASE_URL_ORQUESTADOR: el login del orquestador no puede tocar las caches ni el " +
-        "registro de tareas (un proceso, un login, un rol — ADR-17). " +
-        "Ver docs/proyecto/12-credenciales.md.",
-    );
-  }
-
-  if (!urlOrq) {
     // Sin credenciales: PGlite en memoria. El sistema entero sigue corriendo sin una sola clave.
     // Acá los dos "pools" son el mismo (es una base en proceso): la separación real es de
     // credenciales, y en un test no hay credenciales que separar.
@@ -83,8 +81,8 @@ export async function crearConexiones(): Promise<Conexiones> {
   }
 
   const { Pool } = await import("pg");
-  const pOrq = new Pool({ connectionString: urlOrq });
-  const pCache = new Pool({ connectionString: urlCache });
+  const pOrq = new Pool({ connectionString: config.persistencia.urlOrquestador });
+  const pCache = new Pool({ connectionString: config.persistencia.urlCache });
   return {
     orquestador: new NodePgPool(pOrq),
     cache: new NodePgPool(pCache),
