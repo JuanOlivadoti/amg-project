@@ -11,6 +11,70 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-07 (15ª review externa) — el plan que mentía por omisión, y una guarda que faltaba desde antes
+
+Codex revisó los ocho commits del día **y** el plan de la plataforma recién escrito. Veredicto: **NO
+LISTO**, por un botón que en producción puede devolver 200 sin publicar nada. Siete hallazgos, todos
+procesados: cinco verificados, uno aceptado por juicio, y **una mutación refutada**.
+
+**Lo que más valió no fue un hallazgo, sino lo que apareció al medirlo.** Codex advirtió por
+inferencia que el barrido de runs colgados podría matar un workflow lento y que el workflow, al
+terminar, pisaría el `failed`. Al ir a comprobarlo apareció que la mitad **ya existe**: `failRun` es
+compare-and-set desde hace tiempo (`and status = 'running'`), pero **`finishRun` no tiene ninguna
+guarda** — `where id = $1` pelado. Hoy no muerde porque nada más escribe ese estado; el barrido
+habría sido justo eso. Un hallazgo sobre código futuro destapó un bug del código presente.
+
+**La mutación refutada, porque la distinción importa.** Codex propuso cambiar
+`if (prod.features.aprobarRun)` por `if (false)` en `environment.prod.test.ts` para demostrar que la
+garantía de coherencia se evapora. Eso muta **el test**, no el código: cualquier test desactivado deja
+de garantizar lo suyo. La mutación válida es la de producción —`aprobarRun: true, lanzarResearch:
+false` en `environment.prod.ts`— y ésa el test **sí** la caza. Lo que el test no puede dar, y Codex
+acierta en su última frase, es que un run **concreto** tenga workflow: ese dato no vive en el
+environment.
+
+**Y lo que la review no vio, que salió de contrastar el plan contra el `09`:** el plan se saltaba las
+**piezas 3 y 4 del programa del portal** —dos planes escritos, con la migración `0013` reservada para
+Ideas—. Un plan que dice ser "lo que queda" y omite eso miente por omisión, que es exactamente lo que
+el ritual de `AGENTS.md` nombra en su paso 3. Es el bloque **J**.
+
+**La contradicción documental resultó ser el doble.** Codex citó tres sitios que seguían diciendo que
+falta desplegar el orquestador; barriendo la misma clase de afirmación aparecieron **siete**, en tres
+archivos: el `09` (tres), el `README` de `docs/proyecto/` (tres, incluida la cifra de tests y la de
+migraciones) y `current.md` (su sección "Lo próximo", la única sin fecha). Descarté `current.md` en la
+primera lectura con el argumento de que sus bloques viejos van fechados y con ✅ — vale para el
+cuerpo y no para "Lo próximo", que es justo lo que una sesión nueva lee como estado vivo.
+
+**De paso, `current.md` estaba entero duplicado** en las seis entradas del día de esta bitácora, así
+que en vez de parchear la sección se reseteó al template. Antes hubo que rescatar lo que solo vivía
+ahí: dos deudas de KR-2a (`endpoints_degradados` incompleto y el vocabulario propio de `web-builder`)
+pasaron al bloque I del plan, y **el generador de credenciales no tenía entrada en esta bitácora** —
+la de abajo.
+
+## 2026-08-07 (herramientas) — `npm run credencial`, y por qué un generador ingenuo es peor que ninguno
+
+Salió de necesitar el DSN del orquestador y descubrir que **no existía en ningún lado**: el `MAPA` de
+`env-sync.mts` no tiene entrada para `orchestrator` —los cinco paquetes que sí la tienen son `api`,
+`db`, `kr-service`, `renderer` y `web-builder`—. Nunca se le repartió nada porque nunca se desplegó.
+
+Un script con argumento, no un `create-credential:<nombre>` por credencial: una lista de scripts npm
+envejece sin que nada avise. Acá el catálogo vive en un sitio y **un test lo ata al `MAPA`** — agregar
+una clave al reparto sin clasificarla rompe la suite.
+
+**Lo que de verdad justifica el catálogo es la familia `tercero`.** Ante `OPENAI_API_KEY` un generador
+ingenuo devolvería 32 caracteres al azar: algo que **parece** una key, entra en `credenciales.env` sin
+chistar y falla mucho más tarde con un 401 que nadie relaciona con haberla "generado". El script se
+niega y dice dónde sacarla. **Producir algo plausible y equivocado es peor que no producir nada.**
+
+Escribe en la fuente (pedido de Juan), y por eso: escritura **atómica** (temporal + `rename`, porque
+ese archivo no está en git y un write truncado no se recupera de ningún lado), **confirmación
+escrita** al reemplazar, y `.bak-<timestamp>` al lado. Lo generado es **URL-safe** (`base64url`, 192
+bits): estas cadenas viven dentro de un DSN y una `@` sin escapar no da error — **conecta a otro
+sitio**.
+
+**11 tests, con las dos mutaciones que importan medidas:** `base64url` → `base64` tumba 2 (los dos de
+alfabeto seguro), y quitar el `=` del ancla del upsert tumba exactamente 1 (el que impide que
+`DATABASE_URL` pise a `DATABASE_URL_API`).
+
 ## 2026-08-07 (madrugada) — el circuito entero corrió en producción, y hora y media de fallos que no fueron del código
 
 Un research lanzado desde el portal recorrió `POST /runs` → Inngest → orquestador → `kr-service` →

@@ -587,6 +587,44 @@ activa (no hay usuarios `cliente`), y cerrarla toca `RunSummary` y la pantalla d
 > fallo que la tanda 19 encontró en las skills, un nivel más arriba otra vez: **escribí sobre el código sin
 > volver a abrirlo**. La regla de `datos-testing` —medilo en el momento— no era solo para las cifras.
 
+### Tanda 21 — 15ª review: un hallazgo sobre código futuro destapó un bug del presente ✅
+
+Primera ronda **híbrida**: los ocho commits del cierre de Fase 2 (`b227a80..81c891f`, 25 archivos,
++2318/−112) **y** el plan de la plataforma recién escrito, como revisión de diseño. Veredicto **NO
+LISTO**, **7 hallazgos**: 4 Major, 3 Minor. **Cinco verificados, uno aceptado por juicio, una mutación
+refutada.**
+
+| Hallazgo | Cómo terminó |
+|---|---|
+| **[Major] Aprobar el run puede devolver 200 sin publicar** | **Verificado.** `approveRun` (`db/src/store.ts:914`) exige una página aprobada y que el `update` toque fila, y **nada** sobre que exista un workflow durable; el botón (`brief.ts:233`) mira solo rol y flag. Lo nuevo es que **desde el 2026-08-07 es alcanzable en producción**: el run sembrado está en `pending_approval`, los flags en `true`, y ese run se insertó directo en la base. Es el bloqueante del veredicto, y entró al plan como **C0**. |
+| **[Major] El barrido de A2 podría matar un workflow lento** | **Verificado, y peor de lo que decía.** Codex lo dio por inferencia; al medirlo apareció que `failRun` **ya** es compare-and-set (`and status = 'running'`) pero **`finishRun` no tiene guarda ninguna** (`where id = $1` pelado). Así que el escenario se cumple exacto, y además **es un bug de hoy**: cualquier cosa que escriba `failed` mientras el workflow vive queda pisada al terminar. Un hallazgo sobre código futuro destapó uno del presente. |
+| **[Major] `200 degradado` no es una señal operativa** | **Aceptado por juicio**, con la recomendación corregida. Codex proponía una readiness consumida por **alerta externa**: no hay alerta externa en este proyecto, y un endpoint que nadie consulta es el mismo defecto un piso más arriba. Lo que se acepta es que la sonda vaya por **`Tx` con el rol real** —`select 1` prueba TCP y credencial, no que el proceso pueda asumir `app_service`— y que cada **transición** sano→degradado se loguee una vez. El 200-en-vez-de-503 se mantiene y queda registrado como decisión. |
+| **[Major] Las fuentes de verdad se contradicen** | **Verificado, y son siete sitios, no tres.** Codex citó el `09` (dos) y `current.md`; barriendo la misma clase de afirmación aparecieron siete, en tres archivos: el `09`, el `README` de esta carpeta (incluida la cifra de tests, `1181`, y la de migraciones, `14`) y `current.md`. Yo había descartado `current.md` porque sus bloques viejos van fechados con ✅ — vale para el cuerpo y **no** para "▶️ Lo próximo", que no lleva fecha y es justo lo que una sesión nueva lee. |
+| **[Minor] La reparación de `transaccional` no está probada** | **Verificado.** El fixture de `seed-contrato.test.ts:178` cubre `comercial`, `navegacional`, `informacional` y una fila ya correcta; **ninguna `transaccional`**, aunque el comentario de arriba dice cubrir "las cinco combinaciones". Como el `case` de la `0017` no tiene `else`, quitar ese `when` deja el test verde. Es exactamente donde la revisión interna del día había pedido cubrir. |
+| **[Minor] El bloque D omite dos deudas del mismo dataset** | **Verificado** contra `09:920` (las estimaciones de `lib/budget.ts`) y `09:924` (`max_pages = 25` frente a `serpValidateTop = 15`). Las dos entraron a D, con el aviso de que D **no** cierra el hueco de las cabezas no observadas. |
+| **[Minor] A3 depende de un inventario que A4 reconoce incompleto** | **Verificado, y más fuerte.** Al `MAPA` de `env-sync.mts` no le faltan variables del orquestador: **falta el servicio entero** (están los otros cinco). Y hay una segunda razón que Codex no vio: el `MAPA` **nunca** podrá ser el inventario de producción, porque omite tres claves **a propósito** que en Railway sí están. A3 quedó detrás de A4 y con inventario propio. |
+
+**La mutación refutada, porque la distinción importa.** Codex propuso cambiar
+`if (prod.features.aprobarRun)` por `if (false)` en `environment.prod.test.ts:48` para demostrar que la
+garantía de coherencia se evapora. Eso muta **el test**, no el código — y cualquier test desactivado
+deja de garantizar lo suyo. La mutación válida es la de producción (`aprobarRun: true,
+lanzarResearch: false` en `environment.prod.ts`), y ésa el test **sí** la caza. Lo que ningún test de
+flags puede dar, y Codex acierta en decirlo, es que un run **concreto** tenga workflow: ese dato vive
+en la fila, no en el environment.
+
+**El hallazgo propio, que salió de contrastar el plan contra el `09` y no de la review:** el plan se
+saltaba las **piezas 3 (Ideas) y 4 (Dashboard) del programa del portal** — dos planes escritos, la 4
+dependiente de la 3, y la migración `0013` **reservada** para Ideas. Un plan que dice ser "lo que
+queda" y omite eso miente por omisión. Es el bloque **J**.
+
+> **Lo que esta ronda enseña sobre el método, y es nuevo:** el hallazgo más valioso no fue ninguno de
+> los siete, sino **lo que apareció al ir a verificarlos**. Codex advirtió por inferencia sobre un
+> mecanismo que todavía no existe (el barrido); comprobarlo obligó a leer las transiciones de estado
+> reales, y ahí estaba `finishRun` sin guarda desde hace tiempo. **Verificar un hallazgo especulativo
+> encontró un bug concreto que el hallazgo no mencionaba.** Es el argumento contra aplicar findings a
+> ciegas, por el lado contrario al habitual: no por los falsos positivos, sino porque medir el terreno
+> encuentra cosas que el revisor externo no podía ver.
+
 ### 🔑 Acción humana — ✅ cerrada
 
 **#2 — Secretos:** la misma API key de OpenAI estaba duplicada en los dos `.env`. **Rotada el

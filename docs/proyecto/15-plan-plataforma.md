@@ -34,7 +34,7 @@ pendientes, que se pueden hacer seguidas. El **C** es el único tramo del produc
 
 | Bloque | Qué | Bloquea a | Decisión previa |
 | --- | --- | --- | --- |
-| **A** | Fiabilidad del despliegue | Operar sin sustos | — |
+| **A** | Fiabilidad del despliegue | Operar sin sustos | A3 y A4 dependen de Juan |
 | **B** | Deuda de producto ya decidida | — | ya tomadas |
 | **C** | Aprobar → publicar, ejercitado | Cerrar el circuito entero | modo de publicación |
 | **D** | Calibrar el research (KR-1) | La calidad del módulo 2 | **gasta ~$0.31** |
@@ -42,7 +42,13 @@ pendientes, que se pueden hacer seguidas. El **C** es el único tramo del produc
 | **F** | Módulo 3 — reseñas de Google | Completar el alcance base | alcance |
 | **G** | Lo que ADR-19 dejó a medias | Un SLA | infraestructura |
 | **H** | Offboarding y OBS-04 | Firmar ADR-11 | comercial |
+| **J** | Piezas 3 y 4 del portal | Cerrar el programa del portal | ninguna: hay plan escrito |
 | **I** | Deuda menor, sin bloqueo | — | — |
+
+> **Enmendado el 2026-08-07 tras la 15ª review externa** (Codex). Cambió más de lo que parece: **A1**
+> y **A2** no definían garantías suficientes, **C** ganó una precondición bloqueante (**C0**), **A3**
+> quedó detrás de **A4**, **D** absorbió dos deudas que el `09` le atribuía, y el bloque **J** no
+> existía. La clasificación hallazgo por hallazgo está en `progress/informes/` (no versionado).
 
 ---
 
@@ -59,17 +65,32 @@ que el health check no dependa de terceros— pero **para el orquestador la base
 todo lo que hace**. Es la segunda vez en el mismo día que un health check declara sano un servicio
 inservible (la primera fue el 401 de la firma de Inngest).
 
-**Qué hacer.** `/_health` comprueba la base **sin volverse frágil**: un `select 1` con timeout corto,
-cacheado unos segundos para que un chequeo no abra una conexión por request.
+**Qué hacer.** `/_health` comprueba la base **sin volverse frágil**: una sonda con timeout corto,
+cacheada unos segundos para que un chequeo no abra una conexión por request.
 
-**La trampa, y hay que decidirla explícitamente:** si `/_health` devuelve un código de error, Railway
+**La sonda va por `Tx` con el rol real, no un `select 1` sobre la conexión cruda.** Lo señaló la 15ª
+review (Codex, H3) y tiene razón: `select 1` prueba que hay TCP y credencial, no que el proceso pueda
+**asumir su rol**. El orquestador entra como `amg_orquestador` y hace `set local role app_service`
+(ADR-17); si eso falla, el workflow no puede hacer nada y `select 1` seguiría diciendo que sí. La
+sonda tiene que recorrer el mismo camino que el trabajo real.
+
+**La trampa, y está decidida explícitamente:** si `/_health` devuelve un código de error, Railway
 considera el deploy enfermo y lo **reinicia o lo revierte** — y volveríamos a tener el servicio caído
-por otra puerta, que es exactamente el error del tramo A ("fallar ancho no es fallar ruidoso"). La
-propuesta es **200 con un campo `degradado`** que nombre lo que no responde, no un 503.
+por otra puerta, que es exactamente el error del tramo A ("fallar ancho no es fallar ruidoso"). Va
+**200 con un campo `degradado`** que nombre lo que no responde, no un 503.
+
+**Pero un campo que nadie lee no es una señal.** La misma review propuso una readiness consumida por
+alerta externa; **no hay alerta externa en este proyecto**, y agregar un endpoint que nadie consulta
+es el mismo defecto un piso más arriba. Lo que sí existe son los **logs de Railway**, así que:
+
+- Cada **transición** sano→degradado y degradado→sano se escribe a `stderr` con nivel error, **una vez
+  por transición** y no por request — si no, una base caída inunda el log y la señal se pierde otra vez.
 
 - **Archivos:** `orchestrator/src/app.ts`, `orchestrator/src/config.ts`, sus tests.
-- **Verificación:** un test que, con la base caída, exige **200** y `degradado` no vacío; y otro que
-  con la base sana exige el campo ausente. Mutación: quitar la comprobación deja el primero rojo.
+- **Verificación:** un test que, con la base caída, exige **200** y `degradado` no vacío; otro que con
+  la base sana exige el campo ausente; y un tercero que exige **una sola línea de log** aunque se
+  llame a `/_health` tres veces seguidas en estado degradado. Mutación: quitar la comprobación deja el
+  primero rojo; hacer la sonda con `query()` suelto en vez de `Tx` deja rojo el que niega el rol.
 - **Coste:** pieza chica, un solo paquete.
 
 ### A2. Un run no puede quedarse en `running` para siempre
@@ -91,10 +112,35 @@ el workflow no arranca, no hay reloj.
 
 La segunda es la que de verdad cierra la clase. La primera es una mejora del mismo diseño.
 
-- **Archivos:** `orchestrator/src/functions.ts`, `db/src/store.ts` (el barrido), migración si hace
-  falta un índice por `(status, created_at)`.
-- **Verificación:** un test que siembre un run `running` viejo y exija que el barrido lo marque; y
-  **la mutación que importa**: que un run reciente **no** se toque.
+### Y hay un bug HOY, anterior al barrido — lo destapó la 15ª review
+
+Codex advirtió (H2) que el barrido podría matar un workflow lento y que el workflow, al terminar,
+**pisaría el `failed`**. Al medirlo apareció que la mitad del problema **ya existe**:
+
+- `failRun` ([`db/src/store.ts:773`](../../db/src/store.ts#L773)) **ya es compare-and-set**:
+  `where id = $1 and status = 'running'`, con un `else` que anota el error sin tocar el estado. Eso se
+  arregló en su día porque un fallo del workflow no puede deshacer una publicación.
+- **`finishRun` no lo es** ([`db/src/store.ts:745`](../../db/src/store.ts#L745)): `update kr_runs set
+  status = 'pending_approval', … where id = $1`, sin guarda de estado. Así que **cualquier** cosa que
+  ponga el run en `failed` o `rejected` mientras el workflow sigue vivo queda pisada al terminar — y
+  encima con `finished_at` reescrito. Hoy no muerde porque nada más escribe ese estado; **el barrido
+  sería justo eso**.
+
+**El umbral no puede salir de `PLAZO_APROBACION`.** Esa constante vale `"7d"`
+([`orchestrator/src/workflow.ts:130`](../../orchestrator/src/workflow.ts#L130)) y gobierna la espera
+**posterior**, cuando el run ya está en `pending_approval`. Lo que el barrido tiene que superar es la
+duración de la **fase de research**: medida una sola vez, **16m15s**. El umbral se deriva de ahí con
+margen, y se escribe de dónde sale.
+
+- **Archivos:** `db/src/store.ts` (la guarda de `finishRun` y el barrido),
+  `orchestrator/src/functions.ts`, migración si hace falta un índice por `(status, started_at)`.
+- **Verificación**, cuatro tests y no uno:
+  1. un run `running` viejo → el barrido lo marca `failed`;
+  2. un run `running` **reciente** → no se toca (la mutación que importa);
+  3. **el escenario de Codex**: run marcado `failed` por el barrido, el workflow termina después →
+     `finishRun` **no** lo devuelve a `pending_approval`;
+  4. el camino sano: `running` → `finishRun` → `pending_approval`, que es el control positivo sin el
+     cual el 3 pasaría con una guarda que bloquea todo.
 - **Coste:** pieza mediana. Cruza `orchestrator/` y `db/`, así que el contrato se fija antes.
 
 ### A3. Verificar el DESPLIEGUE, no solo la fuente
@@ -110,6 +156,27 @@ Tres servicios rotos en una hora salieron de ahí.
 **Qué hacer.** Un comando que **compare** la fuente con lo que tiene cada servicio y diga qué falta,
 qué sobra y qué difiere — sin imprimir valores, solo nombres y un hash corto. Requiere la API de
 Railway (token de solo lectura).
+
+### ⚠️ Va DESPUÉS de A4, y necesita su propio inventario
+
+Lo señaló la 15ª review (H7) y al medirlo resultó más fuerte de lo que decía. Para comparar hace falta
+saber **qué espera cada servicio**, y el candidato natural a ese contrato es el `MAPA` de
+`scripts/env-sync.mts`. Dos problemas:
+
+1. **El `MAPA` no tiene clave `orchestrator`.** No le faltan variables: falta el servicio entero
+   ([`scripts/env-sync.mts:25`](../../scripts/env-sync.mts#L25) — están `api`, `db`, `kr-service`,
+   `renderer` y `web-builder`). Sin A4, A3 no puede producir el conjunto esperado del orquestador, y un
+   comparador que no sabe qué buscar informa "no falta nada" — el falso verde que existe para evitar.
+2. **El `MAPA` no puede ser el inventario de producción tal cual, ni siquiera arreglado.** Omite
+   `DATABASE_URL_RENDER`, `PREVIEW_SECRET` y `STORYBLOK_WEBHOOK_SECRET` **a propósito** —hay un test que
+   impone *"el renderizador NUNCA recibe una credencial de base de datos"* en el reparto local— pero el
+   renderizador **sí** las tiene en Railway. El `MAPA` es el contrato del `.env` **local**; el de
+   producción es otro conjunto, más amplio.
+
+Así que A3 lleva su **propio** inventario por servicio, derivado del `MAPA` pero explícitamente
+distinto, y **un test que ata la diferencia**: cada clave que el inventario de producción agrega sobre
+el `MAPA` tiene que estar justificada por nombre, o el test falla. Si no, la diferencia se convierte en
+el sitio donde se esconden los olvidos.
 
 - **Archivos:** `scripts/` (nuevo), su test, `docs/proyecto/12-credenciales.md`.
 - **Verificación:** el test compara mapas de claves, no valores. Control positivo obligatorio: si la
@@ -176,6 +243,44 @@ división, **sin default** (conservando la propiedad que hizo bien `incluirCoste
 **Es el único tramo del circuito que sigue siendo una promesa.** El resto se probó el 2026-08-07; esto
 no, porque **escribe en el espacio real de Storyblok del cliente**.
 
+### C0. El botón no puede devolver 200 sobre un run que nadie va a publicar — **precondición**
+
+Lo encontró la 15ª review (H1) y es lo único que devolvió el veredicto NO LISTO. Verificado contra el
+código, no solo contra la nota que ya lo describía:
+
+- [`db/src/store.ts:914`](../../db/src/store.ts#L914) `approveRun` impone **dos** condiciones —al menos
+  una página aprobada, y que el `update` toque fila— y **ninguna** sobre que exista una ejecución
+  durable esperando el evento.
+- [`portal/src/app/pages/brief/brief.ts:233`](../../portal/src/app/pages/brief/brief.ts#L233)
+  `puedeAprobarRunUI` mira **rol y flag**. Ni el estado del run ni su origen entran en la decisión.
+
+**Y desde el 2026-08-07 es alcanzable en producción**, que es lo que lo convirtió en bloqueante: el run
+sembrado de la demo está en `pending_approval`, los dos flags están en `true`, y ese run se insertó
+**directo en la base** — no hay `waitForEvent` durmiendo sobre él. Aprobarlo devuelve 200, deja el run
+en `approved` para siempre y emite un evento que nadie consume. Un botón que parece funcionar y no
+hace nada es peor que no tenerlo.
+
+**Qué hacer.** Una **condición durable** en la base, no una heurística: una marca en `kr_runs` que la
+API escribe **después** de que `send()` haya tenido éxito. El orden de ADR-18 se mantiene y se extiende:
+**fila → evento → marca**. `approveRun` exige la marca; sin ella responde 409 con motivo, y el portal
+deshabilita el botón con el mismo motivo en el tooltip.
+
+Un run sembrado la deja nula por construcción — no hay que acordarse de nada en el seed, que es
+justamente la propiedad que se busca.
+
+**Lo que NO se hace, y por qué:** preguntarle a Inngest en el momento de aprobar. Metería un tercero en
+el camino de la aprobación, y entonces una caída de Inngest impediría aprobar algo que ya está en
+nuestra base. El dato tiene que ser nuestro.
+
+- **Archivos:** migración `0018`, `db/src/store.ts`, `api/src/app.ts`, `portal/` (el botón y su
+  tooltip), tests de los dos lados.
+- **Contrato a fijar ANTES de partir el trabajo:** el nombre de la marca y el cuerpo del 409 — lo
+  consume el portal. Es el mismo 409 que B1, así que **los dos códigos se deciden juntos**.
+- **Verificación:** test que exige 409 sobre un run sembrado y 200 sobre uno nacido del pipeline;
+  mutación: quitar la exigencia de la marca deja el primero rojo. Y el navegador para el tooltip.
+
+### Y recién entonces, el bloque C propiamente dicho
+
 **Antes de tocarlo hay que mirar `WEB_PUBLISH_MODE`** en el servicio del orquestador: en `dry-run` el
 publisher reporta `published: false` y no escribe nada — que es como se prueba sin consecuencias.
 
@@ -207,9 +312,22 @@ la publicación funcione con él.
 - **`TIPOS_MAP_PACK`** (`local_pack`, `map`) sin verificar contra la API real (~$0.003). Si estuviera
   mal, `is_local` saldría `false` para todo: falla hacia el lado conservador, pero entonces KR-3 no
   estaría arreglando nada.
+- **Las estimaciones por fase de `lib/budget.ts`.** Las tarifas de los modelos están verificadas; las
+  estimaciones **siguen a ojo**, y el `09` dice que se calibran con este mismo dataset
+  ([`09:920`](09-estado-y-roadmap.md#L920)). Estaban fuera de este bloque y no debían estarlo (15ª
+  review, H6).
+- **Las páginas cuya cabeza nadie observó.** `max_pages` vale 25 y `serpValidateTop` 15
+  ([`09:924`](09-estado-y-roadmap.md#L924)): como el mapeo reordena por evidencia, un cluster de la
+  posición ≥16 con datos de mercado puede subir a página **con la cabeza sin observar**, y recibir su
+  `schema_type` por conjetura del LLM. Con 8 páginas no muerde; con más clusters compitiendo, sí. El
+  dataset es lo que permite medir cuántas páginas caen ahí — hoy es una hipótesis sin número.
 
 El dataset ya no se pierde: desde el 2026-08-02 va a `datasets/`, con un test que se lo pregunta a
 `git check-ignore`.
+
+**Ojo con lo que este bloque puede declarar de más.** Con el dataset se calibra la señal local de las
+cabezas observadas; **no** se cierra el hueco de las ≥16. Si D se da por cerrado sin decirlo, el `09`
+pasa a afirmar "señal local calibrada" mientras la mayoría de las keywords sigue decidiéndose por LLM.
 
 ---
 
@@ -280,6 +398,36 @@ Nada de esto bloquea hoy; **todo bloquea un SLA**.
 
 ---
 
+## Bloque J — el programa del portal: piezas 3 (Ideas) y 4 (Dashboard)
+
+**Esto faltaba en la primera versión de este plan, y es el hueco más grande que tenía.** No lo
+encontró la review externa: apareció al contrastar el plan contra el `09`, que lo declara *en curso*
+desde el 2026-08-02 ([`09:5-9`](09-estado-y-roadmap.md#L5)).
+
+Es un programa de **cuatro piezas** y van **dos**:
+
+| Pieza | Qué | Estado |
+| --- | --- | --- |
+| 1 | **CRM de clientes** — listado, alta, perfil editable | ✅ mergeada el 2026-08-01 |
+| 2 | **Usuarios** — 6 etapas | ✅ mergeada el 2026-08-02 |
+| 3 | **Ideas** — módulo nuevo completo | 🔵 [plan escrito](../superpowers/plans/2026-08-01-modulo-ideas-portal.md), sin empezar |
+| 4 | **Dashboard** — la home con métricas | 🔵 [plan escrito](../superpowers/plans/2026-08-01-dashboard-home-portal.md), sin empezar |
+
+**El orden no es negociable: la 4 depende de la 3.** El dashboard es stats de ideas más una tabla de
+ideas, así que sin el modelo de la pieza 3 no hay nada que mostrar.
+
+**Y explica un misterio del repo:** la migración **`0013` está reservada para Ideas**
+(`0013_ideas.sql`), que es la mitad de por qué `0013`/`0014` no se usan y la próxima libre es la
+`0018`. Un número reservado sin que el plan diga para qué es un número que alguien va a reutilizar.
+
+**Lo que la pieza 3 deja fuera a propósito:** la integración con **n8n**, decidida como posterior. La
+pantalla se ve funcionando con datos sembrados, y el ingreso real de ideas se decide después.
+
+- **Coste:** la pieza más grande que queda después del bloque **E**, y a diferencia de E **no necesita
+  decisiones de diseño**: los dos planes están escritos.
+
+---
+
 ## Bloque I — deuda menor, sin bloqueo
 
 | Deuda | Dónde | Nota |
@@ -296,6 +444,8 @@ Nada de esto bloquea hoy; **todo bloquea un SLA**.
 | `PIPELINE_MODO` solo se contrasta contra **DataForSEO** | `orchestrator/` | Deliberado: la prosa mock se lee como mock y el publisher en dry-run lo reporta. Cerrarlo haría `LLM_PROVIDER` obligatoria en `live` |
 | `cartera-portal.test.ts` dejó de cubrir `intencion` | `db/` | Ata el mock contra `PAGINAS_DEMO` (español), no contra la fila (inglés desde la `0017`). Cerrarlo cruza `db/` y `portal/` |
 | Deriva del portal por la `0017` | `portal/` | `cartera-mock.ts:147` genera `page_strategy: 'hub'/'spoke'`, valores que **la base ya no puede contener**; y `cartera-tabla.ts:29` pinta `{{ p.intencion }}` crudo |
+| `endpoints_degradados` sigue **incompleto** como dato | `kr-service/` (`meta_run`) | Omite los fallos de suggestion/SERP. Lo que KR-2a arregló es que ahora **puede decir "no se sabe"** (`null`) en vez de afirmar `[]`. Vivía solo en el plan de Fase 2, que ya está cerrado |
+| `web-builder` conserva su propio `SchemaType`/`PageType`/`SearchIntent` | `web-builder/src/types.ts` | Duplicado **nominal** del vocabulario de `contrato`, a propósito: es el contrato de **bloks** (`web.v0.1`), del M1 y versionado aparte. **Se autodelata** —si el contrato agrega un `PageType`, `pageToStory()` deja de typecheckear—, así que falla fuerte y no en silencio |
 
 ---
 
@@ -312,14 +462,25 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 
 ## El orden que recomiendo, y por qué
 
-1. **A1 + A2** — fiabilidad. Son las dos que ya nos costaron tiempo real y las dos que hacen que un
-   fallo se vea en vez de esconderse. Chicas, sin decisiones pendientes.
-2. **B1 + B2** — deuda decidida. Cierra lo que quedó a medias del entregable, que es lo último que se
-   construyó y lo que la agencia le manda al cliente.
-3. **C** — aprobar → publicar en `dry-run`. Deja el circuito **entero** ejercitado, que es la
-   diferencia entre "Fase 2 desplegada" y "Fase 2 probada".
-4. **A3 + A4** — las herramientas de credenciales, cuando el permiso esté abierto.
-5. **E** — el aspecto de las webs. Es lo más grande y lo que más cambia lo que se puede vender, pero
-   necesita decisiones de diseño y tiene su propia spec.
-6. **D** cuando Juan quiera gastar; **F** cuando haya sesión de diseño; **G** y **H** antes de un SLA
+0. **La documentación que miente.** No es un bloque: es el peaje de arrancar. La 15ª review encontró
+   que **siete** afirmaciones repartidas en el `09`, el `README` de esta carpeta y `progress/current.md`
+   seguían diciendo que falta desplegar el orquestador. Una sesión nueva las lee como estado y repite
+   un despliegue ya hecho. Se arregla **antes** de tocar código, no después.
+1. **A2 primero, y no A1.** Cambió el orden: A2 dejó de ser solo diseño futuro cuando se midió que
+   **`finishRun` ya no tiene guarda de estado**. Eso es un bug hoy, y además la precondición para que
+   el barrido no cree uno nuevo.
+2. **A1** — que `/_health` diga la verdad, con la sonda por `Tx` y el log de transición.
+3. **B1 + B2** — deuda decidida. Cierra lo que quedó a medias del entregable, que es lo último que se
+   construyó y lo que la agencia le manda al cliente. **B1 comparte el código del 409 con C0**, así que
+   los dos se deciden juntos aunque se hagan por separado.
+4. **C0 + C** — la condición durable primero, y recién entonces aprobar → publicar en `dry-run`. Deja
+   el circuito **entero** ejercitado, que es la diferencia entre "Fase 2 desplegada" y "Fase 2 probada".
+5. **A4 y después A3** — las herramientas de credenciales. **En ese orden** (ver A3): A3 sin A4 no sabe
+   qué esperar del orquestador, y un comparador que no sabe qué buscar informa "no falta nada".
+   Las dos esperan a Juan: el permiso de lectura y el token de Railway.
+6. **J o E**, y acá hay una elección real. **J** (piezas 3 y 4 del portal) es grande pero **no necesita
+   decisiones**: los dos planes están escritos. **E** (el aspecto de las webs) es lo que más cambia lo
+   que se puede vender, pero necesita decisiones de diseño. Si hay ganas de avanzar sin reuniones, J;
+   si lo que aprieta es enseñar algo vendible, E.
+7. **D** cuando Juan quiera gastar; **F** cuando haya sesión de diseño; **G** y **H** antes de un SLA
    o de firmar una baja.

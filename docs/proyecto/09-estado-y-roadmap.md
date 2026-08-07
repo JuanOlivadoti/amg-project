@@ -2,11 +2,15 @@
 
 ## Resumen ejecutivo
 
-> **Dónde estamos, al 2026-08-02.** La demo con Frank está lista y lo que sigue es **trabajo de
-> producto**, no de preparación de demo. En curso: el
+> **Dónde estamos, al 2026-08-07.** **Fase 2 está cerrada**: las cuatro piezas desplegadas y el
+> circuito entero ejercitado en producción. Lo que sigue es **trabajo de producto**, y su orden vive
+> en [**15-plan-plataforma.md**](15-plan-plataforma.md) — nueve bloques, con qué archivos toca cada
+> uno y cómo se verifica.
+>
+> Sigue abierto, de antes: el
 > [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md) —
-> las piezas **1 (CRM de clientes)** y **2 (usuarios)** están mergeadas a `main`; quedan la 3 (Ideas)
-> y la 4.
+> las piezas **1 (CRM de clientes)** y **2 (usuarios)** están mergeadas a `main`; quedan la **3
+> (Ideas)** y la **4 (Dashboard)**, las dos con plan escrito. Es el bloque **J** del plan.
 >
 > 📓 **La historia está en [`progress/history.md`](../../progress/history.md)**: qué se hizo cada día,
 > con sus tropiezos y sus lecciones. Acá vive solo el estado de hoy y lo que falta — si buscás *por
@@ -48,29 +52,28 @@ servicio aparte): la web del cliente se sirve desde internet.
 límite de custom domains— y una **CDN** delante del renderizador. El detalle, ordenado por lo que
 realmente bloquea, en [Lo que queda por delante](#lo-que-queda-por-delante).
 
-> **El orquestador, al 2026-08-07: el código está listo, falta el despliegue.** El trabajo se partió en
-> dos y el **tramo A** —sin cuentas y sin gastar— está hecho: la API y el orquestador ya **no arrancan**
-> mal configurados, `/_health` existe, y el
-> [runbook](14-runbook-despliegue.md#desplegar-el-orquestador-fase-2--la-última-pieza) tiene el paso a
-> paso. Lo destapó preparar el despliegue en vez de darlo por trivial: **`POST /runs` estaba roto en
-> producción** desde que la API vive en Railway —el SDK de Inngest lanza sin `INNGEST_EVENT_KEY` en modo
-> cloud— y cada intento dejaba un **run huérfano** en `running`, porque la fila se crea antes de emitir
-> (ADR-18).
->
-> Cuatro variables nuevas son **obligatorias en producción**, y sin ellas los procesos ya no arrancan:
-> `INNGEST_EVENT_KEY` (api), y `INNGEST_SIGNING_KEY`, `DATABASE_URL_ORQUESTADOR`/`DATABASE_URL_CACHE` y
-> **`PIPELINE_MODO`** (orquestador). La última es la que cierra el fallo silencioso de los providers:
-> `mock` o `live`, sin default, y el arranque aborta si contradice a `DATAFORSEO_MODE` en cualquiera de
-> las dos direcciones —research inventado presentado como real, o gasto en un despliegue anotado como
-> gratuito—. El **tramo B** es de Juan: cuenta de Inngest y servicio en Railway.
+**Las cuatro variables que el despliegue del orquestador volvió obligatorias**, y sin las cuales los
+procesos ya no arrancan: `INNGEST_EVENT_KEY` (api), y `INNGEST_SIGNING_KEY`,
+`DATABASE_URL_ORQUESTADOR`/`DATABASE_URL_CACHE` y **`PIPELINE_MODO`** (orquestador). La última cierra
+el fallo silencioso de los providers: `mock` o `live`, **sin default**, y el arranque aborta si
+contradice a `DATAFORSEO_MODE` en cualquiera de las dos direcciones —research inventado presentado
+como real, o gasto en un despliegue anotado como gratuito—.
+
+> 📓 **Cómo se llegó ahí** (histórico, ya cerrado): el trabajo se partió en dos tramos, y preparar el
+> despliegue en vez de darlo por trivial destapó que **`POST /runs` estaba roto en producción** desde
+> que la API vive en Railway —el SDK de Inngest lanza sin `INNGEST_EVENT_KEY` en modo cloud— y que
+> cada intento dejaba un **run huérfano** en `running`, porque la fila se crea antes de emitir
+> (ADR-18). El relato completo, en [`progress/history.md`](../../progress/history.md); el
+> procedimiento, en el
+> [runbook](14-runbook-despliegue.md#desplegar-el-orquestador-fase-2--la-última-pieza).
 
 | | |
 |---|---|
 | **Paquetes** | 7 workspaces (`contrato`, `db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
 | **Tests** | **1199** — 880 en el monorepo + 319 en el portal (225 `node:test` + 94 Karma). Los de seguridad, contra Postgres real. Medido el **2026-08-07**: el monorepo con `npm run verificar` tras la `0017` y el generador de credenciales (venía de 863), el portal con `-- --con-portal` y Karma aparte, sin cambios. |
-| **Migraciones** | 15 en `main` (`0001`..`0012` + `0015` + `0016` + `0017`) · **14 aplicadas en producción y la `0017` PENDIENTE** — *las 14 verificadas el 2026-08-07 contra la base real: `select count(*) from app.migraciones_aplicadas` → 14, última `0016_informe_kr.sql`*. La `0017` se escribió ese mismo día y **todavía no se desplegó**; no basta por sí sola (ver [Próximos pasos](#próximos-pasos)). La próxima libre es la **`0018`**: `0013` y `0014` siguen **reservadas** para ramas que corren en otra máquina |
+| **Migraciones** | 15 en `main` (`0001`..`0012` + `0015` + `0016` + `0017`) · **las 15 aplicadas en producción**, verificado el 2026-08-07 por consulta y no por el "✔" del comando: los cuatro `check` de la `0017` existen y **14/14 páginas** quedaron con `seo.meta_title`, `seo.canonical` y `content_brief.h1`, sin rastros de la forma vieja. La `0017` necesitó **dos** pasos (migrar **y después** re-sembrar): la migración no reconstruye los dos `jsonb` ya escritos. **Ninguna pendiente.** La próxima libre es la **`0018`**: `0013` y `0014` siguen **reservadas** —la `0013` para la pieza 3 del portal (Ideas)— |
 | **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
-| **Reviews externas** | **14 rondas** (Codex), **20 tandas** de correcciones — la 13ª fue la primera sobre el arnés `.claude/` y la 14ª la primera sobre un **documento de diseño** (la spec de KR-2), antes de escribir código. El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
+| **Reviews externas** | **15 rondas** (Codex), **21 tandas** de correcciones — la 13ª fue la primera sobre el arnés `.claude/`, la 14ª la primera sobre un **documento de diseño** (la spec de KR-2) y la 15ª la primera **híbrida** (código + el plan de la plataforma). El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |
 
 ## Qué funciona hoy
@@ -96,7 +99,7 @@ realmente bloquea, en [Lo que queda por delante](#lo-que-queda-por-delante).
 | ✅ | **El dashboard y el brief no pueden divergir en silencio**: un test ata las 14 páginas de `cartera-mock.ts` (portal) a `PAGINAS_DEMO` (seed), campo por campo y en orden. Estar fuera del monorepo impedía importar el paquete, no leer el archivo. |
 | ✅ | **Un solo cliente en toda la demo**: el dashboard, el brief y la web hablan de **La Birra Bar**, y el perfil del seed está **atado por test** al que se publica (`web-builder/business-profile.json`). |
 | ✅ | **Navegación fija del sitio del cliente**: barra de 4 secciones (Inicio/Menú/Ubicaciones/Contacto, condicionales), footer compartido con NAP multi-local, `/menu` y `/blog` sintetizados. Datos reales de **La Birra Bar** cargados (dos locales, carta). Verificado en el navegador. |
-| ✅ | **Catorce reviews externas (Codex): todos los hallazgos, corregidos.** Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, y una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
+| ✅ | **Quince reviews externas (Codex): todos los hallazgos, procesados** — corregidos, o refutados con argumento. Varias de las brechas eran suposiciones MÍAS que Postgres no cumplía, o afirmaciones de seguridad **falsas** que documenté y el código desmentía. Las últimas cazaron cosas que yo había declarado hechas: el CLI de producción sin registro de idempotencia, un verificador de JWT que **ningún test tocaba**, carreras asincrónicas en el portal, una allowlist de Postgres que restringía el **nombre** de la clave pero no la **forma** del valor, y **siete afirmaciones de la propia documentación que el despliegue había dejado falsas**. Ver [ADR-13..23 y el registro de correcciones](../decisiones-arquitectura.md). |
 | ✅ | **Gestión de clientes (CRM) en el portal — pieza 1 de 4, mergeada a `main` el 2026-08-01.** Listado, alta, perfil editable y vista con datos de ejemplo, sobre Postgres/RLS. La revisión final de la rama encontró y cerró una fuga real (el rol `cliente` podía leer notas internas de la agencia sobre sí mismo) antes de cerrar la pieza. Detalle arriba y en [11-plan-fase-2.md](11-plan-fase-2.md). |
 
 ## Próximos pasos
@@ -838,12 +841,16 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 | Tarea | Por qué depende de él | Costo |
 |---|---|---|
-| **Desplegar el orquestador** (tramo B) | Cuenta de Inngest + servicio en Railway. Es la última pieza de Fase 2 sin desplegar, y significa que **el pipeline real nunca corrió en producción**. El **tramo A está hecho** (2026-08-07): el código ya no arranca mal configurado, y el procedimiento está escrito paso a paso | Se puede desplegar y verificar con el provider **mock**, sin gastar. **Empezá por la API**: necesita `INNGEST_EVENT_KEY` y sin ella ya no levanta |
-| **Regenerar el dataset crudo** (KR-1) | Gasta dinero real contra DataForSEO. Llena los tres `n/d` del informe y calibra dos parámetros hoy sin dato | **~$0.31**, ~16 min. **Volver a sandbox después** (`kr-service/.env`) |
+| **Regenerar el dataset crudo** (KR-1) | Gasta dinero real contra DataForSEO. Llena los tres `n/d` del informe, calibra dos parámetros hoy sin dato y las estimaciones de `lib/budget.ts` | **~$0.31**, ~16 min. **Volver a sandbox después** (`kr-service/.env`) |
+| **Abrir la lectura de `**/.env.example`** | El `deny` de `.claude/settings.json` incluye `Read(./**/.env.*)`, que **también tapa las plantillas sin valores** — y ésas sí se commitean. Bloquea el bloque **A4** del plan (el `MAPA` y el `.env.example` del orquestador van juntos o ninguno) | Editar una línea de `settings.json` |
+| **Un token de solo lectura de Railway** | Lo necesita el bloque **A3**: comparar la fuente de credenciales con lo que tiene cada servicio desplegado. Solo nombres y hashes cortos, nunca valores | — |
 | **Rotar las credenciales expuestas** | Solo él puede. Pospuesto por decisión propia el 2026-08-04; sigue abierto, no cerrado | — |
 
-Y el detalle de los candidatos de trabajo, con su costo comparado, en
-[`progress/current.md` § Lo próximo](../../progress/current.md).
+~~**Desplegar el orquestador** (tramo B)~~ — ✅ **hecho el 2026-08-07.** Era la última pieza de Fase 2
+sin desplegar; con ella, el pipeline real corrió en producción por primera vez.
+
+Y el detalle de lo que queda, por bloques y con el orden razonado, en
+[**15-plan-plataforma.md**](15-plan-plataforma.md) — que es el plan de la fase en curso.
 
 **Lo que se cerró antes** — todo lo que dependía de cuentas, saldo y credenciales **para la demo con
 Frank**. Las cuatro:

@@ -4,24 +4,29 @@ Documentación completa del proyecto: qué es, cómo está construido, qué hace
 y en qué estado está. **Refleja el código real** del repositorio, no un diseño aspiracional:
 cuando algo está diseñado pero no implementado, se dice explícitamente.
 
-> Última revisión: 2026-08-02 · Estado: **Fase 1 desplegada; de Fase 2, el renderizador también.** La
-> cadena completa —research → compuerta humana → publicación → **la web servida en vivo**— funciona de
-> punta a punta. API, portal y renderizador existen y se manejaron en un navegador real.
-> **1181 tests en verde**: 863 en el monorepo + 318 en el portal (224 `node:test` + 94 Karma).
+> Última revisión: 2026-08-07 · Estado: **Fases 1 y 2 desplegadas.** La cadena completa —research →
+> compuerta humana → publicación → **la web servida en vivo**— funciona de punta a punta, y el
+> 2026-08-07 **corrió entera en producción** por primera vez. API, portal y renderizador existen y se
+> manejaron en un navegador real.
+> **1199 tests en verde**: 880 en el monorepo + 319 en el portal (225 `node:test` + 94 Karma).
 >
 > ✅ **Fase 1 está en producción** desde el 2026-07-25: el portal en [`bigballs.es`](https://bigballs.es)
 > (Hostinger), la API en `api.bigballs.es` (Railway) y la base con RLS forzada en Supabase. El login
 > se verificó en el navegador el 2026-07-30.
 >
-> ✅ **Y el renderizador, desde el 2026-08-01**: la web del cliente se sirve en
+> ✅ **El renderizador, desde el 2026-08-01**: la web del cliente se sirve en
 > [`amg-renderer-production.up.railway.app`](https://amg-renderer-production.up.railway.app), leyendo
-> de Supabase con el rol más pobre del sistema. Las **14** migraciones están aplicadas en producción (verificado el 2026-08-07).
+> de Supabase con el rol más pobre del sistema.
 > Procedimiento y tropiezos en el
 > [runbook § desplegar el renderizador](14-runbook-despliegue.md#desplegar-el-renderizador-fase-2).
 >
-> ⚠️ **Falta el orquestador** (la última pieza de Fase 2 sin desplegar), el **dominio propio del
-> cliente** —el plan de Railway está en su límite de custom domains— y una **CDN delante** del
-> renderizador.
+> ✅ **Y el orquestador, desde el 2026-08-07** — la última pieza de Fase 2. Con él, un research
+> lanzado desde el portal recorrió `POST /runs` → Inngest → orquestador → `kr-service` → Postgres →
+> informe → `pending_approval`. Las **15** migraciones están aplicadas en producción (verificado el
+> 2026-08-07 por consulta, no por el "✔" del comando).
+>
+> ⚠️ **Falta**, para el SLA y no para funcionar: el **dominio propio del cliente** —el plan de Railway
+> está en su límite de custom domains— y una **CDN delante** del renderizador.
 >
 > 👉 Si venís a **retomar el proyecto**, empezá por
 > [**Estado y roadmap**](09-estado-y-roadmap.md): qué hay construido, dónde estamos y qué queda por
