@@ -11,6 +11,50 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-08 — los bloques A, B y C0, y un despliegue que hay que hacer en orden
+
+Seis piezas del plan cerradas seguidas, todas salidas de la 15ª review. Lo que vale guardar no es la
+lista sino **tres cosas que solo aparecieron al hacerlas**.
+
+**1. Verificar un hallazgo especulativo encontró un bug concreto.** Codex advirtió por inferencia que
+el barrido futuro podría pisar el estado de un workflow lento. Al ir a comprobarlo apareció que
+`failRun` ya era compare-and-set desde hace tiempo pero **`finishRun` no**: `where id = $1` pelado.
+No mordía porque nada más escribía ese estado mientras el workflow vive — y el barrido iba a ser
+exactamente eso. El hallazgo era sobre código que todavía no existía; el bug estaba en el que sí.
+
+**2. El diseño correcto del barrido dependía de un hecho del motor que los tests no pueden ver.** Una
+`security definer` cuyo dueño fuera el rol que corre las migraciones **funciona en PGlite y devuelve
+cero filas en producción, en silencio**: `kr_runs` lleva `force row level security`, que alcanza al
+dueño de la tabla, y en PGlite `postgres` es superusuario mientras que en Supabase alojado no lo es.
+Este repo ya lo había pagado una vez (`force` + cero políticas sobre `app.migraciones_aplicadas`
+auto-bloqueó al runner, 10ª review). La salida fue un rol propio, `app_barrido`, sin login y con el
+permiso cross-tenant como **política auditable** en vez de un privilegio implícito. Es la primera
+`security definer` del proyecto y quedó anotada en ADR-17.
+
+**3. Los tests del orquestador se pusieron rojos con C0, y no era un fixture a parchear.** Su helper
+declaraba *"crea el run como lo hará la API"* y había dejado de hacerlo el minuto en que la API
+empezó a marcar la emisión. Se arregló haciendo cierto el docstring, no relajando el assert. Apareció
+porque corrí los siete paquetes: el agente había corrido dos, y eso fue culpa de **mi** instrucción,
+que decía `npm test -w db -w api`.
+
+**Dos errores de método míos, los dos del mismo tipo — afirmar sin medir.** Dije que quitarle el
+timeout a la sonda de salud *colgaba* el test: no lo había visto, lo había inferido, y mis dos
+comprobaciones habían fallado porque **`timeout` no existe en macOS** y el `grep` posterior no
+encontraba nada. Medido después con un job en segundo plano: sí cuelga, seguía vivo a los 12 s, y por
+eso el test lleva su propio `{ timeout }`. Y en otra mutación di 60 tests verdes por buenos cuando el
+`sed` no había sustituido nada — de ahí que ahora cada mutación se confirme con un `grep` antes de
+creerse el rojo **o** el verde.
+
+**El plan mismo tenía una cifra inventada.** Decía que `renderReport` tenía "6 sitios de llamada (3 de
+producción, 3 de test)". Son **4 de producción** —el CLI de `kr-service` y el seed de `db` no
+figuraban en ninguna parte— y ~24 en tests. Lo destapó migrarlos.
+
+**Y queda una casilla operativa que no es opcional:** la `0019` agrega `tiene_workflow` a
+`RUN_SUMMARY_COLS`, que usan las tres lecturas de run. Sin la columna aplicada, **el portal entero
+falla**, y Railway autodespliega la API en cada push a `main`. Por eso ese commit quedó **sin
+pushear** hasta que las migraciones estén en producción. Es la primera vez en el proyecto que el
+orden entre migrar y desplegar es una precondición dura y no una recomendación.
+
 ## 2026-08-07 (15ª review externa) — el plan que mentía por omisión, y una guarda que faltaba desde antes
 
 Codex revisó los ocho commits del día **y** el plan de la plataforma recién escrito. Veredicto: **NO

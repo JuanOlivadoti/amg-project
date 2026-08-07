@@ -581,7 +581,11 @@ activa (no hay usuarios `cliente`), y cerrarla toca `RunSummary` y la pantalla d
 > (la "estructural" del §5.2 y la "imposible por construcción" del §7.1). Revisar el diseño encontró los
 > errores mientras **corregirlos costaba editar un documento**, no revertir una migración desplegada.
 >
-> Y la lección de método: **de trece hallazgos, cuatro son afirmaciones mías sobre el código que el código
+> **Cómo terminó la tanda 21** (se completó el 2026-08-08, ver abajo): de los siete hallazgos, seis se
+> arreglaron y uno —la mutación propuesta sobre `environment.prod.test.ts`— se refutó. Los seis cerraron
+> en seis commits, y el bloqueante (C0) quedó **sin pushear** hasta aplicar sus migraciones.
+>
+> Y la lección de método de la tanda 20: **de trece hallazgos, cuatro son afirmaciones mías sobre el código que el código
 > desmiente** (que el brief no muestra coste, que `cartera-portal.test.ts` ata `calidad_datos`, que el seed
 > podía usar el store, que los dos esquemas Zod eran dos copias del mismo contrato). Es el mismo modo de
 > fallo que la tanda 19 encontró en las skills, un nivel más arriba otra vez: **escribí sobre el código sin

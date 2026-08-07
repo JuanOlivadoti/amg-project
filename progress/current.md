@@ -30,16 +30,39 @@ del usuario. El relato está en [`history.md`](history.md).
 la bitácora. Antes de vaciarlo se rescató lo que solo vivía acá — dos deudas de KR-2a pasaron al
 bloque **I** del plan, y el generador de credenciales ganó su entrada en `history.md`.
 
-**Pendiente inmediato:** **C0** (la condición durable de publicabilidad) y después **C** (aprobar →
-publicar en `dry-run`), que ya no es código: hay que mirar `WEB_PUBLISH_MODE` en Railway.
+| `bfda1c5` | **C0**: la condición durable de publicabilidad. Migración `0019`, `approveRun` con guarda, 409 `RUN_SIN_WORKFLOW`, y el botón apagado con motivo. Cae el único hallazgo con veredicto NO LISTO. **⚠️ SIN PUSHEAR** — ver abajo |
+
+**Pendiente inmediato:** **C** (aprobar → publicar en `dry-run`), que ya no es código: hay que mirar
+`WEB_PUBLISH_MODE` en el servicio del orquestador antes de tocarlo.
+
+---
+
+## 🛑 El push de `bfda1c5` está RETENIDO a propósito
+
+**No es un olvido.** `tiene_workflow` entra en `RUN_SUMMARY_COLS`, que usan las tres lecturas de run
+(`getRun`, `listRuns`, `listAllRuns`). Sin la columna de la `0019` aplicada, esas tres consultas
+**fallan**, o sea que **el portal entero deja de funcionar**. Y Railway **autodespliega la API en cada
+push a `main`**.
+
+Así que el orden es duro y va en un sentido: **primero las migraciones, después el push.**
+
+```bash
+npm run migrate:deploy -w db     # aplica la 0018 y la 0019 — lo corre Juan
+git push origin main             # y recién entonces esto
+```
+
+Es la primera vez en el proyecto que el orden entre migrar y desplegar es una **precondición** y no
+una recomendación. Las migraciones anteriores agregaban cosas que el código viejo ignoraba; ésta
+agrega una columna que el código nuevo **lee siempre**.
 
 ## ⏳ Lo que espera a Juan
 
 | Qué | Por qué él | Bloquea |
 | --- | --- | --- |
-| **Desplegar la `0018`** (`migrate:deploy -w db`) | Toca Supabase real | El barrido está en el código y **no corre** hasta que se aplique. Mirá que `alter function … owner to app_barrido` pase |
+| **Desplegar la `0018` y la `0019`** (`migrate:deploy -w db`) | Toca Supabase real | **El push de `bfda1c5`** (ver arriba) y el barrido, que hasta entonces está en el código y no corre. Mirá que `alter function … owner to app_barrido` pase |
 | **Abrir la lectura de `**/.env.example`** | Es una línea de `.claude/settings.json` | El bloque **A4** (el `MAPA` y el `.env.example` del orquestador van juntos) |
 | **Un token de solo lectura de Railway** | Es una credencial | El bloque **A3**, que además va **después** de A4 |
+| **Mirar `WEB_PUBLISH_MODE`** en el orquestador | Es el panel de Railway | El bloque **C**: en `dry-run` el publisher no escribe nada en Storyblok, y así se prueba sin consecuencias |
 
 ---
 
