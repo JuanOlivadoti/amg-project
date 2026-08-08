@@ -349,26 +349,72 @@ async function gql<T>(token: string, query: string, variables: Record<string, un
 
 const Q_TOKEN = `query { projectToken { projectId environmentId } }`;
 const Q_PROYECTO = `query($id: String!) { project(id: $id) {
-  name services { edges { node { id name } } }
+  name
+  services { edges { node { id name } } }
+  environments { edges { node { id name } } }
 } }`;
 const Q_VARIABLES = `query($p: String!, $e: String!, $s: String!) {
   variables(projectId: $p, environmentId: $e, serviceId: $s)
 }`;
 
+/**
+ * Qué está mirando esta corrida. **Se imprime siempre**, y no es cosmético.
+ *
+ * El token trae SU proyecto y SU entorno, y la herramienta lee ese y nada más. Si el proyecto tiene
+ * más de un entorno, se puede estar auditando `production` mientras alguien mira `staging` en el
+ * panel — y las dos lecturas serían correctas y distintas, sin que nada lo delate. Pasó el
+ * 2026-08-08: Juan borró una variable, la herramienta la seguía viendo, y no había forma de saber si
+ * mentía el panel, la herramienta o el entorno.
+ *
+ * Una herramienta de auditoría que no declara **contra qué** auditó no se puede contrastar con nada.
+ */
+export interface Ambito {
+  proyecto: string;
+  entorno: string;
+  /** Los demás entornos del proyecto. Si hay alguno, la lectura es de UNO y hay que decirlo. */
+  otrosEntornos: readonly string[];
+}
+
+export function describirAmbito(a: Ambito): string {
+  const base = `Auditando el proyecto «${a.proyecto}», entorno «${a.entorno}».`;
+  if (a.otrosEntornos.length === 0) return base;
+  return (
+    `${base}\n` +
+    `⚠️  El proyecto tiene ${a.otrosEntornos.length + 1} entornos (${[a.entorno, ...a.otrosEntornos].join(", ")}) ` +
+    `y el token solo alcanza «${a.entorno}».\n` +
+    `   Si el panel dice algo distinto de lo de abajo, comprobá que estás mirando ESE entorno antes de\n` +
+    `   dudar de la herramienta.`
+  );
+}
+
 /** Construye el lector contra la API real. El token dice su propio proyecto y entorno. */
-export async function lectorDeRailway(token: string): Promise<LeerVariables> {
+export async function lectorDeRailway(token: string): Promise<{ leer: LeerVariables; ambito: Ambito }> {
   const { projectToken } = await gql<{ projectToken: { projectId: string; environmentId: string } }>(
     token,
     Q_TOKEN,
     {},
   );
   const { project } = await gql<{
-    project: { name: string; services: { edges: Array<{ node: { id: string; name: string } }> } };
+    project: {
+      name: string;
+      services: { edges: Array<{ node: { id: string; name: string } }> };
+      environments: { edges: Array<{ node: { id: string; name: string } }> };
+    };
   }>(token, Q_PROYECTO, { id: projectToken.projectId });
+
+  const entornos = project.environments?.edges.map((e) => e.node) ?? [];
+  const propio = entornos.find((e) => e.id === projectToken.environmentId);
+  const ambito: Ambito = {
+    proyecto: project.name,
+    // Si la API no devolvió el nombre, se dice el id en vez de inventar uno: un ámbito mal nombrado
+    // es peor que uno feo, porque se contrasta con el panel y tiene que poder emparejarse.
+    entorno: propio?.name ?? `id ${projectToken.environmentId}`,
+    otrosEntornos: entornos.filter((e) => e.id !== projectToken.environmentId).map((e) => e.name),
+  };
 
   const porNombre = new Map(project.services.edges.map((e) => [e.node.name, e.node.id]));
 
-  return async (servicio) => {
+  const leer: LeerVariables = async (servicio) => {
     const id = porNombre.get(servicio);
     if (!id) {
       throw new Error(
@@ -384,6 +430,8 @@ export async function lectorDeRailway(token: string): Promise<LeerVariables> {
     });
     return new Map(Object.entries(variables ?? {}));
   };
+
+  return { leer, ambito };
 }
 
 // ---------------------------------------------------------------- orquestación
@@ -439,7 +487,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const diffs = await auditar(await lectorDeRailway(token), fuente);
+  const { leer, ambito } = await lectorDeRailway(token);
+  // El ámbito va PRIMERO, antes que cualquier diferencia: si el informe de abajo no cuadra con el
+  // panel, lo primero que hay que poder descartar es que se estén mirando dos entornos distintos.
+  console.log(`\n${describirAmbito(ambito)}`);
+  const diffs = await auditar(leer, fuente);
   console.log(formatear(diffs));
 
   if (hayProblemas(diffs)) {

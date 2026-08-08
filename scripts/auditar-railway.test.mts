@@ -9,6 +9,7 @@ import { MAPA } from "./env-sync.mts";
 import {
   auditar,
   comparar,
+  describirAmbito,
   esperadas,
   EXTRA_JUSTIFICADO,
   formatear,
@@ -296,4 +297,40 @@ test("🔴 la huella no es el valor ni lo contiene", () => {
 test('una vacía se marca como "(vacía)" y no como una huella cualquiera', () => {
   assert.equal(huella(""), "(vacía)");
   assert.notEqual(huella(" "), "(vacía)", "un espacio NO es vacío: es una variable mal pegada");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// El ÁMBITO: contra qué proyecto y entorno se auditó.
+//
+// El 2026-08-08 Juan borró una variable en el panel, la herramienta la seguía viendo, y no había
+// forma de saber si mentía el panel, la herramienta o el entorno — porque la herramienta no decía
+// cuál estaba leyendo. Una auditoría que no declara contra qué auditó no se puede contrastar con
+// nada, que es justo para lo que existe.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("ámbito — con un solo entorno dice proyecto y entorno, y no avisa de nada", () => {
+  const texto = describirAmbito({ proyecto: "amg", entorno: "production", otrosEntornos: [] });
+  assert.match(texto, /«amg»/);
+  assert.match(texto, /«production»/);
+  assert.doesNotMatch(texto, /⚠️/, "no hay ambigüedad que avisar si solo hay un entorno");
+});
+
+test("🔴 ámbito — con VARIOS entornos avisa, porque ahí es donde el panel y la herramienta divergen", () => {
+  const texto = describirAmbito({ proyecto: "amg", entorno: "production", otrosEntornos: ["staging"] });
+  assert.match(texto, /⚠️/);
+  assert.match(texto, /2 entornos/);
+  assert.match(texto, /production, staging/);
+  // Y tiene que decir qué hacer, no solo que hay un riesgo: un aviso sin acción se ignora.
+  assert.match(texto, /comprobá que estás mirando ESE entorno/);
+});
+
+test("ámbito — si la API no da el nombre del entorno, se dice el id en vez de inventarlo", () => {
+  // Un ámbito mal nombrado es peor que uno feo: se contrasta con el panel y tiene que emparejarse.
+  const texto = describirAmbito({ proyecto: "amg", entorno: "id abc-123", otrosEntornos: [] });
+  assert.match(texto, /«id abc-123»/);
+});
+
+test("ámbito — nunca imprime nada que parezca un valor de credencial", () => {
+  const texto = describirAmbito({ proyecto: "amg", entorno: "production", otrosEntornos: ["staging"] });
+  assert.doesNotMatch(texto, /RAILWAY_API_TOKEN|Bearer|[A-Za-z0-9_-]{40,}/);
 });
