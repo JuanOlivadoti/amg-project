@@ -1,4 +1,6 @@
-import { ensamblarCss } from "./css.js";
+import type { BrandTheme } from "../types.js";
+import { ensamblarCss, rolDeTitulares } from "./css.js";
+import { archivoTitulares, rutaPublica } from "./fuentes.js";
 import { SLUG_BLOG, esc, safeJson } from "./lib.js";
 import { CATALOGO, piezaPorId } from "./piezas/index.js";
 import type { CtxPieza, Pieza } from "./piezas/tipos.js";
@@ -85,12 +87,13 @@ export function renderDocumento(doc: Documento): string {
 
   // Orden de CATÁLOGO, no de receta: dos páginas con las mismas piezas usadas → `<style>` idéntico.
   const piezasUsadas: Pieza[] = CATALOGO.filter((p) => usadas.has(p.id));
-  const css = ensamblarCss(piezasUsadas, ctx.profile?.brand);
+  const brand = ctx.profile?.brand;
+  const css = ensamblarCss(piezasUsadas, brand);
 
   return `<!doctype html>
 <html lang="${esc(cabeza.lang)}">
 <head>
-${renderCabeza(cabeza, css)}
+${renderCabeza(cabeza, css, preloadDeTitulares(brand))}
 </head>
 <body>
 ${cabeceraHtml}
@@ -102,11 +105,40 @@ ${pieHtml}
 </html>`;
 }
 
-function renderCabeza(c: CabezaDocumento, css: string): string {
+/**
+ * El `preload` de la fuente de titulares. **Una sola familia, o ninguna.**
+ *
+ * «`preload` **solo** de la fuente de titulares. Precargar tres familias es competir contra el propio
+ * LCP» (spec, §Enmienda 2026-08-02 › Las tipografías, self-hosted). Una ficha con manual pide hasta
+ * tres familias; las otras dos se descargan cuando el CSS las pida, con la prioridad que les toque.
+ *
+ * ⚠️ **`crossorigin` no es opcional, y su ausencia no da error en ningún sitio.** Las fuentes se piden
+ * SIEMPRE en modo CORS anónimo —lo manda la especificación de CSS Fonts, también para el mismo
+ * origen—. Un `<link rel="preload" as="font">` sin `crossorigin` se pide en otro modo, no casa con la
+ * petición que después hace la `@font-face`, y el navegador **se descarga el archivo dos veces**: el
+ * preload pasa de ahorrar tiempo a costar bytes. Es el fallo más común de esta etiqueta y por eso lo
+ * fija un test y no este comentario.
+ *
+ * La URL sale entera de `FAMILIAS` (código), nunca de la ficha: el cliente solo elige un nombre de rol
+ * de la allowlist. Va escapada igual, porque «este valor viene de nuestro código» es la frase con la
+ * que empiezan las inyecciones cuando alguien cambia de dónde viene el valor.
+ */
+function preloadDeTitulares(brand?: BrandTheme | null): string {
+  const rol = rolDeTitulares(brand);
+  if (!rol) return "";
+  const archivo = archivoTitulares(rol);
+  if (!archivo) return ""; // rol legacy: es un stack del sistema, no hay nada que descargar.
+  return `<link rel="preload" as="font" type="font/woff2" href="${esc(rutaPublica(archivo))}" crossorigin>`;
+}
+
+function renderCabeza(c: CabezaDocumento, css: string, preload: string): string {
   const url = esc(c.canonical);
   return [
     `<meta charset="utf-8">`,
     `<meta name="viewport" content="width=device-width, initial-scale=1">`,
+    // Arriba del todo y ANTES del `<style>`: un preload declarado después del CSS que lo necesita
+    // llega tarde a lo único que hace, que es adelantar la petición.
+    preload,
     `<title>${esc(c.title)}</title>`,
     // ⚠️ CAMBIO DE CONDUCTA DELIBERADO, y por eso está escrito acá y no solo en el commit.
     //

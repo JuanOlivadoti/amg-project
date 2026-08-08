@@ -7,12 +7,13 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-08
-**En curso:** **bloque E** — el aspecto de las webs. Entregas **1** y **2** cerradas; de la **3** está
-hecha la **mitad A** (los cinco arreglos visuales y los 9 tokens de marca) y la **C a medias** (las
-tipografías se sirven, falta que el CSS las pida). Queda la **mitad B**, que espera las fotos.
-**Estado:** listo para seguir. **1177 tests**, typecheck limpio, y las webs manejadas en un navegador.
+**En curso:** **bloque E** — el aspecto de las webs. Entregas **1** y **2** cerradas; de la **3** están
+hechas la **mitad A** (los cinco arreglos visuales y los 9 tokens de marca) y la **C** (las tipografías
+self-hosted, servidas *y* pedidas por el CSS). Queda la **mitad B** — las piezas con imagen; las fotos
+ya están en Storyblok y, al contrario de lo que decía este archivo, nunca la bloquearon.
+**Estado:** listo para seguir. **1197 tests**, typecheck limpio, y las webs manejadas en un navegador.
 
-## 🟡 Entrega 3, mitad C — las tipografías: servidas, sin enchufar
+## ✅ Entrega 3, mitad C — las tipografías, servidas Y enchufadas
 
 Cuatro familias **SIL OFL 1.1** —Oswald, Jost, Source Sans 3, Dancing Script—, verificadas **una por
 una** contra el repositorio de Google Fonts y con su licencia commiteada al lado. Subsets latinos en
@@ -30,7 +31,71 @@ Cierto como diseño, falso como descripción de lo que el test demostraba. Ahora
 test — y queda escrito que si alguien cambia el patrón a `/_assets/fonts/*`, la primera desaparece
 sin ruido.
 
-**▶️ Lo que falta acá, y es el siguiente paso:** el CSS emitido **todavía no pide las fuentes**.
+**El cable, puesto.** `--marca-fuente-*` resuelve a la familia self-hosted, el `<style>` lleva las
+`@font-face` **solo de las familias que la página usa**, y el `<head>` un `preload` de **una sola**
+familia: la de titulares. Verificado en el navegador, que es donde se ve lo que ningún test ve:
+
+```text
+h1 → Oswald 700 · cuerpo → Source Sans 3 · rótulo → Dancing Script
+4 peticiones de fuente, NINGUNA repetida · 0 hojas externas · 0 scripts externos
+```
+
+**`crossorigin` en el preload no es cosmético.** Las fuentes se piden siempre en modo CORS anónimo,
+también desde el mismo origen; sin `crossorigin` el preload no casa con la petición que hace la
+`@font-face` y el navegador **descarga el archivo dos veces**. No da error en ningún log: el preload
+pasa de ahorrar tiempo a costar bytes, en silencio. Tiene test propio, y en el navegador se confirmó
+que `oswald-700` se pide **una sola vez**.
+
+**El peso se midió, no se eligió.** Ninguna pieza declara `font-weight` en los titulares, así que
+heredan el `bold` (=700) de la hoja del navegador — y el navegador lo corroboró: `Oswald 500
+unloaded, Oswald 700 loaded`. Precargar la 500 habría sido una descarga tirada *y* la 700 se habría
+pedido igual. Un test sobre el CSS emitido lo fija: si algún día una pieza le pone `font-weight` a un
+titular, cae y obliga a revisar la decisión.
+
+**La ficha legacy no se movió, comprobado en el navegador**, no deducido: `{color, font: serif}` sale
+con Georgia, **cero** `@font-face`, **cero** preloads, **cero** descargas.
+
+### Dos tablas que decían cosas distintas, y el test que no lo veía
+
+Había **dos** fuentes de verdad de los stacks —`fuentes.ts` y una tabla privada en `css.ts`— y para
+`moderna` **no coincidían**: `Inter,Segoe UI,Roboto,Helvetica Neue,sans-serif` contra
+`'Helvetica Neue',Arial,sans-serif`. La que llegaba al `<style>` era la de `css.ts`, así que unificar
+hacia la otra habría cambiado la tipografía de **toda ficha sembrada con `font: moderna`** — la única
+regresión que la spec prohíbe con esas palabras.
+
+El test que decía cubrirlo comprobaba que los tres roles legacy *existieran* en `STACKS_SISTEMA` y
+*no estuvieran* en `FAMILIAS`. Nunca comparó valores. Ahora compara **el literal exacto de producción,
+escrito a mano en el test** contra lo que emite `tokensDeMarca`: escribirlo a mano es deliberado —
+leerlo de la constante sería comprobar que es igual a sí misma, que es exactamente por lo que la
+divergencia sobrevivió.
+
+### Tres agujeros que solo aparecieron mutando
+
+1. **El de prototipos, reabierto donde nadie miraba.** `css.ts` lo tenía cerrado y documentado con
+   `Object.hasOwn`; `fuentes.ts` se escribió después, con indexación directa, y `stackDe("toString")`
+   devolvía `Object.prototype.toString` → emitía `'undefined',undefined` como familia. En producción
+   el perfil llega de Storyblok **sin pasar por Zod**, así que el nombre es alcanzable desde el Visual
+   Editor. Cerrado en los **cuatro** puntos que indexan las tablas.
+2. **Las dos allowlists, separadas solo por un comentario.** Fusionarlas —que el campo legacy
+   `brand.font` aceptara los cuatro nombres nuevos— dejaba los **299 tests en verde**. La decisión
+   estaba tomada, escrita y sin nada que la sostuviera.
+3. **El test de «cero terceros» no cae si desaparecen las fuentes**: pasa feliz recorriendo cero
+   `url()`. Lo acompaña un test de **no-vacuidad** que exige que la ficha con manual traiga al menos
+   3 `url()` en el `<style>`. Sin él, la garantía se cumple sola no haciendo nada.
+
+**La revisión encontró un cuarto**, y es el mismo modo de fallo: el `Object.hasOwn` de `cssDeFuentes`
+no lo sostenía ningún test — revertirlo dejaba los 300 en verde. El impacto era un `"\n"` sobrante,
+pero `cssDeFuentes` es un export público que declara recibir texto de fuera. Fijado, con la mutación
+confirmada (`'\n' !== ''`).
+
+**Una fixture del gate de paridad, retocada a mano: +1 línea.** El `preload` es un `<link href=…>` y
+`hrefsDe()` captura todo `href`, así que esa cara de la huella cambió en el único caso del gate cuya
+ficha pide una familia propia. Se añadió **esa línea** y nada más — **no se re-capturó**: re-capturar
+habría sobrescrito las diez con la foto de "después" y el gate pasaría a compararse contra sí mismo.
+La alternativa (excluir `rel="preload"` de `hrefsDe`) se descartó: habría debilitado el comparador
+para los diez casos y para siempre, exonerando en silencio una categoría entera de `<link>`. Retocar
+una línea es auditable en el diff; cambiar el comparador se olvida. Dos mutaciones confirman que la
+fixture sigue cayendo, tanto si el preload **cambia** como si **desaparece**.
 
 ## ✅ Entrega 3, mitad A — el sitio por fin cambia de aspecto
 
@@ -144,29 +209,31 @@ generada → `perfilValido`— y exige que el perfil salga entero. Mutación com
 
 **▶️ Lo próximo, en este orden:**
 
-1. **Enchufar las tipografías** (cierra la mitad C). Que `--marca-fuente-*` resuelva a `stackDe(rol)`
-   y que el `<style>` incluya `cssDeFuentes(rolesUsados)`, que emite las `@font-face` **solo de las
-   familias que la página usa**. Toca la firma de `ensamblarCss`. Con eso llega el test que la
-   enmienda pide y que **todavía no existe**: *cero terceros en el CSS emitido*.
-2. **La mitad B** — las piezas con imagen, la allowlist de hosts y el presupuesto de 60 `<img>`.
-   **Bloqueada**: necesita las fotos en Storyblok.
+**La mitad B, y con ella el bloque E entero** — las piezas con imagen (`heroPortada`, `barraDatos`,
+`platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias`), la **allowlist de hosts de imagen** con
+su `referrerpolicy="no-referrer"`, y el presupuesto de **60 `<img>`** por documento. Su gate no es la
+paridad —la entrega 3 cambia el aspecto a propósito— sino el navegador: claro y oscuro, escritorio y
+móvil, **con fotos y sin fotos**.
 
-**Se parte en dos mitades**, y no por diseño sino por disponibilidad del dato: los **seis arreglos
-visuales, las tipografías y el uso real de los tokens** no necesitan ninguna foto y se pueden
-verificar hoy; las **piezas con imagen** sí, y su gate pide ver el sitio *con fotos y sin fotos*.
+**Las fotos NO bloqueaban la mitad B, y esta documentación decía que sí.** Los tests del render no
+descargan nada: una URL de `a.storyblok.com` inventada ejercita las piezas igual de bien que una
+real. Lo que las fotos desbloquean es **verlo en un navegador**, que es el último paso de la mitad B
+y no el primero. La corrección importa porque la afirmación equivocada dejó la mitad B parada
+esperando un asset que no hacía falta para escribirla.
 
-**Esperando assets:** las fotos van a [`docs/plantillas/template1/originales/`](../docs/plantillas/template1/README.md),
-una carpeta por destino, con las medidas de cada campo en su README. Los binarios **no se versionan**
-—el repo es público y el destino real es Storyblok, porque la allowlist solo acepta `a.storyblok.com`—
-así que la carpeta es el buzón de trabajo. La paleta y los roles tipográficos ya están decididos en
-`marca.json`. Las URLs de foto del seed apuntan hoy a assets que **no existen**: hasta subirlos, la
-web de demo saldría con imágenes rotas en cuanto el render las dibuje.
+**Assets: subidos** (2026-08-08). Space `293831091573700`, host `a.storyblok.com` —el de la
+allowlist—, sin `?token=`. Las siete URLs están en
+[el README de `template1`](../docs/plantillas/template1/README.md#subidos-a-storyblok-2026-08-08),
+junto con la paleta y los roles tipográficos ya decididos en `marca.json`. Caveat para cuando se
+mire: es **una foto por destino, no una por elemento**, así que la galería y la carta repiten la
+misma imagen tantas veces como elementos tengan.
 
 ## ⏳ Lo que espera a Juan
 
 | Qué | Por qué él | Bloquea |
 | --- | --- | --- |
-| **Subir las fotos a Storyblok** (asset manager del space) | Es la credencial | **La mitad B de la entrega 3.** Están cargadas en `docs/plantillas/template1/originales/` con las medidas exactas, pero la allowlist solo acepta `a.storyblok.com`: mientras vivan solo en disco, el render las descarta |
+| ~~Subir las fotos a Storyblok~~ | — | ✅ **hecho** el 2026-08-08, siete URLs en el README de `template1` |
+| **Una foto distinta por elemento** en galería, carta y ubicaciones | Son los assets | Nada técnico. Hoy hay **una por destino**, así que la galería sale con seis copias de la misma imagen: sirve para desarrollo, no para enseñárselo a un cliente |
 | **La portada, sin el logo incrustado** | Es el asset | Nada bloqueante. Hoy el logo saldría dos veces (cabecera + foto) y quemado en el JPG no lo lee un buscador |
 | **Decidir si las fotos son reales o de stock** | Es del negocio | Nada técnico, pero si son de stock hay que decirlo en el seed — misma regla que los precios: antes ausente que inventado |
 | ⚠️ **`PIPELINE_MODO` y `TRUST_PROXY` en `amg-project`** | Es el panel de Railway | Nada, pero **la herramienta y el panel discrepan**: Juan borró `TRUST_PROXY` y dice que `PIPELINE_MODO` no estaba, y `auditar:railway` sigue viendo las dos. O el borrado necesita redespliegue para reflejarse en la API, o se miró otro servicio. Conviene saber cuál miente **antes** de fiarse de esa herramienta para algo que sí importe |

@@ -4,7 +4,7 @@ import { pageToStory } from "../handoff/adapter.js";
 import { perfilConManual, perfilLegacy, validBrief, validPage, validProfile } from "../fixtures.js";
 import type { BrandTheme, Story } from "../types.js";
 import { tokensDeMarca } from "./css.js";
-import { tokenResuelto } from "./css-de-prueba.js";
+import { propiedadResuelta, tokenResuelto } from "./css-de-prueba.js";
 import { ctxDe, perfilCompleto } from "./ctx-de-prueba.js";
 import { renderBlogIndex, renderHome, renderMenu, renderStory } from "./html.js";
 import { CATALOGO, piezaPorId } from "./piezas/index.js";
@@ -152,10 +152,13 @@ test("`colores.primario` SÍ pisa el acento: la entrega 3 es la que enchufa el m
   // exigible. Invertirlo es el trabajo de esta entrega, no una regresión.
   const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
   assert.match(css, /--marca-primario:#0a7d34/, "el token del manual sale");
-  assert.match(css, /--marca-fuente-texto:'Segoe UI'/);
+  // ⚠️ Era `'Segoe UI'` hasta la mitad C: `humanista` caía a un stack del sistema. Ahora resuelve a su
+  // familia self-hosted, que es justo lo que esta mitad enchufa. No es una regresión — los roles que
+  // NO pueden cambiar son los tres legacy, y esos tienen su propio test en `fuentes.test.ts`.
+  assert.match(css, /--marca-fuente-texto:'Source Sans 3',/);
   // Y el que se ve, ya resuelto (la cadena completa se prueba en `tema.test.ts`).
   assert.equal(tokenResuelto(css, "--accent"), "#0a7d34");
-  assert.match(tokenResuelto(css, "--font"), /^'Segoe UI'/);
+  assert.match(tokenResuelto(css, "--font"), /^'Source Sans 3',/);
 });
 
 test("la ficha legacy `{color, font}` sigue alimentando los tokens del manual (resolución legacy→nuevo)", () => {
@@ -196,6 +199,22 @@ test("🔴 un token de marca que no valida se DESCARTA y cae al default, no romp
   assert.match(css, /--marca-secundario:#0a7d34/, "y el token vecino, que sí valida, sigue saliendo");
 });
 
+test("🔴 las DOS allowlists siguen separadas: el campo legacy `font` no acepta los cuatro nombres nuevos", () => {
+  // `brand.font` es un contrato CERRADO de tres nombres (`sistema | serif | moderna`); `brand.fuentes.*`
+  // acepta los siete. Fusionarlos ampliaría en silencio el contrato viejo, y el mismo valor pasaría a
+  // significar cosas distintas según por qué campo entre.
+  //
+  // Esta decisión estaba escrita en un comentario de `css.ts` y **no la sostenía ningún test**: fundir
+  // las dos allowlists dejaba los 299 en verde. Lo encontró una mutación de esta misma entrega, no una
+  // revisión leyendo el diff.
+  for (const nuevo of ["condensada", "geometrica", "humanista", "script"]) {
+    const css = tokensDeMarca({ font: nuevo as never });
+    assert.equal(css, "", `el campo legacy \`font\` aceptó «${nuevo}»: el contrato viejo se amplió solo`);
+  }
+  // Y por el otro campo el mismo nombre SÍ entra: lo que se prueba es la frontera, no que el rol no valga.
+  assert.match(tokensDeMarca({ fuentes: { texto: "condensada" } }), /--marca-fuente-texto:'Oswald',/);
+});
+
 test("🔴 la allowlist de fuentes usa hasOwn, no `in`: `toString` no es una fuente", () => {
   // `"toString" in FUENTE_STACKS` es `true` por la cadena de prototipos, y habría metido el código de
   // una función dentro del `<style>`. En PROD el perfil puede venir de Storyblok sin pasar por Zod.
@@ -207,6 +226,96 @@ test("🔴 la allowlist de fuentes usa hasOwn, no `in`: `toString` no es una fue
   );
   assert.ok(!css.includes("native code"), "no puede colarse un método del prototipo como stack");
   assert.ok(!/--font:function/.test(css));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Las `@font-face` de las familias self-hosted.
+//
+// La mitad C es el cable: hasta ella las `woff2` se SERVÍAN (el renderizador tenía su ruta y su
+// manifiesto) y el CSS emitido no las pedía nunca. Una ficha con `fuentes.titulo: "condensada"` veía
+// Arial Narrow, y nada fallaba en ningún sitio.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("🔴 el <style> lleva las @font-face de las familias que la ficha pide, y SOLO esas", () => {
+  // `perfilConManual`: titulo=condensada, texto=humanista, decorativa=script → tres familias de
+  // cuatro. `geometrica` (Jost) no la pide nadie y no puede costar ni una petición.
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
+
+  assert.match(css, /@font-face\{font-family:'Oswald'/, "condensada → Oswald");
+  assert.match(css, /@font-face\{font-family:'Source Sans 3'/, "humanista → Source Sans 3");
+  assert.match(css, /@font-face\{font-family:'Dancing Script'/, "script → Dancing Script");
+  assert.ok(!css.includes("Jost"), "geometrica no la usa esta ficha: ni un byte, ni una petición");
+
+  // Y el token apunta a la familia, no a un stack del sistema: sin esto las @font-face viajarían y
+  // no las consumiría nadie, que es el fallo silencioso de siempre con otro disfraz.
+  assert.match(css, /--marca-fuente-titulo:'Oswald',/);
+  assert.match(tokenResuelto(css, "--fuente-titulo"), /^'Oswald',/);
+});
+
+test("🔴 una ficha sin familias propias no emite NI UN BYTE de @font-face", () => {
+  for (const [nombre, perfil] of [
+    ["sin ficha", null],
+    ["sin marca", validProfile()],
+    ["legacy {color, font}", perfilLegacy()],
+  ] as const) {
+    const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfil));
+    assert.ok(!css.includes("@font-face"), `${nombre}: no pide ninguna familia self-hosted`);
+    assert.ok(!css.includes("/_assets/fonts/"), `${nombre}: y por tanto ninguna URL de fuente`);
+  }
+});
+
+test("las @font-face no rompen el determinismo: mismas piezas, <style> idéntico byte a byte", () => {
+  const base = {
+    cabeza: { lang: "es", title: "x", canonical: "/x", ogTitle: "x" },
+    ctx: ctxDe({ story: pageToStory(validPage(), validBrief()), profile: perfilConManual(), activeSlug: "x" }),
+    pie: { contractVersion: "web.v0.1", schemaType: "WebPage", hayBlog: false },
+  };
+  const enOrden = renderDocumento({ ...base, receta: { id: "a", contenido: ["hero", "seccionProsa", "faq"] } });
+  const alReves = renderDocumento({ ...base, receta: { id: "b", contenido: ["faq", "seccionProsa", "hero"] } });
+
+  assert.equal(estilo(enOrden), estilo(alReves), "el orden de la receta no puede tocar el <style>");
+
+  // Y el orden de las `@font-face` sale de `FAMILIAS`, no del orden en que la ficha nombra los roles.
+  // Se miran SOLO las declaraciones: los tokens `--marca-fuente-*` nombran las mismas familias antes,
+  // en el orden de la ficha, y buscar el nombre en el `<style>` entero mediría eso en vez de esto.
+  const familiasDeclaradas = (css: string): string[] =>
+    [...css.matchAll(/@font-face\{font-family:'([^']+)'/g)].map((m) => m[1]!);
+
+  const scriptPrimero = estilo(
+    renderStory(
+      pageToStory(validPage(), validBrief()),
+      validProfile({ brand: { fuentes: { titulo: "script", texto: "condensada" } } }),
+    ),
+  );
+  assert.deepEqual(
+    familiasDeclaradas(scriptPrimero).filter((f, i, a) => a.indexOf(f) === i),
+    ["Oswald", "Dancing Script"],
+    "orden de FAMILIAS (condensada antes que script), no el de la ficha",
+  );
+
+  // Y una familia pedida por dos roles se declara UNA vez: `usadas` es un Set.
+  const dosRoles = estilo(
+    renderStory(
+      pageToStory(validPage(), validBrief()),
+      validProfile({ brand: { fuentes: { titulo: "condensada", texto: "condensada" } } }),
+    ),
+  );
+  assert.deepEqual(familiasDeclaradas(dosRoles), ["Oswald", "Oswald"], "los dos pesos de Oswald, y nada más");
+});
+
+test("🔴 los titulares NO declaran font-weight: por eso se precarga el archivo de 700", () => {
+  // Es la razón de la decisión, puesta como test en vez de como comentario. `h1`/`h2`/`h3` heredan el
+  // `bold` (700) de la hoja del navegador porque ninguna pieza les pone `font-weight`. Si alguna se lo
+  // pusiera, el archivo precargado dejaría de ser el que el navegador pide y el preload se volvería
+  // una descarga de más: este test cae y obliga a revisar `PESO_TITULARES`.
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
+  for (const sel of [".p-hero .hero h1", ".p-seccionProsa section h2", ".p-faq .faq h2", ".card h3"]) {
+    assert.equal(
+      propiedadResuelta(css, sel, "font-weight"),
+      undefined,
+      `«${sel}» declara font-weight: revisá qué peso se precarga en shell.ts`,
+    );
+  }
 });
 
 // ---------------------------------------------------------------- los cuatro puntos de entrada

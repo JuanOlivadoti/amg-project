@@ -676,7 +676,7 @@ por los dos caminos; y el `@supports` del `color-mix` se podía quitar sin que c
 ahora con test de borde y mutación comprobada.
 
 
-#### 🟡 Mitad C — las tipografías: servidas, sin enchufar (2026-08-08)
+#### ✅ Mitad C — las tipografías: servidas y enchufadas (2026-08-08)
 
 **Lo que está hecho.** Cuatro familias **SIL OFL 1.1** —Oswald (`condensada`), Jost (`geometrica`),
 Source Sans 3 (`humanista`), Dancing Script (`script`)—, verificadas **una por una** contra el
@@ -700,13 +700,49 @@ filesystem, **el test siguió pasando**: quien para esas URLs primero es el **ro
 dos capas y ahora cada una tiene su test. ⚠️ **Si algún día se cambia el patrón a `/_assets/fonts/*`
 —que sí captura `/`— la primera capa desaparece sin ruido.**
 
-**Lo que falta, y es el siguiente paso del bloque:** el CSS emitido **todavía no pide las fuentes**.
-Hay que hacer que `--marca-fuente-*` resuelva a `stackDe(rol)` (que ya devuelve la familia propia con
-su respaldo) y que el `<style>` incluya `cssDeFuentes(rolesUsados)` — que emite las `@font-face`
-**solo de las familias que la página usa**, igual que el CSS de las piezas. Toca la firma de
-`ensamblarCss`. Y con eso llega el test que la enmienda pide y que todavía no existe: **cero terceros
-en el CSS emitido** (ni `fonts.googleapis.com`, ni `cdn.`, ni `//`), que es la garantía de ADR-19
-convertida en test en vez de en costumbre.
+**El cable, puesto.** `--marca-fuente-*` resuelve a `stackDe(rol)`, el `<style>` incluye
+`cssDeFuentes(rolesUsados)` —las `@font-face` **solo de las familias que la página usa**, igual que el
+CSS de las piezas— y el `<head>` un `preload` de **una sola** familia: la de titulares. *(La firma de
+`ensamblarCss` no hizo falta cambiarla: de `brand` ya salían los roles. Este documento decía que sí.)*
+Y llegó el test que la enmienda pedía: **cero terceros en la ruta de render bloqueante** — todo
+`url()` del `<style>` empieza por `/_assets/fonts/`, ningún `rel="stylesheet"`, ningún `@import`,
+ningún host de Google. La garantía de ADR-19 convertida en test en vez de en costumbre.
+
+**El `crossorigin` del preload no es cosmético.** Las fuentes se piden siempre en modo CORS anónimo,
+también desde el mismo origen; sin él, el preload no casa con la petición de la `@font-face` y el
+navegador **descarga el archivo dos veces**. No da error en ningún log. Tiene test propio, y en el
+navegador se confirmó que `oswald-700` se pide una sola vez.
+
+**El peso precargado (700) se midió.** Ninguna pieza declara `font-weight` en los titulares, así que
+heredan el `bold` de la hoja del navegador — que lo corroboró: `Oswald 500 unloaded, Oswald 700
+loaded`. Un test sobre el CSS emitido lo fija: si una pieza le pone `font-weight` a un titular, cae.
+
+##### Lo que solo apareció mutando
+
+Cuatro garantías que estaban escritas y que no sostenía nada:
+
+1. **Dos tablas de stacks que decían cosas distintas.** `fuentes.ts` y una tabla privada de `css.ts`
+   discrepaban en `moderna` (`Inter,…` contra `'Helvetica Neue',Arial,sans-serif`). La que llegaba al
+   `<style>` era la de `css.ts`, así que unificar hacia la otra habría cambiado la tipografía de toda
+   ficha sembrada con `font: moderna` — **la regresión que esta sección prohíbe tres párrafos más
+   arriba**. El test que decía cubrirlo comprobaba *existencia*, nunca valores. Ahora compara el
+   literal exacto de producción, **escrito a mano en el test**: leerlo de la constante sería comprobar
+   que es igual a sí misma, que es justo por lo que la divergencia sobrevivió.
+2. **El agujero de prototipos, reabierto.** `css.ts` lo tenía cerrado con `Object.hasOwn` y
+   documentado; `fuentes.ts` se escribió después con indexación directa, y `stackDe("toString")`
+   devolvía `Object.prototype.toString` → `'undefined',undefined` como familia. En producción el
+   perfil llega de Storyblok **sin pasar por Zod**. Cerrado en los cuatro puntos que indexan.
+3. **Las dos allowlists, separadas solo por un comentario.** Que el campo legacy `brand.font` aceptara
+   los cuatro nombres nuevos dejaba los 299 tests en verde.
+4. **«Cero terceros» no cae si desaparecen las fuentes**: pasa recorriendo cero `url()`. Va con un
+   test de **no-vacuidad** que exige al menos 3 `url()` en el `<style>` de la ficha con manual.
+
+⚠️ **Una fixture del gate de paridad, retocada a mano (+1 línea).** El `preload` es un `<link href=…>`
+y `hrefsDe()` captura todo `href`, así que esa cara de la huella cambió en el único caso del gate cuya
+ficha pide familia propia. Se añadió esa línea y **no se re-capturó** — re-capturar habría sobrescrito
+las diez con la foto de "después" y el gate pasaría a compararse contra sí mismo. Se descartó excluir
+`rel="preload"` de `hrefsDe`: habría debilitado el comparador para los diez casos y para siempre.
+Dos mutaciones confirman que la fixture sigue cayendo, tanto si el preload cambia como si desaparece.
 
 **Lo que la entrega 2 dejó preparado y esta consume:** los 9 tokens `--marca-*` ya se emiten en el
 `<style>` con los valores actuales como default, sin que nadie los use. Esta entrega es la que los

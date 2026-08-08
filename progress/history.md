@@ -11,6 +11,56 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-08 (noche, 5) — el cable de las tipografías, y cuatro garantías que no sostenía nada
+
+Las fuentes se servían desde ayer; hoy el CSS por fin las pide. Fue el trabajo más corto de la sesión
+y el que más cosas encontró, todas por el mismo camino: **mutar lo que ya estaba en verde**.
+
+Antes de delegar encontré leyendo que había **dos tablas de stacks tipográficos** —una en `fuentes.ts`
+y otra privada en `css.ts`— y que para `moderna` **decían cosas distintas**. La que llegaba al
+`<style>` era la de `css.ts`, así que unificar hacia la otra habría cambiado la tipografía de toda
+ficha sembrada con `font: moderna`: exactamente la regresión que la spec prohíbe con esas palabras, y
+que el propio documento del plan prohíbe tres párrafos antes. Iba en el brief, y por eso no se pisó.
+
+Lo que no vi, y sí encontró la implementación mutando: **el test que decía cubrir esa regresión no la
+habría cazado nunca.** Comprobaba que los tres roles legacy *existieran* en la tabla y *no estuvieran*
+entre las familias self-hosted. Nunca comparó un valor. Se reconstruyó el test viejo y se corrió
+contra el código divergente: verde. Ahora compara el literal exacto de producción escrito **a mano**
+en el test — leerlo de la constante habría sido comprobar que es igual a sí misma, que es precisamente
+cómo la divergencia sobrevivió tanto.
+
+Y siguieron apareciendo. **El agujero de prototipos, reabierto**: `css.ts` lo tenía cerrado con
+`Object.hasOwn` y explicado en un comentario, pero `fuentes.ts` se escribió después con indexación
+directa, así que `stackDe("toString")` devolvía `Object.prototype.toString` y emitía
+`'undefined',undefined` como familia. **Las dos allowlists, separadas solo por un comentario**:
+fusionarlas dejaba los 299 tests en verde. Y **el test de «cero terceros» que no cae si desaparecen
+las fuentes**, porque pasa feliz recorriendo cero `url()` — la forma más pura de garantía que se
+cumple sola no haciendo nada; ahora lleva al lado un test de no-vacuidad.
+
+La revisión encontró un cuarto del mismo tipo, y eso es lo que más me dice: el `Object.hasOwn` de una
+tercera función tampoco lo sostenía ningún test. Impacto real: un salto de línea sobrante. Pero es el
+**cuarto** caso idéntico en un diff que se escribió sabiendo que este es el modo de fallo del
+proyecto. No basta con conocerlo.
+
+Dos cosas que solo dio el navegador. El `preload` **necesita `crossorigin`** —las fuentes se piden
+siempre en modo CORS anónimo, también desde el mismo origen— y sin él el navegador **descarga el
+archivo dos veces** sin que nada lo registre en ningún log: el preload pasa de ahorrar tiempo a costar
+bytes. Y el peso a precargar no se eligió, se midió: ninguna pieza declara `font-weight` en los
+titulares, así que heredan el `bold` del navegador, que lo confirmó reportando `Oswald 500 unloaded,
+Oswald 700 loaded`. Precargar la 500 habría sido una descarga tirada *y* la 700 se habría pedido igual.
+
+Queda una decisión anotada porque conviene poder discutirla más adelante: el `preload` es un
+`<link href=…>` y el gate de paridad captura todo `href`, así que **se retocó una fixture a mano**
+—una línea— en vez de excluir `rel="preload"` del comparador. Retocar una línea se ve en el diff;
+debilitar el comparador se olvida, y habría exonerado en silencio una categoría entera de `<link>` en
+los diez casos y para siempre.
+
+**Y una corrección que costó tiempo:** la documentación afirmaba en tres sitios que la mitad B estaba
+*bloqueada* esperando las fotos en Storyblok. No era cierto. Los tests del render no descargan nada:
+una URL inventada del host correcto ejercita las piezas igual que una real. Lo que las fotos
+desbloquean es **verlo en un navegador**, que es el último paso y no el primero. La mitad B estuvo
+parada esperando algo que no le hacía falta para escribirse.
+
 ## 2026-08-08 (noche, 4) — las tipografías, y una garantía mía que el test no probaba
 
 Con la mitad B bloqueada esperando las fotos, la C: las tipografías self-hosted. Cuatro familias SIL

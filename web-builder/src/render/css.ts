@@ -1,4 +1,5 @@
 import type { BrandTheme, FuenteNombre } from "../types.js";
+import { cssDeFuentes, stackDe } from "./fuentes.js";
 import type { Pieza } from "./piezas/tipos.js";
 
 /**
@@ -15,34 +16,53 @@ import type { Pieza } from "./piezas/tipos.js";
  */
 
 /**
- * Familias tipográficas seguras, por nombre. La marca elige un nombre, NUNCA escribe el stack:
- * un stack en la ficha del cliente sería texto libre entrando a un `<style>`.
+ * Los stacks se **derivan de `fuentes.ts`**, que es la única fuente de verdad (entrega 3, mitad C).
  *
- * Estas tres son las LEGACY (`brand.font`), y siguen alimentando `--font` exactamente como antes.
+ * Hasta la mitad C este archivo tenía su propia tabla de literales, y para `moderna` decía una cosa
+ * distinta de la de `fuentes.ts`. Dos tablas del mismo hecho es una que miente sin que nada avise: los
+ * cuatro roles nuevos caían acá a stacks del sistema mientras las `woff2` se servían sin que el CSS
+ * las pidiera nunca, y `moderna` estaba a un refactor descuidado de cambiarle la tipografía a todas
+ * las fichas sembradas.
+ *
+ * `exigido` lanza en tiempo de importación si un rol no tiene stack: un `Record` con un `undefined`
+ * dentro emitiría `--marca-fuente-titulo:undefined`, que es CSS inválido y por tanto un token que se
+ * descarta en silencio y cae al default. Un error de programación tiene que doler al arrancar.
+ */
+function exigido(rol: FuenteNombre): string {
+  const stack = stackDe(rol);
+  if (!stack) throw new Error(`El rol tipográfico "${rol}" no tiene stack en fuentes.ts`);
+  return stack;
+}
+
+/**
+ * Las tres LEGACY (`brand.font`). Siguen alimentando `--marca-fuente-texto` exactamente como antes:
+ * son stacks del sistema y ninguna ficha sembrada cambia de aspecto.
+ *
+ * Es una allowlist **aparte** de la de siete, y no se fusionan: que el campo viejo aceptara de pronto
+ * `condensada` sería ampliar en silencio un contrato cerrado.
  */
 const FONT_STACKS: Record<NonNullable<BrandTheme["font"]>, string> = {
-  sistema: "system-ui,-apple-system,Segoe UI,Roboto,sans-serif",
-  serif: "Georgia,'Times New Roman',serif",
-  moderna: "'Helvetica Neue',Arial,sans-serif",
+  sistema: exigido("sistema"),
+  serif: exigido("serif"),
+  moderna: exigido("moderna"),
 };
 
 /**
  * Los siete roles del manual de marca (enmienda 2026-08-02).
  *
- * Los cuatro nombres nuevos caen a stacks del **sistema** a propósito: las familias self-hosted
- * (`/_assets/fonts/…`, subset latino, `woff2`) son la entrega 3, y meterlas acá arrastraría una ruta
- * pública nueva en el proceso anónimo dentro de una entrega cuyo criterio es "no cambiar cómo se ve
- * el sitio". Cambiar qué familia hay detrás de `condensada` sigue siendo un cambio de código
- * revisado, nunca una edición de fichas de clientes.
+ * Los cuatro nombres nuevos resuelven a **su familia self-hosted** (`/_assets/fonts/…`, subset latino,
+ * `woff2`): es lo que enchufa esta mitad. La marca elige un NOMBRE, nunca escribe el stack — un stack
+ * en la ficha del cliente sería texto libre entrando a un `<style>`—, así que cambiar qué familia hay
+ * detrás de `condensada` sigue siendo un cambio de código revisado y no una edición de fichas.
  */
 const FUENTE_STACKS: Record<FuenteNombre, string> = {
   sistema: FONT_STACKS.sistema,
   serif: FONT_STACKS.serif,
   moderna: FONT_STACKS.moderna,
-  condensada: "'Arial Narrow','Roboto Condensed',system-ui,sans-serif",
-  geometrica: "'Century Gothic','Futura',system-ui,sans-serif",
-  humanista: "'Segoe UI','Optima',system-ui,sans-serif",
-  script: "'Brush Script MT',cursive",
+  condensada: exigido("condensada"),
+  geometrica: exigido("geometrica"),
+  humanista: exigido("humanista"),
+  script: exigido("script"),
 };
 
 /**
@@ -146,15 +166,53 @@ function hexValido(v: unknown): string | null {
 }
 
 /**
- * Un nombre de fuente contra la allowlist.
+ * Un nombre de fuente contra la allowlist. Devuelve **el nombre del rol**, no el stack: el rol es lo
+ * que hace falta para decidir además qué `@font-face` viaja y qué archivo se precarga.
  *
  * `Object.hasOwn` y no `in`: `in` recorre la cadena de prototipos, así que `"toString" in FONT_STACKS`
  * es `true` y un `brand.font` con ese valor habría metido el código de una función dentro del
  * `<style>`. En PROD el perfil puede llegar de Storyblok **sin pasar por Zod**, así que el
  * renderizador no puede apoyarse en que el valor ya venga de la allowlist.
  */
-function fuenteValida<K extends string>(mapa: Record<K, string>, v: unknown): string | null {
-  return typeof v === "string" && Object.hasOwn(mapa, v) ? mapa[v as K] : null;
+function rolValido<K extends string>(mapa: Record<K, string>, v: unknown): K | null {
+  return typeof v === "string" && Object.hasOwn(mapa, v) ? (v as K) : null;
+}
+
+/**
+ * Los tres roles tipográficos de una ficha, ya validados: `[nombre del token, rol]`.
+ *
+ * **Una sola resolución para los tres consumidores** —los tokens `--marca-fuente-*`, las `@font-face`
+ * que viajan y el archivo que se precarga—. Repetir la resolución en cada uno es cómo se llega a que
+ * el token diga Oswald y el `@font-face` no viaje, o a precargar una familia que la página no usa.
+ *
+ * La resolución legacy→nuevo se hace acá: si la ficha trae las dos formas gana la específica
+ * (`fuentes.texto` sobre `font`), porque la nueva es una decisión explícita y la vieja es herencia.
+ */
+function rolesResueltos(brand: BrandTheme): Array<[string, FuenteNombre]> {
+  const f = brand.fuentes;
+  const pares: Array<[string, FuenteNombre | null]> = [
+    ["titulo", rolValido(FUENTE_STACKS, f?.titulo)],
+    // El legacy `font` se valida contra su PROPIA allowlist de tres nombres, no contra la de siete:
+    // que el campo viejo acepte de pronto `condensada` sería ampliar en silencio un contrato cerrado.
+    ["texto", rolValido(FUENTE_STACKS, f?.texto) ?? rolValido(FONT_STACKS, brand.font)],
+    ["decorativa", rolValido(FUENTE_STACKS, f?.decorativa)],
+  ];
+  return pares.filter((p): p is [string, FuenteNombre] => p[1] !== null);
+}
+
+/**
+ * El rol con el que se pintan los **titulares**, o `null` si la ficha no dice nada.
+ *
+ * ⚠️ No es `fuentes.titulo` a secas. El CSS base declara
+ * `--marca-fuente-titulo:var(--marca-fuente-texto)`, así que **sin `titulo` los titulares heredan la
+ * fuente del cuerpo** — eso existe para que una ficha legacy con `font: serif` no vea su cuerpo en
+ * Georgia y sus titulares en system-ui. Quien decide qué precargar tiene que seguir la misma cadena, o
+ * dejaría sin preload justo al caso más común: la ficha a medio llenar.
+ */
+export function rolDeTitulares(brand?: BrandTheme | null): FuenteNombre | null {
+  if (!brand) return null;
+  const roles = new Map(rolesResueltos(brand));
+  return roles.get("titulo") ?? roles.get("texto") ?? null;
 }
 
 /**
@@ -191,16 +249,8 @@ export function tokensDeMarca(brand?: BrandTheme | null): string {
     if (hex) reglas.push(`--marca-${nombre}:${hex}`);
   }
 
-  const f = brand.fuentes;
-  const fuentes: Array<[string, string | null]> = [
-    ["titulo", fuenteValida(FUENTE_STACKS, f?.titulo)],
-    // El legacy `font` se valida contra su PROPIA allowlist de tres nombres, no contra la de siete:
-    // que el campo viejo acepte de pronto `condensada` sería ampliar en silencio un contrato cerrado.
-    ["texto", fuenteValida(FUENTE_STACKS, f?.texto) ?? fuenteValida(FONT_STACKS, brand.font)],
-    ["decorativa", fuenteValida(FUENTE_STACKS, f?.decorativa)],
-  ];
-  for (const [nombre, stack] of fuentes) {
-    if (stack) reglas.push(`--marca-fuente-${nombre}:${stack}`);
+  for (const [nombre, rol] of rolesResueltos(brand)) {
+    reglas.push(`--marca-fuente-${nombre}:${FUENTE_STACKS[rol]}`);
   }
 
   return reglas.length ? `\n:root{${reglas.join(";")}}` : "";
@@ -210,8 +260,18 @@ export function tokensDeMarca(brand?: BrandTheme | null): string {
  * El `<style>` del documento.
  *
  * `usadas` llega **ya filtrado y en orden de catálogo** (lo arma el ensamblador del shell). Acá solo
- * se concatena: tokens → overrides de marca → base → piezas.
+ * se concatena: tokens → overrides de marca → `@font-face` → base → piezas.
+ *
+ * **Las `@font-face` salen de `brand`, no de un parámetro nuevo**: los roles que la ficha pide son
+ * exactamente los que ya se resolvieron para los tokens, y pedirlos por separado abriría la puerta a
+ * que el token diga Oswald y la `@font-face` no viaje. Mismo criterio que el CSS de las piezas: una
+ * página que no pide `script` no paga sus 25 KB — y una ficha sin familias propias no emite ni un byte
+ * de `@font-face` (`cssDeFuentes` devuelve `""`).
+ *
+ * El determinismo se conserva: `cssDeFuentes` emite en orden de `FAMILIAS`, no en orden de uso, así
+ * que dos páginas con la misma ficha producen el mismo `<style>` byte a byte.
  */
 export function ensamblarCss(usadas: readonly Pieza[], brand?: BrandTheme | null): string {
-  return CSS_TOKENS + tokensDeMarca(brand) + "\n" + CSS_BASE + usadas.map((p) => p.css).join("");
+  const fuentes = brand ? cssDeFuentes(rolesResueltos(brand).map(([, rol]) => rol)) : "";
+  return CSS_TOKENS + tokensDeMarca(brand) + fuentes + "\n" + CSS_BASE + usadas.map((p) => p.css).join("");
 }

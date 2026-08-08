@@ -72,6 +72,26 @@ permita self-host, y la licencia se commitea junto al archivo.
 
 ---
 
+## Subidos a Storyblok (2026-08-08)
+
+Space `293831091573700`, host `a.storyblok.com` — el de la allowlist. Sin `?token=`, así que el space
+no tiene *asset protection*: las sirve el CDN a cualquiera, que es lo que necesita un sitio anónimo.
+
+| Destino | URL |
+| --- | --- |
+| `portada` | `https://a.storyblok.com/f/293831091573700/2560x1440/30ad3813d6/axe-os-portada.jpg` |
+| `fotos[]` (galería) | `https://a.storyblok.com/f/293831091573700/1600x1200/d82ece3683/axe-os-fotos-galeria.jpg` |
+| `menu_categorias[].foto` | `https://a.storyblok.com/f/293831091573700/1200x800/8fbaedf133/axe-og-categories.jpg` |
+| `menu[].foto` | `https://a.storyblok.com/f/293831091573700/800x800/e0f8442ce6/axe-og-menu-item.jpg` |
+| `locations[].foto` | `https://a.storyblok.com/f/293831091573700/1600x1200/46847c4d05/axe-os-locations.jpg` |
+| `brand.logo` | `https://a.storyblok.com/f/293831091573700/250x250/ec3d723b80/axe-os-logo-color.png` |
+| `brand.logo` (fondo oscuro) | `https://a.storyblok.com/f/293831091573700/250x250/0499bde0b6/axe-os-logo-light.png` |
+
+**Es una foto por destino, no una por elemento.** La galería, la carta y las ubicaciones repiten la
+misma imagen tantas veces como elementos tengan. Sirve para desarrollo y para ver el render; no para
+enseñárselo a nadie. Los nombres tampoco son slugs, así que el emparejamiento por nombre de archivo
+(`hamburguesas.jpg` ↔ `category`) todavía no se puede probar de verdad.
+
 ## Estado de los assets (2026-08-08)
 
 Cargados y **con las medidas exactas** de la tabla de arriba. Tres cosas anotadas al revisarlos, para
@@ -86,9 +106,10 @@ que no muerdan más adelante:
 El logo en PNG 250×250 cubre los 40 px de alto de la cabecera con margen para retina. Con SVG no
 habría techo, pero no bloquea nada.
 
-**Falta subirlas a Storyblok.** La allowlist del renderizador solo acepta `a.storyblok.com`, así que
-mientras vivan solo acá el render las descarta. Se suben por el asset manager del space; de ahí sale
-la URL que va al perfil del cliente.
+**Ya subidas** (tabla de arriba). Lo que la subida desbloquea es **verlo en el navegador**, no
+implementarlo: los tests del render no descargan nada, así que una URL de `a.storyblok.com` inventada
+ejercita las piezas igual de bien. La documentación decía que las fotos bloqueaban la mitad B; no era
+cierto, y la corrección es esta línea.
 
 ## Antes de publicar: fotos reales o de stock
 

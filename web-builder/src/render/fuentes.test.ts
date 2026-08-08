@@ -3,7 +3,17 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { FAMILIAS, STACKS_SISTEMA, cssDeFuentes, manifiesto, rutaPublica, stackDe } from "./fuentes.js";
+import { tokensDeMarca } from "./css.js";
+import {
+  FAMILIAS,
+  PESO_TITULARES,
+  STACKS_SISTEMA,
+  archivoTitulares,
+  cssDeFuentes,
+  manifiesto,
+  rutaPublica,
+  stackDe,
+} from "./fuentes.js";
 
 const DIR = fileURLToPath(new URL("../../assets/fonts/", import.meta.url));
 
@@ -46,13 +56,111 @@ test("los archivos de fuente son woff2 de verdad, y no un HTML de error renombra
   }
 });
 
-test("los tres roles LEGACY siguen siendo stacks del sistema: ninguna web sembrada cambia de fuente", () => {
-  // `sistema`, `serif` y `moderna` son los tres valores del campo viejo `brand.font`, y TODAS las
-  // fichas sembradas usan uno. Darles una familia self-hosted les cambiaría el aspecto de golpe —
-  // la única regresión que el manual de marca puede causar, y la que la spec prohíbe.
-  for (const rol of ["sistema", "serif", "moderna"]) {
+/**
+ * ⚠️ **Los literales de esta tabla están escritos a mano y ESE es el punto.**
+ *
+ * Son los tres stacks que `css.ts` viene emitiendo en producción. Escribirlos acá —en vez de leerlos
+ * de `STACKS_SISTEMA`, que sería comprobar que una constante es igual a sí misma— es lo que hace que
+ * cambiarlos **duela**: cualquier ficha sembrada con `brand.font` se ve exactamente con esto.
+ *
+ * La versión anterior de este test solo comprobaba que los tres roles existieran en `STACKS_SISTEMA`
+ * y no estuvieran en `FAMILIAS`. Con eso pasaba en verde mientras `fuentes.ts` decía
+ * `moderna: "Inter,Segoe UI,Roboto,Helvetica Neue,sans-serif"` y `css.ts` emitía
+ * `'Helvetica Neue',Arial,sans-serif`: dos fuentes de verdad divergentes para el mismo rol, y unificar
+ * hacia la equivocada habría cambiado de tipografía todas las webs con `font: "moderna"`.
+ */
+const STACKS_DE_PRODUCCION: Array<[string, string]> = [
+  ["sistema", "system-ui,-apple-system,Segoe UI,Roboto,sans-serif"],
+  ["serif", "Georgia,'Times New Roman',serif"],
+  ["moderna", "'Helvetica Neue',Arial,sans-serif"],
+];
+
+for (const [rol, stack] of STACKS_DE_PRODUCCION) {
+  test(`🔴 legacy — «${rol}» emite EXACTAMENTE el stack que corre hoy en producción`, () => {
+    // 1. Sigue siendo del sistema y no una familia self-hosted.
     assert.ok(STACKS_SISTEMA[rol], `el rol legacy "${rol}" desapareció de los stacks del sistema`);
     assert.equal(FAMILIAS[rol], undefined, `el rol legacy "${rol}" pasó a self-hosted: eso cambia webs vivas`);
+    assert.equal(archivoTitulares(rol), null, `"${rol}" no tiene archivo que precargar: no se sirve nada`);
+
+    // 2. Y el stack es el de siempre, byte a byte, tanto en la tabla como en lo que llega al `<style>`.
+    assert.equal(stackDe(rol), stack, `stackDe("${rol}") no es el stack de producción`);
+    assert.equal(
+      tokensDeMarca({ font: rol as never }),
+      `\n:root{--marca-fuente-texto:${stack}}`,
+      `el campo legacy \`brand.font: "${rol}"\` cambió de tipografía`,
+    );
+    assert.equal(
+      tokensDeMarca({ fuentes: { titulo: rol as never } }),
+      `\n:root{--marca-fuente-titulo:${stack}}`,
+      `el rol nuevo \`fuentes.titulo: "${rol}"\` no coincide con el legacy`,
+    );
+  });
+}
+
+/**
+ * Los cuatro roles nuevos, con su familia self-hosted **resuelta hasta el token que se emite**.
+ *
+ * Hasta la mitad C, `css.ts` tenía su propia tabla donde estos cuatro caían a stacks del sistema: las
+ * `woff2` se servían y el CSS no las pedía nunca. Que el literal esperado esté escrito acá es lo que
+ * hace caer el test si alguien vuelve a desviar `condensada` a Arial Narrow.
+ */
+const STACKS_SELF_HOSTED: Array<[string, string]> = [
+  ["condensada", "'Oswald',Arial Narrow,sans-serif"],
+  ["geometrica", "'Jost',system-ui,-apple-system,Segoe UI,Roboto,sans-serif"],
+  ["humanista", "'Source Sans 3',system-ui,-apple-system,Segoe UI,Roboto,sans-serif"],
+  ["script", "'Dancing Script',Brush Script MT,cursive"],
+];
+
+for (const [rol, stack] of STACKS_SELF_HOSTED) {
+  test(`🔴 self-hosted — «${rol}» llega al token con SU familia, no con un stack del sistema`, () => {
+    assert.ok(FAMILIAS[rol], `"${rol}" dejó de tener familia propia`);
+    assert.equal(stackDe(rol), stack, `stackDe("${rol}") no resuelve a su familia self-hosted`);
+    assert.equal(
+      tokensDeMarca({ fuentes: { titulo: rol as never } }),
+      `\n:root{--marca-fuente-titulo:${stack}}`,
+      `una ficha con \`fuentes.titulo: "${rol}"\` no ve su familia`,
+    );
+  });
+}
+
+test("🔴 `stackDe` no devuelve nada para un nombre heredado del prototipo", () => {
+  // La misma trampa que `css.ts` cierra con `Object.hasOwn` (ver su comentario): `FAMILIAS["toString"]`
+  // es `Object.prototype.toString`, o sea un valor TRUTHY, y con indexación directa `stackDe` devolvía
+  // `'undefined',undefined` en vez de `null`. En PROD el perfil puede llegar de Storyblok sin pasar por
+  // Zod, así que este nombre es alcanzable desde el Visual Editor.
+  for (const hostil of ["toString", "constructor", "hasOwnProperty", "valueOf", "__proto__", "isPrototypeOf"]) {
+    assert.equal(stackDe(hostil), null, `stackDe("${hostil}") devolvió algo: hay un agujero de prototipos`);
+    assert.equal(archivoTitulares(hostil), null, `archivoTitulares("${hostil}") devolvió algo`);
+    // El tercer punto que indexa `FAMILIAS`, y el que la revisión encontró sin test: con indexación
+    // directa, `cssDeFuentes(["toString"])` metía el rol en el conjunto de "usadas" y devolvía un
+    // `"\n"` en vez de `""`. Hoy el impacto es un byte —el bucle que emite recorre `Object.entries`,
+    // así que no salía ninguna `@font-face` de más— y por eso la revisión no lo bloqueó.
+    //
+    // Se fija igual, y no por el byte: `cssDeFuentes` es un export público que declara recibir un
+    // `Iterable<string>`, o sea texto de fuera. Que no acepte claves heredadas vivía sólo en un
+    // comentario, y «una garantía en un comentario es una intención» es literalmente el modo de fallo
+    // que más veces se ha repetido en este repo.
+    assert.equal(cssDeFuentes([hostil]), "", `cssDeFuentes(["${hostil}"]) emitió algo`);
+  }
+});
+
+test("🔴 el archivo que se precarga es el del peso que usan los titulares", () => {
+  // Los titulares no declaran `font-weight` en ninguna pieza: heredan el `bold` de la hoja del
+  // navegador, que es 700. Lo fija su propio test en `ensamblado.test.ts` sobre el CSS emitido.
+  assert.equal(PESO_TITULARES, 700);
+  assert.equal(archivoTitulares("condensada")?.peso, 700, "Oswald tiene 500 y 700: se precarga el 700");
+  assert.equal(archivoTitulares("geometrica")?.peso, 700);
+  assert.equal(archivoTitulares("humanista")?.peso, 700);
+  // Dancing Script solo trae 600. Con una sola cara declarada el navegador la usa para todos los
+  // pesos, así que precargar «la más cercana a 700» es precargar la única que va a pedir.
+  assert.equal(archivoTitulares("script")?.peso, 600);
+
+  // Y siempre es un archivo que el manifiesto sabe servir: si no, el preload da 404 en silencio.
+  const publicas = new Set([...manifiesto().keys()].map((n) => `/_assets/fonts/${n}`));
+  for (const rol of Object.keys(FAMILIAS)) {
+    const a = archivoTitulares(rol);
+    assert.ok(a, `"${rol}" no tiene archivo de titulares`);
+    assert.ok(publicas.has(rutaPublica(a!)), `el preload de "${rol}" apunta fuera del manifiesto`);
   }
 });
 

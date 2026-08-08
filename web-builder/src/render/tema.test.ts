@@ -171,13 +171,18 @@ const CONSUMO: Array<{ token: string; selector: string; propiedad: string; esper
   { token: "--marca-texto", selector: "body", propiedad: "color", espera: "#445566" },
   { token: "--marca-fondo", selector: "body", propiedad: "background", espera: "#fefdfb" },
   { token: "--marca-fondo-alt", selector: ".p-faq .faq", propiedad: "background", espera: "#f1f2f3" },
-  { token: "--marca-fuente-titulo", selector: ".p-hero .hero h1", propiedad: "font-family", espera: "Arial Narrow" },
+  // ⚠️ Los dos roles self-hosted se comprueban por el nombre de la FAMILIA (`'Oswald'`,
+  // `'Dancing Script'`), no por su respaldo. Hasta la mitad C esperaban `Arial Narrow` y
+  // `Brush Script MT`, que son precisamente los respaldos de esas dos familias: el test habría seguido
+  // en verde si alguien quitara la familia self-hosted y dejara solo el stack del sistema, o sea justo
+  // el fallo que esta mitad viene a cerrar.
+  { token: "--marca-fuente-titulo", selector: ".p-hero .hero h1", propiedad: "font-family", espera: "'Oswald'," },
   { token: "--marca-fuente-texto", selector: "body", propiedad: "font", espera: "Georgia" },
   {
     token: "--marca-fuente-decorativa",
     selector: ".p-cabecera .sitebar .marca",
     propiedad: "font-family",
-    espera: "Brush Script MT",
+    espera: "'Dancing Script',",
   },
 ];
 
@@ -244,7 +249,8 @@ test("🔴 manual — con AMBAS formas gana `colores.primario` sobre el `color` 
 test("🔴 manual — con AMBAS formas gana `fuentes.texto` sobre el `font` legacy", () => {
   const css = cssDe(validProfile({ brand: { font: "serif", fuentes: { texto: "geometrica" } } }));
   const cuerpo = propiedadResuelta(css, "body", "font") ?? "";
-  assert.match(cuerpo, /Century Gothic/, "la decisión explícita gana");
+  // `Jost` desde la mitad C: `geometrica` resuelve a su familia self-hosted y ya no a Century Gothic.
+  assert.match(cuerpo, /'Jost',/, "la decisión explícita gana");
   assert.ok(!cuerpo.includes("Georgia"), "y la herencia no puede seguir pintando el cuerpo");
 });
 

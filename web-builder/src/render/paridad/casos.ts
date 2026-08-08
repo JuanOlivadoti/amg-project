@@ -156,7 +156,22 @@ export const CASOS: CasoParidad[] = [
   },
   {
     nombre: "landing-perfil-con-manual",
-    porQue: "Ficha con el manual de marca y fotos de la entrega 1. Hoy el render los ignora — si el HTML cambia por esto, el refactor se llevó por delante la separación de entregas.",
+    // ⚠️ **La única fixture retocada a mano desde que se capturó, y esto es lo que se retocó.**
+    //
+    // La mitad C de la entrega 3 añade `<link rel="preload" as="font" … crossorigin>` en el `<head>`
+    // cuando la ficha pide una familia self-hosted, y esta es la única ficha del gate que lo hace
+    // (`fuentes.titulo: "condensada"` → Oswald). El `href` del preload cae dentro de `hrefsDe`, así que
+    // esa cara de la huella cambió **por un cambio deliberado**, no por un refactor descuidado.
+    //
+    // Se añadió ESA LÍNEA a la fixture y nada más — no se re-capturó: re-capturar habría sobrescrito
+    // las diez con la foto de "después" y el gate pasaría a compararse contra sí mismo. Las otras
+    // cuatro caras (texto visible, `id`, JSON-LD y traza de research) siguen siendo las de antes del
+    // refactor, byte a byte, y las nueve fixturas restantes están intactas.
+    //
+    // Que el preload apunte a la familia y al peso correctos, que lleve `crossorigin` y que sea uno
+    // solo lo fijan sus propios tests en `shell.test.ts`; el gate solo comprueba que no aparezca ni
+    // desaparezca por accidente.
+    porQue: "Ficha con el manual de marca y fotos de la entrega 1. Desde la entrega 3 el render SÍ los consume: lo que el gate sigue exigiendo es que el texto, las anclas y el JSON-LD no se muevan por ello.",
     render: () => renderStory(storyLanding(), perfilConManual(), "es", true),
   },
   {
