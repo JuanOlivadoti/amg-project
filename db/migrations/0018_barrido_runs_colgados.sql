@@ -203,6 +203,40 @@ begin
 end;
 $$;
 
+/*
+ * -----------------------------------------------------------------------------
+ * El cambio de dueño necesita DOS permisos temporales. Medido, no supuesto.
+ * -----------------------------------------------------------------------------
+ *
+ * El primer intento de desplegar esta migración murió acá:
+ *
+ *     ✖ La migración 0018 falló y se revirtió: must be able to SET ROLE "app_barrido"
+ *
+ * y falló **solo en producción**, porque en PGlite el rol que migra es superusuario y un superusuario
+ * puede asumir cualquier rol. En Supabase alojado `postgres` NO lo es. Reproducido después con un rol
+ * `createrole` no-superusuario dueño del schema, que es la condición real: da el mismo mensaje.
+ *
+ * `ALTER … OWNER TO` exige **dos** cosas, y el mensaje solo nombra la primera:
+ *
+ *  1. **Poder hacer `SET ROLE` al nuevo dueño.** En PG16+ un rol `CREATEROLE` que crea otro recibe
+ *     `ADMIN OPTION` pero **no `SET`** — lo gobierna el GUC `createrole_self_grant`, que viene vacío.
+ *     O sea que crear el rol no alcanza para poder cedérselo. Un `grant` explícito sí: quien tiene
+ *     ADMIN OPTION puede concederlo, y un `grant` normal sí trae `SET`.
+ *  2. **Que el nuevo dueño tenga `CREATE` en el schema del objeto.** Ésta no aparece hasta que se
+ *     resuelve la primera, y entonces el error cambia a `permission denied for schema app`. Medido en
+ *     ese orden: membresía sola → sigue fallando.
+ *
+ * Los dos son **temporales**: se revocan tres líneas más abajo, y la propiedad de la función
+ * **sobrevive** al revoke (medido). El estado final es el que el diseño quería — `app_barrido` con
+ * `usage` y nada más, y ningún rol que pueda asumirlo.
+ *
+ * Con un superusuario (PGlite, los tests) estas cuatro sentencias son inocuas: ya podía hacer todo.
+ * Con uno normal (producción) son lo que hace que la migración pase. Un test las cubre aplicando la
+ * `0018` como un rol no-superusuario: sin ellas, ese test reproduce el fallo de producción.
+ */
+grant app_barrido to current_user;
+grant create on schema app to app_barrido;
+
 alter function app.expirar_runs_colgados(interval) owner to app_barrido;
 
 /*
@@ -231,3 +265,24 @@ comment on function app.expirar_runs_colgados(interval) is
 comment on index kr_runs_colgados is
   'Indice parcial para el barrido de runs colgados: solo contiene los runs vivos, asi que no crece '
   'con el historico.';
+
+/*
+ * -----------------------------------------------------------------------------
+ * Y recién ACÁ se devuelven los dos permisos temporales. El orden no es cosmético.
+ * -----------------------------------------------------------------------------
+ *
+ * Estaban justo debajo del `alter … owner` y la migración moría en la sentencia siguiente:
+ *
+ *     ✖ must be owner of function app.expirar_runs_colgados
+ *
+ * porque `revoke execute`, `grant execute` y `comment on function` **también** exigen ser dueño, y
+ * el dueño acababa de dejar de ser quien migra. Lo que hace que esas tres pasen es la membresía en
+ * `app_barrido`: Postgres resuelve "¿sos el dueño?" con `pg_has_role(current_user, dueño, 'USAGE')`,
+ * así que un miembro con `inherit` cuenta como dueño. Devolverla antes de tiempo la rompe.
+ *
+ * Lo cazó el test que aplica esta migración con un rol no-superusuario. La primera versión del
+ * arreglo —los dos revokes acá arriba— habría vuelto a fallar en producción, en la línea siguiente a
+ * la que falló la primera vez.
+ */
+revoke create on schema app from app_barrido;
+revoke app_barrido from current_user;

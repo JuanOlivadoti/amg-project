@@ -1562,3 +1562,95 @@ test("🔴 PLAZO_RUN_COLGADO: el default de producción son 3 horas, ~11x el res
   // semana es una semana sin que nadie se entere.
   assert.ok(segundos < 24 * 3600, "un run colgado se detecta el mismo día, no a los 7");
 });
+
+/**
+ * 🔴 La `0018` se aplica con un rol que **NO es superusuario** — la condición de producción.
+ *
+ * ## Por qué existe este test, que es la parte que importa
+ *
+ * El primer despliegue real de la `0018` murió:
+ *
+ *     ✖ La migración 0018 falló y se revirtió: must be able to SET ROLE "app_barrido"
+ *
+ * con **238 tests en verde**. Ninguno lo vio, y no por descuido: en PGlite las migraciones corren
+ * como `postgres`, que ahí **sí** es superusuario, y un superusuario puede asumir cualquier rol y
+ * crear en cualquier schema. En Supabase alojado `postgres` no es superusuario. O sea que el arnés
+ * entero estaba midiendo un motor con un permiso que producción no tiene.
+ *
+ * Es exactamente el modo de fallo que la cabecera de la `0018` argumenta para elegir el dueño de la
+ * función — *"daría verde en los tests y cero filas en producción"*— **un piso más arriba**: el
+ * razonamiento era correcto y el entorno donde se comprobó, no.
+ *
+ * ## Qué reproduce, y por qué esto es fiel y no un montaje
+ *
+ * Un rol `createrole` **sin** superusuario que **es dueño del schema `app`** — que es lo que pasa en
+ * producción, donde el mismo rol que corre esta migración creó ese schema en la `0001`. Se le pasa la
+ * propiedad del schema y de `kr_runs` (lo que la `0018` necesita poder conceder) y se aplica la
+ * migración con `set role`.
+ *
+ * Sin los dos `grant` temporales que la `0018` hace antes del `alter … owner`, este test falla con el
+ * mensaje literal de producción. Es la única forma honesta de fijar esa garantía desde acá.
+ */
+test("🔴 barrido: la 0018 se aplica con un rol NO superusuario (la condición de producción)", async () => {
+  const pg = new PGlite();
+  try {
+    await asegurarAuthStandIn(pg);
+    const archivos = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
+    const previas = archivos.filter((f) => f < "0018_");
+    const la0018 = archivos.filter((f) => f.startsWith("0018_"));
+    // Control positivo del recorte: sin él, un filtro roto aplicaría "nada" y el test pasaría sin
+    // haber ejercitado la migración — el mismo cuidado que el test de la 0017.
+    assert.ok(previas.length >= 15, `esperaba las migraciones previas y encontré ${previas.length}`);
+    assert.equal(la0018.length, 1, "la 0018 tiene que ser exactamente un archivo");
+
+    for (const f of previas) await pg.exec(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
+
+    // El rol que migra en producción: puede crear roles, NO es superusuario, y es dueño de lo que
+    // la 0018 va a tocar.
+    /*
+     * La lista es explícita y **completa**: la `0018` concede sobre cuatro cosas de distinto dueño (los
+     * schemas `public` y `app`, `kr_runs` y `memberships`), y conceder exige ser dueño. Este test ya
+     * falló dos veces por reproducir la condición a medias — primero con solo el schema y `kr_runs`
+     * (`permission denied for table memberships`), y `reassign owned by` no sirve porque el rol de
+     * PGlite posee además objetos del sistema. Si la `0018` empieza a conceder sobre algo más, este
+     * test se pone rojo con el nombre de lo que falta, que es el comportamiento correcto.
+     */
+    await pg.exec(`
+      create role migrador_no_super createrole;
+      alter schema app owner to migrador_no_super;
+      alter schema public owner to migrador_no_super;
+      alter table kr_runs owner to migrador_no_super;
+      alter table memberships owner to migrador_no_super;
+    `);
+
+    const { rows: antes } = await pg.query<{ super: boolean }>(
+      "select rolsuper as super from pg_roles where rolname = 'migrador_no_super'",
+    );
+    assert.equal(antes[0]?.super, false, "el rol de la prueba NO puede ser superusuario, o no prueba nada");
+
+    await pg.exec("set role migrador_no_super");
+    await pg.exec(readFileSync(join(MIGRATIONS_DIR, la0018[0]!), "utf8"));
+    await pg.exec("reset role");
+
+    // Y quedó como el diseño quería: la función es de `app_barrido`…
+    const { rows: dueno } = await pg.query<{ rolname: string }>(
+      `select r.rolname
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+         join pg_roles r on r.oid = p.proowner
+        where n.nspname = 'app' and p.proname = 'expirar_runs_colgados'`,
+    );
+    assert.equal(dueno[0]?.rolname, "app_barrido", "el dueño es lo único que hace que la función sirva");
+
+    // …y los dos permisos temporales NO quedaron puestos. Si se olvidara el revoke, el rol del barrido
+    // se quedaría con `create` sobre el schema `app`, y quien migra, como miembro suyo.
+    const { rows: sobras } = await pg.query<{ crea: boolean; miembro: boolean }>(
+      `select has_schema_privilege('app_barrido', 'app', 'CREATE') as crea,
+              pg_has_role('migrador_no_super', 'app_barrido', 'USAGE') as miembro`,
+    );
+    assert.equal(sobras[0]?.crea, false, "quedó `create on schema app` para app_barrido");
+    assert.equal(sobras[0]?.miembro, false, "quien migró quedó como miembro de app_barrido");
+  } finally {
+    await pg.close();
+  }
+});

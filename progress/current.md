@@ -37,7 +37,28 @@ bloque **I** del plan, y el generador de credenciales ganó su entrada en `histo
 
 ---
 
-## 🛑 El push de `bfda1c5` está RETENIDO a propósito
+## ⚠️ La `0018` falló en el primer despliegue, y el arreglo está hecho
+
+`must be able to SET ROLE "app_barrido"`. **Falló bien** —se revirtió, las 15 anteriores intactas—
+pero falló **solo en producción**, con 238 tests en verde: en PGlite el rol que migra es superusuario
+y puede asumir cualquier rol; en Supabase alojado `postgres` no lo es.
+
+Es el mismo modo de fallo que la cabecera de la `0018` argumenta para elegir el dueño de la función
+—*"daría verde en los tests y cero filas en producción"*— **un piso más arriba**: el razonamiento era
+correcto y el entorno donde se comprobó, no.
+
+Reproducido y arreglado. `ALTER … OWNER TO` exige **dos** permisos y el mensaje solo nombra el
+primero: poder `SET ROLE` al nuevo dueño (en PG16+ crear un rol da `ADMIN OPTION` pero no `SET`) y que
+ese dueño tenga `CREATE` en el schema. Los dos se conceden temporalmente y **se revocan al final del
+archivo, no justo después del `alter`** — porque `revoke execute`, `grant execute` y
+`comment on function` también exigen ser dueño, y la membresía es lo que los hace pasar. Esa segunda
+mitad la cazó el test, no el razonamiento: la primera versión del arreglo habría vuelto a fallar en la
+línea siguiente.
+
+**El test nuevo aplica la `0018` con un rol `createrole` no-superusuario dueño de lo que la migración
+concede.** Sin los grants reproduce el mensaje literal de producción.
+
+## 🛑 El push está RETENIDO a propósito
 
 **No es un olvido.** `tiene_workflow` entra en `RUN_SUMMARY_COLS`, que usan las tres lecturas de run
 (`getRun`, `listRuns`, `listAllRuns`). Sin la columna de la `0019` aplicada, esas tres consultas
