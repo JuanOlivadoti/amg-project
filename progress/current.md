@@ -38,12 +38,34 @@ qué pasa cuando faltan.
    que alguien toque un deny se vuelve una puerta que nadie recuerda haber abierto. Acotado a
    `.env.example`.
 
-**▶️ Lo próximo (2026-08-08):** **A3** está desbloqueado (el token de Railway ya está en la fuente),
-pendiente de que Juan confirme si ese token es de solo lectura o no — ver el `09`. Y después, el paso
-**6** del orden del plan, que es una elección real —
-**J** (pieza 3, *Ideas*: plan escrito, sin decisiones pendientes, desbloquea la pieza 4) o **E** (el
-aspecto de las webs: lo que más cambia lo que se puede vender, pero pide sesión de diseño). El paso 5
-—**A4** y luego **A3**— sigue esperando a Juan. **C-1** y **C-2**, abiertos y sin bloquear a nadie.
+## ✅ A3 — `npm run auditar:railway`, y encontró cosas a la primera corrida
+
+**🔴 La API tenía las credenciales de los otros dos procesos.** En `amg-project` estaban
+`DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, `DATABASE_URL_RENDER`, `INNGEST_SIGNING_KEY`,
+`PREVIEW_SECRET` y `STORYBLOK_WEBHOOK_SECRET`. Postgres sigue impidiendo que `amg_api` **asuma**
+`app_service`, pero un proceso que tiene el DSN del orquestador **no necesita asumir nada: se conecta
+como él**. La compartimentación que `env:sync` impone en local con un test no la imponía nadie en
+producción.
+
+**🟠 El renderizador no tiene ni un token de Storyblok** — arranca igual y no puede leer la CDA. Es la
+respuesta medida a *"quiero que funcione el Visual Editor"*: **hoy no puede**.
+
+**🟠 Tres valores del orquestador difieren de la fuente** (`PIPELINE_MODO`, `WEB_PUBLISH_MODE`,
+`STORYBLOK_DRY_RUN`): se editaron en el panel y no en `credenciales.env`.
+
+Dos cosas que solo se supieron corriéndolo: el servicio de la API se llama **`amg-project`**, y el
+token es de **proyecto** (cabecera `Project-Access-Token`; con `Bearer` responde **200 con
+`Not Authorized`**, un 200 que no es un éxito). Y el diseño cambió al medirlo: con **un** inventario
+gritaba catorce veces por un orquestador sano, así que hay dos niveles —`OBLIGATORIAS` y
+`SEGUN_MODO`—, porque un comparador que grita por un despliegue sano se ignora a la tercera corrida.
+
+956 tests.
+
+**▶️ Lo próximo (2026-08-08):** decidir qué hacer con los tres hallazgos de A3 (el primero es de
+seguridad y lo arregla Juan en el panel), y arrancar el **bloque E** —el aspecto de las webs— que es
+lo que Juan eligió, con el Visual Editor dentro del alcance — y el hallazgo del renderizador dice que
+esa parte hoy **no puede funcionar**, así que empieza por ahí y no por el diseño. **Bloque A cerrado
+entero.** **C-1** y **C-2**, abiertos y sin bloquear a nadie.
 
 **Los siete hallazgos, clasificados** (el reporte completo, en `progress/informes/`, no versionado):
 cinco verificados, uno aceptado por juicio, **una mutación refutada**. Ninguno contradice una decisión

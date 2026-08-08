@@ -157,7 +157,42 @@ margen, y se escribe de dónde sale.
      cual el 3 pasaría con una guarda que bloquea todo.
 - **Coste:** pieza mediana. Cruza `orchestrator/` y `db/`, así que el contrato se fija antes.
 
-### A3. Verificar el DESPLIEGUE, no solo la fuente
+### A3. Verificar el DESPLIEGUE, no solo la fuente — ✅ **hecho el 2026-08-08**
+
+> **`npm run auditar:railway`.** Y encontró cosas a la primera corrida, que es de lo que se trataba.
+>
+> **🔴 La API tenía las credenciales de los otros dos procesos.** En `amg-project` estaban
+> `DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, `DATABASE_URL_RENDER`, `INNGEST_SIGNING_KEY`,
+> `PREVIEW_SECRET` y `STORYBLOK_WEBHOOK_SECRET`. Postgres sigue impidiendo que `amg_api` **asuma**
+> `app_service` (ADR-17), pero **un proceso que tiene el DSN del orquestador no necesita asumir nada:
+> se conecta como él**. La compartimentación que `env:sync` impone en local con un test no la imponía
+> nadie en producción — y eso es exactamente lo que este comando existe para ver. El informe no lo
+> llama "sobra una variable": lo llama *credencial de otro proceso*, con su dueño.
+>
+> **🟠 El renderizador no tiene ni un token de Storyblok** (`STORYBLOK_PUBLIC_TOKEN`,
+> `STORYBLOK_PREVIEW_TOKEN`, `STORYBLOK_SPACE_ID`, `STORYBLOK_REGION`, `DEMO_DOMAIN`). Arranca igual
+> —ninguna es obligatoria en su `leerConfig`— y no puede leer la Content Delivery API. Es la respuesta
+> medida a *"quiero que funcione el Visual Editor"*: hoy no puede.
+>
+> **🟠 Tres valores del orquestador difieren de la fuente** (`PIPELINE_MODO`, `WEB_PUBLISH_MODE`,
+> `STORYBLOK_DRY_RUN`): se editaron en el panel y no en `credenciales.env`. Es la deriva que el
+> comando existe para detectar, en su forma más benigna.
+>
+> **Dos cosas que solo se supieron corriéndolo:**
+>
+> - **El servicio de la API se llama `amg-project`**, no `amg-api`. La primera versión asumió el
+>   nombre y no encontró nada; por eso el error de descubrimiento ahora lista los servicios reales.
+> - **El token es de PROYECTO**, y va en la cabecera `Project-Access-Token`. Con `Authorization:
+>   Bearer` toda query responde **HTTP 200 con `errors: ["Not Authorized"]`** — un 200 que no es un
+>   éxito, la misma forma de fallo que este bloque combate. Y es mejor que uno de cuenta: viene
+>   acotado a un proyecto y un entorno, y él mismo dice cuáles.
+>
+> **El diseño que sobrevivió al contacto con la realidad:** la primera versión tenía **un** inventario
+> y gritaba catorce veces por el orquestador, cuyas ausencias son todas correctas (sin `DATAFORSEO_*`
+> el research es mock, sin `OPENAI_API_KEY` la prosa es mock, sin token de Storyblok se publica en
+> dry-run). Un comparador que grita por un despliegue sano se ignora a la tercera corrida. Así que hay
+> **dos niveles**: `OBLIGATORIAS` (medidas en el `faltan` de cada `leerConfig`; su ausencia es fallo) y
+> `SEGUN_MODO` (su ausencia **no es un olvido, es una declaración**, y el informe dice qué declara).
 
 **El problema.** `npm run probar-dsn` verifica el DSN de `docs/private/credenciales.env` — la fuente
 de verdad — y **no** lo que tiene el proceso desplegado. El 2026-08-07 dio verde mientras Railway
