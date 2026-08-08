@@ -11,6 +11,47 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-08 (noche, 3) — entrega 3A: el sitio por fin cambia de aspecto, y tres comentarios que no eran garantías
+
+La primera entrega del bloque E que se ve. Los cinco arreglos visuales y los nueve tokens de marca
+consumidos de verdad: la web de un cliente deja de distinguirse solo por un color de acento.
+
+**La decisión estructural la tomó el implementador y no estaba en el encargo: dos capas de tokens.**
+Los `--marca-*` dicen lo que dice la ficha; una capa semántica en medio es la que consumen las piezas.
+El argumento es bueno y por eso la acepté: sin esa capa, corregir el contraste del acento en modo
+oscuro habría exigido **reescribir el token del cliente**, o sea mentir sobre lo que dice su ficha.
+Con ella, el acento legible es un derivado en CSS y la ficha sigue diciendo `#a3122b`.
+
+**Un error mío que apareció al medir.** Propuse `#c8963e` como `secundario` de la paleta de
+`template1` sin comprobar contraste, y el mapeo `secundario → --muted` que venía de la entrega 2 lo
+convertía en el color del lede, las direcciones, los horarios, el nav y la línea técnica: **2.62:1
+sobre su propio fondo**, falla AA. La web del cliente de demo habría salido con todo el texto
+secundario en oro ilegible. El arreglo de fondo es conceptual y vale más que el número: «secundario»
+en un manual de marca es el segundo color **de marca**, decorativo — no el gris del texto secundario.
+Atarlos obliga a que el segundo color de marca sea legible como cuerpo de texto, o sea a que sea otro
+gris, y desperdicia el campo. `--muted` volvió a neutro y `--marca-secundario` quedó emitido sin
+consumidor, que es honesto, hasta que la mitad B traiga superficie decorativa.
+
+**Y la revisión encontró tres cosas del mismo tipo, que es el tipo de esta sesión entera: una decisión
+deliberada que solo vive en un comentario.** El umbral de 28 caracteres del CTA no lo fijaba ningún
+test —cualquier valor entre 15 y 39 pasaba— y el JSDoc afirmaba literalmente que *«bajarlo o subirlo
+tiene que doler en un test»*. Mi decisión sobre `--muted` tampoco mordía, y el motivo es sutil: el
+test usaba una ficha **sin marca**, y el default de `--marca-secundario` era el mismo `#6b7280` que el
+neutro, así que resolvía al mismo hex por los dos caminos y no distinguía cuál estaba enchufado. Y el
+`@supports` que protege el `color-mix` se podía quitar entero sin que cayera nada, porque el parser
+del helper de test entra en los `@supports` siempre.
+
+Los tres tenían la misma forma y el mismo remedio: un test que fije **el borde**, no el rango.
+
+De propina, la revisión corrigió una frase mía con tono de certeza: decía que sin el `@supports` el
+precio *«no se vería de ningún color»*. No es así — `color` es heredada, así que caería al color del
+cuerpo. Se pierde el acento, no el texto. El `@supports` sigue siendo lo correcto; la frase, no.
+
+**1158 tests.** Y lo que se ve: en oscuro las líneas de la carta eran casi blancas sobre negro y los
+precios salían a 2.41:1; ahora las líneas son grises y los precios rosa claro, a 5.50:1.
+
+---
+
 ## 2026-08-08 (noche, 2) — entrega 2: reorganizar el render sin que el sitio se entere
 
 La entrega que **no se ve**, y por eso lo primero fue lo único que no se podía hacer después:

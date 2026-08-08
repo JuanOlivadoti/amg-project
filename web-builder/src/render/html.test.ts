@@ -4,8 +4,16 @@ import { renderBlogIndex, renderHome, renderMenu, renderStory } from "./html.js"
 import { pageToStory } from "../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../fixtures.js";
 import type { NavItem } from "../types.js";
+import { tokenResuelto } from "./css-de-prueba.js";
 
 const story = () => pageToStory(validPage(), validBrief());
+
+/** El `<style>` del documento, para preguntarle por un token ya resuelto. */
+function estiloDe(html: string): string {
+  const m = html.match(/<style>([\s\S]*?)<\/style>/);
+  assert.ok(m, "el documento tiene que llevar un <style>");
+  return m![1]!;
+}
 
 /** Extrae y parsea el bloque JSON-LD del HTML. */
 function extractLd(html: string): { "@graph": Array<{ "@type": string; [k: string]: unknown }> } {
@@ -122,8 +130,12 @@ test("🔴 revisión externa #2 — con AMBOS (telephone/address clásicos Y loc
 // ---------------------------------------------------------------- marca por tenant (tema)
 
 test("tema: un color de marca válido pinta el acento", () => {
+  // Desde la entrega 3 el legacy `color` no declara `--accent` directamente: alimenta
+  // `--marca-primario`, y `--accent` lo consume. Lo que importa es lo mismo de siempre —el hex del
+  // cliente termina siendo el acento que se ve— así que el test resuelve la cadena en vez de
+  // comprobar una cadena de texto que era un detalle de emisión.
   const html = renderStory(story(), validProfile({ brand: { color: "#0a7d34" } }));
-  assert.match(html, /--accent:#0a7d34/, "el hex de marca entra como variable CSS");
+  assert.equal(tokenResuelto(estiloDe(html), "--accent"), "#0a7d34", "el hex de marca pinta el acento");
 });
 
 test("🔴 tema: un color con inyección CSS se DESCARTA, no se inyecta", () => {
@@ -135,7 +147,7 @@ test("🔴 tema: un color con inyección CSS se DESCARTA, no se inyecta", () => 
 
 test("🔴 tema: la fuente sale de una allowlist, no es texto libre", () => {
   const ok = renderStory(story(), validProfile({ brand: { font: "serif" } }));
-  assert.match(ok, /--font:Georgia/, "la fuente elegida mapea a un stack seguro");
+  assert.match(tokenResuelto(estiloDe(ok), "--font"), /^Georgia/, "la fuente elegida mapea a un stack seguro");
 
   // Un valor fuera de la allowlist se ignora (no se puede escribir el stack a mano).
   const malo = renderStory(story(), validProfile({ brand: { font: "</style><script>" } as never }));

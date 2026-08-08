@@ -60,12 +60,15 @@ export const cabecera: Pieza = {
   raiz: "p-cabecera",
   css: `.p-cabecera .sitebar{border-bottom:1px solid #eee;padding:14px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;max-width:1100px;margin:0 auto}
 .p-cabecera .sitebar .brand{display:inline-flex;align-items:center;text-decoration:none;color:var(--fg)}
-.p-cabecera .sitebar .marca{font-weight:700;font-size:1.15rem;letter-spacing:-.01em}
+/* El nombre del negocio ES el logotipo cuando no hay imagen, así que se dibuja con la fuente
+   DECORATIVA del manual — es el único sitio del sitio donde una tipografía de rótulo tiene sentido.
+   Sin manual, ese token cae a la fuente del cuerpo y la cabecera se ve exactamente como hoy. */
+.p-cabecera .sitebar .marca{font-weight:700;font-size:1.15rem;letter-spacing:-.01em;font-family:var(--fuente-decorativa)}
 .p-cabecera .sitebar .logo{display:block}
 .p-cabecera .nav{display:flex;gap:6px 18px;flex-wrap:wrap;margin-left:auto;font-size:.95rem}
 .p-cabecera .nav a{text-decoration:none;color:var(--muted);padding:4px 2px;border-bottom:2px solid transparent;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .p-cabecera .nav a:hover{color:var(--fg)}
-.p-cabecera .nav a.activo{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
+.p-cabecera .nav a.activo{color:var(--fg);border-bottom-color:var(--acento-legible);font-weight:600}
 @media(prefers-color-scheme:dark){.p-cabecera .sitebar{border-color:#222}}
 `,
 

@@ -23,10 +23,12 @@ export const locales: Pieza = {
   css: `.p-locales .ubicaciones{border:0;padding:16px 0 0}
 /* El \`letter-spacing\` viene de \`section h2\` del CSS viejo, no de \`footer h2\`: ver la explicación
    completa en \`contacto.ts\`, que perdió el mismo valor por el mismo empate de especificidad. */
-.p-locales h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em}
-.p-locales h3{font-size:.95rem;margin:0 0 4px;color:var(--fg)}
+.p-locales h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
+.p-locales h3{font-size:.95rem;margin:0 0 4px;color:var(--titulo);font-family:var(--fuente-titulo)}
 .p-locales p{margin:0 0 6px}
 .p-locales .local{margin:0 0 16px;color:var(--muted)}
+/* Mismo arreglo que en \`contacto\`, y por el mismo motivo: ver el comentario de ahí. */
+.p-locales a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
 `,
 
   render(ctx: CtxPieza): string {

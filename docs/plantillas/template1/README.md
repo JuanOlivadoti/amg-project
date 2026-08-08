@@ -72,6 +72,24 @@ permita self-host, y la licencia se commitea junto al archivo.
 
 ---
 
+## Estado de los assets (2026-08-08)
+
+Cargados y **con las medidas exactas** de la tabla de arriba. Tres cosas anotadas al revisarlos, para
+que no muerdan más adelante:
+
+| Qué | Por qué importa | Estado |
+| --- | --- | --- |
+| **La portada trae el logo incrustado** («Borcelle Burger», arriba a la izquierda) | La cabecera ya dibuja el logo, así que saldría **dos veces**. Y un logo quemado en el JPG no lo lee un buscador, no se cambia sin reeditar la foto y se pixela al reescalar | ⏳ pendiente: la misma foto sin el logo |
+| **La marca es «Borcelle Burger», no La Birra Bar** | Sembrarlas en la ficha del cliente de la demo pondría el logo de otro negocio en su web — el mismo problema que un precio inventado, y más visible | ✅ resuelto por diseño: las usa un cliente **ficticio** del `dev-server`, y La Birra Bar espera las suyas |
+| **Una foto por carpeta** donde se esperaban varias | La galería sale con seis copias de la misma imagen. Sirve para desarrollo; no para enseñárselo a un cliente | ⏳ mejorable: 3-4 distintas en `galeria/` |
+
+El logo en PNG 250×250 cubre los 40 px de alto de la cabecera con margen para retina. Con SVG no
+habría techo, pero no bloquea nada.
+
+**Falta subirlas a Storyblok.** La allowlist del renderizador solo acepta `a.storyblok.com`, así que
+mientras vivan solo acá el render las descarta. Se suben por el asset manager del space; de ahí sale
+la URL que va al perfil del cliente.
+
 ## Antes de publicar: fotos reales o de stock
 
 Si estas fotos son de **stock** y no del negocio, hay que decirlo donde se siembran

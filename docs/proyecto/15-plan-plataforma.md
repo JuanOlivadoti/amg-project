@@ -622,7 +622,7 @@ Hay tres piezas, con spec escrita y **sin empezar**:
 3. **Rediseño de la carta** — categorías con foto, precios por ración. **Los campos ✅ entraron con la
    entrega 1**; falta la pieza `cartaCategorias` (entrega 3).
 
-### 🔵 Entrega 3 — piezas nuevas y arreglos visuales (siguiente)
+### 🟡 Entrega 3 — piezas nuevas y arreglos visuales (mitad A ✅, mitad B pendiente)
 
 **Es la entrega donde el sitio cambia de aspecto**, y por eso va después de que la 2 haya demostrado
 paridad: si el rediseño y el refactor entran juntos, un cambio inesperado no se puede atribuir a
@@ -632,8 +632,9 @@ Se parte sola en dos mitades por una razón que no es de diseño sino de disponi
 
 | Mitad | Qué | ¿Necesita fotos? |
 | --- | --- | --- |
-| **A** | Los **seis arreglos visuales** (modo oscuro completo, doble borde de la carta, enlaces del pie, contraste del acento en oscuro, CTA largo), las **tipografías self-hosted** y el **uso real de los 9 tokens de marca** en el CSS de las piezas | **No** |
-| **B** | `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias` | **Sí** |
+| **A** ✅ | Los **cinco arreglos visuales** (modo oscuro completo, doble borde de la carta, enlaces del pie, contraste del acento en oscuro, CTA largo) y el **uso real de los 9 tokens de marca** en el CSS de las piezas | **No** |
+| **B** | `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias`, la allowlist de hosts de imagen con su `referrerpolicy` y el presupuesto de 60 `<img>` | **Sí** |
+| **C** | Las **tipografías self-hosted** y el test de *cero terceros en el CSS emitido* | No, pero traen una **ruta pública nueva** al proceso anónimo |
 
 La mitad **A** es la que hace que dos restaurantes dejen de distinguirse solo por un color de acento,
 y hoy se puede verificar entera en un navegador. La **B** no: su gate pide *"el sitio manejado en un
@@ -646,6 +647,33 @@ renderizador solo acepta `a.storyblok.com`. Las URLs de foto del seed apuntan ho
 existen**, así que hasta subirlos la web de demo saldría con imágenes rotas en cuanto el render las
 dibuje. La paleta y los roles tipográficos ya están decididos en
 [`marca.json`](../plantillas/template1/marca.json).
+
+
+#### ✅ Mitad A — hecha el 2026-08-08
+
+**La decisión que ordena el resto: dos capas de tokens.** Los `--marca-*` dicen lo que dice la ficha
+del cliente; una capa semántica en medio (`--fg`, `--titulo`, `--accent`, `--acento-legible`,
+`--sobre-acento`…) es la que consumen las piezas, y la única que reescribe el modo oscuro. Sin esa
+capa, corregir el contraste del acento en oscuro habría exigido **reescribir el token del cliente**,
+o sea mentir sobre lo que dice su ficha.
+
+**`colores.primario` ya gana sobre el legacy `color`**, y lo que lo consigue es que `tokensDeMarca()`
+dejó de emitir `--accent`/`--font`: emitirlos era exactamente lo que lo impedía, porque iban después
+de la capa semántica y la pisaban por cascada.
+
+**`--marca-secundario` queda emitido y SIN consumidor**, a propósito. Estuvo alimentando `--muted`
+—el color del lede, las direcciones, los horarios, el nav y la línea técnica— hasta que se midió: el
+`secundario` de la paleta ya decidida (`docs/plantillas/template1/marca.json`, `#c8963e`) sobre su
+fondo da **2.62:1** y falla AA. «Secundario» en un manual de marca es el segundo color **de marca**,
+decorativo; no el gris del texto secundario. Espera consumidor en la mitad B, donde hay superficie
+decorativa de verdad.
+
+**Lo que encontró la revisión**, y es todo del mismo tipo — una decisión deliberada que solo vivía en
+un comentario: el umbral de 28 caracteres del CTA no lo fijaba ningún test (cualquier valor entre 15
+y 39 pasaba, y el JSDoc afirmaba que «tiene que doler en un test»); la decisión de `--muted` tampoco,
+porque el test usaba una ficha sin marca y el default coincidía con el neutro, así que resolvía igual
+por los dos caminos; y el `@supports` del `color-mix` se podía quitar sin que cayera nada. Los tres,
+ahora con test de borde y mutación comprobada.
 
 **Lo que la entrega 2 dejó preparado y esta consume:** los 9 tokens `--marca-*` ya se emiten en el
 `<style>` con los valores actuales como default, sin que nadie los use. Esta entrega es la que los

@@ -23,8 +23,13 @@ export const contacto: Pieza = {
    \`letter-spacing\` seguía llegando del otro. Al repartir el CSS por piezas se cayó, y una revisión
    lo cazó con un comparador de cascada; el método de "buscar dueño por declaración" no podía verlo,
    porque la declaración SÍ tenía dueño (cuatro piezas se la llevaron) y aun así dejó de llegar acá. */
-.p-contacto h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em}
+.p-contacto h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 .p-contacto p{margin:0 0 6px}
+/* El \`tel:\` salía con el azul del navegador y el subrayado por defecto: dentro de un pie sobrio es
+   lo único que grita, y el azul no es de la marca de nadie. Toma el color del texto y conserva un
+   subrayado —tenue, pero subrayado— porque quitarlo dejaría un enlace que no se puede distinguir de
+   un párrafo salvo por el cursor. */
+.p-contacto a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
 `,
 
   render(ctx: CtxPieza): string {

@@ -4,6 +4,7 @@ import { pageToStory } from "../handoff/adapter.js";
 import { perfilConManual, perfilLegacy, validBrief, validPage, validProfile } from "../fixtures.js";
 import type { BrandTheme, Story } from "../types.js";
 import { tokensDeMarca } from "./css.js";
+import { tokenResuelto } from "./css-de-prueba.js";
 import { ctxDe, perfilCompleto } from "./ctx-de-prueba.js";
 import { renderBlogIndex, renderHome, renderMenu, renderStory } from "./html.js";
 import { CATALOGO, piezaPorId } from "./piezas/index.js";
@@ -145,26 +146,29 @@ test("el CSS base emite los tokens del manual con los valores actuales como defa
   }
 });
 
-test("🔴 `colores.primario` NO pisa `--accent` (si lo hiciera, esta entrega cambiaría el aspecto del sitio)", () => {
-  // La entrega 2 emite los tokens SIN usarlos: es lo que mantiene exigible el criterio de paridad.
-  // Usarlos es la entrega 3, y ahí el gate ya no es "no cambies nada".
+test("`colores.primario` SÍ pisa el acento: la entrega 3 es la que enchufa el manual", () => {
+  // Este test estaba escrito al revés hasta la entrega 2 —"NO pisa `--accent`"— y era correcto
+  // entonces: los tokens se emitían sin consumirse para que el gate de paridad siguiera siendo
+  // exigible. Invertirlo es el trabajo de esta entrega, no una regresión.
   const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
-  assert.match(css, /--marca-primario:#0a7d34/, "el token del manual sí sale");
-  assert.ok(!css.includes("--accent:#0a7d34"), "pero el acento sigue siendo el legacy");
-  assert.ok(!css.includes("--font:'Segoe UI'"), "y la fuente del cuerpo tampoco la toca `fuentes.texto`");
-  assert.match(css, /--marca-fuente-texto:'Segoe UI'/, "que sí sale como token del manual");
+  assert.match(css, /--marca-primario:#0a7d34/, "el token del manual sale");
+  assert.match(css, /--marca-fuente-texto:'Segoe UI'/);
+  // Y el que se ve, ya resuelto (la cadena completa se prueba en `tema.test.ts`).
+  assert.equal(tokenResuelto(css, "--accent"), "#0a7d34");
+  assert.match(tokenResuelto(css, "--font"), /^'Segoe UI'/);
 });
 
-test("la ficha legacy `{color, font}` sigue pintando el sitio exactamente igual", () => {
+test("la ficha legacy `{color, font}` sigue alimentando los tokens del manual (resolución legacy→nuevo)", () => {
   const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilLegacy()));
-  assert.match(css, /--accent:#0a7d34/);
-  assert.match(css, /--font:Georgia/);
-  // Y de paso alimenta el token nuevo, que es la resolución legacy→nuevo.
   assert.match(css, /--marca-primario:#0a7d34/);
   assert.match(css, /--marca-fuente-texto:Georgia/);
+  // ⚠️ `--accent`/`--font` ya NO se emiten desde el legacy: los declara la capa semántica del base
+  // apuntando al token de marca. Emitirlos acá era justo lo que impedía que el manual ganara.
+  assert.ok(!css.includes("--accent:#0a7d34"), "el legacy no puede volver a declarar el semántico");
+  assert.ok(!css.includes("--font:Georgia"));
 });
 
-test("🔴 con AMBAS formas gana la específica: `colores.primario` sobre `color` en el token del manual", () => {
+test("🔴 con AMBAS formas gana la específica: `colores.primario` sobre `color`", () => {
   const css = estilo(
     renderStory(
       pageToStory(validPage(), validBrief()),
@@ -172,8 +176,7 @@ test("🔴 con AMBAS formas gana la específica: `colores.primario` sobre `color
     ),
   );
   assert.match(css, /--marca-primario:#0a7d34/, "la decisión explícita gana a la herencia");
-  assert.ok(!css.includes("--marca-primario:#111111"));
-  assert.match(css, /--accent:#111111/, "y el legacy sigue mandando sobre el acento, que es lo que se ve");
+  assert.ok(!css.includes("#111111"), "y la herencia no puede quedar declarada en ningún sitio");
 });
 
 test("🔴 un token de marca que no valida se DESCARTA y cae al default, no rompe la página", () => {

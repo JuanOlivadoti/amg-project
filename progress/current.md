@@ -7,10 +7,39 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-08
-**En curso:** **bloque E** — el aspecto de las webs. **Entregas 1 y 2 de 3 terminadas**; queda la 3
-(piezas nuevas y arreglos visuales), que es donde el sitio cambia de aspecto.
-**Estado:** listo. **1120 tests**, typecheck limpio, y las cuatro páginas manejadas en un navegador
-en claro y oscuro, escritorio y móvil.
+**En curso:** **bloque E** — el aspecto de las webs. Entregas **1** y **2** cerradas, y la **3 va por
+la mitad A**: los cinco arreglos visuales y los 9 tokens de marca consumidos. Queda la mitad B (las
+piezas con imagen) y las tipografías self-hosted.
+**Estado:** listo. **1158 tests**, typecheck limpio, y las webs manejadas en un navegador en claro y
+oscuro — donde por fin se ve el cambio.
+
+## ✅ Entrega 3, mitad A — el sitio por fin cambia de aspecto
+
+Los **cinco arreglos visuales** y los **9 tokens de marca consumidos de verdad**. Es la primera
+entrega del bloque que se ve, y se ve: la web de Bella Napoli pasó del rojo por defecto a su verde,
+con el rótulo en script y los titulares condensados.
+
+**La decisión que ordena el resto: dos capas de tokens.** Los `--marca-*` dicen lo que dice la ficha;
+una capa semántica en medio es la que consumen las piezas. Sin ella, corregir el contraste del acento
+en modo oscuro habría exigido **reescribir el token del cliente** — mentir sobre su ficha. Con ella,
+el acento legible es un derivado (`color-mix`) y la ficha sigue diciendo `#a3122b`.
+
+**Lo que se ve en oscuro** es lo más notable: las líneas de la carta eran casi blancas sobre negro (el
+hueco que la entrega 2 trasladó a propósito) y los precios salían en rojo oscuro a **2.41:1**. Ahora
+las líneas son grises y los precios rosa claro, **5.50:1**.
+
+**Un error mío que encontró el implementador midiendo.** Propuse `#c8963e` como `secundario` de la
+paleta sin comprobar contraste, y el mapeo `secundario → --muted` lo convertía en el color del lede,
+las direcciones, los horarios y el nav: **2.62:1**, falla AA. La web del cliente de demo habría salido
+con todo el texto secundario en oro ilegible. El arreglo de fondo es conceptual: «secundario» es el
+segundo color **de marca**, decorativo, no el gris del texto secundario. Ahora `--muted` es neutro
+fijo y `--marca-secundario` queda emitido sin consumidor hasta la mitad B.
+
+**Y lo que encontró la revisión, todo del mismo tipo:** tres decisiones deliberadas que solo vivían en
+un comentario. El umbral de 28 caracteres del CTA no lo fijaba ningún test —cualquier valor entre 15 y
+39 pasaba, y el JSDoc afirmaba que «tiene que doler en un test»—; mi decisión sobre `--muted` tampoco,
+porque el test usaba una ficha sin marca y el default coincidía con el neutro; y el `@supports` del
+`color-mix` se podía quitar sin que cayera nada. Los tres, ahora con test de borde y mutación.
 
 ## ✅ Entrega 2 — ensamblado y piezas, con paridad
 
@@ -94,10 +123,10 @@ generada → `perfilValido`— y exige que el perfil salga entero. Mutación com
 - **El ancla anti-deriva comparaba tres claves a mano**, así que quedó verde con el seed sin ninguno
   de los cuatro campos nuevos. Ahora recorre las claves del JSON publicado y crece sola.
 
-**▶️ Lo próximo:** la **entrega 3** — `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`,
-`ctaFinal`, `cartaCategorias`, las tipografías self-hosted, el uso real de los tokens de marca y los
-seis arreglos visuales. **Es la entrega donde el sitio cambia de aspecto**, y por eso va después de que
-la 2 haya demostrado paridad.
+**▶️ Lo próximo:** la **mitad B** — las piezas con imagen (`heroPortada`, `barraDatos`,
+`platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias`), la **allowlist de hosts de imagen** con
+su `referrerpolicy` y el presupuesto de 60 `<img>`. Y aparte, las **tipografías self-hosted**, que no
+necesitan fotos pero traen una **ruta pública nueva** al único proceso expuesto a internet anónimo.
 
 **Se parte en dos mitades**, y no por diseño sino por disponibilidad del dato: los **seis arreglos
 visuales, las tipografías y el uso real de los tokens** no necesitan ninguna foto y se pueden
@@ -114,9 +143,10 @@ web de demo saldría con imágenes rotas en cuanto el render las dibuje.
 
 | Qué | Por qué él | Bloquea |
 | --- | --- | --- |
-| **Las fotos en `docs/plantillas/template1/originales/`** (medidas en su README) | Son los assets del cliente | **La mitad B de la entrega 3.** La mitad A no las necesita y puede arrancar ya |
+| **Subir las fotos a Storyblok** (asset manager del space) | Es la credencial | **La mitad B de la entrega 3.** Están cargadas en `docs/plantillas/template1/originales/` con las medidas exactas, pero la allowlist solo acepta `a.storyblok.com`: mientras vivan solo en disco, el render las descarta |
+| **La portada, sin el logo incrustado** | Es el asset | Nada bloqueante. Hoy el logo saldría dos veces (cabecera + foto) y quemado en el JPG no lo lee un buscador |
 | **Decidir si las fotos son reales o de stock** | Es del negocio | Nada técnico, pero si son de stock hay que decirlo en el seed — misma regla que los precios: antes ausente que inventado |
-| Borrar `PIPELINE_MODO` y `TRUST_PROXY` del servicio `amg-project` | Es el panel de Railway | Nada. No son secretos, solo confunden a `auditar:railway` |
+| ⚠️ **`PIPELINE_MODO` y `TRUST_PROXY` en `amg-project`** | Es el panel de Railway | Nada, pero **la herramienta y el panel discrepan**: Juan borró `TRUST_PROXY` y dice que `PIPELINE_MODO` no estaba, y `auditar:railway` sigue viendo las dos. O el borrado necesita redespliegue para reflejarse en la API, o se miró otro servicio. Conviene saber cuál miente **antes** de fiarse de esa herramienta para algo que sí importe |
 | Decidir qué es `NPM_CONFIG_PRODUCTION` | Nadie lo declaró | Nada |
 | `STORYBLOK_SPACE_ID` y `TRUST_PROXY` del renderizador **difieren de la fuente** | Es el panel | Nada hoy; conviene saber cuál gana antes de tocar el Visual Editor |
 

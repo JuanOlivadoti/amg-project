@@ -151,9 +151,16 @@ describe("perfilValido + renderStory: el contrato de verdad", () => {
 
   it("🔴 la MARCA sobrevive perfilValido y llega al render (demo)", () => {
     // El tema por tenant se perdía acá: perfilValido recorta con allowlist y tiraba `brand`.
+    //
+    // Se afirma sobre **el valor del cliente**, no sobre el nombre del token que lo transporta. La
+    // versión anterior exigía `--accent:#0a7d34` y se rompió cuando la entrega 3 metió una capa
+    // semántica en medio (`--marca-primario` → `--accent`): el contrato —"la marca sobrevive
+    // `perfilValido` y llega al render"— se seguía cumpliendo, y el test decía que no. Un test que
+    // afirma sobre la forma de emisión de OTRO paquete se rompe cada vez que ese paquete se
+    // reorganiza, y entonces se "arregla" mecánicamente sin mirar si el contrato sigue vivo.
     const html = renderStory(story(), perfilValido({ name: "N", brand: { color: "#0a7d34", font: "serif" } }), "es");
-    assert.match(html, /--accent:#0a7d34/, "el color de marca llega al CSS");
-    assert.match(html, /--font:Georgia/, "y la fuente");
+    assert.match(html, /#0a7d34/, "el color de marca no llega al CSS emitido");
+    assert.match(html, /Georgia/, "la fuente de marca no llega al CSS emitido");
   });
 
   it("🔴 una marca con inyección/basura se descarta, no llega al render", () => {
@@ -162,7 +169,16 @@ describe("perfilValido + renderStory: el contrato de verdad", () => {
       perfilValido({ name: "N", brand: { color: "red;}x{", font: "Comic", logo: "javascript:1" } }),
       "es",
     );
-    assert.doesNotMatch(html, /--accent:red/);
+    // El valor hostil ENTERO, no el nombre del token: `--accent:red` ya no se emite nunca, así que
+    // esa afirmación pasaba aunque la validación hex se rompiera del todo — un test que solo podía
+    // dar verde. Buscando lo que se inyectó, si la validación cae, cae este test.
+    //
+    // ⚠️ **Este test es de INTEGRACIÓN, y no es quien defiende.** Medido con mutaciones: romper la
+    // validación hex de `perfilValido` tumba dos tests de más arriba, y romper la de `css.ts` tumba
+    // ocho de `web-builder` — pero **ninguna de las dos tumba a éste**, porque `perfilValido` ya
+    // descartó la basura antes de que el render la vea. Lo que aporta es que la CADENA no deje pasar
+    // nada; las garantías por capa viven donde se pueden matar. No lo tomes como la red.
+    assert.doesNotMatch(html, /red;\}x\{/, "el color basura llegó al <style>: la validación hex no filtró");
     assert.doesNotMatch(html, /Comic/);
     assert.doesNotMatch(html, /javascript:/);
   });

@@ -16,7 +16,7 @@ export const indice: Pieza = {
   // separado: `blogIndice` tiene los suyos. Lo compartido de verdad —`.cards`, `.card`, `.pending`—
   // vive en el CSS base (§3.6).
   css: `.p-indice .indice{padding:8px 0 32px;border-bottom:1px solid #f0f0f0}
-.p-indice .indice h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em}
+.p-indice .indice h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 @media(prefers-color-scheme:dark){.p-indice .indice{border-color:#1e1e1e}}
 `,
 
