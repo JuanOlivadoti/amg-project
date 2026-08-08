@@ -77,3 +77,67 @@ export function validProfile(over: Partial<BusinessProfile> = {}): BusinessProfi
     ...over,
   };
 }
+
+/**
+ * Perfil con **el manual de marca completo**, fotos y la carta con categorías: todo lo que la spec de
+ * plantillas de landing añadió al perfil, en su forma nueva.
+ *
+ * Los `src` son de `a.storyblok.com` a propósito: es el host que la allowlist del renderizador acepta,
+ * así que una fixture con otro dominio probaría el camino de descarte sin querer.
+ */
+export function perfilConManual(over: Partial<BusinessProfile> = {}): BusinessProfile {
+  return validProfile({
+    brand: {
+      logo: "https://a.storyblok.com/f/1/logo.svg",
+      plantilla: "base",
+      colores: {
+        primario: "#0a7d34",
+        secundario: "#c8102e",
+        titulo: "#1a1a1a",
+        texto: "#333333",
+        fondo: "#ffffff",
+        fondoAlt: "#f4f4f2",
+      },
+      fuentes: { titulo: "condensada", texto: "humanista", decorativa: "script" },
+    },
+    portada: { src: "https://a.storyblok.com/f/1/portada.jpg", alt: "Sala del restaurante" },
+    fotos: [
+      { src: "https://a.storyblok.com/f/1/galeria-1.jpg" },
+      { src: "https://a.storyblok.com/f/1/galeria-2.jpg", alt: "Horno de leña" },
+    ],
+    menu_categorias: [
+      { nombre: "Pizzas", foto: { src: "https://a.storyblok.com/f/1/pizzas.jpg" }, orden: 0 },
+      { nombre: "Pastas", orden: 1 },
+    ],
+    menu: [
+      {
+        category: "Pizzas",
+        name: "Margherita",
+        description: "Tomate San Marzano, mozzarella fior di latte, albahaca",
+        precios: [
+          { etiqueta: "Media", importe: "9,00 €" },
+          { etiqueta: "Ración", importe: "14,50 €" },
+        ],
+        nota: "Disponible sin gluten",
+        foto: { src: "https://a.storyblok.com/f/1/margherita.jpg" },
+      },
+      { category: "Pastas", name: "Cacio e pepe", price: "13,00 €" },
+    ],
+    ...over,
+  });
+}
+
+/**
+ * Perfil con la marca **legacy** `{color, font}`, la forma que tienen TODAS las fichas sembradas hasta
+ * el 2026-08-08.
+ *
+ * Existe porque es la única regresión que el manual de marca puede causar: sin esta fixture, nada
+ * probaría que las webs ya publicadas siguen viéndose igual. La spec la pide con esas palabras — "dos
+ * perfiles de fixture, no uno".
+ */
+export function perfilLegacy(over: Partial<BusinessProfile> = {}): BusinessProfile {
+  return validProfile({
+    brand: { color: "#0a7d34", font: "serif", logo: "https://a.storyblok.com/f/1/logo.svg" },
+    ...over,
+  });
+}

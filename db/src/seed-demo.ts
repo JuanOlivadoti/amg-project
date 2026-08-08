@@ -427,22 +427,62 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
  * llegar al renderizador: un campo que no esté en esa lista **se filtra en silencio**. `locations`
  * alimenta el footer NAP multi-local y la sección Ubicaciones; `menu` alimenta `/menu` con su JSON-LD.
  *
- * **`brand.font` no es texto libre**: el renderizador solo acepta `sistema | serif | moderna`
- * (`renderer/src/perfil.ts`). El perfil anterior ponía `"Fraunces"` y se descartaba sin avisar.
+ * **Las fuentes no son texto libre**: son nombres de ROL de una allowlist de siete
+ * (`renderer/src/perfil.ts`), no familias tipográficas. El perfil anterior ponía `"Fraunces"` y se
+ * descartaba sin avisar. El legacy `brand.font` sigue siendo el trío `sistema | serif | moderna`.
  *
  * **Sin `telephone` ni `postalCode`**: no los confirmó el cliente y no se inventan (misma decisión que
  * en `business-profile.json`). Sin `address` de nivel raíz a propósito: con dos locales, la dirección
  * canónica sale de `locations`, que es lo que manda en el JSON-LD y en el footer.
+ *
+ * **Las fotos apuntan a `a.storyblok.com` y todavía no existen.** Es el host que la allowlist del
+ * renderizador acepta; poner acá un host que sirviera imágenes de verdad sembraría un dato que en
+ * producción se descartaría. Cuando la agencia suba las fotos reales del cliente, se cambian estas
+ * URLs y nada más. **Antes de la entrega 3** —que es la que las dibuja— tienen que ser las de verdad,
+ * o la web de demo saldrá con imágenes rotas.
+ *
+ * **Sin `price` ni `precios`, por la misma regla que el `postalCode`: antes ausente que inventado.**
+ * `npm run reseed:demo` siembra esto en el Supabase real y el renderizador imprime `price`, así que
+ * un importe puesto a ojo se publica en la web de un negocio que existe — y alguien podría ir
+ * esperando pagarlo. Un `postalCode` inventado ensucia el JSON-LD; un precio inventado engaña a un
+ * cliente del cliente. Los campos nuevos de carta se ejercitan con los negocios FICTICIOS
+ * (`web-builder/src/fixtures.ts`, y "Trattoria Bella Napoli" en `renderer/src/dev-server.ts`), donde
+ * inventar no le miente a nadie. Cuando La Birra Bar confirme su carta, entran acá.
  */
 export const PERFIL_DEMO = {
   name: "La Birra Bar",
   priceRange: "€€",
-  brand: { color: "#b45309", font: "moderna" },
+  brand: {
+    plantilla: "base",
+    colores: {
+      primario: "#c8102e",
+      secundario: "#f2b705",
+      titulo: "#1a1a1a",
+      texto: "#3d3d3d",
+      fondo: "#ffffff",
+      fondoAlt: "#faf7f2",
+    },
+    fuentes: { titulo: "condensada", texto: "humanista" },
+    // El legacy va JUNTO al manual nuevo, y no es redundancia: hasta que la entrega 2 emita los
+    // tokens, el CSS solo sabe leer `color`/`font` — un perfil solo con `colores.primario` dejaría la
+    // web de este cliente con el rojo por defecto. Lo atrapó el test de más abajo, no una lectura.
+    // Cuando la emisión lea el manual, `colores.primario` gana sobre `color` (decisión explícita
+    // sobre herencia) y estas dos claves se pueden quitar de un solo sitio.
+    color: "#c8102e",
+    font: "moderna",
+  },
+  portada: { src: "https://a.storyblok.com/f/demo/la-birra-portada.jpg", alt: "" },
+  fotos: [
+    { src: "https://a.storyblok.com/f/demo/la-birra-sala.jpg" },
+    { src: "https://a.storyblok.com/f/demo/la-birra-barra.jpg" },
+    { src: "https://a.storyblok.com/f/demo/la-birra-parrilla.jpg", alt: "La parrilla, vista desde la barra" },
+  ],
   locations: [
     {
       name: "Centro (Puerta del Sol)",
       address: { streetAddress: "Carrera de San Jerónimo 3", addressLocality: "Madrid" },
       opening_hours: "Lun-Dom 11:00-01:00 · Vie-Sáb hasta las 02:00",
+      foto: { src: "https://a.storyblok.com/f/demo/la-birra-local-centro.jpg" },
     },
     {
       name: "Salamanca",
@@ -450,11 +490,25 @@ export const PERFIL_DEMO = {
       opening_hours: "Dom-Mié hasta 00:30 · Vie-Sáb hasta la 01:00",
     },
   ],
+  menu_categorias: [
+    {
+      nombre: "Hamburguesas",
+      foto: { src: "https://a.storyblok.com/f/demo/cat-hamburguesas.jpg" },
+      orden: 0,
+    },
+    { nombre: "Acompañamientos", orden: 1 },
+    {
+      nombre: "Cervezas artesanales",
+      foto: { src: "https://a.storyblok.com/f/demo/cat-cervezas.jpg" },
+      orden: 2,
+    },
+  ],
   menu: [
     {
       category: "Hamburguesas",
       name: "Golden Burger",
       description: "La hamburguesa insignia de la casa, la que los lanzó a la fama mundial.",
+      foto: { src: "https://a.storyblok.com/f/demo/golden-burger.jpg" },
     },
     { category: "Cervezas artesanales", name: "Ale de Ogham", description: "De barril, bien fría." },
     { category: "Cervezas artesanales", name: "Honey de Ogham", description: "De barril, bien fría." },
@@ -462,6 +516,7 @@ export const PERFIL_DEMO = {
       category: "Acompañamientos",
       name: "Patatas fritas especiales",
       description: "Con un toque crocante único y salsas de la casa.",
+      nota: "Sin gluten",
     },
   ],
 };

@@ -57,11 +57,53 @@ async function cliente(
   );
 }
 
+// El cliente COMPLETO: manual de marca, fotos y carta con categorías y precios. Es el perfil con el
+// que se comprueba en el navegador que un campo nuevo llegó hasta el HTML.
+//
+// Los `src` apuntan a `a.storyblok.com`, el host de la allowlist del renderizador, y en local dan 404
+// a propósito: si acá se pusiera un host que sirve imágenes de verdad, el dev-server estaría
+// enseñando algo que en producción la allowlist descartaría. Mejor un hueco honesto que una demo que
+// miente.
 await cliente("Trattoria Bella Napoli", "bellanapoli.es", "111", {
   name: "Trattoria Bella Napoli",
   telephone: "+34 910 000 000",
   address: { streetAddress: "Calle Mayor 1", postalCode: "28013", addressLocality: "Madrid" },
   opening_hours: "Mar-Dom 13:00-16:00, 20:00-23:30",
+  brand: {
+    plantilla: "base",
+    colores: {
+      primario: "#0a7d34",
+      secundario: "#c8102e",
+      titulo: "#14210f",
+      texto: "#3d3d3d",
+      fondo: "#ffffff",
+      fondoAlt: "#f4f6f2",
+    },
+    fuentes: { titulo: "condensada", texto: "humanista", decorativa: "script" },
+  },
+  portada: { src: "https://a.storyblok.com/f/dev/bellanapoli-portada.jpg", alt: "La sala del comedor" },
+  fotos: [
+    { src: "https://a.storyblok.com/f/dev/bellanapoli-horno.jpg", alt: "Horno de leña" },
+    { src: "https://a.storyblok.com/f/dev/bellanapoli-terraza.jpg" },
+  ],
+  menu_categorias: [
+    { nombre: "Pizzas", foto: { src: "https://a.storyblok.com/f/dev/cat-pizzas.jpg" }, orden: 0 },
+    { nombre: "Pastas", orden: 1 },
+  ],
+  menu: [
+    {
+      category: "Pizzas",
+      name: "Margherita",
+      description: "Tomate San Marzano, mozzarella fior di latte, albahaca.",
+      precios: [
+        { etiqueta: "Media", importe: "9,00 €" },
+        { etiqueta: "Ración", importe: "14,50 €" },
+      ],
+      nota: "Disponible sin gluten",
+      foto: { src: "https://a.storyblok.com/f/dev/margherita.jpg" },
+    },
+    { category: "Pastas", name: "Cacio e pepe", description: "Pecorino romano y pimienta negra.", price: "13,00 €" },
+  ],
 });
 
 // A propósito MAL CARGADO: `address` como texto plano, que es como lo escribiría una persona.
@@ -70,6 +112,21 @@ await cliente("Trattoria Bella Napoli", "bellanapoli.es", "111", {
 await cliente("Sushi Zen", "sushizen.es", "222", {
   name: "Sushi Zen",
   address: "Calle Zurbano 40, Madrid",
+});
+
+// La marca LEGACY `{color, font}`, que es la forma que tienen todas las fichas sembradas hasta hoy.
+// Existe para poder ver con los ojos —no solo en un test— que el manual de marca no le cambió el
+// aspecto a ninguna web ya publicada. Es la única regresión que esta entrega puede causar.
+await cliente("Bar Pepe", "barpepe.es", "333", {
+  name: "Bar Pepe",
+  telephone: "+34 913 00 00 00",
+  address: { streetAddress: "Calle de la Cava Baja 20", postalCode: "28005", addressLocality: "Madrid" },
+  opening_hours: "Mar-Dom 12:00-16:00, 19:00-00:00",
+  brand: { color: "#a3122b", font: "serif" },
+  menu: [
+    { category: "Tapas", name: "Croquetas de jamón", price: "3,20 €" },
+    { category: "Tapas", name: "Tortilla de patata", price: "2,80 €" },
+  ],
 });
 
 // ---------------------------------------------------------------- stories de mentira
@@ -92,7 +149,11 @@ function story(titular: string, slug: string, texto: string): Story {
       is_local: true,
       body: [
         { component: "hero", headline: titular, subhead: texto, cta_label: "Reservar" },
-        { component: "section", heading: "Nuestra cocina", body: "<p>Producto de temporada.</p>" },
+        // Texto PLANO, sin `<p>`: el render hace `esc(s.body)` (`web-builder/src/render/html.ts`) y
+        // la prosa del LLM se pide en frases, no en HTML. El mock traía `<p>…</p>` y salía impreso
+        // literal en pantalla — o sea que la única forma de ver el sitio sin credenciales enseñaba
+        // etiquetas crudas, e invitaba a "arreglar" el escape, que es la puerta de la inyección.
+        { component: "section", heading: "Nuestra cocina", body: "Producto de temporada." },
         {
           component: "faq",
           items: [{ question: "¿Hacen reservas?", answer: "Sí, por teléfono y por web." }],
@@ -165,6 +226,7 @@ serve(
     console.log(`    ${base}/?_host=bellanapoli.es`);
     console.log(`    ${base}/menu?_host=bellanapoli.es`);
     console.log(`    ${base}/?_host=sushizen.es          ← otro cliente, otro space`);
+    console.log(`    ${base}/?_host=barpepe.es           ← marca LEGACY {color, font}: no debe cambiar de aspecto`);
     console.log(`    ${base}/?_host=noexiste.es          ← 404, sin fallback`);
     console.log("\n  Preview del Visual Editor (firmado, 1 h):");
     console.log(`    ${base}/menu?_host=bellanapoli.es&${PARAM_FIRMA}=${firma}&${PARAM_VENCE}=${vence}`);

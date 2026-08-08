@@ -1,23 +1,112 @@
-import type { BrandTheme, BusinessProfile, Location, MenuItem } from "web-builder";
+import type {
+  BrandTheme,
+  BusinessProfile,
+  Foto,
+  FuenteNombre,
+  Location,
+  MenuCategoria,
+  MenuItem,
+} from "web-builder";
 
-const FUENTES = new Set(["sistema", "serif", "moderna"]);
+/** Las tres del legacy `font`. Es un subconjunto de `FUENTES`, no una lista paralela. */
+const FUENTES_LEGACY = new Set(["sistema", "serif", "moderna"]);
+/** Los siete nombres de ROL de `FuenteNombre`. Nunca un stack CSS: eso sería texto libre en `<style>`. */
+const FUENTES = new Set([
+  ...FUENTES_LEGACY,
+  "condensada",
+  "geometrica",
+  "humanista",
+  "script",
+]);
+
+const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/** Un hex, o nada. Lo que no valida **cae al default del CSS base**: la web sale sobria, nunca rota. */
+function hex(v: unknown): string | undefined {
+  return typeof v === "string" && HEX.test(v) ? v : undefined;
+}
+
+function fuente(v: unknown): FuenteNombre | undefined {
+  return typeof v === "string" && FUENTES.has(v) ? (v as FuenteNombre) : undefined;
+}
+
+/**
+ * Una foto, validada. **https obligatorio**, no `http:` como el logo: además de que el navegador lo
+ * bloquearía como contenido mixto, un `<img src>` en claro filtra al host del asset la IP y el
+ * user-agent de cada visitante del cliente.
+ *
+ * La **allowlist de hosts** no se aplica acá sino en el render (frontera 4), que es quien emite el
+ * `<img>`. Eso es a propósito: el render tiene que fallar cerrado aunque el dato no haya pasado por
+ * esta función, porque en producción el perfil llega de una fila de la base.
+ *
+ * Un `src` que no valida tira la foto **entera**, no solo el `src`: una `Foto` sin `src` es un `<img>`
+ * sin imagen. Y `alt` ausente es el caso NORMAL —el formulario del portal captura una URL y nada
+ * más—, así que se emite `alt=""` (decorativa) y nunca un texto inventado del nombre del negocio.
+ */
+function foto(v: unknown): Foto | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const f = v as Record<string, unknown>;
+  const src = texto(f["src"]);
+  if (!src || !/^https:\/\//i.test(src)) return undefined;
+  return { src, ...(texto(f["alt"]) ? { alt: texto(f["alt"])! } : {}) };
+}
 
 /**
  * La marca, validada. Es doble frontera: `renderStory` también revalida, pero acá se recorta ANTES
  * de que el objeto entre a `renderStory` — y sobre todo, si no estuviera, `perfilValido` tiraría
  * `brand` con su allowlist y el tema no llegaría nunca (lo que pasó en la demo). Cada campo se valida
  * como lo que va a ser: hex (va a `<style>`), fuente de allowlist, logo http(s) (va a `<img src>`).
+ *
+ * **El legacy `{color, font}` se conserva junto al manual nuevo, no se traduce acá.** Quién gana
+ * cuando están los dos (`colores.primario` sobre `color`) lo decide la emisión del CSS, que es donde
+ * el dato se usa; resolverlo en el validador escondería el dato original y dejaría dos sitios
+ * decidiendo lo mismo.
  */
 function marca(v: unknown): BrandTheme | undefined {
   if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
   const b = v as Record<string, unknown>;
 
-  const color = typeof b["color"] === "string" && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(b["color"]) ? b["color"] : undefined;
-  const font = typeof b["font"] === "string" && FUENTES.has(b["font"]) ? (b["font"] as BrandTheme["font"]) : undefined;
+  const color = hex(b["color"]);
+  const font =
+    typeof b["font"] === "string" && FUENTES_LEGACY.has(b["font"])
+      ? (b["font"] as BrandTheme["font"])
+      : undefined;
   const logo = typeof b["logo"] === "string" && /^https?:\/\//i.test(b["logo"]) ? b["logo"] : undefined;
+  const plantilla = texto(b["plantilla"]);
 
-  if (!color && !font && !logo) return undefined;
-  return { ...(color ? { color } : {}), ...(font ? { font } : {}), ...(logo ? { logo } : {}) };
+  const colores = objetoDe(b["colores"], ["primario", "secundario", "titulo", "texto", "fondo", "fondoAlt"], hex);
+  const fuentes = objetoDe(b["fuentes"], ["titulo", "texto", "decorativa"], fuente);
+
+  if (!color && !font && !logo && !plantilla && !colores && !fuentes) return undefined;
+  return {
+    ...(color ? { color } : {}),
+    ...(font ? { font } : {}),
+    ...(logo ? { logo } : {}),
+    ...(plantilla ? { plantilla } : {}),
+    ...(colores ? { colores } : {}),
+    ...(fuentes ? { fuentes } : {}),
+  };
+}
+
+/**
+ * Reconstruye un sub-objeto clave por clave con un validador por valor, y devuelve `undefined` si no
+ * sobrevive ninguna. Existe para que `colores` (6 claves) y `fuentes` (3) no sean nueve líneas
+ * copiadas donde una falta de ortografía pasaría desapercibida — que es exactamente cómo se escribe
+ * mal una allowlist.
+ */
+function objetoDe<T>(
+  v: unknown,
+  claves: readonly string[],
+  valida: (x: unknown) => T | undefined,
+): Record<string, T> | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const src = v as Record<string, unknown>;
+  const out: Record<string, T> = {};
+  for (const k of claves) {
+    const val = valida(src[k]);
+    if (val !== undefined) out[k] = val;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /**
@@ -85,6 +174,9 @@ function direccion(v: unknown): BusinessProfile["address"] | undefined {
  */
 const MAX_LOCALES = 20;
 const MAX_ITEMS_CARTA = 200;
+const MAX_FOTOS = 30;
+const MAX_PRECIOS = 3;
+const MAX_CATEGORIAS = 20;
 
 /** Los locales, validados uno por uno. Un local sin NINGÚN dato usable no es un local: se descarta. */
 function locales(v: unknown): Location[] | undefined {
@@ -97,14 +189,36 @@ function locales(v: unknown): Location[] | undefined {
     const nombre = texto(l["name"]);
     const tel = texto(l["telephone"]);
     const horas = texto(l["opening_hours"]);
-    // Un objeto que solo trae `name` no aporta nada al footer: sería un título vacío.
+    // Un objeto que solo trae `name` no aporta nada al footer: sería un título vacío. Una foto
+    // tampoco lo salva: un local es una dirección, un teléfono o un horario — la foto lo acompaña.
     if (!addr && !tel && !horas) continue;
+    const f = foto(l["foto"]);
     out.push({
       ...(nombre ? { name: nombre } : {}),
       ...(addr ? { address: addr } : {}),
       ...(tel ? { telephone: tel } : {}),
       ...(horas ? { opening_hours: horas } : {}),
+      ...(f ? { foto: f } : {}),
     });
+  }
+  return out.length ? out : undefined;
+}
+
+/**
+ * Los importes de un plato. Una entrada a la que le falta `etiqueta` o `importe` **se descarta sola**,
+ * no tira el plato: media fila de precio no se puede dibujar, pero el plato sigue existiendo. Si no
+ * sobrevive ninguna, el plato cae a `price`, que es el atajo del caso de un solo importe.
+ */
+function precios(v: unknown): MenuItem["precios"] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: NonNullable<MenuItem["precios"]> = [];
+  for (const item of v.slice(0, MAX_PRECIOS)) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const p = item as Record<string, unknown>;
+    const etiqueta = texto(p["etiqueta"]);
+    const importe = texto(p["importe"]);
+    if (!etiqueta || !importe) continue;
+    out.push({ etiqueta, importe });
   }
   return out.length ? out : undefined;
 }
@@ -118,12 +232,52 @@ function carta(v: unknown): MenuItem[] | undefined {
     const m = item as Record<string, unknown>;
     const nombre = texto(m["name"]);
     if (!nombre) continue;
+    const lista = precios(m["precios"]);
+    const f = foto(m["foto"]);
     out.push({
       name: nombre,
       ...(texto(m["category"]) ? { category: texto(m["category"])! } : {}),
       ...(texto(m["description"]) ? { description: texto(m["description"])! } : {}),
       ...(texto(m["price"]) ? { price: texto(m["price"])! } : {}),
+      ...(lista ? { precios: lista } : {}),
+      ...(texto(m["nota"]) ? { nota: texto(m["nota"])! } : {}),
+      ...(f ? { foto: f } : {}),
     });
+  }
+  return out.length ? out : undefined;
+}
+
+/**
+ * Las categorías de la carta. Sin `nombre` no hay nada contra qué agrupar los platos, así que la
+ * entrada se descarta. `orden` solo sobrevive si es un entero >= 0: un `orden` de `"2"` o `-1`
+ * ordenaría de forma impredecible, y no tenerlo tiene un significado definido (orden de aparición).
+ */
+function categorias(v: unknown): MenuCategoria[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: MenuCategoria[] = [];
+  for (const item of v.slice(0, MAX_CATEGORIAS)) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const c = item as Record<string, unknown>;
+    const nombre = texto(c["nombre"]);
+    if (!nombre) continue;
+    const f = foto(c["foto"]);
+    const orden = c["orden"];
+    out.push({
+      nombre,
+      ...(f ? { foto: f } : {}),
+      ...(typeof orden === "number" && Number.isInteger(orden) && orden >= 0 ? { orden } : {}),
+    });
+  }
+  return out.length ? out : undefined;
+}
+
+/** La galería. Las fotos que no validan se caen una a una; las demás se dibujan. */
+function galeria(v: unknown): Foto[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: Foto[] = [];
+  for (const item of v.slice(0, MAX_FOTOS)) {
+    const f = foto(item);
+    if (f) out.push(f);
   }
   return out.length ? out : undefined;
 }
@@ -150,6 +304,9 @@ export function perfilValido(bruto: unknown): BusinessProfile | null {
     ...(texto(p["opening_hours"]) ? { opening_hours: texto(p["opening_hours"])! } : {}),
     ...(locales(p["locations"]) ? { locations: locales(p["locations"]) } : {}),
     ...(carta(p["menu"]) ? { menu: carta(p["menu"]) } : {}),
+    ...(categorias(p["menu_categorias"]) ? { menu_categorias: categorias(p["menu_categorias"]) } : {}),
     ...(marca(p["brand"]) ? { brand: marca(p["brand"]) } : {}),
+    ...(foto(p["portada"]) ? { portada: foto(p["portada"]) } : {}),
+    ...(galeria(p["fotos"]) ? { fotos: galeria(p["fotos"]) } : {}),
   };
 }

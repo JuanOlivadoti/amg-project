@@ -65,7 +65,9 @@ Uno por uno, y solo si el cambio los toca:
 ## C5 — La documentación dice la verdad
 
 - [ ] `docs/proyecto/09-estado-y-roadmap.md` refleja qué se hizo, dónde estamos y qué falta.
-- [ ] `docs/proyecto/11-plan-fase-2.md` menciona este trabajo. Si no, el plan miente por omisión.
+- [ ] `docs/proyecto/15-plan-plataforma.md` —el plan de la fase EN CURSO— menciona este trabajo. Si
+      no, el plan miente por omisión. (El `11`, de Fase 2, está **cerrado**: es histórico y no se
+      actualiza. Esta línea lo nombraba a él y por eso se quedó atrás.)
 - [ ] El ADR relevante está actualizado si la decisión cambió o si se cumplió una promesa vieja.
 - [ ] Las cifras de tests y de migraciones están sincronizadas donde aparezcan.
 - [ ] Ninguna doc quedó afirmando una garantía que el código ya no cumple.

@@ -407,8 +407,17 @@ Las piezas producen HTML y nada más.
 | Perfil sin `fotos` | `galeria` devuelve `""` y **su CSS no viaja**. |
 | Foto con host fuera de la allowlist | Se descarta esa foto; las demás se dibujan. |
 | Foto con `http:` | Se descarta. |
-| `fotos` con 500 entradas | Se cortan en 30, en las cuatro fronteras. |
+| `fotos` con 500 entradas | Se cortan en 30 en las fronteras **2, 3 y 4**. La **1 rechaza el archivo** — ver la nota de abajo. |
 | Documento que pediría 200 imágenes | Se corta en 60 (presupuesto global). |
+
+> **Enmienda 2026-08-08, al implementar la entrega 1.** Este documento decía que los topes "cortan en
+> las cuatro fronteras", y **en la frontera 1 no cortan: rechazan el archivo entero**. La conducta
+> implementada es deliberada y no se cambió, porque cortar ahí sería el arreglo equivocado: esa
+> frontera valida un `business-profile.json` **escrito a mano y leído por un CLI**, donde fallar
+> fuerte le dice a quien lo escribió que le sobran entradas o que le falta un campo. Las otras tres
+> reciben datos **ya guardados**, donde tirar la página entera por un exceso sería peor que recortar.
+> Está documentado en `web-builder/src/contract.ts` (bloque de los topes) y fijado por tests en los
+> dos lados. Lo que estaba mal era esta tabla.
 | `foto` como string en vez de objeto | La sub-allowlist devuelve `null`, `perfilValido` la descarta, el ítem se dibuja sin foto. |
 | `foto` sin `alt` (el caso normal, viniendo del portal) | Se emite `alt=""` — decorativa. Nunca un `alt` derivado del nombre del negocio: un texto alternativo inventado es peor que ninguno, igual que un `postalCode` inventado. |
 | Perfil `null` | Las piezas de shell que dependen del perfil devuelven `""` — la cabecera se omite entera, como ya hace hoy `renderSiteHeader`. El pie queda con la línea técnica. El documento sigue siendo válido. |
@@ -713,8 +722,8 @@ tabla y le quita la razón de existir al enlace.
 | Fuente fuera de la allowlist | Cae al default del rol. |
 | Ficha con `color` legacy **y** `colores.primario` | Gana `colores.primario`. |
 | Ficha solo con `{color, font}` legacy | Se mapea y renderiza como hoy. **Ninguna web sembrada cambia de aspecto por esta enmienda.** |
-| `precios` con 5 entradas | Se cortan en 3. |
-| Una entrada de `precios` sin `etiqueta` o sin `importe` | Se descarta esa entrada, no el plato. Si no queda ninguna, cae a `price`. |
+| `precios` con 5 entradas | Se cortan en 3 en las fronteras **2, 3 y 4**; la **1 rechaza el archivo**. |
+| Una entrada de `precios` sin `etiqueta` o sin `importe` | Se descarta esa entrada, no el plato (fronteras 2 y 3). Si no queda ninguna, cae a `price`. La frontera **1 rechaza el archivo**. |
 | Categoría en `menu_categorias` sin platos en `menu` | No se dibuja: un bloque con foto y sin carta es un hueco. |
 | Plato con `category` que no está en `menu_categorias` | Se dibuja en su grupo, sin foto de categoría. |
 | `menu_categorias` sin `orden` | Orden de aparición en `menu`. |

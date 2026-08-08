@@ -11,6 +11,56 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-08 (noche) — bloque E, entrega 1: el dato llega hasta la base y nadie lo dibuja todavía
+
+Empieza el bloque **E**, el aspecto de las webs, y la primera entrega es deliberadamente la que **no
+se ve**: ampliar las **tres primeras** de las cuatro fronteras que cruza un campo del perfil —Zod,
+la allowlist de Postgres, `perfilValido`— y dejar el render intacto. La spec lo argumenta y tenía
+razón: si el rediseño y el refactor entran juntos, un cambio inesperado no se puede atribuir a
+ninguno de los dos.
+
+**Lo primero fue una trampa que resultó no serlo.** El plan avisaba de un riesgo de orden: la `0014`
+estaba reservada desde hacía días, así que en una base nueva corre **antes** de la `0015`-`0019`
+(orden alfabético) y en producción **después** (`migrarConRegistro` saltea las registradas). Al ir a
+verificarlo apareció que no era un descuido sino un proceso funcionando: la reserva era explícita y
+**cada una de las cinco migraciones posteriores declara en su cabecera** que no depende de la `0014`.
+Lo que faltaba era lo de siempre — esa independencia vivía en un comentario. Ahora un test aplica
+todas las migraciones sobre **dos PGlite en los dos órdenes** y compara funciones, grant, columnas
+generadas y la proyección de la allowlist.
+
+**Lo que el navegador encontró y los 1001 tests no.** El único modo de ver el sitio sin credenciales
+—el `dev-server`— tenía en su mock `body: "<p>Producto de temporada.</p>"`, y el render hace
+`esc(s.body)` porque la prosa del LLM se pide en frases, no en HTML. O sea que la demo local llevaba
+quién sabe cuánto imprimiendo etiquetas crudas en pantalla. Lo grave no es el defecto: es que
+**invita a "arreglar" el escape**, que es exactamente la puerta de la inyección que ese `esc` cierra.
+
+**Y un test que atrapó una regresión que yo estaba metiendo.** Al pasar el seed de demo al manual de
+marca nuevo, saqué el legacy `{color, font}` — razonable, salvo que hasta la entrega 2 el CSS **solo
+sabe leer la forma vieja**. La web de La Birra Bar se habría quedado con el rojo por defecto sin que
+nada avisara. Las dos formas conviven a propósito hasta que la emisión aprenda a leer el manual.
+
+De ahí salió el segundo hallazgo, del mismo tipo: **el ancla anti-deriva entre el seed y
+`business-profile.json` comparaba tres claves a mano**, así que se quedó verde con el seed sin
+ninguno de los cuatro campos nuevos. Un ancla que hay que acordarse de ampliar se queda corta justo
+cuando hace falta; ahora recorre las claves del JSON publicado y crece sola.
+
+**Siete mutaciones**, todas con `grep` de control, y dos que no estaban pedidas resultaron las más
+elocuentes: quitar el `grant select (business_profile_publico)` tumba **23 tests** —literalmente
+"caen las webs de todos los clientes a la vez", que es como la spec describe ese riesgo— y cambiar
+`set` por `set local` deja el `lock_timeout` en cero con todo lo demás en verde.
+
+**Y el test que más ata tampoco estaba pedido.** Las tres fronteras tenían tests cada una, y las tres
+podían estar en verde con el campo sin llegar: lo que rompe el recorrido no es que una capa falle,
+sino que **las tres listas no digan lo mismo**. Ahora hay un test que recorre el camino entero —JSON →
+Zod → `business_profile` → la columna generada → `perfilValido`— y exige que el perfil salga completo,
+comparando con `deepEqual` y no campo por campo, porque enumerar deja fuera justo el que alguien
+olvide. Quitar `menu_categorias` de una sola de las tres capas lo tumba nombrando la clave.
+
+**1001 tests** (venía de 956). El trabajo de la `0014` lo hizo el agente `datos`; el informe está en
+`progress/informes/`, y una de sus mutaciones se reprodujo a mano antes de creerla.
+
+---
+
 ## 2026-08-08 (tarde) — el paso que apareció al mirar el `/_health` que acabábamos de arreglar
 
 Juan puso `WEB_PUBLISH_MODE=storyblok` y `STORYBLOK_DRY_RUN=1` en el orquestador y redesplegó. El

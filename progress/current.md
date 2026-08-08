@@ -6,269 +6,77 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-07 → 2026-08-08
-**En curso:** nada. Cerrados los bloques **A**, **B** y **C** del
-[plan de la plataforma](../docs/proyecto/15-plan-plataforma.md), y con ellos la **15ª review externa**.
-**Estado:** listo. El circuito aprobar → publicar está **ejercitado en producción**, no solo
-desplegado.
+**Sesión:** 2026-08-08
+**En curso:** **bloque E** — el aspecto de las webs. **Entrega 1 de 3 terminada**; faltan la 2
+(ensamblado con paridad) y la 3 (piezas nuevas y arreglos visuales).
+**Estado:** listo. **1001 tests**, typecheck limpio, y el renderizador manejado en un navegador.
 
-## ✅ A4 — el `MAPA` no tenía variables de menos: le faltaba el paquete entero
+## ✅ Entrega 1 — contrato y recorrido de datos
 
-Juan quitó el comodín `Read(./**/.env.*)` del `deny` y con eso se desbloqueó. Ahora el `MAPA` tiene
-`orchestrator` (`DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, `INNGEST_SIGNING_KEY`,
-`PIPELINE_MODO`), la `api` gana `INNGEST_EVENT_KEY`, y `orchestrator/.env.example` existe — ya no hay
-paquete sin plantilla. Dos invariantes nuevos en el test: **las claves de Inngest no se cruzan**
-(envío ↔ API, recepción ↔ orquestador) y **el orquestador no recibe la conexión de admin ni la de la
-API**. 938 tests.
+Un campo del perfil **no llega al HTML si no cruza cuatro fronteras**. Esta entrega amplió las tres
+primeras —Zod en la puerta, la allowlist `app.nap_publico` de la migración `0014`, y `perfilValido`—
+y dejó **el render sin tocar a propósito**: si el rediseño y el refactor entran juntos, un cambio
+inesperado no se puede atribuir a ninguno de los dos.
 
-Y una promesa que el `.env.example` hacía sin cumplirla: `orchestrator/.env` se cargaba **de rebote**,
-porque `kr-service` y `web-builder` importan `dotenv/config` y este proceso los importa. Ahora lo carga
-`server.ts` explícito — en el punto de entrada y **no** en `config.ts`, porque ese módulo sí lo
-importan los tests y un `.env` local le metería variables a `config.test.ts`, que comprueba justamente
-qué pasa cuando faltan.
+Lo que ahora cruza: `portada` y `fotos`, el manual de marca (6 tokens de color, 3 roles tipográficos,
+`plantilla`), y la carta con `precios`, `nota`, `foto` y `menu_categorias`. Topes 30/3/20 en las tres
+capas. El detalle está en el [plan](../docs/proyecto/15-plan-plataforma.md#bloque-e--el-aspecto-de-las-webs).
 
-### 🔴 El cambio del `settings.json` vino con tres cosas que hubo que deshacer
+**El riesgo de orden de la `0014` no era un descuido.** El plan avisaba de que corre **antes** de la
+`0015`-`0019` en base nueva y **después** en producción. Al verificarlo apareció que la reserva era
+explícita y que **las cinco posteriores ya declaraban su independencia** — pero en un comentario.
+Ahora un test aplica las migraciones sobre **dos PGlite en los dos órdenes** y compara funciones,
+grant, columnas generadas y la proyección de la allowlist.
 
-1. **JSON inválido** (comentarios `//` y una coma final). Si Claude Code no parsea el archivo se cae
-   entero: los cuatro `Bash` denegados —`env:sync`, `reseed:demo`, `demo`, `migrate:deploy`— dejan de
-   estarlo, y los seis hooks tampoco corren. Era lo más grave y no se ve.
-2. **`Read(./docs/private/**)` comentado**, o sea las credenciales legibles. **No se leyeron.**
-   Restaurado: el agente nunca necesita el valor de una credencial, solo saber qué variable poner.
-3. El `allow` decía `Read(./**/.env.*)`. Como `deny` gana sobre `allow` no abría nada hoy, pero el día
-   que alguien toque un deny se vuelve una puerta que nadie recuerda haber abierto. Acotado a
-   `.env.example`.
+**Seis mutaciones**, todas con `grep` confirmando que aterrizaron. Las dos que no estaban pedidas
+fueron las más elocuentes: quitar el `grant select (business_profile_publico)` tumba **23 tests**
+—"caen las webs de todos los clientes a la vez", como dice la spec— y cambiar `set` por `set local`
+deja el `lock_timeout` en cero con todo lo demás en verde.
 
-## ✅ A3 — `npm run auditar:railway`, y encontró cosas a la primera corrida
+**Y un test que no estaba pedido y resultó el que más ata:** las tres fronteras **encadenadas**
+(`renderer/src/tres-fronteras.test.ts`). Cada capa tenía sus tests, pero lo que rompe el recorrido no
+es que una falle: es que **las tres listas no digan lo mismo**, y un campo enumerado en dos de tres
+desaparece sin error y sin log. Recorre el camino real —JSON → Zod → `business_profile` → la columna
+generada → `perfilValido`— y exige que el perfil salga entero. Mutación comprobada: quitar
+`menu_categorias` **solo** de `perfilValido`, dejándolo en las otras dos, lo tumba con nombre.
 
-**🔴 La API tenía las credenciales de los otros dos procesos.** En `amg-project` estaban
-`DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, `DATABASE_URL_RENDER`, `INNGEST_SIGNING_KEY`,
-`PREVIEW_SECRET` y `STORYBLOK_WEBHOOK_SECRET`. Postgres sigue impidiendo que `amg_api` **asuma**
-`app_service`, pero un proceso que tiene el DSN del orquestador **no necesita asumir nada: se conecta
-como él**. La compartimentación que `env:sync` impone en local con un test no la imponía nadie en
-producción.
+### Lo que encontró manejar la app, y no los tests
 
-**🟠 El renderizador no tiene ni un token de Storyblok** — arranca igual y no puede leer la CDA. Es la
-respuesta medida a *"quiero que funcione el Visual Editor"*: **hoy no puede**.
+- **El `dev-server` imprimía etiquetas crudas.** Su mock tenía `body: "<p>Producto de temporada.</p>"`
+  y el render hace `esc(s.body)`, porque la prosa del LLM se pide en frases y no en HTML. Lo grave no
+  es el defecto: es que **invita a "arreglar" el escape**, que es la puerta que ese `esc` cierra.
+  Arreglado el mock, no el render.
+- **Bar Pepe**, el cliente legacy sembrado a propósito, sale con **su serif y su acento `#a3122b`**
+  mientras Bella Napoli sale con el default: cada uno con su marca, cero regresión, consola limpia.
 
-**🟠 Tres valores del orquestador difieren de la fuente** (`PIPELINE_MODO`, `WEB_PUBLISH_MODE`,
-`STORYBLOK_DRY_RUN`): se editaron en el panel y no en `credenciales.env`.
+### Dos tests que atraparon lo que una lectura no
 
-Dos cosas que solo se supieron corriéndolo: el servicio de la API se llama **`amg-project`**, y el
-token es de **proyecto** (cabecera `Project-Access-Token`; con `Bearer` responde **200 con
-`Not Authorized`**, un 200 que no es un éxito). Y el diseño cambió al medirlo: con **un** inventario
-gritaba catorce veces por un orquestador sano, así que hay dos niveles —`OBLIGATORIAS` y
-`SEGUN_MODO`—, porque un comparador que grita por un despliegue sano se ignora a la tercera corrida.
+- **El seed de demo necesita el legacy `{color, font}` junto al manual nuevo.** Se lo saqué al pasarlo
+  al manual, y hasta la entrega 2 el CSS **solo sabe leer la forma vieja**: la web de La Birra Bar se
+  habría quedado con el rojo por defecto sin que nada avisara.
+- **El ancla anti-deriva comparaba tres claves a mano**, así que quedó verde con el seed sin ninguno
+  de los cuatro campos nuevos. Ahora recorre las claves del JSON publicado y crece sola.
 
-956 tests.
-
-**▶️ Lo próximo (2026-08-08):** decidir qué hacer con los tres hallazgos de A3 (el primero es de
-seguridad y lo arregla Juan en el panel), y arrancar el **bloque E** —el aspecto de las webs— que es
-lo que Juan eligió, con el Visual Editor dentro del alcance — y el hallazgo del renderizador dice que
-esa parte hoy **no puede funcionar**, así que empieza por ahí y no por el diseño. **Bloque A cerrado
-entero.** **C-1** y **C-2**, abiertos y sin bloquear a nadie.
-
-**Los siete hallazgos, clasificados** (el reporte completo, en `progress/informes/`, no versionado):
-cinco verificados, uno aceptado por juicio, **una mutación refutada**. Ninguno contradice una decisión
-del usuario. El relato está en [`history.md`](history.md).
-
-**Lo que ya se hizo de esta ronda** (seis commits, todos pusheados):
-
-| Commit | Qué |
-| --- | --- |
-| `152854b` | **La documentación que mentía.** Siete afirmaciones en el `09`, el `README` de `docs/proyecto/` y este archivo seguían diciendo que falta desplegar el orquestador. Y el plan quedó enmendado: **A1**/**A2** con garantías de verdad, **C0** como precondición bloqueante de C, **A3** detrás de **A4**, **D** con las dos deudas que el `09` le atribuía, y el bloque **J** (piezas 3 y 4 del portal), que no existía |
-| `29625e6` | **H5** (la fila `transaccional` del fixture) y la **guarda de `finishRun`** — el bug de hoy que destapó verificar un hallazgo sobre código futuro |
-| `18790f0` | **A2**: el barrido de runs colgados. Migración `0018` con la primera `security definer` del proyecto y un rol propio, `app_barrido` |
-| `f47a1b4` | **A1**: `/_health` con sonda por `Tx`, y el log de la transición sano→degradado |
-| `9e06576` | **B2**: `renderReport` pasa de flags a `audiencia`, y el entregable pierde la línea de metadatos |
-| `3e71767` | **B1**: 409 con código en la API, link apagado en el portal |
-
-**`current.md` se reseteó** al empezar: estaba entero duplicado en las seis entradas del 2026-08-07 de
-la bitácora. Antes de vaciarlo se rescató lo que solo vivía acá — dos deudas de KR-2a pasaron al
-bloque **I** del plan, y el generador de credenciales ganó su entrada en `history.md`.
-
-| `bfda1c5` | **C0**: la condición durable de publicabilidad. Migración `0019`, `approveRun` con guarda, 409 `RUN_SIN_WORKFLOW`, y el botón apagado con motivo. Cae el único hallazgo con veredicto NO LISTO |
-
-Y una corrección que salió de ahí: este archivo y el plan decían *"en `dry-run` el publisher no
-escribe nada"* como si `dry-run` fuera un valor de `WEB_PUBLISH_MODE`. **No lo es** — los valores son
-`mock` | `storyblok`, y dry-run es un estado al que se llega por tres caminos. Medido y corregido en
-el plan, con lo que reporta cada uno.
-
-## ✅ C-0 — `/_health` ya dice en qué modo publica
-
-Juan puso `WEB_PUBLISH_MODE=storyblok` y `STORYBLOK_DRY_RUN=1` y redesplegó, y entonces se vio que
-**no había forma de confirmar desde afuera que esas variables tomaran**: `/_health` reportaba
-`pipeline` y nada del publisher. Sin eso, el paso 1 del bloque C —"comprobar el modo"— no tenía con
-qué.
-
-Ahora responde `publicacion: "mock" | "dry-run" | "live"`, derivado de la **misma
-`decisionDelServicio()` que construye el publisher**. Que sean la misma es el punto entero: si se
-calcularan por separado, `/_health` podría decir `dry-run` mientras se publica de verdad — la forma
-exacta en que la clave de firma de Inngest ya mordió una vez.
-
-Tres tests, uno por estado y cada uno en su archivo (`config` se congela al importarse, y
-`node --test` da un proceso por archivo). La **mutación** que pide el plan cae y solo cae ella:
-reimplementar `modoPublicacion()` leyendo `process.env` deja rojo el estado
-`storyblok` **sin token** —donde el entorno dice `live` y la verdad es `dry-run`— y verde todo lo
-demás.
-
-Dos cosas que aparecieron al medirlo:
-
-- **El modo es del proceso, no de la corrida.** Un cliente sin space publica en dry-run aunque el
-  servicio esté en `live`; `/_health` reporta el **techo**, y un test lo fija.
-- **Un typo en `WEB_PUBLISH_MODE` es mock en silencio**, con token y space puestos. Por eso el test
-  del estado mock usa el typo y no la ausencia: es el mismo camino y es el que nadie sospecha.
-
-### Y lo primero que reportó desplegado fue `mock` — que era el punto
-
-Commit `e926231`, desplegado y leído en producción:
-
-```json
-{"ok":true,"funciones":2,"modo":"cloud","pipeline":"mock","publicacion":"mock","uptimeSegundos":40}
-```
-
-`publicacion: "mock"`, no `dry-run`: **`WEB_PUBLISH_MODE=storyblok` no estaba tomando en el servicio
-`amg-orchestrator`**. Leído tres veces con el proceso ya redesplegado, así que no era una ventana de
-arranque.
-
-**Esto es exactamente para lo que existe C-0**, y lo cazó en la primera lectura: sin el campo, el
-paso siguiente habría corrido en `mock` creyéndose en dry-run, y `MockPublisher` reporta
-`published: true` — la base habría anotado como publicadas unas páginas que nunca salieron del
-contenedor.
-
-Juan lo corrigió en el panel y **el 2026-08-08 `/_health` responde `publicacion: "dry-run"`**. El
-paso 1 del bloque C, cumplido, y comprobado **desde afuera del panel** — que es lo que el campo
-existe para permitir.
-
-## ✅ C-0b — el tercer modo, el que gasta: `prosa`
-
-Yendo a hacer el paso 2 apareció que **el paso de publicación llama a `applyProse`**, y que con
-`OPENAI_API_KEY` puesta y `PROSE_MODE` sin declarar el default es `openai`: **publicar factura sin
-que nadie lo haya decidido**. `PIPELINE_MODO` no lo gobierna —*"no enciende ni apaga nada"*, dice su
-propio `config.ts`—, así que `pipeline: "mock"` significa "DataForSEO no cobra" y no "esto es
-gratis", que es lo que uno entiende al leerlo.
-
-Mismo agujero que C-0, en el eje del dinero, y mismo arreglo: `/_health` gana
-`prosa: "mock" | "openai"`. Acá la divergencia es **estructuralmente imposible**: `getProseGen()`
-llama a `modoProsa()` en vez de repetir la condición. Dos tests que muerden en direcciones opuestas
-—`openai` declarado sin key, y key sin `PROSE_MODE` (el default que factura)—; la mutación que lee
-`process.env` deja los dos rojos, **y también los dos de coherencia**, porque con esa mutación el
-proceso además llamaría a OpenAI sin key.
-
-935 tests en verde. Desplegado: `/_health` responde `prosa: "mock"` — el orquestador **no** tiene key
-de OpenAI, así que publicar no factura. Los tres modos, ahora, legibles desde afuera.
-
-## 🟡 Bloque C paso 2 — hecho. Paso 3 — no se puede cerrar desde acá
-
-Run `14bda962-4eae-44c7-a49e-f79c20d0cad1` (La Birra Bar), lanzado desde el portal: `$0.00`,
-`pending_approval` en menos de un minuto con 25 páginas respaldadas. Aprobada una página, aprobado el
-run → **`approved`, cero errores en consola**. Dos controles positivos de paso: C0 eligió el motivo de
-las **páginas** en un run que sí tiene workflow (en el sembrado elige el otro), y el entregable salió
-sin coste y sin metadatos mientras el informe lleva las dos cosas.
-
-**Y el paso 3 quedó bloqueado por algo que solo se ve haciéndolo:** aprobar el run se ve **idéntico**
-si el workflow despertó y publicó en dry-run que si no despertó nunca. En dry-run el publisher
-reporta `published: false` —bien— así que no se escribe nada y el único rastro es un `log()` dentro
-del contenedor. Descartado sí está `failed`: si hubiera despertado y hubiera reventado, `onFailure`
-lo habría marcado. **O funcionó, o no corrió.**
-
-Está anotado como **C-1** en el plan: el modo que existe para ensayar es el único en el que el ensayo
-no se puede observar. Lo cierra Juan mirando Inngest → Runs, o el token de A3.
-
-### ✅ Y lo cerró: el run figura **`Completed`**
-
-No "despertó": **terminó**. Pasó el `esperar-aprobacion` y el step `publicar` corrió entero sin
-lanzar. Caen las tres promesas que quedaban del bloque C — la compuerta durable en producción,
-**`parseBrief` sobre el brief reconstruido desde la base** (lo que el plan marcaba como nunca
-ejecutado) y el publisher de dry-run escribiendo el payload dentro del contenedor.
-
-### 🟠 Y apareció otro run: `Running` desde el 2026-08-07 a las 20:35, parado en la compuerta
-
-Juan confirmó que **estaba en `esperar-aprobacion`** y lo canceló (Inngest `01KZER4898BS0H4SA7WS9H91YP`).
-
-**Mi primera lectura —"un workflow sin fila en la base"— era falsa**, y el error es instructivo: di
-por hecho que a la compuerta solo se llega *después* del research. No es así. Si el workflow arranca
-con el run fuera de `running`, se salta el research y va **directo a dormir 7 días**. El candidato
-natural es el run **sembrado**, en `pending_approval` desde las 18:18. (`inferencia`: falta el
-`runId` del payload.)
-
-Lo que **no** es inferencia lo enseña el propio portal: ese run muestra `tiene_workflow: false` y el
-botón apagado diciendo *"no hay nada esperando su aprobación"* — mientras había un `waitForEvent`
-esperándolo. `solicitud_emitida_at` la escribe **solo** la API, así que un evento emitido a mano
-—justo lo que uno hace para probar un orquestador recién desplegado— deja el run con workflow y sin
-marca. El error cae del lado seguro (bloquea de más, no de menos) y la decisión de C0 se mantiene,
-pero el tooltip afirma sobre Inngest algo que no podemos comprobar.
-
-Y destapa algo que vale por sí solo: **el barrido no cancela el workflow**, solo marca la fila. Un
-workflow puede seguir vivo sobre un run que la base ya dio por `failed`. Todo anotado como **C-2**.
-
-**La frase, suavizada** (decisión de Juan): de *"no hay nada esperando su aprobación"* a *"aprobarlo
-**probablemente** no publique nada"*. Con un test que impide que la afirmación fuerte vuelva —cuatro
-formas de escribirla— y un control positivo que exige el matiz, porque si no, una frase que no
-mencione la publicación pasaría el test sin decir nada. Mutación comprobada: con la frase vieja cae
-ese test y **solo** ése. 237 tests `node:test` en el portal, 107 Karma.
-
-> Nota al margen, sin consecuencia: `amg-api-production.up.railway.app` ya no resuelve
-> («Application not found»). La API vive en su dominio propio, `api.bigballs.es`, y ahí responde
-> `{"status":"ok"}`. El renderizador, 200.
-
----
-
-## ✅ Desplegado el 2026-08-08 — y lo que costó la `0018`
-
-`must be able to SET ROLE "app_barrido"`. **Falló bien** —se revirtió, las 15 anteriores intactas—
-pero falló **solo en producción**, con 238 tests en verde: en PGlite el rol que migra es superusuario
-y puede asumir cualquier rol; en Supabase alojado `postgres` no lo es.
-
-Es el mismo modo de fallo que la cabecera de la `0018` argumenta para elegir el dueño de la función
-—*"daría verde en los tests y cero filas en producción"*— **un piso más arriba**: el razonamiento era
-correcto y el entorno donde se comprobó, no.
-
-Reproducido y arreglado. `ALTER … OWNER TO` exige **dos** permisos y el mensaje solo nombra el
-primero: poder `SET ROLE` al nuevo dueño (en PG16+ crear un rol da `ADMIN OPTION` pero no `SET`) y que
-ese dueño tenga `CREATE` en el schema. Los dos se conceden temporalmente y **se revocan al final del
-archivo, no justo después del `alter`** — porque `revoke execute`, `grant execute` y
-`comment on function` también exigen ser dueño, y la membresía es lo que los hace pasar. Esa segunda
-mitad la cazó el test, no el razonamiento: la primera versión del arreglo habría vuelto a fallar en la
-línea siguiente.
-
-**El test nuevo aplica la `0018` con un rol `createrole` no-superusuario dueño de lo que la migración
-concede.** Sin los grants reproduce el mensaje literal de producción.
-
-## ✅ Todo en producción, verificado en el navegador
-
-Las **17** migraciones aplicadas, los tres commits pusheados, y los tres servicios redesplegados:
-
-- **`/_health` del orquestador**: `{"ok":true,"funciones":2,"modo":"cloud","pipeline":"mock"}` — **dos**
-  funciones (el workflow y el barrido) y **sin `degradado`**, o sea que la sonda nueva atravesó `Tx` y
-  el `set local role app_service` contra Supabase real. A1 verificado donde importa.
-- **La lista de research y el brief cargan**: `getRun`/`listAllRuns` funcionan con la columna nueva, que
-  era lo único que podía tumbar el portal entero.
-- **La API devuelve `tiene_workflow: false`** para el run sembrado — la respuesta correcta: ese run se
-  insertó directo en la base y nadie espera su aprobación.
-- **B1 vivo**: el entregable es un `StaticText`, no un `link`, mientras el informe sigue siendo `link`.
-
-- **C0 vivo, sobre el escenario exacto de la review**: en el run sembrado el botón «Aprobar el run y
-  publicar» está **deshabilitado**, con el motivo *"este research no lo lanzó el pipeline… aprobarlo no
-  publicaría nada. Para publicar, lanzá un research nuevo"* — y **no** aparece el de las páginas, aunque
-  también se cumple. El colapso a un solo motivo hace lo que se diseñó: gana el que quien mira no puede
-  resolver desde ahí. Cero errores en consola.
-
-Hubo una ventana en la que la API ya servía `tiene_workflow` y el portal seguía en el build anterior
-(mostraba el motivo viejo). Se resolvió sola al terminar Hostinger. **Vale anotarlo**: la API y el
-portal se despliegan por caminos distintos y no llegan a la vez, así que un campo nuevo tiene que ser
-inofensivo para el portal viejo — lo fue, porque el viejo simplemente lo ignora.
+**▶️ Lo próximo:** la **entrega 2** — shell, catálogo de piezas, receta, ensamblador de CSS y traslado
+de las piezas que ya existen, **sin diseño nuevo**. Su gate es **paridad de contenido** contra
+fixtures del HTML actual capturadas *antes* de empezar: texto visible, `href`, `id` de ancla y JSON-LD
+idénticos. Es ahí donde el CSS base pasa a emitir los tokens del manual con los valores actuales como
+default — que es lo que hoy falta para que `colores.primario` se vea.
 
 ## ⏳ Lo que espera a Juan
 
 | Qué | Por qué él | Bloquea |
 | --- | --- | --- |
-| **Abrir la lectura de `**/.env.example`** | Es una línea de `.claude/settings.json` | El bloque **A4** (el `MAPA` y el `.env.example` del orquestador van juntos) |
-| **Un token de solo lectura de Railway** | Es una credencial | El bloque **A3**, que además va **después** de A4 |
+| ⏳ **Desplegar la `0014`** (`npm run migrate:deploy -w db`) | Toca Supabase real | **Sí.** Re-materializa `business_profile_publico`: hasta que corra, el renderizador desplegado **no ve ni una foto ni un token de marca** aunque el código ya los sepa leer. Es la precondición de las entregas 2 y 3 |
+| Borrar `PIPELINE_MODO` y `TRUST_PROXY` del servicio `amg-project` | Es el panel de Railway | Nada. No son secretos, solo confunden a `auditar:railway` |
+| Decidir qué es `NPM_CONFIG_PRODUCTION` | Nadie lo declaró | Nada |
+| `STORYBLOK_SPACE_ID` y `TRUST_PROXY` del renderizador **difieren de la fuente** | Es el panel | Nada hoy; conviene saber cuál gana antes de tocar el Visual Editor |
 
-Y lo que ya hizo, para no volver a pedirlo: desplegó la `0018` y la `0019` (`migrate:deploy -w db`) y
-puso `WEB_PUBLISH_MODE=storyblok` + `STORYBLOK_DRY_RUN=1` en el orquestador, **sin token de
-Storyblok**. Eso último es correcto y deliberado: en dry-run el token no se usa, así que su ausencia
-es una segunda red que no depende de que la variable esté bien escrita.
+Y lo que ya hizo: **los cuatro tokens de Storyblok en el renderizador** (`auditar:railway` los ve; el
+servicio pasó de 3 a 6 coincidencias) y la limpieza de las seis credenciales ajenas de la API.
+
+**Abiertos y sin bloquear a nadie:** **C-1** (en dry-run el ensayo no se puede observar) y **C-2** (la
+marca de C0 y el workflow real pueden discrepar; el barrido no cancela el workflow).
 
 ---
 

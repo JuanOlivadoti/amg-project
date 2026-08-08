@@ -613,10 +613,70 @@ es un párrafo, siete secciones idénticas.
 Hay tres piezas, con spec escrita y **sin empezar**:
 
 1. **Plantillas de landing** — [spec](../superpowers/specs/2026-08-01-plantillas-landings-design.md),
-   migración `0014` (**reservada**, no escrita), tres entregas.
+   tres entregas. **Entrega 1 ✅ el 2026-08-08** (contrato y recorrido de datos); quedan la 2
+   (ensamblado con paridad) y la 3 (piezas nuevas y arreglos visuales).
 2. **Manual de marca** — tokens de color y roles tipográficos self-hosted, en vez de los tres campos
-   actuales de `business_profile.brand`.
-3. **Rediseño de la carta** — categorías con foto, precios por ración.
+   actuales de `business_profile.brand`. **El modelo de datos ✅ entró con la entrega 1**; falta
+   emitir los tokens (entrega 2) y usarlos, con las tipografías self-hosted (entrega 3).
+3. **Rediseño de la carta** — categorías con foto, precios por ración. **Los campos ✅ entraron con la
+   entrega 1**; falta la pieza `cartaCategorias` (entrega 3).
+
+### ✅ Entrega 1 — contrato y recorrido de datos (2026-08-08)
+
+**Un campo del perfil no llega al HTML si no cruza cuatro fronteras.** Esta entrega amplió las
+**tres primeras** y dejó la cuarta —el render— intacta a propósito: así una pérdida de datos no se
+puede confundir con una regresión de refactor ni con un defecto visual.
+
+| Frontera | Dónde | Qué se amplió |
+| --- | --- | --- |
+| 1. Zod, la puerta | `web-builder/src/contract.ts` | `fotoSchema`, `menuCategoriaSchema`, `brand.colores`/`fuentes`/`plantilla`, `menu[].precios`/`nota`/`foto` |
+| 2. La allowlist de Postgres | `db/migrations/0014_fotos_publicas.sql` | `app.foto_publica` y `app.numero_publico` (nuevas), la columna generada re-materializada y **el `grant` recuperado** |
+| 3. `perfilValido` | `renderer/src/perfil.ts` | `foto()`, `precios()`, `categorias()`, `galeria()` y `objetoDe()` para los sub-objetos de marca |
+| 4. El render | — | **Sin tocar**: es la entrega 2 y la 3 |
+
+⏳ **Falta desplegar la `0014`** (`migrate:deploy -w db`, un paso de Juan): re-materializa
+`business_profile_publico`, así que hasta que corra el renderizador desplegado **no ve ni una foto ni
+un token de marca** aunque el código ya los sepa leer. Es la precondición de las entregas 2 y 3, y
+mismo caso que la `0018`.
+
+**Los topes, en las tres capas:** 30 fotos, 3 precios, 20 categorías (más los 20 locales y 200 platos
+que ya estaban). Con una asimetría deliberada: **Zod rechaza el archivo y las otras dos cortan**,
+porque el Zod valida un JSON escrito a mano donde fallar fuerte avisa a quien lo escribió, mientras
+las otras reciben datos ya guardados donde tirar la página entera sería peor que recortar.
+
+**Lo que la `0014` NO valida, y es a propósito:** ni hex, ni https, ni hosts. La allowlist SQL
+restringe **nombres de clave** y **forma de valor**; el contenido lo validan las fronteras 1, 3 y 4.
+Un test lo fija con un caso hostil —un color con `</style>` **cruza** Postgres— para que nadie quite
+la validación de las otras capas creyendo que la base ya cubre.
+
+**El riesgo de orden de la `0014`, cerrado con un test.** La `0014` estaba reservada desde el
+2026-08-05, así que corre **antes** de la `0015`-`0019` en una base nueva (orden alfabético) y
+**después** en producción (`migrarConRegistro` saltea las registradas). Las cinco posteriores lo
+declaraban en un comentario; ahora un test aplica las migraciones sobre **dos PGlite en los dos
+órdenes** y compara las funciones, el grant, las columnas generadas y la proyección de la allowlist.
+
+**El test que ata las tres capas entre sí** (`renderer/src/tres-fronteras.test.ts`): cada frontera
+tiene sus tests, pero lo que rompe el recorrido no es que una falle, sino que **las tres listas no
+digan lo mismo** — y un campo enumerado en dos de tres desaparece sin error y sin log. Recorre el
+camino real (JSON → Zod → `business_profile` → la columna generada → `perfilValido`) y exige que el
+perfil salga **entero**, con `deepEqual` y no campo por campo, porque enumerar deja fuera justo el que
+alguien olvide. Mutación: quitar `menu_categorias` **solo** de `perfilValido` lo tumba con nombre.
+
+**Verificación por mutación**, siete en total y todas con `grep` de control: `portada` en Zod (caen 3
+tests de frontera 1), `colores.primario` y `precios` en `perfilValido` (2 y 1), `menu_categorias` en
+el test encadenado (1), y en la `0014` `portada`, `colores.primario` y `precios` (1 cada una). Dos
+extra que no estaban pedidas: quitar el `grant` tumba **23** tests —literalmente "caen las webs de
+todos los clientes a la vez"— y cambiar `set` por `set local` deja el `lock_timeout` en cero con todo
+lo demás en verde.
+
+**Dos cosas que aparecieron al hacerlo:**
+
+- **El seed de demo necesita el legacy `{color, font}` junto al manual nuevo.** Hasta que la entrega 2
+  emita los tokens, el CSS solo sabe leer la forma vieja: un perfil solo con `colores.primario`
+  dejaría la web de La Birra Bar con el rojo por defecto. Lo cazó un test, no una lectura.
+- **El ancla anti-deriva entre el seed y `business-profile.json` comparaba tres claves a mano**, así
+  que se quedó verde con el seed sin ninguno de los cuatro campos nuevos. Ahora recorre las claves del
+  JSON publicado, y crece sola.
 
 **Deuda que arrastra:** republicar desde un brief **pisa las imágenes que suba el cliente**. El
 nav/footer/menú/blog ya no dependen del brief (se calculan en vivo desde `business_profile`), así que

@@ -307,6 +307,14 @@ test("lo sembrado sobrevive la allowlist: el perfil público trae los 2 locales 
     "la fuente de marca tiene que ser una de las que la allowlist del renderizador acepta",
   );
 
+  // El manual de marca (`0014`) viaja ADEMÁS del legacy. Las dos formas conviven a propósito mientras
+  // la emisión del CSS solo sepa leer la vieja: sin `color`, este cliente perdería su marca hasta la
+  // entrega 2; sin `colores`, el manual no llegaría nunca y nadie se enteraría hasta mirar la web.
+  const marca = perfil?.brand as { colores?: Record<string, string>; fuentes?: Record<string, string> };
+  assert.equal(marca?.colores?.["primario"], "#c8102e", "el token primario del manual no cruzó la allowlist");
+  assert.equal(marca?.colores?.["fondoAlt"], "#faf7f2", "los tokens de fondo son los que más fácil se pierden");
+  assert.equal(marca?.fuentes?.["titulo"], "condensada", "el rol tipográfico de titulares no cruzó");
+
   // Los locales alimentan el footer NAP multi-local y la sección "Ubicaciones" de la nav fija.
   assert.equal(perfil?.locations?.length, 2, "los dos locales de Madrid (Centro y Salamanca)");
   assert.ok(
@@ -330,15 +338,24 @@ test("lo sembrado sobrevive la allowlist: el perfil público trae los 2 locales 
  */
 test("el perfil del seed y el de web-builder describen el MISMO negocio (anti-deriva)", async () => {
   const ruta = new URL("../../web-builder/business-profile.json", import.meta.url);
-  const publicado = JSON.parse(await readFile(ruta, "utf8")) as {
-    name: string;
-    locations: unknown[];
-    menu: unknown[];
-  };
+  const publicado = JSON.parse(await readFile(ruta, "utf8")) as Record<string, unknown>;
+  const sembrado = PERFIL_DEMO as unknown as Record<string, unknown>;
 
-  assert.equal(PERFIL_DEMO.name, publicado.name, "el nombre del cliente sembrado ≠ el publicado");
-  assert.deepEqual(PERFIL_DEMO.locations, publicado.locations, "los locales divergieron");
-  assert.deepEqual(PERFIL_DEMO.menu, publicado.menu, "la carta divergió");
+  // Se recorren las claves del JSON PUBLICADO en vez de enumerarlas: la versión anterior comparaba
+  // `name`, `locations` y `menu` a mano, así que al añadir `portada`, `fotos`, `menu_categorias` y el
+  // manual de marca el ancla siguió en verde con el seed sin ninguno de los cuatro. Un ancla que hay
+  // que acordarse de ampliar es un ancla que se queda corta justo cuando hace falta.
+  //
+  // La dirección importa: el seed PUEDE tener campos de más (`priceRange`, que no se publica), pero
+  // nunca de menos. Lo que se publica es el mínimo que el portal tiene que mostrar.
+  assert.ok(Object.keys(publicado).length >= 7, "el JSON publicado se quedó sin campos: ¿se vació?");
+  for (const clave of Object.keys(publicado)) {
+    assert.deepEqual(
+      sembrado[clave],
+      publicado[clave],
+      `\`${clave}\` divergió entre el seed (db/src/seed-demo.ts) y lo publicado (web-builder/business-profile.json)`,
+    );
+  }
 });
 
 test("sembrar dos veces es idempotente: no duplica tenant, cliente, run ni páginas", async () => {

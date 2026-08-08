@@ -14,4 +14,4 @@ export { modoProsa } from "./llm/content.js";
 export type { ModoProsa } from "./llm/content.js";
 export { applyProse, loadProfile } from "./enrich.js";
 export { config } from "./config.js";
-export type { KrBrief, KrProposedPage, BusinessProfile, BrandTheme, Imagen, Location, MenuItem, NavItem, Story, Blok } from "./types.js";
+export type { KrBrief, KrProposedPage, BusinessProfile, BrandTheme, Foto, FuenteNombre, Imagen, Location, MenuCategoria, MenuItem, NavItem, Story, Blok } from "./types.js";

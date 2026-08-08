@@ -146,6 +146,26 @@ export interface PostalAddress {
 }
 
 /**
+ * Una foto del negocio, cargada en la ficha del cliente.
+ *
+ * **No es `Imagen`, y la diferencia es `alt`.** `Imagen` es el campo `asset` de un blok de Storyblok,
+ * donde el Visual Editor siempre entrega la clave (vacía si nadie la llenó) y por eso `alt` es
+ * obligatorio. Acá el dato lo produce el formulario del portal, que captura una URL y nada más: si
+ * `alt` fuera obligatorio el campo estaría inválido siempre. Sin `alt` se emite `alt=""` —decorativa,
+ * que es lo correcto para una portada cuyo contenido ya está en el `<h1>`— y **nunca** un `alt`
+ * inventado a partir del nombre del negocio, por la misma razón que no se inventa un `postalCode`.
+ *
+ * `src` termina en un `<img src>` del proceso anónimo: es superficie de inyección y de fuga (cada
+ * visita pega contra ese host). Se valida https en las cuatro fronteras, y la allowlist de hosts vive
+ * en el renderizador — nunca en la ficha del cliente, o una ficha comprometida se ampliaría sola.
+ */
+export interface Foto {
+  /** URL **https** de un host de la allowlist del renderizador. */
+  src: string;
+  alt?: string;
+}
+
+/**
  * Un local del negocio. Un restaurante puede tener varios y cada uno tiene su dirección y su horario.
  *
  * El perfil "clásico" (`address`/`telephone`/`opening_hours` sueltos en el `BusinessProfile`)
@@ -158,6 +178,8 @@ export interface Location {
   address?: PostalAddress;
   telephone?: string;
   opening_hours?: string;
+  /** Foto del local. */
+  foto?: Foto;
 }
 
 /**
@@ -172,12 +194,47 @@ export interface MenuItem {
   name: string;
   description?: string;
   price?: string;
+  /**
+   * Varios importes del mismo plato ("Media" 9 €, "Ración" 15 €). **Manda sobre `price`**, que queda
+   * como el atajo del caso de un solo importe. `importe` sigue siendo texto libre por la misma razón
+   * que `price`. Máx 3: una carta con seis columnas de precio deja de ser legible.
+   */
+  precios?: Array<{ etiqueta: string; importe: string }>;
+  /** Aviso corto del plato ("Sin gluten", "Picante"). */
+  nota?: string;
+  /** Miniatura del plato. */
+  foto?: Foto;
+}
+
+/**
+ * Una categoría de la carta, con su foto. **Opcional**: sin `menu_categorias` la carta se agrupa por
+ * el `category` de cada plato como hasta ahora, sin fotos — un cliente que solo tiene la lista de
+ * platos conserva su carta entera.
+ *
+ * `nombre` es lo que se compara contra `MenuItem.category`; una categoría sin platos no se dibuja
+ * (un bloque con foto y sin carta es un hueco).
+ */
+export interface MenuCategoria {
+  nombre: string;
+  foto?: Foto;
+  /** Posición. Sin él, orden de aparición en `menu`. */
+  orden?: number;
 }
 
 /**
  * Datos del negocio real (NAP + precio + imagen). NO vienen del research: los aporta
  * el cliente una vez por sitio. Enriquecen el JSON-LD (LocalBusiness) y la página.
- * En PROD esto es un datasource global del space de Storyblok; en la PoC, un JSON.
+ *
+ * **De dónde sale en producción.** No de un datasource de Storyblok —eso decía este comentario y
+ * dejó de ser cierto en la `0008`—, sino de `clients.business_profile`, y el renderizador **no lee
+ * esa columna**: lee `clients.business_profile_publico`, la columna generada con **allowlist** que
+ * enumera campo por campo lo que puede salir a internet anónimo. En el CLI del M1 sigue siendo un
+ * JSON en disco.
+ *
+ * Por eso **agregar un campo acá no basta**: tiene que cruzar las cuatro fronteras —el Zod de
+ * `contract.ts`, la allowlist `app.nap_publico` (migración `0014`), `perfilValido` del renderizador
+ * y el render—, y si falta en una desaparece **sin error y sin log**. Lo ata
+ * `renderer/src/tres-fronteras.test.ts`.
  */
 export interface BusinessProfile {
   name: string;
@@ -196,9 +253,32 @@ export interface BusinessProfile {
   locations?: Location[];
   /** La carta. Si tiene ítems, el nav muestra "Menú" y `/menu` se sirve. */
   menu?: MenuItem[];
+  /** Las categorías de la carta, con foto. Sin esto, la carta se agrupa como hoy. */
+  menu_categorias?: MenuCategoria[];
   /** Marca del negocio: lo que hace que su web se vea PROPIA y no idéntica a la del vecino. */
   brand?: BrandTheme;
+  /** La foto del hero. Sin ella, el hero es tipográfico — nunca un hueco ni una imagen rota. */
+  portada?: Foto;
+  /** La galería. Máx 30: sin tope, un import mal hecho renderiza 50.000 imágenes en cada visita fría. */
+  fotos?: Foto[];
 }
+
+/**
+ * Nombres de **ROL**, no familias tipográficas.
+ *
+ * La ficha del cliente elige `condensada`, nunca `"Oswald, sans-serif"`. El código mapea cada nombre a
+ * una familia self-hosted o a un stack del sistema, así que cambiar qué hay detrás de `condensada` es
+ * un cambio de código revisado y no una edición masiva de fichas de clientes. Y un stack CSS en la
+ * ficha sería texto libre entrando a un `<style>`, que es justo lo que la allowlist evita.
+ */
+export type FuenteNombre =
+  | "sistema"
+  | "serif"
+  | "moderna"
+  | "condensada"
+  | "geometrica"
+  | "humanista"
+  | "script";
 
 /**
  * Tema de marca por tenant (ADR-11: "tema por tenant, no hardcodeado").
@@ -209,10 +289,46 @@ export interface BusinessProfile {
  * logo) y descarta lo que no pase — nunca confía en que el dato venga limpio.
  */
 export interface BrandTheme {
-  /** Color de acento, hex (`#0a7d34` o `#0a7`). Se ignora si no es un hex válido. */
-  color?: string;
-  /** Familia tipográfica, por nombre. El renderizador la mapea a un stack seguro. */
-  font?: "sistema" | "serif" | "moderna";
   /** URL del logo. Se muestra en la cabecera del sitio. */
   logo?: string;
+  /**
+   * Qué juego de recetas usa el sitio (una por tipo de documento: story, home, menu, blog). Hoy el
+   * único juego que existe es `base`, y un valor desconocido o ausente cae a `base` — nunca un error.
+   */
+  plantilla?: string;
+  /**
+   * La paleta. **Cada token se emite como custom property dentro del `<style>` del documento**, así
+   * que cada uno es la superficie de inyección más directa del sistema: se valida como hex (`#rgb` o
+   * `#rrggbb`) en las cuatro fronteras y **lo que no valida se descarta y cae al default del CSS
+   * base** — la página sale sobria, nunca rota.
+   *
+   * Nada de derivar colores en TypeScript (un hover 12% más oscuro, un contraste automático): las
+   * variantes se calculan en CSS con `color-mix`, donde no hay una segunda copia de la paleta que se
+   * desincronice.
+   */
+  colores?: {
+    primario?: string;
+    secundario?: string;
+    titulo?: string;
+    texto?: string;
+    fondo?: string;
+    fondoAlt?: string;
+  };
+  /** Los tres roles tipográficos. Nombres de la allowlist, nunca un stack CSS. */
+  fuentes?: {
+    titulo?: FuenteNombre;
+    texto?: FuenteNombre;
+    decorativa?: FuenteNombre;
+  };
+  /**
+   * ⚠️ **Legacy.** Color de acento, hex. Mapea a `colores.primario`; si la ficha trae las dos formas
+   * **gana la específica**, porque la nueva es una decisión explícita y la vieja es herencia.
+   *
+   * No se borra: todas las fichas sembradas hasta el 2026-08-08 tienen esta forma, y quitarla les
+   * cambiaría el aspecto de golpe. Esa —y solo esa— es la regresión que el manual de marca puede
+   * causar, así que tiene fixture y test propios.
+   */
+  color?: string;
+  /** ⚠️ **Legacy.** Mapea a `fuentes.texto`. Ver `color`. */
+  font?: "sistema" | "serif" | "moderna";
 }

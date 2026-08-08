@@ -1,10 +1,31 @@
 {
   "name": "La Birra Bar",
+  "brand": {
+    "plantilla": "base",
+    "colores": {
+      "primario": "#c8102e",
+      "secundario": "#f2b705",
+      "titulo": "#1a1a1a",
+      "texto": "#3d3d3d",
+      "fondo": "#ffffff",
+      "fondoAlt": "#faf7f2"
+    },
+    "fuentes": { "titulo": "condensada", "texto": "humanista" },
+    "color": "#c8102e",
+    "font": "moderna"
+  },
+  "portada": { "src": "https://a.storyblok.com/f/demo/la-birra-portada.jpg", "alt": "" },
+  "fotos": [
+    { "src": "https://a.storyblok.com/f/demo/la-birra-sala.jpg" },
+    { "src": "https://a.storyblok.com/f/demo/la-birra-barra.jpg" },
+    { "src": "https://a.storyblok.com/f/demo/la-birra-parrilla.jpg", "alt": "La parrilla, vista desde la barra" }
+  ],
   "locations": [
     {
       "name": "Centro (Puerta del Sol)",
       "address": { "streetAddress": "Carrera de San Jerónimo 3", "addressLocality": "Madrid" },
-      "opening_hours": "Lun-Dom 11:00-01:00 · Vie-Sáb hasta las 02:00"
+      "opening_hours": "Lun-Dom 11:00-01:00 · Vie-Sáb hasta las 02:00",
+      "foto": { "src": "https://a.storyblok.com/f/demo/la-birra-local-centro.jpg" }
     },
     {
       "name": "Salamanca",
@@ -12,18 +33,33 @@
       "opening_hours": "Dom-Mié hasta 00:30 · Vie-Sáb hasta la 01:00"
     }
   ],
+  "menu_categorias": [
+    {
+      "nombre": "Hamburguesas",
+      "foto": { "src": "https://a.storyblok.com/f/demo/cat-hamburguesas.jpg" },
+      "orden": 0
+    },
+    { "nombre": "Acompañamientos", "orden": 1 },
+    {
+      "nombre": "Cervezas artesanales",
+      "foto": { "src": "https://a.storyblok.com/f/demo/cat-cervezas.jpg" },
+      "orden": 2
+    }
+  ],
   "menu": [
     {
       "category": "Hamburguesas",
       "name": "Golden Burger",
-      "description": "La hamburguesa insignia de la casa, la que los lanzó a la fama mundial."
+      "description": "La hamburguesa insignia de la casa, la que los lanzó a la fama mundial.",
+      "foto": { "src": "https://a.storyblok.com/f/demo/golden-burger.jpg" }
     },
     { "category": "Cervezas artesanales", "name": "Ale de Ogham", "description": "De barril, bien fría." },
     { "category": "Cervezas artesanales", "name": "Honey de Ogham", "description": "De barril, bien fría." },
     {
       "category": "Acompañamientos",
       "name": "Patatas fritas especiales",
-      "description": "Con un toque crocante único y salsas de la casa."
+      "description": "Con un toque crocante único y salsas de la casa.",
+      "nota": "Sin gluten"
     }
   ]
 }

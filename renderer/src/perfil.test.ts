@@ -175,3 +175,163 @@ describe("perfilValido + renderStory: el contrato de verdad", () => {
     assert.match(html, /"telephone": "\+34 910 000 000"/, "el NAP es el punto del JSON-LD local");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRONTERA 3 de 4 — `perfilValido`, el validador del renderizador.
+//
+// Reconstruye el perfil campo por campo y tira lo que no enumera, AUNQUE haya pasado la allowlist de
+// Postgres. En producción el perfil llega de una fila `jsonb` que nadie validó al escribirla: acá no
+// se confía en las fronteras anteriores, se revalida.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FOTO = { src: "https://a.storyblok.com/f/1/x.jpg" };
+
+describe("perfilValido — el perfil extendido (fotos, manual de marca, carta)", () => {
+  it("deja pasar el manual de marca completo", () => {
+    const p = perfilValido({
+      name: "X",
+      brand: {
+        plantilla: "base",
+        colores: { primario: "#0a7d34", fondoAlt: "#f4f4f2" },
+        fuentes: { titulo: "condensada", decorativa: "script" },
+      },
+    });
+    assert.equal(p?.brand?.plantilla, "base");
+    assert.equal(p?.brand?.colores?.primario, "#0a7d34");
+    assert.equal(p?.brand?.colores?.fondoAlt, "#f4f4f2");
+    assert.equal(p?.brand?.fuentes?.titulo, "condensada");
+    assert.equal(p?.brand?.fuentes?.decorativa, "script");
+  });
+
+  it("conserva el legacy {color, font} junto al manual: quién gana lo decide la emisión, no acá", () => {
+    const p = perfilValido({ name: "X", brand: { color: "#111111", font: "serif", colores: { primario: "#0a7d34" } } });
+    assert.equal(p?.brand?.color, "#111111");
+    assert.equal(p?.brand?.font, "serif");
+    assert.equal(p?.brand?.colores?.primario, "#0a7d34");
+  });
+
+  it("un color con `</style>` o `;}` se descarta y cae al default: la web sale sobria, nunca rota", () => {
+    const p = perfilValido({
+      name: "X",
+      brand: { colores: { primario: "#fff</style><script>a()</script>", secundario: "red;}", titulo: "#0a7d34" } },
+    });
+    assert.equal(p?.brand?.colores?.primario, undefined);
+    assert.equal(p?.brand?.colores?.secundario, undefined);
+    // El token bueno del mismo objeto sobrevive: se descarta el valor, no la paleta entera.
+    assert.equal(p?.brand?.colores?.titulo, "#0a7d34");
+  });
+
+  it("un color con `url(...)` no es hex: se descarta", () => {
+    const p = perfilValido({ name: "X", brand: { colores: { fondo: "url(javascript:alert(1))" } } });
+    assert.equal(p?.brand?.colores, undefined);
+  });
+
+  it("una fuente fuera de la allowlist cae al default del rol; un stack CSS nunca pasa", () => {
+    const p = perfilValido({ name: "X", brand: { fuentes: { titulo: "Oswald, sans-serif", texto: "humanista" } } });
+    assert.equal(p?.brand?.fuentes?.titulo, undefined);
+    assert.equal(p?.brand?.fuentes?.texto, "humanista");
+  });
+
+  it("el legacy `font` NO acepta los nombres nuevos: son roles del manual, no de la clave vieja", () => {
+    const p = perfilValido({ name: "X", brand: { font: "condensada" } });
+    assert.equal(p?.brand, undefined);
+  });
+
+  it("portada y galería: pasan las https y se descartan las demás, una a una", () => {
+    const p = perfilValido({
+      name: "X",
+      portada: { src: "https://a.storyblok.com/f/1/portada.jpg", alt: "Sala" },
+      fotos: [FOTO, { src: "http://a.storyblok.com/f/1/inseguro.jpg" }, "no soy un objeto", { alt: "sin src" }],
+    });
+    assert.equal(p?.portada?.src, "https://a.storyblok.com/f/1/portada.jpg");
+    assert.equal(p?.portada?.alt, "Sala");
+    assert.equal(p?.fotos?.length, 1);
+    assert.equal(p?.fotos?.[0]?.src, FOTO.src);
+  });
+
+  it("una foto sin `alt` NO inventa uno: se emitirá `alt=\"\"` (decorativa)", () => {
+    const p = perfilValido({ name: "Trattoria", portada: FOTO });
+    assert.equal(p?.portada?.src, FOTO.src);
+    assert.equal(p?.portada?.alt, undefined);
+  });
+
+  it("una `foto` que viene como string se descarta, y el ítem se dibuja sin foto", () => {
+    const p = perfilValido({ name: "X", menu: [{ name: "Pizza", foto: "https://a.storyblok.com/f/1/x.jpg" }] });
+    assert.equal(p?.menu?.length, 1);
+    assert.equal(p?.menu?.[0]?.foto, undefined);
+  });
+
+  it("la galería se corta en 30", () => {
+    const p = perfilValido({ name: "X", fotos: Array.from({ length: 500 }, () => FOTO) });
+    assert.equal(p?.fotos?.length, 30);
+  });
+
+  it("los precios se cortan en 3, y una entrada a medias se descarta sola — no tira el plato", () => {
+    const p = perfilValido({
+      name: "X",
+      menu: [
+        {
+          name: "Pizza",
+          precios: [
+            { etiqueta: "Media", importe: "9 €" },
+            { etiqueta: "Ración" },
+            { importe: "15 €" },
+            { etiqueta: "Familiar", importe: "20 €" },
+          ],
+        },
+      ],
+    });
+    // Se cortan las 3 primeras de la FUENTE y de esas sobrevive la única entera.
+    assert.equal(p?.menu?.length, 1);
+    assert.deepEqual(p?.menu?.[0]?.precios, [{ etiqueta: "Media", importe: "9 €" }]);
+  });
+
+  it("si no sobrevive ningún precio, el plato cae a `price`", () => {
+    const p = perfilValido({ name: "X", menu: [{ name: "Pizza", price: "12 €", precios: [{ etiqueta: "Media" }] }] });
+    assert.equal(p?.menu?.[0]?.precios, undefined);
+    assert.equal(p?.menu?.[0]?.price, "12 €");
+  });
+
+  it("`nota` y la foto del plato sobreviven", () => {
+    const p = perfilValido({ name: "X", menu: [{ name: "Pizza", nota: "Sin gluten", foto: FOTO }] });
+    assert.equal(p?.menu?.[0]?.nota, "Sin gluten");
+    assert.equal(p?.menu?.[0]?.foto?.src, FOTO.src);
+  });
+
+  it("las categorías: sin `nombre` se descartan; `orden` solo si es entero >= 0", () => {
+    const p = perfilValido({
+      name: "X",
+      menu_categorias: [
+        { nombre: "Pizzas", foto: FOTO, orden: 0 },
+        { foto: FOTO, orden: 1 },
+        { nombre: "Pastas", orden: "2" },
+        { nombre: "Postres", orden: -1 },
+      ],
+    });
+    assert.equal(p?.menu_categorias?.length, 3);
+    assert.equal(p?.menu_categorias?.[0]?.orden, 0);
+    assert.equal(p?.menu_categorias?.[0]?.foto?.src, FOTO.src);
+    // La categoría sobrevive sin `orden`: no tenerlo significa "orden de aparición en `menu`".
+    assert.equal(p?.menu_categorias?.[1]?.nombre, "Pastas");
+    assert.equal(p?.menu_categorias?.[1]?.orden, undefined);
+    assert.equal(p?.menu_categorias?.[2]?.orden, undefined);
+  });
+
+  it("las categorías se cortan en 20", () => {
+    const p = perfilValido({ name: "X", menu_categorias: Array.from({ length: 50 }, (_, i) => ({ nombre: `C${i}` })) });
+    assert.equal(p?.menu_categorias?.length, 20);
+  });
+
+  it("un local con foto la conserva; una foto sola no convierte en local a un objeto vacío", () => {
+    const conDatos = perfilValido({ name: "X", locations: [{ telephone: "+34 910 000 000", foto: FOTO }] });
+    assert.equal(conDatos?.locations?.[0]?.foto?.src, FOTO.src);
+    const soloFoto = perfilValido({ name: "X", locations: [{ foto: FOTO }] });
+    assert.equal(soloFoto?.locations, undefined);
+  });
+
+  it("una clave que el validador no enumera NO llega al render, aunque haya pasado la allowlist SQL", () => {
+    const p = perfilValido({ name: "X", portada_grande: FOTO, brand: { colores: { acento: "#0a7d34" } } });
+    assert.equal((p as unknown as Record<string, unknown>)["portada_grande"], undefined);
+    assert.equal((p?.brand?.colores as Record<string, unknown> | undefined)?.["acento"], undefined);
+  });
+});
