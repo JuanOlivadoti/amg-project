@@ -65,6 +65,31 @@ Dos cosas que aparecieron al medirlo:
 - **Un typo en `WEB_PUBLISH_MODE` es mock en silencio**, con token y space puestos. Por eso el test
   del estado mock usa el typo y no la ausencia: es el mismo camino y es el que nadie sospecha.
 
+### 🔴 Y lo primero que reportó desplegado fue `mock` — el bloque C sigue bloqueado
+
+Commit `e926231`, desplegado y leído en producción:
+
+```json
+{"ok":true,"funciones":2,"modo":"cloud","pipeline":"mock","publicacion":"mock","uptimeSegundos":40}
+```
+
+`publicacion: "mock"`, no `dry-run`. O sea: **`WEB_PUBLISH_MODE=storyblok` no está tomando en el
+servicio `amg-orchestrator`** — ausente, mal escrita, con un espacio de más, o puesta en otro
+servicio o entorno. La leí tres veces seguidas con la misma respuesta y con el proceso ya
+redesplegado (uptime 40 s), así que no es una ventana de arranque.
+
+**Esto es exactamente para lo que existe C-0**, y lo cazó en la primera lectura: sin el campo, el
+paso siguiente habría corrido en `mock` creyéndose en dry-run, y `MockPublisher` reporta
+`published: true` — la base habría anotado como publicadas unas páginas que nunca salieron del
+contenedor.
+
+**El paso 2 del bloque C no se hace hasta que esto diga `dry-run`.** Depende del panel de Railway,
+así que es de Juan.
+
+> Nota al margen, sin consecuencia: `amg-api-production.up.railway.app` ya no resuelve
+> («Application not found»). La API vive en su dominio propio, `api.bigballs.es`, y ahí responde
+> `{"status":"ok"}`. El renderizador, 200.
+
 ---
 
 ## ✅ Desplegado el 2026-08-08 — y lo que costó la `0018`
