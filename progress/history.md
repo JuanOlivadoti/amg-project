@@ -11,6 +11,35 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-08 (noche, 4) — las tipografías, y una garantía mía que el test no probaba
+
+Con la mitad B bloqueada esperando las fotos, la C: las tipografías self-hosted. Cuatro familias SIL
+OFL 1.1 verificadas **una por una** contra el repositorio de Google Fonts —no de memoria— con su
+licencia commiteada al lado, porque la spec lo pide con esas palabras: *una fuente sin su licencia en
+el repo no se sirve*.
+
+Lo interesante no son las fuentes: es lo que apareció al verificarlas. Escribí en el test de path
+traversal que era fuerte *«porque el handler busca en un `Map` y no hay path que atravesar»*. Para
+comprobarlo muté el handler y le devolví el `readFileSync` — y **el test siguió pasando**. La razón:
+quien para esas URLs primero es el **router**, porque el patrón `:nombre` no captura `/`, así que la
+petición ni llega al handler. Mi afirmación era cierta **como diseño** y falsa **como descripción de
+lo que el test demostraba**.
+
+Es la tercera vez en esta sesión que pasa lo mismo, y la primera en la que el defecto es mío de punta
+a punta: escribir la defensa se siente como haberla probado. El arreglo no fue cambiar el test sino
+partirlo — una capa es el router y la otra el `Map`, cada una con el suyo, y una nota diciendo que si
+alguien cambia el patrón a `/_assets/fonts/*` la primera desaparece sin ruido.
+
+De paso, dos decisiones que valen más que su tamaño: los hashes de los archivos van **escritos en el
+código** (para emitir el CSS sin tocar el disco) con un test que recalcula el SHA-256 de cada uno —sin
+él, editar un `.woff2` sin actualizar su hash lo dejaría servido desde la cache `immutable` para
+siempre—; y los tres roles legacy **no** se self-hostean, porque todas las fichas sembradas usan uno y
+darles familia propia les cambiaría el aspecto de golpe.
+
+**1177 tests.** Las fuentes se sirven; el CSS todavía no las pide, que es el siguiente paso.
+
+---
+
 ## 2026-08-08 (noche, 3) — entrega 3A: el sitio por fin cambia de aspecto, y tres comentarios que no eran garantías
 
 La primera entrega del bloque E que se ve. Los cinco arreglos visuales y los nueve tokens de marca

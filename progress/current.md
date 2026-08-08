@@ -7,11 +7,30 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-08
-**En curso:** **bloque E** — el aspecto de las webs. Entregas **1** y **2** cerradas, y la **3 va por
-la mitad A**: los cinco arreglos visuales y los 9 tokens de marca consumidos. Queda la mitad B (las
-piezas con imagen) y las tipografías self-hosted.
-**Estado:** listo. **1158 tests**, typecheck limpio, y las webs manejadas en un navegador en claro y
-oscuro — donde por fin se ve el cambio.
+**En curso:** **bloque E** — el aspecto de las webs. Entregas **1** y **2** cerradas; de la **3** está
+hecha la **mitad A** (los cinco arreglos visuales y los 9 tokens de marca) y la **C a medias** (las
+tipografías se sirven, falta que el CSS las pida). Queda la **mitad B**, que espera las fotos.
+**Estado:** listo para seguir. **1177 tests**, typecheck limpio, y las webs manejadas en un navegador.
+
+## 🟡 Entrega 3, mitad C — las tipografías: servidas, sin enchufar
+
+Cuatro familias **SIL OFL 1.1** —Oswald, Jost, Source Sans 3, Dancing Script—, verificadas **una por
+una** contra el repositorio de Google Fonts y con su licencia commiteada al lado. Subsets latinos en
+`woff2`: 148 KB. Se sirven desde `/_assets/fonts/`, con un `Map` en memoria cargado al arrancar que
+**falla cerrado**: si falta un archivo, el renderizador no arranca.
+
+No se cargan de Google porque eso mete un tercero en el camino de render del **único proceso expuesto
+a internet anónimo** y manda la IP de cada visitante a Google — lo mismo que la spec prohíbe para las
+fotos.
+
+**Una afirmación mía que el test no probaba.** Escribí que el test de path traversal era fuerte
+«porque hay un `Map` y no un path». Mutando el handler para que volviera a leer del filesystem, **el
+test siguió pasando**: quien para esas URLs primero es el **router**, porque `:nombre` no captura `/`.
+Cierto como diseño, falso como descripción de lo que el test demostraba. Ahora cada capa tiene su
+test — y queda escrito que si alguien cambia el patrón a `/_assets/fonts/*`, la primera desaparece
+sin ruido.
+
+**▶️ Lo que falta acá, y es el siguiente paso:** el CSS emitido **todavía no pide las fuentes**.
 
 ## ✅ Entrega 3, mitad A — el sitio por fin cambia de aspecto
 
@@ -123,10 +142,14 @@ generada → `perfilValido`— y exige que el perfil salga entero. Mutación com
 - **El ancla anti-deriva comparaba tres claves a mano**, así que quedó verde con el seed sin ninguno
   de los cuatro campos nuevos. Ahora recorre las claves del JSON publicado y crece sola.
 
-**▶️ Lo próximo:** la **mitad B** — las piezas con imagen (`heroPortada`, `barraDatos`,
-`platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias`), la **allowlist de hosts de imagen** con
-su `referrerpolicy` y el presupuesto de 60 `<img>`. Y aparte, las **tipografías self-hosted**, que no
-necesitan fotos pero traen una **ruta pública nueva** al único proceso expuesto a internet anónimo.
+**▶️ Lo próximo, en este orden:**
+
+1. **Enchufar las tipografías** (cierra la mitad C). Que `--marca-fuente-*` resuelva a `stackDe(rol)`
+   y que el `<style>` incluya `cssDeFuentes(rolesUsados)`, que emite las `@font-face` **solo de las
+   familias que la página usa**. Toca la firma de `ensamblarCss`. Con eso llega el test que la
+   enmienda pide y que **todavía no existe**: *cero terceros en el CSS emitido*.
+2. **La mitad B** — las piezas con imagen, la allowlist de hosts y el presupuesto de 60 `<img>`.
+   **Bloqueada**: necesita las fotos en Storyblok.
 
 **Se parte en dos mitades**, y no por diseño sino por disponibilidad del dato: los **seis arreglos
 visuales, las tipografías y el uso real de los tokens** no necesitan ninguna foto y se pueden

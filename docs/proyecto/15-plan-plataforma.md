@@ -634,7 +634,7 @@ Se parte sola en dos mitades por una razón que no es de diseño sino de disponi
 | --- | --- | --- |
 | **A** ✅ | Los **cinco arreglos visuales** (modo oscuro completo, doble borde de la carta, enlaces del pie, contraste del acento en oscuro, CTA largo) y el **uso real de los 9 tokens de marca** en el CSS de las piezas | **No** |
 | **B** | `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias`, la allowlist de hosts de imagen con su `referrerpolicy` y el presupuesto de 60 `<img>` | **Sí** |
-| **C** | Las **tipografías self-hosted** y el test de *cero terceros en el CSS emitido* | No, pero traen una **ruta pública nueva** al proceso anónimo |
+| **C** 🟡 | Las **tipografías self-hosted**. **Servidas ✅**; falta **enchufarlas** al CSS emitido y el test de *cero terceros* | No, pero traen una **ruta pública nueva** al proceso anónimo |
 
 La mitad **A** es la que hace que dos restaurantes dejen de distinguirse solo por un color de acento,
 y hoy se puede verificar entera en un navegador. La **B** no: su gate pide *"el sitio manejado en un
@@ -674,6 +674,39 @@ y 39 pasaba, y el JSDoc afirmaba que «tiene que doler en un test»); la decisi�
 porque el test usaba una ficha sin marca y el default coincidía con el neutro, así que resolvía igual
 por los dos caminos; y el `@supports` del `color-mix` se podía quitar sin que cayera nada. Los tres,
 ahora con test de borde y mutación comprobada.
+
+
+#### 🟡 Mitad C — las tipografías: servidas, sin enchufar (2026-08-08)
+
+**Lo que está hecho.** Cuatro familias **SIL OFL 1.1** —Oswald (`condensada`), Jost (`geometrica`),
+Source Sans 3 (`humanista`), Dancing Script (`script`)—, verificadas **una por una** contra el
+repositorio de Google Fonts y con su licencia commiteada al lado: *una fuente sin su licencia en el
+repo no se sirve*, como manda la spec. Subsets latinos en `woff2`, **148 KB los siete archivos**.
+
+**Los tres roles legacy (`sistema`, `serif`, `moderna`) NO se self-hostean.** Son los tres valores del
+campo viejo `brand.font` y todas las fichas sembradas usan uno: darles familia propia les cambiaría el
+aspecto de golpe. Un test lo impide.
+
+**La ruta `/_assets/fonts/`** sirve desde un `Map` en memoria cargado al arrancar, y **falla cerrado**
+—si falta un archivo el renderizador no arranca, en vez de dar 404 en la web de un cliente—. Los
+hashes van escritos en el código para poder emitir el CSS sin tocar el disco, y un test recalcula el
+SHA-256 de cada archivo: sin él, editar un `.woff2` sin cambiar su hash lo dejaría servido desde la
+cache `immutable` para siempre.
+
+**Una afirmación corregida, y vale como aviso.** El comentario del test de path traversal decía que
+era fuerte «porque hay un `Map` y no un path». Mutando el handler para que volviera a leer del
+filesystem, **el test siguió pasando**: quien para esas URLs primero es el **router**, porque
+`:nombre` no captura `/`. Cierto como diseño, falso como descripción de lo que el test demostraba. Hay
+dos capas y ahora cada una tiene su test. ⚠️ **Si algún día se cambia el patrón a `/_assets/fonts/*`
+—que sí captura `/`— la primera capa desaparece sin ruido.**
+
+**Lo que falta, y es el siguiente paso del bloque:** el CSS emitido **todavía no pide las fuentes**.
+Hay que hacer que `--marca-fuente-*` resuelva a `stackDe(rol)` (que ya devuelve la familia propia con
+su respaldo) y que el `<style>` incluya `cssDeFuentes(rolesUsados)` — que emite las `@font-face`
+**solo de las familias que la página usa**, igual que el CSS de las piezas. Toca la firma de
+`ensamblarCss`. Y con eso llega el test que la enmienda pide y que todavía no existe: **cero terceros
+en el CSS emitido** (ni `fonts.googleapis.com`, ni `cdn.`, ni `//`), que es la garantía de ADR-19
+convertida en test en vez de en costumbre.
 
 **Lo que la entrega 2 dejó preparado y esta consume:** los 9 tokens `--marca-*` ya se emiten en el
 `<style>` con los valores actuales como default, sin que nadie los use. Esta entrega es la que los
