@@ -10,6 +10,8 @@ export { renderStory, renderHome, renderMenu, renderBlogIndex } from "./render/h
 export { fromStoryblokContent } from "./storyblok/content.js";
 export { getPublisher, modoPublicacion } from "./publish/publisher.js";
 export type { ModoPublicacion, Publisher, PublishResult } from "./publish/publisher.js";
+export { modoProsa } from "./llm/content.js";
+export type { ModoProsa } from "./llm/content.js";
 export { applyProse, loadProfile } from "./enrich.js";
 export { config } from "./config.js";
 export type { KrBrief, KrProposedPage, BusinessProfile, BrandTheme, Imagen, Location, MenuItem, NavItem, Story, Blok } from "./types.js";

@@ -46,6 +46,24 @@ deja rojo **un** test —el del estado `storyblok` sin token, donde el entorno d
 es `dry-run`— y verde todo lo demás. Que caiga *solo* ése es la prueba de que el test apunta a la
 divergencia y no a otra cosa.
 
+**Y desplegado, lo primero que dijo fue `mock`.** No era la respuesta esperada —Juan había puesto las
+dos variables y redesplegado— y era la respuesta correcta: no estaban tomando. Un campo escrito para
+comprobar algo encontró que ese algo no se cumplía, en su primera lectura. Corregido en el panel,
+ahora dice `dry-run`.
+
+**Y en cuanto se fue a usar apareció el mismo agujero en el eje que gasta.** Antes de aprobar el run
+fui a ver qué cuesta de verdad el paso de publicación, y ahí estaba: llama a `applyProse`, y
+`getProseGen()` devuelve el generador real si hay `OPENAI_API_KEY` — con `PROSE_MODE` **sin
+declarar**, porque ése es el default. `PIPELINE_MODO` no lo gobierna; su propio `config.ts` lo dice
+con todas las letras (*"no enciende ni apaga nada"*). O sea que `pipeline: "mock"` en `/_health`
+significa "DataForSEO no cobra" —el 81% del costo, y por eso es tan fácil leerlo como "es gratis"— y
+el 19% restante no aparecía por ningún lado.
+
+Lo interesante no es el campo `prosa` que se agregó: es **cómo apareció**. No lo encontró un test ni
+una review, lo encontró preguntarse *"¿esto gasta?"* antes de apretar el botón, que es la única
+pregunta que este proyecto se hace sistemáticamente. Y la respuesta era "no se puede saber desde
+afuera" — la misma respuesta que había motivado C-0 dos horas antes, sobre otra variable.
+
 ## 2026-08-08 — los bloques A, B y C0, y un despliegue que hay que hacer en orden
 
 Seis piezas del plan cerradas seguidas, todas salidas de la 15ª review. Lo que vale guardar no es la

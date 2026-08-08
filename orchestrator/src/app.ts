@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { serve } from "inngest/node";
-import type { ModoPublicacion } from "web-builder";
+import type { ModoProsa, ModoPublicacion } from "web-builder";
 import type { ConfigOrquestador, ModoPipeline } from "./config.js";
 import type { Salud } from "./salud.js";
 
@@ -72,6 +72,15 @@ export interface OpcionesServidor {
    */
   publicacion: ModoPublicacion;
   /**
+   * Con qué se rellena la prosa al publicar. **Es el eje que gasta**, y el que más fácil se cree
+   * cubierto: `pipeline: "mock"` habla de DataForSEO —el 81% del costo— y no dice nada de esto.
+   * `PIPELINE_MODO` tampoco lo gobierna. Con `OPENAI_API_KEY` puesta y `PROSE_MODE` sin declarar, el
+   * default es `openai`: publicar factura sin que nadie lo haya decidido.
+   *
+   * Sale de `modoProsa()`, la misma condición que elige el generador. Ver `publicacion`.
+   */
+  prosa: ModoProsa;
+  /**
    * Comprueba las dependencias sin las que este proceso no sirve (hoy: Postgres). Ver `salud.ts`
    * para las tres decisiones —200 aunque esté degradado, el log de la transición, la cache—.
    *
@@ -84,7 +93,7 @@ export interface OpcionesServidor {
 const ARRANQUE = Date.now();
 
 export function crearServidor(opciones: OpcionesServidor): Server {
-  const { manejadorInngest, funciones, modo, pipeline, publicacion, sonda } = opciones;
+  const { manejadorInngest, funciones, modo, pipeline, publicacion, prosa, sonda } = opciones;
 
   return createServer((req, res) => {
     /*
@@ -119,6 +128,8 @@ export function crearServidor(opciones: OpcionesServidor): Server {
           // Y lo mismo para publicar, donde además el panel no alcanza: son tres entradas. Ver
           // `OpcionesServidor.publicacion`.
           publicacion,
+          // El tercer modo, y el único de los tres que puede facturar en el paso de publicación.
+          prosa,
           uptimeSegundos: Math.round((Date.now() - ARRANQUE) / 1000),
           // Ausente cuando todo responde. Un `degradado: []` obligaría a leer el array para saber
           // que está sano, y lo que se quiere es que la presencia del campo sea la señal.

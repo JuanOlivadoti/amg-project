@@ -1,5 +1,5 @@
 import { serve } from "inngest/node";
-import { modoPublicacion } from "web-builder";
+import { modoProsa, modoPublicacion } from "web-builder";
 import { crearServidor, opcionesDeServe } from "./app.js";
 import { leerConfig } from "./config.js";
 import { crearDeps, crearConexiones } from "./deps.js";
@@ -34,6 +34,7 @@ const funciones = [crearFuncionResearch(deps), crearFuncionBarrido(deps)];
  * posibilidad de que el log diga una cosa y el endpoint otra.
  */
 const publicacion = modoPublicacion();
+const prosa = modoProsa();
 
 const server = crearServidor({
   // La `signingKey` validada viaja acá dentro. Si se dejara al SDK releer el entorno, lo comprobado
@@ -45,6 +46,7 @@ const server = crearServidor({
   // Lo que importa es de DÓNDE sale: de la misma función que elige el publisher, no de un
   // `process.env` releído acá. Ver `app.ts`.
   publicacion,
+  prosa,
   // La sonda va por el STORE, no por el pool: así recorre el mismo `set local role app_service` que
   // hace el trabajo real, y no solo el TCP. Ver `salud.ts` y `PgStore.comprobarAcceso`.
   sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso() }),
@@ -64,6 +66,7 @@ server.listen(config.puerto, () => {
         ? " ⚠️  no sale del contenedor, pero la base lo anota como publicado"
         : "";
   console.log(`  Publicación: ${publicacion}${aviso}`);
+  console.log(`  Prosa: ${prosa}${prosa === "openai" ? " ⚠️  GASTA DINERO al publicar" : ""}`);
 });
 
 const apagar = async () => {

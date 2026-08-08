@@ -27,10 +27,28 @@ export interface ProseGen {
   fillPage(input: ProseInput): Promise<ProseResult>;
 }
 
+/**
+ * Con qué se rellena la prosa. Lo reporta `/_health` del orquestador **porque es el eje que gasta**:
+ * `openai` son llamadas facturadas al publicar, y `PIPELINE_MODO` no lo gobierna —su propio
+ * `config.ts` lo dice: *"no enciende ni apaga nada"*, solo declara y comprueba coherencia con
+ * DataForSEO—. Sin este campo, "el research corre en mock" no significa "esta publicación es
+ * gratis", y eso es justo lo que uno cree al leerlo.
+ */
+export type ModoProsa = "mock" | "openai";
+
+/**
+ * Qué generador se va a usar, **sin construirlo** (construir `OpenAIProseGen` instancia el cliente).
+ *
+ * Es la misma condición que aplica `getProseGen`, y por eso `getProseGen` la llama en vez de
+ * repetirla: dos lecturas del mismo hecho es como `/_health` termina diciendo `mock` mientras el
+ * proceso factura.
+ */
+export function modoProsa(): ModoProsa {
+  return config.prose.mode === "openai" && config.openai.hasKey ? "openai" : "mock";
+}
+
 export function getProseGen(): ProseGen {
-  return config.prose.mode === "openai" && config.openai.hasKey
-    ? new OpenAIProseGen()
-    : new MockProseGen();
+  return modoProsa() === "openai" ? new OpenAIProseGen() : new MockProseGen();
 }
 
 // ---------------------------------------------------------------- OpenAI

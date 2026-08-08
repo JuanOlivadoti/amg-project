@@ -84,6 +84,7 @@ test("🔴 /_health con la base CAÍDA: 200 por fuera, `degradado` por dentro", 
     modo: "dev",
     pipeline: "mock",
     publicacion: "mock",
+    prosa: "mock",
     sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso(), log: () => {} }),
   });
 
@@ -122,6 +123,7 @@ test("🔴 /_health con la base sana: NI RASTRO del campo `degradado`", async ()
     modo: "cloud",
     pipeline: "mock",
     publicacion: "dry-run",
+    prosa: "mock",
     sonda: crearSonda({ comprobar: async () => undefined }),
   });
 
@@ -139,7 +141,14 @@ test("🔴 /_health con la base sana: NI RASTRO del campo `degradado`", async ()
      * invente: `dry-run` entró por parámetro y `dry-run` tiene que salir.
      */
     assert.equal(cuerpo["publicacion"], "dry-run");
-    assert.equal(cuerpo["pipeline"], "mock", "y no se cruzan: son dos modos distintos");
+    /*
+     * Y el de la prosa, que es **el eje que gasta**: `pipeline: "mock"` habla de DataForSEO y no
+     * dice nada de las llamadas al LLM que hace el paso de publicación. Los tres van juntos en el
+     * mismo cuerpo justamente porque leer uno y suponer los otros dos es el error que se busca
+     * hacer imposible.
+     */
+    assert.equal(cuerpo["prosa"], "mock");
+    assert.equal(cuerpo["pipeline"], "mock", "y no se cruzan: son tres modos distintos");
   });
 });
 
@@ -183,7 +192,7 @@ test("🔴 /_health no pasa por el manejador de Inngest", async () => {
     invocaciones += 1;
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock" });
 
   await conServidor(server, async (base) => {
     const r = await fetch(`${base}/_health`);
@@ -203,7 +212,7 @@ test("/api/inngest sigue delegando en el manejador del SDK", async () => {
     invocaciones += 1;
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock" });
 
   await conServidor(server, async (base) => {
     const r = await fetch(`${base}/api/inngest`);
@@ -258,7 +267,7 @@ async function pedirFirmado(conClaveValidada: boolean): Promise<number> {
     const manejadorInngest = serve(
       opcionesDeServe(conClaveValidada ? { inngestSigningKey: LIMPIA } : {}, cliente, [fn]),
     );
-    const server = crearServidor({ manejadorInngest, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock" });
+    const server = crearServidor({ manejadorInngest, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock" });
 
     return await conServidor(server, async (base) => {
       const ts = Math.floor(Date.now() / 1000).toString(); // el SDK lo lee en SEGUNDOS
@@ -300,7 +309,7 @@ test("cualquier otra ruta sigue siendo 404", async () => {
   const espia = (_req: IncomingMessage, res: ServerResponse) => {
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock" });
 
   await conServidor(server, async (base) => {
     assert.equal((await fetch(`${base}/`)).status, 404);

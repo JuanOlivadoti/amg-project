@@ -65,7 +65,7 @@ Dos cosas que aparecieron al medirlo:
 - **Un typo en `WEB_PUBLISH_MODE` es mock en silencio**, con token y space puestos. Por eso el test
   del estado mock usa el typo y no la ausencia: es el mismo camino y es el que nadie sospecha.
 
-### 🔴 Y lo primero que reportó desplegado fue `mock` — el bloque C sigue bloqueado
+### Y lo primero que reportó desplegado fue `mock` — que era el punto
 
 Commit `e926231`, desplegado y leído en producción:
 
@@ -73,18 +73,35 @@ Commit `e926231`, desplegado y leído en producción:
 {"ok":true,"funciones":2,"modo":"cloud","pipeline":"mock","publicacion":"mock","uptimeSegundos":40}
 ```
 
-`publicacion: "mock"`, no `dry-run`. O sea: **`WEB_PUBLISH_MODE=storyblok` no está tomando en el
-servicio `amg-orchestrator`** — ausente, mal escrita, con un espacio de más, o puesta en otro
-servicio o entorno. La leí tres veces seguidas con la misma respuesta y con el proceso ya
-redesplegado (uptime 40 s), así que no es una ventana de arranque.
+`publicacion: "mock"`, no `dry-run`: **`WEB_PUBLISH_MODE=storyblok` no estaba tomando en el servicio
+`amg-orchestrator`**. Leído tres veces con el proceso ya redesplegado, así que no era una ventana de
+arranque.
 
 **Esto es exactamente para lo que existe C-0**, y lo cazó en la primera lectura: sin el campo, el
 paso siguiente habría corrido en `mock` creyéndose en dry-run, y `MockPublisher` reporta
 `published: true` — la base habría anotado como publicadas unas páginas que nunca salieron del
 contenedor.
 
-**El paso 2 del bloque C no se hace hasta que esto diga `dry-run`.** Depende del panel de Railway,
-así que es de Juan.
+Juan lo corrigió en el panel y **el 2026-08-08 `/_health` responde `publicacion: "dry-run"`**. El
+paso 1 del bloque C, cumplido, y comprobado **desde afuera del panel** — que es lo que el campo
+existe para permitir.
+
+## ✅ C-0b — el tercer modo, el que gasta: `prosa`
+
+Yendo a hacer el paso 2 apareció que **el paso de publicación llama a `applyProse`**, y que con
+`OPENAI_API_KEY` puesta y `PROSE_MODE` sin declarar el default es `openai`: **publicar factura sin
+que nadie lo haya decidido**. `PIPELINE_MODO` no lo gobierna —*"no enciende ni apaga nada"*, dice su
+propio `config.ts`—, así que `pipeline: "mock"` significa "DataForSEO no cobra" y no "esto es
+gratis", que es lo que uno entiende al leerlo.
+
+Mismo agujero que C-0, en el eje del dinero, y mismo arreglo: `/_health` gana
+`prosa: "mock" | "openai"`. Acá la divergencia es **estructuralmente imposible**: `getProseGen()`
+llama a `modoProsa()` en vez de repetir la condición. Dos tests que muerden en direcciones opuestas
+—`openai` declarado sin key, y key sin `PROSE_MODE` (el default que factura)—; la mutación que lee
+`process.env` deja los dos rojos, **y también los dos de coherencia**, porque con esa mutación el
+proceso además llamaría a OpenAI sin key.
+
+935 tests en verde.
 
 > Nota al margen, sin consecuencia: `amg-api-production.up.railway.app` ya no resuelve
 > («Application not found»). La API vive en su dominio propio, `api.bigballs.es`, y ahí responde

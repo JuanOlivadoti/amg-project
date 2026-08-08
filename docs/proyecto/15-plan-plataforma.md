@@ -374,9 +374,35 @@ clave de firma de Inngest ya causó una vez (lo validado y lo usado eran dos lec
   `process.env` en vez de la decisión real deja pasar la incoherencia y tiene que caer.
 - **Sin esto, el paso 1 de abajo no se puede hacer**: "comprobar el modo" no tiene con qué.
 
+### C-0b. Y el tercer modo: con qué se genera la PROSA — ✅ **hecho el 2026-08-08**
+
+Apareció al ir a hacer el paso 2, comprobando qué gasta de verdad antes de aprobar el run. **El paso
+de publicación llama a `applyProse`**, y quién lo atiende sale de `getProseGen()`:
+
+```ts
+config.prose.mode === "openai" && config.openai.hasKey ? new OpenAIProseGen() : new MockProseGen()
+```
+
+con `config.prose.mode = PROSE_MODE || (hay key ? "openai" : "mock")`. O sea: **con
+`OPENAI_API_KEY` puesta y `PROSE_MODE` sin declarar, publicar factura**, y nadie tuvo que decidirlo.
+
+Y `PIPELINE_MODO` **no lo gobierna** — lo dice su propio `config.ts`: *"no enciende ni apaga nada"*,
+solo declara y comprueba coherencia con `DATAFORSEO_MODE`. Así que `pipeline: "mock"` en `/_health`
+significa "DataForSEO no cobra" (el 81% del costo) y **no** significa "esta publicación es gratis",
+que es exactamente lo que uno entiende al leerlo.
+
+Es el mismo agujero que C-0 acaba de cerrar, en el eje que mueve dinero. Mismo arreglo: `/_health`
+gana `prosa: "mock" | "openai"`, derivado de `modoProsa()` — y acá la divergencia es
+**estructuralmente imposible**, porque `getProseGen()` llama a esa misma función en vez de repetir la
+condición. Dos tests, y los dos muerden en direcciones opuestas: `openai` declarado sin key (el
+entorno dice `openai`, la verdad es `mock`) y key sin `PROSE_MODE` (el entorno no dice nada, la
+verdad es `openai` — **el default que factura**).
+
 **El orden:**
 
-1. Comprobar el modo **con `/_health`** (paso C-0). Si no es `dry-run`, decidir explícitamente antes de seguir.
+1. Comprobar el modo **con `/_health`** (pasos C-0 y C-0b): `publicacion` **y** `prosa`. Si
+   `publicacion` no es `dry-run`, o si `prosa` es `openai` y no se quiere gastar, decidir
+   explícitamente antes de seguir.
 2. Lanzar un research en mock, aprobar **una** página, aprobar el run.
 3. Comprobar que el workflow **despierta** (Inngest → Runs) y que el publisher reporta lo que debe.
 4. Recién entonces, si se quiere, repetir con publicación real y verificar la web servida.
