@@ -403,14 +403,56 @@ verdad es `openai` — **el default que factura**).
 1. Comprobar el modo **con `/_health`** (pasos C-0 y C-0b): `publicacion` **y** `prosa`. Si
    `publicacion` no es `dry-run`, o si `prosa` es `openai` y no se quiere gastar, decidir
    explícitamente antes de seguir.
-2. Lanzar un research en mock, aprobar **una** página, aprobar el run.
+2. Lanzar un research en mock, aprobar **una** página, aprobar el run. ✅ **hecho el 2026-08-08** —
+   ver abajo.
 3. Comprobar que el workflow **despierta** (Inngest → Runs) y que el publisher reporta lo que debe.
+   ⏳ **Bloqueado: no se puede comprobar desde nuestro lado.** Ver C-1.
 4. Recién entonces, si se quiere, repetir con publicación real y verificar la web servida.
 
 **Lo que este paso puede destapar, y por eso se hace aparte:** el brief que el orquestador reconstruye
 desde la base pasa por `parseBrief` antes de publicar. Ese camino se arregló el 2026-08-07 (migración
 `0017` + re-seed) pero **nunca se ejecutó de verdad** — se verificó que el dato ahora es válido, no que
 la publicación funcione con él.
+
+### Lo que pasó al hacerlo (2026-08-08)
+
+Run `14bda962-4eae-44c7-a49e-f79c20d0cad1`, lanzado desde el portal contra La Birra Bar. `$0.00`,
+`running` → `pending_approval` en menos de un minuto, 25 páginas respaldadas por datos y 0 sin
+validar. Aprobada una página, aprobado el run: **`approved`, cero errores en consola.**
+
+Dos controles positivos de paso, sobre datos nuevos y no sobre el seed:
+
+- **C0 al revés.** En este run —que sí lo lanzó el pipeline— el botón salió deshabilitado con el
+  motivo de las **páginas**, no con el del workflow. En el sembrado sale el del workflow. El colapso
+  a un solo motivo elige bien en los dos casos, que es lo único que un test de una sola dirección no
+  podía probar.
+- **B1 y B2.** El link del entregable se encendió en cuanto hubo una página aprobada. Y el entregable
+  sale **sin bloque de coste y sin la línea de metadatos**, con solo la página aprobada, mientras el
+  informe lleva las dos cosas y las 25.
+
+### C-1. El dry-run no deja rastro, y por eso el paso 3 no se puede cerrar
+
+**Aprobar el run se ve exactamente igual si el workflow despertó y publicó en dry-run que si no
+despertó nunca.** El run queda en `approved` en los dos casos:
+
+- en `live`, `publicadas.length > 0` → `marcarPublicadas` → las páginas quedan con `published_at`, y
+  eso sí se ve;
+- en `dry-run` el publisher reporta `published: false` —correctamente: *"la base no puede afirmar
+  algo que el proveedor no confirma"*— así que **no se escribe nada**, y el único rastro es un
+  `log()` dentro del contenedor.
+
+Lo que sí queda descartado es `failed`: si el workflow hubiera despertado y el paso de publicación
+hubiera lanzado —`parseBrief` sobre el brief reconstruido, que es justo el camino que este bloque
+venía a estrenar—, `onFailure` habría dejado el run en `failed`. O sea: **o funcionó, o no corrió.**
+
+La consecuencia incómoda es que **el modo que existe para ensayar es el único en el que el ensayo no
+se puede observar**, y que la verificación depende de mirar el panel de un tercero. Lo que
+corresponde es que el intento de publicación deje una marca nuestra —cuándo se intentó, cuántas
+páginas se mandaron y cuántas confirmó el proveedor— **sin afirmar que se publicó**, que es la
+distinción que el código ya defiende bien. Diseño pendiente; no se improvisa acá.
+
+Mientras tanto el paso 3 lo cierra Juan mirando **Inngest → Runs** (o el token de solo lectura de
+Railway del bloque **A3**, que serviría para lo mismo por los logs).
 
 ---
 

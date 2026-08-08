@@ -101,7 +101,25 @@ llama a `modoProsa()` en vez de repetir la condición. Dos tests que muerden en 
 `process.env` deja los dos rojos, **y también los dos de coherencia**, porque con esa mutación el
 proceso además llamaría a OpenAI sin key.
 
-935 tests en verde.
+935 tests en verde. Desplegado: `/_health` responde `prosa: "mock"` — el orquestador **no** tiene key
+de OpenAI, así que publicar no factura. Los tres modos, ahora, legibles desde afuera.
+
+## 🟡 Bloque C paso 2 — hecho. Paso 3 — no se puede cerrar desde acá
+
+Run `14bda962-4eae-44c7-a49e-f79c20d0cad1` (La Birra Bar), lanzado desde el portal: `$0.00`,
+`pending_approval` en menos de un minuto con 25 páginas respaldadas. Aprobada una página, aprobado el
+run → **`approved`, cero errores en consola**. Dos controles positivos de paso: C0 eligió el motivo de
+las **páginas** en un run que sí tiene workflow (en el sembrado elige el otro), y el entregable salió
+sin coste y sin metadatos mientras el informe lleva las dos cosas.
+
+**Y el paso 3 quedó bloqueado por algo que solo se ve haciéndolo:** aprobar el run se ve **idéntico**
+si el workflow despertó y publicó en dry-run que si no despertó nunca. En dry-run el publisher
+reporta `published: false` —bien— así que no se escribe nada y el único rastro es un `log()` dentro
+del contenedor. Descartado sí está `failed`: si hubiera despertado y hubiera reventado, `onFailure`
+lo habría marcado. **O funcionó, o no corrió.**
+
+Está anotado como **C-1** en el plan: el modo que existe para ensayar es el único en el que el ensayo
+no se puede observar. Lo cierra Juan mirando Inngest → Runs, o el token de A3.
 
 > Nota al margen, sin consecuencia: `amg-api-production.up.railway.app` ya no resuelve
 > («Application not found»). La API vive en su dominio propio, `api.bigballs.es`, y ahí responde

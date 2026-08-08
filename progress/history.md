@@ -64,6 +64,25 @@ una review, lo encontró preguntarse *"¿esto gasta?"* antes de apretar el botó
 pregunta que este proyecto se hace sistemáticamente. Y la respuesta era "no se puede saber desde
 afuera" — la misma respuesta que había motivado C-0 dos horas antes, sobre otra variable.
 
+**Y con los tres modos legibles, el circuito corrió entero por primera vez.** Research lanzado desde
+el portal, 25 páginas en menos de un minuto y $0.00; una página aprobada, el run aprobado, cero
+errores en consola. De paso, dos controles positivos que ningún test de una sola dirección daba: C0
+eligió el motivo de las **páginas** en un run que sí tiene workflow —en el sembrado elige el del
+workflow—, y el entregable salió sin coste ni metadatos mientras el informe llevaba las dos cosas.
+
+**Lo que no se pudo cerrar es lo que el bloque venía a probar.** Aprobar el run se ve *idéntico* si
+el workflow despertó y publicó en dry-run que si no despertó nunca: en dry-run el publisher reporta
+`published: false` —que es lo correcto, la base no puede afirmar lo que el proveedor no confirma— así
+que no se escribe nada, y el único rastro es un `log()` dentro del contenedor. Queda descartado
+`failed`, eso sí: si hubiera despertado y hubiera reventado en `parseBrief` —el camino que este
+bloque estrenaba— `onFailure` lo habría marcado. **O funcionó, o no corrió.**
+
+Dicho de otro modo: **el modo que existe para ensayar es el único en el que el ensayo no se puede
+observar**, y la verificación acaba dependiendo del panel de un tercero. Eso es C-1, y no se
+improvisó: el arreglo correcto es que el intento de publicación deje una marca nuestra —cuándo, cuántas
+mandadas, cuántas confirmadas— **sin afirmar que se publicó**, que es justo la distinción que el
+código ya defiende bien y que sería fácil arruinar con las prisas.
+
 ## 2026-08-08 — los bloques A, B y C0, y un despliegue que hay que hacer en orden
 
 Seis piezas del plan cerradas seguidas, todas salidas de la 15ª review. Lo que vale guardar no es la
