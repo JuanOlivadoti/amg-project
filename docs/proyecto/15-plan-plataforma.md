@@ -634,10 +634,17 @@ puede confundir con una regresión de refactor ni con un defecto visual.
 | 3. `perfilValido` | `renderer/src/perfil.ts` | `foto()`, `precios()`, `categorias()`, `galeria()` y `objetoDe()` para los sub-objetos de marca |
 | 4. El render | — | **Sin tocar**: es la entrega 2 y la 3 |
 
-⏳ **Falta desplegar la `0014`** (`migrate:deploy -w db`, un paso de Juan): re-materializa
-`business_profile_publico`, así que hasta que corra el renderizador desplegado **no ve ni una foto ni
-un token de marca** aunque el código ya los sepa leer. Es la precondición de las entregas 2 y 3, y
-mismo caso que la `0018`.
+✅ **La `0014` está aplicada en producción** (2026-08-08 por la noche). Dos cosas que solo se saben
+corriéndola: aplicó **en la posición que el test de orden predecía** —el runner la insertó entre la
+`0012` y la `0015`, no al final, porque `migrarConRegistro` recorre el directorio ordenado y saltea
+las registradas—, y **el `grant` sobrevivió al `drop column`**, que era el riesgo que esta spec eleva
+a crítico. Verificado donde importa y no en PGlite: la web de La Birra Bar sigue sirviendo su NAP, y
+ese dato solo puede salir de `business_profile_publico`.
+
+> **Lo que la `0014` NO trae por sí sola:** las fichas de producción siguen sin los campos nuevos. La
+> columna se recalculó, pero `business_profile` no tiene fotos ni manual de marca hasta que la agencia
+> los cargue o se re-siembre la demo. Para la entrega 3 —la que los dibuja— eso pasa a ser un paso
+> previo, no un detalle.
 
 **Los topes, en las tres capas:** 30 fotos, 3 precios, 20 categorías (más los 20 locales y 200 platos
 que ya estaban). Con una asimetría deliberada: **Zod rechaza el archivo y las otras dos cortan**,

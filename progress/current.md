@@ -67,13 +67,30 @@ default — que es lo que hoy falta para que `colores.primario` se vea.
 
 | Qué | Por qué él | Bloquea |
 | --- | --- | --- |
-| ⏳ **Desplegar la `0014`** (`npm run migrate:deploy -w db`) | Toca Supabase real | **Sí.** Re-materializa `business_profile_publico`: hasta que corra, el renderizador desplegado **no ve ni una foto ni un token de marca** aunque el código ya los sepa leer. Es la precondición de las entregas 2 y 3 |
 | Borrar `PIPELINE_MODO` y `TRUST_PROXY` del servicio `amg-project` | Es el panel de Railway | Nada. No son secretos, solo confunden a `auditar:railway` |
 | Decidir qué es `NPM_CONFIG_PRODUCTION` | Nadie lo declaró | Nada |
 | `STORYBLOK_SPACE_ID` y `TRUST_PROXY` del renderizador **difieren de la fuente** | Es el panel | Nada hoy; conviene saber cuál gana antes de tocar el Visual Editor |
 
-Y lo que ya hizo: **los cuatro tokens de Storyblok en el renderizador** (`auditar:railway` los ve; el
-servicio pasó de 3 a 6 coincidencias) y la limpieza de las seis credenciales ajenas de la API.
+Y lo que ya hizo: **desplegó la `0014`** (ver abajo), puso **los cuatro tokens de Storyblok en el
+renderizador** (`auditar:railway` los ve; el servicio pasó de 3 a 6 coincidencias) y limpió las seis
+credenciales ajenas de la API.
+
+## ✅ La `0014`, aplicada en producción — y lo que solo se supo corriéndola
+
+Dos cosas que ningún test en PGlite podía contestar:
+
+- **Aplicó en la posición que el test de orden predecía.** El runner la insertó **entre la `0012` y la
+  `0015`**, no al final: `migrarConRegistro` recorre el directorio ordenado y saltea las registradas.
+  O sea que el escenario "la `0014` corre después de la `0019`" —el que motivó el test de los dos
+  órdenes— **no se dio**, y el que se dio es el mismo de una base nueva. El test sigue valiendo: lo
+  que garantiza es que **daba igual cuál de los dos ocurriera**.
+- **El `grant` sobrevivió al `drop column`**, que es el riesgo que la spec eleva a crítico. La prueba
+  no es el 200 del renderizador: es que el HTML trae «La Birra Bar» y las dos direcciones del footer,
+  y ese dato **solo** puede venir de `business_profile_publico`.
+
+**Lo que la `0014` no trae por sí sola:** las fichas de producción siguen sin los campos nuevos. La
+columna se recalculó, pero `business_profile` no tiene fotos ni manual de marca hasta que la agencia
+los cargue o se re-siembre la demo. Para la **entrega 3** eso es un paso previo, no un detalle.
 
 **Abiertos y sin bloquear a nadie:** **C-1** (en dry-run el ensayo no se puede observar) y **C-2** (la
 marca de C0 y el workflow real pueden discrepar; el barrido no cancela el workflow).

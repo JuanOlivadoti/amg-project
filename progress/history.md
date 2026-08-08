@@ -59,6 +59,25 @@ olvide. Quitar `menu_categorias` de una sola de las tres capas lo tumba nombrand
 **1001 tests** (venía de 956). El trabajo de la `0014` lo hizo el agente `datos`; el informe está en
 `progress/informes/`, y una de sus mutaciones se reprodujo a mano antes de creerla.
 
+**La revisión devolvió tres bloqueantes, y los tres eran de documentación de estado.** El más caro:
+el `09` iba a afirmar que no quedaban migraciones pendientes justo cuando la `0014` sí lo estaba, y
+esa migración es lo que decide si el renderizador desplegado puede ver una foto. El código salió
+limpio; lo que estaba mal era lo que el repo decía de sí mismo. También cayó un hallazgo que me hizo
+cambiar de opinión: yo había puesto importes concretos (`14,00 €`, `18,50 €`) para platos de **La
+Birra Bar, que existe**, en el archivo que `reseed:demo` siembra en Supabase y que el renderizador
+publica. Es la misma línea que el `postalCode` opcional —*antes ausente que inventado*—, con la
+diferencia de que un código postal inventado ensucia el JSON-LD y un precio inventado hace que alguien
+vaya al restaurante esperando pagarlo. Fuera; los campos de carta se ejercitan con los negocios
+ficticios.
+
+**Y esa misma noche Juan aplicó la `0014` en producción.** Dos cosas que ningún test en PGlite podía
+contestar. La primera: **aplicó entre la `0012` y la `0015`, no al final** — `migrarConRegistro`
+recorre el directorio ordenado y saltea las registradas, así que el escenario que motivó el test de
+los dos órdenes no llegó a darse. El test no sobra por eso: lo que garantizaba es que **daba igual
+cuál de los dos ocurriera**, y eso solo se sabe habiéndolo probado antes. La segunda: **el `grant`
+sobrevivió al `drop column`**, verificado donde importa y no en PGlite — la web de La Birra Bar sigue
+sirviendo su NAP, y ese dato solo puede salir de `business_profile_publico`.
+
 ---
 
 ## 2026-08-08 (tarde) — el paso que apareció al mirar el `/_health` que acabábamos de arreglar
