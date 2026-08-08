@@ -87,3 +87,11 @@ progress/informes/*
 
 .skill-map/
 .skillmapignore
+
+# Los assets de marca de las plantillas: el buzón de trabajo desde el que se suben a Storyblok.
+# NO se versionan los binarios — este repo es público, las imágenes engordan el historial para
+# siempre, y su destino real es Storyblok (la allowlist del renderizador solo acepta a.storyblok.com,
+# así que una foto que viviera acá no se podría servir). Sí se versionan el README y `marca.json`.
+docs/plantillas/*/originales/**
+!docs/plantillas/*/originales/**/
+!docs/plantillas/*/originales/**/.gitkeep

@@ -614,12 +614,56 @@ Hay tres piezas, con spec escrita y **sin empezar**:
 
 1. **Plantillas de landing** — [spec](../superpowers/specs/2026-08-01-plantillas-landings-design.md),
    tres entregas. **Entregas 1 ✅ y 2 ✅ el 2026-08-08** (contrato y recorrido de datos; ensamblado con
-   paridad); queda la 3 (piezas nuevas y arreglos visuales).
+   paridad); queda la **3** (piezas nuevas y arreglos visuales), partida en una mitad que **no**
+   necesita fotos y otra que sí.
 2. **Manual de marca** — tokens de color y roles tipográficos self-hosted, en vez de los tres campos
    actuales de `business_profile.brand`. **El modelo de datos ✅ entró con la entrega 1**; falta
    emitir los tokens (entrega 2) y usarlos, con las tipografías self-hosted (entrega 3).
 3. **Rediseño de la carta** — categorías con foto, precios por ración. **Los campos ✅ entraron con la
    entrega 1**; falta la pieza `cartaCategorias` (entrega 3).
+
+### 🔵 Entrega 3 — piezas nuevas y arreglos visuales (siguiente)
+
+**Es la entrega donde el sitio cambia de aspecto**, y por eso va después de que la 2 haya demostrado
+paridad: si el rediseño y el refactor entran juntos, un cambio inesperado no se puede atribuir a
+ninguno de los dos.
+
+Se parte sola en dos mitades por una razón que no es de diseño sino de disponibilidad del dato:
+
+| Mitad | Qué | ¿Necesita fotos? |
+| --- | --- | --- |
+| **A** | Los **seis arreglos visuales** (modo oscuro completo, doble borde de la carta, enlaces del pie, contraste del acento en oscuro, CTA largo), las **tipografías self-hosted** y el **uso real de los 9 tokens de marca** en el CSS de las piezas | **No** |
+| **B** | `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias` | **Sí** |
+
+La mitad **A** es la que hace que dos restaurantes dejen de distinguirse solo por un color de acento,
+y hoy se puede verificar entera en un navegador. La **B** no: su gate pide *"el sitio manejado en un
+navegador … con fotos y sin fotos"*, y **las fichas de producción no tienen ni una**.
+
+**Precondición, y no es código.** Los assets van a `docs/plantillas/template1/` (ver su
+[README](../plantillas/template1/README.md), con las medidas de cada campo y por qué). Los binarios
+**no se versionan**: el repo es público y el destino real es Storyblok, porque la allowlist del
+renderizador solo acepta `a.storyblok.com`. Las URLs de foto del seed apuntan hoy a assets que **no
+existen**, así que hasta subirlos la web de demo saldría con imágenes rotas en cuanto el render las
+dibuje. La paleta y los roles tipográficos ya están decididos en
+[`marca.json`](../plantillas/template1/marca.json).
+
+**Lo que la entrega 2 dejó preparado y esta consume:** los 9 tokens `--marca-*` ya se emiten en el
+`<style>` con los valores actuales como default, sin que nadie los use. Esta entrega es la que los
+enchufa — y ahí `colores.primario` pasa a ganar sobre el legacy `color`, que es el momento en que una
+ficha con manual de marca deja de verse igual que antes.
+
+**Dos avisos para quien la implemente**, de la ronda anterior:
+
+- **El gate de paridad NO mira el `<style>`.** Fue el punto ciego de la entrega 2 y ahí se coló una
+  regresión de cascada. Esta entrega cambia CSS a propósito, así que la paridad deja de aplicar como
+  criterio: lo que la sustituye es **el navegador**, en claro y oscuro, escritorio y móvil, con ficha
+  legacy y con manual completo.
+- **Las tipografías traen una ruta pública nueva** (`/_assets/fonts/…`) en el **único proceso expuesto
+  a internet anónimo**. La spec lo resuelve sirviendo desde un **mapa fijo compilado**, no desde el
+  filesystem: así no hay path traversal que buscar porque no hay path. Un test pide
+  `/_assets/fonts/../../etc/passwd` y espera 404.
+
+---
 
 ### ✅ Entrega 2 — ensamblado y piezas existentes, con paridad (2026-08-08)
 

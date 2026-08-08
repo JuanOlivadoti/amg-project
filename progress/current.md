@@ -99,15 +99,23 @@ generada → `perfilValido`— y exige que el perfil salga entero. Mutación com
 seis arreglos visuales. **Es la entrega donde el sitio cambia de aspecto**, y por eso va después de que
 la 2 haya demostrado paridad.
 
-Dos precondiciones que **no son código** y conviene resolver antes de empezarla: las fichas de
-producción no tienen fotos ni manual de marca todavía (hay que cargarlas o re-sembrar), y las URLs de
-foto del seed apuntan a assets que **no existen** — la entrega 3 es la que las dibuja, así que hasta
-entonces la web de demo saldría con imágenes rotas.
+**Se parte en dos mitades**, y no por diseño sino por disponibilidad del dato: los **seis arreglos
+visuales, las tipografías y el uso real de los tokens** no necesitan ninguna foto y se pueden
+verificar hoy; las **piezas con imagen** sí, y su gate pide ver el sitio *con fotos y sin fotos*.
+
+**Esperando assets:** las fotos van a [`docs/plantillas/template1/originales/`](../docs/plantillas/template1/README.md),
+una carpeta por destino, con las medidas de cada campo en su README. Los binarios **no se versionan**
+—el repo es público y el destino real es Storyblok, porque la allowlist solo acepta `a.storyblok.com`—
+así que la carpeta es el buzón de trabajo. La paleta y los roles tipográficos ya están decididos en
+`marca.json`. Las URLs de foto del seed apuntan hoy a assets que **no existen**: hasta subirlos, la
+web de demo saldría con imágenes rotas en cuanto el render las dibuje.
 
 ## ⏳ Lo que espera a Juan
 
 | Qué | Por qué él | Bloquea |
 | --- | --- | --- |
+| **Las fotos en `docs/plantillas/template1/originales/`** (medidas en su README) | Son los assets del cliente | **La mitad B de la entrega 3.** La mitad A no las necesita y puede arrancar ya |
+| **Decidir si las fotos son reales o de stock** | Es del negocio | Nada técnico, pero si son de stock hay que decirlo en el seed — misma regla que los precios: antes ausente que inventado |
 | Borrar `PIPELINE_MODO` y `TRUST_PROXY` del servicio `amg-project` | Es el panel de Railway | Nada. No son secretos, solo confunden a `auditar:railway` |
 | Decidir qué es `NPM_CONFIG_PRODUCTION` | Nadie lo declaró | Nada |
 | `STORYBLOK_SPACE_ID` y `TRUST_PROXY` del renderizador **difieren de la fuente** | Es el panel | Nada hoy; conviene saber cuál gana antes de tocar el Visual Editor |

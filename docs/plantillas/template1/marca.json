@@ -1,0 +1,19 @@
+{
+  "_comentario": "La paleta y los roles tipográficos de template1, en el formato exacto de business_profile.brand. Se pega tal cual en la ficha del cliente. Los seis colores son hex (#rgb o #rrggbb): lo que no valide se descarta en las cuatro fronteras y cae al default del CSS base, así que una ficha a medio llenar produce una web sobria y nunca una rota. Las fuentes son nombres de ROL de una allowlist del código, nunca familias ni stacks CSS.",
+  "plantilla": "base",
+  "colores": {
+    "primario": "#8c1c13",
+    "secundario": "#c8963e",
+    "titulo": "#1c1917",
+    "texto": "#44403c",
+    "fondo": "#fffdf9",
+    "fondoAlt": "#f5f1ea"
+  },
+  "fuentes": {
+    "titulo": "condensada",
+    "texto": "humanista",
+    "decorativa": "script"
+  },
+  "color": "#8c1c13",
+  "font": "sistema"
+}
