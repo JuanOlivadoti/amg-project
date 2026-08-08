@@ -104,6 +104,12 @@ export const CATALOGO: Record<string, Entrada> = {
   BUSINESS_PROFILE_PATH: { familia: "config" },
   BRIEF_PATH: { familia: "config" },
   KR_BRIEF_PATH: { familia: "config" },
+  // No las reparte `env:sync` (dependen del despliegue, no de la fuente), pero `auditar-railway`
+  // necesita saber que NO son secretos: si no, informa "credencial de otro proceso" sobre un
+  // booleano, y una herramienta que exagera se deja de leer.
+  TRUST_PROXY: { familia: "config", nota: "`1` para confiar en X-Forwarded-For detrás del proxy" },
+  CACHE_TTL_MS: { familia: "config", nota: "TTL de la cache del renderizador, en ms" },
+  NPM_CONFIG_PRODUCTION: { familia: "config", nota: "del build de Railway, no del código" },
 };
 
 /**

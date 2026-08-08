@@ -12,6 +12,7 @@ import {
   esperadas,
   EXTRA_JUSTIFICADO,
   formatear,
+  gravedadDe,
   hayProblemas,
   huella,
   OBLIGATORIAS,
@@ -179,11 +180,42 @@ test("🔴 una credencial de OTRO servicio no 'sobra': se reporta como tal, con 
 
   assert.deepEqual(d.sobran, [], "no son sobrantes anónimos: tienen dueño y hay que decirlo");
   assert.deepEqual(d.intrusas, [
-    ["DATABASE_URL_ORQUESTADOR", "amg-orchestrator"],
-    ["PREVIEW_SECRET", "amg-renderer"],
+    { clave: "DATABASE_URL_ORQUESTADOR", duenio: "amg-orchestrator", gravedad: "credencial" },
+    { clave: "PREVIEW_SECRET", duenio: "amg-renderer", gravedad: "credencial" },
   ]);
   assert.ok(hayProblemas([d]), "tener la credencial de otro proceso es un problema, no un aviso");
   assert.match(formatear([d]), /CREDENCIALES DE OTRO PROCESO/);
+});
+
+/**
+ * 🔴 Y lo que NO es un secreto no se anuncia como si lo fuera.
+ *
+ * Al limpiar el panel el 2026-08-08 quedaron `PIPELINE_MODO` y `TRUST_PROXY` —un enum y un booleano—
+ * bajo el titular "CREDENCIALES DE OTRO PROCESO". Exagerar es el mismo pecado que este comando
+ * persigue, y se paga caro: una herramienta que exagera se deja de leer, y el día que diga algo grave
+ * nadie va a mirar. Sigue informándose (confunde tenerlo ahí), pero no da rojo.
+ */
+test("🔴 la CONFIGURACIÓN de otro proceso se informa, pero no se anuncia como credencial", () => {
+  const real = new Map([
+    ...esperadas("amg-project").map((k) => [k, "x"] as const),
+    ["PIPELINE_MODO", "mock"] as const,
+    ["TRUST_PROXY", "1"] as const,
+  ]);
+  const d = comparar("amg-project", real, new Map());
+
+  assert.deepEqual(d.intrusas.map((i) => i.gravedad), ["config", "config"]);
+  assert.ok(!hayProblemas([d]), "un enum fuera de sitio no es un agujero de seguridad");
+
+  const salida = formatear([d]);
+  assert.ok(!salida.includes("CREDENCIALES DE OTRO PROCESO"), "no hay ninguna credencial acá");
+  assert.match(salida, /configuración de otro proceso/, "pero se dice, porque confunde tenerlo ahí");
+});
+
+/** Lo que el CATALOGO no clasifica no se adivina: se pide decidirlo. Fallar ruidoso, no fallar bien. */
+test("🔴 una clave que nadie clasificó se marca `sin-clasificar` y NO se da por inocente", () => {
+  assert.equal(gravedadDe("UNA_QUE_NADIE_CLASIFICO"), "sin-clasificar");
+  assert.equal(gravedadDe("DATABASE_URL_RENDER"), "credencial");
+  assert.equal(gravedadDe("PIPELINE_MODO"), "config");
 });
 
 test("una clave del servicio que nadie declaró se reporta como sobrante", () => {

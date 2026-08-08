@@ -37,6 +37,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { CATALOGO } from "./credencial.mts";
 import { FUENTE, MAPA } from "./env-sync.mts";
 
 /**
@@ -151,6 +152,34 @@ export const EXTRA_JUSTIFICADO: Record<string, string> = {
 
 // ---------------------------------------------------------------- comparación (pura)
 
+/** Qué es de verdad una clave que aparece donde no le toca. */
+export type Gravedad = "credencial" | "config" | "sin-clasificar";
+
+export interface Intrusa {
+  readonly clave: string;
+  readonly duenio: Servicio;
+  readonly gravedad: Gravedad;
+}
+
+/**
+ * Una clave de otro proceso no siempre es un agujero.
+ *
+ * La primera versión de esto llamaba **credencial** a todo lo que estuviera fuera de su sitio, y al
+ * limpiar el panel quedaron `PIPELINE_MODO` y `TRUST_PROXY` bajo el titular "CREDENCIALES DE OTRO
+ * PROCESO". Son un enum y un booleano: no hay nada que robar. Exagerar es el mismo pecado que este
+ * comando persigue —afirmar más de lo que se sabe— y además se paga caro: una herramienta que
+ * exagera se deja de leer, y el día que diga algo grave nadie va a mirar.
+ *
+ * La familia sale del `CATALOGO` de `credencial.mts`, que ya existe para decidir **cómo se crea**
+ * cada credencial. Lo que no esté ahí no se adivina: se marca `sin-clasificar` y se pide decidirlo,
+ * que es fallar ruidosamente en vez de fallar bien.
+ */
+export function gravedadDe(clave: string): Gravedad {
+  const entrada = CATALOGO[clave];
+  if (!entrada) return "sin-clasificar";
+  return entrada.familia === "config" ? "config" : "credencial";
+}
+
 export interface Diferencia {
   readonly servicio: Servicio;
   /** Obligatoria y ausente. **Esto rompe el arranque**, y es el hallazgo que justifica el comando. */
@@ -158,10 +187,10 @@ export interface Diferencia {
   /** Opcional y ausente: no es un error, es una declaración de modo. Se informa con su consecuencia. */
   readonly declaraciones: ReadonlyArray<readonly [string, string]>;
   /**
-   * Está en este servicio y **pertenece al inventario de OTRO**. No es "sobra": es una credencial de
-   * otro proceso dentro de éste, y eso vacía de sentido a ADR-17.
+   * Está en este servicio y **pertenece al inventario de OTRO**. No es "sobra": es algo de otro
+   * proceso dentro de éste. Lleva la gravedad, porque no todas pesan igual — ver `gravedadDe`.
    */
-  readonly intrusas: ReadonlyArray<readonly [string, Servicio]>;
+  readonly intrusas: ReadonlyArray<Intrusa>;
   /** Está en el servicio y este comando no la sabe nombrar. Nadie la declaró. */
   readonly sobran: readonly string[];
   /** Está en los dos y el valor NO coincide con el de la fuente. */
@@ -211,10 +240,11 @@ export function comparar(
    * `amg_api` asuma `app_service` (ADR-17), pero un proceso que tiene el DSN del orquestador no
    * necesita asumir nada: se conecta como él.
    */
-  const intrusas = desconocidas
-    .map((k) => [k, SERVICIOS.find((s) => s !== servicio && esperadas(s).includes(k))] as const)
-    .filter((par): par is readonly [string, Servicio] => par[1] !== undefined);
-  const deOtro = new Set(intrusas.map(([k]) => k));
+  const intrusas: Intrusa[] = desconocidas
+    .map((k) => ({ clave: k, duenio: SERVICIOS.find((s) => s !== servicio && esperadas(s).includes(k)) }))
+    .filter((x): x is { clave: string; duenio: Servicio } => x.duenio !== undefined)
+    .map(({ clave, duenio }) => ({ clave, duenio, gravedad: gravedadDe(clave) }));
+  const deOtro = new Set(intrusas.map((i) => i.clave));
   const sobran = desconocidas.filter((k) => !deOtro.has(k));
 
   const difieren: string[] = [];
@@ -241,9 +271,18 @@ export function formatear(diffs: readonly Diferencia[]): string {
     out.push(`\n── ${d.servicio} (${ROL[d.servicio]}) ${roto === 0 ? "✔" : "✖"}`);
     if (d.faltan.length) out.push(`   ✖ FALTAN, y sin ellas NO ARRANCA (${d.faltan.length}): ${d.faltan.join(", ")}`);
     if (d.difieren.length) out.push(`   ✖ DIFIEREN de la fuente (${d.difieren.length}): ${d.difieren.join(", ")}`);
-    if (d.intrusas.length) {
-      out.push(`   ✖ CREDENCIALES DE OTRO PROCESO (${d.intrusas.length}) — ADR-17 dice un proceso, un login:`);
-      for (const [k, duenio] of d.intrusas) out.push(`       ${k} → es de ${duenio} (${ROL[duenio]})`);
+    const cred = d.intrusas.filter((i) => i.gravedad !== "config");
+    const conf = d.intrusas.filter((i) => i.gravedad === "config");
+    if (cred.length) {
+      out.push(`   ✖ CREDENCIALES DE OTRO PROCESO (${cred.length}) — ADR-17 dice un proceso, un login:`);
+      for (const i of cred) {
+        const duda = i.gravedad === "sin-clasificar" ? " ⚠️ sin clasificar en CATALOGO: decidí su familia" : "";
+        out.push(`       ${i.clave} → es de ${i.duenio} (${ROL[i.duenio]})${duda}`);
+      }
+    }
+    if (conf.length) {
+      out.push(`   · configuración de otro proceso (${conf.length}) — no es un secreto, pero confunde:`);
+      for (const i of conf) out.push(`       ${i.clave} → es de ${i.duenio} (${ROL[i.duenio]})`);
     }
     if (d.sobran.length) out.push(`   ✖ sin declarar en el inventario (${d.sobran.length}): ${d.sobran.join(", ")}`);
     out.push(`   · coinciden con la fuente: ${d.coinciden}`);
@@ -258,7 +297,11 @@ export function formatear(diffs: readonly Diferencia[]): string {
 /** ¿Hay algo que arreglar? Separado del formato porque decide el exit code. */
 export function hayProblemas(diffs: readonly Diferencia[]): boolean {
   return diffs.some(
-    (d) => d.faltan.length > 0 || d.difieren.length > 0 || d.sobran.length > 0 || d.intrusas.length > 0,
+    (d) =>
+      d.faltan.length > 0 ||
+      d.difieren.length > 0 ||
+      d.sobran.length > 0 ||
+      d.intrusas.some((i) => i.gravedad !== "config"),
   );
 }
 
