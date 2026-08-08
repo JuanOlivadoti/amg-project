@@ -334,9 +334,31 @@ construye el payload real, exige que el cliente tenga su space, y reporta `publi
 comentario en el código que dice justamente por qué no puede decir `true`—. Los dos juntos, no uno:
 con `storyblok` a secas, si el token está puesto, publica de verdad.
 
+### C-0. `/_health` tiene que decir en qué modo publica — **antes de apoyarse en él**
+
+Detectado el 2026-08-08, al redesplegar el orquestador con `WEB_PUBLISH_MODE=storyblok` y
+`STORYBLOK_DRY_RUN=1`: **no hay forma de confirmar desde afuera que tomaron.** `/_health` responde
+`{"ok":true,"funciones":2,"modo":"cloud","pipeline":"mock"}` — reporta `pipeline` (de `PIPELINE_MODO`)
+y **nada** del publisher.
+
+Es el mismo argumento que ya está escrito en `orchestrator/src/app.ts` para `pipeline` —*"que se pueda
+leer desde afuera es la mitad de su valor: una declaración que solo vive en el panel de variables no se
+puede auditar mirando el servicio"*— sin aplicar justo al caso del que depende todo este bloque. Y con
+un agravante: el modo de publicación **no sale de una variable sino de tres** (`WEB_PUBLISH_MODE`,
+`STORYBLOK_DRY_RUN`, el token), así que leer el panel tampoco alcanza para saber en qué estado quedó.
+
+**Qué hacer.** Agregar `publicacion: "mock" | "dry-run" | "live"` al cuerpo, **derivado de la misma
+lógica que decide el publisher**, no de una relectura del entorno. Si se calculara aparte, `/_health`
+podría decir `dry-run` mientras `getPublisher` devuelve otra cosa — que es exactamente el fallo que la
+clave de firma de Inngest ya causó una vez (lo validado y lo usado eran dos lecturas distintas).
+
+- **Verificación:** un test por estado, y la **mutación que importa**: que `/_health` derive el valor de
+  `process.env` en vez de la decisión real deja pasar la incoherencia y tiene que caer.
+- **Sin esto, el paso 1 de abajo no se puede hacer**: "comprobar el modo" no tiene con qué.
+
 **El orden:**
 
-1. Comprobar el modo. Si no es `dry-run`, decidir explícitamente antes de seguir.
+1. Comprobar el modo **con `/_health`** (paso C-0). Si no es `dry-run`, decidir explícitamente antes de seguir.
 2. Lanzar un research en mock, aprobar **una** página, aprobar el run.
 3. Comprobar que el workflow **despierta** (Inngest → Runs) y que el publisher reporta lo que debe.
 4. Recién entonces, si se quiere, repetir con publicación real y verificar la web servida.

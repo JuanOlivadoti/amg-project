@@ -32,8 +32,10 @@ bloque **I** del plan, y el generador de credenciales ganó su entrada en `histo
 
 | `bfda1c5` | **C0**: la condición durable de publicabilidad. Migración `0019`, `approveRun` con guarda, 409 `RUN_SIN_WORKFLOW`, y el botón apagado con motivo. Cae el único hallazgo con veredicto NO LISTO. **⚠️ SIN PUSHEAR** — ver abajo |
 
-**Pendiente inmediato:** **C** (aprobar → publicar), que ya no es código: hay que poner dos variables en
-el orquestador. Y una corrección: este archivo y el plan decían *"en `dry-run` el publisher no escribe
+**Pendiente inmediato:** **C** (aprobar → publicar). Juan puso `WEB_PUBLISH_MODE=storyblok` y
+`STORYBLOK_DRY_RUN=1` y redesplegó (`/_health` en verde, `funciones: 2`, sin `degradado`), pero
+apareció un **paso previo de código**: `/_health` no reporta el modo de publicación, así que **no hay
+forma de confirmar desde afuera que esas variables tomaron**. Es el paso **C-0** del plan. Y una corrección: este archivo y el plan decían *"en `dry-run` el publisher no escribe
 nada"* como si `dry-run` fuera un valor de `WEB_PUBLISH_MODE`. **No lo es** — los valores son
 `mock` | `storyblok`, y dry-run es un estado al que se llega por tres caminos. Medido y corregido en el
 plan, con lo que reporta cada uno.
