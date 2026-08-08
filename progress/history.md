@@ -11,6 +11,41 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-08 (tarde) — el paso que apareció al mirar el `/_health` que acabábamos de arreglar
+
+Juan puso `WEB_PUBLISH_MODE=storyblok` y `STORYBLOK_DRY_RUN=1` en el orquestador y redesplegó. El
+`/_health` volvió verde —`funciones: 2`, sin `degradado`— y ahí estaba el agujero: **no decía nada
+del publisher**. Habíamos pasado el día metiéndole verdad a ese endpoint y el bloque C empezaba con
+"comprobar el modo" sin nada con qué comprobarlo.
+
+Lo que lo vuelve algo más que un campo que falta es que **el modo no sale de una variable sino de
+tres** (`WEB_PUBLISH_MODE`, `STORYBLOK_DRY_RUN`, el token). Leer el panel de Railway entero no
+contesta la pregunta. El argumento ya estaba escrito en `app.ts` para `PIPELINE_MODO` —*"una
+declaración que solo vive en el panel de variables no se puede auditar mirando el servicio"*— sin
+aplicar justo al caso del que dependía todo el bloque siguiente.
+
+**El arreglo no es el campo: es que haya una sola decisión.** `getPublisher` decidía en línea, así que
+`/_health` habría tenido que decidir otra vez. Dos derivaciones del mismo hecho es el fallo de la
+clave de firma de Inngest otra vez (lo validado y lo usado eran dos lecturas del mismo nombre), y esa
+ya la pagamos. Ahora hay una `decisionDelServicio()` y las dos cuelgan de ella.
+
+**Dos cosas que solo aparecieron al escribir los tests:**
+
+- **El modo es del proceso, no de la corrida.** Un cliente sin `storyblok_space_id` publica en dry-run
+  aunque el servicio esté armado para publicar de verdad. `/_health` no tiene cliente, así que lo que
+  puede afirmar es el **techo** — y eso hay que decirlo, porque un `dry-run` reportado por el cliente
+  de turno sería la mentira tranquilizadora: el próximo cliente sí escribe. Quedó fijado en un test,
+  no en un comentario.
+- **Un typo en `WEB_PUBLISH_MODE` es `mock` en silencio**, con token y space puestos, y `mock` reporta
+  `published: true`. O sea: la base anota como publicadas páginas que nunca salieron del contenedor.
+  El test del estado mock usa el typo en vez de la ausencia por eso — mismo camino, y es el que nadie
+  sospecha.
+
+La mutación que pedía el plan cae limpio: reimplementar `modoPublicacion()` leyendo `process.env`
+deja rojo **un** test —el del estado `storyblok` sin token, donde el entorno dice `live` y la verdad
+es `dry-run`— y verde todo lo demás. Que caiga *solo* ése es la prueba de que el test apunta a la
+divergencia y no a otra cosa.
+
 ## 2026-08-08 — los bloques A, B y C0, y un despliegue que hay que hacer en orden
 
 Seis piezas del plan cerradas seguidas, todas salidas de la 15ª review. Lo que vale guardar no es la

@@ -83,6 +83,7 @@ test("🔴 /_health con la base CAÍDA: 200 por fuera, `degradado` por dentro", 
     funciones: funciones.length,
     modo: "dev",
     pipeline: "mock",
+    publicacion: "mock",
     sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso(), log: () => {} }),
   });
 
@@ -120,6 +121,7 @@ test("🔴 /_health con la base sana: NI RASTRO del campo `degradado`", async ()
     funciones: 2,
     modo: "cloud",
     pipeline: "mock",
+    publicacion: "dry-run",
     sonda: crearSonda({ comprobar: async () => undefined }),
   });
 
@@ -127,6 +129,17 @@ test("🔴 /_health con la base sana: NI RASTRO del campo `degradado`", async ()
     const cuerpo = (await (await fetch(`${base}/_health`)).json()) as Record<string, unknown>;
     assert.equal(cuerpo["ok"], true);
     assert.equal("degradado" in cuerpo, false);
+    /*
+     * Y el modo de publicación viaja en el cuerpo (paso C-0 del plan). Va acá, en el test del
+     * proceso SANO, porque es el escenario en el que alguien lo va a leer: antes de lanzar un
+     * research, para saber si lo que sigue escribe en el Storyblok del cliente o en `out/`.
+     *
+     * Lo que este test NO puede probar es que el valor sea el verdadero —eso lo fijan los tres tests
+     * de `web-builder/src/publish/`, uno por estado—. Acá se fija que el campo exista y no se
+     * invente: `dry-run` entró por parámetro y `dry-run` tiene que salir.
+     */
+    assert.equal(cuerpo["publicacion"], "dry-run");
+    assert.equal(cuerpo["pipeline"], "mock", "y no se cruzan: son dos modos distintos");
   });
 });
 
@@ -170,7 +183,7 @@ test("🔴 /_health no pasa por el manejador de Inngest", async () => {
     invocaciones += 1;
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "cloud", pipeline: "live" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock" });
 
   await conServidor(server, async (base) => {
     const r = await fetch(`${base}/_health`);
@@ -190,7 +203,7 @@ test("/api/inngest sigue delegando en el manejador del SDK", async () => {
     invocaciones += 1;
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock" });
 
   await conServidor(server, async (base) => {
     const r = await fetch(`${base}/api/inngest`);
@@ -245,7 +258,7 @@ async function pedirFirmado(conClaveValidada: boolean): Promise<number> {
     const manejadorInngest = serve(
       opcionesDeServe(conClaveValidada ? { inngestSigningKey: LIMPIA } : {}, cliente, [fn]),
     );
-    const server = crearServidor({ manejadorInngest, funciones: 1, modo: "cloud", pipeline: "live" });
+    const server = crearServidor({ manejadorInngest, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock" });
 
     return await conServidor(server, async (base) => {
       const ts = Math.floor(Date.now() / 1000).toString(); // el SDK lo lee en SEGUNDOS
@@ -287,7 +300,7 @@ test("cualquier otra ruta sigue siendo 404", async () => {
   const espia = (_req: IncomingMessage, res: ServerResponse) => {
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock" });
 
   await conServidor(server, async (base) => {
     assert.equal((await fetch(`${base}/`)).status, 404);

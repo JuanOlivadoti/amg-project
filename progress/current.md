@@ -6,10 +6,13 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-07
-**En curso:** procesar la **15ª review externa** (Codex) y arrancar el bloque **A** del
-[plan de la plataforma](../docs/proyecto/15-plan-plataforma.md).
-**Estado:** en progreso.
+**Sesión:** 2026-08-07 → 2026-08-08
+**En curso:** el bloque **C** del [plan de la plataforma](../docs/proyecto/15-plan-plataforma.md)
+—aprobar → publicar—, después de procesar la **15ª review externa** (Codex) y cerrar los bloques
+**A**, **B** y **C0**.
+**Estado:** en progreso. **Lo próximo: el paso 2 del bloque C** (lanzar un research desde el portal,
+aprobar una página, aprobar el run y ver si el workflow despierta en Inngest). El paso 1 —comprobar
+el modo— ya se puede hacer: `/_health` lo dice desde el **C-0**.
 
 **Los siete hallazgos, clasificados** (el reporte completo, en `progress/informes/`, no versionado):
 cinco verificados, uno aceptado por juicio, **una mutación refutada**. Ninguno contradice una decisión
@@ -30,15 +33,37 @@ del usuario. El relato está en [`history.md`](history.md).
 la bitácora. Antes de vaciarlo se rescató lo que solo vivía acá — dos deudas de KR-2a pasaron al
 bloque **I** del plan, y el generador de credenciales ganó su entrada en `history.md`.
 
-| `bfda1c5` | **C0**: la condición durable de publicabilidad. Migración `0019`, `approveRun` con guarda, 409 `RUN_SIN_WORKFLOW`, y el botón apagado con motivo. Cae el único hallazgo con veredicto NO LISTO. **⚠️ SIN PUSHEAR** — ver abajo |
+| `bfda1c5` | **C0**: la condición durable de publicabilidad. Migración `0019`, `approveRun` con guarda, 409 `RUN_SIN_WORKFLOW`, y el botón apagado con motivo. Cae el único hallazgo con veredicto NO LISTO |
 
-**Pendiente inmediato:** **C** (aprobar → publicar). Juan puso `WEB_PUBLISH_MODE=storyblok` y
-`STORYBLOK_DRY_RUN=1` y redesplegó (`/_health` en verde, `funciones: 2`, sin `degradado`), pero
-apareció un **paso previo de código**: `/_health` no reporta el modo de publicación, así que **no hay
-forma de confirmar desde afuera que esas variables tomaron**. Es el paso **C-0** del plan. Y una corrección: este archivo y el plan decían *"en `dry-run` el publisher no escribe
-nada"* como si `dry-run` fuera un valor de `WEB_PUBLISH_MODE`. **No lo es** — los valores son
-`mock` | `storyblok`, y dry-run es un estado al que se llega por tres caminos. Medido y corregido en el
-plan, con lo que reporta cada uno.
+Y una corrección que salió de ahí: este archivo y el plan decían *"en `dry-run` el publisher no
+escribe nada"* como si `dry-run` fuera un valor de `WEB_PUBLISH_MODE`. **No lo es** — los valores son
+`mock` | `storyblok`, y dry-run es un estado al que se llega por tres caminos. Medido y corregido en
+el plan, con lo que reporta cada uno.
+
+## ✅ C-0 — `/_health` ya dice en qué modo publica
+
+Juan puso `WEB_PUBLISH_MODE=storyblok` y `STORYBLOK_DRY_RUN=1` y redesplegó, y entonces se vio que
+**no había forma de confirmar desde afuera que esas variables tomaran**: `/_health` reportaba
+`pipeline` y nada del publisher. Sin eso, el paso 1 del bloque C —"comprobar el modo"— no tenía con
+qué.
+
+Ahora responde `publicacion: "mock" | "dry-run" | "live"`, derivado de la **misma
+`decisionDelServicio()` que construye el publisher**. Que sean la misma es el punto entero: si se
+calcularan por separado, `/_health` podría decir `dry-run` mientras se publica de verdad — la forma
+exacta en que la clave de firma de Inngest ya mordió una vez.
+
+Tres tests, uno por estado y cada uno en su archivo (`config` se congela al importarse, y
+`node --test` da un proceso por archivo). La **mutación** que pide el plan cae y solo cae ella:
+reimplementar `modoPublicacion()` leyendo `process.env` deja rojo el estado
+`storyblok` **sin token** —donde el entorno dice `live` y la verdad es `dry-run`— y verde todo lo
+demás.
+
+Dos cosas que aparecieron al medirlo:
+
+- **El modo es del proceso, no de la corrida.** Un cliente sin space publica en dry-run aunque el
+  servicio esté en `live`; `/_health` reporta el **techo**, y un test lo fija.
+- **Un typo en `WEB_PUBLISH_MODE` es mock en silencio**, con token y space puestos. Por eso el test
+  del estado mock usa el typo y no la ausencia: es el mismo camino y es el que nadie sospecha.
 
 ---
 
@@ -91,10 +116,13 @@ inofensivo para el portal viejo — lo fue, porque el viejo simplemente lo ignor
 
 | Qué | Por qué él | Bloquea |
 | --- | --- | --- |
-| **Desplegar la `0018` y la `0019`** (`migrate:deploy -w db`) | Toca Supabase real | **El push de `bfda1c5`** (ver arriba) y el barrido, que hasta entonces está en el código y no corre. Mirá que `alter function … owner to app_barrido` pase |
 | **Abrir la lectura de `**/.env.example`** | Es una línea de `.claude/settings.json` | El bloque **A4** (el `MAPA` y el `.env.example` del orquestador van juntos) |
 | **Un token de solo lectura de Railway** | Es una credencial | El bloque **A3**, que además va **después** de A4 |
-| **Poner `WEB_PUBLISH_MODE=storyblok` y `STORYBLOK_DRY_RUN=1`** en el orquestador | Es el panel de Railway | El bloque **C**. **No basta con dejarlo como está**: sin la variable el modo es `mock`, que no toca Storyblok pero reporta `published: true` — la base anotaría como publicadas páginas que nunca salieron del contenedor. Ver el bloque C del plan, con los tres estados medidos |
+
+Y lo que ya hizo, para no volver a pedirlo: desplegó la `0018` y la `0019` (`migrate:deploy -w db`) y
+puso `WEB_PUBLISH_MODE=storyblok` + `STORYBLOK_DRY_RUN=1` en el orquestador, **sin token de
+Storyblok**. Eso último es correcto y deliberado: en dry-run el token no se usa, así que su ausencia
+es una segunda red que no depende de que la variable esté bien escrita.
 
 ---
 

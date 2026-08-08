@@ -70,7 +70,7 @@ como real, o gasto en un despliegue anotado como gratuito—.
 | | |
 |---|---|
 | **Paquetes** | 7 workspaces (`contrato`, `db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **1267** — 924 en el monorepo + 343 en el portal (236 `node:test` + 107 Karma). Los de seguridad, contra Postgres real. Medido el **2026-08-07** con `npm run verificar` tras la 15ª review y los bloques A, B y C0 del plan (venía de 1199). El portal, con `-- --con-portal` y Karma aparte. |
+| **Tests** | **1274** — 931 en el monorepo + 343 en el portal (236 `node:test` + 107 Karma). Los de seguridad, contra Postgres real. Medido el **2026-08-08** con `npm run verificar` tras la 15ª review, los bloques A, B, C0 y el paso **C-0** del plan (venía de 1199). El portal, con `-- --con-portal` y Karma aparte. |
 | **Migraciones** | **17 en `main` y las 17 aplicadas en producción** (`0001`..`0012` + `0015`..`0019`), la `0018` y la `0019` el **2026-08-08**. Ninguna pendiente. La próxima libre es la **`0020`**: `0013` y `0014` siguen **reservadas** —la `0013` para la pieza 3 del portal (Ideas)—. **El primer intento de la `0018` falló** (`must be able to SET ROLE "app_barrido"`) y se revirtió sola: en PGlite el rol que migra es superusuario y en Supabase alojado no, así que `alter … owner to` exigía dos permisos que nadie había concedido. Arreglado y con un test que aplica esa migración **como rol no-superusuario** — sin él, la clase entera volvería a escaparse |
 | **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
 | **Reviews externas** | **15 rondas** (Codex), **21 tandas** de correcciones — la 13ª fue la primera sobre el arnés `.claude/`, la 14ª la primera sobre un **documento de diseño** (la spec de KR-2) y la 15ª la primera **híbrida** (código + el plan de la plataforma). El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
@@ -839,11 +839,10 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 ### 🔴 Lo que depende de Juan
 
-**Lo que hay ABIERTO hoy (2026-08-07):**
+**Lo que hay ABIERTO hoy (2026-08-08):**
 
 | Tarea | Por qué depende de él | Costo |
 |---|---|---|
-| **Desplegar la `0018` y la `0019`** | `npm run migrate:deploy -w db` toca Supabase real, así que lo corre él. **Un solo paso** —ninguna de las dos necesita re-seed, a diferencia de la `0017`—. Hasta que se apliquen: el **barrido** está en el código y **no corre** (el orquestador llamaría a una función que no existe), y **`approveRun` reventaría** al leer una columna inexistente. **Mirá que `alter function … owner to app_barrido` pase**; si el rol que migra no tiene `CREATEROLE`, la migración aborta ruidosamente (y eso es lo correcto) | — |
 | **Regenerar el dataset crudo** (KR-1) | Gasta dinero real contra DataForSEO. Llena los tres `n/d` del informe, calibra dos parámetros hoy sin dato y las estimaciones de `lib/budget.ts` | **~$0.31**, ~16 min. **Volver a sandbox después** (`kr-service/.env`) |
 | **Abrir la lectura de `**/.env.example`** | El `deny` de `.claude/settings.json` incluye `Read(./**/.env.*)`, que **también tapa las plantillas sin valores** — y ésas sí se commitean. Bloquea el bloque **A4** del plan (el `MAPA` y el `.env.example` del orquestador van juntos o ninguno) | Editar una línea de `settings.json` |
 | **Un token de solo lectura de Railway** | Lo necesita el bloque **A3**: comparar la fuente de credenciales con lo que tiene cada servicio desplegado. Solo nombres y hashes cortos, nunca valores | — |
@@ -851,6 +850,14 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 
 ~~**Desplegar el orquestador** (tramo B)~~ — ✅ **hecho el 2026-08-07.** Era la última pieza de Fase 2
 sin desplegar; con ella, el pipeline real corrió en producción por primera vez.
+
+~~**Desplegar la `0018` y la `0019`**~~ — ✅ **hecho el 2026-08-08.** Al primer intento falló
+(`must be able to SET ROLE "app_barrido"`) y se revirtió sola; con el arreglo, las dos aplicaron. El
+barrido ya corre y `approveRun` exige la marca.
+
+~~**Poner `WEB_PUBLISH_MODE=storyblok` y `STORYBLOK_DRY_RUN=1`**~~ — ✅ **hecho el 2026-08-08**, en el
+orquestador. **Sin token de Storyblok, y a propósito**: en dry-run el token no se usa
+(`publisher.ts` corta antes), así que su ausencia es una segunda red independiente de la variable.
 
 Y el detalle de lo que queda, por bloques y con el orden razonado, en
 [**15-plan-plataforma.md**](15-plan-plataforma.md) — que es el plan de la fase en curso.

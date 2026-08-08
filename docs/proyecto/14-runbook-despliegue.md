@@ -870,8 +870,19 @@ aprieta cualquiera con rol `equipo` y se paga solo.
 >
 > Así, desplegar primero en mock —el paso de acá arriba— sigue siendo legítimo, pero pasa a ser una
 > decisión escrita en vez de un olvido. El modo activo se ve en `/_health`
-> (`{"modo":"cloud","pipeline":"mock"}`): una declaración que solo viviera en el panel de variables de
-> Railway no se podría auditar mirando el servicio.
+> (`{"modo":"cloud","pipeline":"mock","publicacion":"dry-run"}`): una declaración que solo viviera en
+> el panel de variables de Railway no se podría auditar mirando el servicio.
+>
+> **`publicacion` es el otro modo, y no es el mismo.** `pipeline` dice si el research gasta;
+> `publicacion` dice a dónde va lo que se publica, y sale de **tres** entradas
+> (`WEB_PUBLISH_MODE`, `STORYBLOK_DRY_RUN` y el token), así que el panel no alcanza ni leyéndolo
+> entero:
+>
+> | `publicacion` | Qué hace | Ojo |
+> | --- | --- | --- |
+> | `mock` | Escribe story + preview en `out/` | ⚠️ Reporta `published: true` — la base anota como publicadas páginas que nunca salieron del contenedor, en un `out/` que se evapora en el próximo deploy. **Es el default** |
+> | `dry-run` | Escribe en `out/storyblok/` el payload exacto que enviaría | Lo que hay que usar para ejercitar el circuito sin consecuencias |
+> | `live` | Publica de verdad en el space del cliente | Es el techo del proceso: un cliente sin `storyblok_space_id` cae igual a dry-run en su propia corrida |
 
 **Desplegá primero en modo sandbox/mock y verificá el circuito entero.** El pipeline corre sin una sola
 credencial de proveedor, así que se puede comprobar que el evento llega, que los steps corren, que el

@@ -8,8 +8,8 @@ export { parseBrief, parseProfile, SUPPORTED_SCHEMA_VERSIONS } from "./contract.
 export { briefToStories, pageToStory } from "./handoff/adapter.js";
 export { renderStory, renderHome, renderMenu, renderBlogIndex } from "./render/html.js";
 export { fromStoryblokContent } from "./storyblok/content.js";
-export { getPublisher } from "./publish/publisher.js";
-export type { Publisher, PublishResult } from "./publish/publisher.js";
+export { getPublisher, modoPublicacion } from "./publish/publisher.js";
+export type { ModoPublicacion, Publisher, PublishResult } from "./publish/publisher.js";
 export { applyProse, loadProfile } from "./enrich.js";
 export { config } from "./config.js";
 export type { KrBrief, KrProposedPage, BusinessProfile, BrandTheme, Imagen, Location, MenuItem, NavItem, Story, Blok } from "./types.js";

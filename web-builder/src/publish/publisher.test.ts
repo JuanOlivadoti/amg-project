@@ -17,8 +17,11 @@ process.env["WEB_PUBLISH_MODE"] = "storyblok";
 process.env["STORYBLOK_MANAGEMENT_TOKEN"] = "tok";
 process.env["STORYBLOK_SPACE_ID"] = "space-GLOBAL"; // el legado: el de algún cliente anterior
 process.env["STORYBLOK_REGION"] = "eu";
+// Explícito, y no "no lo toco": `config` importa `dotenv/config`, así que un `.env` del paquete con
+// `STORYBLOK_DRY_RUN=1` volvería dry-run TODO este archivo y lo de abajo dejaría de probar el modo live.
+process.env["STORYBLOK_DRY_RUN"] = "0";
 
-const { getPublisher } = await import("./publisher.js");
+const { getPublisher, modoPublicacion } = await import("./publisher.js");
 const { StoryblokPublisher, StoryblokDryRunPublisher } = await import("./storyblok-publisher.js");
 const { MockPublisher } = await import("./mock-publisher.js");
 const { briefToStories } = await import("../handoff/adapter.js");
@@ -95,6 +98,33 @@ test("con el space del cliente, publica en ESE space y en ningún otro", async (
 test("mock cuando WEB_PUBLISH_MODE no es storyblok se maneja por config — acá es storyblok, así que live", () => {
   // Guarda de humo: en este entorno el modo es storyblok, no mock.
   assert.ok(!(getPublisher("space-A") instanceof MockPublisher));
+});
+
+// ================================================================
+// #1b — lo que `/_health` reporta (paso C-0 del plan)
+// ================================================================
+
+/**
+ * El estado **live**, que es el único que gasta y el único irreversible. Los otros dos viven en sus
+ * propios archivos porque `config` se congela al importarse y cada estado necesita su entorno.
+ */
+test("con token y modo storyblok, el proceso se reporta `live`", () => {
+  assert.equal(modoPublicacion(), "live");
+  assert.ok(getPublisher("space-A") instanceof StoryblokPublisher, "y construye lo que reporta");
+});
+
+/**
+ * 🔴 **El modo es del PROCESO, no de la corrida**, y esta es la diferencia que un comentario no
+ * puede sostener solo.
+ *
+ * Un cliente sin `storyblok_space_id` publica en dry-run —lo fija el primer test de este archivo—
+ * pero eso **no** convierte al servicio en dry-run: la próxima publicación, la de un cliente que sí
+ * tiene space, va a escribir de verdad. Si `modoPublicacion()` mirase al cliente, `/_health`
+ * respondería `dry-run` en un proceso armado para publicar, que es la mentira tranquilizadora.
+ */
+test("🔴 un cliente sin space NO baja el modo del servicio: sigue siendo `live`", () => {
+  assert.ok(getPublisher(null) instanceof StoryblokDryRunPublisher, "esa publicación es dry-run…");
+  assert.equal(modoPublicacion(), "live", "…pero el proceso sigue armado para publicar de verdad");
 });
 
 // ================================================================

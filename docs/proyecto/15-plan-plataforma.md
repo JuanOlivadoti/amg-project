@@ -334,7 +334,25 @@ construye el payload real, exige que el cliente tenga su space, y reporta `publi
 comentario en el código que dice justamente por qué no puede decir `true`—. Los dos juntos, no uno:
 con `storyblok` a secas, si el token está puesto, publica de verdad.
 
-### C-0. `/_health` tiene que decir en qué modo publica — **antes de apoyarse en él**
+### C-0. `/_health` tiene que decir en qué modo publica — ✅ **hecho el 2026-08-08**
+
+> **Hecho.** `/_health` responde ahora `publicacion: "mock" | "dry-run" | "live"`, y sale de
+> `modoPublicacion()` (`web-builder/src/publish/publisher.ts`) — **la misma `decisionDelServicio()`
+> que construye el publisher**, no una relectura de `process.env`. Tres tests, uno por estado, cada
+> uno en su archivo porque `config` se congela al importarse y `node --test` da un proceso por
+> archivo. La mutación pedida cae: reimplementar `modoPublicacion()` leyendo el entorno deja rojo
+> `modo-publicacion-degradado.test.ts` **y ningún otro** — que es exactamente la divergencia.
+>
+> Dos cosas que aparecieron al medirlo, y que el plan no preveía:
+>
+> - **El modo es del PROCESO, no de la corrida.** Un cliente sin `storyblok_space_id` publica en
+>   dry-run aunque el servicio esté en `live`. `/_health` reporta el **techo** —"¿este proceso está
+>   armado para escribir de verdad?"—, que es la pregunta que hay que contestar antes de lanzar nada;
+>   lo otro es un hecho de esa publicación y lo reporta `published: false`. Un test lo fija en vez de
+>   dejarlo en un comentario.
+> - **Un typo en `WEB_PUBLISH_MODE` es mock en silencio**, con token y space puestos. Es el mismo
+>   camino que la ausencia (`!== "storyblok"`) pero es el que nadie sospecha, así que el test del
+>   estado mock usa el typo y no la ausencia.
 
 Detectado el 2026-08-08, al redesplegar el orquestador con `WEB_PUBLISH_MODE=storyblok` y
 `STORYBLOK_DRY_RUN=1`: **no hay forma de confirmar desde afuera que tomaron.** `/_health` responde

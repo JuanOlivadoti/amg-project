@@ -1,4 +1,5 @@
 import { serve } from "inngest/node";
+import { modoPublicacion } from "web-builder";
 import { crearServidor, opcionesDeServe } from "./app.js";
 import { leerConfig } from "./config.js";
 import { crearDeps, crearConexiones } from "./deps.js";
@@ -26,6 +27,14 @@ const deps = crearDeps(cx);
 // el `onFailure` del research como una función aparte.
 const funciones = [crearFuncionResearch(deps), crearFuncionBarrido(deps)];
 
+/*
+ * En qué modo publica este proceso. Se pregunta UNA vez —la config de `web-builder` se congela al
+ * importarse, así que preguntar por request daría lo mismo— y el valor se usa para las DOS salidas:
+ * el log del arranque y `/_health`. Una sola llamada y no dos, para que no exista siquiera la
+ * posibilidad de que el log diga una cosa y el endpoint otra.
+ */
+const publicacion = modoPublicacion();
+
 const server = crearServidor({
   // La `signingKey` validada viaja acá dentro. Si se dejara al SDK releer el entorno, lo comprobado
   // y lo usado serían dos lecturas distintas — ver `opcionesDeServe`.
@@ -33,6 +42,9 @@ const server = crearServidor({
   funciones: funciones.length,
   modo: config.esProduccion ? "cloud" : "dev",
   pipeline: config.pipeline,
+  // Lo que importa es de DÓNDE sale: de la misma función que elige el publisher, no de un
+  // `process.env` releído acá. Ver `app.ts`.
+  publicacion,
   // La sonda va por el STORE, no por el pool: así recorre el mismo `set local role app_service` que
   // hace el trabajo real, y no solo el TCP. Ver `salud.ts` y `PgStore.comprobarAcceso`.
   sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso() }),
@@ -45,6 +57,13 @@ server.listen(config.puerto, () => {
   console.log(`  Modo: ${config.esProduccion ? "cloud (producción)" : "dev"}`);
   console.log(`  Persistencia: ${config.persistencia.tipo}`);
   console.log(`  Pipeline: ${config.pipeline}${config.pipeline === "live" ? " ⚠️  GASTA DINERO" : ""}`);
+  const aviso =
+    publicacion === "live"
+      ? " ⚠️  ESCRIBE EN EL STORYBLOK DEL CLIENTE"
+      : publicacion === "mock"
+        ? " ⚠️  no sale del contenedor, pero la base lo anota como publicado"
+        : "";
+  console.log(`  Publicación: ${publicacion}${aviso}`);
 });
 
 const apagar = async () => {

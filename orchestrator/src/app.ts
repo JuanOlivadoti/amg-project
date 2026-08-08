@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { serve } from "inngest/node";
+import type { ModoPublicacion } from "web-builder";
 import type { ConfigOrquestador, ModoPipeline } from "./config.js";
 import type { Salud } from "./salud.js";
 
@@ -60,6 +61,17 @@ export interface OpcionesServidor {
   /** Lo declarado en `PIPELINE_MODO`. Se reporta para poder auditarlo sin entrar al panel. */
   pipeline: ModoPipeline;
   /**
+   * En qué modo publica. **No sale de una variable sino de tres** (`WEB_PUBLISH_MODE`,
+   * `STORYBLOK_DRY_RUN` y el token), así que acá el panel de Railway no alcanza ni leyéndolo entero.
+   *
+   * Llega como valor, igual que `pipeline` y `modo`, para que esta fábrica siga sin leer el entorno.
+   * Quien lo deriva es `modoPublicacion()` de `web-builder` — **la misma decisión que construye el
+   * publisher**, no una relectura paralela de `process.env`: si fueran dos, `/_health` podría decir
+   * `dry-run` mientras se publica de verdad, que es la forma exacta en que la clave de firma de
+   * Inngest ya nos mordió (lo validado y lo usado eran dos lecturas del mismo nombre).
+   */
+  publicacion: ModoPublicacion;
+  /**
    * Comprueba las dependencias sin las que este proceso no sirve (hoy: Postgres). Ver `salud.ts`
    * para las tres decisiones —200 aunque esté degradado, el log de la transición, la cache—.
    *
@@ -72,7 +84,7 @@ export interface OpcionesServidor {
 const ARRANQUE = Date.now();
 
 export function crearServidor(opciones: OpcionesServidor): Server {
-  const { manejadorInngest, funciones, modo, pipeline, sonda } = opciones;
+  const { manejadorInngest, funciones, modo, pipeline, publicacion, sonda } = opciones;
 
   return createServer((req, res) => {
     /*
@@ -104,6 +116,9 @@ export function crearServidor(opciones: OpcionesServidor): Server {
           // Que `PIPELINE_MODO` se pueda leer desde afuera es la mitad de su valor: una declaración
           // que solo vive en el panel de variables no se puede auditar mirando el servicio.
           pipeline,
+          // Y lo mismo para publicar, donde además el panel no alcanza: son tres entradas. Ver
+          // `OpcionesServidor.publicacion`.
+          publicacion,
           uptimeSegundos: Math.round((Date.now() - ARRANQUE) / 1000),
           // Ausente cuando todo responde. Un `degradado: []` obligaría a leer el array para saber
           // que está sano, y lo que se quiere es que la presencia del campo sea la señal.
