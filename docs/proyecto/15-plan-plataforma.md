@@ -406,7 +406,8 @@ verdad es `openai` — **el default que factura**).
 2. Lanzar un research en mock, aprobar **una** página, aprobar el run. ✅ **hecho el 2026-08-08** —
    ver abajo.
 3. Comprobar que el workflow **despierta** (Inngest → Runs) y que el publisher reporta lo que debe.
-   ⏳ **Bloqueado: no se puede comprobar desde nuestro lado.** Ver C-1.
+   ✅ **hecho el 2026-08-08**: Juan lo confirmó en Inngest — el run de las 11:12 figura
+   **completado**. Ver abajo lo que eso cierra, y la anomalía que destapó de paso.
 4. Recién entonces, si se quiere, repetir con publicación real y verificar la web servida.
 
 **Lo que este paso puede destapar, y por eso se hace aparte:** el brief que el orquestador reconstruye
@@ -453,6 +454,43 @@ distinción que el código ya defiende bien. Diseño pendiente; no se improvisa 
 
 Mientras tanto el paso 3 lo cierra Juan mirando **Inngest → Runs** (o el token de solo lectura de
 Railway del bloque **A3**, que serviría para lo mismo por los logs).
+
+**Y lo cerró: el run figura `Completed`.** «Completado» no es "despertó": es que **terminó**, o sea que
+pasó el `esperar-aprobacion` **y** el step `publicar` corrió hasta el final sin lanzar. Con eso caen
+las tres promesas que quedaban del bloque:
+
+- la compuerta durable funciona en producción — nunca se había ejercitado;
+- **`parseBrief` sobre el brief reconstruido desde la base funciona**, que es exactamente lo que este
+  bloque marcaba como *"se verificó que el dato ahora es válido, no que la publicación funcione con
+  él"*;
+- el publisher de dry-run construye y escribe el payload dentro del contenedor sin reventar.
+
+### 🔴 C-2. Un workflow de Inngest sin fila en la base — sin explicar
+
+Al mirar el panel apareció otro run, del **2026-08-07 a las 20:35, todavía `Running`**. Lo que se
+puede afirmar sin especular:
+
+- **Es un `research`** (o su `onFailure`): ayer solo había **una** función desplegada; el barrido
+  llegó hoy con `a575cc6`.
+- **No tiene fila visible en la base.** El portal lista **todos** los runs del tenant sin filtro ni
+  límite ([`store.ts:1354`](../../db/src/store.ts#L1354)) y solo hay dos: el sembrado (`…0002`) y el
+  de hoy. Y el re-seed **no** pudo habérsela llevado: borra únicamente el id de la demo
+  ([`seed-demo.ts:700`](../../db/src/seed-demo.ts#L700)).
+- La lectura **benigna** es que duerme en `esperar-aprobacion`, cuyo plazo es **7 días**
+  ([`workflow.ts:130`](../../orchestrator/src/workflow.ts#L130)): aparecería `Running` hasta el 14.
+  Pero entonces tendría que haber una fila en `pending_approval` de esa hora, y no la hay.
+- Peligroso no es: si despertara, `publicar` **vuelve a preguntarle a la base bajo RLS** y sin filas
+  publicables devuelve `nada_que_publicar`. La base es la autoridad (ADR-18), no el evento.
+
+**Lo que sí destapa, y vale por sí solo: el barrido no cancela el workflow.**
+`barrerRunsColgados` marca la fila `running → failed` y nada más
+([`functions.ts:131`](../../orchestrator/src/functions.ts#L131)). O sea que un workflow puede seguir
+vivo sobre un run que la base ya dio por muerto, y las dos verdades conviven sin que nada avise. No
+es un bug del barrido —cancelar en Inngest es otra cosa, y meterla a las apuradas es peor— pero sí
+una asimetría que hay que decidir a propósito.
+
+**Para resolverlo hace falta un dato del panel:** el `runId` del evento de ese run. Con él se mira
+`/runs/<id>` en el portal y se acaba la especulación.
 
 ---
 

@@ -121,6 +121,26 @@ lo habría marcado. **O funcionó, o no corrió.**
 Está anotado como **C-1** en el plan: el modo que existe para ensayar es el único en el que el ensayo
 no se puede observar. Lo cierra Juan mirando Inngest → Runs, o el token de A3.
 
+### ✅ Y lo cerró: el run figura **`Completed`**
+
+No "despertó": **terminó**. Pasó el `esperar-aprobacion` y el step `publicar` corrió entero sin
+lanzar. Caen las tres promesas que quedaban del bloque C — la compuerta durable en producción,
+**`parseBrief` sobre el brief reconstruido desde la base** (lo que el plan marcaba como nunca
+ejecutado) y el publisher de dry-run escribiendo el payload dentro del contenedor.
+
+### 🔴 Pero apareció otro run: `Running` desde el 2026-08-07 a las 20:35, **sin fila en la base**
+
+Es un `research` (ayer había una sola función; el barrido llegó hoy). El portal lista **todos** los
+runs del tenant sin filtro y solo hay dos, y el re-seed no pudo habérsela llevado porque borra
+únicamente el id de la demo. La lectura benigna —que duerma en `esperar-aprobacion`, plazo 7 días—
+exigiría una fila en `pending_approval` de esa hora, y no está.
+
+Peligroso no es: si despierta, `publicar` vuelve a preguntarle a la base bajo RLS y sin filas
+publicables devuelve `nada_que_publicar`. **Falta el `runId` del evento** para dejar de especular.
+
+Y destapa algo que vale por sí solo: **el barrido no cancela el workflow**, solo marca la fila. Un
+workflow puede seguir vivo sobre un run que la base ya dio por `failed`. Anotado como **C-2**.
+
 > Nota al margen, sin consecuencia: `amg-api-production.up.railway.app` ya no resuelve
 > («Application not found»). La API vive en su dominio propio, `api.bigballs.es`, y ahí responde
 > `{"status":"ok"}`. El renderizador, 200.
