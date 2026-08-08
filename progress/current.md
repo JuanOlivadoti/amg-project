@@ -37,7 +37,7 @@ bloque **I** del plan, y el generador de credenciales ganó su entrada en `histo
 
 ---
 
-## ⚠️ La `0018` falló en el primer despliegue, y el arreglo está hecho
+## ✅ Desplegado el 2026-08-08 — y lo que costó la `0018`
 
 `must be able to SET ROLE "app_barrido"`. **Falló bien** —se revirtió, las 15 anteriores intactas—
 pero falló **solo en producción**, con 238 tests en verde: en PGlite el rol que migra es superusuario
@@ -58,23 +58,29 @@ línea siguiente.
 **El test nuevo aplica la `0018` con un rol `createrole` no-superusuario dueño de lo que la migración
 concede.** Sin los grants reproduce el mensaje literal de producción.
 
-## 🛑 El push está RETENIDO a propósito
+## ✅ Todo en producción, verificado en el navegador
 
-**No es un olvido.** `tiene_workflow` entra en `RUN_SUMMARY_COLS`, que usan las tres lecturas de run
-(`getRun`, `listRuns`, `listAllRuns`). Sin la columna de la `0019` aplicada, esas tres consultas
-**fallan**, o sea que **el portal entero deja de funcionar**. Y Railway **autodespliega la API en cada
-push a `main`**.
+Las **17** migraciones aplicadas, los tres commits pusheados, y los tres servicios redesplegados:
 
-Así que el orden es duro y va en un sentido: **primero las migraciones, después el push.**
+- **`/_health` del orquestador**: `{"ok":true,"funciones":2,"modo":"cloud","pipeline":"mock"}` — **dos**
+  funciones (el workflow y el barrido) y **sin `degradado`**, o sea que la sonda nueva atravesó `Tx` y
+  el `set local role app_service` contra Supabase real. A1 verificado donde importa.
+- **La lista de research y el brief cargan**: `getRun`/`listAllRuns` funcionan con la columna nueva, que
+  era lo único que podía tumbar el portal entero.
+- **La API devuelve `tiene_workflow: false`** para el run sembrado — la respuesta correcta: ese run se
+  insertó directo en la base y nadie espera su aprobación.
+- **B1 vivo**: el entregable es un `StaticText`, no un `link`, mientras el informe sigue siendo `link`.
 
-```bash
-npm run migrate:deploy -w db     # aplica la 0018 y la 0019 — lo corre Juan
-git push origin main             # y recién entonces esto
-```
+- **C0 vivo, sobre el escenario exacto de la review**: en el run sembrado el botón «Aprobar el run y
+  publicar» está **deshabilitado**, con el motivo *"este research no lo lanzó el pipeline… aprobarlo no
+  publicaría nada. Para publicar, lanzá un research nuevo"* — y **no** aparece el de las páginas, aunque
+  también se cumple. El colapso a un solo motivo hace lo que se diseñó: gana el que quien mira no puede
+  resolver desde ahí. Cero errores en consola.
 
-Es la primera vez en el proyecto que el orden entre migrar y desplegar es una **precondición** y no
-una recomendación. Las migraciones anteriores agregaban cosas que el código viejo ignoraba; ésta
-agrega una columna que el código nuevo **lee siempre**.
+Hubo una ventana en la que la API ya servía `tiene_workflow` y el portal seguía en el build anterior
+(mostraba el motivo viejo). Se resolvió sola al terminar Hostinger. **Vale anotarlo**: la API y el
+portal se despliegan por caminos distintos y no llegan a la vez, así que un campo nuevo tiene que ser
+inofensivo para el portal viejo — lo fue, porque el viejo simplemente lo ignora.
 
 ## ⏳ Lo que espera a Juan
 
