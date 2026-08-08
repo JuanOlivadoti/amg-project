@@ -679,6 +679,20 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 
 ## El orden que recomiendo, y por qué
 
+> ### ✅ Del 0 al 4, hechos (2026-08-07 / 08). Se sigue por el **5**
+>
+> La documentación mentirosa, **A2**, **A1**, **B1+B2**, **C0** y **C entero** —incluidos los pasos
+> **C-0** y **C-0b**, que aparecieron sobre la marcha—. El circuito está **ejercitado en producción**,
+> no solo desplegado: run `14bda962…` lanzado desde el portal, aprobado, y `Completed` en Inngest.
+>
+> De hacerlo salieron **tres cosas que el plan no preveía**, y las tres viven arriba en sus bloques:
+> **C-1** (en dry-run el intento de publicación no deja rastro nuestro), **C-2** (la marca de C0 y el
+> workflow real pueden discrepar; y el barrido no cancela el workflow) y la frase del tooltip, ya
+> suavizada.
+>
+> **C-1 y C-2 no bloquean nada** y no son mecánicos: los dos piden decidir *qué* se registra y *qué*
+> se cancela. Van cuando haya rato para pensarlos, no a continuación por inercia.
+
 0. **La documentación que miente.** No es un bloque: es el peaje de arrancar. La 15ª review encontró
    que **siete** afirmaciones repartidas en el `09`, el `README` de esta carpeta y `progress/current.md`
    seguían diciendo que falta desplegar el orquestador. Una sesión nueva las lee como estado y repite

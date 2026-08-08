@@ -7,12 +7,15 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-07 → 2026-08-08
-**En curso:** el bloque **C** del [plan de la plataforma](../docs/proyecto/15-plan-plataforma.md)
-—aprobar → publicar—, después de procesar la **15ª review externa** (Codex) y cerrar los bloques
-**A**, **B** y **C0**.
-**Estado:** en progreso. **Lo próximo: el paso 2 del bloque C** (lanzar un research desde el portal,
-aprobar una página, aprobar el run y ver si el workflow despierta en Inngest). El paso 1 —comprobar
-el modo— ya se puede hacer: `/_health` lo dice desde el **C-0**.
+**En curso:** nada. Cerrados los bloques **A**, **B** y **C** del
+[plan de la plataforma](../docs/proyecto/15-plan-plataforma.md), y con ellos la **15ª review externa**.
+**Estado:** listo. El circuito aprobar → publicar está **ejercitado en producción**, no solo
+desplegado.
+
+**▶️ Lo próximo (2026-08-08):** el paso **6** del orden del plan, y es una elección real —
+**J** (pieza 3, *Ideas*: plan escrito, sin decisiones pendientes, desbloquea la pieza 4) o **E** (el
+aspecto de las webs: lo que más cambia lo que se puede vender, pero pide sesión de diseño). El paso 5
+—**A4** y luego **A3**— sigue esperando a Juan. **C-1** y **C-2**, abiertos y sin bloquear a nadie.
 
 **Los siete hallazgos, clasificados** (el reporte completo, en `progress/informes/`, no versionado):
 cinco verificados, uno aceptado por juicio, **una mutación refutada**. Ninguno contradice una decisión
