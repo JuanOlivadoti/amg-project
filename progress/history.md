@@ -83,6 +83,32 @@ improvisó: el arreglo correcto es que el intento de publicación deje una marca
 mandadas, cuántas confirmadas— **sin afirmar que se publicó**, que es justo la distinción que el
 código ya defiende bien y que sería fácil arruinar con las prisas.
 
+**Juan lo miró y el run figuraba `Completed`** — que es más de lo que hacía falta: no despertó, sino
+que *terminó*, o sea que `parseBrief` sobre el brief reconstruido desde la base funcionó en
+producción. Bloque C cerrado.
+
+**Y de paso apareció un segundo run, del día anterior a las 20:35, todavía vivo.** Escribí que era un
+workflow *sin fila en la base* y me equivoqué. El razonamiento era: "si duerme en la compuerta, tuvo
+que hacer el research antes, luego tendría que existir una fila de esa hora". Falso: si el workflow
+arranca con el run **fuera de `running`** se salta el research y va directo a dormir siete días. O
+sea que el candidato obvio era el run sembrado, que llevaba en `pending_approval` desde las 18:18 —y
+que yo mismo había estado mirando toda la mañana—. El error no fue de datos sino de forma: **inferí
+una ausencia** ("no hay fila") a partir de un modelo del flujo que no había releído, en vez de leer
+el flujo.
+
+Lo que sale de ahí sí es real, y es incómodo de la manera correcta: `solicitud_emitida_at` la escribe
+**solo** la API. Un evento emitido a mano —lo primero que uno hace para comprobar un orquestador
+recién desplegado— deja el run **con** workflow esperando y **sin** marca, y entonces el portal apaga
+el botón diciendo *"no hay nada esperando su aprobación"*. Justo lo contrario de lo que pasaba.
+Falla del lado seguro (bloquea de más), así que la decisión de C0 se mantiene; lo que sobra es la
+frase, que afirma sobre Inngest algo que nosotros no podemos comprobar. Y quedó en evidencia que
+**el barrido no cancela el workflow**: marca la fila y ya, con las dos verdades conviviendo sin que
+nada avise.
+
+La moraleja repetida, tercera vez en dos días: **una afirmación sobre el estado de un sistema externo
+que no se miró es una suposición con tono de hecho.** Ya había pasado con `dry-run` como si fuera un
+valor de `WEB_PUBLISH_MODE`, y con "las variables ya tomaron".
+
 ## 2026-08-08 — los bloques A, B y C0, y un despliegue que hay que hacer en orden
 
 Seis piezas del plan cerradas seguidas, todas salidas de la 15ª review. Lo que vale guardar no es la

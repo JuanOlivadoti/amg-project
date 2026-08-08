@@ -289,9 +289,13 @@ código, no solo contra la nota que ya lo describía:
 
 **Y desde el 2026-08-07 es alcanzable en producción**, que es lo que lo convirtió en bloqueante: el run
 sembrado de la demo está en `pending_approval`, los dos flags están en `true`, y ese run se insertó
-**directo en la base** — no hay `waitForEvent` durmiendo sobre él. Aprobarlo devuelve 200, deja el run
-en `approved` para siempre y emite un evento que nadie consume. Un botón que parece funcionar y no
-hace nada es peor que no tenerlo.
+**directo en la base**. Aprobarlo devuelve 200, deja el run en `approved` para siempre y emite un
+evento que nadie consume. Un botón que parece funcionar y no hace nada es peor que no tenerlo.
+
+> ⚠️ **Acá decía además "no hay `waitForEvent` durmiendo sobre él", y el 2026-08-08 se comprobó que
+> era falso**: había uno, desde las 20:35 de esa misma noche. Era una afirmación sobre el estado de
+> Inngest hecha sin mirar Inngest — el argumento de fondo no se cae (la marca no estaba, y por eso el
+> botón se apagó), pero la frase afirmaba de más. Ver **C-2**.
 
 **Qué hacer.** Una **condición durable** en la base, no una heurística: una marca en `kr_runs` que la
 API escribe **después** de que `send()` haya tenido éxito. El orden de ADR-18 se mantiene y se extiende:
@@ -465,32 +469,46 @@ las tres promesas que quedaban del bloque:
   él"*;
 - el publisher de dry-run construye y escribe el payload dentro del contenedor sin reventar.
 
-### 🔴 C-2. Un workflow de Inngest sin fila en la base — sin explicar
+### 🟠 C-2. La marca de C0 y el workflow de verdad pueden discrepar — y ya discrepaban
 
-Al mirar el panel apareció otro run, del **2026-08-07 a las 20:35, todavía `Running`**. Lo que se
-puede afirmar sin especular:
+Al mirar el panel apareció otro run, del **2026-08-07 a las 20:35, todavía `Running`**, y Juan
+confirmó que **estaba parado en `esperar-aprobacion`** (lo canceló; run de Inngest
+`01KZER4898BS0H4SA7WS9H91YP`).
 
-- **Es un `research`** (o su `onFailure`): ayer solo había **una** función desplegada; el barrido
-  llegó hoy con `a575cc6`.
-- **No tiene fila visible en la base.** El portal lista **todos** los runs del tenant sin filtro ni
-  límite ([`store.ts:1354`](../../db/src/store.ts#L1354)) y solo hay dos: el sembrado (`…0002`) y el
-  de hoy. Y el re-seed **no** pudo habérsela llevado: borra únicamente el id de la demo
-  ([`seed-demo.ts:700`](../../db/src/seed-demo.ts#L700)).
-- La lectura **benigna** es que duerme en `esperar-aprobacion`, cuyo plazo es **7 días**
-  ([`workflow.ts:130`](../../orchestrator/src/workflow.ts#L130)): aparecería `Running` hasta el 14.
-  Pero entonces tendría que haber una fila en `pending_approval` de esa hora, y no la hay.
-- Peligroso no es: si despertara, `publicar` **vuelve a preguntarle a la base bajo RLS** y sin filas
-  publicables devuelve `nada_que_publicar`. La base es la autoridad (ADR-18), no el evento.
+**Mi primera lectura fue que era un workflow sin fila en la base, y era falsa.** El razonamiento
+—"si duerme en la compuerta tiene que haber una fila en `pending_approval` de esa hora, y no la
+hay"— daba por hecho que un workflow solo llega a la compuerta *después* de hacer el research. No es
+así: si arranca con el run **fuera de `running`**, se salta el research
+([`workflow.ts:270`](../../orchestrator/src/workflow.ts#L270)) y va **directo a dormir 7 días**. O
+sea que el candidato natural es el run **sembrado**, que está en `pending_approval` desde las 18:18.
+`inferencia`, no verificado: falta el `runId` del payload para confirmarlo.
 
-**Lo que sí destapa, y vale por sí solo: el barrido no cancela el workflow.**
-`barrerRunsColgados` marca la fila `running → failed` y nada más
-([`functions.ts:131`](../../orchestrator/src/functions.ts#L131)). O sea que un workflow puede seguir
-vivo sobre un run que la base ya dio por muerto, y las dos verdades conviven sin que nada avise. No
-es un bug del barrido —cancelar en Inngest es otra cosa, y meterla a las apuradas es peor— pero sí
-una asimetría que hay que decidir a propósito.
+Lo que no es inferencia es la consecuencia, porque el propio portal la enseña: **ese run muestra
+`tiene_workflow: false`** y el botón deshabilitado diciendo *"este research no lo lanzó el
+pipeline… aprobarlo no publicaría nada"* — mientras había un `waitForEvent` esperándolo.
 
-**Para resolverlo hace falta un dato del panel:** el `runId` del evento de ese run. Con él se mira
-`/runs/<id>` en el portal y se acaba la especulación.
+**Por qué pasa.** `solicitud_emitida_at` la escribe **solo** `solicitarResearch`, en la API. Un
+workflow arrancado por cualquier otro camino —un *Send event* a mano desde el panel de Inngest, un
+replay, un `curl` con la event key: justo lo que uno hace para comprobar un orquestador recién
+desplegado— deja el run **con** workflow y **sin** marca.
+
+**Qué NO se cambia.** Preguntarle a Inngest al aprobar sigue descartado por lo que ya dice C0: metería
+un tercero en el camino de la aprobación. Y el error cae del lado seguro —**bloquea** una aprobación
+que habría funcionado, en vez de aceptar una que no hace nada—, que es exactamente la asimetría que
+C0 eligió. La decisión se mantiene.
+
+**Qué sí sale de acá:**
+
+1. **Una regla operativa:** si emitís `research/solicitado` a mano, el run no se va a poder aprobar
+   desde el portal. El camino soportado es el portal → API, y todo lo demás es depuración.
+2. **Una frase demasiado fuerte.** El tooltip afirma *"no hay nada esperando su aprobación"*, que es
+   una afirmación sobre Inngest que no podemos comprobar. Lo que sabemos es más modesto y sigue
+   sirviendo: *este run no lo lanzó el pipeline*.
+3. **Y el barrido no cancela el workflow.** `barrerRunsColgados` marca la fila `running → failed` y
+   nada más ([`functions.ts:131`](../../orchestrator/src/functions.ts#L131)): un workflow puede
+   seguir vivo sobre un run que la base ya dio por muerto, y las dos verdades conviven sin que nada
+   avise. No es un bug del barrido —cancelar en Inngest es otra cosa, y meterla a las apuradas es
+   peor— pero es una asimetría que hay que decidir a propósito.
 
 ---
 

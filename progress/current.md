@@ -128,18 +128,25 @@ lanzar. Caen las tres promesas que quedaban del bloque C — la compuerta durabl
 **`parseBrief` sobre el brief reconstruido desde la base** (lo que el plan marcaba como nunca
 ejecutado) y el publisher de dry-run escribiendo el payload dentro del contenedor.
 
-### 🔴 Pero apareció otro run: `Running` desde el 2026-08-07 a las 20:35, **sin fila en la base**
+### 🟠 Y apareció otro run: `Running` desde el 2026-08-07 a las 20:35, parado en la compuerta
 
-Es un `research` (ayer había una sola función; el barrido llegó hoy). El portal lista **todos** los
-runs del tenant sin filtro y solo hay dos, y el re-seed no pudo habérsela llevado porque borra
-únicamente el id de la demo. La lectura benigna —que duerma en `esperar-aprobacion`, plazo 7 días—
-exigiría una fila en `pending_approval` de esa hora, y no está.
+Juan confirmó que **estaba en `esperar-aprobacion`** y lo canceló (Inngest `01KZER4898BS0H4SA7WS9H91YP`).
 
-Peligroso no es: si despierta, `publicar` vuelve a preguntarle a la base bajo RLS y sin filas
-publicables devuelve `nada_que_publicar`. **Falta el `runId` del evento** para dejar de especular.
+**Mi primera lectura —"un workflow sin fila en la base"— era falsa**, y el error es instructivo: di
+por hecho que a la compuerta solo se llega *después* del research. No es así. Si el workflow arranca
+con el run fuera de `running`, se salta el research y va **directo a dormir 7 días**. El candidato
+natural es el run **sembrado**, en `pending_approval` desde las 18:18. (`inferencia`: falta el
+`runId` del payload.)
+
+Lo que **no** es inferencia lo enseña el propio portal: ese run muestra `tiene_workflow: false` y el
+botón apagado diciendo *"no hay nada esperando su aprobación"* — mientras había un `waitForEvent`
+esperándolo. `solicitud_emitida_at` la escribe **solo** la API, así que un evento emitido a mano
+—justo lo que uno hace para probar un orquestador recién desplegado— deja el run con workflow y sin
+marca. El error cae del lado seguro (bloquea de más, no de menos) y la decisión de C0 se mantiene,
+pero el tooltip afirma sobre Inngest algo que no podemos comprobar.
 
 Y destapa algo que vale por sí solo: **el barrido no cancela el workflow**, solo marca la fila. Un
-workflow puede seguir vivo sobre un run que la base ya dio por `failed`. Anotado como **C-2**.
+workflow puede seguir vivo sobre un run que la base ya dio por `failed`. Todo anotado como **C-2**.
 
 > Nota al margen, sin consecuencia: `amg-api-production.up.railway.app` ya no resuelve
 > («Application not found»). La API vive en su dominio propio, `api.bigballs.es`, y ahí responde
