@@ -65,3 +65,36 @@ test('🔴 el motivo del run sembrado está escrito para quien lo lee, no para q
     'el motivo dice qué pasa pero no qué hacer al respecto',
   );
 });
+
+/**
+ * 🔴 La frase **no puede afirmar sobre Inngest**, que es un sistema que esta pantalla no mira.
+ *
+ * Decía «no hay nada esperando su aprobación», y el 2026-08-08 se encontró en Inngest un
+ * `waitForEvent` durmiendo justo sobre el run sembrado —de un evento emitido a mano para probar el
+ * orquestador recién desplegado—. La frase juraba lo contrario de lo que pasaba.
+ *
+ * Lo que la pantalla sabe es lo nuestro: `solicitud_emitida_at` está vacía, o sea que la API no
+ * lanzó este research. Lo demás es una suposición, y la redacción tiene que sonar como tal. Este
+ * test existe porque la afirmación fuerte es la que sale sola al escribir: es más corta y más
+ * rotunda.
+ */
+test('🔴 el motivo NO afirma sobre Inngest: dice lo que sabemos, no lo que suponemos', () => {
+  const afirmacionesQueNoPodemosHacer = [
+    'no hay nada esperando',
+    'nadie espera',
+    'no publicaría nada',
+    'no publicará nada',
+  ];
+  for (const frase of afirmacionesQueNoPodemosHacer) {
+    assert.ok(
+      !MOTIVO_SIN_WORKFLOW.toLowerCase().includes(frase),
+      `«${frase}» es una afirmación sobre Inngest, que esta pantalla no mira. Ya fue falsa una vez`,
+    );
+  }
+  // Control positivo: el matiz tiene que estar, no solo faltar la afirmación fuerte. Sin esto, un
+  // motivo que no mencione la publicación en absoluto pasaría este test sin decir nada útil.
+  assert.ok(
+    /probablemente|puede que|quizá/i.test(MOTIVO_SIN_WORKFLOW),
+    'sin el matiz, la frase vuelve a sonar a certeza sobre algo que no comprobamos',
+  );
+});

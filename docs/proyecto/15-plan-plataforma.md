@@ -501,9 +501,12 @@ C0 eligió. La decisión se mantiene.
 
 1. **Una regla operativa:** si emitís `research/solicitado` a mano, el run no se va a poder aprobar
    desde el portal. El camino soportado es el portal → API, y todo lo demás es depuración.
-2. **Una frase demasiado fuerte.** El tooltip afirma *"no hay nada esperando su aprobación"*, que es
-   una afirmación sobre Inngest que no podemos comprobar. Lo que sabemos es más modesto y sigue
-   sirviendo: *este run no lo lanzó el pipeline*.
+2. **Una frase demasiado fuerte** — ✅ **suavizada el 2026-08-08.** El tooltip afirmaba *"no hay nada
+   esperando su aprobación"*, que es una afirmación sobre Inngest que no podemos comprobar; ahora dice
+   *"aprobarlo **probablemente** no publique nada"*. Lo que sabemos es lo nuestro —`solicitud_emitida_at`
+   vacía, o sea que la API no lo lanzó— y la redacción ya no finge más. **Un test impide que la
+   afirmación fuerte vuelva**, con las cuatro formas de escribirla y un control positivo que exige el
+   matiz: sin él, una frase que no mencione la publicación pasaría sin decir nada.
 3. **Y el barrido no cancela el workflow.** `barrerRunsColgados` marca la fila `running → failed` y
    nada más ([`functions.ts:131`](../../orchestrator/src/functions.ts#L131)): un workflow puede
    seguir vivo sobre un run que la base ya dio por muerto, y las dos verdades conviven sin que nada

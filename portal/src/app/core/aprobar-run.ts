@@ -31,14 +31,24 @@ export interface EstadoAprobacionRun {
  *
  * Está redactado para quien lo lee, no para quien lo programó: «este run no tiene workflow» es
  * exacto y no significa nada del otro lado de la pantalla. Lo que le pasa a esa persona es que ese
- * research entró por otro camino (el seed de la demo, una importación) y **no hay nada esperando su
- * aprobación**, así que la acción que le queda es lanzar uno nuevo. Un test fija que la frase no se
- * vuelva jerga.
+ * research entró por otro camino (el seed de la demo, una importación), así que la acción que le
+ * queda es lanzar uno nuevo. Un test fija que la frase no se vuelva jerga.
+ *
+ * ## Por qué dice «probablemente» y no «no publicaría nada»
+ *
+ * Decía lo segundo, y era **afirmar sobre un sistema que no miramos**. El 2026-08-08 se encontró en
+ * Inngest un `waitForEvent` durmiendo justo sobre el run sembrado —de un evento emitido a mano para
+ * probar el orquestador recién desplegado— mientras esta frase juraba que no había nada esperándolo.
+ *
+ * Lo que sí sabemos es lo nuestro: `solicitud_emitida_at` está vacía, o sea que **la API no lanzó
+ * este research**. Si además hay o no una ejecución esperando en Inngest es una pregunta que la
+ * pantalla no puede contestar, y no debe fingir que sí — preguntárselo al aprobar está descartado a
+ * propósito (metería un tercero en el camino de la aprobación). Un test impide que la afirmación
+ * fuerte vuelva.
  */
 export const MOTIVO_SIN_WORKFLOW =
-  'Este research no lo lanzó el pipeline (viene de la demo o de una importación), así que no hay ' +
-  'nada esperando su aprobación: aprobarlo no publicaría nada. Para publicar, lanzá un research ' +
-  'nuevo desde el portal.';
+  'Este research no lo lanzó el pipeline (viene de la demo o de una importación), así que ' +
+  'aprobarlo probablemente no publique nada. Para publicar, lanzá un research nuevo desde el portal.';
 
 /** El motivo cuando el run sí es del pipeline pero todavía no hay nada que publicar. */
 export const MOTIVO_SIN_PAGINAS = 'Aprobá al menos una página antes de aprobar el run.';

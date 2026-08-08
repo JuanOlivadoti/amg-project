@@ -148,6 +148,12 @@ pero el tooltip afirma sobre Inngest algo que no podemos comprobar.
 Y destapa algo que vale por sí solo: **el barrido no cancela el workflow**, solo marca la fila. Un
 workflow puede seguir vivo sobre un run que la base ya dio por `failed`. Todo anotado como **C-2**.
 
+**La frase, suavizada** (decisión de Juan): de *"no hay nada esperando su aprobación"* a *"aprobarlo
+**probablemente** no publique nada"*. Con un test que impide que la afirmación fuerte vuelva —cuatro
+formas de escribirla— y un control positivo que exige el matiz, porque si no, una frase que no
+mencione la publicación pasaría el test sin decir nada. Mutación comprobada: con la frase vieja cae
+ese test y **solo** ése. 237 tests `node:test` en el portal, 107 Karma.
+
 > Nota al margen, sin consecuencia: `amg-api-production.up.railway.app` ya no resuelve
 > («Application not found»). La API vive en su dominio propio, `api.bigballs.es`, y ahí responde
 > `{"status":"ok"}`. El renderizador, 200.
