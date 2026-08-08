@@ -1,3 +1,17 @@
+/*
+ * Carga `orchestrator/.env` (desde el cwd, o sea `npm run serve -w orchestrator`). Va **acá, en el
+ * punto de entrada**, y no en `config.ts`, por dos motivos:
+ *
+ *  · Hasta hoy funcionaba **de rebote**: `kr-service` y `web-builder` hacen `import "dotenv/config"`
+ *    en SUS config, y como este proceso los importa, el `.env` acababa cargándose antes de
+ *    `leerConfig()`. Cierto, y accidental: dependía de que estas importaciones siguieran ahí. El
+ *    `.env.example` que promete que `env:sync` genera un archivo útil necesita que esto sea explícito.
+ *  · En `config.ts` sería peor: ese módulo **sí** lo importan los tests, y entonces un
+ *    `orchestrator/.env` presente en la máquina de alguien le metería variables a `config.test.ts`
+ *    —que comprueba justamente qué pasa cuando FALTAN— y el suite pasaría a depender de qué archivos
+ *    tenga cada uno. `server.ts` no lo importa ningún test.
+ */
+import "dotenv/config";
 import { serve } from "inngest/node";
 import { modoProsa, modoPublicacion } from "web-builder";
 import { crearServidor, opcionesDeServe } from "./app.js";

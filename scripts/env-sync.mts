@@ -23,7 +23,7 @@ export const FUENTE = join(RAIZ, "docs", "private", "credenciales.env");
  * que alguien decida acá quién puede verla.
  */
 export const MAPA = {
-  api: ["DATABASE_URL_API", "SUPABASE_JWT_ISS", "CORS_ORIGINS", "SUPABASE_JWT_AUD"],
+  api: ["DATABASE_URL_API", "SUPABASE_JWT_ISS", "CORS_ORIGINS", "SUPABASE_JWT_AUD", "INNGEST_EVENT_KEY"],
   db: ["DATABASE_URL_ADMIN", "SEED_FRANK_USER_ID", "SEED_JUAN_USER_ID"],
   "kr-service": [
     "DATAFORSEO_MODE",
@@ -34,6 +34,23 @@ export const MAPA = {
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
     "DATABASE_URL_CACHE",
+  ],
+  /*
+   * El orquestador **faltaba entero**, no le faltaban variables (bloque A4). Se notaba poco porque en
+   * local corre sin ninguna —PGlite en memoria y providers mock— y en Railway las variables se cargan
+   * a mano; se notaba mucho al querer correr el orquestador REAL en local, que exigía escribir el
+   * archivo a mano.
+   *
+   * Son las cuatro que lee `orchestrator/src/config.ts` y **no** las de `kr-service` ni las de
+   * `web-builder`, aunque en producción los tres compartan proceso: cada paquete tiene su contrato, y
+   * el conjunto de producción —más amplio que la suma de los `.env` locales— lo compara el bloque A3
+   * con un inventario propio.
+   */
+  orchestrator: [
+    "DATABASE_URL_ORQUESTADOR",
+    "DATABASE_URL_CACHE",
+    "INNGEST_SIGNING_KEY",
+    "PIPELINE_MODO",
   ],
   renderer: [
     "STORYBLOK_PUBLIC_TOKEN",

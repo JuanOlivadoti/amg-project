@@ -36,6 +36,37 @@ test("el renderizador NUNCA recibe una credencial de base de datos", () => {
   assert.deepEqual(conBase, []);
 });
 
+/**
+ * 🔴 Las dos mitades de Inngest viven en procesos distintos, y el reparto lo tiene que imponer.
+ *
+ * `INNGEST_EVENT_KEY` autentica el **envío** (la API emite `research/solicitado`);
+ * `INNGEST_SIGNING_KEY` verifica la **recepción** (el orquestador comprueba que quien invoca
+ * `/api/inngest` es Inngest Cloud). Cruzarlas no da error de arranque —cada proceso falla mucho
+ * después, con un `send()` que lanza o un 401 en cada invocación— así que la separación la fija
+ * este test o no la fija nadie.
+ */
+test("las dos claves de Inngest NO se cruzan entre la API y el orquestador", () => {
+  const api = MAPA.api as readonly string[];
+  const orq = MAPA.orchestrator as readonly string[];
+  assert.ok(api.includes("INNGEST_EVENT_KEY"), "la API emite eventos: necesita la de ENVÍO");
+  assert.ok(!api.includes("INNGEST_SIGNING_KEY"), "la API no recibe invocaciones de Inngest");
+  assert.ok(orq.includes("INNGEST_SIGNING_KEY"), "el orquestador las recibe: necesita la de RECEPCIÓN");
+  assert.ok(!orq.includes("INNGEST_EVENT_KEY"), "el orquestador no emite eventos (medido: no hay `send`)");
+});
+
+/**
+ * 🔴 El orquestador asume `app_service` y NO puede tener a mano una credencial de más poder.
+ *
+ * Es el mismo argumento que el de la API con `DATABASE_URL_ADMIN`, y acá pesa más: el orquestador es
+ * el composition root, el único proceso que conoce a los tres módulos a la vez. Si su entorno llevara
+ * la conexión de admin, `set local role` dejaría de ser una barrera para ser una costumbre.
+ */
+test("el orquestador NUNCA recibe la conexión de ADMIN ni la de la API (ADR-17)", () => {
+  const orq = MAPA.orchestrator as readonly string[];
+  assert.ok(!orq.includes("DATABASE_URL_ADMIN"), "la de admin es solo para migrar y sembrar, a mano");
+  assert.ok(!orq.includes("DATABASE_URL_API"), "un login por proceso: el de la API es de la API");
+});
+
 test("la API NUNCA recibe la conexión de ADMIN (ADR-17)", () => {
   // La API usa `amg_api`, que es NOINHERIT y va bajo RLS. Si tuviera DATABASE_URL_ADMIN en su
   // entorno, el aislamiento de roles sería una convención en vez de una barrera.

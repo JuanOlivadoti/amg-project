@@ -197,7 +197,27 @@ el sitio donde se esconden los olvidos.
   lectura del servicio devuelve vacío, tiene que **fallar**, no reportar "todo bien".
 - **Coste:** pieza chica + una credencial nueva de Railway (de solo lectura).
 
-### A4. Cerrar la deuda del `MAPA` y los `.env.example`
+### A4. Cerrar la deuda del `MAPA` y los `.env.example` — ✅ **hecho el 2026-08-08**
+
+> **Hecho.** Al `MAPA` no le faltaban variables: **le faltaba el paquete entero**. Ahora tiene
+> `orchestrator` con las cuatro que lee su `config.ts`, la `api` gana `INNGEST_EVENT_KEY`, y
+> `orchestrator/.env.example` existe — ya no hay paquete sin plantilla. Dos invariantes nuevos, en el
+> test y no en un comentario: **las dos claves de Inngest no se cruzan** (envío ↔ API, recepción ↔
+> orquestador; cruzarlas no da error de arranque, falla mucho después) y **el orquestador no recibe la
+> conexión de admin ni la de la API**.
+>
+> Y una cosa que el `.env.example` daba por hecha sin estarlo: `orchestrator/.env` se cargaba **de
+> rebote**, porque `kr-service` y `web-builder` hacen `import "dotenv/config"` y este proceso los
+> importa. Ahora lo carga `server.ts` explícitamente. Va en el **punto de entrada** y no en `config.ts`
+> a propósito: ese módulo sí lo importan los tests, y un `orchestrator/.env` presente en la máquina de
+> alguien le metería variables a `config.test.ts` —que comprueba justamente qué pasa cuando **faltan**—
+> y el suite pasaría a depender de qué archivos tenga cada uno.
+>
+> **Lo desbloqueó** que el `permissions.deny` dejara de tapar los `.env.example` con un comodín. Ese
+> cambio vino con el archivo en JSON inválido (comentarios `//` y una coma final) y con
+> `docs/private/**` comentado: lo primero habría desactivado el archivo entero —incluidos los cuatro
+> `Bash` denegados y los seis hooks— y lo segundo destapaba las credenciales. Reparado en el mismo
+> commit; el porqué quedó en `$comment_env_example`.
 
 **El problema.** Las tres variables de Inngest (`INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`,
 `PIPELINE_MODO`) no están en el `MAPA` de `scripts/env-sync.mts`, y **`orchestrator/` no tiene

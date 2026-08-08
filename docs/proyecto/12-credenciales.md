@@ -291,17 +291,29 @@ fueran dos, podrían discrepar.
 > sin dónde pasarlas por parámetro". Estaba escrito sin medirlo, y era falso. Lo corrigió quien fue a
 > ejecutarlo.)*
 
-> ⚠️ **Hueco conocido del reparto — igual que el del renderizador, y por el mismo motivo.** `env:sync`
-> **no** reparte `INNGEST_EVENT_KEY` (api) ni `INNGEST_SIGNING_KEY` / `PIPELINE_MODO` (orquestador): no
-> están en el `MAPA` de `scripts/env-sync.mts`, y `orchestrator/` **no tiene `.env.example`** — es el
-> único de los seis paquetes sin plantilla. En producción no molesta, porque las variables se cargan en
-> Railway; sí molesta para correr el orquestador real en local.
+> ✅ **Hueco cerrado el 2026-08-08 (bloque A4).** `env:sync` reparte ahora `INNGEST_EVENT_KEY` a la
+> **api** y las cuatro del **orquestador** (`DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`,
+> `INNGEST_SIGNING_KEY`, `PIPELINE_MODO`), y `orchestrator/.env.example` existe: ya no falta ninguna
+> plantilla. Al `MAPA` no le faltaban variables — **le faltaba el paquete entero**.
 >
-> Cerrarlo exige tocar el `MAPA` y el `.env.example` **juntos** (`scripts/env-sync.test.mts` los ata en
-> las dos direcciones), y quedó pendiente porque el `permissions.deny` del arnés cubre `.env*` y bloqueó
-> a los agentes incluso para **leer** la plantilla. Está anotado acá y no solo en `progress/current.md`
-> a propósito: ese archivo se vacía al cerrar la etapa siguiente, y éste es donde alguien busca qué
-> variable necesita un proceso.
+> Estuvo pendiente porque el `permissions.deny` del arnés cubría `.env*` con un comodín que también
+> tapaba las plantillas **sin valores**, y bloqueaba al agente incluso para leerlas. Se cambió por la
+> lista explícita de variantes con secretos (ver `$comment_env_example` en `.claude/settings.json`).
+>
+> Dos invariantes nuevos, impuestos por `scripts/env-sync.test.mts` y no por este párrafo:
+>
+> - **Las dos claves de Inngest no se cruzan.** `INNGEST_EVENT_KEY` autentica el **envío** y es de la
+>   API; `INNGEST_SIGNING_KEY` verifica la **recepción** y es del orquestador. Cruzarlas no da error de
+>   arranque: falla mucho después, con un `send()` que lanza o un 401 en cada invocación.
+> - **El orquestador no recibe `DATABASE_URL_ADMIN` ni `DATABASE_URL_API`.** Es el composition root, el
+>   único proceso que conoce a los tres módulos a la vez; con la conexión de admin a mano,
+>   `set local role` dejaría de ser una barrera para ser una costumbre.
+>
+> ⚠️ **Y el entorno de Railway del orquestador es MÁS AMPLIO que su `.env.example`, a propósito.** En
+> producción `kr-service` y `web-builder` corren en ese mismo proceso y leen SU config del entorno
+> (DataForSEO, Storyblok, prosa). El `MAPA` es el contrato del `.env` **local**, uno por paquete; el
+> conjunto de producción es otro, y compararlo con lo que tiene el servicio desplegado es el bloque
+> **A3**, con un inventario propio.
 
 > 🔴 **Ninguna de las dos existe todavía, y eso rompe `POST /runs` en producción.** Medido el
 > 2026-08-07 leyendo el SDK: `components/Inngest.js:563` lanza en `send()` cuando el modo es **cloud** y

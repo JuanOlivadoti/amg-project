@@ -12,7 +12,35 @@
 **Estado:** listo. El circuito aprobar → publicar está **ejercitado en producción**, no solo
 desplegado.
 
-**▶️ Lo próximo (2026-08-08):** el paso **6** del orden del plan, y es una elección real —
+## ✅ A4 — el `MAPA` no tenía variables de menos: le faltaba el paquete entero
+
+Juan quitó el comodín `Read(./**/.env.*)` del `deny` y con eso se desbloqueó. Ahora el `MAPA` tiene
+`orchestrator` (`DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`, `INNGEST_SIGNING_KEY`,
+`PIPELINE_MODO`), la `api` gana `INNGEST_EVENT_KEY`, y `orchestrator/.env.example` existe — ya no hay
+paquete sin plantilla. Dos invariantes nuevos en el test: **las claves de Inngest no se cruzan**
+(envío ↔ API, recepción ↔ orquestador) y **el orquestador no recibe la conexión de admin ni la de la
+API**. 938 tests.
+
+Y una promesa que el `.env.example` hacía sin cumplirla: `orchestrator/.env` se cargaba **de rebote**,
+porque `kr-service` y `web-builder` importan `dotenv/config` y este proceso los importa. Ahora lo carga
+`server.ts` explícito — en el punto de entrada y **no** en `config.ts`, porque ese módulo sí lo
+importan los tests y un `.env` local le metería variables a `config.test.ts`, que comprueba justamente
+qué pasa cuando faltan.
+
+### 🔴 El cambio del `settings.json` vino con tres cosas que hubo que deshacer
+
+1. **JSON inválido** (comentarios `//` y una coma final). Si Claude Code no parsea el archivo se cae
+   entero: los cuatro `Bash` denegados —`env:sync`, `reseed:demo`, `demo`, `migrate:deploy`— dejan de
+   estarlo, y los seis hooks tampoco corren. Era lo más grave y no se ve.
+2. **`Read(./docs/private/**)` comentado**, o sea las credenciales legibles. **No se leyeron.**
+   Restaurado: el agente nunca necesita el valor de una credencial, solo saber qué variable poner.
+3. El `allow` decía `Read(./**/.env.*)`. Como `deny` gana sobre `allow` no abría nada hoy, pero el día
+   que alguien toque un deny se vuelve una puerta que nadie recuerda haber abierto. Acotado a
+   `.env.example`.
+
+**▶️ Lo próximo (2026-08-08):** **A3** está desbloqueado (el token de Railway ya está en la fuente),
+pendiente de que Juan confirme si ese token es de solo lectura o no — ver el `09`. Y después, el paso
+**6** del orden del plan, que es una elección real —
 **J** (pieza 3, *Ideas*: plan escrito, sin decisiones pendientes, desbloquea la pieza 4) o **E** (el
 aspecto de las webs: lo que más cambia lo que se puede vender, pero pide sesión de diseño). El paso 5
 —**A4** y luego **A3**— sigue esperando a Juan. **C-1** y **C-2**, abiertos y sin bloquear a nadie.
