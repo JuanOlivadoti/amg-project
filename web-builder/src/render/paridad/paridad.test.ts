@@ -38,6 +38,18 @@ for (const caso of CASOS) {
     // El JSON-LD primero y byte a byte: no tiene ningún motivo para cambiar en un refactor de
     // presentación, y es el contrato con Google. Si cambia, es lo más caro de este diff.
     assert.deepEqual(actual.jsonLd, esperado.jsonLd, `el JSON-LD de "${caso.nombre}" cambió`);
+    // La traza de research, también byte a byte y por el mismo motivo que el JSON-LD: es un bloque
+    // machine-readable que un refactor de presentación no tiene por qué tocar.
+    //
+    // ⚠️ `huellaDe` ya la calculaba y **esta comparación faltaba**, así que la quinta cara del gate
+    // se computaba y se tiraba. Lo encontró una mutación: quitar `evidencia` de `researchTrace()`
+    // dejaba los 207 tests en verde. Una cara de la huella que nadie compara es peor que no tenerla,
+    // porque el nombre promete una garantía que no existe.
+    assert.deepEqual(
+      actual.researchTrace,
+      esperado.researchTrace,
+      `la traza de research de "${caso.nombre}" cambió`,
+    );
     assert.deepEqual(actual.hrefs, esperado.hrefs, `los enlaces de "${caso.nombre}" cambiaron (o su orden)`);
     assert.deepEqual(actual.ids, esperado.ids, `los id de ancla de "${caso.nombre}" cambiaron (o su orden)`);
     assert.equal(actual.texto, esperado.texto, `el texto visible de "${caso.nombre}" cambió`);

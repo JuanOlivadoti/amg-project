@@ -613,13 +613,62 @@ es un párrafo, siete secciones idénticas.
 Hay tres piezas, con spec escrita y **sin empezar**:
 
 1. **Plantillas de landing** — [spec](../superpowers/specs/2026-08-01-plantillas-landings-design.md),
-   tres entregas. **Entrega 1 ✅ el 2026-08-08** (contrato y recorrido de datos); quedan la 2
-   (ensamblado con paridad) y la 3 (piezas nuevas y arreglos visuales).
+   tres entregas. **Entregas 1 ✅ y 2 ✅ el 2026-08-08** (contrato y recorrido de datos; ensamblado con
+   paridad); queda la 3 (piezas nuevas y arreglos visuales).
 2. **Manual de marca** — tokens de color y roles tipográficos self-hosted, en vez de los tres campos
    actuales de `business_profile.brand`. **El modelo de datos ✅ entró con la entrega 1**; falta
    emitir los tokens (entrega 2) y usarlos, con las tipografías self-hosted (entrega 3).
 3. **Rediseño de la carta** — categorías con foto, precios por ración. **Los campos ✅ entraron con la
    entrega 1**; falta la pieza `cartaCategorias` (entrega 3).
+
+### ✅ Entrega 2 — ensamblado y piezas existentes, con paridad (2026-08-08)
+
+`web-builder/src/render/html.ts` pasa de **751 líneas a 177**. Las cuatro funciones que repetían cada
+una su propio `<!doctype>`, `<head>`, `<style>` y pie —la razón por la que el bug de modo oscuro
+sobrevivió: había que arreglarlo cuatro veces— son ahora **cuatro recetas del mismo ensamblador**.
+
+| Pieza | Qué |
+| --- | --- |
+| `render/shell.ts` | El documento: head, cabecera, `<main>`, pie. **Fijo, fuera de la receta** — el tipo `Plantilla` solo ordena contenido, así que ninguna receta puede omitir la cabecera ni mover el pie |
+| `render/piezas/` | **9 piezas**, una por archivo, cada una con su CSS bajo una clase raíz `p-<id>` |
+| `render/css.ts` | Tokens + base + el CSS de **las piezas que dibujaron algo**, en orden de catálogo |
+| `render/plantilla.ts` | `brand.plantilla` elige un **juego de cuatro recetas**, una por tipo de documento |
+| `render/aislamiento.ts` | El detector que impone §3 **mecánicamente**, no por revisión humana |
+
+**El gate fue paridad de contenido contra 10 fixtures capturadas ANTES del refactor** y commiteadas
+en un commit propio (`4c75e47`), para que el historial pruebe que la referencia es anterior al cambio.
+Compara texto visible, `href`, `id` de ancla, JSON-LD byte a byte y la traza de research. Reorganizar
+clases, envoltorios e indentación queda permitido: es el trabajo.
+
+**Las dos ambigüedades de la spec, cerradas al implementar** (§4 define *una* receta mientras
+§Arquitectura de render habla de cuatro):
+
+- **`brand.plantilla` elige un JUEGO de cuatro recetas**, una por tipo de documento, y `base` es el
+  único juego que existe. Con la otra lectura, `cartaCategorias` no tendría dónde vivir en la 3.
+- **`hero` está en las cuatro recetas**, no solo en la de landing. Las tres páginas sintetizadas
+  emiten hoy su propio `<header class="hero">`, y ni `indice` ni `carta` ni `blogIndice` son "las
+  tarjetas"/"la carta" *más un titular*. La alternativa —que cada pieza de contenido emitiera su
+  titular— triplicaba el CSS y obligaba a que `carta` nunca devolviera `""`, con lo que la pieza
+  perdía su contrato.
+
+**El modo oscuro se repartió CON SUS HUECOS, no se completó.** Hoy es una sola regla que nombra
+`.sitebar`, `.hero`, `footer`, `section` y `.card` a la vez, y por eso `.carta li` y `details` quedaron
+fuera sin que nadie lo notara. Completarlo es un arreglo visual y pertenece a la entrega 3: hacerlo
+aquí habría cambiado cómo se ve el sitio, que es justo lo prohibido.
+
+**Lo que encontró la revisión y ningún test veía:** el gate **no mira el `<style>`**, así que el
+reparto del CSS era el punto ciego del cambio. Un comparador de cascada sobre las 10 fixtures encontró
+que los dos `<h2>` del pie perdían `letter-spacing:-.01em` — venía de `section h2`, que empataba en
+especificidad con `footer h2` y ganaba esa propiedad porque era el único que la declaraba. El método
+del implementador (buscar dueño por declaración) **no podía verlo**: la declaración tenía dueño y aun
+así dejaba de llegar a dos elementos.
+
+**Un bug de seguridad arreglado de paso:** `themeCss` hacía `brand.font in FONT_STACKS`, y `in`
+recorre la cadena de prototipos — `brand.font = "toString"` metía `function toString() { [native
+code] }` dentro del `<style>`. Reproducido y cerrado con `Object.hasOwn`. En producción el perfil
+llega de Storyblok sin pasar por Zod, así que era alcanzable.
+
+---
 
 ### ✅ Entrega 1 — contrato y recorrido de datos (2026-08-08)
 
@@ -632,7 +681,7 @@ puede confundir con una regresión de refactor ni con un defecto visual.
 | 1. Zod, la puerta | `web-builder/src/contract.ts` | `fotoSchema`, `menuCategoriaSchema`, `brand.colores`/`fuentes`/`plantilla`, `menu[].precios`/`nota`/`foto` |
 | 2. La allowlist de Postgres | `db/migrations/0014_fotos_publicas.sql` | `app.foto_publica` y `app.numero_publico` (nuevas), la columna generada re-materializada y **el `grant` recuperado** |
 | 3. `perfilValido` | `renderer/src/perfil.ts` | `foto()`, `precios()`, `categorias()`, `galeria()` y `objetoDe()` para los sub-objetos de marca |
-| 4. El render | — | **Sin tocar**: es la entrega 2 y la 3 |
+| 4. El render | — | **Sin tocar en la entrega 1**; reorganizado en la 2, dibuja los campos nuevos en la 3 |
 
 ✅ **La `0014` está aplicada en producción** (2026-08-08 por la noche). Dos cosas que solo se saben
 corriéndola: aplicó **en la posición que el test de orden predecía** —el runner la insertó entre la

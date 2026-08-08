@@ -705,6 +705,19 @@ tabla y le quita la razón de existir al enlace.
 **Topes**, en las cuatro fronteras como el resto: `precios` máx 3, `menu_categorias` máx 20. En la
 `0014` se aplican cortando la fuente (`where i <= N`), igual que la `0010` con los 200 platos.
 
+> **Cerrada el 2026-08-08, al implementar la entrega 2.** Las dos lecturas se resolvieron así, y
+> están implementadas en `web-builder/src/render/plantilla.ts`:
+>
+> 1. **`brand.plantilla` elige un JUEGO de cuatro recetas**, una por tipo de documento (story, home,
+>    menu, blog), y `base` es el único juego que existe. Es la lectura que esta enmienda asumía.
+> 2. **`hero` está en las cuatro recetas**, no solo en la de landing — algo que esta sección no
+>    preveía. Las tres páginas sintetizadas emiten hoy su propio `<header class="hero">`, y ni
+>    `indice` ni `carta` ni `blogIndice` son "las tarjetas"/"la carta" *más un titular*. Las
+>    alternativas eran perder el `<h1>` de tres páginas, o que cada pieza de contenido emitiera su
+>    propio titular —lo que triplicaba el CSS de `.hero` y obligaba a que `carta` nunca devolviera
+>    `""`, con lo que la pieza perdía su contrato—. En la entrega 3, `heroPortada` sustituye a `hero`
+>    en la receta de landing y las otras tres siguen usando el titular.
+
 > **Ambigüedad del documento base que hay que cerrar al implementar** (no la introduce esta enmienda,
 > pero esta enmienda tropieza con ella): §4 define `Plantilla` como **una** receta y `brand.plantilla`
 > como el campo que la elige, mientras que §Arquitectura de render dice que `renderStory`,

@@ -11,6 +11,55 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-08 (noche, 2) — entrega 2: reorganizar el render sin que el sitio se entere
+
+La entrega que **no se ve**, y por eso lo primero fue lo único que no se podía hacer después:
+**capturar una foto del HTML de antes y commitearla sola**. Un gate de paridad cuyas fixtures se
+generan después del refactor se compara contra sí mismo — verde perpetuo, garantía cero. Que el
+historial pruebe que la referencia es anterior al cambio es la mitad del valor.
+
+Con eso puesto, `html.ts` pasó de **751 líneas a 177**: las cuatro funciones que repetían cada una su
+`<head>`, su `<style>` y su pie —la razón por la que el bug de modo oscuro sobrevivió, porque había
+que arreglarlo cuatro veces— son ahora cuatro recetas del mismo ensamblador sobre nueve piezas.
+
+**Auditar el gate encontró un agujero en el gate.** El HTML emite dos scripts, y el segundo —la traza
+de research— caía justo en el hueco entre mis extractores: `textoVisibleDe` lo borraba por ser un
+`<script>` y `jsonLdDe` no lo veía porque su tipo es `application/json` y no `ld+json`. El refactor
+podía perderlo entero con las cuatro comparaciones en verde. Le puse su extractor… y **dejé la otra
+mitad abierta**: lo añadí a la huella y no añadí la línea que lo compara, así que la quinta cara se
+computaba y se tiraba. Lo destapó una mutación, no una lectura. Escribir el extractor se siente como
+haber cerrado el agujero, y no lo está hasta que algo lo muta.
+
+**La revisión encontró lo que ningún test podía ver**, y con un método mejor que el que había usado
+yo. El gate **no mira el `<style>`**: el reparto del CSS era el punto ciego del cambio entero. Un
+comparador de cascada sobre las diez fixtures encontró que los dos `<h2>` del pie perdían
+`letter-spacing:-.01em` — venía de `section h2`, que empataba en especificidad con `footer h2` y
+ganaba esa propiedad por ser el único que la declaraba. Lo instructivo es por qué el método del
+implementador no podía verlo: buscaba **dueño por declaración**, y la declaración sí tenía dueño
+(cuatro piezas se la llevaron) y aun así dejó de llegar a dos elementos. Buscar dueño no es computar
+la cascada.
+
+**Un bug de seguridad que nadie pidió arreglar.** `themeCss` hacía `brand.font in FONT_STACKS`, y `in`
+recorre la cadena de prototipos: `brand.font = "toString"` metía `function toString() { [native code] }`
+dentro del `<style>`. Lo reproduje antes de aceptarlo. En producción el perfil llega de Storyblok sin
+pasar por Zod, así que era alcanzable.
+
+**Y tres garantías que vivían en un comentario**, cerradas tras la revisión. La más elegante de las
+tres: *"el orden del catálogo es un contrato"* — pero el test que parecía cubrirlo derivaba el orden
+esperado **del propio catálogo**, así que reordenarlo movía los dos lados a la vez y seguía verde. Un
+test que deriva su expectativa de lo que mide no mide nada.
+
+**Un error de método mío, para que no se repita:** edité `web-builder/` para endurecer el gate
+*mientras* el subagente trabajaba en ese mismo paquete. Él se encontró cambios en el árbol sin saber
+de dónde salían y gastó parte de su informe en señalarlo. No se pisaron de casualidad. Le pedí
+explícitamente que no invadiera áreas ajenas y yo invadí la suya.
+
+**1120 tests.** Y lo que confirma que la entrega hizo lo que debía: en la carta de Bar Pepe en oscuro
+se siguen viendo el doble borde y las líneas casi blancas. Feos, y correctos — arreglarlos es la
+entrega 3.
+
+---
+
 ## 2026-08-08 (noche) — bloque E, entrega 1: el dato llega hasta la base y nadie lo dibuja todavía
 
 Empieza el bloque **E**, el aspecto de las webs, y la primera entrega es deliberadamente la que **no

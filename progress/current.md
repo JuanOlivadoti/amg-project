@@ -7,9 +7,46 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-08
-**En curso:** **bloque E** — el aspecto de las webs. **Entrega 1 de 3 terminada**; faltan la 2
-(ensamblado con paridad) y la 3 (piezas nuevas y arreglos visuales).
-**Estado:** listo. **1001 tests**, typecheck limpio, y el renderizador manejado en un navegador.
+**En curso:** **bloque E** — el aspecto de las webs. **Entregas 1 y 2 de 3 terminadas**; queda la 3
+(piezas nuevas y arreglos visuales), que es donde el sitio cambia de aspecto.
+**Estado:** listo. **1120 tests**, typecheck limpio, y las cuatro páginas manejadas en un navegador
+en claro y oscuro, escritorio y móvil.
+
+## ✅ Entrega 2 — ensamblado y piezas, con paridad
+
+`html.ts` pasa de **751 líneas a 177**: las cuatro funciones que repetían cada una su `<head>`,
+`<style>` y pie son **cuatro recetas del mismo ensamblador**, sobre un shell fijo y un catálogo de
+**9 piezas** con su CSS aislado. El CSS de una pieza que no dibujó nada no viaja.
+
+**El orden del trabajo fue el punto entero.** Las 10 fixtures del gate se capturaron y commitearon
+**antes** de tocar el render (`4c75e47`), en un commit propio: una foto sacada después habría medido
+el resultado contra sí mismo. Comparan texto visible, `href`, `id` de ancla, JSON-LD y la traza de
+research.
+
+**Lo que encontró la revisión y ningún test veía.** El gate **no mira el `<style>`**, así que el
+reparto del CSS era el punto ciego. Un comparador de cascada sobre las 10 fixtures encontró que los
+dos `<h2>` del pie perdían `letter-spacing:-.01em`: venía de `section h2`, que empataba en
+especificidad con `footer h2` y ganaba esa propiedad por ser el único que la declaraba. El método del
+implementador —buscar dueño por declaración— **no podía verlo**, porque la declaración sí tenía dueño
+y aun así dejaba de llegar a dos elementos.
+
+**Un bug de seguridad que nadie pidió arreglar.** `themeCss` hacía `brand.font in FONT_STACKS`, e `in`
+recorre la cadena de prototipos: `brand.font = "toString"` metía `function toString() { [native code] }`
+dentro del `<style>`. Reproducido y cerrado con `Object.hasOwn`. En producción el perfil llega de
+Storyblok **sin pasar por Zod**, así que era alcanzable.
+
+**Y tres garantías que estaban en un comentario**, cerradas tras la revisión: el orden del catálogo
+(el test lo derivaba del propio array, así que reordenarlo movía los dos lados), la adyacencia entre
+piezas (`.p-hero + *` cruzaba a la vecina sin nombrarla y pasaba el detector) y seis de los nueve
+tokens de marca sin test de sobreescritura. Las tres, con mutación comprobada.
+
+**Dos cosas se decidieron y quedaron escritas donde se buscan**, no solo en el código: `brand.plantilla`
+elige un **juego de cuatro recetas**, y `hero` va en las cuatro. Las dos cierran la ambigüedad que la
+enmienda de la spec pedía cerrar al implementar.
+
+**El modo oscuro se repartió CON SUS HUECOS.** Completarlo es un arreglo visual de la entrega 3:
+hacerlo aquí habría cambiado cómo se ve el sitio. Verificado con los ojos — en la carta de Bar Pepe en
+oscuro se siguen viendo el doble borde y las líneas casi blancas.
 
 ## ✅ Entrega 1 — contrato y recorrido de datos
 
@@ -57,11 +94,15 @@ generada → `perfilValido`— y exige que el perfil salga entero. Mutación com
 - **El ancla anti-deriva comparaba tres claves a mano**, así que quedó verde con el seed sin ninguno
   de los cuatro campos nuevos. Ahora recorre las claves del JSON publicado y crece sola.
 
-**▶️ Lo próximo:** la **entrega 2** — shell, catálogo de piezas, receta, ensamblador de CSS y traslado
-de las piezas que ya existen, **sin diseño nuevo**. Su gate es **paridad de contenido** contra
-fixtures del HTML actual capturadas *antes* de empezar: texto visible, `href`, `id` de ancla y JSON-LD
-idénticos. Es ahí donde el CSS base pasa a emitir los tokens del manual con los valores actuales como
-default — que es lo que hoy falta para que `colores.primario` se vea.
+**▶️ Lo próximo:** la **entrega 3** — `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`,
+`ctaFinal`, `cartaCategorias`, las tipografías self-hosted, el uso real de los tokens de marca y los
+seis arreglos visuales. **Es la entrega donde el sitio cambia de aspecto**, y por eso va después de que
+la 2 haya demostrado paridad.
+
+Dos precondiciones que **no son código** y conviene resolver antes de empezarla: las fichas de
+producción no tienen fotos ni manual de marca todavía (hay que cargarlas o re-sembrar), y las URLs de
+foto del seed apuntan a assets que **no existen** — la entrega 3 es la que las dibuja, así que hasta
+entonces la web de demo saldría con imágenes rotas.
 
 ## ⏳ Lo que espera a Juan
 

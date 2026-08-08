@@ -19,6 +19,24 @@ export function jsonLdDe(html: string): string[] {
 }
 
 /**
+ * El `<script type="application/json" id="research-trace">`, que enlaza la página con el research que
+ * la produjo (`source_keyword`, `opportunity_score`, `evidencia`…).
+ *
+ * **Tiene su propio extractor porque si no se quedaba fuera del gate entero**, y eso lo descubrí
+ * auditando estos extractores, no escribiéndolos: `textoVisibleDe` lo borra por ser un `<script>`, y
+ * `jsonLdDe` no lo ve porque su tipo es `application/json`, no `application/ld+json`. O sea que el
+ * refactor podía perderlo completo con las cuatro comparaciones en verde — un agujero silencioso en
+ * la mitad del gate que existe para que nada se pierda en silencio.
+ *
+ * Devuelve `null` cuando no hay ninguno: las páginas sintetizadas (home, `/menu`, `/blog`) no salen
+ * de un research, así que ahí la ausencia es el valor correcto y hay que distinguirla de un `""`.
+ */
+export function researchTraceDe(html: string): string | null {
+  const m = /<script type="application\/json" id="research-trace">([\s\S]*?)<\/script>/.exec(html);
+  return m ? (m[1] ?? "").trim() : null;
+}
+
+/**
  * El texto que un visitante lee, normalizado.
  *
  * Se quitan `<script>` y `<style>` **con su contenido** —el JSON-LD y el CSS no son texto visible, y
@@ -54,12 +72,13 @@ export function idsDe(html: string): string[] {
   return [...html.matchAll(/\sid="([^"]*)"/g)].map((m) => m[1] ?? "");
 }
 
-/** Las cuatro caras que el refactor NO puede cambiar. */
+/** Las cinco caras que el refactor NO puede cambiar. */
 export interface HuellaParidad {
   texto: string;
   hrefs: string[];
   ids: string[];
   jsonLd: string[];
+  researchTrace: string | null;
 }
 
 export function huellaDe(html: string): HuellaParidad {
@@ -68,5 +87,6 @@ export function huellaDe(html: string): HuellaParidad {
     hrefs: hrefsDe(html),
     ids: idsDe(html),
     jsonLd: jsonLdDe(html),
+    researchTrace: researchTraceDe(html),
   };
 }
