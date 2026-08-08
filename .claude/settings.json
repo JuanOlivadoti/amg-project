@@ -1,6 +1,7 @@
 {
   "$comment": "Config compartida de Claude Code para AMG OS. Los hooks los ejecuta el harness, no el agente: son la parte del ritual que no depende de que alguien se acuerde. La mitad NO compartida (permisos y rutas de cada máquina) va en settings.local.json, que está gitignoreado.",
   "$comment_deny": "Lo que el deny SÍ y NO consigue (13ª review externa, 2026-08-04). SÍ: evita el accidente — que un agente lea un .env por costumbre o dispare un comando que gasta dinero o escribe en Supabase. NO es un sandbox: `Bash` sigue disponible para los agentes de área, y con Bash se puede leer cualquier archivo sin pasar por la herramienta Read. Las prohibiciones de los prompts de .claude/agents/ son un CONTRATO, no un límite técnico; el único límite técnico real es no tener la herramienta (por eso el revisor no declara Edit). Se denegaron los cuatro comandos que tocan servicios reales y NO se denegó git: el ritual del proyecto exige que la sesión principal commitee y pushee. Ojo: `deny` es duro y no se puede aprobar interactivamente — si hace falta correr reseed:demo o migrate:deploy de verdad, se hace desde una terminal fuera de Claude Code.",
+  "$comment_env_example": "Por qué el deny de `.env` NO es un comodín `.env.*` (2026-08-08, bloque A4). Ese comodín también tapaba los `.env.example` —plantillas SIN valores, que sí se commitean— y dejaba al agente sin poder leer el contrato del entorno de cada paquete, que es justo lo que A4 necesita escribir para `orchestrator/`. Se cambió por la lista explícita de variantes que sí llevan secretos, más un allow acotado a `.env.example` y NO a `.env.*`: `deny` gana sobre `allow`, así que un allow amplio no abriría nada hoy, pero el día que alguien quite un deny se convierte en una puerta que nadie recuerda haber abierto. Si aparece una variante nueva con secretos (`.env.staging`, lo que sea), va agregada acá: perdimos el comodín a cambio de poder leer las plantillas. Y `docs/private/**` se queda denegado SIEMPRE: el agente nunca necesita ver el valor de una credencial, solo saber qué variable poner — los scripts leen la fuente en tiempo de ejecución, no el agente.",
   "$comment_hooks_skillmap": "Los seis hooks que invocan .skill-map/activity/bridge.js los agregó el instalador de skill-map, no una edición a mano. Dependen de .skill-map/, que está gitignoreado: en un clon sin skill-map instalado esos hooks fallan en cada turno. Si eso molesta, se quitan; están acá para que la config no se pierda entre máquinas.",
   "hooks": {
     "Stop": [
@@ -81,19 +82,24 @@
   },
   "permissions": {
     "allow": [
+      "Bash(./scripts/verificar.sh*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git status*)",
+      "Bash(npm run typecheck*)",
       "Bash(npm run verificar*)",
       "Bash(npm test*)",
-      "Bash(npm run typecheck*)",
-      "Bash(./scripts/verificar.sh*)",
-      "Bash(git status*)",
-      "Bash(git diff*)",
-      "Bash(git log*)"
+      "Read(./**/.env.example)"
     ],
     "deny": [
       "Read(./docs/private/**)",
       "Read(./docs/private*/**)",
       "Read(./**/.env)",
-      "Read(./**/.env.*)",
+      "Read(./**/.env.local)",
+      "Read(./**/.env.*.local)",
+      "Read(./**/.env.development)",
+      "Read(./**/.env.production)",
+      "Read(./**/.env.test)",
       "Read(./**/*.env)",
       "Read(./**/.envrc)",
       "Bash(npm run env:sync*)",
