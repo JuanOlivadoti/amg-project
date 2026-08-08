@@ -314,8 +314,25 @@ nuestra base. El dato tiene que ser nuestro.
 
 ### Y recién entonces, el bloque C propiamente dicho
 
-**Antes de tocarlo hay que mirar `WEB_PUBLISH_MODE`** en el servicio del orquestador: en `dry-run` el
-publisher reporta `published: false` y no escribe nada — que es como se prueba sin consecuencias.
+**Antes de tocarlo hay que decidir en qué modo publica el orquestador, y no es una variable con un
+valor "seguro": son dos variables y tres estados.** Lo de abajo está medido el 2026-08-08 en
+`web-builder/src/publish/publisher.ts`.
+
+| Estado | Cómo se llega | Qué hace | Qué reporta |
+| --- | --- | --- | --- |
+| **mock** | `WEB_PUBLISH_MODE` ausente o ≠ `storyblok` (**el default**) | Escribe story + preview en `out/` | ⚠️ **`published: true`** |
+| **dry-run** | `storyblok` **y** (`STORYBLOK_DRY_RUN=1` **o** sin token **o** el cliente sin space) | Escribe en `out/storyblok/` el payload **exacto** que enviaría | `published: false` |
+| **live** | `storyblok`, con token y con space | Publica de verdad | `published: true` |
+
+**El default NO sirve para el bloque C**, y es lo contrario de lo que decía este plan: en `mock` no se
+toca Storyblok (bien) pero el publisher dice `published: true`, así que **la base anotaría como
+publicadas páginas que nunca salieron del contenedor** — en un `out/` que además se evapora en el
+próximo deploy. Peor que no probar.
+
+Lo que ejercita el bloque C sin consecuencias es **`WEB_PUBLISH_MODE=storyblok` + `STORYBLOK_DRY_RUN=1`**:
+construye el payload real, exige que el cliente tenga su space, y reporta `published: false` —con un
+comentario en el código que dice justamente por qué no puede decir `true`—. Los dos juntos, no uno:
+con `storyblok` a secas, si el token está puesto, publica de verdad.
 
 **El orden:**
 
@@ -474,7 +491,7 @@ pantalla se ve funcionando con datos sembrados, y el ingreso real de ideas se de
 | `env:sync` avisa de 4 claves «sin destino» y no distingue | `scripts/` | Tres son deliberadas; **`SUPABASE_JWT_SECRET` sí es basura** (`api/src/auth.ts:84`: la firma se verifica contra el JWKS) |
 | El CLI de despliegue **no dice en qué punto falló** | `db/src/cli/` | Un error pelado significa "falló antes del bucle", y eso hay que deducirlo leyendo el código |
 | La **sonda del modo del SDK está duplicada** | `api/`, `orchestrator/` | Los dos chequeos son equivalentes hoy y nada los mantiene sincronizados. Unificar no es trivial: el único paquete compartido es `contrato/`, que solo depende de `zod` |
-| `PIPELINE_MODO` solo se contrasta contra **DataForSEO** | `orchestrator/` | Deliberado: la prosa mock se lee como mock y el publisher en dry-run lo reporta. Cerrarlo haría `LLM_PROVIDER` obligatoria en `live` |
+| 🔴 `PIPELINE_MODO` solo se contrasta contra **DataForSEO**, y esa omisión **sí muerde** | `orchestrator/` | Esta fila decía que era deliberado porque *"el publisher en dry-run lo reporta"*. **Medido el 2026-08-08: es falso**, y el error está en confundir dry-run con mock. Sin `WEB_PUBLISH_MODE`, `config.publishMode` cae a **`mock`** (`web-builder/src/config.ts:24`) y `MockPublisher` reporta **`published: true`** (`mock-publisher.ts:31`) — así que la base anotaría `published_at` para páginas que nunca salieron del contenedor, y encima en un `out/` efímero. El `StoryblokDryRunPublisher` sí reporta `published: false`, **a propósito y con el comentario que lo explica**; el mock no. Es exactamente el fallo que `PIPELINE_MODO` existe para cerrar —un mock presentado como real— por la puerta que quedó sin cerrar |
 | `cartera-portal.test.ts` dejó de cubrir `intencion` | `db/` | Ata el mock contra `PAGINAS_DEMO` (español), no contra la fila (inglés desde la `0017`). Cerrarlo cruza `db/` y `portal/` |
 | Deriva del portal por la `0017` | `portal/` | `cartera-mock.ts:147` genera `page_strategy: 'hub'/'spoke'`, valores que **la base ya no puede contener**; y `cartera-tabla.ts:29` pinta `{{ p.intencion }}` crudo |
 | `endpoints_degradados` sigue **incompleto** como dato | `kr-service/` (`meta_run`) | Omite los fallos de suggestion/SERP. Lo que KR-2a arregló es que ahora **puede decir "no se sabe"** (`null`) en vez de afirmar `[]`. Vivía solo en el plan de Fase 2, que ya está cerrado |

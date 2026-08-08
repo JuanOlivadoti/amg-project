@@ -32,8 +32,11 @@ bloque **I** del plan, y el generador de credenciales ganó su entrada en `histo
 
 | `bfda1c5` | **C0**: la condición durable de publicabilidad. Migración `0019`, `approveRun` con guarda, 409 `RUN_SIN_WORKFLOW`, y el botón apagado con motivo. Cae el único hallazgo con veredicto NO LISTO. **⚠️ SIN PUSHEAR** — ver abajo |
 
-**Pendiente inmediato:** **C** (aprobar → publicar en `dry-run`), que ya no es código: hay que mirar
-`WEB_PUBLISH_MODE` en el servicio del orquestador antes de tocarlo.
+**Pendiente inmediato:** **C** (aprobar → publicar), que ya no es código: hay que poner dos variables en
+el orquestador. Y una corrección: este archivo y el plan decían *"en `dry-run` el publisher no escribe
+nada"* como si `dry-run` fuera un valor de `WEB_PUBLISH_MODE`. **No lo es** — los valores son
+`mock` | `storyblok`, y dry-run es un estado al que se llega por tres caminos. Medido y corregido en el
+plan, con lo que reporta cada uno.
 
 ---
 
@@ -89,7 +92,7 @@ inofensivo para el portal viejo — lo fue, porque el viejo simplemente lo ignor
 | **Desplegar la `0018` y la `0019`** (`migrate:deploy -w db`) | Toca Supabase real | **El push de `bfda1c5`** (ver arriba) y el barrido, que hasta entonces está en el código y no corre. Mirá que `alter function … owner to app_barrido` pase |
 | **Abrir la lectura de `**/.env.example`** | Es una línea de `.claude/settings.json` | El bloque **A4** (el `MAPA` y el `.env.example` del orquestador van juntos) |
 | **Un token de solo lectura de Railway** | Es una credencial | El bloque **A3**, que además va **después** de A4 |
-| **Mirar `WEB_PUBLISH_MODE`** en el orquestador | Es el panel de Railway | El bloque **C**: en `dry-run` el publisher no escribe nada en Storyblok, y así se prueba sin consecuencias |
+| **Poner `WEB_PUBLISH_MODE=storyblok` y `STORYBLOK_DRY_RUN=1`** en el orquestador | Es el panel de Railway | El bloque **C**. **No basta con dejarlo como está**: sin la variable el modo es `mock`, que no toca Storyblok pero reporta `published: true` — la base anotaría como publicadas páginas que nunca salieron del contenedor. Ver el bloque C del plan, con los tres estados medidos |
 
 ---
 
