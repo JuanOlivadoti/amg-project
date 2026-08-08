@@ -7,6 +7,7 @@ import type { NavItem } from "web-builder";
 import { ErrorCda, type Cda } from "./cda.js";
 import { CacheRender } from "./cache.js";
 import { hostDeLaPeticion } from "./dominio.js";
+import { CACHE_FUENTES, cargarFuentes } from "./fuentes-servidas.js";
 import { CacheNegativa, Coalescedor, Saturado, Semaforo } from "./limites.js";
 import { perfilValido } from "./perfil.js";
 import { previewAutorizado, scriptBridge } from "./preview.js";
@@ -66,6 +67,9 @@ const MAX_BODY_WEBHOOK = 256 * 1024;
 export function createApp(deps: RendererDeps) {
   const app = new Hono();
   const cache = deps.cache ?? new CacheRender();
+  // Se cargan al construir la app y no por petición: 148 KB caben en memoria, y así un archivo que
+  // falta revienta el arranque en vez de dar 404 en la web de un cliente tres semanas después.
+  const fuentes = cargarFuentes();
 
   /**
    * Cache de la resolución dominio → sitio.
@@ -205,6 +209,28 @@ export function createApp(deps: RendererDeps) {
       faltantes: faltantes.tamano,
     }),
   );
+
+  /**
+   * Las tipografías self-hosted. **La primera ruta pública que sirve algo que no es HTML generado.**
+   *
+   * Sirve desde un `Map` en memoria cargado al arrancar, **nunca desde el filesystem con lo que pida
+   * quien llama**: no hay `path.join` ni `readFile(param)`, así que no hay path que atravesar. Un
+   * `..` en la URL no es un caso especial a cubrir — es una clave que no está en el `Map`. Ver
+   * `fuentes-servidas.ts` para el razonamiento completo, y su test para la comprobación.
+   *
+   * Va **antes** del catch-all `/*`, que si no se lo tragaría y respondería con la web de un cliente.
+   */
+  app.get("/_assets/fonts/:nombre", (c) => {
+    const bytes = fuentes.get(c.req.param("nombre"));
+    if (!bytes) return c.notFound();
+    return c.body(bytes, 200, {
+      "content-type": "font/woff2",
+      "cache-control": CACHE_FUENTES,
+      // Las fuentes se piden desde el CSS de cualquier dominio de cliente que servimos, y todos son
+      // orígenes distintos: sin esto el navegador las descarta por CORS y la web cae al respaldo.
+      "access-control-allow-origin": "*",
+    });
+  });
 
   /**
    * Invalidación por webhook. Es lo que convierte "runtime" en algo que no pega contra la CDA en

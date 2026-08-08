@@ -7,7 +7,8 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./fixtures": "./src/fixtures.ts"
+    "./fixtures": "./src/fixtures.ts",
+    "./fuentes": "./src/render/fuentes.ts"
   },
   "scripts": {
     "build:web": "tsx src/cli/build.ts",
