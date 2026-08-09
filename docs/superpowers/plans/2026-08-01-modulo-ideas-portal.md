@@ -170,6 +170,51 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
       `db/src/cartera-portal.test.ts` con el brief: el portal está fuera del monorepo, lo que impide
       importar el paquete, **no** leer el archivo).
 
+> ### ✅ Etapas 1 y 2, hechas el 2026-08-09 — y seis decisiones que este plan no fijaba
+>
+> Van acá y no en un informe de sesión porque `progress/informes/` está **gitignoreado**: quien escriba
+> la Etapa 3 tiene que poder leer esto. Lo detectó la revisión interna.
+>
+> 1. **La máquina de estados quedó en DOS sitios, y contradice al punto de arriba a propósito.** El
+>    trigger `ideas_transicion_estado` de la `0013` la impone en Postgres, y `esTransicionValida()` la
+>    repite en TypeScript. El motivo: un `update` que no pasara por `cambiarEstado` podía retroceder un
+>    estado, y una garantía que depende de que todos usen la función correcta no es una garantía. El
+>    TypeScript queda para dar un **400 con motivo** en vez de un 500 con un `23514` crudo. Las dos
+>    copias las ata un test que recorre los **12 pares** — y ojo, ese test solo es completo junto con
+>    el que comprueba que `TRANSICIONES_IDEA` cubre los cuatro estados: por sí solo no ve un estado que
+>    exista en Postgres y no en TypeScript.
+> 2. **Los permisos se conceden por VERBO y además por COLUMNA.** `grant update (titulo, resumen,
+>    estado, …)`, nunca `grant update on ideas`. Con eso, "no se puede mover una idea de tenant ni de
+>    cliente" deja de ser una allowlist de TypeScript y pasa a ser un `42501` que dicta Postgres.
+>    Efecto lateral a saber: `has_table_privilege('app_user','ideas','update')` devuelve **`false`**, y
+>    hay un test que lo fija así a propósito.
+> 3. **`cambiarEstado` bloquea la fila con `select … for update`**, y eso decide el contrato de la
+>    Etapa 3: Postgres aplica a las filas bloqueadas **también el `using` de las políticas de UPDATE**,
+>    así que un rol `cliente` obtiene 0 filas y recibe siempre `no_encontrada` (**404**). Sin el
+>    bloqueo recibía 400 o 404 según *qué* transición pidiera sobre una idea que en ningún caso puede
+>    tocar. **Medido, no supuesto** — y la primera versión de este código afirmaba en un comentario que
+>    `for update` era imposible con un grant por columna, lo cual es **falso**: cuando la cláusula de
+>    bloqueo no nombra columnas, Postgres comprueba si hay privilegio sobre *alguna*. La misma frase
+>    falsa vive en la `0012`, que está aplicada en producción con el checksum congelado: **no se puede
+>    arreglar allí**, solo no propagarla.
+> 4. **Los techos de tamaño nacen con la tabla**, no en la Etapa 3 como decía el punto correspondiente:
+>    `titulo` 200 B, `resumen` 2 KB, `transcripcion` 64 KB, `analisis` 32 KB, las dos URL 2 KB. Mismo
+>    criterio que la `0016` (*"con la constraint puesta, ni el endpoint ni la pantalla necesitan lógica
+>    de tamaño — no pueden recibir algo que no entró"*). La Etapa 3 **ya no tiene que implementarlos**;
+>    lo que sí le toca es validar `audio_url`/`carpeta_url` como http(s) y las claves de `analisis`.
+> 5. **`listarIdeas` devuelve un resumen de 5 campos, sin transcripción ni análisis.** El contrato de
+>    exposición de la Etapa 3 empieza en el `select`: lo que no sale de Postgres no se puede olvidar de
+>    filtrar después. El test compara el conjunto **exacto** de claves.
+> 6. **`LIMITE_IDEAS = { porDefecto: 200, maximo: 500 }`** y el orden es `creada_en desc, id desc` (el
+>    desempate evita que un listado paginado repita o saltee). `aprobada` y `rechazada` son
+>    **terminales**: reabrir no existe, y si el producto lo quiere, hay que tocar las dos copias.
+>
+> **Lo que la Etapa 3 hereda sin hacer nada:** `PgIdeas` exportado desde `db/src/index.ts`, el mapeo
+> `23514 → 400` que `api/src/app.ts` ya hace, y el recorte del listado. **Lo que sigue sin resolver:**
+> la serialización de `creada_en` (`Date` → JSON → portal), que es de las que revientan en la frontera
+> y que ningún test del monorepo ve porque `portal/` no es workspace — fijala con un test de la
+> respuesta HTTP, no con un tipo.
+
 ## Etapa 3 — Endpoints (`api`)
 
 - [ ] **Rojo primero**, un test por vector: sin token → 401; otro tenant → no ve; un `cliente` solo ve

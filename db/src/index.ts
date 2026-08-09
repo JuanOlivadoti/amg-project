@@ -27,6 +27,16 @@ export type { ClienteCRM, NuevoCliente, CambiosCliente } from "./clientes.js";
 export { PgMembresias } from "./membresias.js";
 export type { Miembro, CambioRol } from "./membresias.js";
 
+export { PgIdeas, ESTADOS_IDEA, TRANSICIONES_IDEA, esEstadoIdea, esTransicionValida, LIMITE_IDEAS } from "./ideas.js";
+export type {
+  EstadoIdea,
+  IdeaResumen,
+  IdeaDetalle,
+  FiltrosIdeas,
+  CambiosIdea,
+  ResultadoCambioEstado,
+} from "./ideas.js";
+
 export { NodePgPool, PglitePool, ejecutorDe } from "./pool.js";
 export type { DbPool, Tx, SqlExecutor, NodePgPoolLike, NodePgClientLike } from "./pool.js";
 

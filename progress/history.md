@@ -11,6 +11,55 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-09 (3) — Ideas empieza por la base, y dos afirmaciones que se cayeron al medirlas
+
+Con el bloque E cerrado, el plan decía que lo siguiente era **J o E**, y E ya no estaba. Así que
+arrancó la pieza 3 del portal —el módulo de **Ideas**— por su mitad de datos: la migración `0013`, que
+llevaba desde el 1 de agosto **reservada** sin que nada dijera para qué, que es la mejor forma de que
+alguien reutilice un número por error.
+
+Lo delegué al agente `datos` y volvió con 42 tests y 18 mutaciones, y **dos desviaciones del plan, las
+dos hacia más estricto**: los permisos enumerados no solo por verbo sino **por columna** (así "no se
+puede mover una idea de tenant" deja de ser una allowlist de TypeScript y pasa a ser un `42501` que
+dicta Postgres), y la máquina de estados puesta **también como trigger**, cuando el plan la ubicaba
+solo en la API. Esa segunda contradice al plan por escrito y está bien que lo haga: un `update` que no
+pasara por la función correcta podía retroceder un estado, y una garantía que depende de que todos usen
+la puerta buena no es una garantía.
+
+**Lo que hizo valiosa la revisión no fue leer, fue medir.** El implementador había dejado abierta una
+ventana de carrera y la justificó escribiendo que `select … for update` exige el privilegio UPDATE **de
+tabla**, imposible con un grant por columna. Suena a restricción del motor y nadie la vuelve a
+comprobar. El `revisor` la midió: **es falsa** — cuando la cláusula de bloqueo no nombra columnas,
+Postgres se conforma con que haya privilegio sobre *alguna*. Cerrar la carrera no solo era posible sino
+que **unifica un contrato que estaba incoherente**: sin el bloqueo, un rol `cliente` recibía 400 o 404
+según *qué* transición pidiera sobre una idea que en ningún caso puede tocar. Ahora recibe siempre 404.
+De propina: la misma frase falsa vive en la `0012`, que está aplicada en producción con el checksum
+congelado. No se puede arreglar allí; lo único que se podía hacer era no propagarla a un archivo nuevo.
+
+El otro hallazgo bloqueante fue del tipo que este proyecto colecciona: una red de seguridad real
+—el `with check` de la política de update— que **ninguna mutación tumbaba**. El revisor no se conformó
+con constatarlo: midió la matriz 2×2 y demostró que no es código inerte (con la otra red desactivada,
+aguanta sola), que es justo lo que la volvía peligrosa. Una línea que nada protege y que parece
+redundante es una línea que alguien borra en seis meses.
+
+**Y una equivocación mía, en el mismo movimiento.** El agente murió a mitad de la segunda ronda, antes
+de escribir su informe, así que las mutaciones las corrí yo en vez de darlas por hechas. Dos de las
+cuatro dieron **48 fallos de 48**, que leído rápido parece "el test cae con ganas" y era otra cosa: mi
+`perl` había roto la sintaxis del SQL y la migración no aplicaba. Rehechas cambiando **valores** en vez
+de borrar texto, caen 1, 1, 2 y 1. Es el mismo error que el propio implementador había cometido horas
+antes renombrando un trigger en lugar de no crearlo, y la lección se repite con otra cara: **una
+mutación que no muta lo que dice mutar no es evidencia, y una que rompe el archivo entero tampoco**.
+
+Cerró también un cabo suelto: el agente afirmó que el test del quinto rol **no se podía mutar**, porque
+`app_barrido` nace en la `0018` y la `0013` corre antes. Cierto desde la `0013`, falso desde la `0019`
+— puesta ahí, la mutación cae. Un test que se declara inmutable y no lo es se queda sin red por una
+frase.
+
+**1315 tests** (venía de 1310 tras la primera ronda, y de 1268 al cerrar el bloque E). Las seis
+decisiones que el plan no fijaba quedaron escritas **en el plan**, que se versiona, y no en el informe
+de la sesión, que está gitignoreado: eso también lo señaló la revisión, y es lo que separa una decisión
+que sobrevive de una que se pierde con la ventana.
+
 ## 2026-08-09 (2) — las seis piezas, y el gate que por fin toca jubilar
 
 El bloque E llegó a donde iba: las landings dejaron de ser siete secciones idénticas sin una foto.
