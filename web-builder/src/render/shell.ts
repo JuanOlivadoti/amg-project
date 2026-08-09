@@ -1,6 +1,7 @@
 import type { BrandTheme } from "../types.js";
 import { ensamblarCss, rolDeTitulares } from "./css.js";
 import { archivoTitulares, rutaPublica } from "./fuentes.js";
+import { nuevoPresupuestoImagenes } from "./imagenes.js";
 import { SLUG_BLOG, esc, safeJson } from "./lib.js";
 import { CATALOGO, piezaPorId } from "./piezas/index.js";
 import type { CtxPieza, Pieza } from "./piezas/tipos.js";
@@ -53,7 +54,20 @@ export interface PieDocumento {
 export interface Documento {
   cabeza: CabezaDocumento;
   receta: Plantilla;
-  ctx: CtxPieza;
+  /**
+   * El contexto de las piezas **sin el presupuesto de imágenes**: lo pone el ensamblador.
+   *
+   * ⚠️ **El `Omit` NO hace imposible reutilizar un presupuesto — solo bloquea el literal.** Esto decía
+   * "imposible, no improbable", y una revisión lo midió con `tsc --strict`: pasar un `CtxPieza`
+   * completo **desde una variable** compila sin error; solo el literal inline da `TS2353`. Es la regla
+   * de *excess property checking* de TypeScript, que únicamente mira objetos literales frescos.
+   *
+   * Lo que de verdad impone la garantía es el **orden del spread** en `renderDocumento`:
+   * `presupuestoImagenes` se asigna *después* de `...doc.ctx`, así que un presupuesto de contrabando se
+   * sobrescribe igual. El `Omit` sigue valiendo la pena —documenta la intención y caza el error obvio—
+   * pero quien no puede romperse es esa línea, no este tipo.
+   */
+  ctx: Omit<CtxPieza, "presupuestoImagenes">;
   pie: PieDocumento;
 }
 
@@ -65,7 +79,20 @@ export interface Documento {
  * el `<style>` solo lleva el CSS de las piezas que efectivamente dibujaron algo.
  */
 export function renderDocumento(doc: Documento): string {
-  const { cabeza, receta, ctx, pie } = doc;
+  const { cabeza, receta, pie } = doc;
+
+  // ⚠️ **Un presupuesto NUEVO por documento, y este `nuevoPresupuestoImagenes()` es todo el asunto.**
+  //
+  // El tope de 60 `<img>` es del documento (§Política de imágenes, punto 5), así que el contador tiene
+  // que nacer y morir con el documento. Si viviera en el módulo —una constante, un `let` de arriba—
+  // el renderizador, que es un proceso LARGO que atiende a TODOS los clientes, serviría la primera
+  // web con fotos y **todas las siguientes sin ellas**. Y no se vería: casi todo test renderiza una
+  // sola vez. Lo fijan dos tests que renderizan dos veces (`imagenes.test.ts`).
+  //
+  // **El orden del spread es la garantía, no el `Omit` del tipo** (ver `Documento.ctx`): si alguien
+  // moviera `presupuestoImagenes` ANTES del `...doc.ctx`, un contexto que trajera uno propio lo
+  // pisaría y volveríamos al contador compartido. Esa es la línea que no se puede tocar.
+  const ctx: CtxPieza = { ...doc.ctx, presupuestoImagenes: nuevoPresupuestoImagenes() };
 
   const usadas = new Set<string>();
   const emitir = (id: string): string => {

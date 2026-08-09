@@ -40,7 +40,7 @@ export const hero: Pieza = {
     if (h) {
       const faq = body?.find((b): b is FaqBlok => b.component === "faq");
       // La foto de portada va como banner arriba del título: es lo primero que ve un humano.
-      const foto = renderImagen(h.image, "hero-img");
+      const foto = renderImagen(h.image, "hero-img", ctx.presupuestoImagenes);
       const cta = resolverCta(h.cta_label, ctx, Boolean(faq));
       return envolver(
         "p-hero",

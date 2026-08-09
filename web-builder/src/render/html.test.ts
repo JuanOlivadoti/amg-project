@@ -155,9 +155,30 @@ test("🔴 tema: la fuente sale de una allowlist, no es texto libre", () => {
 });
 
 test("marca: el logo aparece en la cabecera del sitio, escapado", () => {
-  const html = renderStory(story(), validProfile({ brand: { logo: "https://cdn.ej/logo.png" } }));
+  const html = renderStory(story(), validProfile({ brand: { logo: "https://a.storyblok.com/f/1/logo.png" } }));
   assert.match(html, /class="sitebar"/, "hay cabecera de sitio");
-  assert.match(html, /<img class="logo" src="https:\/\/cdn\.ej\/logo\.png"/);
+  assert.match(html, /<img class="logo" src="https:\/\/a\.storyblok\.com\/f\/1\/logo\.png"/);
+});
+
+test("🔴 marca: un logo fuera de la allowlist de hosts NO se emite — cae al nombre", () => {
+  // Este test **cambió de sentido** con la §Política de imágenes: hasta la mitad B pedía lo contrario
+  // (un logo en `cdn.ej` tenía que salir). El logo es el `<img>` que aparece en TODAS las páginas del
+  // sitio, así que como vector de fuga hacia un host arbitrario es el peor de los dos emisores.
+  //
+  // El fallo es benigno **y esa es la razón de que el endurecimiento sea barato**: un logo rechazado
+  // cae al nombre del negocio en texto, exactamente igual que si no hubiera logo. La cabecera nunca
+  // queda rota.
+  for (const hostil of [
+    "https://cdn.ej/logo.png", // host ajeno, perfectamente válido como URL
+    "https://a.storyblok.com.evil.tld/logo.png", // sufijo: lo aceptaría un `endsWith`
+    "https://evil-storyblok.com/logo.png", // subcadena: lo aceptaría un `includes`
+    "https://a.storyblok.com@evil.com/logo.png", // userinfo: el host REAL es evil.com
+    "http://a.storyblok.com/logo.png", // host correcto, pero sin https
+  ]) {
+    const html = renderStory(story(), validProfile({ brand: { logo: hostil } }));
+    assert.doesNotMatch(html, /<img class="logo"/, `${hostil} llegó a un <img> del sitio`);
+    assert.match(html, /class="marca">Trattoria Bella Napoli/, `${hostil} no cayó al nombre del negocio`);
+  }
 });
 
 test("marca: sin logo, la cabecera muestra el nombre del negocio", () => {

@@ -11,6 +11,48 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-09 — la puerta de las imágenes, y un revisor que murió con una mutación puesta
+
+Antes de dibujar una sola foto, la puerta por la que van a pasar: allowlist de hosts, `referrerpolicy`
+y el tope de 60 `<img>` por documento. Escribí el brief con una premisa —*todo pasa por
+`renderImagen`, así que endurecer ese punto cubre todo*— y **era falsa**. El **logo** se dibujaba
+aparte, en `cabecera.ts`, con su propio chequeo débil; y como es pieza de shell aparece en **todas**
+las páginas, así que era el peor de los emisores, no un caso menor. Lo encontró el implementador
+leyendo el código antes de obedecerme.
+
+Corregí a "hay dos" y también era falsa. El revisor encontró un tercero: `og:image` y el `image` del
+JSON-LD, que publican una URL de la ficha sin que nada la mire — un perfil con
+`image: "http://tracker.evil.tld/pixel.png"` lo llevaba tal cual a todas las landings de ese cliente.
+Dos premisas mías consecutivas sobre "por dónde sale un dato al HTML", las dos equivocadas, en el
+proceso que es la única superficie anónima del sistema. La lección no es "contar mejor": es que
+**esa pregunta se contesta buscando, no recordando**.
+
+La tercera que falló fue simétrica y más barata: predije que el `referrerpolicy` tumbaría dos fixturas
+del gate de paridad. No tumbó ninguna — las cinco caras de `huellaDe` no miran atributos que no sean
+`href` o `id`. El implementador lo midió mutando en vez de retocar las fixturas como yo le había
+dicho, y tenía razón: retocarlas habría sido editar la única foto pre-refactor que existe para nada.
+
+**Y una decisión mía que el gate sí corrigió.** Apliqué la allowlist a `og:image` por simetría con el
+resto. Cayeron cinco fixturas, porque el `image` del JSON-LD sí es una de las cinco caras. El motivo
+era bueno: la imagen social vive normalmente en el **dominio del propio cliente**, y ahí la allowlist
+no defiende de nada —la pide el crawler de la red social al compartir, no el navegador del visitante—
+y a cambio le quita la tarjeta social a quien no haya subido su foto a nuestro space. Quedó en https y
+nada más. Es la primera vez en el bloque que el gate de la entrega 2 caza una decisión de diseño y no
+una regresión.
+
+**Lo más caro del día fue un fallo de proceso.** Un `revisor` murió a mitad por un error de conexión.
+Comprobé `git status`, vi los mismos 16 archivos, y di el árbol por intacto. No lo estaba: se había
+llevado el `try/catch` de `fuentePermitida` —una mutación razonable, la suya— y sin él `new URL()`
+lanzaba con cualquier `src` no absoluta. Un `throw` desde el render tumba la página entera de un
+cliente; desde el logo, **todas** sus páginas. El siguiente revisor lo midió y lo reportó como
+bloqueante, y fue honesto diciendo que no podía saber de dónde salía.
+
+`git status` dice **qué archivos** cambiaron, no si su contenido es el que dejaste. Cuando un
+subagente que muta código muere a mitad, la comprobación correcta es el **contenido** del diff. Que se
+supiera de dónde venía es solo porque una corrida anterior de `npm run verificar` había quedado
+registrada en verde con el `try/catch` puesto — sin ese rastro, habría sido un bug de origen
+desconocido en la puerta de seguridad que acabábamos de construir.
+
 ## 2026-08-08 (noche, 5) — el cable de las tipografías, y cuatro garantías que no sostenía nada
 
 Las fuentes se servían desde ayer; hoy el CSS por fin las pide. Fue el trabajo más corto de la sesión

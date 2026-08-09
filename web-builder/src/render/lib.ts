@@ -1,4 +1,5 @@
 import type { BusinessProfile, Imagen, Location, MenuItem, NavItem } from "../types.js";
+import { type PresupuestoImagenes, consumirCupo, fuentePermitida } from "./imagenes.js";
 
 /**
  * Las utilidades que comparten el shell, las piezas y el JSON-LD.
@@ -51,12 +52,33 @@ export function hrefDeSlug(slug: string): string {
  * Una `<img>` de contenido, lista para Core Web Vitals: `loading="lazy"`, `decoding="async"`, y
  * `width`/`height` cuando se pueden inferir del asset de Storyblok (evita el salto de layout, CLS).
  * Sin src válido no se renderiza nada — una imagen rota es peor que ninguna.
+ *
+ * **Es el punto por el que pasa toda foto de contenido, y por eso es donde vive la §Política de
+ * imágenes** (ver `imagenes.ts` para el porqué de cada regla):
+ *
+ *  - la `src` tiene que ser **https** y de un host de la **allowlist del código** (`fuentePermitida`);
+ *  - sale con **`referrerpolicy="no-referrer"`**, para que el host del asset no reciba la URL de la
+ *    página del cliente junto con la IP del visitante;
+ *  - consume un hueco del **presupuesto del documento**, que llega por `ctx` y no por un contador de
+ *    módulo.
+ *
+ * ⚠️ **El orden de los dos primeros `if` es la política, no un detalle.** Primero se descarta lo que no
+ * pasa la allowlist y **después** se gasta el cupo: una URL rechazada no puede consumir presupuesto, o
+ * una ficha comprometida apagaría las fotos legítimas de la página sin servir ninguna suya.
+ *
+ * `presupuesto` es un parámetro **obligatorio** a propósito: así una pieza nueva no puede olvidarlo
+ * —falla el typecheck—, y no hay un default "sin límite" esperando a que alguien lo use sin querer.
  */
-export function renderImagen(img: Imagen | undefined, clase: string): string {
-  if (!img || typeof img.src !== "string" || !/^https?:\/\//i.test(img.src)) return "";
+export function renderImagen(
+  img: Imagen | undefined,
+  clase: string,
+  presupuesto: PresupuestoImagenes,
+): string {
+  if (!img || typeof img.src !== "string" || !fuentePermitida(img.src)) return "";
+  if (!consumirCupo(presupuesto)) return "";
   const dim = dimsDeStoryblok(img.src);
   const wh = dim ? ` width="${dim.w}" height="${dim.h}"` : "";
-  return `<img class="${clase}" src="${esc(img.src)}" alt="${esc(img.alt ?? "")}" loading="lazy" decoding="async"${wh}>`;
+  return `<img class="${clase}" src="${esc(img.src)}" alt="${esc(img.alt ?? "")}" loading="lazy" decoding="async" referrerpolicy="no-referrer"${wh}>`;
 }
 
 /**

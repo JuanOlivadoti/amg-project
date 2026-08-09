@@ -1,4 +1,5 @@
 import type { SectionBlok } from "../../types.js";
+import type { PresupuestoImagenes } from "../imagenes.js";
 import { envolver, esc, renderImagen } from "../lib.js";
 import type { CtxPieza, Pieza } from "./tipos.js";
 
@@ -23,15 +24,20 @@ export const seccionProsa: Pieza = {
   render(ctx: CtxPieza): string {
     const sections = ctx.story?.content.body.filter((b): b is SectionBlok => b.component === "section") ?? [];
     if (sections.length === 0) return "";
-    return envolver("p-seccionProsa", sections.map(unaSeccion).join("\n"));
+    // El presupuesto de imágenes se pasa a cada sección: es del DOCUMENTO, así que las secciones lo
+    // comparten entre sí y con el resto de las piezas. Ver `imagenes.ts`.
+    return envolver(
+      "p-seccionProsa",
+      sections.map((s) => unaSeccion(s, ctx.presupuestoImagenes)).join("\n"),
+    );
   },
 };
 
-function unaSeccion(s: SectionBlok): string {
+function unaSeccion(s: SectionBlok, presupuesto: PresupuestoImagenes): string {
   const body = s.body
     ? `<p>${esc(s.body)}</p>`
     : `<p class="pending">Contenido pendiente de redacción (generación por LLM — siguiente paso del pipeline).</p>`;
-  const foto = renderImagen(s.image, "section-img");
+  const foto = renderImagen(s.image, "section-img", presupuesto);
   return `<section${foto ? ' class="has-img"' : ""}>
   <h2>${esc(s.heading)}</h2>
   ${foto}

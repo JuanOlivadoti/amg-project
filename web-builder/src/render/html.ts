@@ -1,4 +1,5 @@
 import type { BusinessProfile, NavItem, Story } from "../types.js";
+import { imagenPublicable } from "./imagenes.js";
 import { homeLd, jsonLd, menuLd, researchTrace } from "./json-ld.js";
 import { SLUG_BLOG, SLUG_HOME, SLUG_MENU, agruparCarta, resolveCanonical, urlDeSeccion } from "./lib.js";
 import type { CtxPieza } from "./piezas/tipos.js";
@@ -20,8 +21,15 @@ import { renderDocumento } from "./shell.js";
  * arreglarlo cuatro veces— y por la que el contacto existía en la landing y no en la home.
  */
 
-/** El contexto que reciben las piezas, con los huecos de las páginas sintetizadas ya rellenos. */
-function ctx(over: Partial<CtxPieza> & Pick<CtxPieza, "activeSlug">): CtxPieza {
+/**
+ * El contexto que reciben las piezas, con los huecos de las páginas sintetizadas ya rellenos.
+ *
+ * **Sin `presupuestoImagenes`**: ese lo crea `renderDocumento`, uno por documento. Acá ni se nombra,
+ * y el tipo de `Documento.ctx` lo impide — ver el `Omit` en `shell.ts`.
+ */
+type CtxDeEntrada = Omit<CtxPieza, "presupuestoImagenes">;
+
+function ctx(over: Partial<CtxDeEntrada> & Pick<CtxDeEntrada, "activeSlug">): CtxDeEntrada {
   return {
     story: null,
     profile: null,
@@ -45,6 +53,10 @@ export function renderStory(
 ): string {
   const c = story.content;
   const url = resolveCanonical(c.seo.canonical, profile);
+  // `og:image` es el TERCER camino de una URL de la ficha al HTML, después de `renderImagen` y del
+  // logo. No lo carga el visitante sino el crawler de la red social, pero es https obligatorio y sale
+  // de la ficha igual: pasa por la misma puerta. Ver `imagenPublicable`.
+  const ogImage = imagenPublicable(profile?.image);
 
   return renderDocumento({
     cabeza: {
@@ -54,7 +66,7 @@ export function renderStory(
       canonical: url,
       ogTitle: c.seo.og_title,
       ogDescription: c.seo.og_description,
-      ...(profile?.image ? { ogImage: profile.image } : {}),
+      ...(ogImage ? { ogImage } : {}),
       jsonLd: jsonLd(c, url, profile),
       trace: researchTrace(c),
     },
@@ -87,6 +99,7 @@ export function renderHome(
   const descripcion = profile
     ? `${profile.name}${profile.address ? ` · ${profile.address.addressLocality}` : ""}`
     : "";
+  const ogImage = imagenPublicable(profile?.image); // ver `renderStory`: el tercer camino al HTML.
 
   return renderDocumento({
     cabeza: {
@@ -95,7 +108,7 @@ export function renderHome(
       description: descripcion,
       canonical: url,
       ogTitle: nombre,
-      ...(profile?.image ? { ogImage: profile.image } : {}),
+      ...(ogImage ? { ogImage } : {}),
       jsonLd: homeLd(profile, url),
     },
     receta: juegoDe(profile?.brand).home,

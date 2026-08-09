@@ -6,6 +6,7 @@ import type {
   PostalAddress,
   SchemaType,
 } from "../types.js";
+import { imagenPublicable } from "./imagenes.js";
 import { localesDe, safeJson } from "./lib.js";
 
 /**
@@ -63,7 +64,8 @@ function primaryEntity(c: PageContent, url: string, profile?: BusinessProfile | 
     const address = principal?.address ?? profile.address;
     if (telephone) entity.telephone = telephone;
     if (profile.priceRange) entity.priceRange = profile.priceRange;
-    if (profile.image) entity.image = profile.image;
+    const imagen = imagenPublicable(profile.image);
+    if (imagen) entity.image = imagen;
     if (address) entity.address = postalAddressLd(address);
   }
   return entity;
@@ -88,7 +90,8 @@ export function homeLd(profile: BusinessProfile | null | undefined, url: string)
   const address = principal?.address ?? profile.address;
   if (telephone) entity.telephone = telephone;
   if (profile.priceRange) entity.priceRange = profile.priceRange;
-  if (profile.image) entity.image = profile.image;
+  const imagen = imagenPublicable(profile.image);
+  if (imagen) entity.image = imagen;
   if (address) entity.address = postalAddressLd(address);
   return entity;
 }

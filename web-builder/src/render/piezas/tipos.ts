@@ -1,4 +1,5 @@
 import type { BusinessProfile, NavItem, Story } from "../../types.js";
+import type { PresupuestoImagenes } from "../imagenes.js";
 
 /**
  * El contrato de una **pieza** del catálogo de render (spec de plantillas de landing, §2).
@@ -49,4 +50,12 @@ export interface CtxPieza {
   bajada: string;
   /** Páginas publicadas (home) o artículos (`/blog`). Vacío en el resto. */
   paginas: NavItem[];
+  /**
+   * El presupuesto de imágenes **de este documento** (§Política de imágenes, punto 5).
+   *
+   * Es un objeto **mutable y compartido por todas las piezas del mismo documento**: cada `<img>` que
+   * se emite le resta un hueco, de modo que el tope de 60 cuenta la página entera y no cada campo por
+   * separado. Lo crea `renderDocumento`, uno por documento — nunca un contador de módulo.
+   */
+  presupuestoImagenes: PresupuestoImagenes;
 }

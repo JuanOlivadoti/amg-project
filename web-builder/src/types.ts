@@ -44,7 +44,11 @@ export interface SeoFields {
 
 /** Una imagen editable desde el Visual Editor (campo `asset` de Storyblok). */
 export interface Imagen {
-  /** URL del asset (Storyblok o cualquier CDN). Se escapa al renderizar. */
+  /**
+   * URL del asset. Se escapa al renderizar **y tiene que pasar la §Política de imágenes**: https y un
+   * host de la allowlist del código (`render/imagenes.ts`). Ya no vale "cualquier CDN" — cada `<img>`
+   * es una petición que filtra la IP del visitante al host que la sirve.
+   */
   src: string;
   /** Texto alternativo. Vacío = imagen decorativa (`alt=""`). */
   alt: string;

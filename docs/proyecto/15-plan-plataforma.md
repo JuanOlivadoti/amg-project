@@ -622,23 +622,59 @@ Hay tres piezas, con spec escrita y **sin empezar**:
 3. **Rediseño de la carta** — categorías con foto, precios por ración. **Los campos ✅ entraron con la
    entrega 1**; falta la pieza `cartaCategorias` (entrega 3).
 
-### 🟡 Entrega 3 — piezas nuevas y arreglos visuales (mitad A ✅, mitad B pendiente)
+### 🟡 Entrega 3 — piezas nuevas y arreglos visuales (A ✅, C ✅, B a medias)
 
 **Es la entrega donde el sitio cambia de aspecto**, y por eso va después de que la 2 haya demostrado
 paridad: si el rediseño y el refactor entran juntos, un cambio inesperado no se puede atribuir a
 ninguno de los dos.
 
-Se parte sola en dos mitades por una razón que no es de diseño sino de disponibilidad del dato:
-
-| Mitad | Qué | ¿Necesita fotos? |
+| Mitad | Qué | Estado |
 | --- | --- | --- |
-| **A** ✅ | Los **cinco arreglos visuales** (modo oscuro completo, doble borde de la carta, enlaces del pie, contraste del acento en oscuro, CTA largo) y el **uso real de los 9 tokens de marca** en el CSS de las piezas | **No** |
-| **B** | `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias`, la allowlist de hosts de imagen con su `referrerpolicy` y el presupuesto de 60 `<img>` | **Sí** |
-| **C** 🟡 | Las **tipografías self-hosted**. **Servidas ✅**; falta **enchufarlas** al CSS emitido y el test de *cero terceros* | No, pero traen una **ruta pública nueva** al proceso anónimo |
+| **A** | Los **cinco arreglos visuales** (modo oscuro completo, doble borde de la carta, enlaces del pie, contraste del acento en oscuro, CTA largo) y el **uso real de los 9 tokens de marca** en el CSS de las piezas | ✅ |
+| **C** | Las **tipografías self-hosted**: servidas desde `/_assets/fonts/` **y** pedidas por el CSS emitido, con `preload` de la familia de titulares y el test de *cero terceros* | ✅ |
+| **B.1** | La **§Política de imágenes**: allowlist de hosts, `referrerpolicy`, https obligatorio y el tope de 60 `<img>` por documento | ✅ |
+| **B.2** | `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias` — las piezas que **dibujan** las fotos | 🟡 |
 
-La mitad **A** es la que hace que dos restaurantes dejen de distinguirse solo por un color de acento,
-y hoy se puede verificar entera en un navegador. La **B** no: su gate pide *"el sitio manejado en un
-navegador … con fotos y sin fotos"*, y **las fichas de producción no tienen ni una**.
+La mitad **A** es la que hace que dos restaurantes dejen de distinguirse solo por un color de acento.
+
+⚠️ **Este documento decía que la B estaba bloqueada esperando fotos, y era falso.** Los tests del
+render no descargan nada: una URL inventada del host de la allowlist ejercita las piezas igual que una
+real. Lo que las fotos desbloquean es **verlo en un navegador**, que es el último paso de la B y no el
+primero — su gate pide *"el sitio manejado en un navegador … con fotos y sin fotos"*. La afirmación
+equivocada tuvo coste: dejó la mitad B parada esperando un asset que no le hacía falta para escribirse.
+Desde el 2026-08-08 las fotos están en Storyblok y `borcelle.es` (dev-server) las sirve.
+
+#### ✅ Mitad B, parte 1 — la §Política de imágenes (2026-08-09)
+
+La puerta, puesta **antes** de dibujar una sola foto. Allowlist de hosts **en el código**
+(`a.storyblok.com`), nunca en la ficha; comparación **exacta** contra un `Set` sobre
+`new URL(...).hostname`; https obligatorio; `referrerpolicy="no-referrer"` en cada `<img>`; y **60
+imágenes por documento**, con el contador naciendo y muriendo con el documento — si viviera en el
+módulo, el renderizador (proceso largo que atiende a todos los clientes) serviría la primera web con
+fotos y **todas las siguientes sin ellas**, y casi ningún test lo vería porque casi todos renderizan
+una sola vez.
+
+**Tres premisas del brief resultaron falsas, y las tres importaban:**
+
+1. **No hay un emisor de `<img>`, hay tres.** Además de `renderImagen` está el **logo**
+   (`cabecera.ts`), que es pieza de shell y por tanto aparece en **todas** las páginas: como vector de
+   fuga es el peor de los tres. Y `og:image` + el `image` del JSON-LD son el tercero.
+2. **El gate de paridad es ciego a `referrerpolicy`.** Sus cinco caras son texto visible, `href`,
+   `id`, JSON-LD y traza. Verificado por mutación: quitarlo deja los diez casos en verde. No se
+   retocó ninguna fixture.
+3. **`"a.storyblok.com.evil.tld".endsWith("storyblok.com")` es `false`.** Ese caso lo mata `includes`
+   o la comparación sobre el string crudo, no `endsWith` — así que hubo que correr varias variantes
+   para no dejar ningún caso nominal del que no se supiera si puede fallar.
+
+**`og:image` exige https y NO la allowlist**, y la asimetría es deliberada: aplicársela tumbó cinco
+fixturas del gate porque la imagen social vive normalmente en el **dominio del propio cliente**. Ahí
+la allowlist no defiende de nada —la pide el crawler de la red social al compartir el enlace, no el
+navegador del visitante— y a cambio le quita la tarjeta social a todo cliente que no haya subido su
+foto a nuestro space. Tiene test propio para que nadie la "arregle" por simetría.
+
+**El logo entró en la política**, endureciendo una conducta que tenía test propio (`cdn.ej`). Se
+comprobó antes que ninguna ficha sembrada tiene logo fuera de Storyblok y que el fallo es benigno: un
+logo rechazado cae al nombre del negocio en texto, igual que si no hubiera logo. Zod se alineó a https.
 
 **Precondición, y no es código.** Los assets van a `docs/plantillas/template1/` (ver su
 [README](../plantillas/template1/README.md), con las medidas de cada campo y por qué). Los binarios

@@ -1,6 +1,7 @@
 import { pageToStory } from "../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../fixtures.js";
 import type { BusinessProfile } from "../types.js";
+import { nuevoPresupuestoImagenes } from "./imagenes.js";
 import type { CtxPieza } from "./piezas/tipos.js";
 
 /**
@@ -13,7 +14,13 @@ import type { CtxPieza } from "./piezas/tipos.js";
  * cerrar en el render.
  */
 
-/** Un `CtxPieza` con los huecos rellenos, para escribir un caso diciendo solo lo que le importa. */
+/**
+ * Un `CtxPieza` con los huecos rellenos, para escribir un caso diciendo solo lo que le importa.
+ *
+ * ⚠️ El `presupuestoImagenes` se crea **en cada llamada**, no se comparte entre contextos: es lo que
+ * hace que un test que renderiza una pieza veinte veces no se quede sin cupo por culpa del anterior.
+ * En producción lo crea `renderDocumento` con el mismo criterio, uno por documento.
+ */
 export function ctxDe(over: Partial<CtxPieza> = {}): CtxPieza {
   return {
     story: null,
@@ -22,6 +29,7 @@ export function ctxDe(over: Partial<CtxPieza> = {}): CtxPieza {
     titulo: "",
     bajada: "",
     paginas: [],
+    presupuestoImagenes: nuevoPresupuestoImagenes(),
     ...over,
   };
 }
@@ -52,15 +60,23 @@ export function perfilCompleto(over: Partial<BusinessProfile> = {}): BusinessPro
  * Que exista uno solo así es lo que deja escribir el test de "toda pieza envuelve su HTML en su
  * raíz" recorriendo el catálogo: sin él habría que enumerar a mano qué necesita cada pieza, y una
  * pieza nueva se colaría sin que nadie lo notara.
+ *
+ * ⚠️ **Es una FUNCIÓN y no una constante**, y por el mismo motivo que el presupuesto de imágenes se
+ * crea por documento: `CtxPieza` lleva ahora un objeto mutable dentro. Una constante compartida
+ * significaría que recorrer el catálogo con ella agota el cupo de las piezas del final — con nueve
+ * piezas y dos fotos no se nota, con la galería de 30 de la mitad B sí. Un fixture que reproduce el
+ * bug que el código prohíbe es un fixture que un día lo va a esconder.
  */
-export const CTX_COMPLETO: CtxPieza = ctxDe({
-  story: pageToStory(validPage(), validBrief()),
-  profile: perfilCompleto(),
-  activeSlug: "restaurante-italiano-madrid-centro",
-  titulo: "Un titular sintetizado",
-  bajada: "Una bajada sintetizada",
-  paginas: [
-    { slug: "pizzeria-chamberi", name: "Pizzería en Chamberí" },
-    { slug: "blog/fermentacion-lenta", name: "Qué es la fermentación lenta" },
-  ],
-});
+export function ctxCompleto(): CtxPieza {
+  return ctxDe({
+    story: pageToStory(validPage(), validBrief()),
+    profile: perfilCompleto(),
+    activeSlug: "restaurante-italiano-madrid-centro",
+    titulo: "Un titular sintetizado",
+    bajada: "Una bajada sintetizada",
+    paginas: [
+      { slug: "pizzeria-chamberi", name: "Pizzería en Chamberí" },
+      { slug: "blog/fermentacion-lenta", name: "Qué es la fermentación lenta" },
+    ],
+  });
+}

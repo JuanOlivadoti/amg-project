@@ -1,4 +1,5 @@
 import type { BusinessProfile } from "../../types.js";
+import { consumirCupo, fuentePermitida } from "../imagenes.js";
 import { SLUG_HOME, SLUG_MENU, envolver, esc, hayUbicaciones } from "../lib.js";
 import type { CtxPieza, Pieza } from "./tipos.js";
 
@@ -78,13 +79,33 @@ export const cabecera: Pieza = {
     const profile = ctx.profile;
     if (!profile) return "";
     const navHtml = renderNav(navPrincipal(profile), ctx.activeSlug);
-    // El logo va a un `<img src>`: se exige http(s) acá también, no solo en Zod (en PROD el perfil
-    // puede venir de Storyblok sin validar). Un logo dudoso cae al nombre, no rompe la cabecera.
+    // ⚠️ **El logo es el SEGUNDO emisor de `<img>` del render** —el otro es `renderImagen`— y es el
+    // único que aparece en TODAS las páginas del sitio. Como vector de fuga hacia un host arbitrario
+    // es, por tanto, el PEOR de los dos: una foto de hero se ve en una página; el logo, en todas.
+    //
+    // Por eso pasa por la §Política de imágenes **entera**, igual que cualquier foto: `fuentePermitida`
+    // (https + allowlist de hosts exacta), `referrerpolicy="no-referrer"` (punto 4, "en cada `<img>`")
+    // y presupuesto del documento — un `<img>` exento del conteo convierte el tope de 60 en una cifra
+    // falsa.
+    //
+    // **Esto endureció una conducta que antes tenía test propio** (`html.test.ts` renderizaba un logo
+    // en `cdn.ej` y exigía que saliera). Se cambió a propósito, con dos comprobaciones antes: ninguna
+    // ficha sembrada tiene `brand.logo` fuera de Storyblok —el seed de demo no siembra logo y los
+    // `cdn.ej` del repo son hosts de test— y **el fallo es benigno y visible**: un logo que no pasa cae
+    // al nombre del negocio en texto, que es la misma conducta que "sin logo". Nadie se queda con una
+    // cabecera rota; como mucho, con una menos bonita hasta que el asset se suba al space.
+    //
+    // Que la cabecera se emita ANTES que el contenido (ver `renderDocumento`) hace que el logo nunca
+    // sea el que se cae por falta de cupo: se lleva el primer hueco. Es deliberado — es el elemento de
+    // marca, no una foto más.
     const logo = profile.brand?.logo;
-    const logoOk = typeof logo === "string" && /^https?:\/\//i.test(logo);
-    const marca = logoOk
-      ? `<img class="logo" src="${esc(logo)}" alt="${esc(profile.name)}" height="40">`
-      : `<span class="marca">${esc(profile.name)}</span>`;
+    const logoOk = typeof logo === "string" && fuentePermitida(logo);
+    const marca =
+      logoOk && consumirCupo(ctx.presupuestoImagenes)
+        // Sin `loading="lazy"`: el logo está sobre el pliegue y diferirlo penaliza el LCP. Lo único
+        // que se le añade es la política de referrer.
+        ? `<img class="logo" src="${esc(logo)}" alt="${esc(profile.name)}" referrerpolicy="no-referrer" height="40">`
+        : `<span class="marca">${esc(profile.name)}</span>`;
     return envolver(
       "p-cabecera",
       `<header class="sitebar"><a href="/" class="brand">${marca}</a>${navHtml}</header>`,

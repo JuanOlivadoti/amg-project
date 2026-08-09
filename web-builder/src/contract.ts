@@ -112,12 +112,17 @@ const fuenteSchema = z
   .optional();
 
 const brandSchema = z.object({
-  // `.url()` de Zod acepta `javascript:` (tiene esquema): hay que exigir http(s) explícitamente,
+  // `.url()` de Zod acepta `javascript:` (tiene esquema): hay que exigir el protocolo explícitamente,
   // porque el logo termina en un `<img src>`.
+  //
+  // **https, no http(s)** — se alineó con `fotoSchema` cuando el logo entró en la §Política de
+  // imágenes. Aceptarlo acá y descartarlo en el render (frontera 4, que ya exige https) es la peor de
+  // las dos conductas: el CLI diría que el perfil está bien y la web saldría sin logo, sin que nada
+  // explicara por qué. Que falle en la puerta es ruidoso y accionable.
   logo: z
     .string()
     .url()
-    .refine((u) => /^https?:\/\//i.test(u), "el logo debe ser una URL http(s)")
+    .refine((u) => /^https:\/\//i.test(u), "el logo debe ser una URL https")
     .optional(),
   // Texto libre a propósito: un nombre desconocido cae a `base` en vez de dar error, así que una
   // ficha que pide una plantilla que todavía no existe produce una web correcta, no un 500.

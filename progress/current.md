@@ -8,10 +8,73 @@
 
 **Sesión:** 2026-08-08
 **En curso:** **bloque E** — el aspecto de las webs. Entregas **1** y **2** cerradas; de la **3** están
-hechas la **mitad A** (los cinco arreglos visuales y los 9 tokens de marca) y la **C** (las tipografías
-self-hosted, servidas *y* pedidas por el CSS). Queda la **mitad B** — las piezas con imagen; las fotos
-ya están en Storyblok y, al contrario de lo que decía este archivo, nunca la bloquearon.
-**Estado:** listo para seguir. **1197 tests**, typecheck limpio, y las webs manejadas en un navegador.
+hechas la **mitad A** (arreglos visuales y tokens de marca), la **C** (tipografías self-hosted) y la
+**primera parte de la B** (la §Política de imágenes: allowlist de hosts, `referrerpolicy` y el tope de
+60 por documento). Queda **dibujar las seis piezas con foto**, y con eso cierra el bloque.
+**Estado:** listo para seguir. **1220 tests**, typecheck limpio, y las webs manejadas en un navegador.
+
+## ✅ Entrega 3, mitad B (1 de 2) — la §Política de imágenes
+
+Antes de dibujar una sola foto, la puerta por la que van a pasar. Las fotos son un vector **nuevo**
+hacia `<img src>` en el único proceso expuesto a internet anónimo, y escapar el valor evita la
+inyección pero no la **fuga**: un `<img>` es una petición que hace el navegador del visitante, y quien
+controle el host se lleva su IP, su user-agent y su patrón de tráfico, multiplicado por cada visita a
+la web de cada cliente.
+
+- **Allowlist de hosts en el código** (`a.storyblok.com`), nunca en la ficha — una ficha comprometida
+  se ampliaría sola. Comparación **exacta** contra un `Set`, sobre `new URL(...).hostname`.
+- **https obligatorio**, `referrerpolicy="no-referrer"` en cada `<img>`, y **60 imágenes por
+  documento** como tope global: los topes por campo (30 fotos, 200 de carta, 20 locales, 20
+  categorías) suman cientos, y lo que paga el visitante son peticiones, no campos.
+
+**Los siete casos nominales están escritos uno a uno**, no en una tabla: `a.storyblok.com.evil.tld`,
+`evil-storyblok.com`, `https://a.storyblok.com@evil.com` (el host real es `evil.com` — lo que parece
+el host es el userinfo), `http:` con host bueno, protocol-relative, `javascript:` y el positivo.
+
+### Tres premisas mías que resultaron falsas, en orden
+
+1. **«Todo pasa por `renderImagen`».** No: el **logo** se dibujaba aparte, en `cabecera.ts`, con su
+   propio chequeo débil. Y es el peor de los dos — una foto de hero se ve en una página, el logo en
+   **todas**. Lo encontró el implementador leyendo, no yo escribiendo el brief.
+2. **«Ahora son dos».** Tampoco: `og:image` y el `image` del JSON-LD son un **tercero**. Un perfil con
+   `image: "http://tracker.evil.tld/pixel.png"` lo publicaba tal cual en todas las landings.
+3. **«Van a caer dos fixtures del gate por el `referrerpolicy`».** No cayó ninguna: las cinco caras de
+   `huellaDe` son texto visible, `href`, `id`, JSON-LD y traza — **el gate es ciego a ese atributo**.
+   Verificado por mutación, no supuesto. Retocar las fixturas habría sido editar la única foto
+   pre-refactor que existe para nada.
+
+### Y una decisión mía que el gate corrigió
+
+Apliqué la allowlist a `og:image` por simetría. **Cinco fixturas cayeron**, porque el `image` del
+JSON-LD **sí** es una de las cinco caras del gate. El motivo: la fixture trae
+`https://trattoriabellanapoli.es/img/fachada.jpg` — **el dominio del propio cliente**, que es donde
+vive normalmente una imagen social. La allowlist ahí no defiende de nada (el visitante no la
+descarga, la pide el crawler al compartir el enlace) y a cambio le quita la tarjeta social a todo
+cliente que no haya subido su foto a nuestro space. Quedó en **https obligatorio y nada más**, con la
+asimetría explicada y con test propio para que nadie la "arregle" por simetría.
+
+### El logo, endurecido — decisión de la sesión principal
+
+El implementador lo dejó fuera y me devolvió la decisión, porque cambiaba una conducta con test
+propio. La tomé tras comprobar dos cosas: **ninguna ficha sembrada tiene logo fuera de Storyblok**
+(el seed de producción no siembra `brand.logo`; los `cdn.ej` del repo son de test) y **el fallo es
+benigno** — un logo rechazado cae al nombre del negocio en texto, igual que si no hubiera logo. Se
+alineó también Zod, que aceptaba `http:` para el logo cuando `fotoSchema` ya exigía https: aceptarlo
+en la puerta y descartarlo en el render es la peor combinación, porque el CLI diría que el perfil
+está bien y la web saldría sin logo sin explicar por qué.
+
+### ⚠️ Un revisor murió a mitad de una mutación y dejó el árbol roto
+
+El primer `revisor` cayó por un error de conexión. Comprobé `git status` y los mismos 16 archivos
+seguían ahí, así que di el árbol por intacto. **No lo estaba**: se había llevado el `try/catch` de
+`fuentePermitida`, y sin él `new URL()` lanzaba con cualquier `src` que no fuera absoluta — un
+`throw` desde el render tumba la página entera de un cliente, y en el logo, **todas** las páginas.
+
+`git status` dice **qué archivos** cambiaron, no si su contenido es el que dejaste. La comprobación
+correcta tras la muerte de un subagente es comparar el **contenido** del diff, no la lista. El
+segundo revisor lo midió y lo reportó como bloqueante; lo que no podía saber —y dijo honestamente que
+no podía— era de dónde salía. Se sabe porque mi `npm run verificar` anterior había dado 1218 en verde
+con el `try/catch` puesto.
 
 ## ✅ Entrega 3, mitad C — las tipografías, servidas Y enchufadas
 
@@ -209,11 +272,13 @@ generada → `perfilValido`— y exige que el perfil salga entero. Mutación com
 
 **▶️ Lo próximo, en este orden:**
 
-**La mitad B, y con ella el bloque E entero** — las piezas con imagen (`heroPortada`, `barraDatos`,
-`platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias`), la **allowlist de hosts de imagen** con
-su `referrerpolicy="no-referrer"`, y el presupuesto de **60 `<img>`** por documento. Su gate no es la
-paridad —la entrega 3 cambia el aspecto a propósito— sino el navegador: claro y oscuro, escritorio y
-móvil, **con fotos y sin fotos**.
+**Las seis piezas con imagen**, que es lo único que queda del bloque E: `heroPortada`, `barraDatos`,
+`platosDestacados`, `galeria`, `ctaFinal` y `cartaCategorias`. La puerta por la que van a pasar sus
+fotos ya está puesta y probada (mitad B, parte 1), así que lo que falta es dibujarlas.
+
+Su gate **no es la paridad** —la entrega 3 cambia el aspecto a propósito— sino el navegador: claro y
+oscuro, escritorio y móvil, **con fotos y sin fotos**. Para eso está `borcelle.es` en el `dev-server`,
+con las siete fotos reales y dos stories propias en el `MockCda`.
 
 **Las fotos NO bloqueaban la mitad B, y esta documentación decía que sí.** Los tests del render no
 descargan nada: una URL de `a.storyblok.com` inventada ejercita las piezas igual de bien que una

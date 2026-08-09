@@ -60,12 +60,20 @@ async function cliente(
 // El cliente COMPLETO: manual de marca, fotos y carta con categorías y precios. Es el perfil con el
 // que se comprueba en el navegador que un campo nuevo llegó hasta el HTML.
 //
-// Los `src` apuntan a `a.storyblok.com`, el host de la allowlist del renderizador, y en local dan 404
-// a propósito: si acá se pusiera un host que sirve imágenes de verdad, el dev-server estaría
-// enseñando algo que en producción la allowlist descartaría. Mejor un hueco honesto que una demo que
-// miente.
+// Los `src` apuntan a `a.storyblok.com` —el host de la allowlist— pero a rutas que NO existen, así que
+// en el navegador salen rotas. Es deliberado y sigue haciendo falta: éste es el perfil que enseña
+// **cómo se comporta el render cuando una foto no carga**. Un host que sirviera imágenes de verdad
+// pero fuera de la allowlist enseñaría algo que en producción se descartaría, y eso sí sería mentir.
+//
+// Para ver las fotos cargando de verdad está `borcelle.es`, más abajo, con los assets reales del space.
 await cliente("Trattoria Bella Napoli", "bellanapoli.es", "111", {
   name: "Trattoria Bella Napoli",
+  // La **imagen social** (`og:image` + `image` del JSON-LD), en el DOMINIO DEL PROPIO CLIENTE, que es
+  // donde suele vivir. Está acá para que ese caso sea observable en el navegador: la primera versión
+  // de `imagenPublicable` le aplicaba la allowlist de Storyblok y se la habría quitado a todo cliente
+  // que no hubiera subido su foto a nuestro space. Un `og:image` no lo carga el visitante —lo pide el
+  // crawler de la red social al compartir—, así que ahí la allowlist no defiende de nada y solo rompe.
+  image: "https://trattoriabellanapoli.es/img/fachada.jpg",
   telephone: "+34 910 000 000",
   address: { streetAddress: "Calle Mayor 1", postalCode: "28013", addressLocality: "Madrid" },
   opening_hours: "Mar-Dom 13:00-16:00, 20:00-23:30",
@@ -103,6 +111,103 @@ await cliente("Trattoria Bella Napoli", "bellanapoli.es", "111", {
       foto: { src: "https://a.storyblok.com/f/dev/margherita.jpg" },
     },
     { category: "Pastas", name: "Cacio e pepe", description: "Pecorino romano y pimienta negra.", price: "13,00 €" },
+  ],
+});
+
+// El cliente de **assets reales**: las siete fotos de `docs/plantillas/template1/`, subidas al space
+// de Storyblok el 2026-08-08 y servidas por `a.storyblok.com`, que es el host de la allowlist. Es el
+// único perfil del dev-server cuyas imágenes cargan de verdad en el navegador.
+//
+// ⚠️ **Hoy se ve UNA de las seis: el logo.** `portada`, `fotos`, `menu_categorias[].foto`,
+// `menu[].foto` y `locations[].foto` están sembradas y cruzan las cuatro fronteras, pero **ninguna
+// pieza las dibuja todavía** — las dibujan `heroPortada`, `galeria`, `cartaCategorias`,
+// `platosDestacados` y `locales`, que son la segunda parte de la mitad B. Este comentario decía "es
+// donde se comprueba con los ojos que una foto llegó hasta el HTML" y lo cazó una revisión: era una
+// promesa a futuro escrita en presente. Cuando existan las piezas, lo será.
+//
+// ⚠️ **Es un negocio FICTICIO y sus fotos son de stock**, con la marca «Borcelle Burger» que traen
+// incrustada. Por eso NO se siembran en la ficha de La Birra Bar, que es un restaurante real: poner la
+// foto y el logo de otro negocio en la web de uno real es el mismo problema que un precio inventado, y
+// más visible. Misma regla que ya se aplicó a los precios: **antes ausente que inventado.**
+//
+// La paleta y los roles salen tal cual de `docs/plantillas/template1/marca.json`.
+//
+// Una foto por destino, no una por elemento: la galería repite la misma imagen cuatro veces y las dos
+// categorías comparten cabecera. Sirve para ver la rejilla y el recorte; para enseñárselo a alguien
+// hacen falta fotos distintas (anotado en el README de `template1`).
+const FOTO = {
+  portada: "https://a.storyblok.com/f/293831091573700/2560x1440/30ad3813d6/axe-os-portada.jpg",
+  galeria: "https://a.storyblok.com/f/293831091573700/1600x1200/d82ece3683/axe-os-fotos-galeria.jpg",
+  categoria: "https://a.storyblok.com/f/293831091573700/1200x800/8fbaedf133/axe-og-categories.jpg",
+  plato: "https://a.storyblok.com/f/293831091573700/800x800/e0f8442ce6/axe-og-menu-item.jpg",
+  local: "https://a.storyblok.com/f/293831091573700/1600x1200/46847c4d05/axe-os-locations.jpg",
+  logo: "https://a.storyblok.com/f/293831091573700/250x250/ec3d723b80/axe-os-logo-color.png",
+} as const;
+
+await cliente("Borcelle Burger", "borcelle.es", "444", {
+  name: "Borcelle Burger",
+  telephone: "+34 915 55 44 33",
+  address: { streetAddress: "Calle de Fuencarral 88", postalCode: "28004", addressLocality: "Madrid" },
+  opening_hours: "Lun-Dom 12:30-16:30, 20:00-00:00",
+  brand: {
+    plantilla: "base",
+    colores: {
+      primario: "#8c1c13",
+      secundario: "#c8963e",
+      titulo: "#1c1917",
+      texto: "#44403c",
+      fondo: "#fffdf9",
+      fondoAlt: "#f5f1ea",
+    },
+    fuentes: { titulo: "condensada", texto: "humanista", decorativa: "script" },
+    logo: FOTO.logo,
+  },
+  portada: { src: FOTO.portada, alt: "El local de Borcelle Burger" },
+  fotos: [
+    { src: FOTO.galeria, alt: "La barra" },
+    { src: FOTO.galeria, alt: "La sala" },
+    { src: FOTO.galeria },
+    { src: FOTO.galeria, alt: "La terraza" },
+  ],
+  menu_categorias: [
+    { nombre: "Hamburguesas", foto: { src: FOTO.categoria }, orden: 0 },
+    { nombre: "Entrantes", foto: { src: FOTO.categoria }, orden: 1 },
+  ],
+  menu: [
+    {
+      category: "Hamburguesas",
+      name: "Golden Burger",
+      description: "Doble de vacuno, cheddar curado, cebolla caramelizada y pan brioche.",
+      precios: [
+        { etiqueta: "Sencilla", importe: "12,50 €" },
+        { etiqueta: "Doble", importe: "15,90 €" },
+      ],
+      nota: "Punto al gusto",
+      foto: { src: FOTO.plato },
+    },
+    {
+      category: "Entrantes",
+      name: "Patatas bravas",
+      description: "Salsa brava de la casa.",
+      price: "6,50 €",
+      foto: { src: FOTO.plato },
+    },
+  ],
+  locations: [
+    {
+      name: "Fuencarral",
+      address: { streetAddress: "Calle de Fuencarral 88", postalCode: "28004", addressLocality: "Madrid" },
+      telephone: "+34 915 55 44 33",
+      opening_hours: "Lun-Dom 12:30-16:30, 20:00-00:00",
+      foto: { src: FOTO.local },
+    },
+    {
+      name: "Chamberí",
+      address: { streetAddress: "Calle de Trafalgar 12", postalCode: "28010", addressLocality: "Madrid" },
+      telephone: "+34 915 55 44 34",
+      opening_hours: "Mar-Dom 13:00-16:30, 20:00-23:30",
+      foto: { src: FOTO.local },
+    },
   ],
 });
 
@@ -180,6 +285,16 @@ cda.poner("pub-111", "published", "home", story("Trattoria Bella Napoli", "home"
 cda.poner("pub-111", "published", "menu", story("La carta", "menu", "Pizzas y pastas de temporada"));
 cda.poner("prv-111", "draft", "menu", story("La carta (BORRADOR)", "menu", "Carta de invierno, sin publicar"));
 cda.poner("pub-222", "published", "home", story("Sushi Zen", "home", "Omakase en Chamberí"));
+// `borcelle.es` es el space 444. Sin estas dos, el único perfil con fotos reales solo servía páginas
+// SINTETIZADAS (la home de fallback y `/menu`) y no había ninguna **landing** que mirar — que es
+// justamente el documento donde van a vivir `heroPortada` y la galería. Lo señaló una revisión.
+cda.poner("pub-444", "published", "home", story("Borcelle Burger", "home", "Hamburguesas de barrio en Madrid"));
+cda.poner(
+  "pub-444",
+  "published",
+  "hamburguesas-madrid-centro",
+  story("Hamburguesas en Madrid Centro", "hamburguesas-madrid-centro", "Carne maderada y pan brioche"),
+);
 
 // ---------------------------------------------------------------- app
 const cache = new CacheRender();

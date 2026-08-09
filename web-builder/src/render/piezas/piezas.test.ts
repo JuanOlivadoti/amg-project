@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pageToStory } from "../../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../../fixtures.js";
-import { CTX_COMPLETO, ctxDe, perfilCompleto } from "../ctx-de-prueba.js";
+import { ctxCompleto, ctxDe, perfilCompleto } from "../ctx-de-prueba.js";
 import type { Story } from "../../types.js";
 import { CATALOGO } from "./index.js";
 import { blogIndice } from "./blog-indice.js";
@@ -289,7 +289,7 @@ test("ninguna pieza deja pasar `<script>` sin escapar con datos hostiles en TODO
     if (b.component === "faq") Object.assign(b, { items: [{ question: VENENO, answer: VENENO }] });
   }
   const ctx = ctxDe({
-    ...CTX_COMPLETO,
+    ...ctxCompleto(),
     story: s,
     titulo: VENENO,
     bajada: VENENO,

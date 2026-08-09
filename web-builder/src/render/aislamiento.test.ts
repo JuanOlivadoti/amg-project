@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { problemasDeAislamiento, selectoresDe } from "./aislamiento.js";
 import { CATALOGO } from "./piezas/index.js";
 import type { Pieza } from "./piezas/tipos.js";
-import { CTX_COMPLETO } from "./ctx-de-prueba.js";
+import { ctxCompleto } from "./ctx-de-prueba.js";
 
 /**
  * El test que la spec (§3) exige que sea **mecánico y no revisión humana**: se parsean los selectores
@@ -111,7 +111,7 @@ test("§3 — el HTML que emite cada pieza va envuelto en su raíz, o no habría
   // El aislamiento son DOS mitades: los selectores llevan el prefijo (arriba) y el markup lleva la
   // clase. Con solo la primera, una pieza pasaría el gate emitiendo HTML que su propio CSS no toca.
   for (const p of CATALOGO) {
-    const html = p.render(CTX_COMPLETO);
+    const html = p.render(ctxCompleto());
     assert.ok(html, `la pieza "${p.id}" no dibujó nada con un contexto que tiene TODOS los datos`);
     assert.ok(
       html.startsWith(`<div class="${p.raiz}">`),
