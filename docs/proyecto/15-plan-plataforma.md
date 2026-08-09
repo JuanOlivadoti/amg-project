@@ -633,9 +633,83 @@ ninguno de los dos.
 | **A** | Los **cinco arreglos visuales** (modo oscuro completo, doble borde de la carta, enlaces del pie, contraste del acento en oscuro, CTA largo) y el **uso real de los 9 tokens de marca** en el CSS de las piezas | ✅ |
 | **C** | Las **tipografías self-hosted**: servidas desde `/_assets/fonts/` **y** pedidas por el CSS emitido, con `preload` de la familia de titulares y el test de *cero terceros* | ✅ |
 | **B.1** | La **§Política de imágenes**: allowlist de hosts, `referrerpolicy`, https obligatorio y el tope de 60 `<img>` por documento | ✅ |
-| **B.2** | `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias` — las piezas que **dibujan** las fotos | 🟡 |
+| **B.2** | `heroPortada`, `barraDatos`, `platosDestacados`, `galeria`, `ctaFinal`, `cartaCategorias` — las piezas que **dibujan** las fotos | ✅ |
 
 La mitad **A** es la que hace que dos restaurantes dejen de distinguirse solo por un color de acento.
+
+#### ✅ Mitad B, parte 2 — las seis piezas con foto (2026-08-09)
+
+Las recetas quedaron así. `story` es literal de la spec §4; las otras las decidió esta entrega, porque
+la spec dice **qué pieza usa cada página** pero no escribe las listas:
+
+```text
+story: heroPortada · barraDatos · seccionProsa · platosDestacados · galeria · faq · ctaFinal
+home:  hero · barraDatos · platosDestacados · galeria · indice · ctaFinal
+menu:  hero · barraDatos · cartaCategorias · ctaFinal
+blog:  sin tocar
+```
+
+**`barraDatos` y `ctaFinal` van en las tres páginas de negocio, no solo en la landing.** El punto 4 de
+la spec —«lo que la gente busca está enterrado en el pie: teléfono, horarios y direcciones… y en un
+restaurante eso es el grueso de las visitas»— no se arregla si el arreglo llega solo a la landing,
+porque la portada es donde entra más gente. `galeria` no va en `/menu` (ahí ya hay fotos de categoría y
+de plato, y una segunda rejilla compite por la misma atención) y `platosDestacados` tampoco: su único
+gancho es el enlace a `/menu`, que dentro de `/menu` no lleva a ninguna parte.
+
+**`carta` se retiró del catálogo.** `cartaCategorias` cubre también el caso sin `menu_categorias` —que
+la spec pide como test—, así que `carta` se quedaba sin ninguna receta que la nombrara: código que no
+llega a ningún navegador con tests que pasan para siempre. Migraron con sus tests el arreglo del doble
+borde, el modo oscuro completo, el `--acento-legible` del precio y el escapado. Cambio de conducta
+deliberado: `carta` emitía «La carta todavía no está cargada» y `cartaCategorias` devuelve `""`, que es
+lo que la spec dice.
+
+**`--marca-secundario` por fin tiene consumidor.** La mitad A lo dejó emitido y sin usar porque atarlo
+al gris del texto secundario fallaba AA (2.62:1). Entra por `--decorativo` y lo consumen tres filetes
+decorativos —bajo el titular tipográfico, bajo cada categoría y en el borde de cada dato de la barra—.
+**Nunca texto**, que era la condición exacta.
+
+**El LCP, arreglado y no anotado.** Desde que `heroPortada` dibuja `profile.portada`, esa foto es el
+elemento **LCP** de toda landing, y salía con `loading="lazy"` — diferir lo que la métrica mide.
+`renderImagen` acepta ahora `prioridad: "alta"` (sin `loading`, con `fetchpriority="high"`) y **solo
+`heroPortada` la usa**: marcar dos imágenes como prioritarias es no marcar ninguna.
+
+**Verificado en un navegador**, que es el gate que sustituye a la paridad en esta entrega: con fotos
+(claro/oscuro, escritorio/móvil), **sin fotos** —el hero tipográfico, que es el estado de todas las
+fichas de producción— y con foto rota. Contraste medido sobre el HTML servido en oscuro: precio
+**5.36:1**, etiqueta 7.18:1, título de categoría 15.41:1.
+
+⚠️ **Con la foto declarada pero rota, la portada colapsa a 26 px.** El navegador trata una imagen sin
+píxeles como texto alternativo en línea e ignora `width:100%` y `aspect-ratio`, y el titular no crece
+porque `sin-img` mira si hay `src`, no si carga. **No se arregla**: detectarlo exige JS (`onerror`) y
+meter JavaScript en el proceso anónimo por una ficha mal cargada es peor que el síntoma. Lo mitiga que
+`renderImagen` emita `width`/`height` cuando la URL de Storyblok los lleva.
+
+##### El gate de paridad, cerrado y re-capturado ✅
+
+**7 de los 10 casos cambian, y es correcto**: la entrega 3 cambia el aspecto a propósito y el gate de
+la entrega 2 existía para demostrar que el **refactor** no cambiaba el sitio — contrato cumplido y
+cerrado. Los tres que **no** cambian son la señal de control: `landing-sin-perfil` (sin datos las
+piezas nuevas devuelven `""` y `heroPortada` emite exactamente lo mismo que `hero`) y los dos de
+`/blog`, cuya receta no se tocó.
+
+La verificación había que hacerla **antes** de re-capturar y no después, y ése era el punto entero:
+re-capturar deja el gate comparándose consigo mismo, así que la prueba de que el cambio es benigno solo
+existe mientras las fixturas viejas siguen en `HEAD`. Se comparó rostro a rostro `git show HEAD:<fixtura>`
+contra el disco en los diez casos, con las mismas cinco caras de `huellaDe`: **cero palabras perdidas,
+cero `href` perdidos, cero `id` perdidos, y JSON-LD y traza de research idénticos**. Los siete que
+cambian añaden entre 22 y 49 palabras; los tres de control dan **+0/+0**. Ejecutado **con autorización
+explícita**, porque `capturar:paridad` está en `permissions.deny` y borra la única foto pre-refactor.
+
+Dos precisiones que salieron de medirlo en vez de suponerlo:
+
+- **Las diez fixturas aparecen modificadas en el diff, no siete.** El HTML de los tres de control
+  también cambia —CSS y clases nuevas—; lo que no cambia son sus cinco rostros, que es lo único que el
+  gate miraba. Decir "los tres no cambian" a secas era impreciso.
+- **En `/menu` el precio se reordenó**, de ir tras el nombre a ir tras la descripción, porque el layout
+  nuevo lo lleva a su columna derecha. El comparador cuenta multiconjuntos y por eso no lo ve; lo vieron
+  los ojos sobre el texto visible. No se pierde ninguna palabra, pero **es una decisión**, y la
+  diferencia entre "solo se añadió" y "además se reordenó una lista de producto" es justo la que un gate
+  existe para no dejar pasar en silencio. Queda declarada en el mensaje del commit.
 
 ⚠️ **Este documento decía que la B estaba bloqueada esperando fotos, y era falso.** Los tests del
 render no descargan nada: una URL inventada del host de la allowlist ejercita las piezas igual que una

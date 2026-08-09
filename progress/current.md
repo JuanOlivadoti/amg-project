@@ -6,12 +6,131 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-08
-**En curso:** **bloque E** — el aspecto de las webs. Entregas **1** y **2** cerradas; de la **3** están
-hechas la **mitad A** (arreglos visuales y tokens de marca), la **C** (tipografías self-hosted) y la
-**primera parte de la B** (la §Política de imágenes: allowlist de hosts, `referrerpolicy` y el tope de
-60 por documento). Queda **dibujar las seis piezas con foto**, y con eso cierra el bloque.
-**Estado:** listo para seguir. **1220 tests**, typecheck limpio, y las webs manejadas en un navegador.
+**Sesión:** 2026-08-09
+**En curso:** **bloque E — completo**. El aspecto de las webs. Entregas **1** y **2** cerradas; la **3**
+entera: **mitad A** (arreglos visuales y tokens de marca), **C** (tipografías self-hosted) y **B**
+(la §Política de imágenes y **las seis piezas con foto**), con el **gate de paridad re-capturado**.
+**Estado:** ✅ verde. **1268 tests** en el monorepo, typecheck limpio, sin secretos, y el sitio manejado
+en un navegador con fotos, sin fotos y con foto rota.
+
+## 🟡 Entrega 3, mitad B (2 de 2) — las seis piezas con foto
+
+Lo último del bloque E. `heroPortada`, `barraDatos`, `platosDestacados`, `cartaCategorias`, `galeria`
+y `ctaFinal`. **371 tests en `web-builder`**, todos en verde tras re-capturar el gate: ver más abajo.
+
+**La web ya parece una web de restaurante.** Manejada en el navegador con `borcelle.es`, que tiene las
+siete fotos reales del space:
+
+```text
+con fotos    → claro y oscuro, escritorio y móvil     ✅
+sin fotos    → hero tipográfico, sin huecos            ✅   ← el estado de TODOS los clientes reales hoy
+foto rota    → degradación del navegador, ver abajo    ⚠️
+contraste en oscuro, MEDIDO sobre el HTML servido: precio 5.36:1 · etiqueta 7.18:1 · título 15.41:1
+```
+
+Que el caso **sin fotos** se vea bien importa más que el bonito: ninguna ficha de producción tiene una
+sola foto, así que el hero tipográfico —titular a 2.9rem con su regla decorativa debajo— es la versión
+del sitio que hoy se está sirviendo de verdad.
+
+### Las recetas, y por qué no solo la landing
+
+`story` es literal de la spec. Las otras dos las decidió esta entrega:
+
+```text
+story: heroPortada · barraDatos · seccionProsa · platosDestacados · galeria · faq · ctaFinal
+home:  hero · barraDatos · platosDestacados · galeria · indice · ctaFinal
+menu:  hero · barraDatos · cartaCategorias · ctaFinal
+blog:  sin tocar
+```
+
+`barraDatos` y `ctaFinal` van en las **tres** páginas de negocio, no solo en la landing: el problema
+que la spec describe —teléfono y horarios enterrados en el pie— no se arregla si el arreglo llega solo
+a la landing, porque la portada es donde entra más gente. `galeria` no va en `/menu` (ahí ya hay fotos
+de categoría y de plato) y `platosDestacados` tampoco (su único gancho es el enlace a `/menu`).
+
+### `carta` se retiró del catálogo
+
+`cartaCategorias` cubre también el caso **sin `menu_categorias`**, así que `carta` se quedaba sin
+ninguna receta que la nombrara — código que no llega a ningún navegador con tests que pasan para
+siempre. Migraron con sus tests: el arreglo del doble borde, el modo oscuro completo, el
+`--acento-legible` del precio y el escapado.
+
+### El LCP, arreglado en vez de anotado
+
+El implementador dejó como deuda que la foto de portada salía con `loading="lazy"`. **Desde que
+`heroPortada` la dibuja, esa foto es el LCP de todas las landings**, y diferir el elemento que define
+la métrica retrasa exactamente lo que la métrica mide: el navegador tiene que terminar el layout para
+saber que está en el viewport y solo entonces la pide. Ahora `renderImagen` acepta
+`prioridad: "alta"` —sin `loading`, con `fetchpriority="high"`— y **solo `heroPortada` la usa**:
+marcar dos imágenes como prioritarias es no marcar ninguna, porque compiten por el mismo ancho de
+banda. Un test lo fija sobre el documento entero, no sobre la pieza, porque es una propiedad del
+documento.
+
+Cambió la expectativa de un test viejo que exigía `lazy` en esa foto. Está escrito ahí por qué es un
+cambio de conducta deliberado y no una expectativa aflojada: cuando se escribió, ninguna landing tenía
+foto arriba.
+
+### `--marca-secundario` por fin pinta algo
+
+La mitad A lo dejó *"emitido y sin consumidor a la espera de la mitad B"*, porque atarlo al gris del
+texto secundario fallaba AA (2.62:1). Ahora entra por `--decorativo` y lo consumen **tres filetes
+decorativos** —bajo el titular tipográfico, bajo cada categoría de la carta y en el borde izquierdo de
+cada dato de la barra—. **Nunca texto**, que era la condición exacta.
+
+### ✅ El gate de paridad, jubilado y vuelto a capturar
+
+Cayeron **7 de los 10 casos**, y no era un accidente: la entrega 3 cambia el aspecto **a propósito**, y
+el gate de la entrega 2 existía para demostrar que el *refactor* no cambiaba el sitio — contrato que ya
+se cumplió y se cerró. Re-capturar es jubilarlo, no aflojarlo, y se hizo **con autorización explícita**
+porque el comando está en `permissions.deny` y borra la única foto pre-refactor que existe.
+
+**Lo que se midió antes de commitear.** Re-capturar deja el gate comparándose consigo mismo, así que a
+partir de ese momento ya no prueba nada sobre el cambio: la prueba hay que sacarla **antes**, con las
+fixturas viejas todavía en `HEAD`. Se comparó rostro a rostro `git show HEAD:<fixtura>` contra el disco,
+con las mismas cinco caras de `huellaDe`:
+
+```text
+                                 palabras        hrefs      ids   jsonLd  traza
+blog-con-posts                    71→ 71 (+0)   10→10 (+0)  2→2     =      =
+blog-vacio                        67→ 67 (+0)    8→ 8 (+0)  2→2     =      =
+landing-sin-perfil                81→ 81 (+0)    2→ 2 (+0)  2→2     =      =
+home-sin-paginas                  75→124 (+49)   8→13 (+5)  2→2     =      =
+home-sintetizada                  73→122 (+49)  11→16 (+5)  2→2     =      =
+landing-perfil-base              123→172 (+49)  10→15 (+5)  4→4     =      =
+landing-perfil-con-manual        113→161 (+48)  11→16 (+5)  4→4     =      =
+landing-perfil-legacy            112→136 (+24)   9→13 (+4)  4→4     =      =
+menu-agrupado                     85→107 (+22)   9→13 (+4)  2→2     =      =
+menu-sin-categorias               64→ 88 (+24)   8→12 (+4)  2→2     =      =
+
+cero palabras perdidas · cero hrefs perdidos · cero ids perdidos · JSON-LD y traza idénticos en los 10
+```
+
+Los tres de **+0/+0** son la señal de control: `landing-sin-perfil` (sin datos, las piezas nuevas
+devuelven `""` y `heroPortada` emite exactamente lo mismo que `hero`) y los dos de `/blog`, cuya receta
+no se tocó. **Su HTML sí cambia** —CSS y clases nuevas—, y por eso las diez fixturas aparecen
+modificadas en el diff; lo que no cambia son sus cinco rostros, que es lo único que el gate miraba.
+Decir "los tres no cambian" a secas era impreciso.
+
+**La salvedad, verificada con los ojos y no por el contador.** El comparador cuenta multiconjuntos, así
+que un reorden le resulta invisible. En `/menu` el precio pasó de ir tras el nombre a ir tras la
+descripción, porque el layout nuevo lo lleva a su columna derecha:
+
+```text
+antes:  Margherita 12,50 € Tomate, mozzarella y albahaca.
+ahora:  Margherita Tomate, mozzarella y albahaca. 12,50 €
+```
+
+No se pierde ninguna palabra y el orden nuevo se lee igual de bien, pero **es una decisión**, y va
+declarada en el mensaje del commit en vez de congelada sin nombre.
+
+### Un hallazgo que solo dio el navegador
+
+Con la foto **declarada pero rota** (el asset borrado del space), la galería y los platos aguantan su
+tamaño por CSS, pero **la portada colapsa a 26 px**: el navegador trata una imagen sin píxeles como
+texto alternativo en línea e ignora `width:100%` y `aspect-ratio`. Queda ni foto ni hero tipográfico,
+porque `sin-img` mira si hay `src`, no si carga. **No se arregla**: detectarlo exige JS (`onerror`), y
+meter JavaScript en el proceso anónimo por una ficha mal cargada es peor que el síntoma. Lo mitiga que
+`renderImagen` emita `width`/`height` cuando la URL de Storyblok los lleva.
 
 ## ✅ Entrega 3, mitad B (1 de 2) — la §Política de imágenes
 

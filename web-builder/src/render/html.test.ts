@@ -192,7 +192,17 @@ test("sin perfil no hay cabecera de sitio (falla suave)", () => {
 
 // ---------------------------------------------------------------- imágenes de contenido
 
-test("imagen: el hero renderiza su foto con lazy, alt y dimensiones del asset", () => {
+test("imagen: la portada renderiza con prioridad alta, alt y dimensiones del asset", () => {
+  // ⚠️ **Este test exigía `loading="lazy"` y ahora exige lo contrario.** No es una expectativa
+  // aflojada para que pase el código nuevo: es un cambio de conducta deliberado de la mitad B.
+  //
+  // Desde que `heroPortada` sustituye a `hero` en la receta de landing, esta foto va arriba del todo y
+  // **es el elemento LCP** de todas las landings. Diferirla obliga al navegador a terminar el layout
+  // para descubrir que está en el viewport y solo entonces pedirla, retrasando justo lo que la métrica
+  // mide. Cuando este test se escribió, ninguna landing tenía foto arriba y `lazy` era correcto.
+  //
+  // Lo que NO cambió y sigue fijado acá: el `alt` que escribió la persona, y las dimensiones inferidas
+  // de la URL de Storyblok, que son lo que evita el salto de layout (CLS).
   const s = story();
   const hero = s.content.body.find((b) => b.component === "hero")!;
   (hero as { image?: unknown }).image = {
@@ -202,7 +212,8 @@ test("imagen: el hero renderiza su foto con lazy, alt y dimensiones del asset", 
   const html = renderStory(s);
 
   assert.match(html, /class="hero-img"/);
-  assert.match(html, /loading="lazy"/);
+  assert.match(html, /fetchpriority="high"/, "la portada es el LCP: se pide con prioridad");
+  assert.doesNotMatch(html, /class="hero-img"[^>]*loading="lazy"/, "y NO se difiere");
   assert.match(html, /alt="Fachada del restaurante"/);
   assert.match(html, /width="1600" height="900"/, "las dimensiones salen de la URL de Storyblok (anti-CLS)");
 });
@@ -285,6 +296,31 @@ test("menu: JSON-LD Menu con sus secciones", () => {
   assert.equal(ld["@type"], "Menu");
   assert.equal(ld.hasMenuSection[0]["@type"], "MenuSection");
   assert.equal(ld.hasMenuSection[0].hasMenuItem[0].name, "Ale");
+});
+
+test("🔴 menu JSON-LD: un plato con varios `precios` emite `offers` con el PRIMERO", () => {
+  // La enmienda 2026-08-02 lo decide con esas palabras —«En el JSON-LD, `offers` toma **el primero**
+  // de `precios` — decidido acá y con su test, para que no lo decida por accidente el orden de un
+  // `Object.keys`»— y hasta esta entrega `menuLd` leía `it.price` a secas: un plato **solo** con
+  // `precios` (la forma nueva) salía al JSON-LD sin ningún precio. Se perdía en silencio, que es el
+  // modo de fallo que las cuatro fronteras existen para cerrar.
+  const perfil = validProfile({
+    menu: [
+      {
+        category: "Pizzas",
+        name: "Margherita",
+        precios: [
+          { etiqueta: "Media", importe: "9,00 €" },
+          { etiqueta: "Ración", importe: "14,50 €" },
+        ],
+      },
+      { category: "Pizzas", name: "Diavola", price: "14,00 €" },
+    ],
+  });
+  const ld = JSON.parse(renderMenu(perfil, "es").split('<script type="application/ld+json">')[1]!.split("</script>")[0]!);
+  const items = ld.hasMenuSection[0].hasMenuItem;
+  assert.equal(items[0].offers.price, "9,00 €", "el primero de `precios`, no el último ni el mayor");
+  assert.equal(items[1].offers.price, "14,00 €", "y `price` sigue funcionando como el atajo de un importe");
 });
 
 test("🔴 menu: el nombre y el precio de un ítem se escapan", () => {

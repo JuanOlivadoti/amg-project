@@ -37,81 +37,169 @@
 }
 </script>
 <style>
-:root{--fg:#1a1a1a;--muted:#6b7280;--accent:#b91c1c;--bg:#fff;--soft:#f8f7f5;--font:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+:root{--marca-primario:#b91c1c;--marca-secundario:#6b7280;--marca-titulo:#1a1a1a;--marca-texto:#1a1a1a;--marca-fondo:#fff;--marca-fondo-alt:#f8f7f5;--marca-fuente-texto:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;--marca-fuente-titulo:var(--marca-fuente-texto);--marca-fuente-decorativa:var(--marca-fuente-texto)}
+:root{--fg:var(--marca-texto);--titulo:var(--marca-titulo);--muted:#6b7280;--accent:var(--marca-primario);--acento-legible:var(--marca-primario);--sobre-acento:#fff;--decorativo:var(--marca-secundario);--bg:var(--marca-fondo);--soft:var(--marca-fondo-alt);--font:var(--marca-fuente-texto);--fuente-titulo:var(--marca-fuente-titulo);--fuente-decorativa:var(--marca-fuente-decorativa)}
 *{box-sizing:border-box}
 body{margin:0;font:16px/1.6 var(--font);color:var(--fg);background:var(--bg)}
 img{max-width:100%;height:auto}
-.sitebar{border-bottom:1px solid #eee;padding:14px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;max-width:1100px;margin:0 auto}
-.sitebar .brand{display:inline-flex;align-items:center;text-decoration:none;color:var(--fg)}
-.sitebar .marca{font-weight:700;font-size:1.15rem;letter-spacing:-.01em}
-.sitebar .logo{display:block}
-.nav{display:flex;gap:6px 18px;flex-wrap:wrap;margin-left:auto;font-size:.95rem}
-.nav a{text-decoration:none;color:var(--muted);padding:4px 2px;border-bottom:2px solid transparent;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nav a:hover{color:var(--fg)}
-.nav a.activo{color:var(--fg);border-bottom-color:var(--accent);font-weight:600}
-.indice{padding:8px 0 32px}
+main{max-width:760px;margin:0 auto;padding:0 20px}
+.pending{color:var(--muted);font-style:italic}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:8px}
 .card{display:block;text-decoration:none;color:var(--fg);border:1px solid #e7e5e0;border-radius:12px;padding:20px;transition:border-color .15s,transform .15s}
-.card:hover{border-color:var(--accent);transform:translateY(-2px)}
-.card h3{margin:0;font-size:1.1rem;letter-spacing:-.01em}
-.carta{padding:24px 0;border-bottom:1px solid #f0f0f0}
-.carta .items{list-style:none;margin:0;padding:0}
-.carta li{padding:10px 0;border-bottom:1px solid #f5f4f2}
-.carta .fila{display:flex;justify-content:space-between;gap:16px;align-items:baseline}
-.carta .nombre{font-weight:600}
-.carta .precio{color:var(--accent);font-weight:600;white-space:nowrap}
-.carta .desc{margin:4px 0 0;color:var(--muted);font-size:.95rem}
-main{max-width:760px;margin:0 auto;padding:0 20px}
-.hero{padding:48px 0 40px;border-bottom:1px solid #eee}
-.hero.has-img{padding-top:24px}
-.hero-img{width:100%;border-radius:14px;margin:0 0 28px;object-fit:cover;aspect-ratio:16/9}
-.hero h1{font-size:2.3rem;line-height:1.12;margin:0 0 12px;letter-spacing:-.02em}
-.lede{font-size:1.18rem;color:var(--muted);margin:0 0 24px}
-.cta{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600}
-section{padding:32px 0;border-bottom:1px solid #f0f0f0}
-section h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em}
-.section-img{width:100%;border-radius:12px;margin:0 0 18px;object-fit:cover;aspect-ratio:3/2}
-.pending{color:var(--muted);font-style:italic}
-.faq{background:var(--soft);border-radius:12px;padding:24px;margin:32px 0}
-details{padding:12px 0;border-bottom:1px solid #e7e5e0}
-summary{font-weight:600;cursor:pointer}
+.card:hover{border-color:var(--acento-legible);transform:translateY(-2px)}
+.card h3{margin:0;font-size:1.1rem;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 footer{max-width:760px;margin:40px auto 48px;padding:24px 20px 0;border-top:1px solid #eee;color:var(--fg)}
-footer h2{font-size:1.15rem;margin:0 0 10px}
-footer h3{font-size:.95rem;margin:0 0 4px;color:var(--fg)}
-footer p{margin:0 0 6px}
-footer .local{margin:0 0 16px;color:var(--muted)}
-footer .ubicaciones{border:0;padding:16px 0 0}
-footer .contacto{border:0;padding:0}
-footer .tecnica{color:var(--muted);font-size:.85rem;margin-top:20px}
-footer .mas{margin-top:12px}
-@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}.sitebar,.hero,footer{border-color:#222}section{border-color:#1e1e1e}.card{border-color:#2a2a2a}}
+footer .mas{margin:12px 0 6px}
+footer .mas a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
+footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
+@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--titulo:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}footer{border-color:#222}.card{border-color:#2a2a2a}@supports(color:color-mix(in srgb,red,#fff)){:root{--acento-legible:color-mix(in srgb,var(--marca-primario) 60%,#fff);--decorativo:color-mix(in srgb,var(--marca-secundario) 55%,#fff)}}}
+.p-cabecera .sitebar{border-bottom:1px solid #eee;padding:14px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;max-width:1100px;margin:0 auto}
+.p-cabecera .sitebar .brand{display:inline-flex;align-items:center;text-decoration:none;color:var(--fg)}
+/* El nombre del negocio ES el logotipo cuando no hay imagen, así que se dibuja con la fuente
+   DECORATIVA del manual — es el único sitio del sitio donde una tipografía de rótulo tiene sentido.
+   Sin manual, ese token cae a la fuente del cuerpo y la cabecera se ve exactamente como hoy. */
+.p-cabecera .sitebar .marca{font-weight:700;font-size:1.15rem;letter-spacing:-.01em;font-family:var(--fuente-decorativa)}
+.p-cabecera .sitebar .logo{display:block}
+.p-cabecera .nav{display:flex;gap:6px 18px;flex-wrap:wrap;margin-left:auto;font-size:.95rem}
+.p-cabecera .nav a{text-decoration:none;color:var(--muted);padding:4px 2px;border-bottom:2px solid transparent;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-cabecera .nav a:hover{color:var(--fg)}
+.p-cabecera .nav a.activo{color:var(--fg);border-bottom-color:var(--acento-legible);font-weight:600}
+@media(prefers-color-scheme:dark){.p-cabecera .sitebar{border-color:#222}}
+.p-hero .hero{padding:48px 0 40px;border-bottom:1px solid #eee}
+.p-hero .hero.has-img{padding-top:24px}
+.p-hero .hero-img{width:100%;border-radius:14px;margin:0 0 28px;object-fit:cover;aspect-ratio:16/9}
+.p-hero .hero h1{font-size:2.3rem;line-height:1.12;margin:0 0 12px;letter-spacing:-.02em;color:var(--titulo);font-family:var(--fuente-titulo)}
+.p-hero .lede{font-size:1.18rem;color:var(--muted);margin:0 0 24px}
+/* La frase del CTA cuando no cabe en un botón. Menos peso que la bajada: es una invitación, no el
+   resumen de la página. */
+.p-hero .cta-lede{font-size:1.02rem;color:var(--muted);margin:0 0 20px}
+.p-hero .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600}
+@media(prefers-color-scheme:dark){.p-hero .hero{border-color:#222}}
+.p-barraDatos .franja{display:flex;flex-wrap:wrap;gap:14px 28px;margin:0;padding:16px 0;border-bottom:1px solid #f0f0f0}
+.p-barraDatos .dato{margin:0;display:flex;flex-direction:column;gap:2px;padding-left:12px;border-left:3px solid var(--decorativo)}
+/* La etiqueta es el rótulo del dato ("Teléfono"), no el dato: menor, en el gris de texto secundario y
+   en versalitas, para que el ojo salte directo al número. */
+.p-barraDatos .etiqueta{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.p-barraDatos .valor{font-weight:600}
+.p-barraDatos a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted);font-weight:600}
+@media(prefers-color-scheme:dark){.p-barraDatos .franja{border-color:#1e1e1e}}
+.p-cartaCategorias .categoria{padding:24px 0;border-bottom:1px solid #f0f0f0}
+/* La foto de categoría es la que da aire a la carta: ancho completo y proporción apaisada fija, para
+   que dos categorías con fotos de distinto tamaño no dejen la página a saltos. */
+.p-cartaCategorias .categoria-img{width:100%;aspect-ratio:3/1;object-fit:cover;border-radius:12px;margin:0 0 14px}
+.p-cartaCategorias .categoria h2{font-size:1.45rem;margin:0 0 4px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
+/* Misma regla decorativa que el titular tipográfico de la portada, y el mismo motivo: es el segundo
+   color de marca en una superficie que NO es texto largo. */
+.p-cartaCategorias .categoria h2::after{content:"";display:block;width:48px;height:3px;margin:8px 0 14px;background:var(--decorativo)}
+.p-cartaCategorias .platos{list-style:none;margin:0;padding:0}
+.p-cartaCategorias .platos li{padding:12px 0;border-bottom:1px solid #f5f4f2}
+/* El DOBLE BORDE del final de cada categoría: la última fila dibujaba su separador y el contenedor
+   dibujaba el suyo justo debajo, dos líneas pegadas. Gana el del contenedor, que es el que separa una
+   categoría de la siguiente; el de la fila solo separa platos ENTRE sí y después de la última no
+   separa nada. */
+.p-cartaCategorias .platos li:last-child{border-bottom:0}
+.p-cartaCategorias .fila{display:flex;gap:14px;align-items:flex-start}
+/* La miniatura no crece ni se encoge (`flex:0 0 auto`): sin eso, una descripción larga la aplasta y
+   la carta queda con miniaturas de anchos distintos fila a fila. */
+.p-cartaCategorias .plato-foto{flex:0 0 auto;width:72px;height:72px;object-fit:cover;border-radius:8px}
+.p-cartaCategorias .datos{flex:1 1 auto;min-width:0}
+.p-cartaCategorias .nombre{margin:0;font-weight:600}
+.p-cartaCategorias .nota{margin-left:8px;font-weight:400;font-size:.8rem;color:var(--muted)}
+.p-cartaCategorias .desc{margin:4px 0 0;color:var(--muted);font-size:.95rem}
+/* Los precios se alinean a la derecha en columna y no se parten (`white-space:nowrap`): "14,50 €"
+   cortado en dos líneas deja de ser un precio. */
+.p-cartaCategorias .precios{flex:0 0 auto;margin:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+/* `--acento-legible` y no `--accent`: es texto de acento sobre el fondo de la página, y en oscuro el
+   acento pleno de un cliente puede quedar ilegible. */
+.p-cartaCategorias .precio{color:var(--acento-legible);font-weight:600;white-space:nowrap}
+.p-cartaCategorias .precio .etiqueta{color:var(--muted);font-weight:400;font-size:.8rem;margin-right:6px}
+@media(prefers-color-scheme:dark){.p-cartaCategorias .categoria{border-color:#1e1e1e}.p-cartaCategorias .platos li{border-color:#191919}}
+.p-ctaFinal .cierre{background:var(--soft);border-radius:12px;padding:28px 24px;margin:32px 0;text-align:center}
+.p-ctaFinal .cierre h2{font-size:1.45rem;margin:0 0 6px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
+.p-ctaFinal .horario{margin:0 0 18px;color:var(--muted)}
+/* Los botones se envuelven en un flex centrado con `wrap`: en un móvil estrecho el segundo baja solo,
+   en vez de encogerse hasta que su etiqueta se parta. */
+.p-ctaFinal .acciones{margin:0;display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
+.p-ctaFinal .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600}
+/* La segunda acción va en versión de contorno: dos botones sólidos del mismo color compiten y ninguno
+   gana. `transparent` no depende del modo, así que no necesita contrapartida oscura; el color y el
+   borde salen de `--acento-legible`, que sí la tiene. */
+.p-ctaFinal .cta.suave{background:transparent;color:var(--acento-legible);border:1px solid var(--acento-legible)}
+.p-contacto .contacto{border:0;padding:0}
+/* El `letter-spacing` NO es decorativo acá: lo heredaba de `section h2`, porque este `<h2>` vive
+   dentro de un `<section>` del pie. `section h2` (0,0,2) y `footer h2` (0,0,2) empataban en
+   especificidad, así que `footer h2` ganaba `font-size` y `margin` —los únicos que declaraba— y
+   `letter-spacing` seguía llegando del otro. Al repartir el CSS por piezas se cayó, y una revisión
+   lo cazó con un comparador de cascada; el método de "buscar dueño por declaración" no podía verlo,
+   porque la declaración SÍ tenía dueño (cuatro piezas se la llevaron) y aun así dejó de llegar acá. */
+.p-contacto h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
+.p-contacto p{margin:0 0 6px}
+/* El `tel:` salía con el azul del navegador y el subrayado por defecto: dentro de un pie sobrio es
+   lo único que grita, y el azul no es de la marca de nadie. Toma el color del texto y conserva un
+   subrayado —tenue, pero subrayado— porque quitarlo dejaría un enlace que no se puede distinguir de
+   un párrafo salvo por el cursor. */
+.p-contacto a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
+.p-locales .ubicaciones{border:0;padding:16px 0 0}
+/* El `letter-spacing` viene de `section h2` del CSS viejo, no de `footer h2`: ver la explicación
+   completa en `contacto.ts`, que perdió el mismo valor por el mismo empate de especificidad. */
+.p-locales h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
+.p-locales h3{font-size:.95rem;margin:0 0 4px;color:var(--titulo);font-family:var(--fuente-titulo)}
+.p-locales p{margin:0 0 6px}
+.p-locales .local{margin:0 0 16px;color:var(--muted)}
+/* Mismo arreglo que en `contacto`, y por el mismo motivo: ver el comentario de ahí. */
+.p-locales a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
 </style>
 </head>
 <body>
+<div class="p-cabecera">
 <header class="sitebar"><a href="/" class="brand"><span class="marca">Trattoria Bella Napoli</span></a><nav class="nav" aria-label="Secciones del sitio"><a href="/">Inicio</a><a href="/menu" class="activo" aria-current="page">Menú</a><a href="#ubicaciones">Ubicaciones</a><a href="#contacto">Contacto</a></nav></header>
+</div>
 <main>
+<div class="p-hero">
 <header class="hero">
   <h1>Menú · Trattoria Bella Napoli</h1>
-</header>
-<section class="carta">
   
-  <ul class="items">
-  <li><div class="fila"><span class="nombre">Plato del día</span><span class="precio">s/ mercado</span></div></li>
-  <li><div class="fila"><span class="nombre">Postre de la casa</span></div></li>
+</header>
+</div>
+<div class="p-barraDatos">
+<section class="franja">
+  <p class="dato"><span class="etiqueta">Teléfono</span><a href="tel:+34911234567">+34 911 23 45 67</a></p>
+  <p class="dato"><span class="etiqueta">Horario</span><span class="valor">Lun-Dom 13:00-16:00 y 20:00-23:30</span></p>
+  <p class="dato"><span class="etiqueta">Dónde</span><a href="#ubicaciones">Cómo llegar</a></p>
+</section>
+</div>
+<div class="p-cartaCategorias">
+<section class="categoria">
+  
+  
+  <ul class="platos">
+    <li><div class="fila"><div class="datos"><p class="nombre">Plato del día</p></div><p class="precios"><span class="precio">s/ mercado</span></p></div></li>
+    <li><div class="fila"><div class="datos"><p class="nombre">Postre de la casa</p></div></div></li>
   </ul>
 </section>
+</div>
+<div class="p-ctaFinal">
+<section class="cierre">
+  <h2>Trattoria Bella Napoli</h2>
+  <p class="horario">Lun-Dom 13:00-16:00 y 20:00-23:30</p>
+  <p class="acciones"><a class="cta" href="tel:+34911234567">Llamar</a><a class="cta suave" href="#ubicaciones">Cómo llegar</a></p>
+</section>
+</div>
 </main>
 <footer>
+<div class="p-contacto">
 <section class="contacto" id="contacto">
   <h2>Contacto</h2>
   <p><strong>Trattoria Bella Napoli</strong></p>
   <p>Tel: <a href="tel:+34911234567">+34 911 23 45 67</a></p>
 </section>
+</div>
+<div class="p-locales">
 <section class="ubicaciones" id="ubicaciones">
   <h2>Dónde estamos</h2>
   <div class="local"><p>Calle Mayor 12, 28013 Madrid</p><p>Tel: <a href="tel:+34911234567">+34 911 23 45 67</a></p><p>Lun-Dom 13:00-16:00 y 20:00-23:30</p></div>
 </section>
-
+</div>
 <p class="tecnica">Página generada por AMG OS · contrato web.v0.1 · schema Menu</p>
 </footer>
 </body>

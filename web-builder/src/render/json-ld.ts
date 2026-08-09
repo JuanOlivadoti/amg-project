@@ -7,7 +7,7 @@ import type {
   SchemaType,
 } from "../types.js";
 import { imagenPublicable } from "./imagenes.js";
-import { localesDe, safeJson } from "./lib.js";
+import { localesDe, preciosDe, safeJson } from "./lib.js";
 
 /**
  * El JSON-LD y la traza de research.
@@ -110,13 +110,24 @@ export function menuLd(
     hasMenuSection: grupos.map((g) => ({
       "@type": "MenuSection",
       ...(g.categoria ? { name: g.categoria } : {}),
-      hasMenuItem: g.items.map((it) => ({
-        "@type": "MenuItem",
-        name: it.name,
-        ...(it.description ? { description: it.description } : {}),
-        // `price` es texto libre: va como `Offer.price` sin inventar moneda ni parsear el número.
-        ...(it.price ? { offers: { "@type": "Offer", price: it.price } } : {}),
-      })),
+      hasMenuItem: g.items.map((it) => {
+        // ⚠️ **`offers` toma el PRIMERO de `precios`**, y está decidido acá con su test para que no lo
+        // decida por accidente el orden de un `Object.keys` (enmienda 2026-08-02). `schema.org` admite
+        // varias `Offer`, pero un plato con "Media" y "Ración" no son dos ofertas comerciales
+        // distintas: es el mismo plato en dos tamaños, y declararlas como dos ofertas le diría a Google
+        // que hay dos productos. El primero es el que el cliente puso primero.
+        //
+        // Antes esto leía `it.price` a secas, así que un plato **solo** con `precios` —la forma nueva—
+        // salía al JSON-LD sin ningún precio: se perdía en silencio justo el dato que la enmienda
+        // añadió. Es texto libre en los dos casos: va tal cual, sin inventar moneda ni parsear.
+        const precio = preciosDe(it)[0]?.importe;
+        return {
+          "@type": "MenuItem",
+          name: it.name,
+          ...(it.description ? { description: it.description } : {}),
+          ...(precio ? { offers: { "@type": "Offer", price: precio } } : {}),
+        };
+      }),
     })),
   };
 }

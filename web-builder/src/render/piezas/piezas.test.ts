@@ -7,7 +7,6 @@ import type { Story } from "../../types.js";
 import { CATALOGO } from "./index.js";
 import { blogIndice } from "./blog-indice.js";
 import { cabecera } from "./cabecera.js";
-import { carta } from "./carta.js";
 import { contacto } from "./contacto.js";
 import { faq } from "./faq.js";
 import { hero } from "./hero.js";
@@ -209,27 +208,8 @@ test("🔴 indice/blogIndice: el nombre se escapa y el slug se vuelve ruta, nunc
   }
 });
 
-// ---------------------------------------------------------------- carta
-
-test("carta: agrupa por categoría y deja los sueltos al final", () => {
-  const html = carta.render(ctxDe({ profile: perfilCompleto() }));
-  assert.ok(html.indexOf("Pizzas") < html.indexOf("Postre de la casa"));
-  assert.match(html, /class="precio">12,50 €/);
-});
-
-test("carta: sin carta cargada el estado 'sin datos' es un AVISO (la página /menu existe igual)", () => {
-  const html = carta.render(ctxDe({ profile: validProfile() }));
-  assert.match(html, /class="pending"/);
-  assert.ok(!html.includes("<ul"), "sin platos no se dibuja una lista vacía");
-});
-
-test("🔴 carta: nombre, precio y descripción se escapan", () => {
-  const html = carta.render(
-    ctxDe({ profile: validProfile({ menu: [{ name: VENENO, price: '"><b>', description: VENENO }] }) }),
-  );
-  assert.ok(!html.includes("<script>alert(1)</script>"));
-  assert.ok(!html.includes('"><b>'));
-});
+// La carta vive ahora en `cartaCategorias` y sus tests, en `piezas-foto.test.ts`. `carta` se retiró
+// del catálogo en la entrega 3 (mitad B): ver el porqué en `index.ts`.
 
 // ---------------------------------------------------------------- contacto
 
@@ -282,6 +262,10 @@ test("🔴 locales: el nombre de un local se escapa (viene de la base, sin Zod)"
 test("ninguna pieza deja pasar `<script>` sin escapar con datos hostiles en TODOS los campos a la vez", () => {
   // Barrido: si mañana aparece una pieza que interpola un campo nuevo sin `esc()`, cae acá aunque
   // nadie le haya escrito su caso hostil propio.
+  //
+  // ⚠️ Recorre **`CATALOGO`**, no una lista escrita a mano. Hasta la entrega 3 era un literal con las
+  // nueve piezas de entonces, y esa lista es justo lo que NO cumple la promesa del comentario de
+  // arriba: una pieza nueva no aparece sola en un array literal. Al añadir seis de golpe se vio.
   const s = pageToStory(validPage(), validBrief());
   for (const b of s.content.body) {
     if (b.component === "hero") Object.assign(b, { headline: VENENO, subhead: VENENO, cta_label: VENENO });
@@ -295,13 +279,28 @@ test("ninguna pieza deja pasar `<script>` sin escapar con datos hostiles en TODO
     bajada: VENENO,
     profile: validProfile({
       name: VENENO,
-      menu: [{ category: VENENO, name: VENENO, description: VENENO, price: VENENO }],
+      telephone: VENENO,
+      opening_hours: VENENO,
+      menu: [
+        {
+          category: VENENO,
+          name: VENENO,
+          description: VENENO,
+          price: VENENO,
+          nota: VENENO,
+          precios: [{ etiqueta: VENENO, importe: VENENO }],
+          foto: { src: VENENO },
+        },
+      ],
+      menu_categorias: [{ nombre: VENENO, foto: { src: VENENO } }],
+      portada: { src: VENENO, alt: VENENO },
+      fotos: [{ src: VENENO, alt: VENENO }],
       locations: [{ name: VENENO, opening_hours: VENENO }],
     }),
     paginas: [{ slug: VENENO, name: VENENO }],
   });
 
-  for (const pieza of [cabecera, hero, seccionProsa, faq, indice, carta, blogIndice, contacto, locales]) {
+  for (const pieza of CATALOGO) {
     assert.ok(
       !pieza.render(ctx).includes("<script>"),
       `la pieza "${pieza.id}" dejó pasar un <script> sin escapar`,
@@ -317,9 +316,28 @@ test("🔴 el ORDEN del catálogo es un contrato, y hasta ahora nada lo imponía
   //
   // Esta lista literal es lo que convierte "reordenar es deliberado" en algo que hay que editar aquí
   // a propósito. Si cambiás el orden y este test cae, la pregunta es por qué, no cómo ponerlo verde.
+  //
+  // ⚠️ La entrega 3 (mitad B) lo cambió a propósito: entran las seis piezas con imagen y sale `carta`
+  // (ver `index.ts`). El orden sigue siendo el del documento — cabecera, contenido en el orden en que
+  // suele aparecer, pie— con las dos variantes de titular juntas al principio.
   assert.deepEqual(
     CATALOGO.map((p) => p.id),
-    ["cabecera", "hero", "seccionProsa", "faq", "indice", "carta", "blogIndice", "contacto", "locales"],
+    [
+      "cabecera",
+      "heroPortada",
+      "hero",
+      "barraDatos",
+      "seccionProsa",
+      "platosDestacados",
+      "cartaCategorias",
+      "galeria",
+      "faq",
+      "indice",
+      "blogIndice",
+      "ctaFinal",
+      "contacto",
+      "locales",
+    ],
   );
 });
 

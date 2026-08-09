@@ -96,6 +96,62 @@ test("resolverVars sigue la cadena hasta el fondo, y deja ver el eslabón roto",
 // El catálogo real.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Las piezas que consumen `--decorativo` (o el `--marca-secundario` del que deriva) en una propiedad
+ * que pinta **TEXTO**. Devuelve `"pieza:selector:propiedad"` por cada infracción.
+ *
+ * Es el detector del Hallazgo 1 de la revisión de la mitad B, y existe porque este proyecto ya cerró
+ * este mismo agujero una vez —por la puerta de `--muted`— y la mitad B abrió una segunda al mismo
+ * color sin cerradura.
+ */
+function decorativoEnTexto(css: string): string[] {
+  // `color` pinta el texto; `-webkit-text-fill-color` lo pinta por encima de `color`, y
+  // `text-decoration-color` pinta el subrayado de un texto. Las tres son texto a estos efectos.
+  const DE_TEXTO = ["color", "-webkit-text-fill-color", "text-decoration-color"];
+  const malas: string[] = [];
+  for (const r of reglasDe(css)) {
+    for (const prop of DE_TEXTO) {
+      const v = r.declaraciones[prop];
+      if (v && /var\(\s*--(decorativo|marca-secundario)\b/.test(v)) {
+        malas.push(`${r.selector}:${prop}`);
+      }
+    }
+  }
+  return malas;
+}
+
+test("el detector de `--decorativo` en texto sabe FALLAR (control positivo)", () => {
+  // Sin esto, el test del catálogo de abajo quedaría en verde para siempre aunque el detector no
+  // mirara nada — que es exactamente cómo un gate se convierte en un adorno.
+  assert.deepEqual(decorativoEnTexto(".x{background:var(--decorativo)}"), [], "un fondo NO es texto");
+  assert.deepEqual(decorativoEnTexto(".x{border-left:3px solid var(--decorativo)}"), [], "un borde tampoco");
+  assert.deepEqual(decorativoEnTexto(".x{color:var(--decorativo)}"), [".x:color"]);
+  assert.deepEqual(decorativoEnTexto(".x{color:var(--marca-secundario)}"), [".x:color"], "ni por la puerta de atrás");
+  assert.deepEqual(decorativoEnTexto(".x{text-decoration-color:var(--decorativo)}"), [".x:text-decoration-color"]);
+});
+
+test("🔴 `--decorativo` NUNCA pinta texto: es color de MARCA, no color legible", () => {
+  // ⚠️ Este proyecto ya pagó este error una vez, por otra puerta. `--muted` derivaba de
+  // `--marca-secundario` hasta que se midió: el oro `#c8963e` de la paleta del cliente de demo sobre
+  // su fondo `#fffdf9` da **2.62:1**, o sea que habría pintado de oro ilegible todo el texto
+  // secundario del sitio. Se ató a un gris neutro y se le puso su test (más abajo).
+  //
+  // La mitad B abrió una SEGUNDA puerta al mismo color —`--decorativo`, para superficie decorativa de
+  // verdad— y la dejó sin cerradura: una revisión cambió `.p-barraDatos .etiqueta` a
+  // `color:var(--decorativo)` y **no cayó ni un test**. Esto es esa cerradura.
+  //
+  // Lo que sí puede: `background` de un `::after`, `border-*`, `outline`. Son filetes de 3 px, no
+  // texto largo, y ahí el contraste AA no aplica del mismo modo.
+  for (const p of CATALOGO) {
+    assert.deepEqual(
+      decorativoEnTexto(p.css),
+      [],
+      `la pieza "${p.id}" pinta TEXTO con el segundo color de marca: mide su contraste antes de hacerlo`,
+    );
+  }
+  assert.deepEqual(decorativoEnTexto(cssBase()), [], "y el CSS base tampoco");
+});
+
 test("modo oscuro — NINGUNA pieza del catálogo deja un color literal sin su contrapartida oscura", () => {
   for (const p of CATALOGO) {
     assert.deepEqual(huecosDeModoOscuro(p.css), [], `la pieza "${p.id}" tiene el modo oscuro incompleto`);
@@ -153,21 +209,30 @@ const PERFIL_MARCA: BusinessProfile = validProfile({
  * fondo y fuente del cuerpo) se aplican ahí por definición, y §3.6 dice que lo compartido sube al base.
  */
 /**
- * ⚠️ **`--marca-secundario` NO está en esta tabla, y su ausencia es la decisión.**
+ * ⚠️ **`--marca-secundario` ENTRÓ en esta tabla en la mitad B, y hasta entonces su ausencia era la
+ * decisión.**
  *
- * Se emite pero **todavía no lo consume nadie**. Estuvo alimentando `--muted` —el color del lede, las
- * descripciones, las direcciones, el nav y la línea técnica— hasta que se midió: con la paleta ya
- * decidida para el cliente de demo, su oro `#c8963e` sobre el fondo `#fffdf9` da **2.62:1**, o sea
- * que fallaba AA y habría pintado de oro ilegible todo el texto secundario. «Secundario» en un manual
- * de marca es el segundo color **de marca**, decorativo; no el gris del texto secundario.
+ * Estuvo alimentando `--muted` —el color del lede, las descripciones, las direcciones, el nav y la
+ * línea técnica— hasta que se midió: con la paleta ya decidida para el cliente de demo, su oro
+ * `#c8963e` sobre el fondo `#fffdf9` da **2.62:1**, o sea que fallaba AA y habría pintado de oro
+ * ilegible todo el texto secundario. «Secundario» en un manual de marca es el segundo color **de
+ * marca**, decorativo; no el gris del texto secundario.
  *
- * Espera consumidor en la mitad B, donde hay superficie decorativa de verdad. Cuando lo tenga, vuelve
- * a esta tabla y el test de abajo lo exige otra vez. Mientras tanto: emitido y sin usar es honesto,
- * usado donde rompe el contraste no lo era.
+ * La mitad B le dio la superficie decorativa que esperaba —el filete de la franja de datos, la regla
+ * bajo el titular tipográfico y la de cada categoría de la carta— y entra por `--decorativo`, el
+ * token semántico que además tiene su variante aclarada para oscuro. La condición que lo sacó de
+ * `--muted` se mantiene: **no pinta texto**, pinta filetes.
+ *
+ * ⚠️ Los selectores del hero apuntan a **`.p-heroPortada`** desde la mitad B: la receta de la landing
+ * cambió `hero` por `heroPortada`, y `cssDe` renderiza una landing. Apuntar al `.p-hero` viejo dejaba
+ * la tabla midiendo un selector que ya no está en esa página — y `propiedadResuelta` devuelve
+ * `undefined` para un selector ausente, así que el fallo habría sido ruidoso pero por el motivo
+ * equivocado.
  */
 const CONSUMO: Array<{ token: string; selector: string; propiedad: string; espera: string }> = [
-  { token: "--marca-primario", selector: ".p-hero .cta", propiedad: "background", espera: "#0a7d34" },
-  { token: "--marca-titulo", selector: ".p-hero .hero h1", propiedad: "color", espera: "#112233" },
+  { token: "--marca-primario", selector: ".p-heroPortada .cta", propiedad: "background", espera: "#0a7d34" },
+  { token: "--marca-secundario", selector: ".p-barraDatos .dato", propiedad: "border-left", espera: "#c8963e" },
+  { token: "--marca-titulo", selector: ".p-heroPortada .portada h1", propiedad: "color", espera: "#112233" },
   { token: "--marca-texto", selector: "body", propiedad: "color", espera: "#445566" },
   { token: "--marca-fondo", selector: "body", propiedad: "background", espera: "#fefdfb" },
   { token: "--marca-fondo-alt", selector: ".p-faq .faq", propiedad: "background", espera: "#f1f2f3" },
@@ -176,7 +241,12 @@ const CONSUMO: Array<{ token: string; selector: string; propiedad: string; esper
   // `Brush Script MT`, que son precisamente los respaldos de esas dos familias: el test habría seguido
   // en verde si alguien quitara la familia self-hosted y dejara solo el stack del sistema, o sea justo
   // el fallo que esta mitad viene a cerrar.
-  { token: "--marca-fuente-titulo", selector: ".p-hero .hero h1", propiedad: "font-family", espera: "'Oswald'," },
+  {
+    token: "--marca-fuente-titulo",
+    selector: ".p-heroPortada .portada h1",
+    propiedad: "font-family",
+    espera: "'Oswald',",
+  },
   { token: "--marca-fuente-texto", selector: "body", propiedad: "font", espera: "Georgia" },
   {
     token: "--marca-fuente-decorativa",
@@ -213,7 +283,7 @@ test("legacy — una ficha `{color, font}` pinta EXACTAMENTE lo que pintaba: ace
   const css = cssDe(perfilLegacy()); // { color: "#0a7d34", font: "serif" }
   assert.equal(tokenResuelto(css, "--accent"), "#0a7d34", "el acento sigue saliendo del `color` legacy");
   assert.match(propiedadResuelta(css, "body", "font") ?? "", /Georgia/, "y el cuerpo, del `font` legacy");
-  assert.equal(propiedadResuelta(css, ".p-hero .cta", "background"), "#0a7d34");
+  assert.equal(propiedadResuelta(css, ".p-heroPortada .cta", "background"), "#0a7d34");
 });
 
 test("legacy — sin `fuentes.titulo`, los titulares heredan la fuente del CUERPO, no el default del sistema", () => {
@@ -221,7 +291,7 @@ test("legacy — sin `fuentes.titulo`, los titulares heredan la fuente del CUERP
   // ficha legacy con `font: serif` vería su cuerpo en Georgia y sus titulares en system-ui. Nadie lo
   // pidió y sería un cambio de aspecto en TODAS las webs sembradas.
   const css = cssDe(perfilLegacy());
-  assert.match(propiedadResuelta(css, ".p-hero .hero h1", "font-family") ?? "", /Georgia/);
+  assert.match(propiedadResuelta(css, ".p-heroPortada .portada h1", "font-family") ?? "", /Georgia/);
   assert.match(propiedadResuelta(css, ".p-cabecera .sitebar .marca", "font-family") ?? "", /Georgia/);
 });
 
@@ -242,7 +312,7 @@ test("🔴 manual — con AMBAS formas gana `colores.primario` sobre el `color` 
   const css = cssDe(validProfile({ brand: { color: "#111111", colores: { primario: "#0a7d34" } } }));
   assert.equal(tokenResuelto(css, "--marca-primario"), "#0a7d34");
   assert.equal(tokenResuelto(css, "--accent"), "#0a7d34", "el acento que se ve tiene que ser el del manual");
-  assert.equal(propiedadResuelta(css, ".p-hero .cta", "background"), "#0a7d34");
+  assert.equal(propiedadResuelta(css, ".p-heroPortada .cta", "background"), "#0a7d34");
   assert.ok(!css.includes("#111111"), "el legacy no puede quedar declarado en ningún sitio: ganaría por cascada");
 });
 
@@ -270,17 +340,37 @@ test("el acento legible en oscuro se DERIVA en CSS con color-mix, no en TypeScri
   assert.ok(oscuro.includes("#0a7d34"), `la mezcla no parte del acento del cliente: «${oscuro}»`);
 });
 
+test("🔴 `--decorativo` también se DERIVA en CSS en oscuro, igual que su gemelo", () => {
+  // `css.ts` afirma que `--acento-legible` y `--decorativo` «son la misma decisión y por eso viven en
+  // el mismo `@supports`». Era cierto en el código y mentira en la red de tests: una revisión borró la
+  // declaración oscura de `--decorativo` y **no cayó nada**, mientras que la de su gemelo sí tiene
+  // dueño (el test de arriba). Este es el dueño que faltaba.
+  //
+  // El fallo que evita es SILENCIOSO: un filete de 3 px en oro pleno sobre `#111` no rompe ninguna
+  // corrida de tests, y el detector `huecosDeModoOscuro` tampoco lo ve —`tieneColorLiteral` devuelve
+  // `false` para cualquier `var(--x)`, así que un token sin variante oscura le es invisible por diseño.
+  const css = cssDe(PERFIL_MARCA);
+  // En claro, el segundo color de marca tal cual: la ficha dice lo que dice.
+  assert.equal(tokenResuelto(css, "--decorativo", "claro"), "#c8963e");
+  // En oscuro, una mezcla que NOMBRA el token de marca — misma razón que en el acento: si mañana
+  // cambia el hex de la ficha, la variante oscura cambia sola en vez de quedar desincronizada.
+  const oscuro = tokenResuelto(css, "--decorativo", "oscuro");
+  assert.match(oscuro, /color-mix\(/, "la variante oscura tiene que derivarse en CSS, no en TypeScript");
+  assert.ok(oscuro.includes("#c8963e"), `la mezcla no parte del secundario del cliente: «${oscuro}»`);
+});
+
 test("el acento legible es lo que pinta el TEXTO de acento; el botón conserva el acento pleno", () => {
   // Son dos necesidades distintas y por eso son dos tokens: aclarar el acento mejora un precio sobre
   // fondo oscuro y EMPEORA el botón, que lleva texto blanco encima.
-  // El precio vive en `/menu` (la receta de la landing no lleva `carta`), así que hacen falta las dos.
+  // El precio de la carta vive en `/menu` (la receta de la landing no lleva `cartaCategorias`), así
+  // que hacen falta las dos páginas.
   const cssMenu = estilo(renderMenu(validProfile({ menu: [{ name: "Pizza", price: "12 €" }] })));
   const cssLanding = cssDe(validProfile());
-  assert.equal(propiedadResuelta(cssMenu, ".p-carta .carta .precio", "color"), "#b91c1c");
-  assert.equal(propiedadResuelta(cssLanding, ".p-hero .cta", "background"), "#b91c1c");
-  const precio = reglasDe(cssMenu).find((r) => r.selector === ".p-carta .carta .precio");
+  assert.equal(propiedadResuelta(cssMenu, ".p-cartaCategorias .precio", "color"), "#b91c1c");
+  assert.equal(propiedadResuelta(cssLanding, ".p-heroPortada .cta", "background"), "#b91c1c");
+  const precio = reglasDe(cssMenu).find((r) => r.selector === ".p-cartaCategorias .precio");
   assert.match(precio?.declaraciones["color"] ?? "", /--acento-legible/);
-  const cta = reglasDe(cssLanding).find((r) => r.selector === ".p-hero .cta");
+  const cta = reglasDe(cssLanding).find((r) => r.selector === ".p-heroPortada .cta");
   assert.match(cta?.declaraciones["background"] ?? "", /--accent\)/);
 });
 
@@ -289,11 +379,13 @@ test("el acento legible es lo que pinta el TEXTO de acento; el botón conserva e
 // ─────────────────────────────────────────────────────────────────────────────
 
 test("la última fila de una categoría de la carta NO dibuja borde: el del contenedor ya está ahí", () => {
-  const reglas = reglasDe(carta().css);
-  const fila = reglas.find((r) => r.selector === ".p-carta .carta li");
+  // El arreglo viajó de `carta` a `cartaCategorias` cuando la primera se retiró del catálogo (entrega
+  // 3, mitad B). Un arreglo que se queda en la pieza retirada es un arreglo que se deshace solo.
+  const reglas = reglasDe(cartaDelCatalogo().css);
+  const fila = reglas.find((r) => r.selector === ".p-cartaCategorias .platos li");
   assert.ok(fila, "la fila de plato tiene que seguir teniendo su separador");
   assert.match(fila!.declaraciones["border-bottom"] ?? "", /solid/);
-  const ultima = reglas.find((r) => r.selector === ".p-carta .carta li:last-child");
+  const ultima = reglas.find((r) => r.selector === ".p-cartaCategorias .platos li:last-child");
   assert.ok(ultima, "falta la regla que quita el borde de la última fila (el doble borde de /menu)");
   assert.equal(ultima!.declaraciones["border-bottom"], "0");
 });
@@ -313,9 +405,9 @@ test("el enlace al blog del pie tampoco sale azul (es del shell, no de una pieza
   assert.equal(regla!.declaraciones["color"], "inherit");
 });
 
-function carta(): Pieza {
-  const p = CATALOGO.find((x) => x.id === "carta");
-  assert.ok(p, "no existe la pieza carta");
+function cartaDelCatalogo(): Pieza {
+  const p = CATALOGO.find((x) => x.id === "cartaCategorias");
+  assert.ok(p, "no existe la pieza cartaCategorias");
   return p!;
 }
 

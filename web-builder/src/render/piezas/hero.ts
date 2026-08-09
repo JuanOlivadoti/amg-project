@@ -1,5 +1,5 @@
 import type { FaqBlok, HeroBlok } from "../../types.js";
-import { envolver, esc, hayUbicaciones, localesDe, renderImagen } from "../lib.js";
+import { envolver, esc, renderImagen, resolverCta } from "../lib.js";
 import type { CtxPieza, Pieza } from "./tipos.js";
 
 /**
@@ -10,14 +10,28 @@ import type { CtxPieza, Pieza } from "./tipos.js";
  *  - una **story**: el blok `hero` del brief aprobado (titular, bajada, CTA y foto del blok);
  *  - una página **sintetizada** (`/`, `/menu`, `/blog`): el `titulo`/`bajada` del contexto.
  *
- * Por eso esta pieza está en las CUATRO recetas y no solo en la de story. La tabla del encargo la
- * listaba únicamente en `story`, pero `renderHome`/`renderMenu`/`renderBlogIndex` emiten hoy su
- * propio `<header class="hero">`: dejarla fuera borraba el `<h1>` de tres páginas (y con él el gate
- * de paridad), o bien obligaba a triplicar el CSS de `.hero` dentro de `indice`, `carta` y
- * `blogIndice` — tres copias que se desincronizan en cuanto la entrega 3 rediseñe el hero.
+ * Por eso esta pieza sigue estando en TRES recetas y no solo en la de story. La tabla del encargo la
+ * listaba únicamente en `story`, pero `renderHome`/`renderMenu`/`renderBlogIndex` emiten su propio
+ * `<header class="hero">`: dejarla fuera borraba el `<h1>` de tres páginas, o bien obligaba a
+ * triplicar el CSS de `.hero` dentro de `indice`, `cartaCategorias` y `blogIndice`.
  *
- * ⚠️ Esto es el **traslado** de `renderHero`, sin foto de portada del perfil. `heroPortada`
- * (`profile.portada`) y `barraDatos` son la mitad B de la entrega 3.
+ * ⚠️ **En la receta de `story` la sustituye `heroPortada`** desde la entrega 3 (mitad B): ahí el
+ * titular viene con la foto de portada del perfil. Las dos piezas comparten `resolverCta` y el
+ * markup del titular, pero no el CSS — cada una es dueña del suyo (§3.5).
+ *
+ * ## DEUDA CONOCIDA, dicha acá para que no haya que redescubrirla
+ *
+ * Con ese cambio, **la rama del blok `hero` de esta pieza dejó de ser alcanzable desde los cuatro
+ * puntos de entrada**: las tres recetas que la nombran (`home`, `menu`, `blog`) pasan `story: null`,
+ * así que siempre cae al titular sintetizado. Lo que queda muerto en PROD es la foto del blok, el CTA
+ * y su CSS (`.hero-img`, `.cta`, `.cta-lede`), que hoy viajan en el `<style>` de esas tres páginas sin
+ * que nada los dibuje.
+ *
+ * **No se podó en esta entrega a propósito**, y el motivo es el mismo por el que la spec parte el
+ * trabajo en tres: podarla obliga a mudar los tests del CTA —incluido el del borde de `LIMITE_CTA`,
+ * que nació de una revisión— y eso mezcla dos decisiones en un diff cuyo objetivo es otro. Queda como
+ * el trabajo siguiente, con dos salidas posibles: podar la rama y su CSS, o darle un consumidor real
+ * (un juego de plantillas cuyo `story` use `hero`). Lo que no puede quedarse es como está.
  */
 export const hero: Pieza = {
   id: "hero",
@@ -69,55 +83,7 @@ export const hero: Pieza = {
   },
 };
 
-/**
- * **Cuántos caracteres entran en un botón.**
- *
- * Es un default de PRODUCCIÓN y por eso vive acá con su nombre y sus tests, no incrustado en un `if`:
- * a 28 caracteres el botón sigue cabiendo en una línea en un móvil de 360 px con el padding de
- * `.p-hero .cta`. Bajarlo o subirlo es una decisión de diseño que tiene que doler en un test.
- */
-const LIMITE_CTA = 28;
-
-interface CtaResuelto {
-  /** La frase larga, degradada a bajada. `""` si el CTA cabía en el botón. */
-  bajada: string;
-  /** Lo que dice el botón. `""` si no hay CTA. */
-  etiqueta: string;
-  /** Adónde lleva. `null` cuando no hay ningún destino y entonces no se dibuja el botón. */
-  href: string | null;
-}
-
-/**
- * El CTA del hero, resuelto **en el render y no en el contrato del brief**.
- *
- * El M2 escribe `cta_label` sin saber con qué ancho se va a dibujar, y a veces escribe una frase
- * ("Reserva tu mesa y disfruta de la auténtica cocina italiana"): dentro de un botón se desborda o se
- * parte en tres líneas. Arreglarlo en `kr-service` sería pedirle al research que decida tipografía.
- *
- * Cuando no cabe, **el texto no se pierde**: baja a bajada y el botón toma una etiqueta derivada del
- * dato que la página realmente tiene. "Llamar" en una ficha sin teléfono sería una promesa que la
- * página no puede cumplir, así que cada etiqueta va con el ancla donde ese dato vive.
- */
-function resolverCta(label: string | undefined, ctx: CtxPieza, hayFaq: boolean): CtaResuelto {
-  const vacio: CtaResuelto = { bajada: "", etiqueta: "", href: null };
-  if (!label) return vacio;
-
-  // Destino por defecto: contacto si hay perfil, si no las FAQs; si no hay ninguno, sin ancla.
-  const hrefBase = ctx.profile ? "#contacto" : hayFaq ? "#faq" : null;
-  if (label.length <= LIMITE_CTA) return { bajada: "", etiqueta: label, href: hrefBase };
-
-  const profile = ctx.profile;
-  if (profile) {
-    // Mismo orden de precedencia que `contacto`/JSON-LD: manda `locations`, después el campo suelto.
-    const tel = localesDe(profile)[0]?.telephone ?? profile.telephone;
-    if (tel) return { bajada: label, etiqueta: "Llamar", href: "#contacto" };
-    // "Cómo llegar" apunta a `#ubicaciones`, que existe exactamente cuando `hayUbicaciones` es cierto
-    // — el mismo dato decide la etiqueta y que el ancla esté dibujada. Nunca un enlace a la nada.
-    if (hayUbicaciones(profile)) return { bajada: label, etiqueta: "Cómo llegar", href: "#ubicaciones" };
-    return { bajada: label, etiqueta: "Contactar", href: "#contacto" };
-  }
-  // Sin perfil no hay dato del que derivar nada; queda el ancla a las FAQ, si las hay.
-  return hrefBase
-    ? { bajada: label, etiqueta: "Saber más", href: hrefBase }
-    : { bajada: label, etiqueta: "", href: null };
-}
+// ⚠️ `LIMITE_CTA` y `resolverCta` se mudaron a `lib.ts` en la entrega 3: los usan **dos** piezas
+// (ésta y `heroPortada`), y dos copias del umbral son dos umbrales que se separan el día que alguien
+// ajusta uno. La conducta no cambió — el código se movió tal cual y sus tests siguen entrando por
+// `hero.render`.

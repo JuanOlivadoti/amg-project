@@ -70,7 +70,19 @@ export function perfilCompleto(over: Partial<BusinessProfile> = {}): BusinessPro
 export function ctxCompleto(): CtxPieza {
   return ctxDe({
     story: pageToStory(validPage(), validBrief()),
-    profile: perfilCompleto(),
+    // ⚠️ Las fotos y las categorías se añaden **acá y no en `perfilCompleto`** a propósito: el perfil
+    // "completo" lo comparten tests que miden otras cosas (el pie, el nav, el `<head>`), y meterles
+    // fotos les cambiaría el conteo de `<img>` y el presupuesto sin que nadie lo pidiera. Lo que este
+    // contexto promete es otra cosa: que **todas** las piezas del catálogo tengan datos que dibujar,
+    // que es lo que deja recorrerlo en `aislamiento.test.ts` sin enumerar a mano qué necesita cada una.
+    profile: perfilCompleto({
+      portada: { src: "https://a.storyblok.com/f/1/1600x900/abc/portada.jpg", alt: "La sala" },
+      fotos: [
+        { src: "https://a.storyblok.com/f/1/800x600/g1/galeria-1.jpg" },
+        { src: "https://a.storyblok.com/f/1/800x600/g2/galeria-2.jpg", alt: "Horno de leña" },
+      ],
+      menu_categorias: [{ nombre: "Pizzas", foto: { src: "https://a.storyblok.com/f/1/600x400/c1/pizzas.jpg" } }],
+    }),
     activeSlug: "restaurante-italiano-madrid-centro",
     titulo: "Un titular sintetizado",
     bajada: "Una bajada sintetizada",

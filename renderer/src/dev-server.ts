@@ -296,6 +296,25 @@ cda.poner(
   story("Hamburguesas en Madrid Centro", "hamburguesas-madrid-centro", "Carne maderada y pan brioche"),
 );
 
+// Las dos landings **sin las fotos cargando**, que son la otra mitad del gate de la entrega 3 («el
+// sitio manejado en un navegador, con fotos y sin fotos»). Sin ellas solo se podía mirar el caso
+// bonito, que es justamente el que hoy no tiene ningún cliente real. Son **dos casos distintos**, y de
+// ahí que sean dos y no una:
+//
+//  - `bellanapoli.es` **sí** declara `portada`, pero su URL no existe → el `<img>` se emite (pasa la
+//    allowlist: el host es correcto) y **el navegador no lo puede pintar**. Es lo que se ve cuando la
+//    agencia borra un asset del space y nadie revisa las fichas.
+//  - `barpepe.es` no declara ninguna foto → `heroPortada` degrada al **hero tipográfico**, y
+//    `galeria`/`platosDestacados` no emiten nada. Es el estado de TODAS las fichas de producción hoy,
+//    así que es la versión del sitio que más se está sirviendo.
+cda.poner(
+  "pub-111",
+  "published",
+  "restaurante-italiano-madrid-centro",
+  story("Restaurante italiano en Madrid Centro", "restaurante-italiano-madrid-centro", "Masa de 48 horas"),
+);
+cda.poner("pub-333", "published", "tapas-la-latina", story("Tapas en La Latina", "tapas-la-latina", "De toda la vida"));
+
 // ---------------------------------------------------------------- app
 const cache = new CacheRender();
 const app = createApp({
@@ -337,7 +356,16 @@ serve(
     const base = `http://localhost:${info.port}`;
 
     console.log(`\n▶ Renderizador (DEV, mock de Storyblok) en ${base}\n`);
-    console.log("  Web de cliente:");
+    // Las landings van PRIMERO y con su etiqueta: son el documento donde viven las piezas con foto, y
+    // sin listarlas aquí había que leer el código para saber qué URL abrir. El checkpoint dice que la
+    // app se **maneja**, no que se lea.
+    console.log("  Landings — las tres caras de la §Política de imágenes:");
+    console.log(`    ${base}/hamburguesas-madrid-centro?_host=borcelle.es          ← FOTOS REALES del space`);
+    console.log(`    ${base}/tapas-la-latina?_host=barpepe.es                      ← SIN fotos: hero tipográfico`);
+    console.log(`    ${base}/restaurante-italiano-madrid-centro?_host=bellanapoli.es  ← foto declarada y ROTA`);
+    console.log("\n  Web de cliente:");
+    console.log(`    ${base}/?_host=borcelle.es           ← home y /menu con la carta por categorías`);
+    console.log(`    ${base}/menu?_host=borcelle.es`);
     console.log(`    ${base}/?_host=bellanapoli.es`);
     console.log(`    ${base}/menu?_host=bellanapoli.es`);
     console.log(`    ${base}/?_host=sushizen.es          ← otro cliente, otro space`);

@@ -37,19 +37,47 @@ export interface JuegoDePlantillas {
 /**
  * El único juego que existe. Ampliar a varios es escribir una receta, no CSS.
  *
- * ⚠️ Cada receta contiene **exactamente lo que su función emitía antes del refactor**, ni una pieza
- * más. La receta `BASE` que la spec escribe en §4 (`heroPortada`, `barraDatos`, `platosDestacados`,
- * `galeria`, `ctaFinal`) es la de la **entrega 3**: esas piezas todavía no existen, y ponerlas acá
- * borraría el hero del HTML y tiraría el gate de paridad.
+ * `hero` está en TRES de las cuatro y no solo en `story`: las páginas sintetizadas (`/`, `/menu`,
+ * `/blog`) no salen de una story, y su `<h1>` lo pone el titular del contexto. Ver el comentario de la
+ * pieza. En `story` lo **sustituye `heroPortada`**, que es el mismo titular más la foto de portada.
  *
- * `hero` está en las cuatro y no solo en `story`: las tres páginas sintetizadas emiten hoy su propio
- * `<header class="hero">` con el `<h1>` de la página. Ver el comentario de la pieza.
+ * ## Por qué cada receta es la que es (entrega 3, mitad B)
+ *
+ * `story` es **literal de la spec (§4)** y no se discute acá.
+ *
+ * Las otras tres las escribe esta entrega, porque la spec dice qué pieza usa cada página («la home
+ * sigue usando `platosDestacados`», «`/menu` usa `cartaCategorias`») pero no escribe las listas. El
+ * criterio con el que se completaron, en orden de peso:
+ *
+ * 1. **`barraDatos` va en las tres páginas de negocio** (`story`, `home`, `menu`). Es el arreglo del
+ *    punto 4 de la spec —«lo que la gente busca está enterrado en el pie: teléfono, horarios y
+ *    direcciones viven solo en `renderFooter`, y en un restaurante eso es el grueso de las visitas»—.
+ *    Un arreglo que solo llegara a la landing dejaría el problema intacto justo en la portada, que es
+ *    donde más gente entra. No se pisa con `locales`: ésta es el resumen accionable del primer local
+ *    arriba, aquélla el detalle de todos en el pie (spec, §2).
+ * 2. **`ctaFinal` cierra las mismas tres.** Una página que termina en una lista y no en una acción es
+ *    la queja 2 de la spec («el CTA no es un botón, es un párrafo rojo… no es una acción»). En `/menu`
+ *    es donde más se nota: alguien que acaba de leer la carta es exactamente quien va a llamar.
+ * 3. **`galeria` va en `story` y `home`, no en `/menu`.** En la carta ya hay fotos —de categoría y de
+ *    plato— y una segunda rejilla competiría con ellas por la misma atención sin añadir información.
+ * 4. **`platosDestacados` no va en `/menu`**: es un extracto cuyo único gancho es el enlace a `/menu`,
+ *    y dentro de `/menu` ese enlace no lleva a ninguna parte.
+ * 5. **`/blog` no se toca.** Un índice de artículos no es una superficie de conversión, y ampliarlo
+ *    habría sido diseño sin pedido que además ensancha el diff sin que nada lo pida.
+ *
+ * El orden de contenido de `home` es deliberadamente el mismo que el de `story` (identidad → datos
+ * accionables → qué se come → fotos → …→ acción), con `indice` en el hueco de `faq`: dos páginas del
+ * mismo sitio que se leyeran en distinto orden se sentirían de dos sitios distintos.
  */
 const BASE: JuegoDePlantillas = {
   id: "base",
-  story: { id: "base/story", contenido: ["hero", "seccionProsa", "faq"] },
-  home: { id: "base/home", contenido: ["hero", "indice"] },
-  menu: { id: "base/menu", contenido: ["hero", "carta"] },
+  story: {
+    id: "base/story",
+    // Literal de la spec, §4.
+    contenido: ["heroPortada", "barraDatos", "seccionProsa", "platosDestacados", "galeria", "faq", "ctaFinal"],
+  },
+  home: { id: "base/home", contenido: ["hero", "barraDatos", "platosDestacados", "galeria", "indice", "ctaFinal"] },
+  menu: { id: "base/menu", contenido: ["hero", "barraDatos", "cartaCategorias", "ctaFinal"] },
   blog: { id: "base/blog", contenido: ["hero", "blogIndice"] },
 };
 

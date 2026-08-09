@@ -11,6 +11,75 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-09 (2) — las seis piezas, y el gate que por fin toca jubilar
+
+El bloque E llegó a donde iba: las landings dejaron de ser siete secciones idénticas sin una foto.
+`heroPortada`, `barraDatos`, `platosDestacados`, `cartaCategorias`, `galeria` y `ctaFinal`, con las
+recetas de las tres páginas de negocio reescritas.
+
+La decisión de producto que más me convenció del implementador no fue una pieza sino **dónde ponerlas**:
+`barraDatos` y `ctaFinal` entran en la home y en `/menu`, no solo en la landing. El argumento es el
+correcto — el problema que la spec describe (teléfono y horarios enterrados en el pie) no se arregla si
+el arreglo llega solo a la landing, porque la portada es donde entra más gente.
+
+Y retiró `carta` del catálogo, que es el tipo de decisión que normalmente nadie toma: `cartaCategorias`
+cubre también el caso sin `menu_categorias`, así que la vieja se quedaba sin ninguna receta que la
+nombrara. Una pieza que no llega a ningún navegador con tests que pasan para siempre es exactamente el
+verde falso que este proyecto persigue.
+
+**Lo que el navegador dio y los tests no.** El caso que importa no es el bonito: es el de **sin fotos**,
+porque ninguna ficha de producción tiene una sola. Ahí el hero degrada a tipográfico —titular grande con
+su regla decorativa— y la página se ve sobria, no rota. Eso es lo que hoy se está sirviendo de verdad.
+Medí también el contraste en oscuro sobre el HTML servido en vez de estimarlo: precio 5.36:1,
+etiqueta 7.18:1. Y con la foto declarada pero **rota**, la portada colapsa a 26 px, porque el navegador
+trata una imagen sin píxeles como texto en línea e ignora `aspect-ratio`; no se arregla, porque
+detectarlo exige JavaScript en el proceso anónimo y eso es peor que el síntoma.
+
+**Arreglé una deuda que el implementador había anotado en vez de resolver**, y creo que es la corrección
+más útil del día: la foto de portada salía con `loading="lazy"`, y desde esta entrega esa foto **es el
+LCP de todas las landings**. Diferir el elemento que define la métrica retrasa justo lo que la métrica
+mide. Ahora va con `fetchpriority="high"` y es la única prioritaria del documento — marcar dos es no
+marcar ninguna.
+
+**La revisión encontró la puerta de atrás del error que ya habíamos pagado.** `--marca-secundario` salió
+de `--muted` en la mitad A porque se midió su 2.62:1 y habría pintado de oro ilegible todo el texto
+secundario. La mitad B le abrió una segunda puerta —`--decorativo`, para superficie decorativa— y la
+dejó **sin cerradura**: el revisor cambió una etiqueta a `color:var(--decorativo)` y no cayó ni un test.
+El mismo agujero, por otro sitio, dos entregas después. Ahora hay un detector que recorre el catálogo,
+con su control positivo, y la mutación lo tumba.
+
+**Y corrigió una afirmación mía sobre el gate.** Yo repetí del informe que "todo lo que cambia es
+adición". Es cierto en nueve casos y falso en uno: en `/menu` el precio pasó de ir tras el nombre a ir
+tras la descripción, porque el layout nuevo lo lleva a su columna derecha. No se pierde ninguna palabra
+y el orden nuevo se lee igual de bien, pero **es una decisión, y la diferencia entre "solo se añadió" y
+"además se reordenó una lista de producto" es justo la que un gate de paridad existe para no dejar pasar
+en silencio**. Queda declarada en vez de congelada sin nombre.
+
+Con eso, el gate de paridad de la entrega 2 llega al final de su vida útil: existía para demostrar que
+el **refactor** no cambiaba el sitio, y ese contrato se cumplió y se cerró. Siete de sus diez casos
+cambian ahora a propósito. Los tres que no —`landing-sin-perfil` y los dos de `/blog`— son la señal de
+control que dice que el cambio de titular por sí solo no mueve nada.
+
+**Y se jubiló, con permiso y con la medición hecha en la única ventana en que era posible.** El comando
+está en `permissions.deny` —fue una de las cuatro barreras que pusimos— así que lo pidió y lo autorizó
+Juan. Lo que importa del procedimiento no es el permiso sino el orden: **re-capturar deja el gate
+comparándose consigo mismo**, de modo que la prueba de que el cambio es benigno solo existe *antes* de
+ejecutarlo. Así que la saqué antes: un comparador de usar y tirar que lee cada fixtura de `git show
+HEAD:` y la enfrenta al disco por las cinco caras de `huellaDe`. Cero palabras, cero `href` y cero `id`
+perdidos en los diez; JSON-LD y traza idénticos en los diez.
+
+**Medirlo desmintió una frase mía y confirmó la otra.** La que cayó: yo venía diciendo "tres casos no
+cambian". El diff mostró las **diez** fixturas modificadas — el HTML de los tres de control también
+cambia, por CSS y clases nuevas; lo que no cambia son sus cinco rostros, que es lo único que el gate
+miraba. La frase era verdadera del gate y falsa del archivo, y las venía usando como si fueran la misma
+cosa. La que se confirmó es la del precio de `/menu`, que el comparador **no** puede ver porque cuenta
+multiconjuntos: la vi mirando el texto visible viejo contra el nuevo, `Margherita 12,50 € Tomate…` →
+`Margherita Tomate… 12,50 €`. Un contador de palabras nunca va a delatar un reorden; para eso hacen
+falta los ojos, y por eso vale la pena mirar aunque el semáforo esté en verde.
+
+Cierre del bloque E: **1268 tests** en el monorepo (venía de 1220), typecheck limpio y `verificar` en
+verde entero por primera vez desde que empezó la entrega 3.
+
 ## 2026-08-09 — la puerta de las imágenes, y un revisor que murió con una mutación puesta
 
 Antes de dibujar una sola foto, la puerta por la que van a pasar: allowlist de hosts, `referrerpolicy`

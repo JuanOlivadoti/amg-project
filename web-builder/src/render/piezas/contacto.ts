@@ -1,4 +1,4 @@
-import { envolver, esc, localesDe } from "../lib.js";
+import { envolver, esc, hrefTelefono, localesDe } from "../lib.js";
 import type { CtxPieza, Pieza } from "./tipos.js";
 
 /**
@@ -40,9 +40,7 @@ export const contacto: Pieza = {
     // "Contacto", aunque "Nuestros locales" sí tuviera el teléfono un poco más abajo. Y con ambos,
     // gana `locations`, igual que en el JSON-LD.
     const tel = localesDe(profile)[0]?.telephone ?? profile.telephone;
-    const telHtml = tel
-      ? `<p>Tel: <a href="tel:${esc(tel.replace(/\s/g, ""))}">${esc(tel)}</a></p>`
-      : "";
+    const telHtml = tel ? `<p>Tel: <a href="${hrefTelefono(tel)}">${esc(tel)}</a></p>` : "";
     return envolver(
       "p-contacto",
       `<section class="contacto" id="contacto">

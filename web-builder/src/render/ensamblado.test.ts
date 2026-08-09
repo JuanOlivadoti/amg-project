@@ -4,7 +4,7 @@ import { pageToStory } from "../handoff/adapter.js";
 import { perfilConManual, perfilLegacy, validBrief, validPage, validProfile } from "../fixtures.js";
 import type { BrandTheme, Story } from "../types.js";
 import { tokensDeMarca } from "./css.js";
-import { propiedadResuelta, tokenResuelto } from "./css-de-prueba.js";
+import { propiedadResuelta, reglasDe, tokenResuelto } from "./css-de-prueba.js";
 import { ctxDe, perfilCompleto } from "./ctx-de-prueba.js";
 import { renderBlogIndex, renderHome, renderMenu, renderStory } from "./html.js";
 import { CATALOGO, piezaPorId } from "./piezas/index.js";
@@ -45,8 +45,43 @@ test("el CSS de una pieza que devolvió '' NO aparece en el <style>", () => {
 
 test("una landing NO paga el CSS de las piezas de otras páginas (carta, índices)", () => {
   const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilCompleto()));
-  for (const ausente of [".p-carta", ".p-indice", ".p-blogIndice"]) {
+  for (const ausente of [".p-cartaCategorias", ".p-indice", ".p-blogIndice", ".p-hero "]) {
     assert.ok(!css.includes(ausente), `una landing no debería llevar ${ausente}`);
+  }
+});
+
+test("🔴 una landing sin fotos NO paga el CSS de la galería (el caso que la spec nombra)", () => {
+  // «Perfil sin `fotos` → `galeria` devuelve `""` y **su CSS no viaja**» (spec, §Casos borde). Es la
+  // mitad que el test de la pieza no puede probar: ahí se comprueba el `""`, acá que ese `""` se
+  // traduzca en cero bytes de `<style>`. Y es el caso NORMAL —una ficha recién dada de alta no tiene
+  // fotos—, así que si esto se rompiera lo pagaría cada cliente en cada visita.
+  const sinFotos = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilCompleto()));
+  assert.ok(!sinFotos.includes(".p-galeria"), "sin fotos, ni un byte de la galería");
+
+  const conFotos = estilo(
+    renderStory(
+      pageToStory(validPage(), validBrief()),
+      perfilCompleto({ fotos: [{ src: "https://a.storyblok.com/f/1/400x300/g/1.jpg" }] }),
+    ),
+  );
+  assert.match(conFotos, /\.p-galeria /, "y con fotos sí viaja: el test de arriba no puede pasar por vacío");
+  assert.ok(sinFotos.length < conFotos.length, "el documento sin la pieza tiene que pesar menos");
+});
+
+test("🔴 la landing usa `heroPortada` y las tres sintetizadas usan `hero` (el contrato de la entrega 3)", () => {
+  // La spec fija esto en su §4 y en la enmienda: `heroPortada` sustituye a `hero` **solo** en la
+  // receta de landing, porque las otras tres páginas no salen de una story y no tienen portada propia
+  // que dibujar. Sin este test, cambiar una receta por la otra no tumbaría nada evidente: las dos
+  // emiten un `<h1>` y el gate de paridad ya no cubre estas páginas.
+  const juego = juegoDe(null);
+  assert.ok(juego.story.contenido.includes("heroPortada"), "la landing lleva la portada con foto");
+  assert.ok(!juego.story.contenido.includes("hero"), "y no las dos: serían dos <h1> en la misma página");
+  for (const receta of [juego.home, juego.menu, juego.blog]) {
+    assert.ok(receta.contenido.includes("hero"), `"${receta.id}" perdió su titular`);
+    assert.ok(
+      !receta.contenido.includes("heroPortada"),
+      `"${receta.id}" es sintetizada: no tiene blok \`hero\` del que sacar una portada`,
+    );
   }
 });
 
@@ -308,8 +343,26 @@ test("🔴 los titulares NO declaran font-weight: por eso se precarga el archivo
   // `bold` (700) de la hoja del navegador porque ninguna pieza les pone `font-weight`. Si alguna se lo
   // pusiera, el archivo precargado dejaría de ser el que el navegador pide y el preload se volvería
   // una descarga de más: este test cae y obliga a revisar `PESO_TITULARES`.
+  //
+  // ⚠️ La lista recorre los titulares que EXISTEN en la página que se renderiza. `propiedadResuelta`
+  // devuelve `undefined` para un selector ausente, así que un selector viejo dejaría el caso en verde
+  // sin medir nada: al cambiar la receta de la landing (`hero` → `heroPortada`) los dos primeros
+  // habrían pasado por vacío. El `assert.ok` de abajo es lo que impide que vuelva a pasar.
   const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
-  for (const sel of [".p-hero .hero h1", ".p-seccionProsa section h2", ".p-faq .faq h2", ".card h3"]) {
+  const titulares = [
+    ".p-heroPortada .portada h1",
+    ".p-seccionProsa section h2",
+    ".p-platosDestacados .plato h3",
+    ".p-galeria .galeria h2",
+    ".p-faq .faq h2",
+    ".p-ctaFinal .cierre h2",
+    ".card h3",
+  ];
+  for (const sel of titulares) {
+    assert.ok(
+      reglasDe(css).some((r) => r.selector === sel),
+      `«${sel}» no está en el <style> de esta página: el caso no mide nada`,
+    );
     assert.equal(
       propiedadResuelta(css, sel, "font-weight"),
       undefined,

@@ -1,11 +1,16 @@
+import { barraDatos } from "./barra-datos.js";
 import { blogIndice } from "./blog-indice.js";
 import { cabecera } from "./cabecera.js";
-import { carta } from "./carta.js";
+import { cartaCategorias } from "./carta-categorias.js";
 import { contacto } from "./contacto.js";
+import { ctaFinal } from "./cta-final.js";
 import { faq } from "./faq.js";
+import { galeria } from "./galeria.js";
 import { hero } from "./hero.js";
+import { heroPortada } from "./hero-portada.js";
 import { indice } from "./indice.js";
 import { locales } from "./locales.js";
+import { platosDestacados } from "./platos-destacados.js";
 import { seccionProsa } from "./seccion-prosa.js";
 import type { Pieza } from "./tipos.js";
 
@@ -21,15 +26,28 @@ export type { CtxPieza, Pieza } from "./tipos.js";
  *
  * El orden elegido es el del documento: cabecera → contenido (en el orden en que suele aparecer) →
  * pie. Es el que hace legible el `<style>` de una página cualquiera.
+ *
+ * ⚠️ **`carta` ya no está**, y su retiro es una decisión de esta entrega, no una omisión.
+ * `cartaCategorias` cubre también el caso sin `menu_categorias` —la spec lo pide como test—, así que
+ * `carta` se quedaba sin ninguna receta que la nombrara. Una pieza que no nombra ninguna receta es
+ * código que nunca llega a un navegador con tests que pasan para siempre: exactamente la clase de
+ * verde que este proyecto persigue. Sus dos garantías vivas (el arreglo del doble borde al final de
+ * cada categoría y el escapado de nombre/precio/descripción) se mudaron con sus tests a
+ * `cartaCategorias`, que es donde hoy importan.
  */
 export const CATALOGO: readonly Pieza[] = [
   cabecera,
+  heroPortada,
   hero,
+  barraDatos,
   seccionProsa,
+  platosDestacados,
+  cartaCategorias,
+  galeria,
   faq,
   indice,
-  carta,
   blogIndice,
+  ctaFinal,
   contacto,
   locales,
 ];

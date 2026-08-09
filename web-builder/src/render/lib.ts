@@ -1,4 +1,5 @@
-import type { BusinessProfile, Imagen, Location, MenuItem, NavItem } from "../types.js";
+import type { BusinessProfile, Foto, Imagen, Location, MenuItem, NavItem } from "../types.js";
+import type { CtxPieza } from "./piezas/tipos.js";
 import { type PresupuestoImagenes, consumirCupo, fuentePermitida } from "./imagenes.js";
 
 /**
@@ -13,6 +14,34 @@ import { type PresupuestoImagenes, consumirCupo, fuentePermitida } from "./image
 export const SLUG_HOME = "home";
 export const SLUG_MENU = "menu";
 export const SLUG_BLOG = "blog";
+
+/*
+ * ────────────────────────────────────────────────────────────────────────────────────────────────
+ * Los topes de la FRONTERA 4 (el render).
+ *
+ * Las otras tres fronteras —el Zod de `contract.ts`, la allowlist `app.nap_publico` de la `0014` y
+ * `perfilValido` del renderizador— ya cortan estas listas. Éstas son las mismas cifras aplicadas
+ * donde se emite el HTML, y **no son redundancia**: en PROD el perfil llega de
+ * `clients.business_profile_publico` sin pasar por el Zod de este paquete, así que la última capa
+ * tiene que cortar por su cuenta. Es la misma razón por la que el render revalida cada `<img src>`.
+ *
+ * Que coincidan con los de `contract.ts` lo exige un test (`piezas/piezas-foto.test.ts`): cambiar uno
+ * sin el otro deja la ficha guardada entera y media carta servida, sin error y sin log.
+ * ────────────────────────────────────────────────────────────────────────────────────────────────
+ */
+export const MAX_FOTOS_GALERIA = 30;
+export const MAX_PRECIOS_RENDER = 3;
+export const MAX_CATEGORIAS_RENDER = 20;
+
+/**
+ * **Cuántos platos entran en el extracto de la home y de una landing.**
+ *
+ * Es un default de PRODUCCIÓN y vive acá con su nombre y su test, no incrustado en un `.slice(0, 6)`:
+ * gobierna cuántas fotos descarga el visitante de cualquier cliente antes de llegar a la carta. Seis
+ * es lo que la spec pide («hasta 6 ítems») y lo que llena dos filas de la rejilla en escritorio sin
+ * dejar una tercera fila coja.
+ */
+export const MAX_DESTACADOS = 6;
 
 export function esc(s: string): string {
   return s
@@ -68,17 +97,38 @@ export function hrefDeSlug(slug: string): string {
  *
  * `presupuesto` es un parámetro **obligatorio** a propósito: así una pieza nueva no puede olvidarlo
  * —falla el typecheck—, y no hay un default "sin límite" esperando a que alguien lo use sin querer.
+ *
+ * ## `prioridad: "alta"` — para la imagen que ES el LCP
+ *
+ * `loading="lazy"` es correcto para **casi** toda imagen y catastrófico para una: la que el navegador
+ * va a medir como **Largest Contentful Paint**. Diferir el elemento que define la métrica retrasa
+ * exactamente lo que la métrica mide — el navegador tiene que terminar el layout para saber que esa
+ * imagen está en el viewport, y solo entonces empieza a descargarla.
+ *
+ * Hasta la mitad B de la entrega 3 daba igual: `handoff/adapter.ts` nunca rellena `image` y ninguna
+ * ficha tenía `portada`, así que ninguna landing tenía una foto arriba. **Desde que `heroPortada`
+ * dibuja `profile.portada`, esa foto es el LCP de todas las landings de todos los clientes**, y sería
+ * la única regresión de rendimiento de una entrega cuyo objetivo es que el sitio se vea mejor.
+ *
+ * Con `alta`: sin `loading` (o sea `eager`, el default del navegador) y con `fetchpriority="high"`,
+ * que le dice al preload scanner que la pida antes que el resto de la cola. Lo mismo que ya hacía la
+ * cabecera con el logo a mano, ahora con nombre.
+ *
+ * **Es opt-in y solo `heroPortada` la usa.** Marcar dos imágenes como prioritarias es no marcar
+ * ninguna: compiten entre sí por el mismo ancho de banda, que es justo lo que se quiere evitar.
  */
 export function renderImagen(
   img: Imagen | undefined,
   clase: string,
   presupuesto: PresupuestoImagenes,
+  prioridad: "normal" | "alta" = "normal",
 ): string {
   if (!img || typeof img.src !== "string" || !fuentePermitida(img.src)) return "";
   if (!consumirCupo(presupuesto)) return "";
   const dim = dimsDeStoryblok(img.src);
   const wh = dim ? ` width="${dim.w}" height="${dim.h}"` : "";
-  return `<img class="${clase}" src="${esc(img.src)}" alt="${esc(img.alt ?? "")}" loading="lazy" decoding="async" referrerpolicy="no-referrer"${wh}>`;
+  const carga = prioridad === "alta" ? ` fetchpriority="high"` : ` loading="lazy"`;
+  return `<img class="${clase}" src="${esc(img.src)}" alt="${esc(img.alt ?? "")}"${carga} decoding="async" referrerpolicy="no-referrer"${wh}>`;
 }
 
 /**
@@ -187,4 +237,153 @@ export function tarjetaIndice(item: NavItem): string {
  */
 export function envolver(raiz: string, html: string): string {
   return `<div class="${raiz}">\n${html}\n</div>`;
+}
+
+/**
+ * El `href` de un teléfono: `tel:` sin espacios y escapado.
+ *
+ * Lo emiten **cuatro** piezas (`contacto`, `locales`, `barraDatos`, `ctaFinal`) y hasta la entrega 3
+ * eran dos copias del mismo `esc(tel.replace(…))`. Un escape duplicado es un escape que un día se
+ * arregla en un sitio: el teléfono viene de la base y en PROD no pasa por Zod.
+ */
+export function hrefTelefono(telefono: string): string {
+  return `tel:${esc(telefono.replace(/\s/g, ""))}`;
+}
+
+/** Un importe de la carta, ya normalizado. `etiqueta` vacía = el importe único de `price`. */
+export interface Precio {
+  etiqueta: string;
+  importe: string;
+}
+
+/**
+ * Los precios de un plato, con `precios` mandando sobre `price`.
+ *
+ * `precios` es el modelo nuevo (enmienda 2026-08-02: "Media" 9 € / "Ración" 15 €) y `price` el atajo
+ * del caso de un solo importe. Los dos son **texto libre** a propósito (`"12,50 €"`, `"s/ mercado"`):
+ * tipificarlos obligaría a decidir moneda y formato en el modelo, y lo único que hace falta es
+ * imprimir lo que escribió el cliente.
+ *
+ * **Frontera 4**: se revalida entrada por entrada aunque Zod ya lo haya hecho, porque en PROD el
+ * perfil llega de la base sin pasar por él. Y se descarta **la entrada, no el plato** —al revés que
+ * en la puerta del CLI, donde el archivo se rechaza entero—: acá el dato ya está guardado, y tirar un
+ * plato de la carta porque un precio vino a medias sería peor que mostrarlo con el importe que sí
+ * está. Si no queda ninguna entrada válida, cae a `price`, que es lo que la spec pide con esas
+ * palabras.
+ */
+export function preciosDe(item: MenuItem): Precio[] {
+  const brutos = Array.isArray(item.precios) ? item.precios : [];
+  const validos = brutos
+    .filter(
+      (p): p is Precio =>
+        typeof p?.etiqueta === "string" &&
+        p.etiqueta.length > 0 &&
+        typeof p.importe === "string" &&
+        p.importe.length > 0,
+    )
+    .slice(0, MAX_PRECIOS_RENDER);
+  if (validos.length > 0) return validos;
+  return typeof item.price === "string" && item.price.length > 0
+    ? [{ etiqueta: "", importe: item.price }]
+    : [];
+}
+
+/**
+ * La foto de un plato/categoría/galería tal como llega de la ficha, o `undefined`.
+ *
+ * `Foto` (del perfil) e `Imagen` (del blok de Storyblok) se distinguen en **un** campo: `alt` es
+ * opcional en la primera y obligatorio en la segunda — ver el comentario de `Foto` en `types.ts`.
+ * `renderImagen` habla `Imagen`, así que esto es la conversión, con el default `alt=""` (decorativa)
+ * en un solo sitio en vez de repetido en cinco piezas. **Nunca un `alt` derivado del nombre del
+ * negocio**: un texto alternativo inventado es peor que ninguno.
+ */
+export function comoImagen(foto: Foto | undefined): Imagen | undefined {
+  if (!foto || typeof foto.src !== "string") return undefined;
+  return { src: foto.src, alt: typeof foto.alt === "string" ? foto.alt : "" };
+}
+
+/**
+ * **Cuántos caracteres entran en un botón.**
+ *
+ * Es un default de PRODUCCIÓN y por eso vive acá con su nombre y sus tests, no incrustado en un `if`:
+ * a 28 caracteres el botón sigue cabiendo en una línea en un móvil de 360 px con el padding del CTA.
+ * Bajarlo o subirlo es una decisión de diseño que tiene que doler en un test.
+ */
+export const LIMITE_CTA = 28;
+
+export interface CtaResuelto {
+  /** La frase larga, degradada a bajada. `""` si el CTA cabía en el botón. */
+  bajada: string;
+  /** Lo que dice el botón. `""` si no hay CTA. */
+  etiqueta: string;
+  /** Adónde lleva. `null` cuando no hay ningún destino y entonces no se dibuja el botón. */
+  href: string | null;
+}
+
+/**
+ * El CTA del hero, resuelto **en el render y no en el contrato del brief**.
+ *
+ * El M2 escribe `cta_label` sin saber con qué ancho se va a dibujar, y a veces escribe una frase
+ * ("Reserva tu mesa y disfruta de la auténtica cocina italiana"): dentro de un botón se desborda o se
+ * parte en tres líneas. Arreglarlo en `kr-service` sería pedirle al research que decida tipografía.
+ *
+ * Cuando no cabe, **el texto no se pierde**: baja a bajada y el botón toma una etiqueta derivada del
+ * dato que la página realmente tiene. "Llamar" en una ficha sin teléfono sería una promesa que la
+ * página no puede cumplir, así que cada etiqueta va con el ancla donde ese dato vive.
+ *
+ * Vive en `lib.ts` desde la entrega 3 porque lo usan **dos** piezas: `hero` (las tres páginas
+ * sintetizadas) y `heroPortada` (la landing). Dos copias de `LIMITE_CTA` son dos umbrales que se
+ * separan el día que alguien ajusta uno.
+ */
+export function resolverCta(
+  label: string | undefined,
+  ctx: CtxPieza,
+  hayFaq: boolean,
+): CtaResuelto {
+  const vacio: CtaResuelto = { bajada: "", etiqueta: "", href: null };
+  if (!label) return vacio;
+
+  // Destino por defecto: contacto si hay perfil, si no las FAQs; si no hay ninguno, sin ancla.
+  const hrefBase = ctx.profile ? "#contacto" : hayFaq ? "#faq" : null;
+  if (label.length <= LIMITE_CTA) return { bajada: "", etiqueta: label, href: hrefBase };
+
+  const profile = ctx.profile;
+  if (profile) {
+    // Mismo orden de precedencia que `contacto`/JSON-LD: manda `locations`, después el campo suelto.
+    const tel = localesDe(profile)[0]?.telephone ?? profile.telephone;
+    if (tel) return { bajada: label, etiqueta: "Llamar", href: "#contacto" };
+    // "Cómo llegar" apunta a `#ubicaciones`, que existe exactamente cuando `hayUbicaciones` es cierto
+    // — el mismo dato decide la etiqueta y que el ancla esté dibujada. Nunca un enlace a la nada.
+    if (hayUbicaciones(profile)) return { bajada: label, etiqueta: "Cómo llegar", href: "#ubicaciones" };
+    return { bajada: label, etiqueta: "Contactar", href: "#contacto" };
+  }
+  // Sin perfil no hay dato del que derivar nada; queda el ancla a las FAQ, si las hay.
+  return hrefBase
+    ? { bajada: label, etiqueta: "Saber más", href: hrefBase }
+    : { bajada: label, etiqueta: "", href: null };
+}
+
+/**
+ * Los tres datos accionables del negocio, con la misma precedencia que el pie y el JSON-LD:
+ * **`locations[0]` manda** sobre los campos sueltos del perfil clásico.
+ *
+ * Lo comparten `barraDatos` (la franja de arriba) y `ctaFinal` (el cierre). Que salgan del mismo sitio
+ * es lo que impide que la franja diga un teléfono y el botón del cierre marque otro.
+ */
+export function datosAccionables(profile: BusinessProfile): {
+  telefono?: string;
+  horario?: string;
+  hayDireccion: boolean;
+} {
+  const principal = localesDe(profile)[0];
+  const telefono = principal?.telephone ?? profile.telephone;
+  const horario = principal?.opening_hours ?? profile.opening_hours;
+  // "Cómo llegar" exige una DIRECCIÓN, no `hayUbicaciones`: un perfil que solo trae horario dibuja el
+  // bloque `#ubicaciones` igual, y mandar ahí a alguien que quiere llegar es mandarlo a un horario.
+  const hayDireccion = Boolean(principal?.address ?? profile.address);
+  return {
+    ...(telefono ? { telefono } : {}),
+    ...(horario ? { horario } : {}),
+    hayDireccion,
+  };
 }

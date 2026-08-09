@@ -1,4 +1,4 @@
-import { envolver, esc, localesDe } from "../lib.js";
+import { envolver, esc, hrefTelefono, localesDe } from "../lib.js";
 import type { CtxPieza, Pieza } from "./tipos.js";
 
 /**
@@ -45,7 +45,7 @@ export const locales: Pieza = {
           ? `<p>${esc(l.address.streetAddress)}, ${l.address.postalCode ? `${esc(l.address.postalCode)} ` : ""}${esc(l.address.addressLocality)}</p>`
           : "";
         const tel = l.telephone
-          ? `<p>Tel: <a href="tel:${esc(l.telephone.replace(/\s/g, ""))}">${esc(l.telephone)}</a></p>`
+          ? `<p>Tel: <a href="${hrefTelefono(l.telephone)}">${esc(l.telephone)}</a></p>`
           : "";
         const horas = l.opening_hours ? `<p>${esc(l.opening_hours)}</p>` : "";
         return `  <div class="local">${titulo}${dir}${tel}${horas}</div>`;

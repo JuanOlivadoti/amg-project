@@ -27,9 +27,15 @@ export { parseBrief, SUPPORTED_SCHEMA_VERSIONS } from "contrato";
  */
 const MAX_LOCALES = 20;
 const MAX_ITEMS_CARTA = 200;
-const MAX_FOTOS = 30;
-const MAX_PRECIOS = 3;
-const MAX_CATEGORIAS = 20;
+/*
+ * Los tres que la **frontera 4 (el render) también aplica** se exportan, y ese es todo el motivo de
+ * que estén exportados y los otros dos no: `render/lib.ts` declara los suyos y un test exige que
+ * coincidan (`piezas/piezas-foto.test.ts`). "Tienen que coincidir en las cuatro fronteras" era prosa
+ * de este comentario; entre las dos fronteras que viven en este paquete, ahora es un test.
+ */
+export const MAX_FOTOS = 30;
+export const MAX_PRECIOS = 3;
+export const MAX_CATEGORIAS = 20;
 
 /** `#rgb` o `#rrggbb`. Lo único que puede entrar a la hoja de estilo. */
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;

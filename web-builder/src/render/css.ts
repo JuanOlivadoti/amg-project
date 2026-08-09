@@ -105,12 +105,16 @@ const CSS_TOKENS =
   // `#fffdf9` da **2.62:1** — falla AA —, y habría pintado de oro ilegible todo el texto secundario
   // de la web. Lo encontró la implementación midiendo, no la revisión.
   //
-  // Así que el gris vuelve a ser un neutro fijo, y `--marca-secundario` queda **emitido y sin
-  // consumidor** a la espera de la mitad B, donde hay superficie decorativa de verdad (la galería,
-  // la barra de datos, las categorías de la carta). Emitido y sin usar es honesto; usado donde
-  // rompe el contraste, no.
+  // Así que el gris vuelve a ser un neutro fijo, y `--marca-secundario` entra por **`--decorativo`**
+  // (mitad B): la regla bajo el titular de la portada, la de cada categoría de la carta y el filete
+  // de la franja de datos. Superficie decorativa, nunca texto largo — que era la condición.
+  //
+  // Que sea un token semántico y no `var(--marca-secundario)` en cada pieza es la misma decisión de
+  // dos capas que el resto: en oscuro hace falta una variante aclarada, y sin la capa de en medio
+  // habría que reescribir el token del cliente, o sea mentir sobre lo que dice su ficha.
   `\n:root{--fg:var(--marca-texto);--titulo:var(--marca-titulo);--muted:#6b7280;` +
   `--accent:var(--marca-primario);--acento-legible:var(--marca-primario);--sobre-acento:#fff;` +
+  `--decorativo:var(--marca-secundario);` +
   `--bg:var(--marca-fondo);--soft:var(--marca-fondo-alt);--font:var(--marca-fuente-texto);` +
   `--fuente-titulo:var(--marca-fuente-titulo);--fuente-decorativa:var(--marca-fuente-decorativa)}`;
 
@@ -135,7 +139,9 @@ const CSS_TOKENS =
  *  - los neutros (`--fg`, `--titulo`, `--bg`, `--soft`) **no** salen de la marca en oscuro. El manual
  *    describe la paleta CLARA, y aplicarla sobre negro es exactamente la ilegibilidad que el arreglo
  *    viene a cerrar. Lo cromático sí viaja: el acento, corregido;
- *  - `--acento-legible` se deriva con `color-mix` **en CSS** (enmienda 2026-08-02): en TypeScript
+ *  - `--acento-legible` y `--decorativo` se derivan con `color-mix` **en CSS** (enmienda 2026-08-02):
+ *    los dos son la misma decisión —un color de marca pensado para fondo claro, aclarado para que siga
+ *    leyéndose sobre negro— y por eso viven en el mismo `@supports`. En TypeScript
  *    sería una segunda copia de la paleta que se desincroniza. Va bajo `@supports` porque sin él, un
  *    navegador sin `color-mix` deja el token inválido en tiempo de cómputo y el precio **pierde su
  *    color de acento**: `color` es heredada, así que caería al `--fg` del cuerpo. No es "no se vería
@@ -156,7 +162,7 @@ footer{max-width:760px;margin:40px auto 48px;padding:24px 20px 0;border-top:1px 
 footer .mas{margin:12px 0 6px}
 footer .mas a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
 footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
-@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--titulo:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}footer{border-color:#222}.card{border-color:#2a2a2a}@supports(color:color-mix(in srgb,red,#fff)){:root{--acento-legible:color-mix(in srgb,var(--marca-primario) 60%,#fff)}}}
+@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--titulo:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}footer{border-color:#222}.card{border-color:#2a2a2a}@supports(color:color-mix(in srgb,red,#fff)){:root{--acento-legible:color-mix(in srgb,var(--marca-primario) 60%,#fff);--decorativo:color-mix(in srgb,var(--marca-secundario) 55%,#fff)}}}
 `;
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
