@@ -339,8 +339,8 @@ test("cartaCategorias: con `menu_categorias` dibuja un bloque por categoría, co
       }),
     }),
   );
-  assert.match(html, /<h2>Pizzas<\/h2>/);
-  assert.match(html, /<h2>Pastas<\/h2>/);
+  assert.match(html, /<h3>Pizzas<\/h3>/);
+  assert.match(html, /<h3>Pastas<\/h3>/);
   assert.match(html, /<img class="categoria-img"/, "la categoría con foto la dibuja");
   assert.equal(imgsDe(html).length, 1, "y la que no tiene foto NO deja un hueco esperando una imagen");
   assert.match(html, /Margherita/);
@@ -350,8 +350,8 @@ test("cartaCategorias: con `menu_categorias` dibuja un bloque por categoría, co
 test("cartaCategorias: SIN `menu_categorias` la carta se agrupa por `category`, como hasta ahora", () => {
   // «Un cliente que solo tiene la lista de platos conserva su carta entera» (enmienda 2026-08-02).
   const html = cartaCategorias.render(ctxDe({ profile: validProfile({ menu: CARTA }) }));
-  assert.match(html, /<h2>Pizzas<\/h2>/);
-  assert.match(html, /<h2>Pastas<\/h2>/);
+  assert.match(html, /<h3>Pizzas<\/h3>/);
+  assert.match(html, /<h3>Pastas<\/h3>/);
   assert.equal(imgsDe(html).length, 0, "sin categorías declaradas no hay foto de categoría que dibujar");
   assert.ok(html.indexOf("Margherita") < html.indexOf("Cacio e pepe"), "y el orden es el de aparición");
 });
@@ -361,7 +361,11 @@ test("cartaCategorias: los platos SIN categoría van juntos al final, sin encabe
     ctxDe({ profile: validProfile({ menu: [{ name: "Suelto" }, { category: "Pizzas", name: "Margherita" }] }) }),
   );
   assert.ok(html.indexOf("Margherita") < html.indexOf("Suelto"));
-  assert.equal((html.match(/<h2>/g) ?? []).length, 1, "el grupo sin categoría no puede tener título");
+  // Se cuentan los rótulos de CATEGORÍA (h3), no todos los encabezados: la sección tiene su propio
+  // h2 desde el rediseño, y contar los dos niveles juntos medía otra cosa. La garantía es la misma:
+  // el grupo sin categoría no estrena un título inventado.
+  assert.equal((html.match(/<h3>/g) ?? []).length, 1, "el grupo sin categoría no puede tener título");
+  assert.equal((html.match(/<h2>/g) ?? []).length, 1, "y la sección lleva exactamente un encabezado");
 });
 
 test("🔴 cartaCategorias: una categoría declarada SIN platos no se dibuja (sería un hueco con foto)", () => {
@@ -373,7 +377,7 @@ test("🔴 cartaCategorias: una categoría declarada SIN platos no se dibuja (se
       }),
     }),
   );
-  assert.match(html, /<h2>Pizzas<\/h2>/);
+  assert.match(html, /<h3>Pizzas<\/h3>/);
   assert.ok(!html.includes("Postres"), "una categoría con foto y sin carta es un hueco");
   assert.equal(imgsDe(html).length, 0, "y su foto tampoco puede colarse");
 });
@@ -387,7 +391,7 @@ test("cartaCategorias: un plato cuya `category` no está declarada se dibuja igu
       }),
     }),
   );
-  assert.match(html, /<h2>Bebidas<\/h2>/, "la carta del cliente no se pierde por no haber declarado la categoría");
+  assert.match(html, /<h3>Bebidas<\/h3>/, "la carta del cliente no se pierde por no haber declarado la categoría");
   assert.match(html, /Agua/);
   assert.equal(imgsDe(html).length, 1, "solo la declarada tiene foto");
 });
@@ -468,7 +472,7 @@ test("🔴 cartaCategorias: una foto de categoría de host prohibido no sale, y 
   );
   assert.equal(imgsDe(html).length, 0);
   assert.ok(!html.includes("evil"));
-  assert.match(html, /<h2>Pizzas<\/h2>/);
+  assert.match(html, /<h3>Pizzas<\/h3>/);
   assert.match(html, /Margherita/);
 });
 

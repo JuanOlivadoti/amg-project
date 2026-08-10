@@ -125,7 +125,10 @@ const CSS_TOKENS =
   // Un solo token para las dos cosas es el error que produce webs "modernas" con renglones de
   // periódico, y es también el motivo por el que la cabecera y el contenido no alineaban: la barra
   // iba a 1100 y `main` a 760 porque cada uno resolvía su problema por su cuenta.
-  `--ancho-pagina:1320px;--ancho-lectura:760px}`;
+  `--ancho-pagina:1320px;--ancho-lectura:760px;` +
+  // El aire vertical de una sección. En la referencia son 120 px fijos arriba y abajo; acá crece con
+  // la pantalla para que en un móvil no se coma media pantalla en blanco entre sección y sección.
+  `--pad-seccion:clamp(56px,8vw,120px)}`;
 
 /**
  * El CSS que viaja SIEMPRE: el reset, el contenedor del documento y las **primitivas compartidas**.
@@ -163,6 +166,23 @@ body{margin:0;font:16px/1.6 var(--font);color:var(--fg);background:var(--bg)}
 img{max-width:100%;height:auto}
 main{max-width:var(--ancho-pagina);margin:0 auto;padding:0 20px}
 .pending{color:var(--muted);font-style:italic}
+/* ── El patrón de SECCIÓN, compartido por todas las piezas de contenido (§3.6: sube al base lo que
+   necesitan dos o más). Son tres primitivas y nada más:
+
+     .seccion     el aire vertical, y '.alt' para el fondo alterno que da ritmo a la página
+     .banda       el ancho de página con su respiro lateral
+     .encabezado  antetítulo en color de marca + título grande, centrado
+
+   ⚠️ El h2 del encabezado NO declara font-weight, y es la misma razón que en los titulares de las
+   piezas: se precarga un solo archivo de la fuente de titulares, el de peso 700, que es el que un
+   h2 hereda del navegador. El antetítulo sí lo declara porque es un párrafo —heredaría 400— y 500 es
+   un peso que la familia sirve de verdad. */
+.seccion{padding:var(--pad-seccion) 0}
+.seccion.alt{background:var(--soft)}
+.banda{max-width:var(--ancho-pagina);margin:0 auto;padding:0 20px}
+.encabezado{text-align:center;max-width:var(--ancho-lectura);margin:0 auto clamp(32px,4vw,56px)}
+.encabezado .antetitulo{font-family:var(--fuente-titulo);font-size:1.15rem;font-weight:500;color:var(--acento-legible);text-transform:uppercase;letter-spacing:1px;margin:0 0 10px}
+.encabezado h2{font-family:var(--fuente-titulo);font-size:clamp(1.9rem,1.1rem + 2.4vw,3.44rem);line-height:1.2;margin:0;color:var(--titulo)}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:8px}
 .card{display:block;text-decoration:none;color:var(--fg);border:1px solid #e7e5e0;border-radius:12px;padding:20px;transition:border-color .15s,transform .15s}
 .card:hover{border-color:var(--acento-legible);transform:translateY(-2px)}

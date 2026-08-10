@@ -39,23 +39,44 @@ import type { CtxPieza, Pieza } from "./tipos.js";
 export const cartaCategorias: Pieza = {
   id: "cartaCategorias",
   raiz: "p-cartaCategorias",
-  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
-   ancho de lectura. Se quita cuando la seccion se rediseñe. */
-.p-cartaCategorias{max-width:var(--ancho-lectura);margin:0 auto}
-.p-cartaCategorias .categoria{padding:24px 0;border-bottom:1px solid #f0f0f0}
-/* La foto de categoría es la que da aire a la carta: ancho completo y proporción apaisada fija, para
-   que dos categorías con fotos de distinto tamaño no dejen la página a saltos. */
-.p-cartaCategorias .categoria-img{width:100%;aspect-ratio:3/1;object-fit:cover;border-radius:12px;margin:0 0 14px}
-.p-cartaCategorias .categoria h2{font-size:1.45rem;margin:0 0 4px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-/* Misma regla decorativa que el titular tipográfico de la portada, y el mismo motivo: es el segundo
-   color de marca en una superficie que NO es texto largo. */
-.p-cartaCategorias .categoria h2::after{content:"";display:block;width:48px;height:3px;margin:8px 0 14px;background:var(--decorativo)}
-.p-cartaCategorias .platos{list-style:none;margin:0;padding:0}
-.p-cartaCategorias .platos li{padding:12px 0;border-bottom:1px solid #f5f4f2}
+  css: `.p-cartaCategorias .categoria{margin:0 0 clamp(40px,5vw,72px)}
+.p-cartaCategorias .categoria:last-child{margin-bottom:0}
+/* ⚠️ **La foto de categoría es un \`<img>\` detrás del texto, NO un \`background-image\` inline.**
+   La referencia lo hace con un background-image inline, y esa forma se salta la política de imágenes
+   entera: no pasaría por la allowlist de hosts, no llevaría referrerpolicy, no gastaría presupuesto y
+   sería una URL de la ficha entrando cruda en un atributo style. Con una etiqueta de imagen
+   posicionada se conserva todo eso y el resultado visual es el mismo.
+   (El ejemplo va sin escribir la función CSS literal a propósito: el test de "cero terceros" busca
+   esa función en el texto del <style> y no distingue un comentario de una regla.) */
+.p-cartaCategorias .cab{position:relative;overflow:hidden;border-radius:14px;min-height:180px;display:flex;flex-direction:column;justify-content:flex-end;padding:24px;background:var(--soft)}
+.p-cartaCategorias .categoria-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+/* El velo es lo que hace legible el rótulo sobre CUALQUIER foto: sin él, un nombre claro sobre una
+   foto clara desaparece, y la foto la elige el cliente. */
+.p-cartaCategorias .cab::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,.15));z-index:1}
+.p-cartaCategorias .cab h3,.p-cartaCategorias .cab .conteo{position:relative;z-index:2}
+.p-cartaCategorias .cab h3{font-size:clamp(1.4rem,1rem + 1.1vw,1.9rem);margin:0;letter-spacing:.02em;text-transform:uppercase;color:var(--sobre-acento);font-family:var(--fuente-titulo)}
+.p-cartaCategorias .cab .conteo{margin:6px 0 0;font-size:.95rem;color:var(--sobre-acento);opacity:.85}
+/* Sin foto la cabecera no finge una: se queda en una banda sobria con el filete de marca, y el rótulo
+   vuelve al color del título. Es el estado de toda ficha que aún no ha subido fotos. */
+.p-cartaCategorias .cab.sin-img{min-height:0;padding:0 0 14px;background:none;border-bottom:2px solid var(--decorativo);border-radius:0}
+.p-cartaCategorias .cab.sin-img::after{display:none}
+.p-cartaCategorias .cab.sin-img h3{color:var(--titulo)}
+.p-cartaCategorias .cab.sin-img .conteo{color:var(--muted)}
+/* Dos columnas de platos en escritorio, como la carta de la referencia. \`grid\` y no \`columns\`: con
+   columnas CSS una fila se puede partir por la mitad entre dos columnas. */
+.p-cartaCategorias .platos{list-style:none;margin:24px 0 0;padding:0;display:grid;gap:0 48px}
+@media(min-width:992px){.p-cartaCategorias .platos{grid-template-columns:1fr 1fr}}
+.p-cartaCategorias .platos li{padding:16px 0;border-bottom:1px solid #f5f4f2}
 /* El DOBLE BORDE del final de cada categoría: la última fila dibujaba su separador y el contenedor
    dibujaba el suyo justo debajo, dos líneas pegadas. Gana el del contenedor, que es el que separa una
    categoría de la siguiente; el de la fila solo separa platos ENTRE sí y después de la última no
-   separa nada. */
+   separa nada.
+   ⚠️ Con la rejilla de dos columnas esto solo limpia el último del DOM, que es el de abajo a la
+   derecha cuando el total es par y el de abajo a la izquierda cuando es impar. El otro de la última
+   fila conserva su borde. Se probó ':nth-last-child(-n+2)' y **es peor**: con un número impar de
+   platos le quita el borde al penúltimo, que está a mitad de la carta. Sin ':has()' sobre el número
+   de hijos no hay una regla que acierte en los dos casos, y la asimetría de una línea es menos mala
+   que un hueco en medio. */
 .p-cartaCategorias .platos li:last-child{border-bottom:0}
 .p-cartaCategorias .fila{display:flex;gap:14px;align-items:flex-start}
 /* La miniatura no crece ni se encoge (\`flex:0 0 auto\`): sin eso, una descripción larga la aplasta y
@@ -74,7 +95,12 @@ export const cartaCategorias: Pieza = {
 .p-cartaCategorias .precio .etiqueta{color:var(--muted);font-weight:400;font-size:.8rem;margin-right:6px}
 `,
 
-  cssOscuro: `@media(prefers-color-scheme:dark){.p-cartaCategorias .categoria{border-color:#1e1e1e}.p-cartaCategorias .platos li{border-color:#191919}}
+  /* El velo se redeclara en oscuro **con el mismo valor**, y no es ruido: el detector exige que todo
+     color literal tenga contrapartida, y la respuesta acá es que NO cambia. Va sobre una foto, no
+     sobre el fondo de la página, así que el tema del documento no lo afecta — pero eso hay que
+     decirlo en el sitio donde se comprueba, no suponerlo. */
+  cssOscuro: `@media(prefers-color-scheme:dark){.p-cartaCategorias .categoria{border-color:#1e1e1e}.p-cartaCategorias .platos li{border-color:#191919}
+.p-cartaCategorias .cab::after{background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,.15))}}
 `,
 
   render(ctx: CtxPieza): string {
@@ -85,7 +111,16 @@ export const cartaCategorias: Pieza = {
     const bloques = gruposDe(profile)
       .map((g) => unaCategoria(g, ctx.presupuestoImagenes))
       .join("\n");
-    return envolver("p-cartaCategorias", bloques);
+    // El antetítulo y el título son ETIQUETAS DE PLANTILLA, no contenido del negocio — igual que
+    // "Inicio" o "Contacto" en el nav. Lo que no se inventa es el dato del cliente; cómo se rotula
+    // una sección es del diseño.
+    return envolver(
+      "p-cartaCategorias",
+      `<section class="seccion"><div class="banda">
+  <div class="encabezado"><p class="antetitulo">Nuestra carta</p><h2>Lo que se cocina hoy</h2></div>
+${bloques}
+</div></section>`,
+    );
   },
 };
 
@@ -141,9 +176,17 @@ function gruposDe(profile: BusinessProfile): GrupoCarta[] {
 function unaCategoria(g: GrupoCarta, presupuesto: PresupuestoImagenes): string {
   const foto = renderImagen(comoImagen(g.foto), "categoria-img", presupuesto);
   const filas = g.items.map((it) => unPlato(it, presupuesto)).join("\n");
+  // El conteo es un dato REAL: sale de los platos que tiene el grupo, no de un campo que alguien
+  // rellene a mano y se desincronice. La referencia rotula "18 Items" con un número escrito en su
+  // fixture; acá no puede mentir.
+  const n = g.items.length;
+  const conteo = `<p class="conteo">${n} ${n === 1 ? "plato" : "platos"}</p>`;
+  // Sin nombre de categoría no hay cabecera que rotular: los platos sueltos van directos a la lista.
+  const cabecera = g.categoria
+    ? `<header class="cab ${foto ? "con-img" : "sin-img"}">${foto}<h3>${esc(g.categoria)}</h3>${conteo}</header>`
+    : "";
   return `<section class="categoria">
-  ${foto}
-  ${g.categoria ? `<h2>${esc(g.categoria)}</h2>` : ""}
+  ${cabecera}
   <ul class="platos">
 ${filas}
   </ul>
