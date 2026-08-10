@@ -22,6 +22,7 @@ El código vive en [`../kr-service/`](../kr-service/) (Módulo 2) y [`../web-bui
 | --- | --- |
 | [decisiones-arquitectura.md](decisiones-arquitectura.md) | **El registro de decisiones: ADR-01..24 + OBS-01..04.** El *porqué* de cada elección, con las alternativas descartadas y las decisiones que hubo que corregir. El resto de la documentación lo referencia constantemente. 🔴 **OBS-04 sigue abierta**: quién edita la web no lo gobierna nuestro RBAC |
 | [guia-dataforseo.md](guia-dataforseo.md) | Alta y uso de DataForSEO, de sandbox a producción. Cada corrida en producción se paga |
+| [gastos.md](gastos.md) | **Lo que el proyecto costó en dinero real y lo que va a seguir costando.** Los desembolsos hasta hoy, el consumo medido de las APIs de pago por uso, el run-rate mensual y dónde se rompe cada plan barato al escalar |
 
 ## Cómo referenciar entre documentos
 
