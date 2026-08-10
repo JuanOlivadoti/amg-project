@@ -59,6 +59,12 @@ los tres campos nuevos desaparecían en silencio. Ese orden no lo produce nadie 
 aplica las pendientes ordenadas— así que el test se reescribió para modelar el orden real. La lección
 es general y quedó escrita en el propio test.
 
+**Desplegadas el mismo día.** `migrate:deploy` aplicó la `0013` y la `0020` contra Supabase: dos
+migraciones pendientes, dos aplicadas, y con eso **producción va al día por primera vez desde el
+2026-08-08**. Las dos corrieron contra una base que ya tenía la `0014`-`0019` —el escenario "al final"
+que modela el test de orden de la `0013`— y la `0020` después de la `0014`, que era su única
+dependencia real.
+
 **Verificación por mutación de la frontera 2:** quitarle `autor` a la allowlist tumbó exactamente dos
 tests —el del campo y el del recorrido encadenado— y ninguno más.
 

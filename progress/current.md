@@ -115,7 +115,6 @@ las **5-7**, las pantallas, que son del agente `front`.
 | Qué | Por qué él | Bloquea |
 | --- | --- | --- |
 | **Cuáles diferencias de Railway son intencionales** (3 de las 4) | Solo él ve los valores | Sí, para dejar `auditar:railway` en verde |
-| **Aplicar la `0013` y la `0020`** en producción | Es un despliegue | Sí, para que los tres campos nuevos existan en prod |
 | **Una foto distinta por elemento** en carta (`menu[].foto`) y ubicaciones | Son los assets | No; hoy repiten una imagen por destino |
 | **Si `brand.tema: "auto"` se completa** o se queda como deuda | Es de producto | No |
 
