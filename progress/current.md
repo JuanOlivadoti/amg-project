@@ -9,8 +9,9 @@
 **Sesión:** 2026-08-09
 **En curso:** **bloque J, pieza 3 — el módulo de Ideas**. El **bloque E está cerrado y pusheado**
 (`472b33e`, con el gate de paridad jubilado); su historia vive en [`history.md`](history.md).
-**Estado:** etapas **1 y 2 commiteadas** (`afe1725`); la **3 (endpoints) escrita y revisada**, cerrando
-los tres menores de la revisión. Falta la **4** (seed) y las **5–7** (pantallas, del agente `front`).
+**Estado:** etapas **1 y 2** (`afe1725`) y **3** (`73fcd35`) commiteadas y revisadas. Falta la **4**
+(seed) y las **5–7** (pantallas, del agente `front`). Aparte, las **fotos de `template1`** enchufadas
+y verificadas en el navegador (`0da56cd`). **1349 tests**, `verificar` en verde.
 
 ## 🟡 Ideas — etapas 1 y 2 (`db/`)
 
@@ -127,26 +128,33 @@ queda como defensa en profundidad declarada, y está bien declarada.
 
 | Qué | Por qué él | Bloquea |
 | --- | --- | --- |
-| **Las URLs de las fotos nuevas** (dos de categorías + la portada limpia) | Están en su Storyblok | Sí: sin ellas no se pueden enchufar en el `dev-server` ni verlas en un navegador. El buzón local sigue con los archivos viejos |
-| **Cuáles diferencias de Railway son intencionales** | Solo él ve los valores | Sí, para dejar `auditar:railway` en verde. Ver abajo |
-| **Una foto distinta por elemento** en galería, carta y ubicaciones | Son los assets | Nada técnico. Con una sola por destino la galería sale con seis copias de la misma imagen: sirve para desarrollo, no para enseñárselo a un cliente |
+| **Cuáles diferencias de Railway son intencionales** (3 de las 4) | Solo él ve los valores | Sí, para dejar `auditar:railway` en verde. Ver abajo |
+| **Una foto distinta por elemento** en carta (`menu[].foto`) y ubicaciones | Son los assets | Nada técnico. Galería y categorías **ya están** (2026-08-09); las que quedan repiten una imagen por destino |
 | **Decidir si las fotos son reales o de stock** | Es del negocio | Nada técnico, pero si son de stock hay que decirlo en el seed — misma regla que los precios: antes ausente que inventado |
+| **El tope de tamaño del logo** | Es una decisión de diseño (¿qué alto?) | No. Deuda preexistente, sin efecto en producción porque ninguna ficha real tiene logo. Hoy sale a **250×250** con `max-height: none`, el 64 % del ancho en móvil |
 
 **Railway, al 2026-08-09.** Lo que Juan preguntaba está **resuelto**: quitó las dos variables y
 `amg-project` ya no las lista. Lo que queda es otra cosa y el auditor sigue en ✖ por ello:
 
 ```text
-amg-project        NPM_CONFIG_PRODUCTION sin declarar en el inventario (la pone la plataforma)
+amg-project        NPM_CONFIG_PRODUCTION sin declarar en el inventario  ← NO necesita a Juan
 amg-orchestrator   PIPELINE_MODO · WEB_PUBLISH_MODE · STORYBLOK_DRY_RUN DIFIEREN de la fuente
 amg-renderer       STORYBLOK_SPACE_ID DIFIERE de la fuente
 ```
 
-**«Difieren» no es «faltan»:** el valor desplegado no coincide con el de la fuente, y en el orquestador
-son justo las tres que deciden si el pipeline gasta dinero — así que la diferencia probablemente sea
-deliberada. Pero si lo es, **el auditor tiene que saberlo**: hoy está en rojo permanente, que es el
-estado en el que una herramienta deja de avisar. El propio script lo dice de sí mismo. Comparar los
-valores exige leer `docs/private/`, así que la decisión es de Juan; declararlas en el inventario, con
-su motivo al lado, es media hora.
+**La primera no necesita a nadie: es un desajuste entre dos documentos nuestros.** El runbook ya la
+declara esperada y puesta a mano
+([`14-runbook-despliegue.md:248`](../docs/proyecto/14-runbook-despliegue.md#L248): *"`NPM_CONFIG_PRODUCTION` | `false` — a mano | sí"*),
+y el inventario de `scripts/auditar-railway.mts` no la conoce. Arreglarlo **no es añadirla a
+`SEGUN_MODO`**: no es una variable nuestra cuya ausencia declare un modo, la pone la plataforma. Pide
+una tercera categoría en el inventario ("de plataforma, ni obligatoria ni declarativa") con su
+justificación y su test — pequeño, pero con diseño propio, así que no se hace de paso.
+
+**Las otras tres sí son de Juan. «Difieren» no es «faltan»:** el valor desplegado no coincide con el de
+la fuente, y en el orquestador son justo las tres que deciden si el pipeline gasta dinero — así que la
+diferencia probablemente sea deliberada. Pero si lo es, **el auditor tiene que saberlo**: hoy está en
+rojo permanente, que es el estado en el que una herramienta deja de avisar. El propio script lo dice de
+sí mismo. Comparar los valores exige leer `docs/private/`, así que la decisión es suya.
 
 **Abiertos y sin bloquear a nadie:** **C-1** (en dry-run el ensayo no se puede observar) y **C-2** (la
 marca de C0 y el workflow real pueden discrepar; el barrido no cancela el workflow).

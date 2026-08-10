@@ -718,6 +718,24 @@ primero — su gate pide *"el sitio manejado en un navegador … con fotos y sin
 equivocada tuvo coste: dejó la mitad B parada esperando un asset que no le hacía falta para escribirse.
 Desde el 2026-08-08 las fotos están en Storyblok y `borcelle.es` (dev-server) las sirve.
 
+**Ampliadas el 2026-08-09** (`0da56cd`): portada **sin la marca incrustada** —salía dos veces, en la
+cabecera y quemada en el JPG—, **seis** fotos de galería y **una por categoría** donde había una sola
+repetida. Tres cosas que solo aparecen con fotos distintas, y la primera es la que importa:
+
+1. ⚠️ **Reemplazar un asset en Storyblok CAMBIA la URL.** La portada vieja devuelve `403 AccessDenied`
+   (verificado con `curl`). Sustituir una foto **no es editar un archivo**: es un asset nuevo, y toda
+   ficha que guarde la URL anterior queda con un `<img>` roto **sin que nada avise** — la portada
+   colapsa a 26 px y no hay error en ningún log. Al cambiar la foto de un cliente real, se actualiza su
+   ficha en la misma operación.
+2. La rejilla de galería es de 4 columnas: seis fotos quedan 4+2 en escritorio (en móvil son 2 y no se
+   nota). Con 4 —múltiplo— no se veía.
+3. La cabecera de categoría es más alta que el contenido cuando la categoría tiene un solo plato.
+
+**Y una deuda preexistente que salió de medir en vez de leer:** el logo se dibuja a **250×250, su
+tamaño natural, `max-height: none`** — sin tope, y en móvil ocupa el **64 %** del ancho. El README de
+`template1` afirmaba "unos 40 px de alto". No se manifiesta en producción porque **ninguna ficha real
+tiene logo**; el arreglo es un tope en el CSS de `cabecera` con su test.
+
 #### ✅ Mitad B, parte 1 — la §Política de imágenes (2026-08-09)
 
 La puerta, puesta **antes** de dibujar una sola foto. Allowlist de hosts **en el código**
