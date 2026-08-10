@@ -952,15 +952,30 @@ curl -X PUT https://<tu-orquestador>.up.railway.app/api/inngest
 `clients.domain`. Así que el DNS y el certificado deciden **cómo llega** la petición, no qué se
 renderiza — y eso permite verificar el render antes de tocar ningún DNS.
 
-### 0. Verificar sin DNS (gratis, y conviene hacerlo siempre primero)
+### 0. ⚠️ Verificar con un `Host` falso NO funciona, y el fallo es silencioso
+
+La idea evidente es ejercitar el render sin tocar DNS:
 
 ```bash
-curl -sI -H "Host: elcliente.es" https://amg-renderer-production.up.railway.app/
+curl -sI -H "Host: elcliente.es" https://amg-renderer-production.up.railway.app/   # ❌ no prueba nada
 ```
 
-Ejercita el camino entero —`normalizarHost` → `clients.domain` → la CDA de Storyblok → el render—
-contra la base real. Lo único que no prueba es el TLS y el DNS, que es justamente lo que aún no
-existe. Si esto no da 200, el DNS no lo va a arreglar.
+**No llega al renderizador.** El edge de Railway enruta por `Host`: si ese host no es un custom
+domain **suyo**, cae en su propio fallback y el proceso nunca ve la petición. Medido el 2026-08-10.
+
+Y el fallo es de los peores, porque devuelve **404 igual** que un dominio no dado de alta: alguien
+concluiría "el cliente no está en `clients`" cuando la petición ni salió del borde. Se distinguen por
+las cabeceras:
+
+| | 404 del **edge de Railway** | 404 del **renderizador** |
+| --- | --- | --- |
+| `content-type` | `application/json` | `text/plain; charset=UTF-8` |
+| `cache-control` | `max-age=5` | `public, max-age=30` |
+| Seña | `x-railway-fallback: true` | cuerpo `Not Found` |
+
+**Lo que sí funciona** es cualquier host que Railway ya conozca — y con el wildcard de abajo, eso
+incluye todo `*.bigballs.es`. O sea: la forma de probar un sitio sin tocar el DNS del cliente es
+**darlo de alta bajo el subdominio de demo**, que es justamente el flujo de esta sección.
 
 ### 1. El wildcard de demo, UNA sola vez
 
@@ -971,7 +986,12 @@ alta uno nuevo deja de tocar Railway: es una fila en `clients` y nada más.
    dentro de un servicio, y puesto en el equivocado el certificado se emite para el proceso que no
    es. Ya pasó una vez) → *Networking* → *Custom Domain* → `*.bigballs.es`. Copiá el destino CNAME.
 2. **Hostinger → DNS de `bigballs.es`** → CNAME, nombre `*`, destino el de Railway, TTL 300 mientras
-   probás. Si Railway pide además un TXT de verificación, cargalo.
+   probás.
+
+   ⚠️ **Un certificado WILDCARD no se valida por HTTP: Let's Encrypt exige el reto DNS-01.** Por eso
+   Railway pide además un `_acme-challenge.bigballs.es` (en nuestro caso, un CNAME delegando a
+   `…authorize.railwaydns.net`). **Sin ese registro el dominio no se verifica nunca**, por mucho que
+   esperes — y el panel no lo explica. Es la diferencia con un dominio normal, que sí valida por HTTP.
 3. Esperá a que Railway lo marque **verified**: hasta entonces no hay certificado y el navegador da
    error de TLS. Es normal, no es un fallo.
 4. **La comprobación es un 404**, y eso es el éxito:
@@ -983,6 +1003,12 @@ alta uno nuevo deja de tocar Railway: es una fila en `clients` y nada más.
    Significa que el DNS resolvió, el TLS cerró y el renderizador dijo «no conozco ese host». **No hay
    dominio por defecto y no puede haberlo**: un fallback convertiría cualquier host apuntado a
    nuestra IP en una copia de la web de un cliente ajeno.
+
+   ⚠️ **Comprobá de quién es ese 404** (ver el paso 0): tiene que traer `content-type: text/plain` y
+   `cache-control: public, max-age=30`. Si trae `x-railway-fallback: true`, el wildcard **no** está
+   enrutando al servicio y el 404 es del borde — que se parece mucho a que todo funcione.
+
+   **Medido el 2026-08-10: el certificado wildcard tardó 7 minutos** desde que el CNAME propagó.
 
 `api.bigballs.es` no se rompe con el wildcard: en DNS el registro específico gana.
 
