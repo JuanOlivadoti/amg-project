@@ -376,11 +376,15 @@ test("🔴 los titulares NO declaran font-weight: por eso se precarga el archivo
   const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
   const titulares = [
     ".p-heroSlider h1",
-    ".p-seccionProsa section h2",
+    ".p-seccionProsa h2",
     ".encabezado h2",
     ".p-platosDestacados .plato h3",
-    ".p-faq .faq h2",
     ".card h3",
+    // Los rótulos del PIE, que entraron en la lista con el rediseño de la etapa 2: son `h2`/`h3` de
+    // verdad y su tentación es justo la contraria a la del titular grande —un rótulo en versalitas
+    // pide un peso medio—, así que son el caso donde más fácil se cuela un `font-weight`.
+    ".p-contacto h2",
+    ".p-locales h3",
   ];
   for (const sel of titulares) {
     assert.ok(

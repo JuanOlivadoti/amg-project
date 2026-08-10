@@ -138,9 +138,19 @@ const CSS_TOKENS =
  * piezas; `footer`/`.tecnica`/`.mas` son del shell y no de ninguna pieza. La regla es explícita:
  * *sube al base y se acepta que viaje siempre — no se hereda de una pieza a otra*.
  *
- * ⚠️ `footer .mas` y `footer .tecnica` llevan el `margin-bottom:6px` ya resuelto: venía del
- * `footer p{margin:0 0 6px}` global, que dejó de existir porque estilaba también los `<p>` de las
- * piezas `contacto` y `locales`. El valor computado es idéntico; lo que se fue es el selector global.
+ * ⚠️ **`main` ya no declara ancho ni padding, y eso es lo que hace full-bleed a las secciones.**
+ * Mientras `main` fue `max-width:var(--ancho-pagina);padding:0 20px`, el fondo de una `.seccion.alt`
+ * se cortaba a 1320 px en vez de llegar a los bordes de la pantalla —una franja de color con dos
+ * márgenes blancos a los lados, que es justo lo contrario del ritmo que la franja aporta— y además el
+ * respiro lateral se aplicaba **dos veces**, porque la `.banda` de dentro ya trae el suyo. Hoy el
+ * ancho lo pone cada sección con su `.banda` y `main` no decide nada; la única pieza que no usa
+ * `.banda` (`heroSlider`, que tiene su propia rejilla de dos columnas) lleva su padding lateral
+ * escrito. **Una pieza de contenido nueva sin `.banda` sale pegada al borde en un móvil**: es el
+ * precio de esta decisión y por eso está dicho acá.
+ *
+ * ⚠️ `footer .mas` y `footer .tecnica` llevan el margen ya resuelto: venía del `footer p{margin:0 0 6px}`
+ * global, que dejó de existir porque estilaba también los `<p>` de las piezas `contacto` y `locales`.
+ * Lo que se fue es el selector global.
  *
  * **`footer .mas a`** es del shell y no de una pieza (lo emite `shell.ts`), así que su estilo vive
  * acá: sin él, el enlace al blog sale con el azul del navegador igual que salían los `tel:` del pie.
@@ -164,7 +174,6 @@ const CSS_TOKENS =
 const CSS_BASE = `*{box-sizing:border-box}
 body{margin:0;font:16px/1.6 var(--font);color:var(--fg);background:var(--bg)}
 img{max-width:100%;height:auto}
-main{max-width:var(--ancho-pagina);margin:0 auto;padding:0 20px}
 .pending{color:var(--muted);font-style:italic}
 /* ── El patrón de SECCIÓN, compartido por todas las piezas de contenido (§3.6: sube al base lo que
    necesitan dos o más). Son tres primitivas y nada más:
@@ -183,14 +192,35 @@ main{max-width:var(--ancho-pagina);margin:0 auto;padding:0 20px}
 .encabezado{text-align:center;max-width:var(--ancho-lectura);margin:0 auto clamp(32px,4vw,56px)}
 .encabezado .antetitulo{font-family:var(--fuente-titulo);font-size:1.15rem;font-weight:500;color:var(--acento-legible);text-transform:uppercase;letter-spacing:1px;margin:0 0 10px}
 .encabezado h2{font-family:var(--fuente-titulo);font-size:clamp(1.9rem,1.1rem + 2.4vw,3.44rem);line-height:1.2;margin:0;color:var(--titulo)}
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:8px}
+/* Tres columnas fijas, no un 'auto-fill': con la banda de 1320 un mínimo de 220px daba CINCO
+   columnas, y una home recién publicada —con una sola página— dejaba una tarjeta de 236px sola a la
+   izquierda debajo de un encabezado centrado. Es la misma lección que la rejilla de la galería, que
+   aquí aprieta más porque estas piezas pasaron de 760 a la banda entera. */
+.cards{display:grid;grid-template-columns:1fr;gap:16px;margin-top:8px}
+@media(min-width:768px){.cards{grid-template-columns:repeat(3,1fr)}}
 .card{display:block;text-decoration:none;color:var(--fg);border:1px solid #e7e5e0;border-radius:12px;padding:20px;transition:border-color .15s,transform .15s}
 .card:hover{border-color:var(--acento-legible);transform:translateY(-2px)}
 .card h3{margin:0;font-size:1.1rem;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-footer{max-width:var(--ancho-lectura);margin:40px auto 48px;padding:24px 20px 0;border-top:1px solid #eee;color:var(--fg)}
-footer .mas{margin:12px 0 6px}
+/* ── EL PIE, en columnas.
+
+   Es full-bleed como cualquier sección con fondo, así que su ancho lo pone la '.banda' de dentro y
+   no él: hasta el rediseño era 'max-width:var(--ancho-lectura)', o sea que el pie medía 760 mientras
+   la cabecera medía 1320 y no alineaban ni de lejos.
+
+   El borde de arriba NO es decorativo: el cierre de la página ('ctaFinal') también es '--soft', así
+   que sin la línea el pie y el cierre se leen como una sola banda de 400 px de alto. */
+footer{background:var(--soft);color:var(--fg);border-top:1px solid #e7e5e0;padding:clamp(40px,5vw,72px) 0 0}
+/* Una columna en móvil; en escritorio, el bloque de contacto estrecho y los locales ocupando el
+   resto. El número de columnas lo decide lo que la ficha SOSTIENE —un local, una columna— y por eso
+   es 'auto-fit' dentro de 'locales' y no una rejilla de cuatro huecos fijos: la referencia tiene
+   cuatro porque su cuarta es un formulario de newsletter, que acá no existe. Nunca una columna vacía. */
+.pie-cols{display:grid;gap:clamp(28px,4vw,48px);grid-template-columns:1fr}
+@media(min-width:768px){.pie-cols{grid-template-columns:minmax(200px,1fr) 2fr}}
+/* La línea de abajo: el enlace al blog a un lado y la línea técnica al otro. */
+.pie-legal{display:flex;flex-wrap:wrap;gap:6px 24px;align-items:baseline;justify-content:space-between;margin-top:clamp(32px,4vw,56px);border-top:1px solid #e7e5e0}
+footer .mas{margin:16px 0}
 footer .mas a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
-footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
+footer .tecnica{color:var(--muted);font-size:.85rem;margin:16px 0}
 `;
 
 /**
@@ -200,7 +230,7 @@ footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
  * sistema operativo del visitante — con el efecto de que la paleta de la ficha (el crema `#fffdf9`
  * de un restaurante) se sustituía por `#111` sin que nada pudiera evitarlo. Ver `BrandTheme.tema`.
  */
-const CSS_BASE_OSCURO = `@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--titulo:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}footer{border-color:#222}.card{border-color:#2a2a2a}@supports(color:color-mix(in srgb,red,#fff)){:root{--acento-legible:color-mix(in srgb,var(--marca-primario) 60%,#fff);--decorativo:color-mix(in srgb,var(--marca-secundario) 55%,#fff)}}}
+const CSS_BASE_OSCURO = `@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--titulo:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}footer,.pie-legal{border-color:#2a2a2a}.card{border-color:#2a2a2a}@supports(color:color-mix(in srgb,red,#fff)){:root{--acento-legible:color-mix(in srgb,var(--marca-primario) 60%,#fff);--decorativo:color-mix(in srgb,var(--marca-secundario) 55%,#fff)}}}
 `;
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;

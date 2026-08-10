@@ -4,15 +4,19 @@ import { pageToStory } from "../../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../../fixtures.js";
 import { ctxCompleto, ctxDe, perfilCompleto } from "../ctx-de-prueba.js";
 import type { Story } from "../../types.js";
+import { MAX_DESTACADOS_RENDER, MAX_TESTIMONIOS_RENDER } from "../lib.js";
 import { CATALOGO } from "./index.js";
+import { bienvenida, BIENVENIDA_DEFAULT } from "./bienvenida.js";
 import { blogIndice } from "./blog-indice.js";
 import { cabecera } from "./cabecera.js";
 import { contacto } from "./contacto.js";
+import { destacados, DESTACADOS_DEFAULT } from "./destacados.js";
 import { faq } from "./faq.js";
 import { hero } from "./hero.js";
 import { indice } from "./indice.js";
 import { locales } from "./locales.js";
 import { seccionProsa } from "./seccion-prosa.js";
+import { testimonios } from "./testimonios.js";
 
 /**
  * El test por pieza que pide la spec: **con datos → renderiza; sin datos → `""`; con datos hostiles
@@ -257,6 +261,120 @@ test("🔴 locales: el nombre de un local se escapa (viene de la base, sin Zod)"
   assert.match(html, /&lt;script&gt;/);
 });
 
+// -------------------------------------------- las tres secciones de plantilla (bloque K, etapa 3)
+
+test("bienvenida: con `bienvenida` en la ficha dibuja SU texto, no el default", () => {
+  const html = bienvenida.render(
+    ctxDe({ profile: perfilCompleto({ bienvenida: "Cocinamos con horno de leña." }) }),
+  );
+  assert.match(html, /Cocinamos con horno de leña\./);
+  assert.ok(!html.includes(BIENVENIDA_DEFAULT), "el default no puede colarse cuando la ficha habla");
+  assert.match(html, /<h2>Bienvenidos a Trattoria Bella Napoli<\/h2>/, "el saludo lleva el nombre");
+});
+
+test("🔴 bienvenida: SIN el campo dibuja el DEFAULT — es la excepción consciente del bloque K", () => {
+  // Es la única familia de campos del perfil que rellena su sección cuando está vacía. El porqué y su
+  // límite están en `renderer/docs/04-plantilla-base.md`; acá se fija la conducta.
+  const html = bienvenida.render(ctxDe({ profile: perfilCompleto() }));
+  assert.ok(html.includes(BIENVENIDA_DEFAULT), "sin dato, la sección se rellena en vez de desaparecer");
+});
+
+test("🔴 bienvenida: un texto en BLANCO es una ficha vacía escrita de otra forma", () => {
+  // `"   "` es lo que deja un formulario del portal cuando alguien borra el contenido y guarda. Sin el
+  // `.trim()`, la sección dibujaría tres espacios donde va el párrafo — el hueco que el default evita.
+  const html = bienvenida.render(ctxDe({ profile: perfilCompleto({ bienvenida: "   " }) }));
+  assert.ok(html.includes(BIENVENIDA_DEFAULT));
+});
+
+test("bienvenida: SIN perfil devuelve '' (una bienvenida anónima no es una bienvenida)", () => {
+  assert.equal(bienvenida.render(ctxDe({})), "");
+});
+
+test("destacados: con motivos propios dibuja los suyos; sin ellos, los tres del default", () => {
+  const propios = destacados.render(
+    ctxDe({ profile: perfilCompleto({ destacados: [{ titulo: "Horno de leña", texto: "48 h" }] }) }),
+  );
+  assert.match(propios, /Horno de leña/);
+  assert.ok(!propios.includes(DESTACADOS_DEFAULT[0]!.titulo), "el default no acompaña a los propios");
+
+  const porDefecto = destacados.render(ctxDe({ profile: perfilCompleto() }));
+  for (const d of DESTACADOS_DEFAULT) assert.ok(porDefecto.includes(d.titulo), `falta "${d.titulo}"`);
+});
+
+test("🔴 destacados: los tres textos por defecto hablan de la PÁGINA, nunca del negocio", () => {
+  // El límite del bloque K puesto como test y no como comentario: un default puede rellenar una
+  // sección, nunca afirmar un hecho sobre el negocio. La forma de sostenerlo en el tiempo es esta
+  // lista de palabras — si alguien escribe "producto de mercado" o "desde 1998", cae acá.
+  const prohibidas = [
+    "temporada",
+    "mercado",
+    "fresco",
+    "casero",
+    "artesan",
+    "tradicion",
+    "desde 19",
+    "desde 20",
+    "años",
+    "mejor",
+    "premi",
+    "auténtic",
+    "autentic",
+  ];
+  const todo = `${BIENVENIDA_DEFAULT} ${DESTACADOS_DEFAULT.map((d) => `${d.titulo} ${d.texto ?? ""}`).join(" ")}`.toLowerCase();
+  for (const palabra of prohibidas) {
+    assert.ok(!todo.includes(palabra), `el contenido por defecto afirma algo del negocio: "${palabra}"`);
+  }
+});
+
+test("destacados: el tope de la frontera 4 corta la lista de la ficha", () => {
+  const nueve = Array.from({ length: 9 }, (_, i) => ({ titulo: `M${i}` }));
+  const html = destacados.render(ctxDe({ profile: perfilCompleto({ destacados: nueve }) }));
+  assert.equal((html.match(/class="motivo"/g) ?? []).length, MAX_DESTACADOS_RENDER);
+});
+
+test("destacados: SIN perfil devuelve ''", () => {
+  assert.equal(destacados.render(ctxDe({})), "");
+});
+
+test("🔴 testimonios: SIN reseñas devuelve '' — no hay default, y es la decisión", () => {
+  // Una reseña inventada es una reseña falsa atribuida a un cliente que no existe. Es el punto donde
+  // se corta la excepción del bloque K, y por eso es un test y no un comentario: si alguien le pone un
+  // default a esta pieza, cae acá y tiene que justificar por qué.
+  assert.equal(testimonios.render(ctxDe({ profile: perfilCompleto() })), "");
+  assert.equal(testimonios.render(ctxDe({})), "");
+});
+
+test("testimonios: con reseñas dibuja la cita y la firma, y sin firma dibuja solo la cita", () => {
+  const html = testimonios.render(
+    ctxDe({
+      profile: perfilCompleto({
+        testimonios: [{ texto: "Se come muy bien.", autor: "Una clienta" }, { texto: "Volveremos." }],
+      }),
+    }),
+  );
+  assert.match(html, /<blockquote><p>Se come muy bien\.<\/p><\/blockquote>/);
+  assert.match(html, /class="autor">Una clienta</);
+  assert.equal((html.match(/class="cita"/g) ?? []).length, 2);
+  assert.equal((html.match(/class="autor"/g) ?? []).length, 1, "sin firma no se inventa una");
+});
+
+test("testimonios: una entrada sin texto se descarta SOLA, no tira la sección", () => {
+  const html = testimonios.render(
+    ctxDe({
+      profile: perfilCompleto({
+        testimonios: [{ texto: "  " }, { texto: "Muy bien." }] as never,
+      }),
+    }),
+  );
+  assert.equal((html.match(/class="cita"/g) ?? []).length, 1);
+});
+
+test("testimonios: el tope de la frontera 4 corta en 12", () => {
+  const quince = Array.from({ length: 15 }, (_, i) => ({ texto: `T${i}` }));
+  const html = testimonios.render(ctxDe({ profile: perfilCompleto({ testimonios: quince }) }));
+  assert.equal((html.match(/class="cita"/g) ?? []).length, MAX_TESTIMONIOS_RENDER);
+});
+
 // ---------------------------------------------------------------- transversal
 
 test("ninguna pieza deja pasar `<script>` sin escapar con datos hostiles en TODOS los campos a la vez", () => {
@@ -296,6 +414,9 @@ test("ninguna pieza deja pasar `<script>` sin escapar con datos hostiles en TODO
       portada: { src: VENENO, alt: VENENO },
       fotos: [{ src: VENENO, alt: VENENO }],
       locations: [{ name: VENENO, opening_hours: VENENO }],
+      bienvenida: VENENO,
+      destacados: [{ titulo: VENENO, texto: VENENO }],
+      testimonios: [{ texto: VENENO, autor: VENENO }],
     }),
     paginas: [{ slug: VENENO, name: VENENO }],
   });
@@ -325,6 +446,10 @@ test("🔴 el ORDEN del catálogo es un contrato, y hasta ahora nada lo imponía
   // ocupa el sitio de `heroPortada`, que sale del catálogo por quedarse sin receta que la nombre
   // (mismo criterio que retiró a `carta` — ver `index.ts`). `hero` se queda: lo siguen nombrando las
   // recetas de `/menu` y `/blog`.
+  //
+  // ⚠️ Y la etapa 3 del mismo rediseño mete TRES piezas nuevas (`bienvenida`, `destacados`,
+  // `testimonios`), cada una en el hueco del documento donde de verdad aparece: la bienvenida justo
+  // después de la franja de datos, los motivos antes de los platos y las reseñas antes de las FAQ.
   assert.deepEqual(
     CATALOGO.map((p) => p.id),
     [
@@ -332,10 +457,13 @@ test("🔴 el ORDEN del catálogo es un contrato, y hasta ahora nada lo imponía
       "heroSlider",
       "hero",
       "barraDatos",
+      "bienvenida",
       "seccionProsa",
+      "destacados",
       "platosDestacados",
       "cartaCategorias",
       "galeria",
+      "testimonios",
       "faq",
       "indice",
       "blogIndice",

@@ -1042,13 +1042,23 @@ defectos que aparecieron, **tres los encontró el navegador y ninguno un test**.
 es inalcanzable —el default se cumple siempre, que es la conducta que se quería, pero la opción no
 existe hasta que se agregue a Zod, a la allowlist de la `0014` y a `perfilValido`—.
 
-### ⏭️ Etapa 2 — el resto de las secciones
+### ✅ Etapa 2 — el resto de las secciones y el pie (2026-08-10)
 
-En el orden en que aparecen en la página: `barraDatos`, `platosDestacados`, `cartaCategorias`,
-`galeria`, `faq`, `indice`, `ctaFinal`, `contacto` y `locales`. Cada una pierde el andamio del ancho de
-lectura cuando le toca.
+Doce piezas de contenido rediseñadas y **el andamio del ancho de lectura eliminado del todo**.
 
-### ⏭️ Etapa 3 — las secciones sin origen de datos, con contenido por defecto
+```text
+1ª tanda   barraDatos · platosDestacados · cartaCategorias · galeria · ctaFinal
+2ª tanda   hero (cabezal de /menu y /blog) · seccionProsa · faq · indice · blogIndice
+el pie     contacto + locales, en columnas: contacto + UNA POR LOCAL
+base       `main` deja de declarar ancho y respiro → las secciones con fondo son full-bleed
+           `.cards` pasa de `auto-fill` a 3 columnas fijas (el auto-fill daba 5 en la banda de 1320)
+```
+
+**El pie no son cuatro columnas fijas como en la referencia, y es deliberado:** las dos que faltarían
+son un menú de enlaces que duplica el nav y un formulario de newsletter sin backend. Nunca una
+columna vacía. El detalle, en [`renderer/docs/04-plantilla-base.md`](../../renderer/docs/04-plantilla-base.md).
+
+### ✅ Etapa 3 — las secciones sin origen de datos, con contenido por defecto (2026-08-10)
 
 **Decidido el 2026-08-10 por el usuario:** se replican las secciones que faltan **inventando un
 contenido por defecto**, en vez de esperar a que existan los campos y las pantallas del portal. Es una
@@ -1068,9 +1078,26 @@ sobre el negocio** (años, clientes, premios, una reseña firmada). Y el campo t
 cruzando las cuatro fronteras: si no, el cliente no puede cambiar el default, que es lo único que lo
 hace aceptable.
 
-**Cuidado con el orden:** cada campo toca `contrato.ts` (Zod), una migración de la allowlist
-(territorio de `datos`), `perfilValido` y la pieza. La migración y la pantalla del portal **no son del
-agente `render`**.
+**Lo que se hizo, y en qué se apartó de la tabla de arriba.** Los tres campos cruzan las cuatro
+fronteras: `types.ts` + el Zod de `contract.ts`, la migración **`0020`**, `perfilValido` y la pieza. Los
+topes (6 destacados, 12 testimonios) quedan atados por un test entre las dos fronteras del
+`web-builder`, y la mutación se verificó: quitarle `autor` a la allowlist tumba exactamente su test y
+el del recorrido encadenado.
+
+**`testimonios` se implementó SIN default**, que es la única desviación y es la que la propia regla
+pedía: una reseña es una afirmación sobre el negocio atribuida a una persona, así que no hay texto de
+plantilla que la vuelva inocua. Sin datos, la sección no se dibuja. **Y no existe campo de
+puntuación** en ninguna de las cuatro capas — lo impone sobre todo la allowlist SQL, que enumera
+`texto` y `autor`: un `estrellas` escrito a mano en `business_profile` no llega al renderizador.
+
+Los defaults de `bienvenida` y `destacados` **hablan de la página, no del negocio**, y eso lo sostiene
+un test con una lista de palabras prohibidas (`temporada`, `mercado`, `artesan`, `desde 19`, `mejor`,
+`premi`…) en vez de la buena memoria de quien edite el texto.
+
+⏭️ **Lo que falta y no es de esta etapa: las pantallas del portal** para que la agencia cargue los tres
+campos. Hasta que existan, solo se pueden escribir a mano en `business_profile` — que es lo que hace
+al default aceptable **y temporal**: un default que el cliente no puede cambiar deja de ser una
+propuesta. Es trabajo del agente `front`.
 
 ## Bloque F — módulo 3: respondedor de reseñas de Google
 

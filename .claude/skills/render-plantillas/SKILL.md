@@ -73,8 +73,13 @@ con la paleta.
 cosas produce renglones de periódico, y era además el motivo de que la cabecera (1100) y `main` (760)
 no alinearan.
 
-Las piezas sin rediseñar llevan un andamio declarado
-(`.p-<id>{max-width:var(--ancho-lectura);margin:0 auto}`) que se quita cuando les toca.
+**`main` no declara ancho ni respiro**, y por eso las secciones con fondo (`.seccion.alt`) llegan a
+los bordes de la pantalla. El ancho lo pone cada sección con la primitiva `.banda`. ⚠️ **Una pieza de
+contenido nueva que no use `.banda` sale pegada al borde en un móvil**: la única que no la usa es
+`heroSlider`, que tiene su propia rejilla y lleva el padding escrito.
+
+_(El andamio `.p-<id>{max-width:var(--ancho-lectura);margin:0 auto}` que llevaban las piezas sin
+rediseñar se fue con la última, el 2026-08-10.)_
 
 ## Las trampas que solo aparecen en un navegador
 
@@ -107,6 +112,17 @@ imagen social vive en el dominio del propio cliente.
 
 **Una sola imagen prioritaria por documento**: la portada, que es el LCP. Marcar dos es no marcar
 ninguna.
+
+## El contenido por defecto: qué puede decir y qué no
+
+Tres piezas rellenan su sección cuando la ficha está vacía (`bienvenida`, `destacados`). La regla que
+lo gobierna: **un default puede rellenar una sección, nunca afirmar un hecho sobre el negocio.** Los
+textos hablan de la PÁGINA («los platos y sus precios, para mirarlos antes de venir»), que es cierto
+por construcción; «producto de mercado» no lo es. Lo sostiene un test con palabras prohibidas.
+
+**`testimonios` no tiene default y no lo va a tener**: una reseña es una afirmación sobre el negocio
+atribuida a una persona. Sin datos, `""`. Y **no hay campo de puntuación** en ninguna frontera — lo
+impone sobre todo la allowlist SQL, que enumera `texto` y `autor` y nada más.
 
 ## Un campo nuevo del perfil cruza cuatro fronteras
 

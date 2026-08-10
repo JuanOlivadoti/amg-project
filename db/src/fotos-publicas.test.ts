@@ -352,6 +352,23 @@ describe("0014 — frontera 2: fotos, carta y manual de marca en la allowlist de
  */
 describe("0014 — es independiente del orden en que se aplique respecto de la 0015-0019", () => {
   const LA_0014 = "0014_fotos_publicas.sql";
+  /**
+   * ⚠️ **La 0020 reemplaza `app.nap_publico`, así que la 0014 ya no puede ir la ÚLTIMA de todas.**
+   *
+   * Hasta que existió la 0020, "la 0014 al final" era el orden real de una base ya desplegada, porque
+   * las cinco hermanas (0015-0019) tocan otras tablas y ninguna toca esta función. La 0020 sí la toca:
+   * aplicar la 0014 DESPUÉS sería volver a poner la allowlist vieja, o sea perder `bienvenida`,
+   * `destacados` y `testimonios` en silencio.
+   *
+   * Y ese orden **no lo produce nadie**: `migrarConRegistro` aplica las pendientes ORDENADAS, así que
+   * en una base con la 0015-0019 ya registradas el conjunto pendiente es {0014, 0020} y se aplica
+   * 0014 → 0020. Eso es lo que modela este test: la 0014 desplazada al final de las hermanas que no
+   * la pisan, no al final del todo.
+   *
+   * La lección, que vale para la próxima migración que reemplace una función: **una migración solo se
+   * puede reordenar contra las que no tocan lo mismo que ella.**
+   */
+  const LA_0020 = "0020_secciones_de_plantilla.sql";
 
   async function aplicarEnOrden(pg: PGlite, archivos: string[]): Promise<void> {
     await asegurarAuthStandIn(pg);
@@ -364,12 +381,15 @@ describe("0014 — es independiente del orden en que se aplique respecto de la 0
     const alfabetico = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
     assert.ok(alfabetico.includes(LA_0014), `${LA_0014} tiene que existir, o este test no compara nada`);
 
-    const alFinal = [...alfabetico.filter((f) => f !== LA_0014), LA_0014];
+    assert.ok(alfabetico.includes(LA_0020), `${LA_0020} tiene que existir: es la que pisa la función`);
+
+    // La 0014 va después de todas las que NO la pisan, y antes de la que sí. Ver el bloque de arriba.
+    const alFinal = [...alfabetico.filter((f) => f !== LA_0014 && f !== LA_0020), LA_0014, LA_0020];
     assert.notDeepEqual(
       alfabetico,
       alFinal,
-      "los dos órdenes tienen que ser DISTINTOS: si la 0014 ya fuera la última, este test pasaría " +
-        "comparando una base consigo misma",
+      "los dos órdenes tienen que ser DISTINTOS: si la 0014 ya fuera la última de las hermanas que " +
+        "no la pisan, este test pasaría comparando una base consigo misma",
     );
 
     const a = new PGlite();

@@ -76,6 +76,10 @@ export function ctxCompleto(): CtxPieza {
     // contexto promete es otra cosa: que **todas** las piezas del catálogo tengan datos que dibujar,
     // que es lo que deja recorrerlo en `aislamiento.test.ts` sin enumerar a mano qué necesita cada una.
     profile: perfilCompleto({
+      // `testimonios` va acá y no en `perfilCompleto` por el mismo motivo que las fotos: es la ÚNICA
+      // pieza de las tres nuevas que devuelve `""` sin datos (no tiene default, y no lo va a tener),
+      // así que sin esto el recorrido del catálogo la dejaría fuera sin que nada avisara.
+      testimonios: [{ texto: "Se come muy bien.", autor: "Una clienta" }],
       portada: { src: "https://a.storyblok.com/f/1/1600x900/abc/portada.jpg", alt: "La sala" },
       fotos: [
         { src: "https://a.storyblok.com/f/1/800x600/g1/galeria-1.jpg" },

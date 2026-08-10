@@ -110,7 +110,17 @@ export function renderDocumento(doc: Documento): string {
 
   const tecnica = `<p class="tecnica">Página generada por AMG OS · contrato ${esc(pie.contractVersion)} · schema ${esc(pie.schemaType)}</p>`;
   const mas = pie.hayBlog ? `<p class="mas"><a href="/${SLUG_BLOG}">Blog</a></p>` : "";
-  const pieHtml = `<footer>\n${[contactoHtml, localesHtml, mas, tecnica].filter(Boolean).join("\n")}\n</footer>`;
+  // **El pie, en dos zonas** (rediseño 2026-08-10). Arriba las columnas —contacto y locales—, abajo
+  // la línea legal. Las dos van dentro de una `.banda`, y el `<footer>` queda full-bleed para que su
+  // fondo llegue a los bordes de la pantalla: es la misma decisión que hace full-bleed a `.seccion`.
+  //
+  // El envoltorio `.pie-cols` existe porque **las columnas las forman los wrappers de las piezas**,
+  // que son hermanos: sin un contenedor propio, la rejilla tendría que declararse sobre `<footer>` y
+  // entonces la línea legal sería una columna más. Que el contenedor lo emita el shell y no una pieza
+  // es lo mismo de siempre: el pie es una obligación del documento, no contenido de una receta.
+  const columnas = [contactoHtml, localesHtml].filter(Boolean).join("\n");
+  const legal = [mas, tecnica].filter(Boolean).join("\n");
+  const pieHtml = `<footer>\n<div class="banda">\n<div class="pie-cols">\n${columnas}\n</div>\n<div class="pie-legal">\n${legal}\n</div>\n</div>\n</footer>`;
 
   // Orden de CATÁLOGO, no de receta: dos páginas con las mismas piezas usadas → `<style>` idéntico.
   const piezasUsadas: Pieza[] = CATALOGO.filter((p) => usadas.has(p.id));

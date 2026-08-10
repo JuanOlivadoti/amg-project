@@ -11,6 +11,57 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-10 (noche) — el rediseño, terminado: las doce secciones, el pie y las tres nuevas
+
+Las etapas 2 y 3 del bloque K, de una sentada. Doce piezas de contenido con el patrón de sección, el
+pie en columnas, y tres secciones nuevas cuyos campos cruzan las cuatro fronteras. **1387 tests**,
+`verificar` en verde entero, gate de paridad re-capturado tras medir, y el sitio manejado en un
+navegador a 1440 y a 390.
+
+**Lo que encontró el navegador y ningún test.** Otra vez, y otra vez la mayoría:
+
+- la portada **sin foto** se quedaba sin respiro lateral. Su regla `.portada.sin-img` (0,3,0) pisa a
+  `.portada` (0,2,0), que es la que trae el padding desde que `main` dejó de ponerlo — o sea, la misma
+  trampa de especificidad que había dejado el logo sin achicar en la cabecera, en el mismo archivo;
+- `.cards` con `auto-fill` de 220 px daba **cinco** columnas en la banda de 1320, así que una home
+  recién publicada dejaba una tarjeta sola a la izquierda bajo un encabezado centrado. Es la lección
+  de la galería otra vez: en una banda ancha, columnas fijas;
+- `barraDatos` tenía **230 px de blanco** alrededor de una tarjeta de 100 px de alto, y en `/menu`
+  empujaba la primera categoría de la carta fuera de la pantalla;
+- la bienvenida decía el nombre del negocio en un `h2` a dos secciones del cierre, que lo repite: en
+  la home sintetizada el `h1` **también** es el nombre, así que salía tres veces en dos pantallas.
+
+**Lo que sí cazó la suite**, y vale registrarlo porque es la otra mitad: las comillas decorativas de
+los testimonios pintaban con `--decorativo`, y un `::before` con `content` **dibuja texto**. El
+segundo color de marca no está obligado a pasar contraste (el oro del cliente de demo da 2.62:1), así
+que el test que recorre el catálogo lo tumbó. Pasó a `--acento-legible` con opacidad — la opacidad no
+es un color.
+
+**La decisión del contenido por defecto, ejecutada y con un límite que ahora es un test.** Los
+defaults de `bienvenida` y `destacados` **hablan de la página, no del negocio**: «los platos y sus
+precios, para mirarlos con calma antes de venir» es cierto por construcción para cualquier cliente
+porque lo cumple el propio renderizador, mientras «producto de mercado» es un hecho que un cliente
+podría no cumplir. Lo sostiene una lista de palabras prohibidas en un test, y no la memoria de quien
+edite el texto la próxima vez.
+
+**Y `testimonios` se quedó sin default, que es donde la excepción se corta.** Una reseña es una
+afirmación sobre el negocio atribuida a una persona; lo que la vuelve engaño no es lo específica que
+sea sino el hueco donde está, que dice «esto lo dijo un cliente». Sin datos, la sección no se dibuja.
+Tampoco hay campo de puntuación en ninguna de las cuatro capas, y quien de verdad lo impide es la
+**allowlist SQL**: enumera `texto` y `autor`, así que un `estrellas` escrito a mano en
+`business_profile` —una columna `jsonb` que nadie valida al escribir— no llega al renderizador. Las
+otras tres capas dicen lo mismo; ésta lo sostiene cuando el dato no pasó por ninguna.
+
+**Una migración que reemplaza una función no se puede reordenar contra otra que la reemplaza.** La
+`0020` vuelve a escribir `app.nap_publico`, y eso rompió el test de independencia de orden de la
+`0014`, que la aplicaba **la última de todas**: en ese orden, la `0014` reponía la allowlist vieja y
+los tres campos nuevos desaparecían en silencio. Ese orden no lo produce nadie —`migrarConRegistro`
+aplica las pendientes ordenadas— así que el test se reescribió para modelar el orden real. La lección
+es general y quedó escrita en el propio test.
+
+**Verificación por mutación de la frontera 2:** quitarle `autor` a la allowlist tumbó exactamente dos
+tests —el del campo y el del recorrido encadenado— y ninguno más.
+
 ## 2026-08-10 (tarde) — el rediseño de la plantilla base, y el agente que faltaba
 
 Juan pidió cambiar el aspecto de las webs de cliente tomando como referencia un template comercial de

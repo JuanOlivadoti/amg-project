@@ -48,7 +48,11 @@ const MAX_SLIDES = 5;
 export const heroSlider: Pieza = {
   id: "heroSlider",
   raiz: "p-heroSlider",
-  css: `.p-heroSlider .portada{max-width:var(--ancho-pagina);margin:0 auto;padding:56px 0 64px;display:grid;gap:40px;align-items:center}
+  // ⚠️ El padding LATERAL de 20px no es cosmético: desde que `main` dejó de declarar ancho y respiro
+  // (para que las secciones con fondo lleguen a los bordes de la pantalla), esta es la única pieza de
+  // contenido que no usa la primitiva `.banda` —tiene su propia rejilla de dos columnas— y sin él el
+  // titular sale pegado al borde en un móvil de 390.
+  css: `.p-heroSlider .portada{max-width:var(--ancho-pagina);margin:0 auto;padding:56px 20px 64px;display:grid;gap:40px;align-items:center}
 /* El titular crece con la pantalla en vez de saltar en un breakpoint: 39px en un móvil de 390 y 80px
    en un escritorio de 1440, que son los dos extremos medidos en el template de referencia. */
 /* ⚠️ **SIN \`font-weight\`, y es deliberado.** El template de referencia pone 500 en su titular, pero
@@ -103,9 +107,13 @@ export const heroSlider: Pieza = {
 .p-heroSlider .puntos label:hover{opacity:1}
 /* Sin foto el titular es lo único que hay en la portada, así que se lleva el espacio y la regla
    decorativa hace de remate. */
-.p-heroSlider .portada.sin-img{padding:72px 0 60px}
+/* ⚠️ El '20px' lateral se repite acá porque esta regla PISA a '.p-heroSlider .portada' —(0,3,0)
+   contra (0,2,0)— y esa es la que lo trae. Sin repetirlo, la portada tipográfica sale pegada al borde
+   en un móvil, que es justo el estado en el que están todas las fichas de producción. Lo encontró el
+   navegador: es la misma trampa de especificidad que dejó el logo sin achicar en la cabecera. */
+.p-heroSlider .portada.sin-img{padding:72px 20px 60px}
 .p-heroSlider .portada.sin-img h1::after{content:"";display:block;width:72px;height:3px;margin:22px 0 0;background:var(--decorativo)}
-@media(min-width:992px){.p-heroSlider .portada{grid-template-columns:minmax(0,1fr) 480px;gap:60px;padding:72px 0 88px}
+@media(min-width:992px){.p-heroSlider .portada{grid-template-columns:minmax(0,1fr) 480px;gap:60px;padding:72px 20px 88px}
 .p-heroSlider .portada.sin-img{grid-template-columns:1fr}}
 `,
 

@@ -32,6 +32,8 @@ export const SLUG_BLOG = "blog";
 export const MAX_FOTOS_GALERIA = 30;
 export const MAX_PRECIOS_RENDER = 3;
 export const MAX_CATEGORIAS_RENDER = 20;
+export const MAX_DESTACADOS_RENDER = 6;
+export const MAX_TESTIMONIOS_RENDER = 12;
 
 /**
  * **Cuántos platos entran en el extracto de la home y de una landing.**
@@ -41,7 +43,7 @@ export const MAX_CATEGORIAS_RENDER = 20;
  * es lo que la spec pide («hasta 6 ítems») y lo que llena dos filas de la rejilla en escritorio sin
  * dejar una tercera fila coja.
  */
-export const MAX_DESTACADOS = 6;
+export const MAX_PLATOS_DESTACADOS = 6;
 
 export function esc(s: string): string {
   return s

@@ -15,7 +15,6 @@
 *{box-sizing:border-box}
 body{margin:0;font:16px/1.6 var(--font);color:var(--fg);background:var(--bg)}
 img{max-width:100%;height:auto}
-main{max-width:var(--ancho-pagina);margin:0 auto;padding:0 20px}
 .pending{color:var(--muted);font-style:italic}
 /* ── El patrón de SECCIÓN, compartido por todas las piezas de contenido (§3.6: sube al base lo que
    necesitan dos o más). Son tres primitivas y nada más:
@@ -34,14 +33,35 @@ main{max-width:var(--ancho-pagina);margin:0 auto;padding:0 20px}
 .encabezado{text-align:center;max-width:var(--ancho-lectura);margin:0 auto clamp(32px,4vw,56px)}
 .encabezado .antetitulo{font-family:var(--fuente-titulo);font-size:1.15rem;font-weight:500;color:var(--acento-legible);text-transform:uppercase;letter-spacing:1px;margin:0 0 10px}
 .encabezado h2{font-family:var(--fuente-titulo);font-size:clamp(1.9rem,1.1rem + 2.4vw,3.44rem);line-height:1.2;margin:0;color:var(--titulo)}
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:8px}
+/* Tres columnas fijas, no un 'auto-fill': con la banda de 1320 un mínimo de 220px daba CINCO
+   columnas, y una home recién publicada —con una sola página— dejaba una tarjeta de 236px sola a la
+   izquierda debajo de un encabezado centrado. Es la misma lección que la rejilla de la galería, que
+   aquí aprieta más porque estas piezas pasaron de 760 a la banda entera. */
+.cards{display:grid;grid-template-columns:1fr;gap:16px;margin-top:8px}
+@media(min-width:768px){.cards{grid-template-columns:repeat(3,1fr)}}
 .card{display:block;text-decoration:none;color:var(--fg);border:1px solid #e7e5e0;border-radius:12px;padding:20px;transition:border-color .15s,transform .15s}
 .card:hover{border-color:var(--acento-legible);transform:translateY(-2px)}
 .card h3{margin:0;font-size:1.1rem;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-footer{max-width:var(--ancho-lectura);margin:40px auto 48px;padding:24px 20px 0;border-top:1px solid #eee;color:var(--fg)}
-footer .mas{margin:12px 0 6px}
+/* ── EL PIE, en columnas.
+
+   Es full-bleed como cualquier sección con fondo, así que su ancho lo pone la '.banda' de dentro y
+   no él: hasta el rediseño era 'max-width:var(--ancho-lectura)', o sea que el pie medía 760 mientras
+   la cabecera medía 1320 y no alineaban ni de lejos.
+
+   El borde de arriba NO es decorativo: el cierre de la página ('ctaFinal') también es '--soft', así
+   que sin la línea el pie y el cierre se leen como una sola banda de 400 px de alto. */
+footer{background:var(--soft);color:var(--fg);border-top:1px solid #e7e5e0;padding:clamp(40px,5vw,72px) 0 0}
+/* Una columna en móvil; en escritorio, el bloque de contacto estrecho y los locales ocupando el
+   resto. El número de columnas lo decide lo que la ficha SOSTIENE —un local, una columna— y por eso
+   es 'auto-fit' dentro de 'locales' y no una rejilla de cuatro huecos fijos: la referencia tiene
+   cuatro porque su cuarta es un formulario de newsletter, que acá no existe. Nunca una columna vacía. */
+.pie-cols{display:grid;gap:clamp(28px,4vw,48px);grid-template-columns:1fr}
+@media(min-width:768px){.pie-cols{grid-template-columns:minmax(200px,1fr) 2fr}}
+/* La línea de abajo: el enlace al blog a un lado y la línea técnica al otro. */
+.pie-legal{display:flex;flex-wrap:wrap;gap:6px 24px;align-items:baseline;justify-content:space-between;margin-top:clamp(32px,4vw,56px);border-top:1px solid #e7e5e0}
+footer .mas{margin:16px 0}
 footer .mas a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
-footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
+footer .tecnica{color:var(--muted);font-size:.85rem;margin:16px 0}
 /* ⚠️ **Sin esto el sticky de la barra NO funciona, y falla en silencio.**
    Toda pieza va envuelta en un div con su raíz (ver `envolver`), y un elemento sticky solo se queda
    pegado mientras su CONTENEDOR sigue a la vista: como este envoltorio mide lo que miden las dos
@@ -100,43 +120,43 @@ footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
 .p-cabecera .cta{margin-left:auto;padding:9px 22px;font-size:.95rem}
 .p-cabecera .nav{order:3;width:100%;margin-left:0;flex-wrap:nowrap;overflow-x:auto;border-top:1px solid rgba(0,0,0,.08)}
 .p-cabecera .nav a{padding:12px 14px;font-size:.98rem;white-space:nowrap;border-bottom-width:2px}}
-/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
-   ancho de lectura. Se quita cuando la seccion se rediseñe. */
-.p-hero{max-width:var(--ancho-lectura);margin:0 auto}
-.p-hero .hero{padding:48px 0 40px;border-bottom:1px solid #eee}
-.p-hero .hero.has-img{padding-top:24px}
-.p-hero .hero-img{width:100%;border-radius:14px;margin:0 0 28px;object-fit:cover;aspect-ratio:16/9}
-.p-hero .hero h1{font-size:2.3rem;line-height:1.12;margin:0 0 12px;letter-spacing:-.02em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-hero .lede{font-size:1.18rem;color:var(--muted);margin:0 0 24px}
-/* La frase del CTA cuando no cabe en un botón. Menos peso que la bajada: es una invitación, no el
-   resumen de la página. */
-.p-hero .cta-lede{font-size:1.02rem;color:var(--muted);margin:0 0 20px}
-.p-hero .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600}
-/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
-   ancho de lectura. Se quita cuando la seccion se rediseñe. */
-.p-blogIndice{max-width:var(--ancho-lectura);margin:0 auto}
-.p-blogIndice .indice{padding:8px 0 32px;border-bottom:1px solid #f0f0f0}
+.p-hero .hero{padding:clamp(40px,5vw,72px) 0}
+.p-hero .cabeza{text-align:center;max-width:var(--ancho-lectura);margin:0 auto}
+/* Mismo escalado que el titular de la portada, un punto más bajo: es la misma familia de titular y
+   tiene que leerse como parte del mismo sitio. SIN 'font-weight' — se precarga un solo archivo (700),
+   que es el que un h1 hereda; declarar otro peso convierte el preload en una descarga tirada. */
+.p-hero .cabeza h1{font-family:var(--fuente-titulo);font-size:clamp(2.1rem,1.2rem + 3.2vw,3.75rem);line-height:1.15;text-transform:uppercase;margin:0;color:var(--titulo);letter-spacing:-.01em}
+.p-hero .lede{font-size:1.15rem;line-height:1.7;color:var(--muted);margin:16px auto 0;max-width:60ch}
+/* La foto y el CTA son de la rama del blok `hero`, que hoy ninguna receta alcanza (ver la DEUDA
+   CONOCIDA de arriba): se conservan porque la rama se conserva, no porque se dibujen en producción. */
+.p-hero .hero-img{width:100%;max-width:var(--ancho-pagina);border-radius:14px;margin:0 auto 28px;object-fit:cover;aspect-ratio:16/9;display:block}
+.p-hero .cta-lede{font-size:1.02rem;color:var(--muted);margin:16px auto 0;max-width:60ch}
+.p-hero .cta{display:inline-block;margin:24px 0 0;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:15px 40px;border-radius:5px;font-family:var(--fuente-titulo);font-size:1rem;font-weight:500;text-transform:uppercase;letter-spacing:.02em}
+.p-blogIndice .pending{text-align:center;max-width:var(--ancho-lectura);margin:0 auto}
 .p-contacto .contacto{border:0;padding:0}
-/* El `letter-spacing` NO es decorativo acá: lo heredaba de `section h2`, porque este `<h2>` vive
-   dentro de un `<section>` del pie. `section h2` (0,0,2) y `footer h2` (0,0,2) empataban en
-   especificidad, así que `footer h2` ganaba `font-size` y `margin` —los únicos que declaraba— y
-   `letter-spacing` seguía llegando del otro. Al repartir el CSS por piezas se cayó, y una revisión
-   lo cazó con un comparador de cascada; el método de "buscar dueño por declaración" no podía verlo,
-   porque la declaración SÍ tenía dueño (cuatro piezas se la llevaron) y aun así dejó de llegar acá. */
-.p-contacto h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-contacto p{margin:0 0 6px}
+/* El rótulo de una COLUMNA del pie, no el título de una sección: pequeño, en versalitas y con el
+   filete decorativo debajo. Las tres columnas comparten el aspecto (ver `locales.ts`), y son dos
+   copias a propósito: el CSS base solo acepta lo que necesitan dos piezas *y* no tiene otro dueño, y
+   acá el dueño es cada pieza — la del pie que dibuja sus locales y la que dibuja el contacto. */
+.p-contacto h2{font-family:var(--fuente-titulo);font-size:1.05rem;text-transform:uppercase;letter-spacing:.08em;margin:0 0 18px;padding:0 0 12px;color:var(--titulo);border-bottom:2px solid var(--decorativo)}
+.p-contacto p{margin:0 0 8px}
+.p-contacto .negocio{font-family:var(--fuente-titulo);font-size:1.3rem;font-weight:500;color:var(--titulo);margin:0 0 10px}
 /* El `tel:` salía con el azul del navegador y el subrayado por defecto: dentro de un pie sobrio es
    lo único que grita, y el azul no es de la marca de nadie. Toma el color del texto y conserva un
    subrayado —tenue, pero subrayado— porque quitarlo dejaría un enlace que no se puede distinguir de
    un párrafo salvo por el cursor. */
 .p-contacto a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
-.p-locales .ubicaciones{border:0;padding:16px 0 0}
-/* El `letter-spacing` viene de `section h2` del CSS viejo, no de `footer h2`: ver la explicación
-   completa en `contacto.ts`, que perdió el mismo valor por el mismo empate de especificidad. */
-.p-locales h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-locales h3{font-size:.95rem;margin:0 0 4px;color:var(--titulo);font-family:var(--fuente-titulo)}
+.p-locales .ubicaciones{border:0;padding:0}
+/* El mismo rótulo de columna que `contacto`: ver ahí por qué son dos copias y no una regla del base. */
+.p-locales h2{font-family:var(--fuente-titulo);font-size:1.05rem;text-transform:uppercase;letter-spacing:.08em;margin:0 0 18px;padding:0 0 12px;color:var(--titulo);border-bottom:2px solid var(--decorativo)}
+/* **Cada local es una COLUMNA**, y por eso el pie tiene tantas como la ficha sostenga: con dos
+   locales son tres (contacto + dos), con uno son dos. 'auto-fit' y no un número fijo justamente por
+   eso — una rejilla de cuatro huecos dejaría huecos vacíos en la web de un negocio de un solo local,
+   que es el caso más común. */
+.p-locales .locales{display:grid;gap:clamp(20px,3vw,40px);grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.p-locales h3{font-family:var(--fuente-titulo);font-size:1.05rem;margin:0 0 8px;color:var(--titulo)}
 .p-locales p{margin:0 0 6px}
-.p-locales .local{margin:0 0 16px;color:var(--muted)}
+.p-locales .local{margin:0;color:var(--muted)}
 /* Mismo arreglo que en `contacto`, y por el mismo motivo: ver el comentario de ahí. */
 .p-locales a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
 </style>
@@ -147,36 +167,46 @@ footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
 </div>
 <main>
 <div class="p-hero">
-<header class="hero">
-  <h1>Blog · Trattoria Bella Napoli</h1>
-  
-</header>
+<header class="hero seccion alt"><div class="banda">
+  <div class="cabeza">
+    <h1>Blog · Trattoria Bella Napoli</h1>
+    
+  </div>
+</div></header>
 </div>
 <div class="p-blogIndice">
-<section class="indice">
+<section class="indice seccion"><div class="banda">
   <div class="cards">
   <a class="card" href="/blog/como-elegimos-la-harina"><h3>Cómo elegimos la harina</h3></a>
   <a class="card" href="/blog/fermentacion-lenta"><h3>Qué es la fermentación lenta</h3></a>
-</div>
-</section>
+  </div>
+</div></section>
 </div>
 </main>
 <footer>
+<div class="banda">
+<div class="pie-cols">
 <div class="p-contacto">
 <section class="contacto" id="contacto">
   <h2>Contacto</h2>
-  <p><strong>Trattoria Bella Napoli</strong></p>
+  <p class="negocio">Trattoria Bella Napoli</p>
   <p>Tel: <a href="tel:+34911234567">+34 911 23 45 67</a></p>
 </section>
 </div>
 <div class="p-locales">
 <section class="ubicaciones" id="ubicaciones">
   <h2>Nuestros locales</h2>
-  <div class="local"><h3>Centro</h3><p>Calle Mayor 12, 28013 Madrid</p><p>Tel: <a href="tel:+34911234567">+34 911 23 45 67</a></p><p>Mar-Dom 13:00-16:00, 20:00-23:30</p></div>
-  <div class="local"><h3>Chamberí</h3><p>Calle Zurbano 40, Madrid</p><p>Mar-Sáb 20:00-23:30</p></div>
+  <div class="locales">
+    <div class="local"><h3>Centro</h3><p>Calle Mayor 12, 28013 Madrid</p><p>Tel: <a href="tel:+34911234567">+34 911 23 45 67</a></p><p>Mar-Dom 13:00-16:00, 20:00-23:30</p></div>
+    <div class="local"><h3>Chamberí</h3><p>Calle Zurbano 40, Madrid</p><p>Mar-Sáb 20:00-23:30</p></div>
+  </div>
 </section>
 </div>
+</div>
+<div class="pie-legal">
 <p class="tecnica">Página generada por AMG OS · contrato web.v0.1 · schema WebPage</p>
+</div>
+</div>
 </footer>
 </body>
 </html>

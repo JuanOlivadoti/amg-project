@@ -34,6 +34,17 @@ import type { CtxPieza, Pieza } from "./tipos.js";
  * el trabajo siguiente, con dos salidas posibles: podar la rama y su CSS, o darle un consumidor real
  * (un juego de plantillas cuyo `story` use `hero`). Lo que no puede quedarse es como está.
  *
+ * ## El rediseño: un CABEZAL de página, no una portada
+ *
+ * Las dos páginas que la usan son interiores (`/menu`, `/blog`), y en la referencia una página
+ * interior no abre con el hero de la home sino con una **banda corta con fondo** que dice dónde
+ * estás. Eso es lo que dibuja ahora: `.seccion.alt` con el titular centrado y su bajada, con el
+ * padding recortado a propósito —los 120 px de `--pad-seccion` empujarían la primera categoría de la
+ * carta fuera de la pantalla, y `/menu` existe para leer la carta—.
+ *
+ * No tiene `cssOscuro`, y es una respuesta y no un olvido: el `border-bottom:#eee` que lo necesitaba
+ * ya no existe, y ningún valor de la pieza es hoy un color literal.
+ *
  * ⚠️ **La deuda creció con el rediseño y sigue sin pagarse**: `home` pasó de `hero` a `heroSlider`, así
  * que la rama muerta viaja ahora en el `<style>` de dos páginas en vez de tres, pero la pieza entera
  * quedó a un paso de la situación que retiró a `carta` y a `heroPortada` —quedarse sin ninguna receta
@@ -42,21 +53,22 @@ import type { CtxPieza, Pieza } from "./tipos.js";
 export const hero: Pieza = {
   id: "hero",
   raiz: "p-hero",
-  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
-   ancho de lectura. Se quita cuando la seccion se rediseñe. */
-.p-hero{max-width:var(--ancho-lectura);margin:0 auto}
-.p-hero .hero{padding:48px 0 40px;border-bottom:1px solid #eee}
-.p-hero .hero.has-img{padding-top:24px}
-.p-hero .hero-img{width:100%;border-radius:14px;margin:0 0 28px;object-fit:cover;aspect-ratio:16/9}
-.p-hero .hero h1{font-size:2.3rem;line-height:1.12;margin:0 0 12px;letter-spacing:-.02em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-hero .lede{font-size:1.18rem;color:var(--muted);margin:0 0 24px}
-/* La frase del CTA cuando no cabe en un botón. Menos peso que la bajada: es una invitación, no el
-   resumen de la página. */
-.p-hero .cta-lede{font-size:1.02rem;color:var(--muted);margin:0 0 20px}
-.p-hero .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600}
-`,
-
-  cssOscuro: `@media(prefers-color-scheme:dark){.p-hero .hero{border-color:#222}}
+  // El cabezal es una franja con fondo (`.seccion.alt`) y NO la portada del sitio: en la referencia,
+  // las páginas interiores abren con una banda corta que dice dónde estás, no con el hero de la home.
+  // Por eso el `padding` propio pisa al de `.seccion`: 120 px de aire arriba de la carta empujan la
+  // primera categoría fuera de la pantalla, y `/menu` existe para leer la carta.
+  css: `.p-hero .hero{padding:clamp(40px,5vw,72px) 0}
+.p-hero .cabeza{text-align:center;max-width:var(--ancho-lectura);margin:0 auto}
+/* Mismo escalado que el titular de la portada, un punto más bajo: es la misma familia de titular y
+   tiene que leerse como parte del mismo sitio. SIN 'font-weight' — se precarga un solo archivo (700),
+   que es el que un h1 hereda; declarar otro peso convierte el preload en una descarga tirada. */
+.p-hero .cabeza h1{font-family:var(--fuente-titulo);font-size:clamp(2.1rem,1.2rem + 3.2vw,3.75rem);line-height:1.15;text-transform:uppercase;margin:0;color:var(--titulo);letter-spacing:-.01em}
+.p-hero .lede{font-size:1.15rem;line-height:1.7;color:var(--muted);margin:16px auto 0;max-width:60ch}
+/* La foto y el CTA son de la rama del blok \`hero\`, que hoy ninguna receta alcanza (ver la DEUDA
+   CONOCIDA de arriba): se conservan porque la rama se conserva, no porque se dibujen en producción. */
+.p-hero .hero-img{width:100%;max-width:var(--ancho-pagina);border-radius:14px;margin:0 auto 28px;object-fit:cover;aspect-ratio:16/9;display:block}
+.p-hero .cta-lede{font-size:1.02rem;color:var(--muted);margin:16px auto 0;max-width:60ch}
+.p-hero .cta{display:inline-block;margin:24px 0 0;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:15px 40px;border-radius:5px;font-family:var(--fuente-titulo);font-size:1rem;font-weight:500;text-transform:uppercase;letter-spacing:.02em}
 `,
 
   render(ctx: CtxPieza): string {
@@ -69,23 +81,27 @@ export const hero: Pieza = {
       const cta = resolverCta(h.cta_label, ctx, Boolean(faq));
       return envolver(
         "p-hero",
-        `<header class="hero${foto ? " has-img" : ""}">
+        `<header class="hero seccion alt${foto ? " has-img" : ""}"><div class="banda">
   ${foto}
-  <h1>${esc(h.headline)}</h1>
-  ${h.subhead ? `<p class="lede">${esc(h.subhead)}</p>` : ""}
-  ${cta.bajada ? `<p class="cta-lede">${esc(cta.bajada)}</p>` : ""}
-  ${cta.etiqueta && cta.href ? `<a class="cta" href="${cta.href}">${esc(cta.etiqueta)}</a>` : ""}
-</header>`,
+  <div class="cabeza">
+    <h1>${esc(h.headline)}</h1>
+    ${h.subhead ? `<p class="lede">${esc(h.subhead)}</p>` : ""}
+    ${cta.bajada ? `<p class="cta-lede">${esc(cta.bajada)}</p>` : ""}
+    ${cta.etiqueta && cta.href ? `<a class="cta" href="${cta.href}">${esc(cta.etiqueta)}</a>` : ""}
+  </div>
+</div></header>`,
       );
     }
 
     if (ctx.titulo) {
       return envolver(
         "p-hero",
-        `<header class="hero">
-  <h1>${esc(ctx.titulo)}</h1>
-  ${ctx.bajada ? `<p class="lede">${esc(ctx.bajada)}</p>` : ""}
-</header>`,
+        `<header class="hero seccion alt"><div class="banda">
+  <div class="cabeza">
+    <h1>${esc(ctx.titulo)}</h1>
+    ${ctx.bajada ? `<p class="lede">${esc(ctx.bajada)}</p>` : ""}
+  </div>
+</div></header>`,
       );
     }
 

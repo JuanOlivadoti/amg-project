@@ -2,10 +2,9 @@
 
 El aspecto que tiene hoy el sitio de un cliente, de dónde salió cada valor y qué falta.
 
-> **Estado: rediseño en curso** (arrancado el 2026-08-10). Hechas: la cabecera, la portada y las cinco
-> secciones de contenido de la home y `/menu` (`barraDatos`, `platosDestacados`, `cartaCategorias`,
-> `galeria`, `ctaFinal`). El resto conserva el aspecto anterior y lleva el andamio del ancho de lectura
-> descrito en [`03`](03-tema-y-marca.md).
+> **Estado: rediseño COMPLETO** (2026-08-10). Las tres etapas están hechas: el tema y la cabecera y la
+> portada (etapa 1), las doce secciones de contenido y el pie (etapa 2) y las tres secciones nuevas con
+> contenido por defecto (etapa 3). **El andamio del ancho de lectura ya no existe** en ninguna pieza.
 
 ## De dónde salen los valores
 
@@ -84,28 +83,60 @@ El botón (15px 40px, radio 5, versalita) está **duplicado** en `heroSlider`, `
 `ctaFinal`. Es deliberado: el CSS base solo acepta lo que necesitan dos o más piezas *y* no tiene otro
 dueño, y un `.boton` compartido es un cambio del patrón base, no de una pieza.
 
-## Lo que falta
+## Las siete últimas secciones (etapa 2), y las tres decisiones que llevaron
 
-Las secciones que aún conservan el aspecto anterior:
+| Pieza | Decisión | Por qué |
+| --- | --- | --- |
+| `hero` | **Cabezal** corto con fondo, no una portada, y con el `padding` recortado | Es el titular de `/menu` y `/blog`, que son páginas interiores. Con los 120 px de `--pad-seccion`, la primera categoría de la carta se iba de la pantalla — y `/menu` existe para leer la carta |
+| `seccionProsa` | Los apartados comparten **UNA** `.seccion`, con la mitad de aire entre ellos | Son partes de un mismo texto. Con una sección cada uno, una landing de cuatro apartados eran cuatro pantallas de scroll con tres párrafos dentro |
+| `faq` | Acordeón de tarjetas, **sin** `.alt`, con `+`/`−` propio | En la receta va justo antes de `ctaFinal`, que sí lleva `.alt`: dos franjas `--soft` seguidas se leen como una sola de 400 px. Quitar el triángulo nativo necesita **dos** reglas (`list-style` para Firefox, `::-webkit-details-marker` para Safari): con una sola, el otro navegador dibuja los dos marcadores |
+| `indice` / `blogIndice` | Casi sin CSS propio, y `.cards` pasa a **3 columnas fijas** | El reparto salió bien: el titular lo pinta el encabezado compartido. Y el `auto-fill` de 220 px daba **cinco** columnas en la banda de 1320, así que una home recién publicada dejaba una tarjeta sola a la izquierda bajo un encabezado centrado — la misma lección que la galería |
+| `contacto` + `locales` | El pie, en **columnas**: contacto + una por local | En la referencia son cuatro fijas. Acá el número lo decide lo que la ficha sostiene, porque las dos que faltarían para llegar a cuatro son un menú de enlaces que duplica el nav y un formulario de newsletter que no tiene backend. **Nunca una columna vacía** |
+| `barraDatos` | Menos aire vertical que una sección normal | Medido a 1440: con `--pad-seccion` sumaba 230 px de blanco alrededor de una tarjeta de 100 px de alto. No es una sección de contenido: es la ficha del negocio colgando del titular |
 
-```text
-hero · seccionProsa · faq · indice · blogIndice · contacto · locales
-```
+**El cambio de base que las habilita:** `main` dejó de declarar ancho y respiro, y por eso las
+secciones con fondo llegan ahora a los bordes de la pantalla. El detalle y su precio, en
+[`03`](03-tema-y-marca.md#los-dos-anchos).
 
-Y del template de referencia quedan sin equivalente, **por falta de datos, no de tiempo**:
+## Las tres secciones nuevas (etapa 3), y dónde se corta la excepción
 
-| Sección del original | Qué falta para poder hacerla |
+| Pieza | Campo | Sin dato en la ficha |
+| --- | --- | --- |
+| `bienvenida` | `bienvenida` (texto) | **Dibuja el default.** `BIENVENIDA_DEFAULT`, en su archivo, con su test |
+| `destacados` | `destacados[]` (`titulo`, `texto`) | **Dibuja los tres del default.** `DESTACADOS_DEFAULT` |
+| `testimonios` | `testimonios[]` (`texto`, `autor`) | **Devuelve `""`.** No hay default y no lo va a haber |
+
+Los defaults están escritos con una restricción, no con la de sonar bien: **hablan de la página, no
+del negocio.** «Los platos y sus precios, para mirarlos con calma antes de venir» es cierto por
+construcción para cualquier cliente, porque lo cumple el propio renderizador; «producto de mercado» es
+un hecho sobre el negocio que un cliente podría no cumplir. Lo sostiene un test con una lista de
+palabras prohibidas (`temporada`, `mercado`, `artesan`, `desde 19`, `mejor`, `premi`…), para que la
+regla no dependa de que quien edite el texto se acuerde de ella.
+
+**En `testimonios` la excepción se corta**, y eso no es una pieza a medio hacer: una reseña ES una
+afirmación sobre el negocio, atribuida además a una persona. Un texto de muestra en una bienvenida es
+una propuesta editable; una reseña de muestra publicada en el dominio de un restaurante es una reseña
+falsa, y lo que la convierte en engaño no es lo específica que sea sino **el hueco donde está**, que
+dice «esto lo dijo un cliente». La sección aparece sola en cuanto la agencia carga la primera.
+
+**Tampoco hay campo de puntuación**, en ninguna de las cuatro fronteras. Una valoración numérica
+publicada por el propio negocio, sin plataforma que la respalde, es un dato que nadie puede comprobar.
+Lo impone sobre todo la **allowlist SQL** (`0020`), que enumera `texto` y `autor` y nada más: un
+`estrellas` escrito a mano en `business_profile` no llega al renderizador.
+
+## Lo que sigue sin equivalente
+
+| Sección del original | Por qué no está |
 | --- | --- |
-| Carrusel de categorías con conteo | Nada: sale de `menu_categorias`. Es la siguiente |
-| "Welcome at X" + horarios lunch/dinner | Un texto de bienvenida en el perfil |
-| Bullets de "por qué nosotros" | Campo nuevo en el perfil |
-| Testimonios con estrellas | Campo nuevo + pantalla en el portal para cargarlos |
-| Contadores (años, platos, clientes) | Campo nuevo. **Descartado**: es relleno de template |
+| Contadores (años, platos, clientes) | **Descartado**: es relleno de template, y cada cifra sería un hecho sobre el negocio |
 | Carrusel de sponsors | **Descartado** por el mismo motivo |
 | Newsletter en el pie | Backend de suscripción. No existe |
+| Menú de enlaces en el pie | Duplica el nav de la cabecera |
 
-Cada campo nuevo cruza las cuatro fronteras de [`03`](03-tema-y-marca.md) **y** necesita una pantalla
-en el portal para que la agencia lo cargue. Ese es el coste real de cada sección.
+Y falta lo que ninguna de estas etapas construye: **las pantallas del portal** para que la agencia
+cargue `bienvenida`, `destacados` y `testimonios`. Hasta que existan, los campos solo se pueden
+escribir en `business_profile` a mano — que es justo lo que hace que el default sea aceptable **y**
+temporal: un default que el cliente no puede cambiar deja de ser una propuesta.
 
 ## La decisión sobre el contenido por defecto (2026-08-10)
 
@@ -158,6 +189,11 @@ Mientras dure este rediseño, sus casos fallan. Antes de re-capturar hay que med
 | --- | --- | --- | --- |
 | Cabecera y portada | — | cero palabras, `href`, `id`, JSON-LD y trazas | "Llamar" |
 | Las cuatro secciones de la home | 7 de 10 | cero palabras, `href`, `id`, JSON-LD y trazas | "Nuestros platos", "El sitio, por dentro", "Te esperamos" — los tres, rótulos de plantilla |
+| Las siete últimas + las tres nuevas | 6 de 10 | cero palabras, `href`, `id`, JSON-LD y trazas | "FAQ", "Lo que hay en el sitio" (rótulos), y el contenido por defecto de `bienvenida` y `destacados` |
+
+Las tres veces se **midió antes de re-capturar**, y las tres dieron lo mismo: **cero** palabras, `href`,
+`id`, JSON-LD ni trazas perdidos en los diez casos. Es la comprobación que convierte "el cambio es
+deliberado" en un hecho: lo que entra es texto nuevo, no texto que desapareció.
 
 ⚠️ `npm run capturar:paridad -w web-builder` está en `permissions.deny`: re-capturar exige
 autorización explícita del usuario.

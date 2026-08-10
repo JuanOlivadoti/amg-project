@@ -13,20 +13,32 @@ import type { CtxPieza, Pieza } from "./tipos.js";
  * Se omite si no hay locales, y en ese caso el nav tampoco ofrece "Ubicaciones" (`hayUbicaciones`):
  * las dos decisiones salen del mismo dato, así que no queda un ancla huérfana.
  *
- * ⚠️ La foto del local y el enlace a mapa son la entrega 3.
+ * ## El rediseño: los locales SON las columnas del pie
+ *
+ * En la referencia el pie tiene cuatro columnas fijas. Acá el número lo decide la ficha: contacto +
+ * una por local. Con los dos locales del perfil de demo son tres; con un solo local, dos. Una rejilla
+ * de cuatro huecos habría dejado uno vacío en la web de casi todos los clientes, y las dos columnas
+ * que faltan para llegar a cuatro son, en el original, un menú de enlaces que duplica el nav de arriba
+ * y un formulario de newsletter que no tiene backend. Nunca una columna vacía.
+ *
+ * ⚠️ La foto del local y el enlace a mapa siguen pendientes.
  */
 export const locales: Pieza = {
   id: "locales",
   raiz: "p-locales",
   // `h2`/`h3`/`p` los declara la pieza: venían de `footer h2`/`footer h3`/`footer p`, selectores que
   // estilaban a la vez esta pieza, `contacto` y la línea técnica del shell.
-  css: `.p-locales .ubicaciones{border:0;padding:16px 0 0}
-/* El \`letter-spacing\` viene de \`section h2\` del CSS viejo, no de \`footer h2\`: ver la explicación
-   completa en \`contacto.ts\`, que perdió el mismo valor por el mismo empate de especificidad. */
-.p-locales h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-locales h3{font-size:.95rem;margin:0 0 4px;color:var(--titulo);font-family:var(--fuente-titulo)}
+  css: `.p-locales .ubicaciones{border:0;padding:0}
+/* El mismo rótulo de columna que \`contacto\`: ver ahí por qué son dos copias y no una regla del base. */
+.p-locales h2{font-family:var(--fuente-titulo);font-size:1.05rem;text-transform:uppercase;letter-spacing:.08em;margin:0 0 18px;padding:0 0 12px;color:var(--titulo);border-bottom:2px solid var(--decorativo)}
+/* **Cada local es una COLUMNA**, y por eso el pie tiene tantas como la ficha sostenga: con dos
+   locales son tres (contacto + dos), con uno son dos. 'auto-fit' y no un número fijo justamente por
+   eso — una rejilla de cuatro huecos dejaría huecos vacíos en la web de un negocio de un solo local,
+   que es el caso más común. */
+.p-locales .locales{display:grid;gap:clamp(20px,3vw,40px);grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.p-locales h3{font-family:var(--fuente-titulo);font-size:1.05rem;margin:0 0 8px;color:var(--titulo)}
 .p-locales p{margin:0 0 6px}
-.p-locales .local{margin:0 0 16px;color:var(--muted)}
+.p-locales .local{margin:0;color:var(--muted)}
 /* Mismo arreglo que en \`contacto\`, y por el mismo motivo: ver el comentario de ahí. */
 .p-locales a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
 `,
@@ -48,7 +60,7 @@ export const locales: Pieza = {
           ? `<p>Tel: <a href="${hrefTelefono(l.telephone)}">${esc(l.telephone)}</a></p>`
           : "";
         const horas = l.opening_hours ? `<p>${esc(l.opening_hours)}</p>` : "";
-        return `  <div class="local">${titulo}${dir}${tel}${horas}</div>`;
+        return `    <div class="local">${titulo}${dir}${tel}${horas}</div>`;
       })
       .join("\n");
 
@@ -56,7 +68,9 @@ export const locales: Pieza = {
       "p-locales",
       `<section class="ubicaciones" id="ubicaciones">
   <h2>${lista.length > 1 ? "Nuestros locales" : "Dónde estamos"}</h2>
+  <div class="locales">
 ${bloques}
+  </div>
 </section>`,
     );
   },

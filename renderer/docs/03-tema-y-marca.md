@@ -112,9 +112,17 @@ Y era, además, el motivo de que la cabecera y el contenido no alinearan: la bar
 a 760 porque cada uno resolvía su problema por su cuenta, con el efecto visible de que el borde
 inferior de la cabecera se cortaba en mitad de la pantalla.
 
-**Andamio en curso:** las piezas que todavía no se rediseñaron llevan una regla
-`.p-<id>{max-width:var(--ancho-lectura);margin:0 auto}` con un comentario que lo dice. Se quita cuando
-a la sección le toca su rediseño. Es visible a propósito: un andamio que no se ve se queda.
+**El andamio ya no existe** (2026-08-10). Mientras duró el rediseño, las piezas sin rehacer llevaban
+una regla `.p-<id>{max-width:var(--ancho-lectura);margin:0 auto}` con un comentario que lo decía; se
+quitaba al rediseñar la sección. Hoy **todas** usan `.seccion` + `.banda`, así que el andamio se fue
+con la última. Fue visible a propósito: un andamio que no se ve se queda.
+
+Y con él se fue el `max-width` de **`main`**, que es lo que hace **full-bleed** a las secciones con
+fondo. Mientras `main` medía 1320 con 20 px de respiro, el fondo de una `.seccion.alt` se cortaba a
+1320 —una franja de color con dos márgenes blancos— y el respiro lateral se aplicaba dos veces. Hoy el
+ancho lo pone cada sección con su `.banda`. ⚠️ **El precio: una pieza de contenido nueva que no use
+`.banda` sale pegada al borde en un móvil.** La única que no la usa es `heroSlider`, que tiene su
+propia rejilla de dos columnas y lleva el padding escrito.
 
 ## Las cuatro fronteras de un campo del perfil
 
@@ -123,11 +131,18 @@ Un campo nuevo en `business_profile` cruza cuatro sitios, y si falta en uno **se
 | Frontera | Dónde | Qué pasa si falta |
 | --- | --- | --- |
 | Zod del contrato | `web-builder/src/contract.ts` | El campo se descarta al parsear el brief |
-| Allowlist SQL | la columna generada `business_profile_publico` (migración `0014`) | El renderizador no lo ve nunca |
+| Allowlist SQL | la columna generada `business_profile_publico` (migraciones `0014` y `0020`) | El renderizador no lo ve nunca |
 | `perfilValido` | `renderer/src/perfil.ts` | Se descarta al revalidar |
 | El CSS o la pieza | `css.ts` / `piezas/` | Llega y no lo dibuja nadie |
 
-Los topes tienen que **coincidir**: `MAX_LOCALES`, `MAX_ITEMS_CARTA`, las 30 fotos, las 20 categorías.
+Los topes tienen que **coincidir**: `MAX_LOCALES`, `MAX_ITEMS_CARTA`, las 30 fotos, las 20 categorías,
+los 6 destacados y los 12 testimonios. Entre las dos fronteras que viven en `web-builder` eso ya no es
+prosa: lo exige un test (`piezas/piezas-foto.test.ts`).
+
+**Y hay una quinta cosa que la allowlist decide y las otras tres no pueden:** qué claves **no
+existen**. `testimonios` enumera `texto` y `autor`, así que un `estrellas` escrito a mano en
+`business_profile` —una columna `jsonb` que nadie valida al escribir— no llega al renderizador. Esa es
+la capa que sostiene la regla cuando el dato no pasó por Zod ni por `perfilValido`.
 Cambiar uno solo deja las capas discrepando, y hay un test que las encadena para impedirlo.
 
 ## Validación: es defensa, no cosmética

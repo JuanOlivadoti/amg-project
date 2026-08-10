@@ -1,12 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_CATEGORIAS, MAX_FOTOS, MAX_PRECIOS } from "../../contract.js";
+import { MAX_CATEGORIAS, MAX_DESTACADOS, MAX_FOTOS, MAX_PRECIOS, MAX_TESTIMONIOS } from "../../contract.js";
 import { pageToStory } from "../../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../../fixtures.js";
 import type { BusinessProfile, Story } from "../../types.js";
 import { ctxCompleto, ctxDe, perfilCompleto } from "../ctx-de-prueba.js";
 import { renderStory } from "../html.js";
-import { MAX_CATEGORIAS_RENDER, MAX_DESTACADOS, MAX_FOTOS_GALERIA, MAX_PRECIOS_RENDER } from "../lib.js";
+import {
+  MAX_CATEGORIAS_RENDER,
+  MAX_DESTACADOS_RENDER,
+  MAX_FOTOS_GALERIA,
+  MAX_PLATOS_DESTACADOS,
+  MAX_PRECIOS_RENDER,
+  MAX_TESTIMONIOS_RENDER,
+} from "../lib.js";
 import { barraDatos } from "./barra-datos.js";
 import { cartaCategorias } from "./carta-categorias.js";
 import { ctaFinal } from "./cta-final.js";
@@ -296,7 +303,7 @@ test("🔴 platosDestacados: `precios` manda sobre `price`", () => {
 test("🔴 platosDestacados: el tope son 6 platos, fijado en su borde", () => {
   // Un default de producción sin test es una decisión sin dueño: gobierna cuántas fotos paga la home
   // de cualquier cliente. Se fija el BORDE, no un rango — con 6 salen 6, con 7 siguen saliendo 6.
-  assert.equal(MAX_DESTACADOS, 6);
+  assert.equal(MAX_PLATOS_DESTACADOS, 6);
   const seis = platosDestacados.render(ctxDe({ profile: validProfile({ menu: menuDe(6) }) }));
   assert.match(seis, /Plato 6/);
   const siete = platosDestacados.render(ctxDe({ profile: validProfile({ menu: menuDe(7) }) }));
@@ -604,6 +611,10 @@ test("🔴 los topes del render coinciden con los de Zod: cambiar uno es cambiar
   assert.equal(MAX_FOTOS_GALERIA, MAX_FOTOS);
   assert.equal(MAX_PRECIOS_RENDER, MAX_PRECIOS);
   assert.equal(MAX_CATEGORIAS_RENDER, MAX_CATEGORIAS);
+  // Los dos del bloque K. Entran acá el mismo día que nacen, que es lo que este test enseñó: un tope
+  // nuevo que no esté atado es un tope que dentro de tres meses dice dos cosas distintas.
+  assert.equal(MAX_DESTACADOS_RENDER, MAX_DESTACADOS);
+  assert.equal(MAX_TESTIMONIOS_RENDER, MAX_TESTIMONIOS);
 });
 
 // ---------------------------------------------------------------- el LCP de la landing

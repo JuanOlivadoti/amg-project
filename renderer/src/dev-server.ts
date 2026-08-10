@@ -112,6 +112,10 @@ await cliente("Trattoria Bella Napoli", "bellanapoli.es", "111", {
     },
     { category: "Pastas", name: "Cacio e pepe", description: "Pecorino romano y pimienta negra.", price: "13,00 €" },
   ],
+  // ⚠️ **A propósito sin `bienvenida`, sin `destacados` y sin `testimonios`.** Es el estado de TODA
+  // ficha de producción hoy, y es lo que hay que poder mirar en el navegador: las dos primeras
+  // secciones se rellenan con su default y la de reseñas **no se dibuja**. Si alguien le pone un
+  // default a `testimonios`, este cliente es donde se va a ver.
 });
 
 // El cliente de **assets reales**: las siete fotos de `docs/plantillas/template1/`, subidas al space
@@ -224,6 +228,25 @@ await cliente("Borcelle Burger", "borcelle.es", "444", {
       opening_hours: "Mar-Dom 13:00-16:30, 20:00-23:30",
       foto: { src: FOTO.local },
     },
+  ],
+  // Las tres secciones de plantilla (bloque K, etapa 3). Están acá para poder MIRARLAS en el
+  // navegador, que en esta área encuentra lo que los tests no ven.
+  //
+  // ⚠️ Las reseñas son de un negocio FICTICIO —Borcelle Burger no existe— y por eso pueden estar
+  // escritas. La misma regla que impide poner sus fotos de stock en la ficha de un restaurante real
+  // vale, y más fuerte, para una reseña: `testimonios` NO tiene default en el renderizador
+  // justamente para que un cliente real nunca publique una que no le dijo nadie.
+  bienvenida:
+    "Hamburguesas a la parrilla en el centro de Madrid. Pasa, siéntate donde quieras y pide en la barra.",
+  destacados: [
+    { titulo: "Carne del día", texto: "Se pica cada mañana en el propio local." },
+    { titulo: "Pan de la casa", texto: "Brioche horneado a diario." },
+    { titulo: "Dos locales", texto: "Fuencarral y Chamberí, con la misma carta." },
+  ],
+  testimonios: [
+    { texto: "La mejor hamburguesa que he comido en Madrid, y he probado unas cuantas.", autor: "Marta G." },
+    { texto: "Sitio pequeño, servicio rápido y la carne en su punto. Volveremos." },
+    { texto: "Pedimos las bravas para compartir y se nos fue de las manos. Muy recomendable.", autor: "Álex R." },
   ],
 });
 

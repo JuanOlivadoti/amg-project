@@ -123,6 +123,18 @@ export function perfilConManual(over: Partial<BusinessProfile> = {}): BusinessPr
       },
       { category: "Pastas", name: "Cacio e pepe", price: "13,00 €" },
     ],
+    // Las tres secciones de plantilla (bloque K, etapa 3). Están acá porque este perfil es el que
+    // recorre las TRES FRONTERAS encadenadas en `renderer/src/tres-fronteras.test.ts`: un campo que no
+    // esté en esta fixture puede faltar en la allowlist de Postgres y el test seguiría verde.
+    bienvenida: "Un comedor pequeño en el centro, con horno de leña a la vista.",
+    destacados: [
+      { titulo: "Horno de leña", texto: "La masa fermenta 48 horas." },
+      { titulo: "Dos locales", texto: "Centro y Chamberí." },
+    ],
+    testimonios: [
+      { texto: "La mejor napolitana que he comido fuera de Nápoles.", autor: "Cliente habitual" },
+      { texto: "Se come muy bien y sin esperar." },
+    ],
     ...over,
   });
 }

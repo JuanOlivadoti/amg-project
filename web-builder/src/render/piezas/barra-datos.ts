@@ -43,7 +43,13 @@ export const barraDatos: Pieza = {
   // Flex con `wrap`: en escritorio los tres datos van en una línea y en un móvil se apilan sin que
   // haga falta un media query — la tarjeta no tiene un layout que defender, solo tres cosas que caben
   // o no caben. Y las tres son opcionales: cualquier subconjunto tiene que verse deliberado.
-  css: `/* La tarjeta va sobre el fondo de la página (la sección NO lleva '.alt'): si la sección
+  css: `/* Menos aire que una sección normal, y es lo único que esta pieza le discute al patrón. Medido
+   en el navegador a 1440: con '--pad-seccion' (120px) los dos huecos de arriba y abajo sumaban 230px
+   de blanco alrededor de una tarjeta de 100px de alto, y en '/menu' la primera categoría de la carta
+   se iba de la pantalla. Esto no es una sección de contenido: es la ficha del negocio colgando del
+   titular. */
+.p-barraDatos .seccion{padding:clamp(28px,3.5vw,56px) 0}
+/* La tarjeta va sobre el fondo de la página (la sección NO lleva '.alt'): si la sección
    también fuera '--soft', la tarjeta desaparecería dentro de su propio fondo. */
 .p-barraDatos .tarjeta{background:var(--soft);border-radius:14px;padding:clamp(24px,3vw,40px);display:flex;flex-wrap:wrap;gap:clamp(20px,3vw,48px)}
 /* 'flex:1 1 200px' en los tres y el doble de crecimiento para el teléfono: reparte el ancho sobrante

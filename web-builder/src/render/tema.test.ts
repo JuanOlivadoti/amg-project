@@ -265,7 +265,10 @@ const CONSUMO: Array<{ token: string; selector: string; propiedad: string; esper
   { token: "--marca-titulo", selector: ".p-heroSlider h1", propiedad: "color", espera: "#112233" },
   { token: "--marca-texto", selector: "body", propiedad: "color", espera: "#445566" },
   { token: "--marca-fondo", selector: "body", propiedad: "background", espera: "#fefdfb" },
-  { token: "--marca-fondo-alt", selector: ".p-faq .faq", propiedad: "background", espera: "#f1f2f3" },
+  // El consumidor de `--soft` dejó de ser la cajita de la FAQ y pasó a ser la primitiva compartida:
+  // el fondo alterno de sección es hoy lo que da ritmo a la página entera (`platosDestacados`,
+  // `ctaFinal`, el cabezal de `/menu`), y `.p-faq .faq` ya no declara ningún fondo.
+  { token: "--marca-fondo-alt", selector: ".seccion.alt", propiedad: "background", espera: "#f1f2f3" },
   // ⚠️ Los dos roles self-hosted se comprueban por el nombre de la FAMILIA (`'Oswald'`,
   // `'Dancing Script'`), no por su respaldo. Hasta la mitad C esperaban `Arial Narrow` y
   // `Brush Script MT`, que son precisamente los respaldos de esas dos familias: el test habría seguido

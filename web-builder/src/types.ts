@@ -265,6 +265,51 @@ export interface BusinessProfile {
   portada?: Foto;
   /** La galería. Máx 30: sin tope, un import mal hecho renderiza 50.000 imágenes en cada visita fría. */
   fotos?: Foto[];
+  /**
+   * El párrafo de bienvenida de la home. **Tiene un default de plantilla** (ver `bienvenida.ts`): es
+   * la única familia de campos del perfil que rellena su sección cuando está vacía, y por qué se
+   * aceptó está en `renderer/docs/04-plantilla-base.md`.
+   *
+   * El titular NO está acá y no es un olvido: lo pone el **nombre del negocio**, que ya está en el
+   * perfil. Un `bienvenida.titulo` sería un segundo sitio donde escribir el nombre, y el día que los
+   * dos digan cosas distintas no habría forma de saber cuál manda.
+   */
+  bienvenida?: string;
+  /** Los motivos para venir ("por qué nosotros"). Máx 6. Con default de plantilla. */
+  destacados?: Destacado[];
+  /**
+   * Las reseñas de clientes. Máx 12.
+   *
+   * ⚠️ **Es el único de los tres que NO tiene default**, y es una decisión, no un hueco: un texto de
+   * plantilla en una sección de bienvenida es una propuesta editable, pero una reseña inventada —con
+   * o sin nombre— es una reseña falsa atribuida a un cliente que no existe, y publicada sería
+   * publicidad engañosa. Sin `testimonios`, la sección no se dibuja.
+   */
+  testimonios?: Testimonio[];
+}
+
+/**
+ * Un motivo para venir, de la sección de destacados.
+ *
+ * `titulo` es lo único obligatorio: un motivo sin título no se puede rotular, y el texto largo es el
+ * que sobra cuando alguien quiere tres palabras y no una frase.
+ */
+export interface Destacado {
+  titulo: string;
+  texto?: string;
+}
+
+/**
+ * Una reseña de un cliente.
+ *
+ * `autor` es **opcional a propósito**: una reseña sin firma es una reseña anónima, que es una cosa
+ * honesta; una reseña con una firma inventada es otra. Y no hay campo de puntuación —ni estrellas ni
+ * número—: una valoración numérica en la web del propio negocio, sin plataforma que la respalde, es
+ * un dato que nadie puede comprobar y que Google trata como `Review` sin origen.
+ */
+export interface Testimonio {
+  texto: string;
+  autor?: string;
 }
 
 /**

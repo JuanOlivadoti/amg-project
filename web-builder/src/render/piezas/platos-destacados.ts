@@ -1,6 +1,6 @@
 import type { MenuItem } from "../../types.js";
 import type { PresupuestoImagenes } from "../imagenes.js";
-import { MAX_DESTACADOS, SLUG_MENU, comoImagen, envolver, esc, preciosDe, renderImagen } from "../lib.js";
+import { MAX_PLATOS_DESTACADOS, SLUG_MENU, comoImagen, envolver, esc, preciosDe, renderImagen } from "../lib.js";
 import type { CtxPieza, Pieza } from "./tipos.js";
 
 /**
@@ -92,7 +92,7 @@ export const platosDestacados: Pieza = {
     if (menu.length === 0) return "";
 
     const tarjetas = menu
-      .slice(0, MAX_DESTACADOS)
+      .slice(0, MAX_PLATOS_DESTACADOS)
       .map((it) => unPlato(it, ctx.presupuestoImagenes))
       .join("\n");
 

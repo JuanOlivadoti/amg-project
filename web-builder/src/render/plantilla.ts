@@ -73,10 +73,39 @@ const BASE: JuegoDePlantillas = {
   id: "base",
   story: {
     id: "base/story",
-    // Literal de la spec, §4.
-    contenido: ["heroSlider", "barraDatos", "seccionProsa", "platosDestacados", "galeria", "faq", "ctaFinal"],
+    // Era literal de la spec §4; el bloque K le añadió `testimonios`, y solo eso. Una landing de
+    // research ya trae su propia prosa (`seccionProsa`) y sus propios argumentos, así que `bienvenida`
+    // y `destacados` la habrían hecho decir dos veces lo mismo con distinta voz — una escrita por el
+    // research para ESTA página y otra de plantilla.
+    contenido: [
+      "heroSlider",
+      "barraDatos",
+      "seccionProsa",
+      "platosDestacados",
+      "galeria",
+      "testimonios",
+      "faq",
+      "ctaFinal",
+    ],
   },
-  home: { id: "base/home", contenido: ["heroSlider", "barraDatos", "platosDestacados", "galeria", "indice", "ctaFinal"] },
+  // La home es la página que el bloque K rehizo entera, y por eso lleva las tres secciones nuevas.
+  // El orden alterna el fondo de sección —`bienvenida` y `testimonios` con `.alt`, sus vecinas sin
+  // él— y esa alternancia es el ritmo de la página, no un detalle: dos franjas `--soft` seguidas se
+  // leen como una sola de 400 px de alto.
+  home: {
+    id: "base/home",
+    contenido: [
+      "heroSlider",
+      "barraDatos",
+      "bienvenida",
+      "destacados",
+      "platosDestacados",
+      "galeria",
+      "testimonios",
+      "indice",
+      "ctaFinal",
+    ],
+  },
   menu: { id: "base/menu", contenido: ["hero", "barraDatos", "cartaCategorias", "ctaFinal"] },
   blog: { id: "base/blog", contenido: ["hero", "blogIndice"] },
 };

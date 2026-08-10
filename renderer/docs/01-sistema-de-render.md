@@ -85,7 +85,9 @@ catálogo lo fija un test — que es donde un error de programación tiene que d
 1. los **tokens** (dos capas: `--marca-*` y los semánticos — ver [`03-tema-y-marca.md`](03-tema-y-marca.md));
 2. los tokens que emite la **ficha** del cliente;
 3. las `@font-face` de las familias que **esta página** usa;
-4. el **CSS base** (reset, `main`, `footer`, primitivas compartidas);
+4. el **CSS base** (reset, las primitivas de sección `.seccion`/`.banda`/`.encabezado`, las tarjetas
+   y el `footer` en columnas). ⚠️ **`main` no está**: dejó de declarar ancho y respiro para que las
+   secciones con fondo lleguen a los bordes de la pantalla;
 5. el `css` de cada pieza **que dibujó algo**;
 6. el `cssOscuro` de esas piezas — **solo si `brand.tema === "auto"`**.
 

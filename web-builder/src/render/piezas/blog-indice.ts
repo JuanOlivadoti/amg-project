@@ -13,26 +13,22 @@ import type { CtxPieza, Pieza } from "./tipos.js";
 export const blogIndice: Pieza = {
   id: "blogIndice",
   raiz: "p-blogIndice",
-  // Sin regla para `h2`: este índice no lleva encabezado (el `<h1>` de arriba ya dice "Blog · …").
-  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
-   ancho de lectura. Se quita cuando la seccion se rediseñe. */
-.p-blogIndice{max-width:var(--ancho-lectura);margin:0 auto}
-.p-blogIndice .indice{padding:8px 0 32px;border-bottom:1px solid #f0f0f0}
-`,
-
-  cssOscuro: `@media(prefers-color-scheme:dark){.p-blogIndice .indice{border-color:#1e1e1e}}
+  // **Sin encabezado, y por eso su CSS es solo el del aviso**: el cabezal de `/blog` ya dice "Blog ·
+  // …", y repetirlo en un `h2` sería el mismo título dos veces en dos pantallas de distancia. Es la
+  // única diferencia real con `indice`, y es la razón por la que siguen siendo dos piezas.
+  css: `.p-blogIndice .pending{text-align:center;max-width:var(--ancho-lectura);margin:0 auto}
 `,
 
   render(ctx: CtxPieza): string {
     const tarjetas = ctx.paginas.length
-      ? `<div class="cards">\n${ctx.paginas.map(tarjetaIndice).join("\n")}\n</div>`
+      ? `<div class="cards">\n${ctx.paginas.map(tarjetaIndice).join("\n")}\n  </div>`
       : `<p class="pending">Todavía no hay artículos publicados.</p>`;
 
     return envolver(
       "p-blogIndice",
-      `<section class="indice">
+      `<section class="indice seccion"><div class="banda">
   ${tarjetas}
-</section>`,
+</div></section>`,
     );
   },
 };

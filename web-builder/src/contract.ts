@@ -36,6 +36,15 @@ const MAX_ITEMS_CARTA = 200;
 export const MAX_FOTOS = 30;
 export const MAX_PRECIOS = 3;
 export const MAX_CATEGORIAS = 20;
+/**
+ * Las dos listas de las secciones de plantilla (bloque K, etapa 3).
+ *
+ * **Seis motivos** porque la rejilla los pone de tres en tres y siete dejan una fila coja; **doce
+ * reseñas** porque la sección las apila y a partir de ahí nadie las lee — el tope no está para
+ * proteger la memoria sino para que la página no se convierta en un muro de citas.
+ */
+export const MAX_DESTACADOS = 6;
+export const MAX_TESTIMONIOS = 12;
 
 /** `#rgb` o `#rrggbb`. Lo único que puede entrar a la hoja de estilo. */
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -96,6 +105,17 @@ const menuItemSchema = z.object({
   nota: z.string().optional(),
   foto: fotoSchema.optional(),
 });
+
+/**
+ * Un motivo de la sección de destacados y una reseña. Las dos claves obligatorias son la que da el
+ * contenido: un motivo sin `titulo` no se puede rotular y una reseña sin `texto` no es una reseña.
+ *
+ * **No hay campo de puntuación, y su ausencia es el contrato**: agregar `estrellas` acá sería
+ * habilitar que la web de un negocio publique su propia valoración numérica sin plataforma que la
+ * respalde. Ver `Testimonio` en `types.ts`.
+ */
+const destacadoSchema = z.object({ titulo: z.string().min(1), texto: z.string().optional() });
+const testimonioSchema = z.object({ texto: z.string().min(1), autor: z.string().optional() });
 
 /** `nombre` es lo que se compara contra `MenuItem.category`: sin él la categoría no agrupa nada. */
 const menuCategoriaSchema = z.object({
@@ -165,6 +185,9 @@ const businessProfileSchema = z.object({
   brand: brandSchema.optional(),
   portada: fotoSchema.optional(),
   fotos: z.array(fotoSchema).max(MAX_FOTOS).optional(),
+  bienvenida: z.string().optional(),
+  destacados: z.array(destacadoSchema).max(MAX_DESTACADOS).optional(),
+  testimonios: z.array(testimonioSchema).max(MAX_TESTIMONIOS).optional(),
 });
 
 /** Valida el perfil de negocio. Lanza si el JSON existe pero está mal formado. */

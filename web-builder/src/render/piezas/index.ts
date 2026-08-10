@@ -1,9 +1,11 @@
 import { barraDatos } from "./barra-datos.js";
+import { bienvenida } from "./bienvenida.js";
 import { blogIndice } from "./blog-indice.js";
 import { cabecera } from "./cabecera.js";
 import { cartaCategorias } from "./carta-categorias.js";
 import { contacto } from "./contacto.js";
 import { ctaFinal } from "./cta-final.js";
+import { destacados } from "./destacados.js";
 import { faq } from "./faq.js";
 import { galeria } from "./galeria.js";
 import { hero } from "./hero.js";
@@ -12,6 +14,7 @@ import { indice } from "./indice.js";
 import { locales } from "./locales.js";
 import { platosDestacados } from "./platos-destacados.js";
 import { seccionProsa } from "./seccion-prosa.js";
+import { testimonios } from "./testimonios.js";
 import type { Pieza } from "./tipos.js";
 
 export type { CtxPieza, Pieza } from "./tipos.js";
@@ -50,10 +53,13 @@ export const CATALOGO: readonly Pieza[] = [
   heroSlider,
   hero,
   barraDatos,
+  bienvenida,
   seccionProsa,
+  destacados,
   platosDestacados,
   cartaCategorias,
   galeria,
+  testimonios,
   faq,
   indice,
   blogIndice,

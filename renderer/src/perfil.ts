@@ -1,11 +1,13 @@
 import type {
   BrandTheme,
   BusinessProfile,
+  Destacado,
   Foto,
   FuenteNombre,
   Location,
   MenuCategoria,
   MenuItem,
+  Testimonio,
 } from "web-builder";
 
 /** Las tres del legacy `font`. Es un subconjunto de `FUENTES`, no una lista paralela. */
@@ -177,6 +179,8 @@ const MAX_ITEMS_CARTA = 200;
 const MAX_FOTOS = 30;
 const MAX_PRECIOS = 3;
 const MAX_CATEGORIAS = 20;
+const MAX_DESTACADOS = 6;
+const MAX_TESTIMONIOS = 12;
 
 /** Los locales, validados uno por uno. Un local sin NINGÚN dato usable no es un local: se descarta. */
 function locales(v: unknown): Location[] | undefined {
@@ -271,6 +275,45 @@ function categorias(v: unknown): MenuCategoria[] | undefined {
   return out.length ? out : undefined;
 }
 
+/**
+ * Los motivos de la sección de destacados. Sin `titulo` no hay tarjeta que rotular: la entrada se
+ * descarta **ella sola**, no la sección — mismo criterio que un precio mal cargado, que no borra el
+ * plato.
+ */
+function destacados(v: unknown): Destacado[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: Destacado[] = [];
+  for (const item of v.slice(0, MAX_DESTACADOS)) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const d = item as Record<string, unknown>;
+    const titulo = texto(d["titulo"]);
+    if (!titulo) continue;
+    out.push({ titulo, ...(texto(d["texto"]) ? { texto: texto(d["texto"])! } : {}) });
+  }
+  return out.length ? out : undefined;
+}
+
+/**
+ * Las reseñas. Sin `texto` no hay reseña.
+ *
+ * ⚠️ **`autor` es la única clave que sobrevive junto al texto, y esa es la garantía.** Este validador
+ * reconstruye el objeto clave por clave, así que un `estrellas` o un `puntuacion` que hubiera
+ * sobrevivido a las dos capas anteriores muere acá: la web de un negocio no publica su propia
+ * valoración numérica. Ver `Testimonio` en `types.ts`.
+ */
+function testimonios(v: unknown): Testimonio[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: Testimonio[] = [];
+  for (const item of v.slice(0, MAX_TESTIMONIOS)) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const t = item as Record<string, unknown>;
+    const cuerpo = texto(t["texto"]);
+    if (!cuerpo) continue;
+    out.push({ texto: cuerpo, ...(texto(t["autor"]) ? { autor: texto(t["autor"])! } : {}) });
+  }
+  return out.length ? out : undefined;
+}
+
 /** La galería. Las fotos que no validan se caen una a una; las demás se dibujan. */
 function galeria(v: unknown): Foto[] | undefined {
   if (!Array.isArray(v)) return undefined;
@@ -308,5 +351,8 @@ export function perfilValido(bruto: unknown): BusinessProfile | null {
     ...(marca(p["brand"]) ? { brand: marca(p["brand"]) } : {}),
     ...(foto(p["portada"]) ? { portada: foto(p["portada"]) } : {}),
     ...(galeria(p["fotos"]) ? { fotos: galeria(p["fotos"]) } : {}),
+    ...(texto(p["bienvenida"]) ? { bienvenida: texto(p["bienvenida"])! } : {}),
+    ...(destacados(p["destacados"]) ? { destacados: destacados(p["destacados"]) } : {}),
+    ...(testimonios(p["testimonios"]) ? { testimonios: testimonios(p["testimonios"]) } : {}),
   };
 }

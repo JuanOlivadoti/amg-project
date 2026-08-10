@@ -145,7 +145,7 @@ describe("perfilValido + renderStory: el contrato de verdad", () => {
     const html = renderStory(story(), perfilValido({ name: "N", address: "Calle Mayor 1" }), "es");
 
     assert.match(html, /Bienvenidos/, "la página tiene que salir igual");
-    assert.match(html, /<strong>N<\/strong>/, "y con lo que sí era válido del perfil");
+    assert.match(html, /<p class="negocio">N<\/p>/, "y con lo que sí era válido del perfil");
     assert.doesNotMatch(html, /undefined/, "sin rastros de lo que se descartó");
   });
 

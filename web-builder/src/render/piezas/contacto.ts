@@ -7,6 +7,18 @@ import type { CtxPieza, Pieza } from "./tipos.js";
  * **Pieza de SHELL, no de receta** (§1): el nav ancla a `#contacto` desde todas las páginas, así que
  * la región tiene que existir en todas por construcción. Antes era una `<section id="contacto">`
  * dentro de `<main>`, repetida en cada landing y ausente de la home sintetizada.
+ *
+ * ## El rediseño: la primera COLUMNA del pie
+ *
+ * El pie pasó de una tira de 760 px a una rejilla a lo ancho de la banda (`.pie-cols`, en el base), y
+ * esta pieza es su primera columna: el rótulo, el nombre del negocio en grande y el teléfono. El
+ * `<strong>` del nombre se fue porque la jerarquía ya la da el tamaño — dejar los dos era pedir
+ * énfasis dos veces.
+ *
+ * El `letter-spacing` del `h2` **cambió de signo a propósito**: era `-.01em`, heredado de cuando este
+ * `h2` era el título de una sección de contenido; hoy es el rótulo de una columna en versalitas, y ahí
+ * el espaciado va abierto. La nota histórica del selector sigue abajo porque explica cómo se pierde un
+ * valor al repartir un CSS global, que es la lección, no el número.
  */
 export const contacto: Pieza = {
   id: "contacto",
@@ -17,14 +29,13 @@ export const contacto: Pieza = {
   // `h2`/`p` los declara la pieza porque los declaraba `footer h2`/`footer p`, que estilaban también
   // el pie de `locales` y la línea técnica del shell — un selector global de tres dueños.
   css: `.p-contacto .contacto{border:0;padding:0}
-/* El \`letter-spacing\` NO es decorativo acá: lo heredaba de \`section h2\`, porque este \`<h2>\` vive
-   dentro de un \`<section>\` del pie. \`section h2\` (0,0,2) y \`footer h2\` (0,0,2) empataban en
-   especificidad, así que \`footer h2\` ganaba \`font-size\` y \`margin\` —los únicos que declaraba— y
-   \`letter-spacing\` seguía llegando del otro. Al repartir el CSS por piezas se cayó, y una revisión
-   lo cazó con un comparador de cascada; el método de "buscar dueño por declaración" no podía verlo,
-   porque la declaración SÍ tenía dueño (cuatro piezas se la llevaron) y aun así dejó de llegar acá. */
-.p-contacto h2{font-size:1.15rem;margin:0 0 10px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-contacto p{margin:0 0 6px}
+/* El rótulo de una COLUMNA del pie, no el título de una sección: pequeño, en versalitas y con el
+   filete decorativo debajo. Las tres columnas comparten el aspecto (ver \`locales.ts\`), y son dos
+   copias a propósito: el CSS base solo acepta lo que necesitan dos piezas *y* no tiene otro dueño, y
+   acá el dueño es cada pieza — la del pie que dibuja sus locales y la que dibuja el contacto. */
+.p-contacto h2{font-family:var(--fuente-titulo);font-size:1.05rem;text-transform:uppercase;letter-spacing:.08em;margin:0 0 18px;padding:0 0 12px;color:var(--titulo);border-bottom:2px solid var(--decorativo)}
+.p-contacto p{margin:0 0 8px}
+.p-contacto .negocio{font-family:var(--fuente-titulo);font-size:1.3rem;font-weight:500;color:var(--titulo);margin:0 0 10px}
 /* El \`tel:\` salía con el azul del navegador y el subrayado por defecto: dentro de un pie sobrio es
    lo único que grita, y el azul no es de la marca de nadie. Toma el color del texto y conserva un
    subrayado —tenue, pero subrayado— porque quitarlo dejaría un enlace que no se puede distinguir de
@@ -45,7 +56,7 @@ export const contacto: Pieza = {
       "p-contacto",
       `<section class="contacto" id="contacto">
   <h2>Contacto</h2>
-  <p><strong>${esc(profile.name)}</strong></p>
+  <p class="negocio">${esc(profile.name)}</p>
   ${telHtml}
 </section>`,
     );
