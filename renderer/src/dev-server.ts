@@ -118,27 +118,39 @@ await cliente("Trattoria Bella Napoli", "bellanapoli.es", "111", {
 // de Storyblok el 2026-08-08 y servidas por `a.storyblok.com`, que es el host de la allowlist. Es el
 // único perfil del dev-server cuyas imágenes cargan de verdad en el navegador.
 //
-// ⚠️ **Hoy se ve UNA de las seis: el logo.** `portada`, `fotos`, `menu_categorias[].foto`,
-// `menu[].foto` y `locations[].foto` están sembradas y cruzan las cuatro fronteras, pero **ninguna
-// pieza las dibuja todavía** — las dibujan `heroPortada`, `galeria`, `cartaCategorias`,
-// `platosDestacados` y `locales`, que son la segunda parte de la mitad B. Este comentario decía "es
-// donde se comprueba con los ojos que una foto llegó hasta el HTML" y lo cazó una revisión: era una
-// promesa a futuro escrita en presente. Cuando existan las piezas, lo será.
-//
-// ⚠️ **Es un negocio FICTICIO y sus fotos son de stock**, con la marca «Borcelle Burger» que traen
-// incrustada. Por eso NO se siembran en la ficha de La Birra Bar, que es un restaurante real: poner la
-// foto y el logo de otro negocio en la web de uno real es el mismo problema que un precio inventado, y
-// más visible. Misma regla que ya se aplicó a los precios: **antes ausente que inventado.**
+// ⚠️ **Es un negocio FICTICIO y sus fotos son de stock.** Por eso NO se siembran en la ficha de La
+// Birra Bar, que es un restaurante real: poner la foto y el logo de otro negocio en la web de uno real
+// es el mismo problema que un precio inventado, y más visible. Misma regla que ya se aplicó a los
+// precios: **antes ausente que inventado.**
 //
 // La paleta y los roles salen tal cual de `docs/plantillas/template1/marca.json`.
 //
-// Una foto por destino, no una por elemento: la galería repite la misma imagen cuatro veces y las dos
-// categorías comparten cabecera. Sirve para ver la rejilla y el recorte; para enseñárselo a alguien
-// hacen falta fotos distintas (anotado en el README de `template1`).
+// **Actualización del 2026-08-09.** Se subieron fotos distintas para lo que antes repetía una sola:
+// **seis** de galería y **una por categoría**. Deja de ser "sirve para ver la rejilla" y pasa a ser el
+// caso que se le puede enseñar a alguien — con seis imágenes distintas se ve si el recorte 4:3 aguanta
+// encuadres distintos, que con la misma repetida seis veces no se ve. `plato` y `local` siguen
+// repitiendo, y ahí sigue valiendo la salvedad de antes.
+//
+// ⚠️ **Reemplazar un asset en Storyblok CAMBIA la URL.** La portada original llevaba la marca
+// «Borcelle Burger» incrustada —salía dos veces, una en la cabecera y otra quemada en el JPG—; al
+// subir la limpia, la URL vieja pasó a devolver **`403 AccessDenied`** desde el S3 de Storyblok
+// (verificado con `curl`, no supuesto). O sea que sustituir una foto **no es** editar el archivo: es
+// un asset nuevo, y toda ficha que guarde la URL anterior se queda con un `<img>` roto sin que nada
+// avise. Cuando esto pase con un cliente de verdad, el síntoma va a ser una portada colapsada a 26 px
+// y ningún log.
 const FOTO = {
-  portada: "https://a.storyblok.com/f/293831091573700/2560x1440/30ad3813d6/axe-os-portada.jpg",
-  galeria: "https://a.storyblok.com/f/293831091573700/1600x1200/d82ece3683/axe-os-fotos-galeria.jpg",
-  categoria: "https://a.storyblok.com/f/293831091573700/1200x800/8fbaedf133/axe-og-categories.jpg",
+  portada: "https://a.storyblok.com/f/293831091573700/2560x1440/3866018887/axe-os-portada.jpg",
+  galeria: [
+    "https://a.storyblok.com/f/293831091573700/1600x1200/d82ece3683/axe-os-fotos-galeria.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/b6239d5695/axe-os-fotos-galeria-2.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/415661678d/axe-os-fotos-galeria-3.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/056a2a7774/axe-os-fotos-galeria-4.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/1a75e62a1f/axe-os-fotos-galeria-5.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/8eb4949666/axe-os-fotos-galeria-6.jpg",
+  ],
+  categoriaHamburguesas: "https://a.storyblok.com/f/293831091573700/1200x800/8fbaedf133/axe-og-categories.jpg",
+  categoriaEntrantes:
+    "https://a.storyblok.com/f/293831091573700/1200x800/194ffe59a5/axe-og-categories-starters.jpg",
   plato: "https://a.storyblok.com/f/293831091573700/800x800/e0f8442ce6/axe-og-menu-item.jpg",
   local: "https://a.storyblok.com/f/293831091573700/1600x1200/46847c4d05/axe-os-locations.jpg",
   logo: "https://a.storyblok.com/f/293831091573700/250x250/ec3d723b80/axe-os-logo-color.png",
@@ -163,15 +175,19 @@ await cliente("Borcelle Burger", "borcelle.es", "444", {
     logo: FOTO.logo,
   },
   portada: { src: FOTO.portada, alt: "El local de Borcelle Burger" },
+  // Seis fotos DISTINTAS, y la tercera **sin `alt` a propósito**: `renderImagen` emite `alt=""` cuando
+  // falta, que es lo correcto para una imagen decorativa, y es una rama que conviene ver dibujada.
   fotos: [
-    { src: FOTO.galeria, alt: "La barra" },
-    { src: FOTO.galeria, alt: "La sala" },
-    { src: FOTO.galeria },
-    { src: FOTO.galeria, alt: "La terraza" },
+    { src: FOTO.galeria[0], alt: "La barra" },
+    { src: FOTO.galeria[1], alt: "La sala" },
+    { src: FOTO.galeria[2] },
+    { src: FOTO.galeria[3], alt: "La terraza" },
+    { src: FOTO.galeria[4], alt: "La parrilla" },
+    { src: FOTO.galeria[5], alt: "El comedor de arriba" },
   ],
   menu_categorias: [
-    { nombre: "Hamburguesas", foto: { src: FOTO.categoria }, orden: 0 },
-    { nombre: "Entrantes", foto: { src: FOTO.categoria }, orden: 1 },
+    { nombre: "Hamburguesas", foto: { src: FOTO.categoriaHamburguesas }, orden: 0 },
+    { nombre: "Entrantes", foto: { src: FOTO.categoriaEntrantes }, orden: 1 },
   ],
   menu: [
     {
