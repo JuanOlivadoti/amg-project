@@ -105,8 +105,33 @@ Y del template de referencia quedan sin equivalente, **por falta de datos, no de
 | Newsletter en el pie | Backend de suscripción. No existe |
 
 Cada campo nuevo cruza las cuatro fronteras de [`03`](03-tema-y-marca.md) **y** necesita una pantalla
-en el portal para que la agencia lo cargue. Ese es el coste real de cada sección, y por eso la
-decisión de cuáles entran es del negocio, no del código.
+en el portal para que la agencia lo cargue. Ese es el coste real de cada sección.
+
+## La decisión sobre el contenido por defecto (2026-08-10)
+
+**Se decidió replicar esas secciones con contenido por defecto**, en vez de esperar a que existan los
+campos y las pantallas. Es una excepción consciente a la regla de *antes ausente que inventado*, y
+conviene entender qué la hace aceptable y dónde deja de serlo.
+
+**Lo que la hace aceptable:** un texto de plantilla es una **propuesta editable**, no una afirmación
+sobre el negocio. "Cocina de temporada, producto de mercado" no dice nada que pueda ser falso; el
+cliente lo ve, lo reescribe y sigue. Es la misma naturaleza que "Inicio" o "Contacto" en el nav.
+
+**Dónde deja de serlo, y por eso va con dos salvaguardas:**
+
+| Sección | Riesgo del default | Cómo se acota |
+| --- | --- | --- |
+| Bienvenida, bullets | Ninguno: es prosa genérica y editable | Texto deliberadamente neutro, sin cifras ni promesas |
+| **Testimonios** | **Alto.** Una reseña inventada con nombre y estrellas es una reseña falsa atribuida a una persona; publicada, es publicidad engañosa | El texto de muestra es evidentemente de plantilla, **sin nombres de persona reales ni valoraciones numéricas presentadas como reales**, y el seed lo marca como contenido de ejemplo |
+
+**La regla que queda, y que hay que respetar al implementar:** un default puede **rellenar una
+sección**, nunca **afirmar un hecho sobre el negocio** — ni años de antigüedad, ni número de
+clientes, ni premios, ni una reseña firmada. Las secciones de contadores y sponsors siguen
+descartadas por eso, además de por ser relleno.
+
+**Lo que esto NO cambia:** los campos siguen teniendo que existir en el perfil y cruzar las cuatro
+fronteras. El default es el valor que se usa cuando el campo está vacío, no una excusa para no crear
+el campo — si no, el cliente no puede cambiarlo, que es lo único que hace aceptable al default.
 
 ## Dos lecciones del rediseño
 

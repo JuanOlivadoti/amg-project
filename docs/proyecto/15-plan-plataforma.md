@@ -1048,20 +1048,29 @@ En el orden en que aparecen en la página: `barraDatos`, `platosDestacados`, `ca
 `galeria`, `faq`, `indice`, `ctaFinal`, `contacto` y `locales`. Cada una pierde el andamio del ancho de
 lectura cuando le toca.
 
-### 🔴 Lo que NO se puede hacer sin decidir antes de dónde sale el dato
+### ⏭️ Etapa 3 — las secciones sin origen de datos, con contenido por defecto
 
-Cuatro secciones del template de referencia **no tienen origen de datos**, y el repo tiene una regla
-explícita contra inventarlos:
+**Decidido el 2026-08-10 por el usuario:** se replican las secciones que faltan **inventando un
+contenido por defecto**, en vez de esperar a que existan los campos y las pantallas del portal. Es una
+excepción consciente a *antes ausente que inventado*, y el porqué —y su límite— están escritos en
+[`renderer/docs/04-plantilla-base.md`](../../renderer/docs/04-plantilla-base.md) § La decisión sobre
+el contenido por defecto.
 
-| Sección | Qué haría falta |
-| --- | --- |
-| Testimonios con estrellas | Campo nuevo (4 fronteras) + pantalla en el portal |
-| Texto de bienvenida ("Welcome at X") | Campo nuevo |
-| Bullets de "por qué nosotros" | Campo nuevo |
-| Contadores y sponsors | **Descartados**: relleno de template |
+| Sección | Campo nuevo | Default |
+| --- | --- | --- |
+| Bienvenida ("Welcome at X" + horarios) | `bienvenida` (texto) | Prosa neutra, editable |
+| Bullets de "por qué nosotros" | `destacados` (lista) | Tres frases genéricas |
+| Testimonios | `testimonios` (lista) | ⚠️ Texto de muestra **sin nombres de persona ni valoraciones numéricas presentadas como reales** |
+| Contadores y sponsors | — | **Siguen descartados**: relleno de template |
 
-El coste real de cada una no es el CSS: es el campo cruzando cuatro fronteras **y** una pantalla para
-que la agencia lo cargue. Cuáles entran es decisión de negocio.
+**La regla que gobierna esta etapa:** un default puede rellenar una sección, **nunca afirmar un hecho
+sobre el negocio** (años, clientes, premios, una reseña firmada). Y el campo tiene que existir igual,
+cruzando las cuatro fronteras: si no, el cliente no puede cambiar el default, que es lo único que lo
+hace aceptable.
+
+**Cuidado con el orden:** cada campo toca `contrato.ts` (Zod), una migración de la allowlist
+(territorio de `datos`), `perfilValido` y la pieza. La migración y la pantalla del portal **no son del
+agente `render`**.
 
 ## Bloque F — módulo 3: respondedor de reseñas de Google
 
