@@ -1031,7 +1031,35 @@ alta uno nuevo deja de tocar Railway: es una fila en `clients` y nada más.
    `npm run auditar:railway` la va a listar como una diferencia más entre Railway y el reparto. Es
    intencional, y ésta es la constancia.
 
-### 2. Cada cliente de demo: una fila
+### 2.a El cliente de demo con TODO: «Borcelle Burger»
+
+Un cliente real casi nunca tiene la ficha llena, así que su web sale sin fotos y sin reseñas — el
+estado honesto, y el peor para enseñar. Para eso está el **negocio ficticio**: paleta y tipografías de
+`template1`, seis fotos de galería, fotos por categoría y de plato, y reseñas de muestra.
+
+**Que sea ficticio no es un detalle: es lo que lo hace legítimo.** Las mismas fotos de stock en la
+ficha de un restaurante de verdad serían el local de otro, y las mismas reseñas serían reseñas falsas
+atribuidas a clientes que no existen (por eso `testimonios` no tiene contenido por defecto — ver
+[`renderer/docs/04-plantilla-base.md`](../../renderer/docs/04-plantilla-base.md)). Sin un negocio real
+detrás, no hay a quién engañar.
+
+```bash
+npm run sql:demo -w renderer                        # → borcelle.bigballs.es
+npm run sql:demo -w renderer -- otro.bigballs.es    # otro subdominio
+```
+
+Imprime el `insert` completo por stdout **y no toca ninguna base**. Completá los cuatro marcadores
+(`<TENANT_ID>`, `<SPACE_ID>`, `<TOKEN_PUBLIC>`, `<TOKEN_PREVIEW>`) y pegalo en el SQL editor.
+
+⚠️ **El space tiene que ser PROPIO.** Compartir el de otro cliente le mostraría en el nav y en el
+índice las páginas del vecino (ADR-04), y **sin `storyblok_space_id` el renderizador devuelve 404** —
+no sirve la home sintetizada, aunque el perfil esté completo. Un space vacío basta: el índice dirá
+«Aún no hay páginas publicadas», que es lo correcto para un sitio recién creado.
+
+El perfil vive en `renderer/src/perfil-demo.ts` y lo comparte el `dev-server`: se genera en vez de
+escribirse a mano para que la demo que se enseña y la que se desarrolla sean la misma.
+
+### 2.b Cada cliente de demo: una fila
 
 ```sql
 insert into clients (tenant_id, nombre, domain, storyblok_space_id,
