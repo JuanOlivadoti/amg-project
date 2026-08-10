@@ -62,14 +62,20 @@ también puede cargar la sesión principal sin delegar en nadie.
 | --- | --- | --- | --- |
 | `front` | `portal/` — Angular, las pantallas de la agencia | `portal-angular`, `portal-estilos`, `portal-testing` | existe |
 | `revisor` | transversal — recorre `CHECKPOINTS.md` contra el diff. No edita nada | `codex-review` (para la ronda externa) | existe |
-| `pipeline` | `kr-service/` + `orchestrator/` + `web-builder/` — contenido, idempotencia, gasto | `pipeline-gasto`, `pipeline-research`, `pipeline-publicacion`, `pipeline-orquestacion` | existe |
+| `pipeline` | `kr-service/` + `orchestrator/` — research, idempotencia, gasto; y de `web-builder/`, la **publicación** | `pipeline-gasto`, `pipeline-research`, `pipeline-publicacion`, `pipeline-orquestacion` | existe |
 | `datos` | `db/` + `api/` — RLS, roles, `Tx`, endpoints, PGlite | `datos-postgres`, `datos-api`, `datos-testing` | existe |
-| `render` | `renderer/` — la única superficie pública anónima, Storyblok CDA | (por escribir) | planificado |
+| `render` | `renderer/` (la única superficie pública anónima) + `web-builder/src/render/` (piezas, recetas, CSS, tema) | `render-plantillas`, `render-seguridad`, `render-cda-cache` | existe |
 
-Mientras un agente esté "planificado", ese trabajo lo hace la sesión principal. No lo invoques: no
-existe. Qué skills lleva cada uno, en qué orden se escriben y con qué trabajo real se estrena cada
-uno: [.claude/PLAN-AGENTES.md](.claude/PLAN-AGENTES.md) — **una etapa por sesión**. Al cerrar una,
-se actualiza la tabla de acá arriba.
+**`web-builder/` está partido entre dos agentes, y es deliberado.** Lo que *publica* (Management API,
+`_uid`, upsert, el contrato M2→M1) es de `pipeline`; lo que *dibuja* (`src/render/`) es de `render`.
+El corte se movió el 2026-08-10, después de comprobar que quien tocaba las plantillas necesitaba
+conocimiento de render y no de gasto ni de idempotencia — y que ese código se rompe junto con
+`renderer/`, que lo importa. La documentación larga del sistema de render vive en
+[`renderer/docs/`](renderer/docs/README.md).
+
+Qué skills lleva cada uno, en qué orden se escribieron y con qué trabajo real se estrenó cada uno:
+[.claude/PLAN-AGENTES.md](.claude/PLAN-AGENTES.md) — **una etapa por sesión**. Al cerrar una, se
+actualiza la tabla de acá arriba.
 
 **Cuándo delegar.** La sesión principal coordina, pero no es dogmática: delegar cuesta tiempo y
 tokens, y en un cambio de un archivo cuesta más que hacerlo.

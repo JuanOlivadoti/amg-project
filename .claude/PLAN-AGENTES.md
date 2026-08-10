@@ -157,7 +157,37 @@ cruza tres áreas, así que estrena de paso la regla de **fijar el contrato ante
 
 ---
 
-## Etapa C — `render` · `renderer/`
+## ~~Etapa C~~ — `render` · `renderer/` + `web-builder/src/render/` ✅ **cerrada el 2026-08-10**
+
+> **Qué quedó.** El agente ([`agents/render.md`](agents/render.md)) y **tres** skills, más la
+> documentación larga en [`renderer/docs/`](../renderer/docs/README.md). Estrenado con el **rediseño
+> de la plantilla base**: tema claro por defecto, cabecera nueva y portada con carrusel.
+>
+> **Dos enmiendas al plan de abajo, y las dos las produjo el trabajo real:**
+>
+> 1. **Son tres skills, no dos.** El plan preveía `render-seguridad` y `render-cda-cache` y daba por
+>    supuesto que el ámbito era el servicio. El rediseño demostró que el cuerpo de conocimiento más
+>    grande es otro —piezas, recetas, aislamiento de CSS, tokens de marca, tema— y que no estaba
+>    escrito en ninguna parte. Es `render-plantillas`.
+> 2. **El cruce declarado abajo se invierte.** El plan decía que `web-builder/src/render/html.ts` «es
+>    territorio de `pipeline`, no de `render`». Se delegó ahí una tarea de plantillas y el
+>    conocimiento que hizo falta no fue de gasto ni de idempotencia: fue de render. Ese código pasa al
+>    ámbito de `render`; `pipeline` conserva la publicación.
+>
+> **Lo que el estreno enseñó, y ninguna lectura del código habría dado:** que en esta área **los tests
+> no alcanzan por definición**. De los defectos que aparecieron, tres los encontró un navegador y
+> ninguno una aserción —un `position:sticky` que no pegaba porque el envoltorio de la pieza mide lo
+> que mide la pieza, un ancla de carrusel que movía la página 203 px, y un selector de `@media` que
+> perdía por especificidad—. Por eso el agente lleva *"manejá la app"* como obligación y no como
+> consejo, y por eso su informe tiene que decir **qué miró en el navegador**.
+>
+> **El plan también se equivocaba en cuándo.** Decía que esta etapa iba última porque «no hay trabajo
+> real en el camino corto» y que lo que quedaba era despliegue. Apareció trabajo real, y era el más
+> visible de todos: el aspecto de lo que se le enseña al cliente.
+
+Lo que sigue es el plan original de la etapa, que se deja tal cual para poder contrastar lo previsto
+con lo que pasó.
+
 
 3.395 líneas, 5 archivos de test. El paquete más chico y el de mayor riesgo: **la única superficie
 expuesta a internet anónimo.** Dos skills bastan.
@@ -233,7 +263,7 @@ El ritual completo está en [`AGENTS.md`](../AGENTS.md) y los checkpoints en
 | — | `revisor` | `codex-review` | ✅ escrito y estrenado (dos rondas, 5 hallazgos reales) |
 | A | `pipeline` | `pipeline-gasto`, `pipeline-research`, `pipeline-publicacion`, `pipeline-orquestacion` | ✅ **escrito y estrenado** (2026-08-02, con KR-3 y KR-1) |
 | B | `datos` | `datos-postgres`, `datos-api`, `datos-testing` | ✅ **escrito y estrenado** (2026-08-04, con KR-3: el orden del brief) |
-| C | `render` | `render-seguridad`, `render-cda-cache` | ⚪ sin empezar |
+| C | `render` | `render-plantillas`, `render-seguridad`, `render-cda-cache` | ✅ **escrito y estrenado** (2026-08-10, con el rediseño de la plantilla base) |
 
 **Lo que la etapa A enseñó sobre el método, para las dos que quedan:**
 

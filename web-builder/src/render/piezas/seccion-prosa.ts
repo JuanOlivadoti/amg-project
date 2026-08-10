@@ -15,10 +15,15 @@ import type { CtxPieza, Pieza } from "./tipos.js";
 export const seccionProsa: Pieza = {
   id: "seccionProsa",
   raiz: "p-seccionProsa",
-  css: `.p-seccionProsa section{padding:32px 0;border-bottom:1px solid #f0f0f0}
+  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-seccionProsa{max-width:var(--ancho-lectura);margin:0 auto}
+.p-seccionProsa section{padding:32px 0;border-bottom:1px solid #f0f0f0}
 .p-seccionProsa section h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 .p-seccionProsa .section-img{width:100%;border-radius:12px;margin:0 0 18px;object-fit:cover;aspect-ratio:3/2}
-@media(prefers-color-scheme:dark){.p-seccionProsa section{border-color:#1e1e1e}}
+`,
+
+  cssOscuro: `@media(prefers-color-scheme:dark){.p-seccionProsa section{border-color:#1e1e1e}}
 `,
 
   render(ctx: CtxPieza): string {

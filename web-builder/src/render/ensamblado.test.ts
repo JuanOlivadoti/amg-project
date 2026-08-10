@@ -68,19 +68,29 @@ test("🔴 una landing sin fotos NO paga el CSS de la galería (el caso que la s
   assert.ok(sinFotos.length < conFotos.length, "el documento sin la pieza tiene que pesar menos");
 });
 
-test("🔴 la landing usa `heroPortada` y las tres sintetizadas usan `hero` (el contrato de la entrega 3)", () => {
-  // La spec fija esto en su §4 y en la enmienda: `heroPortada` sustituye a `hero` **solo** en la
-  // receta de landing, porque las otras tres páginas no salen de una story y no tienen portada propia
-  // que dibujar. Sin este test, cambiar una receta por la otra no tumbaría nada evidente: las dos
-  // emiten un `<h1>` y el gate de paridad ya no cubre estas páginas.
+test("🔴 `story` y `home` usan `heroSlider`; `/menu` y `/blog` usan `hero` (una sola pieza de titular por receta)", () => {
+  // Sin este test, cambiar una receta por la otra no tumbaría nada evidente: las dos emiten un `<h1>`
+  // y el gate de paridad ya no cubre estas páginas.
+  //
+  // ⚠️ **La frontera se movió con el rediseño de la plantilla base** y antes estaba en otro sitio: la
+  // spec de la entrega 3 ponía `heroPortada` **solo** en `story` porque las otras tres páginas no
+  // salen de una story y no tenían portada propia que dibujar. `heroSlider` sí cubre las dos: saca el
+  // titular del blok `hero` cuando hay story y del contexto cuando no, y las fotos del perfil, que la
+  // home también tiene. Lo que NO cambió es la garantía que este caso protege: **una receta lleva
+  // exactamente UNA pieza de titular**, nunca las dos.
   const juego = juegoDe(null);
-  assert.ok(juego.story.contenido.includes("heroPortada"), "la landing lleva la portada con foto");
-  assert.ok(!juego.story.contenido.includes("hero"), "y no las dos: serían dos <h1> en la misma página");
-  for (const receta of [juego.home, juego.menu, juego.blog]) {
+  for (const receta of [juego.story, juego.home]) {
+    assert.ok(receta.contenido.includes("heroSlider"), `"${receta.id}" perdió su portada`);
+    assert.ok(
+      !receta.contenido.includes("hero"),
+      `"${receta.id}" lleva las dos: serían dos <h1> en la misma página`,
+    );
+  }
+  for (const receta of [juego.menu, juego.blog]) {
     assert.ok(receta.contenido.includes("hero"), `"${receta.id}" perdió su titular`);
     assert.ok(
-      !receta.contenido.includes("heroPortada"),
-      `"${receta.id}" es sintetizada: no tiene blok \`hero\` del que sacar una portada`,
+      !receta.contenido.includes("heroSlider"),
+      `"${receta.id}" no es una portada: la carta y el índice del blog no abren con un carrusel`,
     );
   }
 });
@@ -229,7 +239,13 @@ test("🔴 un token de marca que no valida se DESCARTA y cae al default, no romp
       }),
     ),
   );
-  assert.ok(!css.includes("display:none"), "el valor malicioso no llega a la hoja de estilo");
+  // ⚠️ Se comprueba la **regla inyectada entera** (`body{display:none}`) y no el fragmento
+  // `display:none` suelto, y el motivo es que desde el rediseño hay un `display:none` LEGÍTIMO en el
+  // `<style>`: `.p-heroSlider .pista::-webkit-scrollbar`. Con el fragmento suelto este caso pasó a
+  // fallar por el motivo equivocado —denunciaba una regla nuestra, no la inyección—, que es la otra
+  // cara de un test que pasa por vacío. La defensa que fija sigue siendo la misma: el payload no
+  // puede cerrar la declaración y abrir una regla propia.
+  assert.ok(!css.includes("body{display:none}"), "el valor malicioso no llega a la hoja de estilo");
   assert.ok(!css.includes("</style><script>"));
   assert.match(css, /--marca-secundario:#0a7d34/, "y el token vecino, que sí valida, sigue saliendo");
 });
@@ -346,11 +362,13 @@ test("🔴 los titulares NO declaran font-weight: por eso se precarga el archivo
   //
   // ⚠️ La lista recorre los titulares que EXISTEN en la página que se renderiza. `propiedadResuelta`
   // devuelve `undefined` para un selector ausente, así que un selector viejo dejaría el caso en verde
-  // sin medir nada: al cambiar la receta de la landing (`hero` → `heroPortada`) los dos primeros
-  // habrían pasado por vacío. El `assert.ok` de abajo es lo que impide que vuelva a pasar.
+  // sin medir nada: al cambiar la receta de la landing (`hero` → `heroPortada`, y después
+  // `heroPortada` → `heroSlider`) los dos primeros habrían pasado por vacío. El `assert.ok` de abajo
+  // es lo que impide que vuelva a pasar — y es lo que hizo caer este caso al retirar `heroPortada`,
+  // en vez de dejarlo verde midiendo un selector que ya no está en el `<style>`.
   const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
   const titulares = [
-    ".p-heroPortada .portada h1",
+    ".p-heroSlider h1",
     ".p-seccionProsa section h2",
     ".p-platosDestacados .plato h3",
     ".p-galeria .galeria h2",

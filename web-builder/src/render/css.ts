@@ -116,7 +116,16 @@ const CSS_TOKENS =
   `--accent:var(--marca-primario);--acento-legible:var(--marca-primario);--sobre-acento:#fff;` +
   `--decorativo:var(--marca-secundario);` +
   `--bg:var(--marca-fondo);--soft:var(--marca-fondo-alt);--font:var(--marca-fuente-texto);` +
-  `--fuente-titulo:var(--marca-fuente-titulo);--fuente-decorativa:var(--marca-fuente-decorativa)}`;
+  `--fuente-titulo:var(--marca-fuente-titulo);--fuente-decorativa:var(--marca-fuente-decorativa);` +
+  // **Dos anchos, y son dos cosas distintas.** `--ancho-pagina` es la banda: la cabecera, la galería,
+  // la carta, cualquier sección que gane con el ancho de la pantalla. `--ancho-lectura` es el texto,
+  // y no puede crecer con ella: una línea de prosa de 1600 px es ilegible —lo cómodo son 60-75
+  // caracteres— así que el párrafo se queda donde estaba aunque la página se ensanche.
+  //
+  // Un solo token para las dos cosas es el error que produce webs "modernas" con renglones de
+  // periódico, y es también el motivo por el que la cabecera y el contenido no alineaban: la barra
+  // iba a 1100 y `main` a 760 porque cada uno resolvía su problema por su cuenta.
+  `--ancho-pagina:1320px;--ancho-lectura:760px}`;
 
 /**
  * El CSS que viaja SIEMPRE: el reset, el contenedor del documento y las **primitivas compartidas**.
@@ -152,17 +161,26 @@ const CSS_TOKENS =
 const CSS_BASE = `*{box-sizing:border-box}
 body{margin:0;font:16px/1.6 var(--font);color:var(--fg);background:var(--bg)}
 img{max-width:100%;height:auto}
-main{max-width:760px;margin:0 auto;padding:0 20px}
+main{max-width:var(--ancho-pagina);margin:0 auto;padding:0 20px}
 .pending{color:var(--muted);font-style:italic}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:8px}
 .card{display:block;text-decoration:none;color:var(--fg);border:1px solid #e7e5e0;border-radius:12px;padding:20px;transition:border-color .15s,transform .15s}
 .card:hover{border-color:var(--acento-legible);transform:translateY(-2px)}
 .card h3{margin:0;font-size:1.1rem;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-footer{max-width:760px;margin:40px auto 48px;padding:24px 20px 0;border-top:1px solid #eee;color:var(--fg)}
+footer{max-width:var(--ancho-lectura);margin:40px auto 48px;padding:24px 20px 0;border-top:1px solid #eee;color:var(--fg)}
 footer .mas{margin:12px 0 6px}
 footer .mas a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
 footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
-@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--titulo:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}footer{border-color:#222}.card{border-color:#2a2a2a}@supports(color:color-mix(in srgb,red,#fff)){:root{--acento-legible:color-mix(in srgb,var(--marca-primario) 60%,#fff);--decorativo:color-mix(in srgb,var(--marca-secundario) 55%,#fff)}}}
+`;
+
+/**
+ * El modo oscuro del base. **Solo viaja con `brand.tema: "auto"`** (ver `ensamblarCss`).
+ *
+ * Vivía dentro de `CSS_BASE`, y mientras estuvo ahí el tema del sitio de un cliente lo decidía el
+ * sistema operativo del visitante — con el efecto de que la paleta de la ficha (el crema `#fffdf9`
+ * de un restaurante) se sustituía por `#111` sin que nada pudiera evitarlo. Ver `BrandTheme.tema`.
+ */
+const CSS_BASE_OSCURO = `@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--titulo:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}footer{border-color:#222}.card{border-color:#2a2a2a}@supports(color:color-mix(in srgb,red,#fff)){:root{--acento-legible:color-mix(in srgb,var(--marca-primario) 60%,#fff);--decorativo:color-mix(in srgb,var(--marca-secundario) 55%,#fff)}}}
 `;
 
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -279,5 +297,19 @@ export function tokensDeMarca(brand?: BrandTheme | null): string {
  */
 export function ensamblarCss(usadas: readonly Pieza[], brand?: BrandTheme | null): string {
   const fuentes = brand ? cssDeFuentes(rolesResueltos(brand).map(([, rol]) => rol)) : "";
-  return CSS_TOKENS + tokensDeMarca(brand) + fuentes + "\n" + CSS_BASE + usadas.map((p) => p.css).join("");
+  // **El tema es una decisión de la ficha, no del sistema operativo del visitante** (ver
+  // `BrandTheme.tema`). Solo `"auto"` —explícito— hace viajar el CSS oscuro; cualquier otra cosa,
+  // incluido un valor inventado o la ausencia del campo, sirve el sitio claro. Se compara contra el
+  // literal en vez de `!== "claro"` justamente para que un typo caiga del lado seguro.
+  const oscuro =
+    brand?.tema === "auto" ? CSS_BASE_OSCURO + usadas.map((p) => p.cssOscuro ?? "").join("") : "";
+  return (
+    CSS_TOKENS +
+    tokensDeMarca(brand) +
+    fuentes +
+    "\n" +
+    CSS_BASE +
+    usadas.map((p) => p.css).join("") +
+    oscuro
+  );
 }

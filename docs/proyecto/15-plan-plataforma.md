@@ -1009,6 +1009,60 @@ republicar no los toca — pero las imágenes de las landings sí.
 
 ---
 
+## Bloque K — el rediseño de la plantilla base (2026-08-10)
+
+**El bloque E dejó la infraestructura de marca; esto es el aspecto.** Juan pidió rehacer las webs de
+cliente tomando como referencia visual un template comercial de restaurante (`Foodu`, `home-6`),
+sección por sección. La regla es la misma de siempre: **se replica estructura y aire, no se adopta ni
+una línea de su código**; sus archivos y sus imágenes no entran en el repo.
+
+Los valores medidos, qué se copió y qué no, y por qué, están en
+[`renderer/docs/04-plantilla-base.md`](../../renderer/docs/04-plantilla-base.md).
+
+### ✅ Etapa 1 — tema claro, cabecera y portada (2026-08-10)
+
+Lo primero no fue estético sino **un bug de producto**: el sitio obedecía a `prefers-color-scheme`,
+así que el fondo de marca del cliente lo decidía el sistema operativo del visitante. Hoy lo dice la
+ficha (`brand.tema`, default `claro`).
+
+```text
+cabecera     barra superior con teléfono y horario · sticky · nav centrado en la fuente de titulares
+             · CTA `tel:` · la barra superior se esconde en móvil
+heroSlider   portada a dos columnas: titular + carrusel de fotos, SIN una línea de JavaScript
+             (radios + `:checked`, porque las anclas movían la página 203 px)
+heroPortada  RETIRADA: se quedó sin receta, mismo criterio que retiró a `carta`
+tokens       --ancho-pagina 1320 / --ancho-lectura 760 · el CSS oscuro a un campo `cssOscuro` aparte
+```
+
+**Verificado en el navegador** (escritorio 1440 y móvil 390), que en esta área no es opcional: de los
+defectos que aparecieron, **tres los encontró el navegador y ninguno un test**. El gate de paridad se
+**re-capturó** con autorización explícita, midiendo antes que no se perdía nada.
+
+**Deuda declarada:** `brand.tema: "auto"` no cruza las tres primeras fronteras, así que en producción
+es inalcanzable —el default se cumple siempre, que es la conducta que se quería, pero la opción no
+existe hasta que se agregue a Zod, a la allowlist de la `0014` y a `perfilValido`—.
+
+### ⏭️ Etapa 2 — el resto de las secciones
+
+En el orden en que aparecen en la página: `barraDatos`, `platosDestacados`, `cartaCategorias`,
+`galeria`, `faq`, `indice`, `ctaFinal`, `contacto` y `locales`. Cada una pierde el andamio del ancho de
+lectura cuando le toca.
+
+### 🔴 Lo que NO se puede hacer sin decidir antes de dónde sale el dato
+
+Cuatro secciones del template de referencia **no tienen origen de datos**, y el repo tiene una regla
+explícita contra inventarlos:
+
+| Sección | Qué haría falta |
+| --- | --- |
+| Testimonios con estrellas | Campo nuevo (4 fronteras) + pantalla en el portal |
+| Texto de bienvenida ("Welcome at X") | Campo nuevo |
+| Bullets de "por qué nosotros" | Campo nuevo |
+| Contadores y sponsors | **Descartados**: relleno de template |
+
+El coste real de cada una no es el CSS: es el campo cruzando cuatro fronteras **y** una pantalla para
+que la agencia lo cargue. Cuáles entran es decisión de negocio.
+
 ## Bloque F — módulo 3: respondedor de reseñas de Google
 
 **Lo único del alcance base sin construir.** El PRD describe cuatro módulos; están hechos el 1 y el 2.

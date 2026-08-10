@@ -29,7 +29,10 @@ export const platosDestacados: Pieza = {
   // Rejilla con `auto-fill`: dos o tres columnas según el ancho, sin media queries. `minmax(190px,1fr)`
   // es lo que evita que una tarjeta con foto baje de un ancho donde el nombre del plato ya no cabe en
   // una línea.
-  css: `.p-platosDestacados .destacados{padding:32px 0;border-bottom:1px solid #f0f0f0}
+  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-platosDestacados{max-width:var(--ancho-lectura);margin:0 auto}
+.p-platosDestacados .destacados{padding:32px 0;border-bottom:1px solid #f0f0f0}
 .p-platosDestacados .destacados h2{font-size:1.45rem;margin:0 0 16px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 .p-platosDestacados .platos{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:20px}
 .p-platosDestacados .plato{margin:0}
@@ -43,7 +46,9 @@ export const platosDestacados: Pieza = {
 .p-platosDestacados .precio{margin:0;color:var(--acento-legible);font-weight:600}
 .p-platosDestacados .ver-carta{margin:20px 0 0}
 .p-platosDestacados .ver-carta a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted);font-weight:600}
-@media(prefers-color-scheme:dark){.p-platosDestacados .destacados{border-color:#1e1e1e}}
+`,
+
+  cssOscuro: `@media(prefers-color-scheme:dark){.p-platosDestacados .destacados{border-color:#1e1e1e}}
 `,
 
   render(ctx: CtxPieza): string {

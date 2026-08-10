@@ -39,7 +39,10 @@ import type { CtxPieza, Pieza } from "./tipos.js";
 export const cartaCategorias: Pieza = {
   id: "cartaCategorias",
   raiz: "p-cartaCategorias",
-  css: `.p-cartaCategorias .categoria{padding:24px 0;border-bottom:1px solid #f0f0f0}
+  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-cartaCategorias{max-width:var(--ancho-lectura);margin:0 auto}
+.p-cartaCategorias .categoria{padding:24px 0;border-bottom:1px solid #f0f0f0}
 /* La foto de categoría es la que da aire a la carta: ancho completo y proporción apaisada fija, para
    que dos categorías con fotos de distinto tamaño no dejen la página a saltos. */
 .p-cartaCategorias .categoria-img{width:100%;aspect-ratio:3/1;object-fit:cover;border-radius:12px;margin:0 0 14px}
@@ -69,7 +72,9 @@ export const cartaCategorias: Pieza = {
    acento pleno de un cliente puede quedar ilegible. */
 .p-cartaCategorias .precio{color:var(--acento-legible);font-weight:600;white-space:nowrap}
 .p-cartaCategorias .precio .etiqueta{color:var(--muted);font-weight:400;font-size:.8rem;margin-right:6px}
-@media(prefers-color-scheme:dark){.p-cartaCategorias .categoria{border-color:#1e1e1e}.p-cartaCategorias .platos li{border-color:#191919}}
+`,
+
+  cssOscuro: `@media(prefers-color-scheme:dark){.p-cartaCategorias .categoria{border-color:#1e1e1e}.p-cartaCategorias .platos li{border-color:#191919}}
 `,
 
   render(ctx: CtxPieza): string {

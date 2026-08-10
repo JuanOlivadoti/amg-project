@@ -7,7 +7,7 @@ import { ctaFinal } from "./cta-final.js";
 import { faq } from "./faq.js";
 import { galeria } from "./galeria.js";
 import { hero } from "./hero.js";
-import { heroPortada } from "./hero-portada.js";
+import { heroSlider } from "./hero-slider.js";
 import { indice } from "./indice.js";
 import { locales } from "./locales.js";
 import { platosDestacados } from "./platos-destacados.js";
@@ -34,10 +34,20 @@ export type { CtxPieza, Pieza } from "./tipos.js";
  * verde que este proyecto persigue. Sus dos garantías vivas (el arreglo del doble borde al final de
  * cada categoría y el escapado de nombre/precio/descripción) se mudaron con sus tests a
  * `cartaCategorias`, que es donde hoy importan.
+ *
+ * ⚠️ **`heroPortada` tampoco está**, y se retira por el MISMO criterio, no por uno nuevo. El rediseño
+ * de la plantilla base le dio a `heroSlider` los dos casos que quedaban —la portada de `story` y la de
+ * `home`—, así que `heroPortada` se quedó sin ninguna receta que la nombrara: código que nunca llega a
+ * un navegador con tests que pasan para siempre. Sus garantías vivas se mudaron con sus tests a
+ * `heroSlider` (`piezas-foto.test.ts`), y son las mismas de siempre: sin foto válida la portada cae al
+ * hero **tipográfico** y no a un hueco (`class="portada sin-img"`), una foto de host no permitido no se
+ * dibuja y la portada sale igual, y la foto de arriba es la **única** `fetchpriority="high"` del
+ * documento —con la diferencia de que ahora hay hasta cinco diapositivas y la prioritaria es solo la
+ * primera—.
  */
 export const CATALOGO: readonly Pieza[] = [
   cabecera,
-  heroPortada,
+  heroSlider,
   hero,
   barraDatos,
   seccionProsa,

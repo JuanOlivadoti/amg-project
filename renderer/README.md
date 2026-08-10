@@ -1,5 +1,10 @@
 # `renderer` — el que sirve las webs de cliente (etapa 6, ADR-19)
 
+> 📖 **La documentación del sistema de render vive en [`docs/`](docs/README.md)**: cómo se arma una
+> página, cómo se escribe una pieza, los tokens de marca y el tema, la plantilla `base` y este
+> servicio. Cubre **las dos mitades** —`web-builder/src/render/` produce el HTML y este paquete lo
+> sirve— porque se rompen juntas. Este README es solo cómo correr la pieza.
+
 **Un servicio, N dominios.** Lee el contenido de Storyblok en vivo, lo pasa por `renderStory()` y lo
 sirve. Es la pieza que faltaba desde que ADR-16 quitó Next del stack: hasta ahora se publicaba
 contenido en Storyblok y **nada lo servía en un dominio** (OBS-03).
@@ -102,7 +107,7 @@ Nada de esto sustituye a un **rate limit en el borde**. Es el piso que el servic
 | `CACHE_TTL_MS` | default 5 min |
 
 ```bash
-npm test -w renderer        # 94 tests, sin red ni credenciales
+npm test -w renderer        # 143 tests, sin red ni credenciales
 npm run dev:server -w renderer   # el servicio real sobre PGlite + Storyblok de MENTIRA (verificar)
 npm run demo -w renderer         # el servicio real sobre PGlite + Storyblok REAL (demo a Frank)
 npm run serve -w renderer        # producción

@@ -28,11 +28,16 @@ export const galeria: Pieza = {
   // `auto-fill` + `minmax(150px,1fr)`: tantas columnas como quepan, sin media queries. Las fotos van
   // en cuadrado (`aspect-ratio:1`) con `object-fit:cover` porque las de la ficha vienen con
   // proporciones distintas y una rejilla de alturas desiguales se lee como un error, no como diseño.
-  css: `.p-galeria .galeria{padding:32px 0;border-bottom:1px solid #f0f0f0}
+  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-galeria{max-width:var(--ancho-lectura);margin:0 auto}
+.p-galeria .galeria{padding:32px 0;border-bottom:1px solid #f0f0f0}
 .p-galeria .galeria h2{font-size:1.45rem;margin:0 0 16px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 .p-galeria .rejilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
 .p-galeria .foto{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block}
-@media(prefers-color-scheme:dark){.p-galeria .galeria{border-color:#1e1e1e}}
+`,
+
+  cssOscuro: `@media(prefers-color-scheme:dark){.p-galeria .galeria{border-color:#1e1e1e}}
 `,
 
   render(ctx: CtxPieza): string {

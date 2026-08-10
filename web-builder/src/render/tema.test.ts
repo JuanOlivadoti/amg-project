@@ -12,6 +12,7 @@ import {
   tokensDe,
   varsConsumidas,
 } from "./css-de-prueba.js";
+import { ensamblarCss } from "./css.js";
 import { ctxDe } from "./ctx-de-prueba.js";
 import { renderMenu, renderStory } from "./html.js";
 import { CATALOGO } from "./piezas/index.js";
@@ -41,8 +42,17 @@ function cssDe(profile?: BusinessProfile | null): string {
   return estilo(renderStory(pageToStory(validPage(), validBrief()), profile));
 }
 
-/** El `<style>` de un documento SIN piezas: tokens + base, y nada más. */
-function cssBase(): string {
+/**
+ * El `<style>` de un documento SIN piezas: tokens + base, y nada más.
+ *
+ * `tema` existe porque el modo oscuro dejó de viajar siempre (ver `BrandTheme.tema`): quien audite el
+ * oscuro del base tiene que pedirlo, igual que lo pide una ficha real.
+ */
+function cssBase(tema?: "claro" | "auto"): string {
+  // Con `tema` se va DIRECTO al ensamblador y no por `renderDocumento`: pedir el tema a través de un
+  // documento exige darle un perfil, y con perfil la cabecera se dibuja y su CSS entra en lo que este
+  // helper llama "el base" — o sea, en lo que sus tests dicen explícitamente no estar mirando.
+  if (tema) return ensamblarCss([], { tema });
   return estilo(
     renderDocumento({
       cabeza: { lang: "es", title: "x", canonical: "/x", ogTitle: "x" },
@@ -153,13 +163,16 @@ test("🔴 `--decorativo` NUNCA pinta texto: es color de MARCA, no color legible
 });
 
 test("modo oscuro — NINGUNA pieza del catálogo deja un color literal sin su contrapartida oscura", () => {
+  // Las dos mitades JUNTAS: desde que el oscuro vive en `cssOscuro`, auditar solo `css` daría verde
+  // para siempre —no habría un `@media` que comparar— que es la peor forma de perder un gate.
   for (const p of CATALOGO) {
-    assert.deepEqual(huecosDeModoOscuro(p.css), [], `la pieza "${p.id}" tiene el modo oscuro incompleto`);
+    const css = `${p.css}\n${p.cssOscuro ?? ""}`;
+    assert.deepEqual(huecosDeModoOscuro(css), [], `la pieza "${p.id}" tiene el modo oscuro incompleto`);
   }
 });
 
 test("modo oscuro — el CSS base tampoco (los tokens, `footer` y `.card` son suyos)", () => {
-  assert.deepEqual(huecosDeModoOscuro(cssBase()), []);
+  assert.deepEqual(huecosDeModoOscuro(cssBase("auto")), []);
 });
 
 test("toda `var(--x)` que consume una pieza está DECLARADA en el base (§3.6)", () => {
@@ -203,6 +216,18 @@ const PERFIL_MARCA: BusinessProfile = validProfile({
 });
 
 /**
+ * La misma ficha, **pidiendo el tema `auto`**.
+ *
+ * Desde el 2026-08-10 el modo oscuro es opt-in de la ficha (ver `BrandTheme.tema`): el sitio se sirve
+ * claro salvo que el cliente pida seguir al sistema operativo del visitante. Los tests que auditan el
+ * oscuro tienen que pedirlo, y que tengan que pedirlo es media garantía — si el CSS oscuro se colara
+ * sin `tema: "auto"`, el test de más abajo que exige su ausencia caería.
+ */
+const PERFIL_MARCA_AUTO: BusinessProfile = validProfile({
+  brand: { ...PERFIL_MARCA.brand, tema: "auto" },
+});
+
+/**
  * Token → la declaración de la pieza que lo dibuja.
  *
  * `body` es del CSS base y no de una pieza: los tres tokens que gobiernan la página entera (texto,
@@ -223,16 +248,21 @@ const PERFIL_MARCA: BusinessProfile = validProfile({
  * token semántico que además tiene su variante aclarada para oscuro. La condición que lo sacó de
  * `--muted` se mantiene: **no pinta texto**, pinta filetes.
  *
- * ⚠️ Los selectores del hero apuntan a **`.p-heroPortada`** desde la mitad B: la receta de la landing
- * cambió `hero` por `heroPortada`, y `cssDe` renderiza una landing. Apuntar al `.p-hero` viejo dejaba
- * la tabla midiendo un selector que ya no está en esa página — y `propiedadResuelta` devuelve
- * `undefined` para un selector ausente, así que el fallo habría sido ruidoso pero por el motivo
- * equivocado.
+ * ⚠️ Los selectores del hero apuntan a **`.p-heroSlider`**: la receta de la landing cambió `hero` por
+ * `heroPortada` en la mitad B y `heroPortada` por `heroSlider` en el rediseño de la plantilla base, y
+ * `cssDe` renderiza una landing. Apuntar a una raíz que ya no está en esa página dejaba la tabla
+ * midiendo un selector ausente — y `propiedadResuelta` devuelve `undefined` para eso, así que el fallo
+ * habría sido ruidoso pero por el motivo equivocado. El `assert.ok(valor !== undefined)` de abajo es
+ * lo que convierte ese descuido en un fallo, y es lo que cazó los tres selectores viejos al retirar
+ * `heroPortada`.
+ *
+ * Ojo con la forma del selector, que también cambió: `heroPortada` estilaba `.portada h1` y
+ * `heroSlider` estila **`h1` directo bajo su raíz** (su `<h1>` vive en `.texto`, no en `.portada`).
  */
 const CONSUMO: Array<{ token: string; selector: string; propiedad: string; espera: string }> = [
-  { token: "--marca-primario", selector: ".p-heroPortada .cta", propiedad: "background", espera: "#0a7d34" },
+  { token: "--marca-primario", selector: ".p-heroSlider .cta", propiedad: "background", espera: "#0a7d34" },
   { token: "--marca-secundario", selector: ".p-barraDatos .dato", propiedad: "border-left", espera: "#c8963e" },
-  { token: "--marca-titulo", selector: ".p-heroPortada .portada h1", propiedad: "color", espera: "#112233" },
+  { token: "--marca-titulo", selector: ".p-heroSlider h1", propiedad: "color", espera: "#112233" },
   { token: "--marca-texto", selector: "body", propiedad: "color", espera: "#445566" },
   { token: "--marca-fondo", selector: "body", propiedad: "background", espera: "#fefdfb" },
   { token: "--marca-fondo-alt", selector: ".p-faq .faq", propiedad: "background", espera: "#f1f2f3" },
@@ -243,7 +273,7 @@ const CONSUMO: Array<{ token: string; selector: string; propiedad: string; esper
   // el fallo que esta mitad viene a cerrar.
   {
     token: "--marca-fuente-titulo",
-    selector: ".p-heroPortada .portada h1",
+    selector: ".p-heroSlider h1",
     propiedad: "font-family",
     espera: "'Oswald',",
   },
@@ -283,7 +313,7 @@ test("legacy — una ficha `{color, font}` pinta EXACTAMENTE lo que pintaba: ace
   const css = cssDe(perfilLegacy()); // { color: "#0a7d34", font: "serif" }
   assert.equal(tokenResuelto(css, "--accent"), "#0a7d34", "el acento sigue saliendo del `color` legacy");
   assert.match(propiedadResuelta(css, "body", "font") ?? "", /Georgia/, "y el cuerpo, del `font` legacy");
-  assert.equal(propiedadResuelta(css, ".p-heroPortada .cta", "background"), "#0a7d34");
+  assert.equal(propiedadResuelta(css, ".p-heroSlider .cta", "background"), "#0a7d34");
 });
 
 test("legacy — sin `fuentes.titulo`, los titulares heredan la fuente del CUERPO, no el default del sistema", () => {
@@ -291,7 +321,7 @@ test("legacy — sin `fuentes.titulo`, los titulares heredan la fuente del CUERP
   // ficha legacy con `font: serif` vería su cuerpo en Georgia y sus titulares en system-ui. Nadie lo
   // pidió y sería un cambio de aspecto en TODAS las webs sembradas.
   const css = cssDe(perfilLegacy());
-  assert.match(propiedadResuelta(css, ".p-heroPortada .portada h1", "font-family") ?? "", /Georgia/);
+  assert.match(propiedadResuelta(css, ".p-heroSlider h1", "font-family") ?? "", /Georgia/);
   assert.match(propiedadResuelta(css, ".p-cabecera .sitebar .marca", "font-family") ?? "", /Georgia/);
 });
 
@@ -312,7 +342,7 @@ test("🔴 manual — con AMBAS formas gana `colores.primario` sobre el `color` 
   const css = cssDe(validProfile({ brand: { color: "#111111", colores: { primario: "#0a7d34" } } }));
   assert.equal(tokenResuelto(css, "--marca-primario"), "#0a7d34");
   assert.equal(tokenResuelto(css, "--accent"), "#0a7d34", "el acento que se ve tiene que ser el del manual");
-  assert.equal(propiedadResuelta(css, ".p-heroPortada .cta", "background"), "#0a7d34");
+  assert.equal(propiedadResuelta(css, ".p-heroSlider .cta", "background"), "#0a7d34");
   assert.ok(!css.includes("#111111"), "el legacy no puede quedar declarado en ningún sitio: ganaría por cascada");
 });
 
@@ -329,7 +359,7 @@ test("🔴 manual — con AMBAS formas gana `fuentes.texto` sobre el `font` lega
 // ─────────────────────────────────────────────────────────────────────────────
 
 test("el acento legible en oscuro se DERIVA en CSS con color-mix, no en TypeScript", () => {
-  const css = cssDe(PERFIL_MARCA);
+  const css = cssDe(PERFIL_MARCA_AUTO);
   // En claro es el acento tal cual: una ficha no cambia de aspecto por existir el arreglo.
   assert.equal(tokenResuelto(css, "--acento-legible", "claro"), "#0a7d34");
   // En oscuro, una MEZCLA que nombra el token de marca. Que la mezcla nombre `--marca-primario` es
@@ -349,7 +379,7 @@ test("🔴 `--decorativo` también se DERIVA en CSS en oscuro, igual que su geme
   // El fallo que evita es SILENCIOSO: un filete de 3 px en oro pleno sobre `#111` no rompe ninguna
   // corrida de tests, y el detector `huecosDeModoOscuro` tampoco lo ve —`tieneColorLiteral` devuelve
   // `false` para cualquier `var(--x)`, así que un token sin variante oscura le es invisible por diseño.
-  const css = cssDe(PERFIL_MARCA);
+  const css = cssDe(PERFIL_MARCA_AUTO);
   // En claro, el segundo color de marca tal cual: la ficha dice lo que dice.
   assert.equal(tokenResuelto(css, "--decorativo", "claro"), "#c8963e");
   // En oscuro, una mezcla que NOMBRA el token de marca — misma razón que en el acento: si mañana
@@ -367,10 +397,10 @@ test("el acento legible es lo que pinta el TEXTO de acento; el botón conserva e
   const cssMenu = estilo(renderMenu(validProfile({ menu: [{ name: "Pizza", price: "12 €" }] })));
   const cssLanding = cssDe(validProfile());
   assert.equal(propiedadResuelta(cssMenu, ".p-cartaCategorias .precio", "color"), "#b91c1c");
-  assert.equal(propiedadResuelta(cssLanding, ".p-heroPortada .cta", "background"), "#b91c1c");
+  assert.equal(propiedadResuelta(cssLanding, ".p-heroSlider .cta", "background"), "#b91c1c");
   const precio = reglasDe(cssMenu).find((r) => r.selector === ".p-cartaCategorias .precio");
   assert.match(precio?.declaraciones["color"] ?? "", /--acento-legible/);
-  const cta = reglasDe(cssLanding).find((r) => r.selector === ".p-heroPortada .cta");
+  const cta = reglasDe(cssLanding).find((r) => r.selector === ".p-heroSlider .cta");
   assert.match(cta?.declaraciones["background"] ?? "", /--accent\)/);
 });
 
@@ -441,7 +471,7 @@ test("🔴 el `color-mix` del acento vive BAJO un `@supports`, y sin él la degr
   // `css-de-prueba` entra en los `@supports` siempre, así que no distinguía dentro de fuera: quitar
   // el `@supports` no tumbaba nada. Acá se afirma sobre el texto emitido, que es lo único que
   // distingue las dos formas.
-  const css = cssBase();
+  const css = cssBase("auto");
   const conMix = css.slice(css.indexOf("color-mix"));
   const antes = css.slice(0, css.indexOf("color-mix"));
 
@@ -452,4 +482,39 @@ test("🔴 el `color-mix` del acento vive BAJO un `@supports`, y sin él la degr
       "pierde el color del acento en vez de caer al acento pleno",
   );
   assert.ok(conMix.length > 0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// El tema, que desde el 2026-08-10 lo decide la FICHA y no el sistema operativo del visitante.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("🔴 el default de producción es CLARO: sin `tema`, el documento no lleva un solo `prefers-color-scheme`", () => {
+  // Este es EL test del cambio, y mira una ficha realista (con manual de marca y todas las piezas
+  // dibujadas), no un documento vacío: el CSS oscuro vivía repartido entre el base y las 11 piezas,
+  // así que una regresión puede volver por cualquiera de los doce sitios.
+  const css = cssDe(PERFIL_MARCA);
+  assert.doesNotMatch(
+    css,
+    /prefers-color-scheme/,
+    "una ficha sin `tema` no puede traer NADA de modo oscuro: el fondo de marca del cliente lo estaría " +
+      "decidiendo el sistema operativo de quien mire",
+  );
+  // Y no pasa por no emitir nada: la marca sigue llegando entera.
+  assert.match(css, /--marca-fondo:#fefdfb/);
+});
+
+test("con `tema: \"auto\"` vuelve el modo oscuro, y vuelve ENTERO (base + piezas)", () => {
+  const css = cssDe(PERFIL_MARCA_AUTO);
+  assert.match(css, /@media\(prefers-color-scheme:dark\)\{:root\{--fg:#e8e8e8/, "falta el oscuro del BASE");
+  assert.match(css, /\.p-cabecera \.topbar\{background:#1b1b1b/, "falta el oscuro de las PIEZAS");
+});
+
+test("🔴 un `tema` inventado cae a claro, igual que un color inválido cae al default", () => {
+  // La comparación es contra el literal `"auto"` justamente para esto: `!== "claro"` habría hecho que
+  // un typo (`"atuo"`, `"dark"`, `"oscuro"`) activara el modo oscuro, que es el lado equivocado del
+  // fallo. La ficha la edita una persona, no un compilador.
+  for (const tema of ["atuo", "dark", "oscuro", "AUTO", ""]) {
+    const css = cssDe(validProfile({ brand: { ...PERFIL_MARCA.brand, tema: tema as "auto" } }));
+    assert.doesNotMatch(css, /prefers-color-scheme/, `«${tema}» no puede activar el modo oscuro`);
+  }
 });

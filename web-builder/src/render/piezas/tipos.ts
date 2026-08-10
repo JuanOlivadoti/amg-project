@@ -23,6 +23,20 @@ export interface Pieza {
   raiz: string;
   /** Su CSS, y SOLO el suyo. Ver `raiz`. */
   css: string;
+  /**
+   * Su CSS **para el modo oscuro**, y solo el suyo. Va en un campo aparte —y no dentro de `css`—
+   * porque el tema dejó de ser una decisión del visitante: el sitio de un cliente se sirve **claro**
+   * salvo que su ficha pida `tema: "auto"` (ver `ensamblarCss`).
+   *
+   * Mientras el `@media(prefers-color-scheme:dark)` vivía incrustado en el string de `css`, "no
+   * emitir el oscuro" solo se podía hacer recortando CSS con una expresión regular: frágil, y
+   * silencioso cuando fallara. Separarlo lo convierte en no concatenar una cadena.
+   *
+   * Va **envuelto en su propio `@media`** por la pieza, igual que antes, para que siga siendo legible
+   * de un vistazo qué regla pertenece a qué tema. `aislamiento.ts` lo audita con las mismas reglas que
+   * `css`: la raíz de la pieza manda también acá.
+   */
+  cssOscuro?: string;
   /** El HTML de la pieza, o `""` si no tiene datos que mostrar. */
   render(ctx: CtxPieza): string;
 }

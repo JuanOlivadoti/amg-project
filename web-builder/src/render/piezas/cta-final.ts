@@ -24,7 +24,10 @@ import type { CtxPieza, Pieza } from "./tipos.js";
 export const ctaFinal: Pieza = {
   id: "ctaFinal",
   raiz: "p-ctaFinal",
-  css: `.p-ctaFinal .cierre{background:var(--soft);border-radius:12px;padding:28px 24px;margin:32px 0;text-align:center}
+  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-ctaFinal{max-width:var(--ancho-lectura);margin:0 auto}
+.p-ctaFinal .cierre{background:var(--soft);border-radius:12px;padding:28px 24px;margin:32px 0;text-align:center}
 .p-ctaFinal .cierre h2{font-size:1.45rem;margin:0 0 6px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 .p-ctaFinal .horario{margin:0 0 18px;color:var(--muted)}
 /* Los botones se envuelven en un flex centrado con \`wrap\`: en un móvil estrecho el segundo baja solo,

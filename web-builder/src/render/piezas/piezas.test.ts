@@ -320,11 +320,16 @@ test("🔴 el ORDEN del catálogo es un contrato, y hasta ahora nada lo imponía
   // ⚠️ La entrega 3 (mitad B) lo cambió a propósito: entran las seis piezas con imagen y sale `carta`
   // (ver `index.ts`). El orden sigue siendo el del documento — cabecera, contenido en el orden en que
   // suele aparecer, pie— con las dos variantes de titular juntas al principio.
+  //
+  // ⚠️ El rediseño de la plantilla base (2026-08-10) lo volvió a cambiar a propósito: `heroSlider`
+  // ocupa el sitio de `heroPortada`, que sale del catálogo por quedarse sin receta que la nombre
+  // (mismo criterio que retiró a `carta` — ver `index.ts`). `hero` se queda: lo siguen nombrando las
+  // recetas de `/menu` y `/blog`.
   assert.deepEqual(
     CATALOGO.map((p) => p.id),
     [
       "cabecera",
-      "heroPortada",
+      "heroSlider",
       "hero",
       "barraDatos",
       "seccionProsa",

@@ -1,6 +1,14 @@
 import type { BusinessProfile } from "../../types.js";
 import { consumirCupo, fuentePermitida } from "../imagenes.js";
-import { SLUG_HOME, SLUG_MENU, envolver, esc, hayUbicaciones } from "../lib.js";
+import {
+  SLUG_HOME,
+  SLUG_MENU,
+  datosAccionables,
+  envolver,
+  esc,
+  hayUbicaciones,
+  hrefTelefono,
+} from "../lib.js";
 import type { CtxPieza, Pieza } from "./tipos.js";
 
 /**
@@ -59,18 +67,75 @@ function renderNav(items: ItemNav[], activeSlug: string): string {
 export const cabecera: Pieza = {
   id: "cabecera",
   raiz: "p-cabecera",
-  css: `.p-cabecera .sitebar{border-bottom:1px solid #eee;padding:14px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;max-width:1100px;margin:0 auto}
-.p-cabecera .sitebar .brand{display:inline-flex;align-items:center;text-decoration:none;color:var(--fg)}
+  css: `/* ⚠️ **Sin esto el sticky de la barra NO funciona, y falla en silencio.**
+   Toda pieza va envuelta en un div con su raíz (ver \`envolver\`), y un elemento sticky solo se queda
+   pegado mientras su CONTENEDOR sigue a la vista: como este envoltorio mide lo que miden las dos
+   barras y nada más, la barra se despegaba a los ~130 px de scroll. Medido: con scrollY 900, la
+   barra estaba en top:-856 — o sea, se había ido con la página.
+   \`display:contents\` hace que el envoltorio no genere caja: sus hijos pasan a ser hijos del body y
+   el sticky se mide contra el documento entero, que es lo que se quiere. No afecta al aislamiento,
+   que es por selector y no por caja. */
+.p-cabecera{display:contents}
+/* **La franja de datos, arriba del todo.** Teléfono y horario dejan de estar solo en el pie: en un
+   restaurante son lo que más se busca, y en la barra superior se ven sin bajar ni una pantalla. No
+   lleva email ni redes porque el perfil no los tiene — antes ausente que inventado. */
+.p-cabecera .topbar{background:var(--accent);color:var(--sobre-acento)}
+.p-cabecera .topbar .interior{max-width:var(--ancho-pagina);margin:0 auto;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:8px 24px;flex-wrap:wrap;font-size:.95rem}
+.p-cabecera .topbar a{color:var(--sobre-acento);text-decoration:none}
+.p-cabecera .topbar a:hover{text-decoration:underline}
+.p-cabecera .topbar .horario{opacity:.9}
+/* La barra se queda al bajar: en una landing larga la navegación desaparecía y no volvía. La sombra
+   es permanente y no aparece con el scroll — detectar el scroll exige JavaScript, y el renderizador
+   no emite ni una línea (es la única superficie expuesta a internet anónimo). */
+.p-cabecera .sitebar{position:sticky;top:0;z-index:20;background:var(--bg);box-shadow:0 2px 20px rgba(7,20,52,.10)}
+.p-cabecera .sitebar .interior{max-width:var(--ancho-pagina);margin:0 auto;padding:0 20px;display:flex;align-items:center;gap:24px}
+.p-cabecera .brand{display:inline-flex;align-items:center;gap:12px;text-decoration:none;color:var(--fg);padding:10px 0}
 /* El nombre del negocio ES el logotipo cuando no hay imagen, así que se dibuja con la fuente
-   DECORATIVA del manual — es el único sitio del sitio donde una tipografía de rótulo tiene sentido.
-   Sin manual, ese token cae a la fuente del cuerpo y la cabecera se ve exactamente como hoy. */
-.p-cabecera .sitebar .marca{font-weight:700;font-size:1.15rem;letter-spacing:-.01em;font-family:var(--fuente-decorativa)}
-.p-cabecera .sitebar .logo{display:block}
-.p-cabecera .nav{display:flex;gap:6px 18px;flex-wrap:wrap;margin-left:auto;font-size:.95rem}
-.p-cabecera .nav a{text-decoration:none;color:var(--muted);padding:4px 2px;border-bottom:2px solid transparent;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.p-cabecera .nav a:hover{color:var(--fg)}
-.p-cabecera .nav a.activo{color:var(--fg);border-bottom-color:var(--acento-legible);font-weight:600}
-@media(prefers-color-scheme:dark){.p-cabecera .sitebar{border-color:#222}}
+   DECORATIVA del manual — es el único sitio del sitio donde una tipografía de rótulo tiene sentido,
+   y **es su único consumidor**: pintarlo con la de titulares deja el token del manual sin nadie que
+   lo use, o sea una ficha que pide Dancing Script, paga su descarga y no la ve en ninguna parte.
+   Sin manual, ese token cae a la fuente del cuerpo. Crece de 1.15 a 1.35rem para sostener la barra
+   nueva, que es más alta. */
+.p-cabecera .sitebar .marca{font-weight:700;font-size:1.35rem;letter-spacing:-.01em;font-family:var(--fuente-decorativa);color:var(--titulo)}
+.p-cabecera .sitebar .logo{display:block;height:56px;width:auto}
+/* El nav va CENTRADO entre la marca y la acción, no pegado a la derecha: los dos margin auto se
+   reparten el espacio sobrante. Es el patrón del template de referencia (logo · nav · acción). */
+.p-cabecera .nav{display:flex;margin:0 auto;flex-wrap:wrap;justify-content:center}
+/* La fuente de TITULARES, no la del cuerpo: en el manual de Borcelle es una condensada, y una
+   condensada en versalita es exactamente el rótulo de carta que el nav de un restaurante pide.
+   Sin manual cae a la del cuerpo y el nav se ve como hasta ahora. */
+.p-cabecera .nav a{padding:28px 15px;font-family:var(--fuente-titulo);font-size:1.1rem;font-weight:500;color:var(--titulo);text-decoration:none;border-bottom:3px solid transparent}
+.p-cabecera .nav a:hover{color:var(--acento-legible)}
+.p-cabecera .nav a.activo{color:var(--acento-legible);border-bottom-color:var(--acento-legible)}
+/* El CTA es el único botón del documento que no pertenece a una sección: es la acción del sitio
+   entero. Usa el primario de la marca, no un rojo fijo — dos clientes con la misma plantilla siguen
+   teniendo dos webs distintas. */
+.p-cabecera .cta{background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:11px 30px;border-radius:30px;font-size:1rem;font-weight:600;white-space:nowrap}
+/* ⚠️ Los selectores de acá dentro repiten .sitebar POR ESPECIFICIDAD, no por estilo: las reglas de
+   arriba son ".p-cabecera .sitebar .logo" (0,3,0) y un ".p-cabecera .logo" (0,2,0) pierde aunque
+   esté después y dentro de una at-rule. El síntoma sería un logo de 56 px en un móvil de 390 px,
+   sin ningún error en ninguna parte. */
+/* La franja roja se ESCONDE en móvil, igual que en el template de referencia: en 390 px de ancho el
+   teléfono y el horario ocupan dos líneas de una pantalla donde cada línea es cara, y los dos datos
+   siguen a un toque de distancia en el botón Llamar y en la franja de datos. */
+@media(max-width:900px){.p-cabecera .topbar{display:none}
+.p-cabecera .sitebar .interior{flex-wrap:wrap;padding:8px 16px;gap:12px}
+.p-cabecera .sitebar .logo{height:44px}
+.p-cabecera .sitebar .marca{font-size:1.1rem}
+.p-cabecera .cta{margin-left:auto;padding:9px 22px;font-size:.95rem}
+.p-cabecera .nav{order:3;width:100%;margin-left:0;flex-wrap:nowrap;overflow-x:auto;border-top:1px solid rgba(0,0,0,.08)}
+.p-cabecera .nav a{padding:12px 14px;font-size:.98rem;white-space:nowrap;border-bottom-width:2px}}
+`,
+
+  /* ⚠️ La franja superior es el único sitio del documento con un color de texto LITERAL (`#fff`), y
+     por eso necesita las cuatro líneas de abajo. Su fondo es `var(--titulo)` —oscuro en claro—, pero
+     en modo oscuro ese token se invierte a `#e8e8e8`: sin redeclarar, la barra quedaría con texto
+     blanco sobre fondo casi blanco, o sea ilegible. Lo cazó `huecosDeModoOscuro` al primer intento;
+     lo escribo acá porque es la clase de fallo que un vistazo al CSS claro no muestra. */
+  cssOscuro: `@media(prefers-color-scheme:dark){.p-cabecera .sitebar{box-shadow:0 2px 20px rgba(0,0,0,.5)}
+.p-cabecera .topbar{background:#1b1b1b;color:#e8e8e8}
+.p-cabecera .topbar a{color:#e8e8e8}
+.p-cabecera .nav{border-color:rgba(255,255,255,.12)}}
 `,
 
   render(ctx: CtxPieza): string {
@@ -104,11 +169,30 @@ export const cabecera: Pieza = {
       logoOk && consumirCupo(ctx.presupuestoImagenes)
         // Sin `loading="lazy"`: el logo está sobre el pliegue y diferirlo penaliza el LCP. Lo único
         // que se le añade es la política de referrer.
-        ? `<img class="logo" src="${esc(logo)}" alt="${esc(profile.name)}" referrerpolicy="no-referrer" height="40">`
+        ? `<img class="logo" src="${esc(logo)}" alt="${esc(profile.name)}" referrerpolicy="no-referrer" height="56">`
         : `<span class="marca">${esc(profile.name)}</span>`;
+
+    const { telefono, horario } = datosAccionables(profile);
+    // La franja superior solo existe si tiene algo que decir. Una barra oscura vacía sobre la
+    // cabecera no es "sobria": es un elemento de diseño que anuncia que falta un dato.
+    const topbar =
+      telefono || horario
+        ? `<div class="topbar"><div class="interior">${
+            telefono
+              ? `<a class="tel" href="${hrefTelefono(telefono)}">${esc(telefono)}</a>`
+              : `<span></span>`
+          }${horario ? `<span class="horario">${esc(horario)}</span>` : ""}</div></div>`
+        : "";
+    // El CTA es un `tel:` porque es la acción que este sistema puede cumplir de verdad. Un "Reservar"
+    // que abriera un formulario inexistente sería una promesa que el sitio no sostiene, y sin
+    // teléfono no se emite ningún botón.
+    const cta = telefono
+      ? `<a class="cta" href="${hrefTelefono(telefono)}">Llamar</a>`
+      : "";
+
     return envolver(
       "p-cabecera",
-      `<header class="sitebar"><a href="/" class="brand">${marca}</a>${navHtml}</header>`,
+      `${topbar}<header class="sitebar"><div class="interior"><a href="/" class="brand">${marca}</a>${navHtml}${cta}</div></header>`,
     );
   },
 };

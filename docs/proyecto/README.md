@@ -68,3 +68,7 @@ cuando algo está diseñado pero no implementado, se dice explícitamente.
   los que se propuso el proyecto, las seis acciones ya cerradas, y los documentos del Módulo 2 previos
   a construirlo. Se conserva porque explica **por qué** el sistema es así; **no describe cómo es hoy**.
 - **READMEs de código:** [`kr-service`](../../kr-service/README.md) · [`web-builder`](../../web-builder/README.md) · [`api`](../../api/README.md) · [`renderer`](../../renderer/README.md) · [`portal`](../../portal/README.md) — cómo correr cada pieza.
+- **[Sistema de render](../../renderer/docs/README.md)** — cómo se arma el HTML que ve un desconocido:
+  el shell y las recetas, cómo se escribe una pieza, los tokens de marca y el tema, la plantilla `base`
+  y el renderizador como servicio. Vive en `renderer/docs/` porque lo mantiene el agente `render`, y
+  cubre **las dos mitades** del sistema: `web-builder/src/render/` produce el HTML y `renderer/` lo sirve.

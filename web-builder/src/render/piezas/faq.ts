@@ -14,11 +14,16 @@ export const faq: Pieza = {
   id: "faq",
   raiz: "p-faq",
   // `border-bottom` en `.faq` no es nuevo: lo heredaba del `section{…}` global, que ya no existe.
-  css: `.p-faq .faq{background:var(--soft);border-radius:12px;padding:24px;margin:32px 0;border-bottom:1px solid #f0f0f0}
+  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-faq{max-width:var(--ancho-lectura);margin:0 auto}
+.p-faq .faq{background:var(--soft);border-radius:12px;padding:24px;margin:32px 0;border-bottom:1px solid #f0f0f0}
 .p-faq .faq h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 .p-faq details{padding:12px 0;border-bottom:1px solid #e7e5e0}
 .p-faq summary{font-weight:600;cursor:pointer}
-@media(prefers-color-scheme:dark){.p-faq .faq{border-color:#1e1e1e}.p-faq details{border-color:#2a2a2a}}
+`,
+
+  cssOscuro: `@media(prefers-color-scheme:dark){.p-faq .faq{border-color:#1e1e1e}.p-faq details{border-color:#2a2a2a}}
 `,
 
   render(ctx: CtxPieza): string {

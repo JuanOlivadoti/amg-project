@@ -26,14 +26,19 @@ export const barraDatos: Pieza = {
   // Flex con `wrap`: en escritorio los tres datos van en una línea y en un móvil se apilan sin que
   // haga falta un media query — la franja no tiene un layout que defender, solo tres cosas que caben
   // o no caben.
-  css: `.p-barraDatos .franja{display:flex;flex-wrap:wrap;gap:14px 28px;margin:0;padding:16px 0;border-bottom:1px solid #f0f0f0}
+  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-barraDatos{max-width:var(--ancho-lectura);margin:0 auto}
+.p-barraDatos .franja{display:flex;flex-wrap:wrap;gap:14px 28px;margin:0;padding:16px 0;border-bottom:1px solid #f0f0f0}
 .p-barraDatos .dato{margin:0;display:flex;flex-direction:column;gap:2px;padding-left:12px;border-left:3px solid var(--decorativo)}
 /* La etiqueta es el rótulo del dato ("Teléfono"), no el dato: menor, en el gris de texto secundario y
    en versalitas, para que el ojo salte directo al número. */
 .p-barraDatos .etiqueta{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .p-barraDatos .valor{font-weight:600}
 .p-barraDatos a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted);font-weight:600}
-@media(prefers-color-scheme:dark){.p-barraDatos .franja{border-color:#1e1e1e}}
+`,
+
+  cssOscuro: `@media(prefers-color-scheme:dark){.p-barraDatos .franja{border-color:#1e1e1e}}
 `,
 
   render(ctx: CtxPieza): string {

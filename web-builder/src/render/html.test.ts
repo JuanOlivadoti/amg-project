@@ -140,9 +140,24 @@ test("tema: un color de marca válido pinta el acento", () => {
 
 test("🔴 tema: un color con inyección CSS se DESCARTA, no se inyecta", () => {
   // El color va dentro de un <style>. `red;} body{display:none} .x{` rompería la página.
+  //
+  // ⚠️ Se busca la **regla inyectada entera** (`body{display:none}`) y no el fragmento `display:none`
+  // suelto: desde el rediseño hay un `display:none` LEGÍTIMO en el `<style>` de toda página
+  // (`.p-cabecera .topbar` se esconde en móvil), y con el fragmento suelto este caso denunciaba una
+  // regla nuestra en vez de la inyección. Lo que se fija no cambia: el payload no puede cerrar la
+  // declaración del token y abrir una regla propia.
   const html = renderStory(story(), validProfile({ brand: { color: "red;}body{display:none}" } as never }));
-  assert.doesNotMatch(html, /display:none/, "el valor malicioso no llega a la hoja de estilo");
+  assert.doesNotMatch(html, /body\{display:none\}/, "el valor malicioso no llega a la hoja de estilo");
   assert.doesNotMatch(html, /--accent:red/, "y tampoco se acepta un color no-hex");
+  // La aserción que NO depende de cómo esté escrito el ataque: el token cae a su default del base.
+  // Las dos de arriba persiguen la firma de ESTE payload —y por eso una de ellas ya tuvo que
+  // estrecharse cuando una pieza nueva emitió un `display:none` legítimo—; ésta fija la garantía en
+  // sí, que es «un color que no valida se descarta», y sobrevive a cualquier payload futuro.
+  assert.equal(
+    tokenResuelto(estiloDe(html), "--marca-primario"),
+    "#b91c1c",
+    "el token tiene que caer al default del CSS base, no quedarse con el valor del atacante",
+  );
 });
 
 test("🔴 tema: la fuente sale de una allowlist, no es texto libre", () => {
@@ -196,13 +211,19 @@ test("imagen: la portada renderiza con prioridad alta, alt y dimensiones del ass
   // ⚠️ **Este test exigía `loading="lazy"` y ahora exige lo contrario.** No es una expectativa
   // aflojada para que pase el código nuevo: es un cambio de conducta deliberado de la mitad B.
   //
-  // Desde que `heroPortada` sustituye a `hero` en la receta de landing, esta foto va arriba del todo y
-  // **es el elemento LCP** de todas las landings. Diferirla obliga al navegador a terminar el layout
-  // para descubrir que está en el viewport y solo entonces pedirla, retrasando justo lo que la métrica
-  // mide. Cuando este test se escribió, ninguna landing tenía foto arriba y `lazy` era correcto.
+  // Desde que la receta de landing lleva una pieza de portada con foto (`heroPortada` primero,
+  // `heroSlider` desde el rediseño), esta foto va arriba del todo y **es el elemento LCP** de todas las
+  // landings. Diferirla obliga al navegador a terminar el layout para descubrir que está en el viewport
+  // y solo entonces pedirla, retrasando justo lo que la métrica mide. Cuando este test se escribió,
+  // ninguna landing tenía foto arriba y `lazy` era correcto.
   //
   // Lo que NO cambió y sigue fijado acá: el `alt` que escribió la persona, y las dimensiones inferidas
   // de la URL de Storyblok, que son lo que evita el salto de layout (CLS).
+  //
+  // ⚠️ El markup sí cambió: donde había un `<img class="hero-img">` suelto hay una **pista de
+  // diapositivas**, y la portada es la primera (`id="hs-1"`). Se ancla ahí y no en la clase `foto`
+  // porque `galeria` usa esa misma clase: comprobar `class="foto"` a secas dejaría de identificar a la
+  // portada el día que la página tenga galería.
   const s = story();
   const hero = s.content.body.find((b) => b.component === "hero")!;
   (hero as { image?: unknown }).image = {
@@ -211,19 +232,27 @@ test("imagen: la portada renderiza con prioridad alta, alt y dimensiones del ass
   };
   const html = renderStory(s);
 
-  assert.match(html, /class="hero-img"/);
-  assert.match(html, /fetchpriority="high"/, "la portada es el LCP: se pide con prioridad");
-  assert.doesNotMatch(html, /class="hero-img"[^>]*loading="lazy"/, "y NO se difiere");
-  assert.match(html, /alt="Fachada del restaurante"/);
-  assert.match(html, /width="1600" height="900"/, "las dimensiones salen de la URL de Storyblok (anti-CLS)");
+  // Posicional, no por `id`: los `id` del carrusel pasaron a los radios que lo controlan cuando los
+  // puntos-ancla se sustituyeron por `:checked`.
+  const primera = [...html.matchAll(/<li class="diapo">(<img\b[^>]*>)<\/li>/g)][0]?.[1];
+  assert.ok(primera, "la landing tiene que llevar su foto de portada como primera diapositiva");
+  assert.match(primera, /src="https:\/\/a\.storyblok\.com\/f\/1\/1600x900\/abc\/portada\.jpg"/);
+  assert.match(primera, /fetchpriority="high"/, "la portada es el LCP: se pide con prioridad");
+  assert.doesNotMatch(primera, /loading="lazy"/, "y NO se difiere");
+  assert.match(primera, /alt="Fachada del restaurante"/);
+  assert.match(primera, /width="1600" height="900"/, "las dimensiones salen de la URL de Storyblok (anti-CLS)");
 });
 
 test("🔴 imagen: una src no-http no se renderiza (una img rota es peor que ninguna)", () => {
   const s = story();
   const hero = s.content.body.find((b) => b.component === "hero")!;
   (hero as { image?: unknown }).image = { src: "javascript:alert(1)", alt: "x" };
-  // Ojo: `.hero-img` está siempre en el CSS; lo que NO debe aparecer es la etiqueta <img>.
-  assert.doesNotMatch(renderStory(s), /<img class="hero-img"/);
+  // Ojo: las clases de la portada están siempre en el CSS; lo que NO debe aparecer es la etiqueta
+  // <img>. Se renderiza SIN perfil a propósito, así que la única foto candidata del documento es ésta:
+  // cualquier `<img>` que apareciera vendría de la src envenenada.
+  const html = renderStory(s);
+  assert.doesNotMatch(html, /<img\b/, "una src no-http no puede llegar a ninguna <img> del documento");
+  assert.match(html, /class="portada sin-img"/, "y la portada cae al hero tipográfico, no a un hueco");
 });
 
 // ---------------------------------------------------------------- navegación entre páginas

@@ -301,6 +301,34 @@ export interface BrandTheme {
    */
   plantilla?: string;
   /**
+   * **El tema del sitio, y su default es `claro`.**
+   *
+   * Hasta el 2026-08-10 no existía: el sitio obedecía a `prefers-color-scheme` del visitante, así que
+   * el **fondo de marca del cliente lo decidía el sistema operativo de quien mirara**. Un restaurante
+   * con paleta crema (`#fffdf9`) se servía sobre `#111` en cualquier móvil en modo oscuro, y ninguna
+   * ficha podía evitarlo. La web de un restaurante es una pieza de marca, no una aplicación: la
+   * paleta la manda la ficha.
+   *
+   * `"auto"` recupera la conducta anterior para quien la quiera de forma explícita. Un valor
+   * desconocido o ausente **cae a `claro`**, igual que un color inválido cae al default: falla hacia
+   * el lado seguro, que acá es el lado que respeta la marca.
+   *
+   * Un tema oscuro *fijo* no necesita este campo y nunca lo necesitó: se consigue con la paleta
+   * (`colores.fondo` oscuro y `colores.texto` claro), que es donde vive esa decisión.
+   *
+   * ⚠️ **DEUDA DECLARADA (2026-08-10): en producción `"auto"` es hoy INALCANZABLE.** Este campo lo
+   * lee `ensamblarCss`, pero **no cruza las tres primeras fronteras** — no está en `brandSchema` de
+   * `contract.ts`, ni en la allowlist `app.nap_publico` de la migración `0014`, ni en `marca()` de
+   * `renderer/src/perfil.ts`. Una ficha real que pidiera `tema: "auto"` se queda por el camino tres
+   * veces, sin error y sin log, y el sitio sale claro.
+   *
+   * **Eso hace que el default se cumpla siempre, que es la conducta que se quería**, así que no es
+   * urgente; lo que no puede ser es tácito. Los tests de `tema.test.ts` pasan porque construyen el
+   * perfil en memoria y no cruzan ninguna frontera. Para que `"auto"` sea alcanzable hay que
+   * agregarlo a las tres, y la migración es territorio del agente `datos`.
+   */
+  tema?: "claro" | "auto";
+  /**
    * La paleta. **Cada token se emite como custom property dentro del `<style>` del documento**, así
    * que cada uno es la superficie de inyección más directa del sistema: se valida como hex (`#rgb` o
    * `#rrggbb`) en las cuatro fronteras y **lo que no valida se descarta y cae al default del CSS

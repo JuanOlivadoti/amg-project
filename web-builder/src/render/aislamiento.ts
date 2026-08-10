@@ -94,7 +94,10 @@ export function problemasDeAislamiento(pieza: Pieza, raicesAjenas: readonly stri
   // podría estilar cualquier clase que empezara con su prefijo.
   const empiezaPorLaRaiz = new RegExp(`^\\.${escaparRegex(pieza.raiz)}(?![\\w-])`);
 
-  for (const sel of selectoresDe(pieza.css)) {
+  // `cssOscuro` se audita con las MISMAS reglas que `css`, y esto no es simetría por gusto: el
+  // selector desnudo que rompió el modo oscuro vivía justamente dentro de un `@media`. Separar el
+  // tema en dos campos sin auditar el segundo habría reabierto ese agujero por la puerta de atrás.
+  for (const sel of selectoresDe(`${pieza.css}\n${pieza.cssOscuro ?? ""}`)) {
     if (/(^|[\s,(])::?root\b/.test(sel) || sel.startsWith(":root")) {
       problemas.push(
         `«${sel}»: una pieza no declara tokens. Los \`:root\` y el reset son del CSS base y viajan siempre (§3.6).`,

@@ -60,67 +60,105 @@
 </script>
 <style>
 :root{--marca-primario:#b91c1c;--marca-secundario:#6b7280;--marca-titulo:#1a1a1a;--marca-texto:#1a1a1a;--marca-fondo:#fff;--marca-fondo-alt:#f8f7f5;--marca-fuente-texto:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;--marca-fuente-titulo:var(--marca-fuente-texto);--marca-fuente-decorativa:var(--marca-fuente-texto)}
-:root{--fg:var(--marca-texto);--titulo:var(--marca-titulo);--muted:#6b7280;--accent:var(--marca-primario);--acento-legible:var(--marca-primario);--sobre-acento:#fff;--decorativo:var(--marca-secundario);--bg:var(--marca-fondo);--soft:var(--marca-fondo-alt);--font:var(--marca-fuente-texto);--fuente-titulo:var(--marca-fuente-titulo);--fuente-decorativa:var(--marca-fuente-decorativa)}
+:root{--fg:var(--marca-texto);--titulo:var(--marca-titulo);--muted:#6b7280;--accent:var(--marca-primario);--acento-legible:var(--marca-primario);--sobre-acento:#fff;--decorativo:var(--marca-secundario);--bg:var(--marca-fondo);--soft:var(--marca-fondo-alt);--font:var(--marca-fuente-texto);--fuente-titulo:var(--marca-fuente-titulo);--fuente-decorativa:var(--marca-fuente-decorativa);--ancho-pagina:1320px;--ancho-lectura:760px}
 *{box-sizing:border-box}
 body{margin:0;font:16px/1.6 var(--font);color:var(--fg);background:var(--bg)}
 img{max-width:100%;height:auto}
-main{max-width:760px;margin:0 auto;padding:0 20px}
+main{max-width:var(--ancho-pagina);margin:0 auto;padding:0 20px}
 .pending{color:var(--muted);font-style:italic}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:8px}
 .card{display:block;text-decoration:none;color:var(--fg);border:1px solid #e7e5e0;border-radius:12px;padding:20px;transition:border-color .15s,transform .15s}
 .card:hover{border-color:var(--acento-legible);transform:translateY(-2px)}
 .card h3{margin:0;font-size:1.1rem;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-footer{max-width:760px;margin:40px auto 48px;padding:24px 20px 0;border-top:1px solid #eee;color:var(--fg)}
+footer{max-width:var(--ancho-lectura);margin:40px auto 48px;padding:24px 20px 0;border-top:1px solid #eee;color:var(--fg)}
 footer .mas{margin:12px 0 6px}
 footer .mas a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted)}
 footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
-@media(prefers-color-scheme:dark){:root{--fg:#e8e8e8;--titulo:#e8e8e8;--muted:#9aa0aa;--bg:#111;--soft:#1b1b1b}body{background:var(--bg)}footer{border-color:#222}.card{border-color:#2a2a2a}@supports(color:color-mix(in srgb,red,#fff)){:root{--acento-legible:color-mix(in srgb,var(--marca-primario) 60%,#fff);--decorativo:color-mix(in srgb,var(--marca-secundario) 55%,#fff)}}}
-.p-heroPortada .portada{padding:32px 0 40px;border-bottom:1px solid #f0f0f0}
-/* Sin foto el bloque respira más y el titular crece: es lo único que hay en la portada, así que es lo
-   que tiene que llevar el peso. Con foto se queda en 2.3rem para no competir con ella. */
-.p-heroPortada .portada.sin-img{padding:56px 0 44px}
-.p-heroPortada .portada h1{font-size:2.3rem;line-height:1.12;margin:0 0 12px;letter-spacing:-.02em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-heroPortada .portada.sin-img h1{font-size:2.9rem}
-/* La regla decorativa bajo el titular tipográfico. Es el ÚNICO consumidor del segundo color de marca
-   en esta pieza y va en una superficie decorativa a propósito: `--marca-secundario` no puede pintar
-   texto largo (ver `css.ts`, donde se explica el 2.62:1 que lo sacó de `--muted`). */
-.p-heroPortada .portada.sin-img h1::after{content:"";display:block;width:72px;height:3px;margin:18px 0 0;background:var(--decorativo)}
-/* ⚠️ Con la foto DECLARADA pero rota (el asset se borró del space), esta regla no salva el layout:
-   el navegador trata una imagen sin píxeles como texto alternativo en línea e ignora width:100% y
-   aspect-ratio, así que la portada colapsa a la altura del alt — medido en el navegador: 26 px donde
-   iba el LCP, y el titular NO crece porque sin-img mira si hay src, no si carga.
-   Detectarlo requeriría JS (onerror), y meter JS en el proceso anónimo por una ficha mal cargada es
-   peor que el síntoma. Lo que sí lo mitiga es que renderImagen emite width/height cuando la URL de
-   Storyblok los lleva (/2560x1440/): con ellos el navegador reserva el hueco y el resto de la página
-   no se descoloca. Las URLs reales los llevan; las inventadas del dev-server, no. */
-.p-heroPortada .hero-img{width:100%;border-radius:14px;margin:0 0 28px;object-fit:cover;aspect-ratio:16/9}
-.p-heroPortada .lede{font-size:1.18rem;color:var(--muted);margin:0 0 24px}
-/* La frase del CTA cuando no cabe en un botón. Menos peso que la bajada: es una invitación, no el
-   resumen de la página. */
-.p-heroPortada .cta-lede{font-size:1.02rem;color:var(--muted);margin:0 0 20px}
-.p-heroPortada .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600}
-@media(prefers-color-scheme:dark){.p-heroPortada .portada{border-color:#1e1e1e}}
+.p-heroSlider .portada{max-width:var(--ancho-pagina);margin:0 auto;padding:56px 0 64px;display:grid;gap:40px;align-items:center}
+/* El titular crece con la pantalla en vez de saltar en un breakpoint: 39px en un móvil de 390 y 80px
+   en un escritorio de 1440, que son los dos extremos medidos en el template de referencia. */
+/* ⚠️ **SIN `font-weight`, y es deliberado.** El template de referencia pone 500 en su titular, pero
+   `shell.ts` precarga el archivo de **700** — el peso que los `h1` heredan de la hoja del navegador.
+   Declarar 500 haría que el navegador pidiera OTRO archivo, dejando el preload como una descarga
+   tirada justo en el elemento que mide el LCP. Lo fija un test de `ensamblado.test.ts`, que es quien
+   lo cazó. Cambiar esto es cambiar `PESO_TITULARES`, y eso afecta a todos los titulares del sitio. */
+.p-heroSlider h1{font-family:var(--fuente-titulo);font-size:clamp(2.44rem,1.2rem + 4.2vw,5rem);line-height:1.1;text-transform:uppercase;margin:0 0 20px;color:var(--titulo);letter-spacing:-.01em}
+.p-heroSlider .lede{font-size:1.25rem;line-height:1.8;color:var(--muted);margin:0 0 28px;max-width:38ch}
+.p-heroSlider .cta-lede{font-size:1.05rem;color:var(--muted);margin:0 0 20px;max-width:38ch}
+/* Radio de 5px y versalita, como el botón del hero del template — que NO es el mismo que el de su
+   cabecera (allí es una píldora de 30px). Son dos botones distintos a propósito. */
+.p-heroSlider .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:15px 40px;border-radius:5px;font-family:var(--fuente-titulo);font-size:1rem;font-weight:500;text-transform:uppercase;letter-spacing:.02em}
+.p-heroSlider .carrusel{position:relative}
+/* ⚠️ **Los controles son RADIOS, no anclas, y la primera versión sí usaba anclas.**
+   Medido en el navegador: pulsar un ancla a la tercera diapositiva movía el carrusel
+   (scrollLeft 0 → 925) **y la página entera 203 px hacia abajo**, porque el navegador desplaza todos
+   los ancestros para hacer visible el destino del ancla. No hay CSS que lo cancele, y en una portada
+   ese salto tira al visitante fuera del titular justo al mirar la segunda foto.
+   (El ejemplo va sin escribir el atributo literal a propósito: el gate de paridad extrae los enlaces
+   del documento con una expresión regular que **también entra en el <style>**, así que un atributo
+   citado en un comentario se cuela en su huella como si fuera un enlace de la página.)
+   Con radios ocultos + `:checked ~` la pista se mueve con `transform` y no hay navegación ninguna.
+   De paso sale gratis lo que las anclas no daban: recorrer las fotos con las flechas del teclado,
+   que es como un radiogroup se maneja. */
+.p-heroSlider .sel{position:absolute;width:1px;height:1px;opacity:0;margin:0}
+.p-heroSlider .ventana{overflow:hidden}
+.p-heroSlider .pista{display:flex;list-style:none;margin:0;padding:0;transition:transform .45s ease}
+.p-heroSlider .diapo{flex:0 0 100%;margin:0;display:flex;justify-content:center}
+.p-heroSlider .sel:nth-of-type(1):checked~.ventana .pista{transform:translateX(0)}
+.p-heroSlider .sel:nth-of-type(2):checked~.ventana .pista{transform:translateX(-100%)}
+.p-heroSlider .sel:nth-of-type(3):checked~.ventana .pista{transform:translateX(-200%)}
+.p-heroSlider .sel:nth-of-type(4):checked~.ventana .pista{transform:translateX(-300%)}
+.p-heroSlider .sel:nth-of-type(5):checked~.ventana .pista{transform:translateX(-400%)}
+.p-heroSlider .sel:nth-of-type(1):checked~.puntos label:nth-of-type(1){opacity:1}
+.p-heroSlider .sel:nth-of-type(2):checked~.puntos label:nth-of-type(2){opacity:1}
+.p-heroSlider .sel:nth-of-type(3):checked~.puntos label:nth-of-type(3){opacity:1}
+.p-heroSlider .sel:nth-of-type(4):checked~.puntos label:nth-of-type(4){opacity:1}
+.p-heroSlider .sel:nth-of-type(5):checked~.puntos label:nth-of-type(5){opacity:1}
+/* El foco del radio se dibuja sobre su punto: el input mide 1 px y sin esto, recorrer el carrusel
+   con el teclado no se vería en ninguna parte. */
+.p-heroSlider .sel:focus-visible~.puntos label{outline:2px solid var(--acento-legible);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.p-heroSlider .pista{transition:none}}
+/* El círculo es la lectura del plato redondo del template, que allí es un PNG ya recortado. Como
+   nuestra foto es rectangular y viene del cliente, el recorte lo hace el CSS: `object-fit:cover`
+   llena el círculo sin deformar, se recorte lo que se recorte. */
+.p-heroSlider .foto{width:100%;max-width:480px;aspect-ratio:1;border-radius:50%;object-fit:cover;display:block}
+.p-heroSlider .puntos{display:flex;justify-content:center;gap:10px;margin:24px 0 0}
+/* 12 px de punto, pero 32 px de área tocable: el objetivo mínimo de un control táctil es 24 px, y un
+   círculo de 12 obliga a apuntar. El relleno lo da el padding, no el tamaño visible. */
+.p-heroSlider .puntos label{width:12px;height:12px;border-radius:50%;background:var(--decorativo);opacity:.35;display:block;text-indent:-9999px;overflow:hidden;cursor:pointer;box-sizing:content-box;padding:10px;background-clip:content-box}
+.p-heroSlider .puntos label:hover{opacity:1}
+/* Sin foto el titular es lo único que hay en la portada, así que se lleva el espacio y la regla
+   decorativa hace de remate. */
+.p-heroSlider .portada.sin-img{padding:72px 0 60px}
+.p-heroSlider .portada.sin-img h1::after{content:"";display:block;width:72px;height:3px;margin:22px 0 0;background:var(--decorativo)}
+@media(min-width:992px){.p-heroSlider .portada{grid-template-columns:minmax(0,1fr) 480px;gap:60px;padding:72px 0 88px}
+.p-heroSlider .portada.sin-img{grid-template-columns:1fr}}
+/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-seccionProsa{max-width:var(--ancho-lectura);margin:0 auto}
 .p-seccionProsa section{padding:32px 0;border-bottom:1px solid #f0f0f0}
 .p-seccionProsa section h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 .p-seccionProsa .section-img{width:100%;border-radius:12px;margin:0 0 18px;object-fit:cover;aspect-ratio:3/2}
-@media(prefers-color-scheme:dark){.p-seccionProsa section{border-color:#1e1e1e}}
+/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-faq{max-width:var(--ancho-lectura);margin:0 auto}
 .p-faq .faq{background:var(--soft);border-radius:12px;padding:24px;margin:32px 0;border-bottom:1px solid #f0f0f0}
 .p-faq .faq h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
 .p-faq details{padding:12px 0;border-bottom:1px solid #e7e5e0}
 .p-faq summary{font-weight:600;cursor:pointer}
-@media(prefers-color-scheme:dark){.p-faq .faq{border-color:#1e1e1e}.p-faq details{border-color:#2a2a2a}}
 </style>
 </head>
 <body>
 
 <main>
-<div class="p-heroPortada">
+<div class="p-heroSlider">
 <header class="portada sin-img">
-  
+<div class="texto">
   <h1>Restaurante italiano en Madrid Centro</h1>
   <p class="lede">Masa de fermentación lenta y producto de temporada.</p>
   
   <a class="cta" href="#faq">Reserva tu mesa</a>
+</div>
 </header>
 </div>
 <div class="p-seccionProsa">

@@ -10,33 +10,42 @@ import type { CtxPieza, Pieza } from "./tipos.js";
  *  - una **story**: el blok `hero` del brief aprobado (titular, bajada, CTA y foto del blok);
  *  - una página **sintetizada** (`/`, `/menu`, `/blog`): el `titulo`/`bajada` del contexto.
  *
- * Por eso esta pieza sigue estando en TRES recetas y no solo en la de story. La tabla del encargo la
- * listaba únicamente en `story`, pero `renderHome`/`renderMenu`/`renderBlogIndex` emiten su propio
- * `<header class="hero">`: dejarla fuera borraba el `<h1>` de tres páginas, o bien obligaba a
- * triplicar el CSS de `.hero` dentro de `indice`, `cartaCategorias` y `blogIndice`.
+ * Por eso esta pieza no está solo en la receta de story. La tabla del encargo la listaba únicamente
+ * ahí, pero `renderHome`/`renderMenu`/`renderBlogIndex` emiten su propio `<header class="hero">`:
+ * dejarla fuera borraba el `<h1>` de tres páginas, o bien obligaba a triplicar el CSS de `.hero`
+ * dentro de `indice`, `cartaCategorias` y `blogIndice`.
  *
- * ⚠️ **En la receta de `story` la sustituye `heroPortada`** desde la entrega 3 (mitad B): ahí el
- * titular viene con la foto de portada del perfil. Las dos piezas comparten `resolverCta` y el
- * markup del titular, pero no el CSS — cada una es dueña del suyo (§3.5).
+ * ⚠️ **Hoy la nombran DOS recetas, `/menu` y `/blog`.** En `story` la sustituyó `heroPortada` en la
+ * entrega 3 (mitad B) y en `story` y `home` la sustituye `heroSlider` desde el rediseño de la
+ * plantilla base: ahí el titular viene con las fotos del perfil. Las dos piezas comparten
+ * `resolverCta` y el markup del titular, pero no el CSS — cada una es dueña del suyo (§3.5).
  *
  * ## DEUDA CONOCIDA, dicha acá para que no haya que redescubrirla
  *
  * Con ese cambio, **la rama del blok `hero` de esta pieza dejó de ser alcanzable desde los cuatro
- * puntos de entrada**: las tres recetas que la nombran (`home`, `menu`, `blog`) pasan `story: null`,
- * así que siempre cae al titular sintetizado. Lo que queda muerto en PROD es la foto del blok, el CTA
- * y su CSS (`.hero-img`, `.cta`, `.cta-lede`), que hoy viajan en el `<style>` de esas tres páginas sin
- * que nada los dibuje.
+ * puntos de entrada**: las dos recetas que la nombran (`menu`, `blog`) pasan `story: null`, así que
+ * siempre cae al titular sintetizado. Lo que queda muerto en PROD es la foto del blok, el CTA y su
+ * CSS (`.hero-img`, `.cta`, `.cta-lede`), que hoy viajan en el `<style>` de esas dos páginas sin que
+ * nada los dibuje.
  *
  * **No se podó en esta entrega a propósito**, y el motivo es el mismo por el que la spec parte el
  * trabajo en tres: podarla obliga a mudar los tests del CTA —incluido el del borde de `LIMITE_CTA`,
  * que nació de una revisión— y eso mezcla dos decisiones en un diff cuyo objetivo es otro. Queda como
  * el trabajo siguiente, con dos salidas posibles: podar la rama y su CSS, o darle un consumidor real
  * (un juego de plantillas cuyo `story` use `hero`). Lo que no puede quedarse es como está.
+ *
+ * ⚠️ **La deuda creció con el rediseño y sigue sin pagarse**: `home` pasó de `hero` a `heroSlider`, así
+ * que la rama muerta viaja ahora en el `<style>` de dos páginas en vez de tres, pero la pieza entera
+ * quedó a un paso de la situación que retiró a `carta` y a `heroPortada` —quedarse sin ninguna receta
+ * que la nombre—. Si `/menu` y `/blog` estrenaran su propia pieza de titular, `hero` se jubila.
  */
 export const hero: Pieza = {
   id: "hero",
   raiz: "p-hero",
-  css: `.p-hero .hero{padding:48px 0 40px;border-bottom:1px solid #eee}
+  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
+   ancho de lectura. Se quita cuando la seccion se rediseñe. */
+.p-hero{max-width:var(--ancho-lectura);margin:0 auto}
+.p-hero .hero{padding:48px 0 40px;border-bottom:1px solid #eee}
 .p-hero .hero.has-img{padding-top:24px}
 .p-hero .hero-img{width:100%;border-radius:14px;margin:0 0 28px;object-fit:cover;aspect-ratio:16/9}
 .p-hero .hero h1{font-size:2.3rem;line-height:1.12;margin:0 0 12px;letter-spacing:-.02em;color:var(--titulo);font-family:var(--fuente-titulo)}
@@ -45,7 +54,9 @@ export const hero: Pieza = {
    resumen de la página. */
 .p-hero .cta-lede{font-size:1.02rem;color:var(--muted);margin:0 0 20px}
 .p-hero .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600}
-@media(prefers-color-scheme:dark){.p-hero .hero{border-color:#222}}
+`,
+
+  cssOscuro: `@media(prefers-color-scheme:dark){.p-hero .hero{border-color:#222}}
 `,
 
   render(ctx: CtxPieza): string {
@@ -84,6 +95,6 @@ export const hero: Pieza = {
 };
 
 // ⚠️ `LIMITE_CTA` y `resolverCta` se mudaron a `lib.ts` en la entrega 3: los usan **dos** piezas
-// (ésta y `heroPortada`), y dos copias del umbral son dos umbrales que se separan el día que alguien
-// ajusta uno. La conducta no cambió — el código se movió tal cual y sus tests siguen entrando por
-// `hero.render`.
+// (ésta y la pieza de portada, hoy `heroSlider`), y dos copias del umbral son dos umbrales que se
+// separan el día que alguien ajusta uno. La conducta no cambió — el código se movió tal cual y sus
+// tests siguen entrando por `hero.render`.

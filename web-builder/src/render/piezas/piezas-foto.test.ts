@@ -11,7 +11,7 @@ import { barraDatos } from "./barra-datos.js";
 import { cartaCategorias } from "./carta-categorias.js";
 import { ctaFinal } from "./cta-final.js";
 import { galeria } from "./galeria.js";
-import { heroPortada } from "./hero-portada.js";
+import { heroSlider } from "./hero-slider.js";
 import { platosDestacados } from "./platos-destacados.js";
 
 /**
@@ -46,10 +46,41 @@ function imgsDe(html: string): string[] {
   return html.match(/<img\b[^>]*>/g) ?? [];
 }
 
-// ═══════════════════════════════════════════════════════════════════ heroPortada
+/**
+ * La `<img>` de la diapositiva `n` del carrusel (1-indexada), o `undefined`.
+ *
+ * ⚠️ Se ancla en el `id="hs-N"` y **no en la clase `foto`** aunque sea más corto: `galeria` emite sus
+ * imágenes con esa misma clase, así que un `class="foto"` a secas dejaría de identificar la portada en
+ * cuanto la página tenga galería — que es justo el documento donde el orden de prioridades importa.
+ */
+/**
+ * La `<img>` de la diapositiva `n` (1-indexada).
+ *
+ * ⚠️ Se ancla en `class="diapo"` **posicionalmente** y no en un `id`: los `id` del carrusel pasaron a
+ * los radios que lo controlan cuando los puntos-ancla se sustituyeron por `:checked` (las anclas
+ * arrastraban la página 203 px al pulsarlas). Y no se ancla en `class="foto"` a secas porque
+ * `galeria` emite sus imágenes con esa misma clase: en el documento donde el orden de prioridades
+ * importa —el que tiene galería— dejaría de identificar la portada.
+ */
+function diapo(html: string, n: number): string | undefined {
+  const diapos = [...html.matchAll(/<li class="diapo">(<img\b[^>]*>)<\/li>/g)];
+  return diapos[n - 1]?.[1];
+}
 
-test("heroPortada: con foto de portada dibuja titular, bajada, CTA y la foto", () => {
-  const html = heroPortada.render(
+// ═══════════════════════════════════════════════════════════════════ heroSlider
+//
+// ⚠️ **Esta sección era de `heroPortada`, que el rediseño de la plantilla base retiró del catálogo**
+// (mismo criterio que retiró a `carta`: se quedó sin ninguna receta que la nombrara). Los casos son
+// los suyos, trasladados uno a uno, porque las garantías no eran de la pieza sino de la portada: sin
+// foto válida se degrada al hero TIPOGRÁFICO y nunca a un hueco, un host de fuera de la allowlist no
+// llega a un `<img>` y la portada sale igual, el titular se escapa, y el CTA largo baja a bajada.
+//
+// Lo que sí cambió es el markup, y por eso ninguno es un buscar-y-reemplazar: donde había UNA foto
+// (`<img class="hero-img">` dentro de `<header class="portada con-img">`) hay ahora una pista de hasta
+// cinco diapositivas (`<li class="diapo" id="hs-N">`) dentro de `<header class="portada">` a secas.
+
+test("heroSlider: con foto de portada dibuja titular, bajada, CTA y la foto", () => {
+  const html = heroSlider.render(
     ctxDe({
       story: pageToStory(validPage(), validBrief()),
       profile: perfilCompleto({ portada: { src: FOTO_OK, alt: "La sala" } }),
@@ -58,40 +89,58 @@ test("heroPortada: con foto de portada dibuja titular, bajada, CTA y la foto", (
   assert.match(html, /<h1>Restaurante Italiano en Madrid Centro<\/h1>/);
   assert.match(html, /class="lede">/);
   assert.match(html, /class="cta" href="#contacto"/);
-  assert.match(html, /<img class="hero-img"[^>]*src="https:\/\/a\.storyblok\.com/);
-  assert.match(html, /class="portada con-img"/);
+  assert.match(diapo(html, 1) ?? "", /src="https:\/\/a\.storyblok\.com/, "la foto va en la primera diapositiva");
+  assert.match(html, /<header class="portada">/);
+  assert.doesNotMatch(html, /sin-img/, "con foto NO puede anunciarse como portada sin imagen");
 });
 
-test("🔴 heroPortada: SIN portada degrada a hero TIPOGRÁFICO, no a un hueco", () => {
+test("🔴 heroSlider: SIN ninguna foto degrada a hero TIPOGRÁFICO, no a un hueco", () => {
   // El caso que la spec nombra: «Sin foto degrada a hero tipográfico, no a un hueco». Un hueco sería
-  // emitir el envoltorio de la imagen vacío, o dejar el titular con el tamaño que solo tiene sentido
-  // cuando compite con una foto. La clase `sin-img` es lo que el CSS usa para agrandarlo.
-  const html = heroPortada.render(
+  // emitir el carrusel vacío, o dejar el titular con el tamaño que solo tiene sentido cuando compite
+  // con una foto. La clase `sin-img` es lo que el CSS usa para agrandarlo y pasar a una columna.
+  //
+  // Sigue siendo el caso NORMAL: ninguna ficha de producción tiene una sola foto.
+  const html = heroSlider.render(
     ctxDe({ story: pageToStory(validPage(), validBrief()), profile: validProfile() }),
   );
   assert.match(html, /<h1>Restaurante Italiano en Madrid Centro<\/h1>/, "el titular sigue estando");
   assert.match(html, /class="portada sin-img"/, "y se anuncia como lo que es: un hero sin foto");
   assert.equal(imgsDe(html).length, 0, "ni una <img> vacía ni un envoltorio esperando una imagen");
+  assert.ok(!html.includes("class=\"pista\""), "ni la pista del carrusel sin diapositivas dentro");
 });
 
-test("heroPortada: la imagen del BLOK manda sobre `profile.portada` (es la foto DE esa página)", () => {
-  const html = heroPortada.render(
+test("heroSlider: la imagen del BLOK va PRIMERA, delante de `profile.portada` (es la foto DE esa página)", () => {
+  // ⚠️ **La conducta cambió con el rediseño y conviene decirlo.** Con `heroPortada` la del blok
+  // *excluía* a la de la ficha, porque solo cabía una. Con el carrusel caben las dos, así que la
+  // precedencia dejó de ser "cuál se dibuja" y pasó a ser "cuál va primera" — y la primera es la que
+  // se ve sin desplazar y la que el navegador mide como LCP, así que es la que sigue mandando.
+  const html = heroSlider.render(
     ctxDe({
       story: storyConImagenDeHero("https://a.storyblok.com/f/1/1600x900/blok/de-la-pagina.jpg"),
       profile: validProfile({ portada: { src: "https://a.storyblok.com/f/1/800x600/ficha/de-la-ficha.jpg" } }),
     }),
   );
-  assert.match(html, /de-la-pagina\.jpg/, "la foto del blok es la específica de la página");
-  assert.ok(!html.includes("de-la-ficha.jpg"), "la portada de la ficha es el respaldo, no la que gana");
+  assert.match(diapo(html, 1) ?? "", /de-la-pagina\.jpg/, "la foto del blok es la específica de la página");
+  assert.match(diapo(html, 2) ?? "", /de-la-ficha\.jpg/, "la de la ficha la sigue: es el respaldo, no la que gana");
+  assert.match(diapo(html, 1) ?? "", /fetchpriority="high"/, "y la del blok es la prioritaria");
+  assert.match(diapo(html, 2) ?? "", /loading="lazy"/, "la segunda NO: marcar dos es no marcar ninguna");
 });
 
-test("heroPortada: sin blok `hero` devuelve '' (no hay titular que anunciar)", () => {
-  assert.equal(heroPortada.render(ctxDe({ story: storySin("hero"), profile: perfilCompleto() })), "");
-  assert.equal(heroPortada.render(ctxDe({ profile: perfilCompleto() })), "");
+test("heroSlider: sin titular —ni del blok ni del contexto— devuelve '' (no hay portada que anunciar)", () => {
+  // ⚠️ `heroPortada` exigía el blok `hero` y devolvía `""` sin él. `heroSlider` cubre TAMBIÉN la home
+  // sintetizada, cuyo titular sale del contexto, así que la condición se corrió: lo que no puede haber
+  // es una portada sin ningún titular.
+  assert.equal(heroSlider.render(ctxDe({ story: storySin("hero"), profile: perfilCompleto() })), "");
+  assert.equal(heroSlider.render(ctxDe({ profile: perfilCompleto() })), "");
+
+  // Y el positivo que impide que los dos casos de arriba pasen por vacío: con titular de contexto SÍ
+  // dibuja, que es exactamente el caso de `home`.
+  const home = heroSlider.render(ctxDe({ profile: perfilCompleto(), titulo: "Trattoria en Madrid" }));
+  assert.match(home, /<h1>Trattoria en Madrid<\/h1>/);
 });
 
-test("🔴 heroPortada: una portada de host NO permitido no sale, y la página sale igual", () => {
-  const html = heroPortada.render(
+test("🔴 heroSlider: una portada de host NO permitido no sale, y la página sale igual", () => {
+  const html = heroSlider.render(
     ctxDe({
       story: pageToStory(validPage(), validBrief()),
       profile: validProfile({ portada: { src: HOST_PROHIBIDO, alt: "x" } }),
@@ -103,22 +152,37 @@ test("🔴 heroPortada: una portada de host NO permitido no sale, y la página s
   assert.match(html, /class="portada sin-img"/, "degrada al mismo caso que 'no hay foto'");
 });
 
-test("🔴 heroPortada: el titular se escapa y una portada `javascript:` no se dibuja", () => {
+test("🔴 heroSlider: una foto prohibida se descarta y las BUENAS siguen saliendo, sin dejar hueco", () => {
+  // El caso que la pieza de una sola foto no podía tener: con varias candidatas, una mala no puede
+  // producir una diapositiva vacía ni correr a las demás fuera del carrusel.
+  const html = heroSlider.render(
+    ctxDe({
+      story: pageToStory(validPage(), validBrief()),
+      profile: validProfile({ portada: { src: HOST_PROHIBIDO }, fotos: [{ src: FOTO_OK, alt: "La sala" }] }),
+    }),
+  );
+  assert.equal(imgsDe(html).length, 1, "la buena se dibuja");
+  assert.ok(!html.includes("evil"));
+  assert.match(diapo(html, 1) ?? "", /foto\.jpg/, "y ocupa la PRIMERA diapositiva, no la segunda");
+  assert.equal(diapo(html, 2), undefined, "la descartada no deja una diapositiva vacía detrás");
+});
+
+test("🔴 heroSlider: el titular se escapa y una portada `javascript:` no se dibuja", () => {
   const s = pageToStory(validPage(), validBrief());
   const h = s.content.body.find((b) => b.component === "hero")!;
   Object.assign(h, { headline: VENENO });
-  const html = heroPortada.render(
+  const html = heroSlider.render(
     ctxDe({ story: s, profile: validProfile({ portada: { src: "javascript:alert(1)" } }) }),
   );
   assert.ok(!html.includes("<script>alert(1)</script>"));
   assert.ok(!html.includes("<img"));
 });
 
-test("heroPortada: el `cta_label` largo degrada igual que en `hero` (la regla es una sola)", () => {
+test("heroSlider: el `cta_label` largo degrada igual que en `hero` (la regla es una sola)", () => {
   const s = pageToStory(validPage(), validBrief());
   const h = s.content.body.find((b) => b.component === "hero")!;
   Object.assign(h, { cta_label: "Reserva tu mesa y disfruta de la cocina." });
-  const html = heroPortada.render(ctxDe({ story: s, profile: perfilCompleto() }));
+  const html = heroSlider.render(ctxDe({ story: s, profile: perfilCompleto() }));
   assert.match(html, /class="cta-lede">Reserva tu mesa y disfruta de la cocina\.</);
   assert.match(html, /class="cta" href="#contacto">Llamar</);
 });
@@ -519,7 +583,7 @@ test("🔴 una foto de host prohibido no saca ni un `<img>` de NINGUNA de las se
     menu_categorias: [{ nombre: "Pizzas", foto: { src: HOST_PROHIBIDO } }],
   });
 
-  for (const pieza of [heroPortada, barraDatos, platosDestacados, cartaCategorias, galeria, ctaFinal]) {
+  for (const pieza of [heroSlider, barraDatos, platosDestacados, cartaCategorias, galeria, ctaFinal]) {
     const html = pieza.render(ctxDe({ story: pageToStory(validPage(), validBrief()), profile: hostil }));
     assert.ok(html.length > 0, `la pieza "${pieza.id}" se cayó entera por una foto mala`);
     assert.ok(!html.includes("cdn.evil.tld"), `la pieza "${pieza.id}" dejó pasar un host prohibido`);
@@ -544,37 +608,53 @@ test("🔴 la foto de portada NO lleva `loading=\"lazy\"`: es el elemento LCP de
   // métrica mide.
   //
   // Hasta esta entrega daba igual: ninguna ficha tenía `portada` y `handoff/adapter.ts` nunca rellena
-  // `image`, así que ninguna landing tenía foto arriba. Desde que `heroPortada` la dibuja, esa foto es
-  // el LCP de todas las landings de todos los clientes, y habría sido la única regresión de
-  // rendimiento de una entrega cuyo objetivo es que el sitio se vea MEJOR.
-  const html = heroPortada.render(
+  // `image`, así que ninguna landing tenía foto arriba. Desde que la portada dibuja `profile.portada`
+  // (`heroPortada` primero, `heroSlider` desde el rediseño), esa foto es el LCP de todas las landings
+  // de todos los clientes, y habría sido la única regresión de rendimiento de una entrega cuyo
+  // objetivo es que el sitio se vea MEJOR.
+  const html = heroSlider.render(
     ctxDe({
       story: pageToStory(validPage(), validBrief()),
       profile: perfilCompleto({ portada: { src: FOTO_OK, alt: "La sala" } }),
     }),
   );
-  const portada = html.match(/<img class="hero-img"[^>]*>/)?.[0];
+  const portada = diapo(html, 1);
   assert.ok(portada, "la landing tiene que llevar su foto de portada");
   assert.doesNotMatch(portada, /loading="lazy"/, "la portada NO puede diferirse: es el LCP");
   assert.match(portada, /fetchpriority="high"/, "y se pide con prioridad alta");
 });
 
 test("🔴 …y es la ÚNICA prioritaria del documento: marcar dos imágenes es no marcar ninguna", () => {
-  // Compiten por el mismo ancho de banda. El resto —galería, platos, categorías, locales— sigue con
-  // `loading="lazy"`, que es lo correcto para todo lo que está bajo el pliegue. Se mide sobre el
-  // DOCUMENTO entero y no sobre una pieza, porque es una propiedad del documento: dos piezas podrían
-  // marcarse prioritarias cada una por su cuenta sin que ningún test de pieza lo viera.
+  // Compiten por el mismo ancho de banda. El resto —el resto del carrusel, la galería, los platos, las
+  // categorías, los locales— sigue con `loading="lazy"`, que es lo correcto para todo lo que está bajo
+  // el pliegue o fuera de la primera diapositiva. Se mide sobre el DOCUMENTO entero y no sobre una
+  // pieza, porque es una propiedad del documento: dos piezas podrían marcarse prioritarias cada una
+  // por su cuenta sin que ningún test de pieza lo viera.
   // `ctxCompleto()` es el único fixture que trae portada Y galería Y fotos de categoría, que es lo
   // que hace falta para que "la única prioritaria" signifique algo: con una sola foto en el documento
   // el test pasaría por vacío.
+  //
+  // ⚠️ Con `heroSlider` el riesgo se DUPLICÓ y por eso el caso creció: antes había una sola foto
+  // arriba y la pregunta era si alguna otra pieza se marcaba prioritaria; ahora la portada emite hasta
+  // cinco, y marcarlas todas —que es el error natural al escribir el bucle— sería el mismo fallo
+  // dentro de una sola pieza. Se comprueba las dos cosas: que hay exactamente UNA en el documento, y
+  // que es la primera diapositiva y no otra.
   const html = renderStory(pageToStory(validPage(), validBrief()), ctxCompleto().profile);
   const prioritarias = html.match(/<img[^>]*fetchpriority="high"[^>]*>/g) ?? [];
-  assert.equal(prioritarias.length, 1, "solo la portada puede ser prioritaria");
-  assert.match(prioritarias[0]!, /class="hero-img"/);
+  assert.equal(prioritarias.length, 1, "solo la primera diapositiva de la portada puede ser prioritaria");
+
+  const primera = diapo(html, 1);
+  assert.ok(primera, "el documento tiene que llevar su carrusel de portada");
+  assert.equal(prioritarias[0], primera, "la prioritaria tiene que ser ESA, no otra imagen del documento");
+
+  // Y el carrusel tiene que traer más de una diapositiva, o "solo la primera" no dice nada.
+  const segunda = diapo(html, 2);
+  assert.ok(segunda, "sin una segunda diapositiva este caso pasaría por vacío");
+  assert.match(segunda, /loading="lazy"/, "la segunda diapositiva se difiere como cualquier otra foto");
 
   const diferidas = html.match(/<img[^>]*loading="lazy"[^>]*>/g) ?? [];
   assert.ok(diferidas.length > 0, "el resto de las fotos SÍ se difiere");
   for (const img of diferidas) {
-    assert.doesNotMatch(img, /class="hero-img"/, "ninguna diferida puede ser la portada");
+    assert.notEqual(img, primera, "la primera diapositiva no puede aparecer entre las diferidas");
   }
 });

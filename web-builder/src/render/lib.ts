@@ -106,16 +106,19 @@ export function hrefDeSlug(slug: string): string {
  * imagen está en el viewport, y solo entonces empieza a descargarla.
  *
  * Hasta la mitad B de la entrega 3 daba igual: `handoff/adapter.ts` nunca rellena `image` y ninguna
- * ficha tenía `portada`, así que ninguna landing tenía una foto arriba. **Desde que `heroPortada`
- * dibuja `profile.portada`, esa foto es el LCP de todas las landings de todos los clientes**, y sería
- * la única regresión de rendimiento de una entrega cuyo objetivo es que el sitio se vea mejor.
+ * ficha tenía `portada`, así que ninguna landing tenía una foto arriba. **Desde que la portada dibuja
+ * `profile.portada`, esa foto es el LCP de todas las landings de todos los clientes**, y sería la
+ * única regresión de rendimiento de una entrega cuyo objetivo es que el sitio se vea mejor.
  *
  * Con `alta`: sin `loading` (o sea `eager`, el default del navegador) y con `fetchpriority="high"`,
  * que le dice al preload scanner que la pida antes que el resto de la cola. Lo mismo que ya hacía la
  * cabecera con el logo a mano, ahora con nombre.
  *
- * **Es opt-in y solo `heroPortada` la usa.** Marcar dos imágenes como prioritarias es no marcar
- * ninguna: compiten entre sí por el mismo ancho de banda, que es justo lo que se quiere evitar.
+ * **Es opt-in y solo `heroSlider` la usa, y dentro de ella solo en su PRIMERA diapositiva.** Marcar
+ * dos imágenes como prioritarias es no marcar ninguna: compiten entre sí por el mismo ancho de banda,
+ * que es justo lo que se quiere evitar. Con un carrusel el error es más fácil de cometer —el bucle que
+ * dibuja las cinco diapositivas invita a pasarle `"alta"` a todas—, y por eso lo fija un test que mide
+ * el DOCUMENTO entero (`piezas-foto.test.ts`) y no una pieza suelta.
  */
 export function renderImagen(
   img: Imagen | undefined,
@@ -331,9 +334,9 @@ export interface CtaResuelto {
  * dato que la página realmente tiene. "Llamar" en una ficha sin teléfono sería una promesa que la
  * página no puede cumplir, así que cada etiqueta va con el ancla donde ese dato vive.
  *
- * Vive en `lib.ts` desde la entrega 3 porque lo usan **dos** piezas: `hero` (las tres páginas
- * sintetizadas) y `heroPortada` (la landing). Dos copias de `LIMITE_CTA` son dos umbrales que se
- * separan el día que alguien ajusta uno.
+ * Vive en `lib.ts` desde la entrega 3 porque lo usan **dos** piezas: `hero` (`/menu` y `/blog`) y
+ * `heroSlider` (la landing y la home). Dos copias de `LIMITE_CTA` son dos umbrales que se separan el
+ * día que alguien ajusta uno.
  */
 export function resolverCta(
   label: string | undefined,

@@ -11,6 +11,70 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-10 (tarde) — el rediseño de la plantilla base, y el agente que faltaba
+
+Juan pidió cambiar el aspecto de las webs de cliente tomando como referencia un template comercial de
+restaurante, y de ahí salieron tres cosas: **el rediseño en sí**, la **etapa C del plan de agentes**
+—que llevaba desde el 2026-08-02 esperando "trabajo real que la estrene"— y una lección sobre qué
+puede y qué no puede ver una suite de tests.
+
+**Lo primero fue un bug de producto que la queja estética escondía.** «Todo tiene fondo negro» no era
+una preferencia: el sitio obedecía a `prefers-color-scheme`, así que **el fondo de marca del cliente
+lo decidía el sistema operativo del visitante**. Un restaurante con paleta crema (`#fffdf9`) se servía
+sobre `#111` en cualquier móvil en oscuro, y ninguna ficha podía evitarlo. Ahora el tema lo dice la
+ficha (`brand.tema`, default `claro`), el CSS oscuro vive en un campo aparte de cada pieza y solo
+viaja con `"auto"` — comparado contra el literal, para que un typo caiga del lado que respeta la marca.
+
+**Leer el CSS de la referencia no sustituyó a medirla.** La primera pasada sobre su hoja de estilos dio
+**dos datos falsos**: que la barra superior era oscura (la regla con `!important` que encontré era de
+otra variante; en la página real es roja) y que el nav iba a la derecha (va centrado). Los dos se
+corrigieron abriendo la página y midiéndola con el navegador. El bundle sirvió para el mapa de
+secciones; los valores, no.
+
+**Y los tests no vieron lo que importaba.** De los defectos que aparecieron, **tres los encontró el
+navegador y ninguno una aserción**:
+
+```text
+position:sticky que no pegaba      el envoltorio de la pieza mide lo que mide la pieza,
+                                   así que la barra se despegaba: top:-856 con scrollY 1200
+el ancla del carrusel              movía el carrusel (scrollLeft 0→925) Y la página 203 px
+                                   abajo. No hay CSS que lo cancele → radios + :checked
+un @media que no aplicaba          `.p-x .logo` (0,2,0) pierde contra `.p-x .barra .logo` (0,3,0):
+                                   logo de 56 px en un móvil de 390, sin error en ningún log
+```
+
+Los que **sí** cazó la suite fueron de otra naturaleza, y valen igual: un `font-weight` en el titular
+que habría convertido el preload de la fuente en una descarga tirada —en el elemento que mide el LCP—,
+y un color literal sin contrapartida oscura que dejaba texto blanco sobre fondo casi blanco.
+
+**El gate de paridad se re-capturó, con autorización explícita y midiendo antes.** Es la única ventana
+en que la prueba es posible, porque después el gate se compara consigo mismo: **cero palabras, cero
+`href`, cero `id`, cero JSON-LD y cero trazas perdidas** en los diez casos; los ocho añadidos son los
+puntos del carrusel y la palabra «Llamar». Al medirlo apareció además una **debilidad del propio
+gate**: extrae los enlaces con una expresión regular que **entra en el `<style>`**, así que un
+`href=` citado dentro de un comentario CSS se colaba en su huella como si fuera un enlace de la página.
+
+**La etapa C se cerró, y el plan se equivocaba en dos cosas.** Preveía dos skills para `render` dando
+por supuesto que el ámbito era el servicio; el cuerpo de conocimiento más grande resultó ser otro
+—piezas, recetas, aislamiento de CSS, tokens, tema— y no estaba escrito en ninguna parte: es
+`render-plantillas`. Y declaraba que `web-builder/src/render/` era territorio de `pipeline`: se delegó
+ahí una tarea de plantillas y el conocimiento que hizo falta no era de gasto ni de idempotencia, era de
+render. Ese código pasó al ámbito de `render`. También decía que la etapa iba última «porque no hay
+trabajo real en el camino corto»; apareció, y era el más visible de todos.
+
+**Un agente encontró un agujero en el trabajo del mismo día.** `brand.tema` **no cruza las tres
+primeras fronteras** —ni el Zod del contrato, ni la allowlist de la `0014`, ni `perfilValido`—, así que
+en producción `"auto"` es inalcanzable: se descarta tres veces sin error y sin log. Los tests pasaban
+porque construyen el perfil en memoria. No es urgente (hace que el default se cumpla siempre, que es la
+conducta que se quería) pero estaba tácito, que es lo que no puede ser. Queda declarado en el tipo y en
+la documentación.
+
+**Lo que queda del bloque J (Ideas):** las etapas **1-4 están commiteadas** (`afe1725`, `73fcd35`,
+`c929a98`); las **5-7** —las pantallas, del agente `front`— siguen pendientes. Se pausaron acá, no se
+abandonaron.
+
+---
+
 ## 2026-08-10 — el seed de Ideas, y dos verdes que no probaban nada
 
 La Etapa 4 cierra el trabajo de `db/` en la pieza 3. Lo que vale la pena contar son **dos verdes falsos

@@ -74,9 +74,9 @@ const BASE: JuegoDePlantillas = {
   story: {
     id: "base/story",
     // Literal de la spec, §4.
-    contenido: ["heroPortada", "barraDatos", "seccionProsa", "platosDestacados", "galeria", "faq", "ctaFinal"],
+    contenido: ["heroSlider", "barraDatos", "seccionProsa", "platosDestacados", "galeria", "faq", "ctaFinal"],
   },
-  home: { id: "base/home", contenido: ["hero", "barraDatos", "platosDestacados", "galeria", "indice", "ctaFinal"] },
+  home: { id: "base/home", contenido: ["heroSlider", "barraDatos", "platosDestacados", "galeria", "indice", "ctaFinal"] },
   menu: { id: "base/menu", contenido: ["hero", "barraDatos", "cartaCategorias", "ctaFinal"] },
   blog: { id: "base/blog", contenido: ["hero", "blogIndice"] },
 };
