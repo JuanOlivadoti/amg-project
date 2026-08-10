@@ -144,9 +144,16 @@ cliente real, medido y pagado ($0.3097). Las keywords genéricas se conservaron 
 cualquier hamburguesería de Madrid— pero **el informe del portal ya no es un caso medido de verdad**.
 Recuperarlo es volver a correr el pipeline.
 
-⏳ **Falta en producción:** `reseed:demo` (para que research, ideas e informe lleven el nombre nuevo),
-el `update` del dominio a `borcelle.bigballs.es`, y **despublicar en Storyblok las 12 landings** que
-siguen diciendo el nombre anterior.
+✅ **Sembrado en producción el 2026-08-10.** `reseed:demo` corrió contra Supabase y el sitio sirve por
+fin la plantilla **completa**: 14 imágenes, las 12 secciones y —por primera vez— `testimonios`, que
+ninguna ficha había podido enseñar. Verificado en el navegador: **6/6 fotos de galería**, 13/14
+imágenes cargadas y **exactamente una prioritaria**, que es la política de imágenes cumpliéndose en
+producción y no en un test.
+
+⏳ **Falta:** el `update` del dominio a `borcelle.bigballs.es` (lo genera `npm run sql:demo -w renderer`;
+hasta entonces el sitio responde en `birrabar.bigballs.es`) y **despublicar en Storyblok las 12
+landings**, que siguen mostrando el nombre anterior en el índice de páginas — viven en la CDA, no en
+la base, así que el seed no las tocó.
 
 ## ⏸️ Pausado, no abandonado
 
