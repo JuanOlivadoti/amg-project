@@ -2,9 +2,10 @@
 
 El aspecto que tiene hoy el sitio de un cliente, de dónde salió cada valor y qué falta.
 
-> **Estado: rediseño en curso** (arrancado el 2026-08-10). La cabecera y la portada están hechas; el
-> resto de las secciones conserva el aspecto anterior y lleva el andamio del ancho de lectura descrito
-> en [`03`](03-tema-y-marca.md).
+> **Estado: rediseño en curso** (arrancado el 2026-08-10). Hechas: la cabecera, la portada y las cinco
+> secciones de contenido de la home y `/menu` (`barraDatos`, `platosDestacados`, `cartaCategorias`,
+> `galeria`, `ctaFinal`). El resto conserva el aspecto anterior y lleva el andamio del ancho de lectura
+> descrito en [`03`](03-tema-y-marca.md).
 
 ## De dónde salen los valores
 
@@ -66,13 +67,29 @@ página), `profile.portada` y `profile.fotos`. Máximo cinco. Sin ninguna foto v
 **hero tipográfico** en una columna — que es el estado de todas las fichas de producción, porque
 ninguna tiene todavía una sola foto.
 
+## El patrón de sección, y las cuatro decisiones que llevó aplicarlo
+
+Las secciones rediseñadas comparten tres primitivas del CSS base —`.seccion` (con `.alt` para el fondo
+alterno), `.banda` y `.encabezado`— y ninguna las redefine. Lo que cada pieza decidió por su cuenta:
+
+| Pieza | Decisión | Por qué |
+| --- | --- | --- |
+| `barraDatos` | Tarjeta con el **teléfono grande**, sobre sección **sin** `.alt` | Una tarjeta `--soft` dentro de una sección `--soft` desaparece. Y en un restaurante la acción más frecuente del móvil es marcar: tres datos del mismo tamaño obligan a leer los tres |
+| `platosDestacados` | Dos columnas, precio junto al **nombre** (no como tercera columna) | Medido a 390: con el precio de hermano del bloque de texto, la descripción se quedaba en 134 px y se partía en cinco renglones. En escritorio se ve igual |
+| `platosDestacados` | El separador lo llevan **todos** los renglones | La regla `:last-child` de la carta existe porque allí el contenedor dibuja otra línea. Acá, con dos columnas, deja la última fila con línea a la izquierda y sin línea a la derecha |
+| `galeria` | **2 y 3 columnas fijas**, no `auto-fill` | Con la banda ancha, un `auto-fill` de 150 px da ocho miniaturas; y con cualquier mínimo, seis fotos —las de la plantilla de demo— caen en 4+2 |
+| `ctaFinal` | Franja `.alt` + el nombre del negocio en el encabezado compartido | Cierra la página al mismo tamaño con el que la abrió. El borde transparente del botón sólido es lo que lo deja a la misma altura que el de contorno |
+
+El botón (15px 40px, radio 5, versalita) está **duplicado** en `heroSlider`, `platosDestacados` y
+`ctaFinal`. Es deliberado: el CSS base solo acepta lo que necesitan dos o más piezas *y* no tiene otro
+dueño, y un `.boton` compartido es un cambio del patrón base, no de una pieza.
+
 ## Lo que falta
 
 Las secciones que aún conservan el aspecto anterior:
 
 ```text
-barraDatos · seccionProsa · platosDestacados · cartaCategorias
-galeria · faq · indice · blogIndice · ctaFinal · contacto · locales
+hero · seccionProsa · faq · indice · blogIndice · contacto · locales
 ```
 
 Y del template de referencia quedan sin equivalente, **por falta de datos, no de tiempo**:
@@ -110,9 +127,12 @@ de ancla, JSON-LD y traza de research. Nació para un refactor que **no debía**
 
 **Un rediseño deliberado lo rompe por definición**, y el propio archivo lo dice: regenerar las
 fixturas es la respuesta equivocada *salvo que el cambio visual sea deliberado y esté explicado*.
-Mientras dure este rediseño, sus casos fallan. Antes de re-capturar hay que medir qué cambia: en la
-primera etapa se comprobó **cero palabras, cero `href`, cero `id`, cero JSON-LD y cero trazas
-perdidas**, y lo único nuevo era la palabra "Llamar".
+Mientras dure este rediseño, sus casos fallan. Antes de re-capturar hay que medir qué cambia:
+
+| Etapa | Casos rojos | Qué se perdió | Qué se añadió |
+| --- | --- | --- | --- |
+| Cabecera y portada | — | cero palabras, `href`, `id`, JSON-LD y trazas | "Llamar" |
+| Las cuatro secciones de la home | 7 de 10 | cero palabras, `href`, `id`, JSON-LD y trazas | "Nuestros platos", "El sitio, por dentro", "Te esperamos" — los tres, rótulos de plantilla |
 
 ⚠️ `npm run capturar:paridad -w web-builder` está en `permissions.deny`: re-capturar exige
 autorización explícita del usuario.

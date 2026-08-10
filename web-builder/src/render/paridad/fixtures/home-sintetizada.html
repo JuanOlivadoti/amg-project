@@ -177,52 +177,82 @@ footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
 .p-heroSlider .portada.sin-img h1::after{content:"";display:block;width:72px;height:3px;margin:22px 0 0;background:var(--decorativo)}
 @media(min-width:992px){.p-heroSlider .portada{grid-template-columns:minmax(0,1fr) 480px;gap:60px;padding:72px 0 88px}
 .p-heroSlider .portada.sin-img{grid-template-columns:1fr}}
-/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
-   ancho de lectura. Se quita cuando la seccion se rediseñe. */
-.p-barraDatos{max-width:var(--ancho-lectura);margin:0 auto}
-.p-barraDatos .franja{display:flex;flex-wrap:wrap;gap:14px 28px;margin:0;padding:16px 0;border-bottom:1px solid #f0f0f0}
-.p-barraDatos .dato{margin:0;display:flex;flex-direction:column;gap:2px;padding-left:12px;border-left:3px solid var(--decorativo)}
+/* La tarjeta va sobre el fondo de la página (la sección NO lleva '.alt'): si la sección
+   también fuera '--soft', la tarjeta desaparecería dentro de su propio fondo. */
+.p-barraDatos .tarjeta{background:var(--soft);border-radius:14px;padding:clamp(24px,3vw,40px);display:flex;flex-wrap:wrap;gap:clamp(20px,3vw,48px)}
+/* 'flex:1 1 200px' en los tres y el doble de crecimiento para el teléfono: reparte el ancho sobrante
+   sin fijar columnas, así que con uno, dos o tres datos la tarjeta se llena igual. Por debajo de la
+   base los tres se apilan solos. */
+.p-barraDatos .dato{margin:0;flex:1 1 200px;display:flex;flex-direction:column;justify-content:center;gap:4px;padding-left:18px;border-left:3px solid var(--decorativo)}
+.p-barraDatos .principal{flex:2 1 280px}
 /* La etiqueta es el rótulo del dato ("Teléfono"), no el dato: menor, en el gris de texto secundario y
    en versalitas, para que el ojo salte directo al número. */
 .p-barraDatos .etiqueta{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .p-barraDatos .valor{font-weight:600}
 .p-barraDatos a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted);font-weight:600}
-/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
-   ancho de lectura. Se quita cuando la seccion se rediseñe. */
-.p-platosDestacados{max-width:var(--ancho-lectura);margin:0 auto}
-.p-platosDestacados .destacados{padding:32px 0;border-bottom:1px solid #f0f0f0}
-.p-platosDestacados .destacados h2{font-size:1.45rem;margin:0 0 16px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-platosDestacados .platos{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:20px}
-.p-platosDestacados .plato{margin:0}
-/* `aspect-ratio` fijo + `object-fit:cover`: las fotos de la ficha vienen con proporciones distintas y
-   sin esto la rejilla queda con las tarjetas descuadradas entre sí. El recorte lo hace el navegador. */
-.p-platosDestacados .plato-foto{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;margin:0 0 10px}
-.p-platosDestacados .plato h3{font-size:1.02rem;margin:0 0 4px;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-platosDestacados .desc{margin:0 0 6px;color:var(--muted);font-size:.92rem}
+/* EL TELÉFONO GRANDE, que es todo el rediseño de esta pieza.
+   Peso 700 y no 500: es el único archivo de la fuente de titulares que el documento precarga, así que
+   pedirlo aquí no cuesta ninguna descarga nueva. Y sin subrayado: a este tamaño el subrayado parte los
+   dígitos, y el color de acento más el tamaño ya dicen que se puede pulsar.
+   La especificidad manda sobre la regla de enlaces de arriba —(0,2,0) contra (0,1,1)— así que el orden
+   de las dos reglas no decide nada. */
+.p-barraDatos .numero{font-family:var(--fuente-titulo);font-size:clamp(1.75rem,1.2rem + 1.8vw,2.6rem);line-height:1.15;font-weight:700;color:var(--acento-legible);text-decoration:none;letter-spacing:.01em}
+/* Dos columnas a partir de 992, una debajo. `grid` y no `columns`: con columnas CSS un renglón
+   se puede partir por la mitad entre dos columnas. Mismo criterio y mismo breakpoint que la carta de
+   verdad, para que el extracto y la carta no se lean como dos diseños distintos. */
+.p-platosDestacados .platos{list-style:none;margin:0;padding:0;display:grid;gap:0 48px}
+@media(min-width:992px){.p-platosDestacados .platos{grid-template-columns:1fr 1fr}}
+/* El separador va en negro/blanco translúcido y NO en un gris fijo: esta sección se dibuja sobre
+   '--soft', que es un color de la ficha del cliente (el crema del cliente de demo, el que sea del
+   siguiente). Un '#f0f0f0' encima de un fondo alterno oscuro desaparecería, y encima de uno muy claro
+   se vería como una raya sucia.
+   ⚠️ **El separador lo llevan TODOS los renglones, incluido el último, y aquí NO se copia la regla
+   de la carta que le quita el borde al último hijo.** Allí existe porque el contenedor de la categoría
+   dibuja su propia línea justo debajo y salían dos pegadas; acá no hay ninguna. Y con dos columnas,
+   quitarle el borde solo al último del DOM produce lo que se ve en el navegador con un extracto de
+   dos platos: la fila con línea debajo del de la izquierda y sin línea debajo del de la derecha. Una
+   línea de cierre bajo la última fila es simétrica y hace de remate antes del botón. */
+.p-platosDestacados .plato{margin:0;padding:18px 0;border-bottom:1px solid rgba(0,0,0,.09);display:flex;gap:16px;align-items:flex-start}
+/* La miniatura no crece ni se encoge: sin `flex:0 0 auto`, una descripción larga la aplasta y la lista
+   queda con miniaturas de anchos distintos renglón a renglón. */
+.p-platosDestacados .plato-foto{flex:0 0 auto;width:84px;height:84px;object-fit:cover;border-radius:10px}
+.p-platosDestacados .datos{flex:1 1 auto;min-width:0}
+/* ⚠️ **El precio va en la misma línea que el NOMBRE, no como tercera columna del renglón.** En
+   escritorio se ve idéntico —'.datos' llega hasta el borde derecho, así que el precio queda donde
+   quedaría igual—, pero en móvil cambia todo: medido a 390, con el precio como hermano de '.datos' la
+   descripción se quedaba en 134 px y se desmigaba en cinco renglones. Así la descripción se lleva el
+   ancho entero bajo el nombre. */
+.p-platosDestacados .fila{display:flex;gap:16px;align-items:baseline;justify-content:space-between}
+.p-platosDestacados .plato h3{font-size:1.12rem;margin:0 0 4px;color:var(--titulo);font-family:var(--fuente-titulo)}
+.p-platosDestacados .desc{margin:0;color:var(--muted);font-size:.92rem}
 /* `--acento-legible` y no `--accent`: es texto de acento sobre el fondo de la página, y en oscuro el
-   acento pleno de un cliente puede quedar ilegible. Los botones sí conservan `--accent`. */
-.p-platosDestacados .precio{margin:0;color:var(--acento-legible);font-weight:600}
-.p-platosDestacados .ver-carta{margin:20px 0 0}
-.p-platosDestacados .ver-carta a{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:var(--muted);font-weight:600}
+   acento pleno de un cliente puede quedar ilegible. Los botones sí conservan `--accent`.
+   `white-space:nowrap`: "14,50 €" partido en dos líneas deja de ser un precio. */
+.p-platosDestacados .precio{flex:0 0 auto;margin:0;color:var(--acento-legible);font-weight:600;white-space:nowrap}
+.p-platosDestacados .ver-carta{margin:clamp(28px,3vw,44px) 0 0;text-align:center}
+/* Las medidas del botón de la referencia (15px 40px, radio 5, versalita, fuente de titulares). Son las
+   mismas que las del botón de la portada, y la duplicación es deliberada: el CSS base solo acepta lo
+   que necesitan dos o más piezas Y no tiene dueño, y un '.boton' compartido es un cambio del patrón
+   base, no de esta pieza. */
+.p-platosDestacados .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:15px 40px;border-radius:5px;font-family:var(--fuente-titulo);font-size:1rem;font-weight:500;text-transform:uppercase;letter-spacing:.02em}
 /* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
    ancho de lectura. Se quita cuando la seccion se rediseñe. */
 .p-indice{max-width:var(--ancho-lectura);margin:0 auto}
 .p-indice .indice{padding:8px 0 32px;border-bottom:1px solid #f0f0f0}
 .p-indice .indice h2{font-size:1.45rem;margin:0 0 12px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
-   ancho de lectura. Se quita cuando la seccion se rediseñe. */
-.p-ctaFinal{max-width:var(--ancho-lectura);margin:0 auto}
-.p-ctaFinal .cierre{background:var(--soft);border-radius:12px;padding:28px 24px;margin:32px 0;text-align:center}
-.p-ctaFinal .cierre h2{font-size:1.45rem;margin:0 0 6px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-ctaFinal .horario{margin:0 0 18px;color:var(--muted)}
+/* El horario va justo bajo el encabezado compartido, que ya trae su propio margen inferior: acá
+   solo hace falta el hueco hasta los botones. */
+.p-ctaFinal .horario{margin:-8px 0 clamp(24px,3vw,36px);text-align:center;color:var(--muted)}
 /* Los botones se envuelven en un flex centrado con `wrap`: en un móvil estrecho el segundo baja solo,
    en vez de encogerse hasta que su etiqueta se parta. */
-.p-ctaFinal .acciones{margin:0;display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
-.p-ctaFinal .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600}
+.p-ctaFinal .acciones{margin:0;display:flex;flex-wrap:wrap;gap:14px;justify-content:center}
+/* Las medidas del botón de la referencia. El borde transparente del sólido no es decorativo: sin él
+   mide 2 px menos de alto que el de contorno de la línea siguiente, y los dos van uno al lado del
+   otro. `transparent` no depende del modo, así que no necesita contrapartida oscura. */
+.p-ctaFinal .cta{display:inline-block;background:var(--accent);color:var(--sobre-acento);text-decoration:none;padding:15px 40px;border:1px solid transparent;border-radius:5px;font-family:var(--fuente-titulo);font-size:1rem;font-weight:500;text-transform:uppercase;letter-spacing:.02em}
 /* La segunda acción va en versión de contorno: dos botones sólidos del mismo color compiten y ninguno
-   gana. `transparent` no depende del modo, así que no necesita contrapartida oscura; el color y el
-   borde salen de `--acento-legible`, que sí la tiene. */
-.p-ctaFinal .cta.suave{background:transparent;color:var(--acento-legible);border:1px solid var(--acento-legible)}
+   gana. El color y el borde salen de `--acento-legible`, que sí tiene variante oscura. */
+.p-ctaFinal .cta.suave{background:transparent;color:var(--acento-legible);border-color:var(--acento-legible)}
 .p-contacto .contacto{border:0;padding:0}
 /* El `letter-spacing` NO es decorativo acá: lo heredaba de `section h2`, porque este `<h2>` vive
    dentro de un `<section>` del pie. `section h2` (0,0,2) y `footer h2` (0,0,2) empataban en
@@ -264,22 +294,24 @@ footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
 </header>
 </div>
 <div class="p-barraDatos">
-<section class="franja">
-  <p class="dato"><span class="etiqueta">Teléfono</span><a href="tel:+34911234567">+34 911 23 45 67</a></p>
-  <p class="dato"><span class="etiqueta">Horario</span><span class="valor">Mar-Dom 13:00-16:00, 20:00-23:30</span></p>
-  <p class="dato"><span class="etiqueta">Dónde</span><a href="#ubicaciones">Cómo llegar</a></p>
-</section>
+<section class="seccion"><div class="banda">
+  <div class="tarjeta">
+    <p class="dato principal"><span class="etiqueta">Teléfono</span><a class="numero" href="tel:+34911234567">+34 911 23 45 67</a></p>
+    <p class="dato"><span class="etiqueta">Horario</span><span class="valor">Mar-Dom 13:00-16:00, 20:00-23:30</span></p>
+    <p class="dato"><span class="etiqueta">Dónde</span><a href="#ubicaciones">Cómo llegar</a></p>
+  </div>
+</div></section>
 </div>
 <div class="p-platosDestacados">
-<section class="destacados">
-  <h2>De la carta</h2>
+<section class="seccion alt"><div class="banda">
+  <div class="encabezado"><p class="antetitulo">De la carta</p><h2>Nuestros platos</h2></div>
   <ul class="platos">
-    <li class="plato"><h3>Margherita</h3><p class="desc">Tomate, mozzarella y albahaca.</p><p class="precio">12,50 €</p></li>
-    <li class="plato"><h3>Diavola</h3><p class="desc">Salami picante.</p><p class="precio">14,00 €</p></li>
-    <li class="plato"><h3>Cacio e pepe</h3><p class="desc">Pecorino y pimienta.</p><p class="precio">13,00 €</p></li>
+    <li class="plato"><div class="datos"><div class="fila"><h3>Margherita</h3><p class="precio">12,50 €</p></div><p class="desc">Tomate, mozzarella y albahaca.</p></div></li>
+    <li class="plato"><div class="datos"><div class="fila"><h3>Diavola</h3><p class="precio">14,00 €</p></div><p class="desc">Salami picante.</p></div></li>
+    <li class="plato"><div class="datos"><div class="fila"><h3>Cacio e pepe</h3><p class="precio">13,00 €</p></div><p class="desc">Pecorino y pimienta.</p></div></li>
   </ul>
-  <p class="ver-carta"><a href="/menu">Ver la carta completa</a></p>
-</section>
+  <p class="ver-carta"><a class="cta" href="/menu">Ver la carta completa</a></p>
+</div></section>
 </div>
 <div class="p-indice">
 <section class="indice">
@@ -291,11 +323,11 @@ footer .tecnica{color:var(--muted);font-size:.85rem;margin:20px 0 6px}
 </section>
 </div>
 <div class="p-ctaFinal">
-<section class="cierre">
-  <h2>Trattoria Bella Napoli</h2>
+<section class="seccion alt"><div class="banda">
+  <div class="encabezado"><p class="antetitulo">Te esperamos</p><h2>Trattoria Bella Napoli</h2></div>
   <p class="horario">Mar-Dom 13:00-16:00, 20:00-23:30</p>
   <p class="acciones"><a class="cta" href="tel:+34911234567">Llamar</a><a class="cta suave" href="#ubicaciones">Cómo llegar</a></p>
-</section>
+</div></section>
 </div>
 </main>
 <footer>

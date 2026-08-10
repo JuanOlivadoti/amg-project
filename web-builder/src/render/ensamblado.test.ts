@@ -366,14 +366,20 @@ test("🔴 los titulares NO declaran font-weight: por eso se precarga el archivo
   // `heroPortada` → `heroSlider`) los dos primeros habrían pasado por vacío. El `assert.ok` de abajo
   // es lo que impide que vuelva a pasar — y es lo que hizo caer este caso al retirar `heroPortada`,
   // en vez de dejarlo verde midiendo un selector que ya no está en el `<style>`.
+  //
+  // ⚠️ **`.encabezado h2` es del CSS BASE, no de una pieza, y por eso está en esta lista.** El
+  // rediseño de la plantilla base mudó el título de sección de `galeria`, `platosDestacados`,
+  // `cartaCategorias` y `ctaFinal` al encabezado compartido, así que `.p-galeria .galeria h2` y
+  // `.p-ctaFinal .cierre h2` —que estaban aquí— dejaron de existir. Ese h2 compartido es hoy el titular
+  // de MÁS secciones del sitio que ningún otro: dejarlo fuera de la comprobación habría cambiado la
+  // cobertura de dos piezas por la de ninguna.
   const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
   const titulares = [
     ".p-heroSlider h1",
     ".p-seccionProsa section h2",
+    ".encabezado h2",
     ".p-platosDestacados .plato h3",
-    ".p-galeria .galeria h2",
     ".p-faq .faq h2",
-    ".p-ctaFinal .cierre h2",
     ".card h3",
   ];
   for (const sel of titulares) {

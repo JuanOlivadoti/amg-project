@@ -21,23 +21,32 @@ import type { CtxPieza, Pieza } from "./tipos.js";
  * llega de `clients.business_profile_publico` sin pasar por el Zod de este paquete. El presupuesto de
  * 60 del documento no sustituye a este tope: protege al documento entero, no a esta sección, y una
  * galería que se comiera los 60 huecos dejaría a la carta y a la portada sin ninguno.
+ *
+ * ## El rediseño: la banda ancha, que es lo que una galería necesitaba
+ *
+ * Hasta ahora el andamio del rediseño la encerraba en `--ancho-lectura` (760 px), o sea que la rejilla
+ * de fotos ocupaba el ancho pensado para PÁRRAFOS. Es la pieza a la que más le costaba ese andamio:
+ * una galería es exactamente el caso que justifica que existan dos anchos. Al quitarlo pasa a la banda
+ * de 1320 y las fotos se ven al tamaño que tienen.
+ *
+ * Con el ancho llega el **encabezado compartido** (antetítulo + `h2`), el mismo de las demás secciones
+ * rediseñadas: un `h2` pequeño propio hacía que la galería se leyera como un apéndice del párrafo de
+ * arriba en vez de como una sección.
  */
 export const galeria: Pieza = {
   id: "galeria",
   raiz: "p-galeria",
-  // `auto-fill` + `minmax(150px,1fr)`: tantas columnas como quepan, sin media queries. Las fotos van
-  // en cuadrado (`aspect-ratio:1`) con `object-fit:cover` porque las de la ficha vienen con
-  // proporciones distintas y una rejilla de alturas desiguales se lee como un error, no como diseño.
-  css: `/* Andamio del rediseno: esta pieza todavia no usa la banda ancha, asi que se queda en el
-   ancho de lectura. Se quita cuando la seccion se rediseñe. */
-.p-galeria{max-width:var(--ancho-lectura);margin:0 auto}
-.p-galeria .galeria{padding:32px 0;border-bottom:1px solid #f0f0f0}
-.p-galeria .galeria h2{font-size:1.45rem;margin:0 0 16px;letter-spacing:-.01em;color:var(--titulo);font-family:var(--fuente-titulo)}
-.p-galeria .rejilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+  // Las fotos van en cuadrado (`aspect-ratio:1`) con `object-fit:cover` porque las de la ficha vienen
+  // con proporciones distintas y una rejilla de alturas desiguales se lee como un error, no como
+  // diseño.
+  css: `/* Número de columnas FIJO por tramo, y no un \`auto-fill\` con \`minmax\`.
+   Con la banda ancha, un 'auto-fill' de 150px daría ocho columnas de miniaturas en un escritorio; y
+   subir el mínimo para arreglarlo deja el número de columnas a merced del ancho, con lo que una ficha
+   de seis fotos —las que trae la plantilla de demo— cae en 4+2 y la última fila queda coja. Con 2 y 3
+   las seis siempre completan sus filas, en móvil y en escritorio. */
+.p-galeria .rejilla{display:grid;grid-template-columns:repeat(2,1fr);gap:clamp(12px,1.4vw,20px)}
+@media(min-width:768px){.p-galeria .rejilla{grid-template-columns:repeat(3,1fr)}}
 .p-galeria .foto{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block}
-`,
-
-  cssOscuro: `@media(prefers-color-scheme:dark){.p-galeria .galeria{border-color:#1e1e1e}}
 `,
 
   render(ctx: CtxPieza): string {
@@ -51,14 +60,16 @@ export const galeria: Pieza = {
     // Ver el bloque de arriba: hay fotos en la ficha y ninguna se puede servir.
     if (imgs.length === 0) return "";
 
+    // El antetítulo y el título son ETIQUETAS DE PLANTILLA, no contenido del negocio: rotulan la
+    // sección igual que "Inicio" rotula una entrada del nav. Lo que no se inventa es el dato.
     return envolver(
       "p-galeria",
-      `<section class="galeria">
-  <h2>Galería</h2>
+      `<section class="seccion"><div class="banda">
+  <div class="encabezado"><p class="antetitulo">Galería</p><h2>El sitio, por dentro</h2></div>
   <div class="rejilla">
 ${imgs.map((img) => `    ${img}`).join("\n")}
   </div>
-</section>`,
+</div></section>`,
     );
   },
 };

@@ -252,7 +252,10 @@ test("platosDestacados: dibuja foto, nombre, descripción y precio, y enlaza a /
   assert.match(html, /class="desc">Descripción 1</);
   assert.match(html, /class="precio">1,00 €/);
   assert.equal(imgsDe(html).length, 3, "una foto por plato");
-  assert.match(html, /<a href="\/menu">/, "el extracto solo tiene sentido si lleva a la carta");
+  // El gancho es el DESTINO, no la forma del enlace: el rediseño lo convirtió en botón
+  // (`class="cta"`), y una expresión que exigiera `<a href="/menu">` literal estaría fijando el
+  // marcado en vez del contrato. Lo que no puede desaparecer es el enlace a la carta.
+  assert.match(html, /href="\/menu"/, "el extracto solo tiene sentido si lleva a la carta");
 });
 
 test("🔴 platosDestacados: SOLO el primer precio y SIN etiqueta (es un gancho, no la carta)", () => {
