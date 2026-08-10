@@ -81,3 +81,27 @@ export function hostDeLaPeticion(
   }
   return normalizarHost(headers.get("host"));
 }
+
+/**
+ * ¿Este host cae bajo el dominio de **preview** de la agencia?
+ *
+ * Sirve para una sola cosa: decidir si la página se emite con `X-Robots-Tag: noindex`. Los sitios de
+ * demo viven en subdominios nuestros (`birrabar.bigballs.es`), y un buscador que los indexe deja al
+ * cliente con **dos copias de su web** el día que lanza en su propio dominio — y eligiendo Google
+ * cuál mostrar.
+ *
+ * ⚠️ **No es `endsWith(sufijo)` a secas, y la diferencia importa**: `"malbigballs.es".endsWith("bigballs.es")`
+ * es `true`, así que un dominio ajeno comprado a propósito heredaría el `noindex`… o, en la dirección
+ * que de verdad duele, un cliente cuyo dominio terminara por casualidad en el sufijo vería su web
+ * desindexada sin que nada lo avisara. Se exige el **punto** de separación, o la igualdad exacta.
+ *
+ * `sufijo` ausente o vacío → `false` **siempre**, y ése es el lado seguro: el daño de no emitir
+ * `noindex` en una demo es contenido duplicado mientras dure; el de emitirlo por error en un sitio
+ * real es sacarlo de Google. Entre los dos, se falla hacia el que se puede deshacer.
+ */
+export function esDominioDePreview(host: string, sufijo: string | undefined): boolean {
+  if (!sufijo) return false;
+  const s = sufijo.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
+  if (!s) return false;
+  return host === s || host.endsWith(`.${s}`);
+}

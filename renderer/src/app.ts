@@ -6,7 +6,7 @@ import { renderBlogIndex, renderHome, renderMenu, renderStory } from "web-builde
 import type { NavItem } from "web-builder";
 import { ErrorCda, type Cda } from "./cda.js";
 import { CacheRender } from "./cache.js";
-import { hostDeLaPeticion } from "./dominio.js";
+import { esDominioDePreview, hostDeLaPeticion } from "./dominio.js";
 import { CACHE_FUENTES, cargarFuentes } from "./fuentes-servidas.js";
 import { CacheNegativa, Coalescedor, Saturado, Semaforo } from "./limites.js";
 import { perfilValido } from "./perfil.js";
@@ -47,6 +47,14 @@ export interface RendererDeps {
   cacheNegativa?: CacheNegativa;
   /** Dedupe de entregas repetidas del webhook. `false` lo apaga (tests). */
   dedupeWebhook?: boolean;
+  /**
+   * El dominio bajo el que viven los sitios de **demo** (`bigballs.es`). Todo host que caiga ahí se
+   * sirve con `X-Robots-Tag: noindex, nofollow`.
+   *
+   * Sin él **no se emite nada**, que es el comportamiento de siempre. Ver `esDominioDePreview` para
+   * por qué el lado seguro es ése y no el contrario.
+   */
+  dominioPreview?: string;
 }
 
 /** El slug que se sirve cuando alguien entra a la raíz del dominio. */
@@ -327,7 +335,7 @@ export function createApp(deps: RendererDeps) {
     if (!esPreview) {
       const guardado = cache.get(espacio, slug);
       if (guardado) {
-        cabecerasPublicas(c, "hit");
+        cabecerasPublicas(c, "hit", dominio);
         return c.html(guardado);
       }
       // Un 404 reciente no vuelve a molestar al origen: enumerar `/a-1`, `/a-2`… deja de amplificar.
@@ -424,7 +432,7 @@ export function createApp(deps: RendererDeps) {
       c.header("x-robots-tag", "noindex, nofollow");
       c.header("x-amg-cache", "bypass");
     } else {
-      cabecerasPublicas(c, "miss");
+      cabecerasPublicas(c, "miss", dominio);
     }
     return c.html(html);
   });
@@ -439,9 +447,20 @@ export function createApp(deps: RendererDeps) {
    * Lo público SÍ se cachea, y decirlo explícitamente es la otra mitad de #5: sin `Cache-Control`,
    * cada CDN inventa su propia heurística. Acá se declara la intención una vez.
    */
-  function cabecerasPublicas(c: Context, estado: "hit" | "miss") {
+  function cabecerasPublicas(c: Context, estado: "hit" | "miss", dominio: string) {
     c.header("cache-control", "public, max-age=60, stale-while-revalidate=600");
     c.header("x-amg-cache", estado);
+    // **Un sitio de demo no se indexa.** Va acá y no en el `<head>` del HTML a propósito: la cabecera
+    // la ve el crawler sin parsear el documento, y sobre todo **el mismo HTML se sirve por los dos
+    // dominios** —el de demo y el del cliente cuando lance—, así que meterlo en el documento haría que
+    // el `noindex` viajara también al sitio real. La decisión es del HOST, no del contenido.
+    //
+    // ⚠️ Y NO hay `/robots.txt` con `Disallow`, que es el error clásico: bloquear el rastreo impide
+    // que Google LEA el `noindex`, y entonces puede listar la URL igual, sin contenido. Para
+    // desindexar hay que dejar entrar.
+    if (esDominioDePreview(dominio, deps.dominioPreview)) {
+      c.header("x-robots-tag", "noindex, nofollow");
+    }
   }
 
   return app;

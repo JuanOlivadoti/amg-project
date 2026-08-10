@@ -946,6 +946,100 @@ curl -X PUT https://<tu-orquestador>.up.railway.app/api/inngest
 
 ---
 
+## Dar de alta el sitio de un cliente: primero la demo, después su dominio
+
+**El renderizador es un proceso y N dominios** (ADR-19), y resuelve por la cabecera `Host` contra
+`clients.domain`. Así que el DNS y el certificado deciden **cómo llega** la petición, no qué se
+renderiza — y eso permite verificar el render antes de tocar ningún DNS.
+
+### 0. Verificar sin DNS (gratis, y conviene hacerlo siempre primero)
+
+```bash
+curl -sI -H "Host: elcliente.es" https://amg-renderer-production.up.railway.app/
+```
+
+Ejercita el camino entero —`normalizarHost` → `clients.domain` → la CDA de Storyblok → el render—
+contra la base real. Lo único que no prueba es el TLS y el DNS, que es justamente lo que aún no
+existe. Si esto no da 200, el DNS no lo va a arreglar.
+
+### 1. El wildcard de demo, UNA sola vez
+
+Los sitios de demo viven en subdominios nuestros (`birrabar.bigballs.es`). Con un wildcard, dar de
+alta uno nuevo deja de tocar Railway: es una fila en `clients` y nada más.
+
+1. **Railway → el servicio del RENDERIZADOR** (⚠️ no el de la API: los custom domains se agregan
+   dentro de un servicio, y puesto en el equivocado el certificado se emite para el proceso que no
+   es. Ya pasó una vez) → *Networking* → *Custom Domain* → `*.bigballs.es`. Copiá el destino CNAME.
+2. **Hostinger → DNS de `bigballs.es`** → CNAME, nombre `*`, destino el de Railway, TTL 300 mientras
+   probás. Si Railway pide además un TXT de verificación, cargalo.
+3. Esperá a que Railway lo marque **verified**: hasta entonces no hay certificado y el navegador da
+   error de TLS. Es normal, no es un fallo.
+4. **La comprobación es un 404**, y eso es el éxito:
+
+   ```bash
+   curl -sI https://loquesea.bigballs.es/     # → HTTP/2 404
+   ```
+
+   Significa que el DNS resolvió, el TLS cerró y el renderizador dijo «no conozco ese host». **No hay
+   dominio por defecto y no puede haberlo**: un fallback convertiría cualquier host apuntado a
+   nuestra IP en una copia de la web de un cliente ajeno.
+
+`api.bigballs.es` no se rompe con el wildcard: en DNS el registro específico gana.
+
+5. **La variable que evita que Google indexe las demos.** En Railway, servicio del renderizador:
+
+   ```text
+   DOMINIO_PREVIEW=bigballs.es
+   ```
+
+   Con ella, todo host bajo ese dominio se sirve con `X-Robots-Tag: noindex, nofollow`. Sin ella no se
+   emite nada, y una demo indexada compite en Google con la web real del cliente el día que lance.
+   **Al arrancar, el log dice cuál quedó activo** (`noindex de demo: *.bigballs.es`) — una variable
+   mal escrita no da error en ninguna parte, así que esa línea es la única señal.
+
+   ⚠️ **No pongas un `/robots.txt` con `Disallow`.** Es el error clásico: bloquear el rastreo impide
+   que Google **lea** el `noindex`, y entonces puede listar la URL igual, sin contenido. Para
+   desindexar hay que dejar entrar.
+
+   ⚠️ Esta variable **no** va por `env:sync` (es configuración, no credencial), así que
+   `npm run auditar:railway` la va a listar como una diferencia más entre Railway y el reparto. Es
+   intencional, y ésta es la constancia.
+
+### 2. Cada cliente de demo: una fila
+
+```sql
+insert into clients (tenant_id, nombre, domain, storyblok_space_id,
+                     storyblok_public_token, storyblok_preview_token, business_profile)
+values ('<tenant>', 'La Birra Bar', 'birrabar.bigballs.es', '<space>',
+        '<token public>', '<token preview>', '<perfil jsonb>');
+```
+
+`domain` tiene un `check` de forma canónica (minúsculas, sin puerto, 4-253 caracteres) y un índice
+**único**: dos clientes no pueden compartir dominio. Verificá con `curl -sI https://birrabar.bigballs.es/`
+→ 200.
+
+### 3. El día que sale a producción
+
+**Un cliente tiene UN dominio.** `clients.domain` es único y hay una sola columna, así que la demo y
+el dominio propio **no conviven**: el lanzamiento es cambiar el valor.
+
+```sql
+update clients set domain = 'labirrabar.es' where domain = 'birrabar.bigballs.es';
+```
+
+Desde ese instante la demo devuelve 404 y el sitio responde por el dominio del cliente. Además:
+
+1. El cliente apunta su DNS a Railway (CNAME en un subdominio; en el apex, ALIAS/ANAME — un CNAME en
+   el apex no es válido).
+2. Su dominio se agrega como **custom domain** del servicio del renderizador. ⚠️ **Acá el límite de
+   custom domains vuelve, uno por cliente**: el wildcard resuelve las demos, no la cartera en
+   producción. Eso sigue siendo el bloque G del plan (una CDN delante del renderizador).
+3. La cache no hay que tocarla: su clave es `space:slug`, no el dominio.
+
+**Si algún día hace falta que convivan** —seguir enseñando la demo con el sitio ya lanzado— hay que
+darle a un cliente más de un dominio: una migración (columna o tabla `client_domains`) y un cambio en
+`PgSitios`. Es trabajo del agente `datos`, y hoy no está hecho.
+
 ## Troubleshooting (los errores que más probablemente veas)
 
 | Síntoma                                                                                                    | Causa probable                                          | Fix                                                                                                                                                |

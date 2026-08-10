@@ -111,6 +111,44 @@ function montar(
 const pedir = (app: ReturnType<typeof createApp>, path: string, host: string, headers: Record<string, string> = {}) =>
   app.request(`http://${host}${path}`, { headers: { host, ...headers } });
 
+// ------------------------------------------------------- noindex del dominio de demo
+
+describe("los sitios de demo no se indexan", () => {
+  it("🔴 con `dominioPreview`, una página servida bajo él sale con `noindex`", async () => {
+    // Los sitios de demo viven en subdominios nuestros. Si un buscador los indexa, el cliente
+    // termina con DOS copias de su web el día que lanza en su dominio, y elige Google cuál mostrar.
+    const { app } = montar({ dominioPreview: "bellanapoli.es" });
+    const res = await pedir(app, "/menu", "bellanapoli.es");
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("x-robots-tag"), "noindex, nofollow");
+  });
+
+  it("🔴 el sitio de un cliente REAL no se toca: sin él, no hay cabecera", async () => {
+    // La mutación que importa: si esta comprobación se volviera un `endsWith` flojo, o si el default
+    // pasara a emitir, este caso desindexaría la web de un cliente de verdad.
+    const { app } = montar({ dominioPreview: "bigballs.es" });
+    const res = await pedir(app, "/menu", "bellanapoli.es");
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("x-robots-tag"), null);
+  });
+
+  it("sin `dominioPreview` no se emite nunca — el comportamiento de siempre", async () => {
+    const { app } = montar();
+    assert.equal((await pedir(app, "/menu", "bellanapoli.es")).headers.get("x-robots-tag"), null);
+  });
+
+  it("🔴 también en el HIT de cache, no solo en el miss", async () => {
+    // Las dos ramas escriben cabeceras por su cuenta. Una que se olvidara del `noindex` dejaría la
+    // demo indexable desde la segunda visita en adelante — el peor de los fallos posibles: el que
+    // solo aparece cuando la página ya funciona.
+    const { app } = montar({ dominioPreview: "bellanapoli.es" });
+    await pedir(app, "/menu", "bellanapoli.es");
+    const segunda = await pedir(app, "/menu", "bellanapoli.es");
+    assert.equal(segunda.headers.get("x-amg-cache"), "hit", "el caso no mide nada si no es un hit");
+    assert.equal(segunda.headers.get("x-robots-tag"), "noindex, nofollow");
+  });
+});
+
 // ------------------------------------------------------------------ servir
 
 describe("renderizador — servir la web del cliente", () => {

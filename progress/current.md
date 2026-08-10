@@ -105,6 +105,26 @@ el cupo del semáforo en producción (64) no lo fija ningún test, el `Semaforo`
 Y una del propio gate de paridad: **extrae los enlaces con una regex que entra en el `<style>`**, así
 que un `href=` citado en un comentario CSS se cuela en su huella como si fuera un enlace de la página.
 
+## 🌐 Demos en `*.bigballs.es` — decidido el 2026-08-10
+
+**Un subdominio por cliente para la demo, y el dominio propio al lanzar.** El paso a paso completo
+está en [`14-runbook-despliegue.md`](../docs/proyecto/14-runbook-despliegue.md) § *Dar de alta el
+sitio de un cliente*. Lo que decidió Juan:
+
+- **Un dominio por cliente**, no dos. `clients.domain` es único y hay una sola columna, así que salir
+  a producción es un `update` del valor y la demo muere ahí. Que convivan exigiría una migración
+  (`client_domains`) y tocar `PgSitios` — está descrito por si hace falta, y hoy no está hecho.
+- **Las demos no se indexan.** El renderizador emite `X-Robots-Tag: noindex, nofollow` cuando el host
+  cae bajo `DOMINIO_PREVIEW`. Sin la variable no emite nada: el daño de no ponerlo es contenido
+  duplicado mientras dure la demo, y el de ponerlo mal es sacar de Google un sitio real.
+
+⏳ **Falta hacerlo** (es infraestructura, no código): el wildcard `*.bigballs.es` en Railway, el CNAME
+en Hostinger y la variable `DOMINIO_PREVIEW=bigballs.es`. ⚠️ Esa variable **no** va por `env:sync`, así
+que `auditar:railway` la va a listar como una diferencia más — intencional.
+
+⚠️ **El wildcard resuelve las demos, no la cartera en producción**: el dominio propio de cada cliente
+sigue consumiendo un custom domain de Railway, y el plan está en su límite. Es el bloque G.
+
 ## ⏸️ Pausado, no abandonado
 
 **Bloque J, pieza 3 (Ideas).** Etapas **1-4 commiteadas** (`afe1725`, `73fcd35`, `c929a98`); faltan

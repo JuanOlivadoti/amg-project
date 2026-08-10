@@ -22,6 +22,11 @@ export interface ConfigRenderer {
   maxConexiones?: number;
   /** Trabajo externo simultáneo. Default 64. Pasado el tope se responde 503. */
   maxConcurrencia?: number;
+  /**
+   * El dominio de los sitios de **demo** (`bigballs.es`): lo que caiga bajo él se sirve `noindex`.
+   * Opcional — sin él no se emite nada, que es lo que hacía antes de existir.
+   */
+  dominioPreview?: string;
 }
 
 /**
@@ -46,12 +51,14 @@ export function leerConfig(): ConfigRenderer {
   }
 
   const preview = process.env["PREVIEW_SECRET"]?.trim();
+  const dominioPreview = process.env["DOMINIO_PREVIEW"]?.trim();
   const ttl = Number(process.env["CACHE_TTL_MS"] ?? "");
 
   return {
     databaseUrl: databaseUrl as string,
     webhookSecret: webhookSecret as string,
     ...(preview ? { previewSecret: preview } : {}),
+    ...(dominioPreview ? { dominioPreview } : {}),
     confiarEnProxy: process.env["TRUST_PROXY"] === "1",
     ...(Number.isFinite(ttl) && ttl > 0 ? { cacheTtlMs: ttl } : {}),
   };
@@ -99,6 +106,7 @@ export async function crearDeps(
       ...(config.previewSecret ? { previewSecret: config.previewSecret } : {}),
       confiarEnProxy: config.confiarEnProxy ?? false,
       ...(config.maxConcurrencia ? { maxConcurrencia: config.maxConcurrencia } : {}),
+      ...(config.dominioPreview ? { dominioPreview: config.dominioPreview } : {}),
     },
     cerrar: () => pool.end(),
   };
