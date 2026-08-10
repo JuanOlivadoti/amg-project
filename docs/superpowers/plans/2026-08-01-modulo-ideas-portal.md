@@ -298,12 +298,56 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 
 ## Etapa 4 — El seed de ejemplo
 
-- [ ] `db/src/seed-ideas-demo.ts` (**archivo nuevo**): un puñado de ideas para La Birra Bar en los
+- [x] `db/src/seed-ideas-demo.ts` (**archivo nuevo**): un puñado de ideas para La Birra Bar en los
       cuatro estados, con transcripción y análisis realistas pero **claramente de ejemplo** — que nadie
       las confunda con datos de un cliente. Idempotente por id fijo, como `sembrarDemo`.
-- [ ] Su test: sembrar dos veces no duplica; las ideas sembradas se leen bajo RLS con el rol correcto.
-- [ ] **No** engancharlo al `reseed:demo` de producción sin pedirlo: producción tiene datos reales de
+- [x] Su test: sembrar dos veces no duplica; las ideas sembradas se leen bajo RLS con el rol correcto.
+- [x] **No** engancharlo al `reseed:demo` de producción sin pedirlo: producción tiene datos reales de
       la demo y este seed es para desarrollo. Si se quiere en producción, es una decisión aparte.
+
+> ### ✅ Etapa 4, hecha el 2026-08-10 — lo que decidió el seed
+>
+> Tercera nota de enmienda por el mismo motivo que las dos anteriores: esto vivía en
+> `progress/informes/`, que está **gitignoreado**. Lo volvió a cazar la revisión interna.
+>
+> 1. **`delete` + `insert`, no `on conflict do update`.** Un upsert es un `UPDATE`, y sobre `ideas` los
+>    `UPDATE` los gobierna el trigger de transiciones: re-sembrar después de que alguien apruebe una
+>    idea daría `23514`. **Medido**, no supuesto — un upsert sería idempotente *solo mientras nadie
+>    hubiera tocado la pantalla*, que es justo cuando no hace falta re-sembrar. El `delete` va por los
+>    **ids fijos**, nunca por `client_id`, así que cuando exista el ingreso por n8n no se lleva por
+>    delante una idea real. Efecto a saber: como los ids son globales, `sembrarIdeasDemo` **solo puede
+>    tener un destino vivo a la vez**; hoy hay un único llamador.
+> 2. **Cinco ideas, no cuatro.** La quinta es una **recién llegada sin transcripción ni análisis**
+>    (`analisis: {}`), que es el estado real de una fila entre que entra el audio y el LLM la procesa.
+>    Sin ella, la Etapa 5 se escribiría contra un dato que en producción no siempre existe. Y está
+>    comprobado que sus `null` no le dan un 400 al `PATCH`.
+> 3. **`creada_en`/`actualizada_en` se siembran a mano**, porque `now()` es el instante de la
+>    *transacción* y las cinco nacían empatadas al milisegundo — con lo que el `order by creada_en desc,
+>    id desc` se resolvía entero por el desempate y nadie veía nunca el criterio principal. Las
+>    antigüedades están elegidas para que **el orden por fecha contradiga al de los ids**: con los dos
+>    de acuerdo, un test de orden no distingue cuál se aplicó.
+> 4. **Marcadas `[EJEMPLO]` en cinco campos visibles** —título (como **prefijo**, para que un truncado
+>    corte la cola y no la marca), resumen, remitente, primera línea de la transcripción y
+>    observaciones—, con test que lo impone. Y la otra mitad de la regla: **el seed no inventa nada
+>    sobre el negocio** (sin precios ni horarios, prohibido por test), porque La Birra Bar existe. URL a
+>    `example.invalid` (RFC 2606): un `<audio src>` de ejemplo no puede terminar sonando algo real.
+>    ⚠️ **Para la Etapa 5:** los campos del *análisis* que la pantalla va a listar no llevan marca y
+>    leídos aislados pasan por análisis real. La pantalla entera se distingue; una tarjeta recortada,
+>    no. Una etiqueta de "datos de ejemplo" a nivel de pantalla lo cierra.
+> 5. **Sin CLI propio** (el plan lo dejaba abierto): sumaría una superficie que podría apuntar a
+>    producción. Y **un test estructural fija que esto NO está enganchado**, mirando los dos caminos de
+>    siembra *y* los dos del proceso que habla con Supabase — porque `db/src/index.ts` exporta
+>    `sembrarIdeasDemo` y el camino real a producción sería un `import` de una línea que nadie nota en
+>    un diff.
+> 6. **El contrato con el borde HTTP se ata desde `api/`** (`api/src/ideas-seed-contrato.test.ts`): el
+>    seed inserta con la infraestructura y **se salta entero** el borde, así que el vocabulario de
+>    `analisis` y el esquema de las URL no los comprueba nadie más. `db` no puede importar de `api`, así
+>    que ése es el único sitio donde se tocan las dos puntas.
+>
+> **Deuda que hereda la Etapa 5:** el fallback de `titulo` vacío (la `0013` le puso techo y no piso; el
+> seed no lo ejercita porque todos sus títulos tienen texto), y que **el ingreso real por n8n sigue sin
+> existir** — el seed es hoy la única vía de creación, y que necesite la conexión de infraestructura es
+> lo que mantiene visible ese hueco.
 
 ## Etapa 5 — Las pantallas
 

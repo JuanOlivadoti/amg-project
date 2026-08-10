@@ -1067,7 +1067,7 @@ Es un programa de **cuatro piezas** y van **dos**:
 | --- | --- | --- |
 | 1 | **CRM de clientes** — listado, alta, perfil editable | ✅ mergeada el 2026-08-01 |
 | 2 | **Usuarios** — 6 etapas | ✅ mergeada el 2026-08-02 |
-| 3 | **Ideas** — módulo nuevo completo | 🟡 **en curso** ([plan](../superpowers/plans/2026-08-01-modulo-ideas-portal.md)). **Etapas 1, 2 y 3 hechas** el 2026-08-09: la `0013`, `PgIdeas` y las transiciones (47 tests), más los tres endpoints con su borde HTTP (34 tests). El contrato que consumen la 4 y la 5 está en la **nota de enmienda al pie de la Etapa 3** del plan. Falta la 4 (seed) y 5–7 (pantallas, agente `front`) |
+| 3 | **Ideas** — módulo nuevo completo | 🟡 **en curso** ([plan](../superpowers/plans/2026-08-01-modulo-ideas-portal.md)). **Etapas 1–4 hechas**: la `0013`, `PgIdeas` y las transiciones (47 tests) y los tres endpoints con su borde HTTP (34 tests) el 2026-08-09; el **seed de ejemplo** (19 tests) el 2026-08-10. Las decisiones que el plan no fijaba están en las **tres notas de enmienda** al pie de las Etapas 2, 3 y 4 — versionadas a propósito, porque las tres veces vivían solo en un informe gitignoreado. **Falta 5–7** (pantallas, rutas y retirar el mock de ideas de la pieza 1; agente `front`) |
 | 4 | **Dashboard** — la home con métricas | 🔵 [plan escrito](../superpowers/plans/2026-08-01-dashboard-home-portal.md), sin empezar |
 
 **El orden no es negociable: la 4 depende de la 3.** El dashboard es stats de ideas más una tabla de

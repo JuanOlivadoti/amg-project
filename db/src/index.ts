@@ -52,3 +52,11 @@ export { migrarConRegistro, ConexionReservada } from "./deploy.js";
 
 export { sembrarDemo } from "./seed-demo.js";
 export type { OpcionesSeed, ResultadoSeed } from "./seed-demo.js";
+
+/**
+ * Seed de ideas de EJEMPLO. Se exporta porque `api/src/dev-server.ts` lo necesita y los paquetes se
+ * importan por nombre, no por ruta. **No** está enganchado a `reseed:demo`: producción tiene los
+ * datos reales de la demo y sembrar ahí ideas inventadas es una decisión que nadie ha tomado.
+ */
+export { sembrarIdeasDemo, IDEAS_DEMO, MARCA_EJEMPLO } from "./seed-ideas-demo.js";
+export type { DestinoIdeasDemo, IdeaDemo, AnalisisIdeaDemo } from "./seed-ideas-demo.js";

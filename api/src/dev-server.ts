@@ -22,6 +22,8 @@ import {
   PgMembresias,
   PgIdeas,
   sembrarDemo,
+  sembrarIdeasDemo,
+  IDEAS_DEMO,
 } from "db";
 import { createApp } from "./app.js";
 import type { EmisorEventos } from "./solicitar.js";
@@ -117,56 +119,22 @@ await sql(
 );
 await store.marcarSolicitudEmitida({ tenantId: tenant, userId: equipo }, runAprobable);
 
-// ---------------------------------------------------------------- ideas (pieza 3, Etapa 3)
+// ---------------------------------------------------------------- ideas (pieza 3, Etapa 4)
 //
-// Se insertan con la INFRAESTRUCTURA (superusuario, saltea RLS) y no por la API, porque `app_user` no
+// Se siembran con la INFRAESTRUCTURA (superusuario, saltea RLS) y no por la API, porque `app_user` no
 // tiene grant de `insert` sobre `ideas` (0013): el ingreso real es el flujo de audio de n8n y todavía
 // no existe. Que acá haga falta el superusuario es la forma de notar ese hueco.
 //
-// Es un seed MÍNIMO para poder manejar las pantallas en el navegador, y a propósito NO es el
-// `db/src/seed-ideas-demo.ts` que planifica la Etapa 4 (ese es de `db/` y tiene su propio test de
-// idempotencia). Cuando exista, esto se reemplaza por una llamada a aquél.
-//
-// Los cuatro estados están representados para poder ver el listado, los filtros y las transiciones:
-// desde `nueva` solo se puede pasar a `en_revision`; `aprobada` y `rechazada` son TERMINALES, así que
-// intentar moverlas en el portal tiene que dar 400 con motivo.
-const ANALISIS_DEMO = {
-  audiencia_objetivo: "vecinos del barrio y oficinistas del mediodía",
-  canales_comunicacion: ["instagram", "whatsapp"],
-  intencion: "promocionar el menú del día",
-  materiales_formatos: ["reel corto", "cartel A3 para la puerta"],
-  observaciones: "EJEMPLO — audio de desarrollo, no es un cliente real.",
-  checklist_interpretacion: ["confirmar el precio del menú", "pedir fotos de los platos"],
-  ideas_complementarias: ["sorteo de dos menús entre quienes compartan el reel"],
-  tipo_accion: "campaña",
-};
-
-const crearIdea = async (titulo: string, estado: string, transcripcion: string): Promise<string> =>
-  (
-    await sql<{ id: string }>(
-      `insert into ideas (tenant_id, client_id, titulo, estado, resumen, transcripcion, audio_url,
-                          carpeta_url, mensaje_de, analisis)
-       values ($1, $2, $3, $4::idea_estado, 'Resumen de EJEMPLO para desarrollo.', $5,
-               'https://example.invalid/audios/idea.ogg', 'https://example.invalid/carpeta',
-               'Dueño (EJEMPLO)', $6::jsonb)
-       returning id`,
-      [tenant, r.clientId, titulo, estado, transcripcion, JSON.stringify(ANALISIS_DEMO)],
-    )
-  )[0]!.id;
-
-const ideaNueva = await crearIdea(
-  "[EJEMPLO] Menú del día en Instagram",
-  "nueva",
-  "Hola chicos, se me ocurrió que podríamos subir el menú del día a Instagram cada mañana, " +
-    "con una foto del plato. EJEMPLO de desarrollo.",
-);
-await crearIdea(
-  "[EJEMPLO] Sorteo de dos menús",
-  "en_revision",
-  "Otra idea: un sorteo de dos menús entre los que compartan la publicación. EJEMPLO de desarrollo.",
-);
-await crearIdea("[EJEMPLO] Cartel nuevo para la puerta", "aprobada", "EJEMPLO de desarrollo.");
-await crearIdea("[EJEMPLO] Reparto a domicilio", "rechazada", "EJEMPLO de desarrollo.");
+// El dataset vive en `db/src/seed-ideas-demo.ts` —con su test de idempotencia y de visibilidad bajo
+// RLS— y no acá: hasta la Etapa 4 este archivo tenía su propia copia provisional, o sea un dataset
+// sin un solo test que lo mirara. Los cuatro estados están representados para poder ver el listado,
+// los filtros y las transiciones (`aprobada` y `rechazada` son TERMINALES: moverlas da 400 con
+// motivo), más una idea recién llegada y sin analizar.
+await sembrarIdeasDemo(ConexionReservada.desdePglite(pg), {
+  tenantId: tenant,
+  clientId: r.clientId,
+});
+const ideaNueva = IDEAS_DEMO.find((i) => i.estado === "nueva")?.id ?? "(ninguna)";
 
 // ---------------------------------------------------------------- app
 const eventos: Array<{ name: string; data: Record<string, unknown> }> = [];
@@ -211,7 +179,7 @@ serve({ fetch: app.fetch, port: 3000 }, () => {
   console.log(`  lista para aprobar (1 página, CON workflow):             ${runAprobable}`);
   console.log(`  corrida anterior (aprobada):                            ${runAprobado}`);
   console.log(`  corrida en curso (dispara el polling):                  ${runCorriendo}\n`);
-  console.log(`  ideas de EJEMPLO (4, una por estado). La 'nueva':       ${ideaNueva}`);
+  console.log(`  ideas de EJEMPLO (${IDEAS_DEMO.length}, los 4 estados). Una 'nueva':      ${ideaNueva}`);
   console.log(`     ↑ el ingreso real (flujo de audio en n8n) NO existe: estas las sembró la infra.\n`);
   console.log("  Sesión para el portal (pegar en la consola del navegador):");
   console.log(`  localStorage.setItem('amg.sesion', ${JSON.stringify(JSON.stringify(sesion))})\n`);

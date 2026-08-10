@@ -9,9 +9,15 @@
 **Sesión:** 2026-08-09
 **En curso:** **bloque J, pieza 3 — el módulo de Ideas**. El **bloque E está cerrado y pusheado**
 (`472b33e`, con el gate de paridad jubilado); su historia vive en [`history.md`](history.md).
-**Estado:** etapas **1 y 2** (`afe1725`) y **3** (`73fcd35`) commiteadas y revisadas. Falta la **4**
-(seed) y las **5–7** (pantallas, del agente `front`). Aparte, las **fotos de `template1`** enchufadas
-y verificadas en el navegador (`0da56cd`). **1349 tests**, `verificar` en verde.
+**Estado:** etapas **1 y 2** (`afe1725`), **3** (`73fcd35`) y **4** commiteadas y revisadas. Falta
+**5–7** (pantallas, del agente `front`). Aparte, las **fotos de `template1`** enchufadas y verificadas
+en el navegador (`0da56cd`). **1368 tests** en el monorepo.
+
+⚠️ **Hay otra sesión trabajando en `web-builder/`** (un `hero-slider` que reemplaza a `heroPortada`),
+sin commitear y con sus tests en rojo. Consecuencias mientras dure: **`npm run verificar` no puede dar
+verde global** —la cifra de arriba es suma por paquete, con `db` y `api` medidos y el resto de la última
+corrida limpia— y **los commits van con rutas explícitas, nunca `git add -A`**, que se llevaría trabajo
+ajeno a medias.
 
 ## 🟡 Ideas — etapas 1 y 2 (`db/`)
 

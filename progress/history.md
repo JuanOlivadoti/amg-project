@@ -11,6 +11,51 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-10 — el seed de Ideas, y dos verdes que no probaban nada
+
+La Etapa 4 cierra el trabajo de `db/` en la pieza 3. Lo que vale la pena contar son **dos verdes falsos
+que se cazaron mirando en vez de creyendo**, y los dos los encontró quien los había escrito.
+
+**El primero: una mutación que no tumbaba nada, y el culpable era el test.** El implementador mutó su
+`delete`+`insert` a un upsert esperando que cayera el test de idempotencia. No cayó. En vez de anotar
+"la línea es redundante" fue a medir por qué, y resultó que el helper `asUser` hace **`rollback`** al
+terminar: el test movía la idea a `en_revision`, comprobaba que se había movido *dentro* de la
+transacción, y el movimiento se revertía. El re-seed no se encontraba con nada que retroceder. Lo
+reescribió por el camino real —`cambiarEstado`, con commit— y le puso una lectura que **confirma que la
+idea quedó movida antes de re-sembrar**. La revisión lo midió al revés para asegurarse: con esa guarda
+quitada, el test vuelve a mentir. O sea que la guarda es la línea que hace el trabajo, no un adorno.
+
+**El segundo lo encontró el `curl`, no la suite.** Las cinco ideas nacían con la **misma `creada_en` al
+milisegundo**, porque `now()` es el instante de la transacción. Con todas empatadas, el
+`order by creada_en desc, id desc` del listado se resolvía **entero por el desempate de id**: ni los
+tests ni la pantalla veían nunca el criterio principal. Al escalonarlas hizo lo que hay que hacer y casi
+nadie hace: eligió las antigüedades para que **el orden por fecha contradiga al de los ids**, porque con
+los dos de acuerdo un test de orden no distingue cuál se aplicó. Es la trampa que una review externa nos
+encontró en su día en `orden_brief`, evitada esta vez por adelantado.
+
+**La decisión de diseño, medida.** `delete`+`insert` y no upsert: un upsert es un `UPDATE`, y sobre
+`ideas` los gobierna el trigger de transiciones, así que re-sembrar después de aprobar una idea daría
+`23514`. Un upsert habría sido idempotente *solo mientras nadie tocara la pantalla* — justo cuando no
+hace falta re-sembrar.
+
+**Y la parte que no es técnica.** La Birra Bar existe, así que estas ideas inventadas viven en la ficha
+de un negocio real. Van marcadas `[EJEMPLO]` en cinco campos visibles, con el título llevándolo como
+**prefijo** para que un truncado corte la cola y no la marca, y con un test que **prohíbe** inventar
+precios y horarios. Las URL apuntan a `example.invalid`, que por RFC nunca resuelve: un `<audio src>` de
+ejemplo no puede terminar sonando algo real. La revisión añadió el matiz que faltaba: los campos del
+*análisis* no llevan marca y, leídos aislados, pasan por análisis real — la pantalla entera se
+distingue, una tarjeta recortada no. Va como requisito para la Etapa 5.
+
+Tercera vez que la revisión pide lo mismo: las decisiones vivían solo en un informe **gitignoreado**.
+Ya son tres notas de enmienda versionadas al pie de las Etapas 2, 3 y 4. Que el mismo agujero se abra
+tres veces seguidas dice que no se cierra con disciplina, sino con el reflejo de preguntar *¿esto está
+en un archivo que se borra?* cada vez que alguien decide algo.
+
+**1368 tests.** Y una anomalía del día que conviene recordar: **otra sesión estaba trabajando en
+`web-builder/` a la vez**, sin commitear y en rojo, así que `verificar` no podía dar verde global. Se
+commiteó con **rutas explícitas** en vez de `git add -A` —que se habría llevado trabajo ajeno a medias—
+y la cifra se declaró como suma por paquete en vez de fingir una corrida limpia.
+
 ## 2026-08-09 (4) — los endpoints de Ideas, y el mismo olvido dos etapas después
 
 Tres endpoints y su borde HTTP. Lo que vale la pena contar no es el código —que la revisión aprobó—
