@@ -1,7 +1,7 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias } from "db";
+import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas } from "db";
 import { createApp } from "./app.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import type { EmisorEventos } from "./solicitar.js";
@@ -165,6 +165,7 @@ describe("GET /runs/:id/informe y /informe.md", () => {
       store: new PgStore(pool), // amg_api → app_user
       clientes: new PgClientes(pool),
       membresias: new PgMembresias(pool),
+      ideas: new PgIdeas(pool),
       emisor,
       verificar,
     });

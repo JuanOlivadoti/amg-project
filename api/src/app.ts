@@ -1,8 +1,18 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { renderReport } from "contrato";
-import { RunSinWorkflowError } from "db";
-import type { PgStore, CambiosPagina, PgClientes, NuevoCliente, CambiosCliente, PgMembresias } from "db";
+import { RunSinWorkflowError, esEstadoIdea, ESTADOS_IDEA } from "db";
+import type {
+  PgStore,
+  CambiosPagina,
+  PgClientes,
+  NuevoCliente,
+  CambiosCliente,
+  PgMembresias,
+  PgIdeas,
+  FiltrosIdeas,
+} from "db";
+import { validarCambiosIdea, serializarResumen, serializarDetalle } from "./ideas-http.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
 import { nombreArchivo } from "./informe-nombre.js";
@@ -21,6 +31,12 @@ export interface ApiDeps {
   clientes: PgClientes;
   /** Miembros del tenant (pieza 2 — Usuarios), mismo login/rol — ver `db/src/membresias.ts`. */
   membresias: PgMembresias;
+  /**
+   * Ideas (pieza 3). Su constructor NO recibe rol, al revés que los tres de arriba: `app_service` no
+   * tiene ningún grant sobre `ideas` (0013), así que la clase fija `app_user` y no hay parámetro que
+   * alguien pueda pasar mal — ver `db/src/ideas.ts`.
+   */
+  ideas: PgIdeas;
   emisor: EmisorEventos;
   verificar: VerificadorToken;
   /**
@@ -386,6 +402,133 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       : c.json({ error: "Miembro no encontrado, o sin cambios válidos." }, 404);
   });
 
+  /*
+   * Los tres endpoints de IDEAS (pieza 3 del portal, Etapa 3).
+   *
+   * Una idea guarda la VOZ de un cliente real (la transcripción de un audio de WhatsApp) y lo que un
+   * LLM dedujo de ella: es el dato más sensible del esquema después de las credenciales. Tres cosas
+   * que este bloque decide, y ninguna es autorización:
+   *
+   *  1. **DOS recortes, y el del listado no se puede ampliar desde acá.** `GET /ideas` devuelve cinco
+   *     campos y el recorte ya lo hace el `select` de `listarIdeas` (0013/Etapa 2): lo que no sale de
+   *     Postgres no se puede olvidar de filtrar después. `GET /ideas/:id` sí trae transcripción y
+   *     análisis — una idea a la vez, abierta a propósito por quien la está revisando. Mandar 200
+   *     transcripciones al navegador para pintar un contador es filtrar el dato más sensible del
+   *     sistema por comodidad.
+   *  2. **La transición inválida es 400 con motivo, no 500.** `cambiarEstado` valida ANTES de escribir
+   *     y devuelve el estado de origen. La GARANTÍA no es esa validación sino el trigger
+   *     `ideas_transicion_estado` (0013), que lanza `23514` venga el update de donde venga; lo de acá
+   *     es para poder explicar el rechazo en vez de escupir un error de Postgres.
+   *  3. **Quién ve y quién escribe lo decide la base.** No hay ni un `if` de rol: `idea_select` y
+   *     `idea_update` (0013) hacen que un rol `cliente` vea solo las ideas de su negocio y no alcance
+   *     ninguna para escribir (ADR-20 — la agencia revisa). Ver el 404 del PATCH, más abajo.
+   *
+   * Y lo que NO hay: ningún POST. `app_user` no tiene grant de `insert` sobre `ideas` porque el
+   * ingreso real (el flujo de audio de n8n) todavía no existe; cuando exista será un endpoint con
+   * secreto propio, no el token de un usuario. Tampoco se emite ningún evento al aprobar: hoy aprobar
+   * una idea no dispara nada, y no se inventa un evento que nadie consume (ADR-18 cuando lo haya).
+   */
+
+  /** GET /ideas — el listado RECORTADO. Filtros `estado`, `clientId` y `limite`, todos opcionales. */
+  app.get("/ideas", async (c) => {
+    const ctx = c.get("ctx");
+
+    // Un estado con typo ('aprovada') se rechaza acá, no en la base: sin esto el cast
+    // `$1::idea_estado` daría 22P02 → 400 igual, pero con un mensaje genérico que habla de `market`.
+    // Lo que NO puede pasar es ignorarlo en silencio, que devolvería el listado entero como si no
+    // hubiera filtro.
+    const estado = filtroVacioEsAusente(c.req.query("estado"));
+    if (estado !== undefined && !esEstadoIdea(estado)) {
+      return c.json({ error: `estado debe ser uno de: ${ESTADOS_IDEA.join(", ")}.` }, 400);
+    }
+    const clientId = filtroVacioEsAusente(c.req.query("clientId"));
+    const limite = filtroVacioEsAusente(c.req.query("limite"));
+
+    const filtros: FiltrosIdeas = {
+      ...(estado !== undefined ? { estado } : {}),
+      ...(clientId !== undefined ? { clientId } : {}),
+      // Un `limite` que no es número queda en NaN y `listarIdeas` cae a su default (200) en vez de
+      // devolver cero filas, que parecería "no hay ideas". Ver `acotarLimite` en db/src/ideas.ts.
+      ...(limite !== undefined ? { limite: Number.parseInt(limite, 10) } : {}),
+    };
+
+    const ideas = await deps.ideas.listarIdeas(ctx, filtros);
+    return c.json({ ideas: ideas.map(serializarResumen) });
+  });
+
+  /** GET /ideas/:id — el detalle completo. 404 igual si no existe, es de otro tenant, o no es visible. */
+  app.get("/ideas/:id", async (c) => {
+    const ctx = c.get("ctx");
+    const idea = await deps.ideas.obtenerIdea(ctx, c.req.param("id"));
+    if (!idea) return c.json({ error: "Idea no encontrada." }, 404);
+    return c.json({ idea: serializarDetalle(idea) });
+  });
+
+  /*
+   * PATCH /ideas/:id — el contenido **o** el estado, nunca los dos a la vez.
+   *
+   * Se rechaza la mezcla, y es una decisión con motivo: son dos escrituras (`cambiarEstado` y
+   * `editarIdea`) en dos transacciones distintas, así que aceptarlas juntas podría dejar la primera
+   * aplicada y fallar la segunda — un PATCH que aplica la mitad y contesta error. Hacerlo atómico
+   * exigiría un método nuevo en la capa de datos; mientras no exista, es mejor rechazar que mentir
+   * sobre la atomicidad. La pantalla no lo necesita: aprobar es un botón y editar es un formulario.
+   *
+   * El **404** cubre cuatro casos que al llamador le dan igual, y eso es deliberado: la idea no
+   * existe, es de otro tenant, es de otro negocio del mismo tenant, o quien pide es un rol `cliente`
+   * (que la VE pero no la alcanza para escribir). Distinguirlos revelaría que la fila existe. Que sea
+   * 404 y no 403 lo decide la BASE, no este handler: `app.puede_escribir()` está en el `using` de
+   * `idea_update`, así que el `select … for update` de `cambiarEstado` devuelve 0 filas. Si el
+   * producto quisiera un 403, hay que mover esa condición al `with check` de la política (0013) y
+   * cambiar el test que hoy afirma "0 filas" — no es un detalle de la API.
+   */
+  app.patch("/ideas/:id", async (c) => {
+    const ctx = c.get("ctx");
+    const id = c.req.param("id");
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body inválido." }, 400);
+    }
+
+    const validacion = validarCambiosIdea(body as Record<string, unknown>);
+    if (!validacion.ok) return c.json({ error: validacion.error }, 400);
+    const cambios = validacion.valor;
+
+    const pideEstado = (body as Record<string, unknown>)["estado"] !== undefined;
+    const pideContenido = Object.keys(cambios).length > 0;
+
+    if (pideEstado && pideContenido) {
+      return c.json({ error: "El cambio de estado va solo: mandá el contenido en otro PATCH." }, 400);
+    }
+
+    if (pideEstado) {
+      const hacia = (body as Record<string, unknown>)["estado"];
+      if (!esEstadoIdea(hacia)) {
+        return c.json({ error: `estado debe ser uno de: ${ESTADOS_IDEA.join(", ")}.` }, 400);
+      }
+      const r = await deps.ideas.cambiarEstado(ctx, id, hacia);
+      if (r.ok) return c.json({ ok: true, estado: r.estado });
+      if (r.motivo === "transicion_invalida") {
+        // 400 y con el estado de ORIGEN: la pantalla puede decir "esta idea está en `nueva`, primero
+        // pasala a revisión" en vez de un error genérico.
+        return c.json(
+          { error: `Transición de estado inválida: ${r.desde} → ${hacia}.`, desde: r.desde, hacia },
+          400,
+        );
+      }
+      return c.json({ error: "Idea no encontrada." }, 404);
+    }
+
+    // Sin estado y sin ningún campo editable: 400 y no 404. Se puede decidir SIN mirar la base, así
+    // que no revela nada sobre la existencia de la fila — al revés que el 404 de `PATCH /clients/:id`,
+    // que tiene que ser ambiguo porque ahí las dos causas solo se distinguen consultando.
+    if (!pideContenido) {
+      return c.json({ error: "No hay ningún campo editable en el body." }, 400);
+    }
+
+    const ok = await deps.ideas.editarIdea(ctx, id, cambios);
+    return ok ? c.json({ ok: true }) : c.json({ error: "Idea no encontrada." }, 404);
+  });
+
   app.onError((err, c) => {
     const code = (err as { code?: string }).code;
 
@@ -455,6 +598,26 @@ function filtrarCambios(body: Record<string, unknown>): CambiosPagina {
 
 function esObjeto(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Un filtro presente pero VACÍO (`?clientId=`) es un filtro **ausente**, no un valor.
+ *
+ * Los tres parámetros de `GET /ideas` se comportaban distinto ante `""`, y está medido: `limite=`
+ * caía al default, `estado=` daba 400 con su mensaje, y `clientId=` daba 400 con el mensaje genérico
+ * del `onError` (que además menciona `market`, que no existe en ideas — el `where client_id = ''`
+ * revienta con 22P02). Tres comportamientos para el mismo gesto.
+ *
+ * El gesto es concreto y va a llegar: un `<select>` de "todos los clientes" en Angular con
+ * `[(ngModel)]` sobre `''` emite exactamente `clientId=`. Un formulario que no filtra manda la clave
+ * vacía; interpretarla como "buscá el cliente cuyo id es la cadena vacía" es leerle otra intención.
+ *
+ * Se aplica a los TRES por uniformidad: la inconsistencia era el problema, así que arreglar solo uno
+ * dejaría dos comportamientos en vez de tres. El `trim` cubre `?clientId=%20`, que es el mismo gesto
+ * con un espacio de más y reventaría igual.
+ */
+function filtroVacioEsAusente(v: string | undefined): string | undefined {
+  return v === undefined || v.trim() === "" ? undefined : v;
 }
 
 /**

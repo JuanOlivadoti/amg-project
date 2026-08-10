@@ -224,7 +224,8 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
       (enmienda del 2026-08-02):
       - **`GET /ideas` devuelve un RESUMEN**: `id`, `client_id`, `titulo`, `estado`, `creada_en`.
         **Sin `transcripcion`, sin `analisis`, sin `audio_url`.** Con filtros (`estado`,
-        `client_id`), orden y **límite**. Es lo que el dashboard y los listados necesitan; mandar la
+        `clientId` — camelCase en el query, ver la enmienda del 2026-08-09 al pie de esta etapa),
+        orden y **límite**. Es lo que el dashboard y los listados necesitan; mandar la
         transcripción de cada idea al navegador para pintar un contador es filtrar el dato más
         sensible del sistema por comodidad.
       - **`GET /ideas/:id` devuelve el detalle completo**, incluida la transcripción y el análisis.
@@ -239,6 +240,61 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 - [ ] ¿Aprobar una idea dispara algo? Hoy, no. **No se inventa un evento**: si en el futuro una idea
       aprobada arranca un research, será fila primero y evento después (ADR-18), y lo decide otro plan.
 - [ ] `api/src/dev-server.ts` con ideas de ejemplo sobre PGlite.
+
+> ### ✅ Etapa 3, hecha el 2026-08-09 — el contrato que consumen la 4 y la 5
+>
+> Misma razón que la enmienda de la Etapa 2: esto vivía en `progress/informes/`, que está
+> **gitignoreado**, y una de las decisiones ya contradecía a este plan. Lo cazó la revisión interna.
+>
+> **Tres endpoints** en `api/src/app.ts` (`GET /ideas`, `GET /ideas/:id`, `PATCH /ideas/:id`) más
+> `api/src/ideas-http.ts` para el borde (validación y serialización). **No hay `POST`**: `app_user` no
+> tiene grant de `insert`, porque el ingreso real por n8n no existe. **No se emite ningún evento** al
+> aprobar, tal como decide el punto de arriba.
+>
+> **El contrato con el portal, literal:**
+>
+> ```text
+> GET   /ideas?estado=&clientId=&limite=   → { ideas: [{ id, client_id, titulo, estado, creada_en }] }
+> GET   /ideas/:id                         → { idea: { …resumen, resumen, transcripcion, audio_url,
+>                                                      carpeta_url, mensaje_de, analisis, actualizada_en } }
+> PATCH /ideas/:id  { estado }             → { ok: true, estado } | 400 { error, desde, hacia } | 404
+> PATCH /ideas/:id  { …contenido }         → { ok: true }         | 400 | 404
+> ```
+>
+> 1. **El query param es `clientId`, en camelCase**, no `client_id` como decía este plan (ya corregido
+>    arriba). Manda la consistencia con `GET /runs?clientId=`, que existe desde antes: **query params en
+>    camelCase, campos del JSON en snake_case** (que son los nombres de las columnas). Un `clientId=`
+>    **vacío** se trata como "sin filtro", igual que `limite=` — el `<select>` de "todos los clientes"
+>    de la Etapa 5 emite exactamente eso.
+> 2. **`creada_en` y `actualizada_en` salen como string ISO-8601 UTC**, no como `Date`. Es la frontera
+>    donde `ClienteCRM.created_at` ya miente, así que acá lo fija un test de la **respuesta HTTP**, no
+>    un tipo — `portal/` no es workspace y ningún test del monorepo ve si esto se rompe.
+> 3. **El listado son cinco campos.** La pantalla de detalle **tiene que pedir `GET /ideas/:id`**: la
+>    transcripción no viaja en un listado ni para un `maestro`. El recorte vive en el `select` de
+>    `listarIdeas`, y el serializador HTTP usa `spread` a propósito (enumerar sería una allowlist
+>    positiva, que falla en silencio: un campo legítimo olvidado desaparecería sin error). Lo que caza
+>    la deriva es el test del conjunto **exacto** de claves.
+> 4. **`PATCH` rechaza mezclar `estado` con contenido** (400). Son dos escrituras en **dos
+>    transacciones** (`cambiarEstado` y `editarIdea`), y aceptarlas juntas podría aplicar la primera,
+>    fallar la segunda y contestar error habiendo cambiado algo. Si el producto necesita las dos en una
+>    petición, hace falta un método nuevo en `db/src/ideas.ts` que las haga en una sola transacción:
+>    **es deuda declarada**, no un olvido.
+> 5. **`analisis` valida los NOMBRES de sus 8 claves, no la forma de los valores.** Medido: un
+>    `canales_comunicacion: {…}` en vez de un array entra y se guarda. No es un agujero (el vocabulario
+>    está cerrado, el tamaño topado en 32 KiB y no cruza tenant), pero **`@for` sobre un objeto lanza en
+>    Angular**, y las tres claves que la Etapa 5 va a listar son justo las que pueden no ser arrays: la
+>    pantalla **comprueba `Array.isArray()` antes de listar**.
+> 6. **`titulo: ""` se acepta**: la `0013` le puso techo (200 B) y no piso. La Etapa 5 necesita un
+>    fallback visible o un `required` en el formulario, o la tabla muestra una fila en blanco.
+> 7. **El seed de `api/src/dev-server.ts` es provisional** — cuatro ideas, una por estado, marcadas
+>    `[EJEMPLO]`, insertadas con la infraestructura porque `app_user` no puede insertar (que ahí haga
+>    falta el superusuario es la forma de notar el hueco). **La Etapa 4 lo reemplaza** por
+>    `db/src/seed-ideas-demo.ts`, que además lleva su test de idempotencia.
+>
+> **Del ítem "límites de tamaño" de esta etapa:** la mitad de la base **ya la hizo la `0013`** (ver la
+> enmienda de la Etapa 2). Lo que se hizo acá es lo que la base no mira: `audio_url`/`carpeta_url`
+> validadas como **http(s)** —el portal las pinta en `<a href>` y `<audio src>`, donde `javascript:`
+> es XSS— y la **allowlist de claves** de `analisis`.
 
 ## Etapa 4 — El seed de ejemplo
 

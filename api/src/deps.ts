@@ -1,4 +1,4 @@
-import { NodePgPool, PgStore, PgClientes, PgMembresias } from "db";
+import { NodePgPool, PgStore, PgClientes, PgMembresias, PgIdeas } from "db";
 import { Inngest } from "inngest";
 import {
   verificadorDeEmisor,
@@ -172,6 +172,13 @@ export async function crearDeps(
   const clientes = new PgClientes(new NodePgPool(pool), "app_user");
   // Mismo pool, mismo login/rol: los miembros tampoco lo son (pieza 2 — Usuarios).
   const membresias = new PgMembresias(new NodePgPool(pool), "app_user");
+  /*
+   * Ideas (pieza 3). **Sin literal de rol**, y no es un olvido: `PgIdeas` no acepta el parámetro
+   * porque `app_service` no tiene un solo grant sobre `ideas` (0013), así que un `new PgIdeas(pool,
+   * "app_service")` no compilaría siquiera. La garantía que en las tres líneas de arriba depende de
+   * que este literal diga `app_user`, acá la da el tipo — no hay nada que un test pueda mutar.
+   */
+  const ideas = new PgIdeas(new NodePgPool(pool));
 
   // Inngest como emisor. La API solo ENVÍA (`research/solicitado`, `research/aprobado`); las funciones
   // suscritas viven en el orquestador. `send({name, data})` ya cumple la interfaz `EmisorEventos`.
@@ -202,6 +209,7 @@ export async function crearDeps(
       store,
       clientes,
       membresias,
+      ideas,
       emisor,
       verificar,
       ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}),

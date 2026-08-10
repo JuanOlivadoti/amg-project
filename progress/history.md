@@ -11,6 +11,46 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-09 (4) — los endpoints de Ideas, y el mismo olvido dos etapas después
+
+Tres endpoints y su borde HTTP. Lo que vale la pena contar no es el código —que la revisión aprobó—
+sino los dos bloqueantes, que fueron **los dos de documentación**, y el primero era mío: actualicé el
+plan y las cifras al cerrar las etapas 1 y 2, lancé la 3 y **no volví a tocarlos**. El `15` decía
+"falta la 3" con la 3 escrita, y el `09` declaraba 1315 tests habiendo 1347. El paso 3 del ritual,
+incumplido por quien lo escribe.
+
+El segundo es el mismo fallo un peldaño más arriba, y es el que enseña algo. Las siete decisiones de
+contrato de la etapa vivían **solo** en un informe gitignoreado, y una ya contradecía al plan
+versionado: el plan dice que el filtro se llama `client_id` y el código usa `clientId`. La enmienda de
+la Etapa 2 se había escrito exactamente para prevenir eso, con esa razón textual, **dos etapas antes**.
+Que el mismo agujero se abra tan rápido dice que "escribilo donde sobreviva" no se sostiene con
+disciplina: se sostiene con el reflejo de preguntar *¿esto está en un archivo que se borra?* cada vez
+que alguien decide algo.
+
+**Lo que destapó manejar la API, y los 32 tests no.** El revisor levantó el `dev-server` y le pegó con
+`curl` en vez de leer el relato. Tres parámetros vacíos daban tres conductas distintas —`limite=` caía
+al default, `estado=` daba 400 con su motivo, y `clientId=` daba 400 hablando de `market`, que no
+existe en ideas—. Un `<select>` de "todos los clientes" en Angular emite exactamente `clientId=`, así
+que era un bug garantizado el primer día de la etapa 5. Y `PATCH {"titulo":12345}` contestaba
+`{"ok":true}` sin guardar el título: el argumento que el propio archivo usa para `analisis`
+—*"le haría creer a la pantalla que guardó algo que no guardó"*— aplicado a una clave y no a las otras
+seis. Un criterio a medias.
+
+**Y una redundancia que resultó no serlo.** El implementador había declarado dos validaciones como
+inertes porque "el resultado HTTP es idéntico". El status sí; **el cuerpo no**: sin una de ellas, un
+estado que *no existe* recibe un error que dice que la *transición* es inválida, con campos
+`desde`/`hacia` que le mienten al portal. Eso la vuelve mordible **sin acoplar el test a ninguna
+frase** —la aserción fija que el cuerpo no lleva `desde`, que es estructura, no redacción— y deja a la
+otra como defensa en profundidad honestamente declarada. La diferencia entre "no se puede probar" y "no
+se me ocurrió cómo" la decidió una medición.
+
+El agente fue detenido antes de escribir su informe de cierre, así que la mutación la corrí yo: con
+`esEstadoIdea(hacia)` mutado, cae **exactamente ese test**, 1 de 34. Es la cuarta vez en la jornada que
+un subagente se cae a mitad, y la regla aguantó: se comprueba el **contenido** del diff, no `git
+status`. Los tres cambios estaban puestos y enteros.
+
+**1349 tests**, `verificar` en verde.
+
 ## 2026-08-09 (3) — Ideas empieza por la base, y dos afirmaciones que se cayeron al medirlas
 
 Con el bloque E cerrado, el plan decía que lo siguiente era **J o E**, y E ya no estaba. Así que

@@ -9,8 +9,8 @@
 **Sesión:** 2026-08-09
 **En curso:** **bloque J, pieza 3 — el módulo de Ideas**. El **bloque E está cerrado y pusheado**
 (`472b33e`, con el gate de paridad jubilado); su historia vive en [`history.md`](history.md).
-**Estado:** etapas **1 y 2 hechas y revisadas**, listas para commitear. **1315 tests** en el monorepo,
-typecheck limpio, `verificar` en verde.
+**Estado:** etapas **1 y 2 commiteadas** (`afe1725`); la **3 (endpoints) escrita y revisada**, cerrando
+los tres menores de la revisión. Falta la **4** (seed) y las **5–7** (pantallas, del agente `front`).
 
 ## 🟡 Ideas — etapas 1 y 2 (`db/`)
 
@@ -77,6 +77,51 @@ La última desmiente una afirmación del implementador —que ese test **no se p
 `app_barrido` nace en la `0018`, posterior a la `0013`—. Es cierto desde la `0013` y falso desde la
 `0019`, que es donde hay que ponerla. Un test que se declara inmutable y no lo es habría quedado sin
 red por una frase.
+
+## 🟡 Ideas — etapa 3 (`api/`)
+
+Tres endpoints (`GET /ideas`, `GET /ideas/:id`, `PATCH /ideas/:id`) más `api/src/ideas-http.ts` para el
+borde. **34 tests**, y **1349 en el monorepo**. No hay `POST`: `app_user` no tiene grant de `insert`
+porque el ingreso real por n8n no existe, y que ahí haga falta el superusuario en el `dev-server` es la
+forma de **notar el hueco** en vez de taparlo con un grant de conveniencia.
+
+El contrato completo que consumen las etapas 4 y 5 está en la **nota de enmienda al pie de la Etapa 3**
+del plan — versionada, que es la mitad del punto: la revisión encontró que vivía solo en un informe
+gitignoreado y que ya contradecía al plan (`client_id` contra `clientId`). Es el **mismo** fallo que la
+enmienda de la Etapa 2 se escribió para evitar, dos etapas después.
+
+### Lo que destapó manejar la API, y los 32 tests no
+
+El revisor levantó el `dev-server` y le pegó con `curl` en vez de leer el relato. Tres hallazgos:
+
+```text
+/ideas?limite=    → 200 (cae al default)
+/ideas?estado=    → 400 "estado debe ser uno de: …"
+/ideas?clientId=  → 400 "…revisá clientId, market y los campos obligatorios."   ← market no existe acá
+PATCH {"titulo":12345,"resumen":"ok"} → 200 {"ok":true}   ← y el título NO se guardó
+```
+
+Tres parámetros vacíos, tres conductas. Un `<select>` de "todos los clientes" en Angular emite
+exactamente `clientId=`, así que era un bug garantizado el primer día de la Etapa 5. Ahora `""` es
+"sin filtro" en los dos, con test. Y un tipo inaceptable en una clave **conocida** pasa a ser 400: el
+`{"ok":true}` que no guardó nada era el argumento que el propio archivo usa para `analisis`, aplicado a
+una clave y no a las otras seis.
+
+### Una redundancia que resultó no serlo
+
+El implementador declaró dos validaciones como redundantes porque *"el resultado HTTP es idéntico"*.
+**El status sí; el cuerpo no** — y el cuerpo es contrato:
+
+```text
+sin mutar : {"error":"estado debe ser uno de: …"}
+mutado    : {"error":"Transición de estado inválida: nueva → aprovada.","desde":"nueva","hacia":"aprovada"}
+```
+
+Un estado que **no existe** no es una transición inválida, y `desde`/`hacia` son la firma estructural
+de ese otro error. Eso hace mordible a una de las dos **sin acoplar el test a ninguna frase**: la
+aserción fija que el cuerpo no lleva `desde`. Verificado por la sesión principal —el agente fue
+detenido antes de informar—: con la mutación puesta cae **exactamente ese test**, 1 de 34. La otra sí
+queda como defensa en profundidad declarada, y está bien declarada.
 
 ## ⏳ Lo que espera a Juan
 

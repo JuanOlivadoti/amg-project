@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias } from "db";
+import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas } from "db";
 import type { TenantContext } from "db";
 import { createApp } from "./app.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
@@ -26,6 +26,7 @@ let pg: PGlite;
 let store: PgStore;
 let clientes: PgClientes;
 let membresias: PgMembresias;
+let ideas: PgIdeas;
 let eventos: Array<{ name: string; data: Record<string, unknown> }>;
 let app: ReturnType<typeof createApp>;
 
@@ -57,6 +58,7 @@ beforeEach(async () => {
   store = new PgStore(pool); // amg_api → app_user
   clientes = new PgClientes(pool); // mismo login/rol
   membresias = new PgMembresias(pool); // mismo login/rol
+  ideas = new PgIdeas(pool); // sin parámetro de rol: la clase fija app_user (0013 no da grants a app_service)
   eventos = [];
   const emisor: EmisorEventos = {
     send: async (e) => {
@@ -64,7 +66,7 @@ beforeEach(async () => {
       return {};
     },
   };
-  app = createApp({ store, clientes, membresias, emisor, verificar });
+  app = createApp({ store, clientes, membresias, ideas, emisor, verificar });
 
   // --- seed (superusuario) ---
   [tenantA, tenantB] = (
@@ -327,6 +329,7 @@ test("🔴 POST /runs: si el evento no se puede emitir, el run NO queda huérfan
     store,
     clientes,
     membresias,
+    ideas,
     verificar,
     emisor: emisorQueLanza(fallo),
   });
@@ -912,7 +915,7 @@ test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", 
   // de Supabase. Sigue sin dejar pasar a nadie.
   const caido: VerificadorToken = async () => NO_DISPONIBLE;
   const emisorInerte: EmisorEventos = { send: async () => ({}) };
-  const appCaida = createApp({ store, clientes, membresias, emisor: emisorInerte, verificar: caido });
+  const appCaida = createApp({ store, clientes, membresias, ideas, emisor: emisorInerte, verificar: caido });
   const res = await appCaida.request("/runs", {
     headers: { authorization: "Bearer lo-que-sea", "x-amg-tenant": tenantA },
   });
