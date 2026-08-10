@@ -50,7 +50,7 @@ export { aplicarMigraciones, MIGRATIONS_DIR } from "./migrate.js";
 
 export { migrarConRegistro, ConexionReservada } from "./deploy.js";
 
-export { sembrarDemo } from "./seed-demo.js";
+export { sembrarDemo, PERFIL_DEMO, DEMO_CLIENT_ID } from "./seed-demo.js";
 export type { OpcionesSeed, ResultadoSeed } from "./seed-demo.js";
 
 /**

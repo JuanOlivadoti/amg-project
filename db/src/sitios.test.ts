@@ -272,7 +272,7 @@ describe("Las garantías que estaban escritas y no impuestas (10ª review)", () 
       [
         s.clientA2,
         JSON.stringify({
-          name: "La Birra Bar",
+          name: "Borcelle Burger",
           locations: [
             {
               name: "Centro",
@@ -359,7 +359,7 @@ describe("Las garantías que estaban escritas y no impuestas (10ª review)", () 
       [
         s.clientA2,
         JSON.stringify({
-          name: "La Birra Bar",
+          name: "Borcelle Burger",
           menu: [{ name: "Ale", price: { costo_interno: "4,10 €" } }],
         }),
       ],

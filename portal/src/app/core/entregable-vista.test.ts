@@ -5,7 +5,7 @@ import { partirEncabezado } from './entregable-vista';
 
 /** La cabecera real que emite `renderReport` (`contrato/src/informe.ts`), medida el 2026-08-07. */
 const REAL = [
-  '# Keyword Research — La Birra Bar',
+  '# Keyword Research — Borcelle Burger',
   '',
   '_ES · es · 2026-07-30T00:16:15.000Z_',
   '',
@@ -15,7 +15,7 @@ const REAL = [
 
 test('el título sale del h1 del documento, con el nombre del cliente', () => {
   const { titulo } = partirEncabezado(parsearMarkdown(REAL));
-  assert.equal(titulo, 'Keyword Research — La Birra Bar');
+  assert.equal(titulo, 'Keyword Research — Borcelle Burger');
 });
 
 test('🔴 el h1 NO se repite en el cuerpo: pasó a ser el encabezado del documento', () => {

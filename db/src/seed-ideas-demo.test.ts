@@ -19,7 +19,7 @@ import { PgIdeas, ESTADOS_IDEA, type EstadoIdea } from "./ideas.js";
  * justamente lo que no está en duda.
  *
  * Y prueban una segunda cosa que no es técnica y es la que más importa acá: que **las ideas se ven de
- * ejemplo desde la pantalla**. La Birra Bar es un restaurante real y esto siembra ideas inventadas en
+ * ejemplo desde la pantalla**. Borcelle Burger es un restaurante real y esto siembra ideas inventadas en
  * su ficha; una idea falsa que un cuentas no pueda distinguir de una real en dos segundos es peor que
  * no tener seed. Por eso hay un test que recorre lo sembrado exigiendo la marca en cada campo que la
  * pantalla pinta, y otro que prohíbe inventar datos del negocio (precios).
@@ -34,7 +34,7 @@ const con = (d: TestDb) => ConexionReservada.desdePglite(d.pglite);
 
 let db: TestDb;
 let r: ResultadoSeed;
-/** Dueño del negocio de la demo: rol `cliente`, atado al `client_id` de La Birra Bar. */
+/** Dueño del negocio de la demo: rol `cliente`, atado al `client_id` de Borcelle Burger. */
 let dueno: string;
 /** El OTRO tenant, con su equipo: sin él no hay nada cuya ausencia comprobar. */
 let tenantB: string;
@@ -123,7 +123,7 @@ test("los CUATRO estados están representados (es para lo que existe el seed)", 
  * No alcanza con un comentario en el código ni con una nota en el informe: lo que decide es lo que
  * lee alguien mirando el portal. Misma regla que este proyecto ya aplicó con los precios de la carta
  * ("antes ausente que inventado") y con las fotos de stock, que por eso NO se siembran en la ficha de
- * La Birra Bar.
+ * Borcelle Burger.
  *
  * Las aserciones sobre campos anulables llevan su contador: si un día todas las transcripciones
  * fueran `null`, el bucle no comprobaría nada y el test pasaría sin haber mirado una sola.
@@ -172,13 +172,13 @@ test("🔴 cada idea sembrada se ve de EJEMPLO en el título, el resumen y la tr
 /**
  * 🔴 El seed no inventa datos del negocio REAL.
  *
- * `PERFIL_DEMO` (seed-demo.ts) se niega a poner precios en la carta de La Birra Bar por esto mismo:
+ * `PERFIL_DEMO` (seed-demo.ts) se niega a poner precios en la carta de Borcelle Burger por esto mismo:
  * un importe puesto a ojo se publica y alguien puede ir esperando pagarlo. Una idea de ejemplo que
  * diga "el menú del día son 12,90 €" fabrica el mismo hecho, ahora en la pantalla de un cuentas.
  * Tampoco horarios: los reales están en `PERFIL_DEMO.locations` y una segunda copia inventada acá
  * contradiría a la web.
  */
-test("🔴 ninguna idea de ejemplo inventa precios ni horarios de La Birra Bar", async () => {
+test("🔴 ninguna idea de ejemplo inventa precios ni horarios de Borcelle Burger", async () => {
   const vistas = await verIdeas(r.tenantId, JUAN);
   assert.ok(vistas.length > 0, "sin filas no hay nada que comprobar");
 
@@ -334,7 +334,7 @@ test("re-sembrar DEVUELVE las ideas a su estado de ejemplo, aunque la agencia la
  */
 test("🔴 el OTRO tenant no ve ninguna idea del seed", async () => {
   const suyas = await verIdeas(tenantB, equipoB);
-  assert.equal(suyas.length, 0, "las ideas de La Birra Bar no existen para otra agencia");
+  assert.equal(suyas.length, 0, "las ideas de Borcelle Burger no existen para otra agencia");
 });
 
 test("🔴 un usuario sin membresía no ve ninguna idea, aunque reclame el tenant correcto", async () => {

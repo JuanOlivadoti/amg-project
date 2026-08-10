@@ -1031,33 +1031,40 @@ alta uno nuevo deja de tocar Railway: es una fila en `clients` y nada más.
    `npm run auditar:railway` la va a listar como una diferencia más entre Railway y el reparto. Es
    intencional, y ésta es la constancia.
 
-### 2.a El cliente de demo con TODO: «Borcelle Burger»
+### 2.a El cliente de demo: «Borcelle Burger»
 
-Un cliente real casi nunca tiene la ficha llena, así que su web sale sin fotos y sin reseñas — el
-estado honesto, y el peor para enseñar. Para eso está el **negocio ficticio**: paleta y tipografías de
-`template1`, seis fotos de galería, fotos por categoría y de plato, y reseñas de muestra.
-
-**Que sea ficticio no es un detalle: es lo que lo hace legítimo.** Las mismas fotos de stock en la
-ficha de un restaurante de verdad serían el local de otro, y las mismas reseñas serían reseñas falsas
-atribuidas a clientes que no existen (por eso `testimonios` no tiene contenido por defecto — ver
+**Desde el 2026-08-10 el cliente de demo del proyecto es un negocio FICTICIO**, y eso no es cosmético:
+un cliente real casi nunca tiene la ficha llena, así que su web sale sin fotos y sin reseñas — el
+estado honesto, y el peor para enseñar. Las mismas fotos de stock en la ficha de un restaurante de
+verdad serían el local de otro, y las mismas reseñas serían reseñas falsas atribuidas a clientes que
+no existen (por eso `testimonios` **no tiene contenido por defecto**, ver
 [`renderer/docs/04-plantilla-base.md`](../../renderer/docs/04-plantilla-base.md)). Sin un negocio real
-detrás, no hay a quién engañar.
+detrás, no hay a quién engañar — y es la única forma de enseñar esa sección.
+
+⚠️ **Lo que se perdió al cambiar, dicho para que nadie lo redescubra**: el seed traía el research
+**real** de un cliente real, medido y pagado ($0.3097). Las keywords genéricas se conservaron —le
+valen igual a cualquier hamburguesería de Madrid— pero las de marca ahora nombran un negocio que no
+existe, así que **el informe del portal ya no es un caso medido de verdad**. Si hace falta recuperar
+ese argumento de venta, es volver a correr el pipeline.
+
+**Para ponerlo en un dominio:**
 
 ```bash
 npm run sql:demo -w renderer                        # → borcelle.bigballs.es
-npm run sql:demo -w renderer -- otro.bigballs.es    # otro subdominio
+npm run sql:demo -w renderer -- otro.bigballs.es
 ```
 
-Imprime el `insert` completo por stdout **y no toca ninguna base**. Completá los cuatro marcadores
-(`<TENANT_ID>`, `<SPACE_ID>`, `<TOKEN_PUBLIC>`, `<TOKEN_PREVIEW>`) y pegalo en el SQL editor.
+Imprime un `update` por stdout **y no toca ninguna base**. Actualiza la fila que ya existe (el cliente
+de demo tiene id fijo): **no inserta**, porque un segundo cliente con el mismo negocio serían dos
+fichas del mismo sitio, y deshacerlo borrando una se lleva **en cascada** sus `kr_runs`, sus páginas y
+sus membresías — las cuatro FK que apuntan a `clients` son `on delete cascade`.
 
-⚠️ **El space tiene que ser PROPIO.** Compartir el de otro cliente le mostraría en el nav y en el
-índice las páginas del vecino (ADR-04), y **sin `storyblok_space_id` el renderizador devuelve 404** —
-no sirve la home sintetizada, aunque el perfil esté completo. Un space vacío basta: el índice dirá
-«Aún no hay páginas publicadas», que es lo correcto para un sitio recién creado.
+**Si además querés el research, las ideas y el informe con el nombre nuevo**, eso lo siembra
+`npm run reseed:demo` (⚠️ sin `--dry-run` escribe en Supabase de verdad), y después el `update` de
+arriba solo para el dominio. El seed no toca `domain`.
 
-El perfil vive en `renderer/src/perfil-demo.ts` y lo comparte el `dev-server`: se genera en vez de
-escribirse a mano para que la demo que se enseña y la que se desarrolla sean la misma.
+⚠️ **El `storyblok_space_id` no se toca**: el que la fila ya tiene sigue valiendo. Sin él el
+renderizador devuelve **404** aunque el perfil esté completo.
 
 ### 2.b Cada cliente de demo: una fila
 

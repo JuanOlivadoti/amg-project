@@ -1,31 +1,42 @@
+import { DEMO_CLIENT_ID } from "db";
 import { PERFIL_BORCELLE } from "../perfil-demo.js";
 
 /**
- * Imprime el SQL que da de alta el **cliente de demo** («Borcelle Burger») en una base ya desplegada.
+ * Imprime el SQL que pone al **cliente de demo** en un dominio, con su perfil al día.
+ *
+ * ## Por qué un UPDATE y no un INSERT
+ *
+ * La primera versión insertaba un cliente nuevo, y estaba mal: el cliente de demo del proyecto **ya
+ * existe** con id fijo (`DEMO_CLIENT_ID`, lo siembra `sembrarDemo`). Un `insert` con otro dominio
+ * habría creado un segundo «Borcelle Burger» —dos fichas del mismo negocio, cada una con su research
+ * y su perfil— que es justo lo contrario de lo que se pidió: **un solo cliente**.
+ *
+ * Y hay una razón más dura: las cuatro FK que apuntan a `clients` son `on delete cascade`. Corregir el
+ * duplicado después borrando uno se lleva por delante sus `kr_runs`, sus páginas y sus membresías.
+ * Actualizar la fila que ya está no tiene ese riesgo.
  *
  * ## Por qué un generador y no un `.sql` escrito a mano
  *
- * El perfil vive en `perfil-demo.ts` y lo usa también el `dev-server`. Un archivo `.sql` con el JSON
- * copiado sería una segunda copia del mismo perfil, y el día que alguien ajuste una foto o un precio
- * en uno de los dos, los dos van a seguir funcionando **diciendo cosas distintas**. Generarlo es lo
- * que hace que la demo que se enseña y la que se desarrolla sean la misma.
+ * El perfil vive en `db/src/seed-demo.ts` y lo usan el seed, el `dev-server` y esto. Un `.sql` con el
+ * JSON copiado sería una segunda copia, y el día que alguien ajuste una foto o un precio los dos
+ * seguirían funcionando **diciendo cosas distintas**.
  *
  * ## Lo que este script NO hace, a propósito
  *
- * **No toca la base.** Escribe SQL por stdout y nada más. La base de producción se toca a mano o con
- * `migrate:deploy`, nunca desde un script de conveniencia que alguien pueda correr «para ver qué
- * pasa» — es la misma regla que separa `reseed:demo --dry-run` de la siembra de verdad.
- *
- * **No inventa credenciales.** El `storyblok_space_id` y los dos tokens de la CDA van como
- * marcadores: se completan al pegar. Nunca salen de un archivo del repo ni de una variable, porque el
- * resultado de este comando se pega en un editor y se pasea por una terminal.
+ * **No toca la base.** Escribe SQL por stdout y nada más. La misma regla que separa
+ * `reseed:demo --dry-run` de la siembra de verdad.
  *
  * ## Uso
  *
  * ```bash
- * npm run sql:demo -w renderer                       # subdominio por defecto
- * npm run sql:demo -w renderer -- micliente.bigballs.es
+ * npm run sql:demo -w renderer                        # → borcelle.bigballs.es
+ * npm run sql:demo -w renderer -- otro.bigballs.es
  * ```
+ *
+ * ⚠️ Si además querés que el **research, las ideas y el informe** del portal queden con el nombre
+ * nuevo, lo que corresponde es `npm run reseed:demo` (que siembra todo eso de forma coherente) y
+ * después este `update` solo para el dominio. Este script cubre el perfil y el dominio, no el resto
+ * del estado de demo.
  */
 
 const DOMINIO = process.argv[2] ?? "borcelle.bigballs.es";
@@ -41,47 +52,34 @@ function literal(s: string): string {
   return `'${s.replace(/'/g, "''")}'`;
 }
 
-const perfil = JSON.stringify(PERFIL_BORCELLE, null, 2);
-
 process.stdout.write(`-- ============================================================================
 -- Cliente de DEMO: «Borcelle Burger» → https://${DOMINIO}
 --
 -- Generado por \`npm run sql:demo -w renderer\`. NO lo edites a mano: el perfil vive en
--- renderer/src/perfil-demo.ts y lo comparte el dev-server.
+-- db/src/seed-demo.ts (PERFIL_DEMO) y lo comparten el seed, el dev-server y este generador.
 --
--- ⚠️ ANTES de pegarlo, completá los tres marcadores:
---    <TENANT_ID>       select id, nombre, slug from tenants;
---    <SPACE_ID>        Storyblok → el space de ESTE cliente → Settings › General
---    <TOKEN_PUBLIC>    Storyblok → Settings › Access Tokens → tipo "Public"
---    <TOKEN_PREVIEW>   el mismo panel, tipo "Preview"
+-- Actualiza la fila que YA existe (el cliente de demo tiene id fijo). No inserta: un segundo cliente
+-- con el mismo negocio sería dos fichas del mismo sitio, y deshacerlo borrando una se lleva en
+-- cascada sus runs, sus páginas y sus membresías.
 --
--- ⚠️ El space tiene que ser PROPIO de este cliente, no el de otro: el nav y el índice de páginas
---    salen de ahí, así que compartirlo le mostraría a un cliente las páginas del vecino. Es ADR-04
---    ("un space por cliente"), y sin \`storyblok_space_id\` el renderizador devuelve 404.
---
--- ⚠️ El token de MANAGEMENT no va acá nunca. Estos dos son de la Content Delivery API, de LECTURA:
---    el proceso anónimo no puede tener a mano una credencial que modifique el space.
+-- ⚠️ El \`storyblok_space_id\` y los tokens NO se tocan acá: los que la fila ya tiene siguen valiendo.
+--    Sin \`storyblok_space_id\` el renderizador devuelve 404, así que si la fila no lo tuviera, hay que
+--    ponerlo antes (Storyblok → el space → Settings › General).
 -- ============================================================================
 
-insert into clients (tenant_id, nombre, domain, storyblok_space_id,
-                     storyblok_public_token, storyblok_preview_token, business_profile)
-values ('<TENANT_ID>',
-        'Borcelle Burger',
-        ${literal(DOMINIO)},
-        '<SPACE_ID>',
-        '<TOKEN_PUBLIC>',
-        '<TOKEN_PREVIEW>',
-        ${literal(perfil)}::jsonb)
-on conflict (domain) do update
-   set nombre                  = excluded.nombre,
-       storyblok_space_id      = excluded.storyblok_space_id,
-       storyblok_public_token  = excluded.storyblok_public_token,
-       storyblok_preview_token = excluded.storyblok_preview_token,
-       business_profile        = excluded.business_profile;
+update clients
+   set nombre           = 'Borcelle Burger',
+       domain           = ${literal(DOMINIO)},
+       business_profile = ${literal(JSON.stringify(PERFIL_BORCELLE, null, 2))}::jsonb
+ where id = ${literal(DEMO_CLIENT_ID)};
 
 -- Comprobación (no imprime los tokens):
-select nombre, domain, storyblok_space_id,
-       business_profile_publico ? 'testimonios' as trae_resenas,
-       jsonb_array_length(business_profile_publico -> 'fotos') as fotos
-  from clients where domain = ${literal(DOMINIO)};
+select nombre, domain, storyblok_space_id is not null as tiene_space,
+       business_profile_publico ? 'testimonios'                as trae_resenas,
+       jsonb_array_length(business_profile_publico -> 'fotos') as fotos,
+       jsonb_array_length(business_profile_publico -> 'menu')  as platos
+  from clients where id = ${literal(DEMO_CLIENT_ID)};
+
+-- Y que no haya quedado ningún otro cliente servible:
+select count(*) as clientes_con_dominio from clients where domain is not null;
 `);

@@ -179,9 +179,9 @@ test('🔴 un 401 al bajar el .md también refresca y reintenta: la descarga usa
 
 test('verEntregableMd pide GET /runs/:id/entregable.md autenticado y devuelve el TEXTO', async () => {
   const { fn, capturado } = fakeFetch({
-    body: '# Keyword Research — La Birra Bar\n',
+    body: '# Keyword Research — Borcelle Burger\n',
     crudo: true,
-    headers: { 'content-disposition': 'attachment; filename="entregable-La-Birra-Bar.md"' },
+    headers: { 'content-disposition': 'attachment; filename="entregable-Borcelle-Burger.md"' },
   });
   const md = await crearApi(opts(fn)).verEntregableMd('run 9/../otro');
   assert.equal(capturado.method, 'GET');
@@ -190,7 +190,7 @@ test('verEntregableMd pide GET /runs/:id/entregable.md autenticado y devuelve el
   assert.equal(capturado.headers!['authorization'], 'Bearer tok-123');
   assert.ok(!capturado.url!.includes('tok-123'), 'el token NO puede viajar en la URL');
   // Texto, no Blob: el destino es la pantalla imprimible, que lo parsea a bloques.
-  assert.equal(md, '# Keyword Research — La Birra Bar\n');
+  assert.equal(md, '# Keyword Research — Borcelle Burger\n');
 });
 
 test('🔴 el 404 del entregable se propaga con su status: no-staff y run inexistente son lo MISMO', async () => {

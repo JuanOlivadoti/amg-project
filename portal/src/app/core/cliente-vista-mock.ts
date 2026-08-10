@@ -130,7 +130,7 @@ export function generarPostsInstagramMock(): readonly PostInstagramMock[] {
     {
       id: 'post-mock-4',
       mensaje: 'Promo de apertura del segundo local (campaña ya cerrada)',
-      hashtags: ['nuevoLocal', 'salamanca'],
+      hashtags: ['nuevoLocal', 'chamberi'],
       estado: 'archivado',
       creadoEn: '2026-05-10T10:00:00.000Z',
     },

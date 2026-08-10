@@ -18,7 +18,7 @@ import { parsearMarkdown, type Bloque } from './markdown';
  * Un import acá sería una dependencia nueva, que es justo lo que esta tarea no hace.
  */
 const INFORME_REAL = [
-  '# Keyword Research — La Birra Bar',
+  '# Keyword Research — Borcelle Burger',
   '',
   '_ES · es · 2026-07-30T12:00:00.000Z_',
   '',

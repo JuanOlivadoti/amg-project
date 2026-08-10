@@ -37,7 +37,7 @@ const HOSTIL = [
 
 /** La cabecera real que emite `renderReport`, medida el 2026-08-07. */
 const REAL = [
-  '# Keyword Research — La Birra Bar',
+  '# Keyword Research — Borcelle Burger',
   '',
   '_ES · es · 2026-07-30T00:16:15.000Z_',
   '',
@@ -127,7 +127,7 @@ describe('EntregablePage — la hoja que se le manda al restaurante', () => {
      * filtro y por qué el bloque llegó hasta acá.
      */
     const conCoste = [
-      '# Keyword Research — La Birra Bar',
+      '# Keyword Research — Borcelle Burger',
       '',
       '### Coste del research',
       '',
@@ -150,7 +150,7 @@ describe('EntregablePage — la hoja que se le manda al restaurante', () => {
     const { el } = await render(REAL);
     const h1s = el.querySelectorAll('h1');
     expect(h1s.length).toBe(1);
-    expect(h1s[0]!.textContent).toContain('La Birra Bar');
+    expect(h1s[0]!.textContent).toContain('Borcelle Burger');
     expect(el.querySelector('header')).not.toBeNull();
   });
 
@@ -274,7 +274,7 @@ describe('EntregablePage — la hoja que se le manda al restaurante', () => {
     expect(el.textContent)
       .withContext('el aviso del run anterior sigue puesto sobre el documento del nuevo')
       .not.toContain(ACCION_409);
-    expect(el.textContent).toContain('La Birra Bar');
+    expect(el.textContent).toContain('Borcelle Burger');
   });
 
   it('🔴 un 409 SIN código no se trata como «sin páginas aprobadas»', async () => {

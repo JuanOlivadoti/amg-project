@@ -4,13 +4,13 @@ import type { EstadoIdea } from "./ideas.js";
 /**
  * Seed de IDEAS de ejemplo para el módulo del portal (pieza 3, Etapa 4).
  *
- * Siembra unas pocas ideas de La Birra Bar en los cuatro estados, para poder manejar el listado, los
+ * Siembra unas pocas ideas de Borcelle Burger en los cuatro estados, para poder manejar el listado, los
  * filtros, el detalle y las transiciones en un navegador. Es un seed de **desarrollo**: `dev-server.ts`
  * lo llama; `reseed:demo` (que escribe en el Supabase real) **no**, y esa es una decisión, no un
  * olvido — producción tiene los datos reales de la demo y sembrar ahí ideas inventadas es algo que
  * nadie ha pedido. Si algún día se quiere, se decide entonces y se engancha en `db/src/cli/seed.ts`.
  *
- * ## ⛔ La Birra Bar es un restaurante REAL, y esto va en su ficha
+ * ## ⛔ Borcelle Burger es un restaurante REAL, y esto va en su ficha
  *
  * De ahí las dos reglas que gobiernan el contenido de este archivo, y las dos tienen test:
  *
@@ -56,7 +56,7 @@ export const MARCA_EJEMPLO = "[EJEMPLO]";
  * el principio; y lo pone `conAviso()` en vez de estar copiado en cada texto, para que no dependa de
  * que quien agregue la sexta idea se acuerde.
  */
-const AVISO_TRANSCRIPCION = `${MARCA_EJEMPLO} Texto de prueba para desarrollo. NO es un audio real de La Birra Bar.`;
+const AVISO_TRANSCRIPCION = `${MARCA_EJEMPLO} Texto de prueba para desarrollo. NO es un audio real de Borcelle Burger.`;
 
 const CIERRE_TRANSCRIPCION = "— fin del texto de EJEMPLO —";
 
@@ -135,7 +135,7 @@ const ID = (n: number) => `d3305eba-11a5-4e0e-9c1f-1dea0000000${n}`;
  * Las ideas de ejemplo. Una por estado —que es para lo que existe el seed— más una recién llegada y
  * sin analizar.
  *
- * El contenido es plausible para una hamburguesería pero **no afirma nada sobre La Birra Bar**: son
+ * El contenido es plausible para una hamburguesería pero **no afirma nada sobre Borcelle Burger**: son
  * cosas que un dueño podría proponer, no cosas que este dueño haya propuesto ni que la agencia haya
  * hecho. Sin importes, sin horarios y sin nombres de personas.
  */

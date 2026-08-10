@@ -87,7 +87,7 @@ beforeEach(async () => {
 
   [clientA1, clientA2] = (
     await sql<{ id: string }>(
-      `insert into clients (tenant_id, nombre) values ($1,'La Birra Bar'), ($1,'Bella Napoli') returning id`,
+      `insert into clients (tenant_id, nombre) values ($1,'Borcelle Burger'), ($1,'Bella Napoli') returning id`,
       [tenantA],
     )
   ).map((r) => r.id) as [string, string];

@@ -1,5 +1,5 @@
 /**
- * CLI del seed de la demo (Fase 1). Carga el caso de La Birra Bar para el portal de Frank.
+ * CLI del seed de la demo (Fase 1). Carga el caso de Borcelle Burger para el portal de Frank.
  *
  *   DATABASE_URL_ADMIN="postgres://…" \
  *   SEED_FRANK_USER_ID="<uuid de Frank en Supabase Auth>" \
@@ -76,7 +76,7 @@ const con = ConexionReservada.desdeClientePg(client);
 
 try {
   const r = await sembrarDemo(con, opts);
-  console.log("\n✔ Sembrado el caso de La Birra Bar.\n");
+  console.log("\n✔ Sembrado el caso de Borcelle Burger.\n");
   console.log("  tenant_id:", r.tenantId);
   console.log("  client_id:", r.clientId);
   console.log("  run_id:   ", r.runId);

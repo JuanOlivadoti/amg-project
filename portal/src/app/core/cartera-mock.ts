@@ -27,7 +27,7 @@ export interface CarteraDashboard {
  *
  * El recorrido de la demo es dashboard → cliente → página, y hasta ahora cada pantalla hablaba de un
  * negocio distinto: acá salían seis restaurantes inventados, el brief mostraba el italiano de ejemplo
- * y la web servía La Birra Bar. Tres historias sin relación en tres clics.
+ * y la web servía Borcelle Burger. Tres historias sin relación en tres clics.
  *
  * Ahora la cartera **abre con el cliente real**: los mismos IDs, el mismo coste y las mismas keywords
  * que están sembrados en la base (`db/src/seed-demo.ts`) y publicados en Storyblok. La fila que Frank
@@ -46,11 +46,11 @@ export interface CarteraDashboard {
 export const CLIENTE_REAL = {
   clientId: 'd3305eba-11a5-4e0e-9c1f-000000000001',
   runId: 'd3305eba-11a5-4e0e-9c1f-000000000002',
-  nombre: 'La Birra Bar',
+  nombre: 'Borcelle Burger',
   /** $0.3097: lo que costó de verdad la corrida de la acción 06 (2026-07-30). */
   costeMicros: 309_700,
   prompt:
-    'Hamburguesería gourmet argentina en Madrid, con dos locales (Puerta del Sol y barrio de Salamanca).',
+    'Hamburguesería gourmet en Madrid, con dos locales (Fuencarral y Chamberí).',
 } as const;
 
 /**
@@ -77,14 +77,14 @@ interface PaginaReal {
 
 export const PAGINAS_REALES: readonly PaginaReal[] = [
   { keyword: 'mejor hamburguesa del mundo Madrid', slug: '/mejor-hamburguesa-del-mundo-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 2400, dificultad: 34, score: 94.5, confianza: 0.9 },
-  { keyword: 'La Birra Bar Madrid', slug: '/la-birra-bar-madrid', tipo: 'landing_local', intencion: 'navegacional', local: true, volumen: 1900, dificultad: 8, score: 92, confianza: 0.88 },
+  { keyword: 'Borcelle Burger Madrid', slug: '/borcelle-burger-madrid', tipo: 'landing_local', intencion: 'navegacional', local: true, volumen: 1900, dificultad: 8, score: 92, confianza: 0.88 },
   { keyword: 'hamburguesería gourmet Madrid', slug: '/hamburgueseria-gourmet-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 1300, dificultad: 28, score: 86.4, confianza: 0.85 },
-  { keyword: 'restaurante argentino en Madrid', slug: '/restaurante-argentino-en-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 880, dificultad: 31, score: 79.8, confianza: 0.81 },
+  { keyword: 'hamburguesería gourmet en Madrid', slug: '/hamburgueseria-gourmet-en-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 880, dificultad: 31, score: 79.8, confianza: 0.81 },
   { keyword: 'cervezas artesanales Madrid', slug: '/cervezas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 720, dificultad: 22, score: 77.2, confianza: 0.8 },
   { keyword: 'cerveza Ale Ogham Madrid', slug: '/cerveza-ale-ogham-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 390, dificultad: 18, score: 74, confianza: 0.78 },
   { keyword: 'tienda de cervezas artesanales madrid', slug: '/tienda-de-cervezas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 260, dificultad: 15, score: 71.5, confianza: 0.76 },
   { keyword: 'patatas fritas especiales Madrid', slug: '/patatas-fritas-especiales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 210, dificultad: 20, score: 68.3, confianza: 0.74 },
-  { keyword: 'opiniones de la birra bar hamburguesas artesanales madrid', slug: '/opiniones-de-la-birra-bar-hamburguesas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: null, dificultad: null, score: 57, confianza: 0.25 },
+  { keyword: 'opiniones de borcelle burger hamburguesas artesanales madrid', slug: '/opiniones-de-borcelle-burger-hamburguesas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: null, dificultad: null, score: 57, confianza: 0.25 },
   { keyword: 'hamburguesas con salsas de la casa', slug: '/hamburguesas-con-salsas-de-la-casa', tipo: 'servicio', intencion: 'comercial', local: false, volumen: null, dificultad: null, score: 53.5, confianza: 0.25 },
   { keyword: 'hamburguesas de carne vacuna española', slug: '/hamburguesas-de-carne-vacuna-espanola', tipo: 'servicio', intencion: 'comercial', local: false, volumen: null, dificultad: null, score: 49, confianza: 0.25 },
   { keyword: 'hamburguesas con pan artesanal', slug: '/hamburguesas-con-pan-artesanal', tipo: 'servicio', intencion: 'comercial', local: false, volumen: null, dificultad: null, score: 46.5, confianza: 0.25 },

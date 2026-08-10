@@ -10,7 +10,7 @@ import { avisoCongelado, fechaDelResearch, fechaLegible } from './informe-vista'
  * cambia de redacción, nunca de fecha.
  */
 const CABECERA_REAL = [
-  '# Keyword Research — La Birra Bar',
+  '# Keyword Research — Borcelle Burger',
   '',
   '_ES · es · 2026-07-30T00:16:15.000Z_',
   '',

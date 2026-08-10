@@ -1,48 +1,75 @@
 {
-  "name": "La Birra Bar",
+  "name": "Borcelle Burger",
+  "telephone": "+34 915 55 44 33",
+  "address": {
+    "streetAddress": "Calle de Fuencarral 88",
+    "postalCode": "28004",
+    "addressLocality": "Madrid"
+  },
+  "opening_hours": "Lun-Dom 12:30-16:30, 20:00-00:00",
   "brand": {
     "plantilla": "base",
     "colores": {
-      "primario": "#c8102e",
-      "secundario": "#f2b705",
-      "titulo": "#1a1a1a",
-      "texto": "#3d3d3d",
-      "fondo": "#ffffff",
-      "fondoAlt": "#faf7f2"
+      "primario": "#8c1c13",
+      "secundario": "#c8963e",
+      "titulo": "#1c1917",
+      "texto": "#44403c",
+      "fondo": "#fffdf9",
+      "fondoAlt": "#f5f1ea"
     },
-    "fuentes": { "titulo": "condensada", "texto": "humanista" },
-    "color": "#c8102e",
-    "font": "moderna"
+    "fuentes": {
+      "titulo": "condensada",
+      "texto": "humanista",
+      "decorativa": "script"
+    },
+    "logo": "https://a.storyblok.com/f/293831091573700/250x250/ec3d723b80/axe-os-logo-color.png"
   },
-  "portada": { "src": "https://a.storyblok.com/f/demo/la-birra-portada.jpg", "alt": "" },
+  "portada": {
+    "src": "https://a.storyblok.com/f/293831091573700/2560x1440/3866018887/axe-os-portada.jpg",
+    "alt": "El local de Borcelle Burger"
+  },
   "fotos": [
-    { "src": "https://a.storyblok.com/f/demo/la-birra-sala.jpg" },
-    { "src": "https://a.storyblok.com/f/demo/la-birra-barra.jpg" },
-    { "src": "https://a.storyblok.com/f/demo/la-birra-parrilla.jpg", "alt": "La parrilla, vista desde la barra" }
-  ],
-  "locations": [
     {
-      "name": "Centro (Puerta del Sol)",
-      "address": { "streetAddress": "Carrera de San Jerónimo 3", "addressLocality": "Madrid" },
-      "opening_hours": "Lun-Dom 11:00-01:00 · Vie-Sáb hasta las 02:00",
-      "foto": { "src": "https://a.storyblok.com/f/demo/la-birra-local-centro.jpg" }
+      "src": "https://a.storyblok.com/f/293831091573700/1600x1200/d82ece3683/axe-os-fotos-galeria.jpg",
+      "alt": "La barra"
     },
     {
-      "name": "Salamanca",
-      "address": { "streetAddress": "Calle de José Ortega y Gasset 79", "addressLocality": "Madrid" },
-      "opening_hours": "Dom-Mié hasta 00:30 · Vie-Sáb hasta la 01:00"
+      "src": "https://a.storyblok.com/f/293831091573700/1600x1200/b6239d5695/axe-os-fotos-galeria-2.jpg",
+      "alt": "La sala"
+    },
+    {
+      "src": "https://a.storyblok.com/f/293831091573700/1600x1200/415661678d/axe-os-fotos-galeria-3.jpg"
+    },
+    {
+      "src": "https://a.storyblok.com/f/293831091573700/1600x1200/056a2a7774/axe-os-fotos-galeria-4.jpg",
+      "alt": "La terraza"
+    },
+    {
+      "src": "https://a.storyblok.com/f/293831091573700/1600x1200/1a75e62a1f/axe-os-fotos-galeria-5.jpg",
+      "alt": "La parrilla"
+    },
+    {
+      "src": "https://a.storyblok.com/f/293831091573700/1600x1200/8eb4949666/axe-os-fotos-galeria-6.jpg",
+      "alt": "El comedor de arriba"
     }
   ],
   "menu_categorias": [
     {
       "nombre": "Hamburguesas",
-      "foto": { "src": "https://a.storyblok.com/f/demo/cat-hamburguesas.jpg" },
+      "foto": {
+        "src": "https://a.storyblok.com/f/293831091573700/1200x800/8fbaedf133/axe-og-categories.jpg"
+      },
       "orden": 0
     },
-    { "nombre": "Acompañamientos", "orden": 1 },
     {
-      "nombre": "Cervezas artesanales",
-      "foto": { "src": "https://a.storyblok.com/f/demo/cat-cervezas.jpg" },
+      "nombre": "Entrantes",
+      "foto": {
+        "src": "https://a.storyblok.com/f/293831091573700/1200x800/194ffe59a5/axe-og-categories-starters.jpg"
+      },
+      "orden": 1
+    },
+    {
+      "nombre": "Bebidas",
       "orden": 2
     }
   ],
@@ -50,16 +77,120 @@
     {
       "category": "Hamburguesas",
       "name": "Golden Burger",
-      "description": "La hamburguesa insignia de la casa, la que los lanzó a la fama mundial.",
-      "foto": { "src": "https://a.storyblok.com/f/demo/golden-burger.jpg" }
+      "description": "Doble de vacuno, cheddar curado, cebolla caramelizada y pan brioche.",
+      "precios": [
+        {
+          "etiqueta": "Sencilla",
+          "importe": "12,50 €"
+        },
+        {
+          "etiqueta": "Doble",
+          "importe": "15,90 €"
+        }
+      ],
+      "nota": "Punto al gusto",
+      "foto": {
+        "src": "https://a.storyblok.com/f/293831091573700/800x800/e0f8442ce6/axe-og-menu-item.jpg"
+      }
     },
-    { "category": "Cervezas artesanales", "name": "Ale de Ogham", "description": "De barril, bien fría." },
-    { "category": "Cervezas artesanales", "name": "Honey de Ogham", "description": "De barril, bien fría." },
     {
-      "category": "Acompañamientos",
-      "name": "Patatas fritas especiales",
-      "description": "Con un toque crocante único y salsas de la casa.",
-      "nota": "Sin gluten"
+      "category": "Hamburguesas",
+      "name": "Classic Cheese",
+      "description": "Vacuno, cheddar fundido, pepinillo y salsa de la casa.",
+      "price": "10,90 €"
+    },
+    {
+      "category": "Hamburguesas",
+      "name": "Doble Bacon",
+      "description": "Doble carne, bacon ahumado y cebolla crujiente.",
+      "price": "14,50 €",
+      "nota": "Picante suave"
+    },
+    {
+      "category": "Entrantes",
+      "name": "Patatas bravas",
+      "description": "Salsa brava de la casa.",
+      "price": "6,50 €",
+      "foto": {
+        "src": "https://a.storyblok.com/f/293831091573700/800x800/e0f8442ce6/axe-og-menu-item.jpg"
+      }
+    },
+    {
+      "category": "Entrantes",
+      "name": "Croquetas de la casa",
+      "description": "Seis unidades, jamón ibérico.",
+      "price": "7,20 €"
+    },
+    {
+      "category": "Bebidas",
+      "name": "Cerveza artesanal de barril",
+      "description": "Rubia o tostada, tirada al momento.",
+      "precios": [
+        {
+          "etiqueta": "Caña",
+          "importe": "2,80 €"
+        },
+        {
+          "etiqueta": "Pinta",
+          "importe": "4,50 €"
+        }
+      ]
+    }
+  ],
+  "locations": [
+    {
+      "name": "Fuencarral",
+      "address": {
+        "streetAddress": "Calle de Fuencarral 88",
+        "postalCode": "28004",
+        "addressLocality": "Madrid"
+      },
+      "telephone": "+34 915 55 44 33",
+      "opening_hours": "Lun-Dom 12:30-16:30, 20:00-00:00",
+      "foto": {
+        "src": "https://a.storyblok.com/f/293831091573700/1600x1200/46847c4d05/axe-os-locations.jpg"
+      }
+    },
+    {
+      "name": "Chamberí",
+      "address": {
+        "streetAddress": "Calle de Trafalgar 12",
+        "postalCode": "28010",
+        "addressLocality": "Madrid"
+      },
+      "telephone": "+34 915 55 44 34",
+      "opening_hours": "Mar-Dom 13:00-16:30, 20:00-23:30",
+      "foto": {
+        "src": "https://a.storyblok.com/f/293831091573700/1600x1200/46847c4d05/axe-os-locations.jpg"
+      }
+    }
+  ],
+  "bienvenida": "Hamburguesas a la parrilla en el centro de Madrid. Pasa, siéntate donde quieras y pide en la barra.",
+  "destacados": [
+    {
+      "titulo": "Carne del día",
+      "texto": "Se pica cada mañana en el propio local."
+    },
+    {
+      "titulo": "Pan de la casa",
+      "texto": "Brioche horneado a diario."
+    },
+    {
+      "titulo": "Dos locales",
+      "texto": "Fuencarral y Chamberí, con la misma carta."
+    }
+  ],
+  "testimonios": [
+    {
+      "texto": "La mejor hamburguesa que he comido en Madrid, y he probado unas cuantas.",
+      "autor": "Marta G."
+    },
+    {
+      "texto": "Sitio pequeño, servicio rápido y la carne en su punto. Volveremos."
+    },
+    {
+      "texto": "Pedimos las bravas para compartir y se nos fue de las manos. Muy recomendable.",
+      "autor": "Álex R."
     }
   ]
 }

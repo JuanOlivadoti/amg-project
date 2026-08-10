@@ -87,7 +87,7 @@ async function crearIdea(campos: {
 
 test("una idea con todo el análisis se guarda y se lee igual", async () => {
   const analisis = {
-    audiencia_objetivo: "familias del barrio de Salamanca",
+    audiencia_objetivo: "familias del Chamberí",
     canales_comunicacion: ["instagram", "whatsapp"],
     intencion: "promocionar el menú de verano",
     materiales_formatos: ["reel", "cartel A3"],
@@ -106,7 +106,7 @@ test("una idea con todo el análisis se guarda y se lee igual", async () => {
        transcripcion = 'hola, buenas, quería comentaros lo del menú de verano...',
        audio_url = 'https://audios.example.com/ideas/abc.ogg',
        carpeta_url = 'https://drive.example.com/carpeta/abc',
-       mensaje_de = 'Marco (La Birra Bar)',
+       mensaje_de = 'Marco (Borcelle Burger)',
        analisis = $2::jsonb
      where id = $1
      returning titulo, resumen, estado, transcripcion, audio_url, carpeta_url, mensaje_de, analisis`,
@@ -119,7 +119,7 @@ test("una idea con todo el análisis se guarda y se lee igual", async () => {
   assert.equal(row?.["transcripcion"], "hola, buenas, quería comentaros lo del menú de verano...");
   assert.equal(row?.["audio_url"], "https://audios.example.com/ideas/abc.ogg");
   assert.equal(row?.["carpeta_url"], "https://drive.example.com/carpeta/abc");
-  assert.equal(row?.["mensaje_de"], "Marco (La Birra Bar)");
+  assert.equal(row?.["mensaje_de"], "Marco (Borcelle Burger)");
   assert.deepEqual(row?.["analisis"], analisis, "el análisis del LLM vuelve tal cual, sin recortes");
 });
 

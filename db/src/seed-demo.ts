@@ -13,7 +13,7 @@ import type {
 import type { ConexionReservada } from "./deploy.js";
 
 /**
- * Seed de la demo de Fase 1: el caso de **La Birra Bar** pre-cargado para que el portal de Frank
+ * Seed de la demo de Fase 1: el caso de **Borcelle Burger** pre-cargado para que el portal de Frank
  * tenga qué mostrar SIN el orquestador (que es Fase 2).
  *
  * Reproduce la corrida de la acción 06 (`docs/acciones/06-corrida-final-demo.md`): un run en
@@ -21,9 +21,9 @@ import type { ConexionReservada } from "./deploy.js";
  * split es el argumento de venta del sistema —dice lo que NO sabe—, y es lo que el portal muestra en
  * ✅/⚠️. Las páginas nacen `approved = false`: la compuerta (ADR-06) la cruza Frank en vivo.
  *
- * ## Por qué La Birra Bar y no "Bella Napoli"
+ * ## Por qué Borcelle Burger y no "Bella Napoli"
  *
- * La acción 06 republicó el space real con **La Birra Bar** (cliente real de la agencia) y este seed
+ * La acción 06 republicó el space real con **Borcelle Burger** (cliente real de la agencia) y este seed
  * se quedó con el italiano de ejemplo. Resultado: el portal contaba un caso y la web servía otro, y
  * la demo se contradecía a sí misma en el salto de la pantalla al sitio. El perfil de acá está atado
  * por test a `web-builder/business-profile.json` —la misma fuente que se publica— para que la deriva
@@ -150,15 +150,15 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 94.5,
     confianza: 0.9,
     seo: {
-      title: "La Mejor Hamburguesa del Mundo en Madrid | La Birra Bar",
-      description: "Disfruta de la mejor hamburguesa del mundo en La Birra Bar, ubicados en el corazón de Madrid. Degusta nuestra especialidad gourmet argentina y cervezas artesanales.",
+      title: "La Mejor Hamburguesa del Mundo en Madrid | Borcelle Burger",
+      description: "Disfruta de la mejor hamburguesa del mundo en Borcelle Burger, ubicados en el corazón de Madrid. Degusta nuestra especialidad gourmet y cervezas artesanales.",
     },
     brief: { schema_type: "LocalBusiness" },
-    faqs: ["¿Dónde puedo encontrar La Birra Bar en Madrid?", "¿Qué hace especial a la hamburguesa de La Birra Bar?", "¿Qué tipos de cervezas artesanales ofrecen?", "¿Cuál es la historia detrás de la hamburguesa premiada?", "¿Cuáles son los horarios de apertura de los locales?"],
+    faqs: ["¿Dónde puedo encontrar Borcelle Burger en Madrid?", "¿Qué hace especial a la hamburguesa de Borcelle Burger?", "¿Qué tipos de cervezas artesanales ofrecen?", "¿Cuál es la historia detrás de la hamburguesa premiada?", "¿Cuáles son los horarios de apertura de los locales?"],
   },
   {
-    slug: "/la-birra-bar-madrid",
-    keyword: "La Birra Bar Madrid",
+    slug: "/borcelle-burger-madrid",
+    keyword: "Borcelle Burger Madrid",
     secundarias: [],
     tipo: "landing_local",
     estrategia: "spoke",
@@ -170,11 +170,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 92,
     confianza: 0.88,
     seo: {
-      title: "La Birra Bar Madrid | Hamburguesas Gourmet y Cervezas Artesanales",
-      description: "Descubre La Birra Bar en Madrid, la hamburguesería gourmet premiada internacionalmente. Visítanos en nuestros locales de Centro y Salamanca.",
+      title: "Borcelle Burger Madrid | Hamburguesas Gourmet y Cervezas Artesanales",
+      description: "Descubre Borcelle Burger en Madrid, la hamburguesería gourmet premiada internacionalmente. Visítanos en nuestros locales de Centro y Chamberí.",
     },
     brief: { schema_type: "LocalBusiness" },
-    faqs: ["¿Cómo puedo hacer una reserva en La Birra Bar Madrid?", "¿Dónde se encuentra La Birra Bar en Madrid?", "¿Cuál es el precio promedio de las hamburguesas en La Birra Bar Madrid?", "¿Qué cervezas ofrecen en La Birra Bar Madrid?"],
+    faqs: ["¿Cómo puedo hacer una reserva en Borcelle Burger Madrid?", "¿Dónde se encuentra Borcelle Burger en Madrid?", "¿Cuál es el precio promedio de las hamburguesas en Borcelle Burger Madrid?", "¿Qué cervezas ofrecen en Borcelle Burger Madrid?"],
   },
   {
     slug: "/hamburgueseria-gourmet-madrid",
@@ -190,15 +190,15 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 86.4,
     confianza: 0.85,
     seo: {
-      title: "Hamburguesería Gourmet en Madrid | La Birra Bar",
-      description: "Descubre la mejor hamburguesería gourmet en Madrid, La Birra Bar. Disfruta de hamburguesas premiadas, pan artesanal y cervezas exclusivas en el corazón de la ciudad.",
+      title: "Hamburguesería Gourmet en Madrid | Borcelle Burger",
+      description: "Descubre la mejor hamburguesería gourmet en Madrid, Borcelle Burger. Disfruta de hamburguesas premiadas, pan artesanal y cervezas exclusivas en el corazón de la ciudad.",
     },
     brief: { schema_type: "LocalBusiness" },
-    faqs: ["¿Qué hace especiales a las hamburguesas gourmet de La Birra Bar?", "¿Dónde están ubicados los locales de La Birra Bar en Madrid?", "¿Qué tipo de cervezas artesanales ofrece La Birra Bar?", "¿Cómo puedo hacer una reserva en La Birra Bar?", "¿Qué premios ha ganado La Birra Bar por sus hamburguesas?"],
+    faqs: ["¿Qué hace especiales a las hamburguesas gourmet de Borcelle Burger?", "¿Dónde están ubicados los locales de Borcelle Burger en Madrid?", "¿Qué tipo de cervezas artesanales ofrece Borcelle Burger?", "¿Cómo puedo hacer una reserva en Borcelle Burger?", "¿Qué premios ha ganado Borcelle Burger por sus hamburguesas?"],
   },
   {
-    slug: "/restaurante-argentino-en-madrid",
-    keyword: "restaurante argentino en Madrid",
+    slug: "/hamburgueseria-gourmet-en-madrid",
+    keyword: "hamburguesería gourmet en Madrid",
     secundarias: [],
     tipo: "landing_local",
     estrategia: "spoke",
@@ -210,11 +210,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 79.8,
     confianza: 0.81,
     seo: {
-      title: "La Birra Bar: Hamburguesería Gourmet en el Centro de Madrid",
-      description: "Descubre La Birra Bar, restaurante argentino en Madrid. Disfruta de hamburguesas gourmet premiadas y cervezas artesanales en nuestros locales en el Centro y Salamanca.",
+      title: "Borcelle Burger: Hamburguesería Gourmet en el Centro de Madrid",
+      description: "Descubre Borcelle Burger, hamburguesería gourmet en Madrid. Disfruta de hamburguesas gourmet premiadas y cervezas artesanales en nuestros locales en el Centro y Chamberí.",
     },
     brief: { schema_type: "LocalBusiness" },
-    faqs: ["¿Dónde se encuentran los locales de La Birra Bar en Madrid?", "¿Qué tipo de hamburguesas ofrece La Birra Bar?", "¿Qué cervezas artesanales se pueden encontrar en La Birra Bar?", "¿Cuál es la especialidad de La Birra Bar?", "¿La Birra Bar tiene opciones vegetarianas?"],
+    faqs: ["¿Dónde se encuentran los locales de Borcelle Burger en Madrid?", "¿Qué tipo de hamburguesas ofrece Borcelle Burger?", "¿Qué cervezas artesanales se pueden encontrar en Borcelle Burger?", "¿Cuál es la especialidad de Borcelle Burger?", "¿Borcelle Burger tiene opciones vegetarianas?"],
   },
   {
     slug: "/cervezas-artesanales-madrid",
@@ -230,11 +230,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 77.2,
     confianza: 0.8,
     seo: {
-      title: "Cervezas Artesanales en Madrid - La Birra Bar",
-      description: "Disfruta las mejores cervezas artesanales de Madrid en La Birra Bar, con locales en Centro y Salamanca. Acompaña con hamburguesas gourmet premiadas.",
+      title: "Cervezas Artesanales en Madrid - Borcelle Burger",
+      description: "Disfruta las mejores cervezas artesanales de Madrid en Borcelle Burger, con locales en Centro y Chamberí. Acompaña con hamburguesas gourmet premiadas.",
     },
     brief: { schema_type: "LocalBusiness" },
-    faqs: ["¿Qué tipos de cervezas artesanales ofrecen en La Birra Bar?", "¿Dónde están ubicados los locales de La Birra Bar en Madrid?", "¿Se pueden pedir cervezas artesanales a domicilio desde La Birra Bar?", "¿Cuál es la especialidad de hamburguesas de La Birra Bar?"],
+    faqs: ["¿Qué tipos de cervezas artesanales ofrecen en Borcelle Burger?", "¿Dónde están ubicados los locales de Borcelle Burger en Madrid?", "¿Se pueden pedir cervezas artesanales a domicilio desde Borcelle Burger?", "¿Cuál es la especialidad de hamburguesas de Borcelle Burger?"],
   },
   {
     slug: "/cerveza-ale-ogham-madrid",
@@ -250,11 +250,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 74,
     confianza: 0.78,
     seo: {
-      title: "Cerveza Ale Ogham y Hamburguesas Gourmet en Madrid | La Birra Bar",
-      description: "Descubre nuestras hamburguesas gourmet argentinas y disfruta de la cerveza Ale Ogham en La Birra Bar Madrid, con locales en Puerta del Sol y Salamanca.",
+      title: "Cerveza Ale Ogham y Hamburguesas Gourmet en Madrid | Borcelle Burger",
+      description: "Descubre nuestras hamburguesas gourmets y disfruta de la cerveza Ale Ogham en Borcelle Burger Madrid, con locales en Fuencarral y Chamberí.",
     },
     brief: { schema_type: "LocalBusiness" },
-    faqs: ["¿Dónde están ubicados los locales de La Birra Bar en Madrid?", "¿Qué hace especial a la cerveza Ale Ogham?", "¿Cuáles son las especialidades de La Birra Bar?", "¿Qué garantías ofrecen sobre la calidad de los ingredientes?", "¿Cómo fue premiada la hamburguesa de La Birra Bar?"],
+    faqs: ["¿Dónde están ubicados los locales de Borcelle Burger en Madrid?", "¿Qué hace especial a la cerveza Ale Ogham?", "¿Cuáles son las especialidades de Borcelle Burger?", "¿Qué garantías ofrecen sobre la calidad de los ingredientes?", "¿Cómo fue premiada la hamburguesa de Borcelle Burger?"],
   },
   {
     slug: "/tienda-de-cervezas-artesanales-madrid",
@@ -270,11 +270,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 71.5,
     confianza: 0.76,
     seo: {
-      title: "La Birra Bar Madrid: Hamburguesas y Cervezas Artesanales Premiadas",
-      description: "Descubre La Birra Bar en Madrid. Disfruta de hamburguesas gourmet y una exclusiva selección de cervezas artesanales. Dos locales para la mejor experiencia.",
+      title: "Borcelle Burger Madrid: Hamburguesas y Cervezas Artesanales Premiadas",
+      description: "Descubre Borcelle Burger en Madrid. Disfruta de hamburguesas gourmet y una exclusiva selección de cervezas artesanales. Dos locales para la mejor experiencia.",
     },
     brief: { schema_type: "LocalBusiness" },
-    faqs: ["¿Dónde se encuentran los locales de La Birra Bar en Madrid?", "¿Qué cervezas artesanales ofrecen en La Birra Bar?", "¿Qué hace únicas a las hamburguesas de La Birra Bar?", "¿Puedo reservar una cata de cervezas artesanales?", "¿Qué premios ha ganado La Birra Bar?"],
+    faqs: ["¿Dónde se encuentran los locales de Borcelle Burger en Madrid?", "¿Qué cervezas artesanales ofrecen en Borcelle Burger?", "¿Qué hace únicas a las hamburguesas de Borcelle Burger?", "¿Puedo reservar una cata de cervezas artesanales?", "¿Qué premios ha ganado Borcelle Burger?"],
   },
   {
     slug: "/patatas-fritas-especiales-madrid",
@@ -290,15 +290,15 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 68.3,
     confianza: 0.74,
     seo: {
-      title: "Las Mejores Patatas Fritas Especiales en Madrid | La Birra Bar",
-      description: "Disfruta de nuestras patatas fritas especiales en La Birra Bar, Madrid. Acompañadas por salsas de la casa y cervezas artesanales. Visítanos en Puerta del Sol o Salamanca.",
+      title: "Las Mejores Patatas Fritas Especiales en Madrid | Borcelle Burger",
+      description: "Disfruta de nuestras patatas fritas especiales en Borcelle Burger, Madrid. Acompañadas por salsas de la casa y cervezas artesanales. Visítanos en Fuencarral o Chamberí.",
     },
     brief: { schema_type: "LocalBusiness" },
-    faqs: ["¿Dónde están ubicados los locales de La Birra Bar en Madrid?", "¿Qué hace especiales a las patatas fritas de La Birra Bar?", "¿Cuáles son las cervezas artesanales disponibles?", "¿Qué premios ha ganado La Birra Bar?", "¿Cómo puedo reservar una mesa en La Birra Bar Madrid?"],
+    faqs: ["¿Dónde están ubicados los locales de Borcelle Burger en Madrid?", "¿Qué hace especiales a las patatas fritas de Borcelle Burger?", "¿Cuáles son las cervezas artesanales disponibles?", "¿Qué premios ha ganado Borcelle Burger?", "¿Cómo puedo reservar una mesa en Borcelle Burger Madrid?"],
   },
   {
-    slug: "/opiniones-de-la-birra-bar-hamburguesas-artesanales-madrid",
-    keyword: "opiniones de la birra bar hamburguesas artesanales madrid",
+    slug: "/opiniones-de-borcelle-burger-hamburguesas-artesanales-madrid",
+    keyword: "opiniones de borcelle burger hamburguesas artesanales madrid",
     secundarias: [],
     tipo: "landing_local",
     estrategia: "spoke",
@@ -310,11 +310,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 57,
     confianza: 0.25,
     seo: {
-      title: "Opiniones de La Birra Bar: Hamburguesas Artesanales en Madrid",
-      description: "Descubre por qué La Birra Bar es el favorito en Madrid para los amantes de las hamburguesas artesanales. Ubicados en Centro y Salamanca, nuestras hamburguesas gourmet te esperan.",
+      title: "Opiniones de Borcelle Burger: Hamburguesas Artesanales en Madrid",
+      description: "Descubre por qué Borcelle Burger es el favorito en Madrid para los amantes de las hamburguesas artesanales. Ubicados en Centro y Chamberí, nuestras hamburguesas gourmet te esperan.",
     },
     brief: { schema_type: "LocalBusiness" },
-    faqs: ["¿Dónde están ubicados los locales de La Birra Bar en Madrid?", "¿Qué tipo de carne se utiliza en las hamburguesas de La Birra Bar?", "¿Cuáles son las especialidades de La Birra Bar?", "¿Cómo son las cervezas artesanales que ofrece La Birra Bar?", "¿Qué premios ha ganado La Birra Bar por sus hamburguesas?"],
+    faqs: ["¿Dónde están ubicados los locales de Borcelle Burger en Madrid?", "¿Qué tipo de carne se utiliza en las hamburguesas de Borcelle Burger?", "¿Cuáles son las especialidades de Borcelle Burger?", "¿Cómo son las cervezas artesanales que ofrece Borcelle Burger?", "¿Qué premios ha ganado Borcelle Burger por sus hamburguesas?"],
   },
   {
     slug: "/hamburguesas-con-salsas-de-la-casa",
@@ -330,11 +330,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 53.5,
     confianza: 0.25,
     seo: {
-      title: "Hamburguesas Gourmet con Salsas Exclusivas en La Birra Bar Madrid",
-      description: "Descubre nuestras hamburguesas gourmet con salsas de la casa en La Birra Bar, ubicadas en el centro de Madrid y Salamanca. Disfruta de sabores únicos premiados internacionalmente.",
+      title: "Hamburguesas Gourmet con Salsas Exclusivas en Borcelle Burger Madrid",
+      description: "Descubre nuestras hamburguesas gourmet con salsas de la casa en Borcelle Burger, ubicadas en el centro de Madrid y Chamberí. Disfruta de sabores únicos premiados internacionalmente.",
     },
     brief: { schema_type: "WebPage" },
-    faqs: ["¿Cuáles son las especialidades de La Birra Bar?", "¿Dónde están ubicados los locales en Madrid?", "¿Qué tipo de carne se utiliza en las hamburguesas?", "¿Qué salsas de la casa ofrecen?", "¿Qué premios ha ganado La Birra Bar?"],
+    faqs: ["¿Cuáles son las especialidades de Borcelle Burger?", "¿Dónde están ubicados los locales en Madrid?", "¿Qué tipo de carne se utiliza en las hamburguesas?", "¿Qué salsas de la casa ofrecen?", "¿Qué premios ha ganado Borcelle Burger?"],
   },
   {
     slug: "/hamburguesas-de-carne-vacuna-espanola",
@@ -350,11 +350,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 49,
     confianza: 0.25,
     seo: {
-      title: "Hamburguesas Gourmet en Madrid - La Birra Bar",
-      description: "Disfruta las mejores hamburguesas de carne vacuna española en La Birra Bar, ubicados en Centro y Salamanca. Premiada en Dubai y Miami. ¡Visítanos!",
+      title: "Hamburguesas Gourmet en Madrid - Borcelle Burger",
+      description: "Disfruta las mejores hamburguesas de carne vacuna española en Borcelle Burger, ubicados en Centro y Chamberí. Premiada en Dubai y Miami. ¡Visítanos!",
     },
     brief: { schema_type: "WebPage" },
-    faqs: ["¿Qué tipo de carne utilizan en sus hamburguesas?", "¿Dónde están ubicados sus locales en Madrid?", "¿Tienen opciones vegetarianas en el menú?", "¿Aceptan reservas en La Birra Bar?", "¿Qué cervezas artesanales ofrecen?"],
+    faqs: ["¿Qué tipo de carne utilizan en sus hamburguesas?", "¿Dónde están ubicados sus locales en Madrid?", "¿Tienen opciones vegetarianas en el menú?", "¿Aceptan reservas en Borcelle Burger?", "¿Qué cervezas artesanales ofrecen?"],
   },
   {
     slug: "/hamburguesas-con-pan-artesanal",
@@ -370,11 +370,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 46.5,
     confianza: 0.25,
     seo: {
-      title: "Hamburguesas Gourmet con Pan Artesanal en Madrid | La Birra Bar",
-      description: "Disfruta de auténticas hamburguesas gourmet con pan artesanal en La Birra Bar, presentes en Centro y Salamanca. Premiada internacionalmente por sus sabores únicos.",
+      title: "Hamburguesas Gourmet con Pan Artesanal en Madrid | Borcelle Burger",
+      description: "Disfruta de auténticas hamburguesas gourmet con pan artesanal en Borcelle Burger, presentes en Centro y Chamberí. Premiada internacionalmente por sus sabores únicos.",
     },
     brief: { schema_type: "WebPage" },
-    faqs: ["¿Dónde están ubicados los locales de La Birra Bar en Madrid?", "¿Qué caracteriza a las hamburguesas de La Birra Bar?", "¿Qué cervezas artesanales ofrecen?", "¿Cuáles son los premios que ha recibido La Birra Bar?", "¿Cómo puedo hacer una reserva?"],
+    faqs: ["¿Dónde están ubicados los locales de Borcelle Burger en Madrid?", "¿Qué caracteriza a las hamburguesas de Borcelle Burger?", "¿Qué cervezas artesanales ofrecen?", "¿Cuáles son los premios que ha recibido Borcelle Burger?", "¿Cómo puedo hacer una reserva?"],
   },
   {
     slug: "/mejor-hamburguesa-dubai-burger-championship",
@@ -390,11 +390,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 43,
     confianza: 0.25,
     seo: {
-      title: "La Mejor Hamburguesa del Mundo: Descubre el Sabor de La Birra Bar",
-      description: "Descubre la excelencia de la mejor hamburguesa del Dubai Burger Championship en La Birra Bar, Madrid. Un sabor gourmet que no puedes perderte.",
+      title: "La Mejor Hamburguesa del Mundo: Descubre el Sabor de Borcelle Burger",
+      description: "Descubre la excelencia de la mejor hamburguesa del Dubai Burger Championship en Borcelle Burger, Madrid. Un sabor gourmet que no puedes perderte.",
     },
     brief: { schema_type: "Article" },
-    faqs: ["¿Dónde se encuentran los locales de La Birra Bar en Madrid?", "¿Qué hace que las hamburguesas de La Birra Bar sean únicas?", "¿Qué premios ha ganado La Birra Bar a nivel internacional?", "¿Qué cervezas artesanales ofrece La Birra Bar?", "¿Cuál es la especialidad de La Birra Bar en Madrid?"],
+    faqs: ["¿Dónde se encuentran los locales de Borcelle Burger en Madrid?", "¿Qué hace que las hamburguesas de Borcelle Burger sean únicas?", "¿Qué premios ha ganado Borcelle Burger a nivel internacional?", "¿Qué cervezas artesanales ofrece Borcelle Burger?", "¿Cuál es la especialidad de Borcelle Burger en Madrid?"],
   },
   {
     slug: "/people-s-choice-award-burger-bash-miami",
@@ -410,11 +410,11 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
     score: 40,
     confianza: 0.25,
     seo: {
-      title: "La Birra Bar: Premiada en el People's Choice Award del Burger Bash de Miami",
-      description: "Descubre las hamburguesas gourmet de La Birra Bar, premiadas en el Burger Bash de Miami. Disfruta de nuestras especialidades en el corazón de Madrid.",
+      title: "Borcelle Burger: Premiada en el People's Choice Award del Burger Bash de Miami",
+      description: "Descubre las hamburguesas gourmet de Borcelle Burger, premiadas en el Burger Bash de Miami. Disfruta de nuestras especialidades en el corazón de Madrid.",
     },
     brief: { schema_type: "Article" },
-    faqs: ["¿Qué hace únicas a las hamburguesas de La Birra Bar?", "¿Dónde se encuentran los locales de La Birra Bar en Madrid?", "¿Qué cervezas artesanales se ofrecen en La Birra Bar?", "¿Qué premios ha ganado La Birra Bar por sus hamburguesas?", "¿Qué tipo de carne se utiliza en las hamburguesas de La Birra Bar?"],
+    faqs: ["¿Qué hace únicas a las hamburguesas de Borcelle Burger?", "¿Dónde se encuentran los locales de Borcelle Burger en Madrid?", "¿Qué cervezas artesanales se ofrecen en Borcelle Burger?", "¿Qué premios ha ganado Borcelle Burger por sus hamburguesas?", "¿Qué tipo de carne se utiliza en las hamburguesas de Borcelle Burger?"],
   },
 ];
 
@@ -447,79 +447,145 @@ export const PAGINAS_DEMO: PaginaSeed[] = [
  * esperando pagarlo. Un `postalCode` inventado ensucia el JSON-LD; un precio inventado engaña a un
  * cliente del cliente. Los campos nuevos de carta se ejercitan con los negocios FICTICIOS
  * (`web-builder/src/fixtures.ts`, y "Trattoria Bella Napoli" en `renderer/src/dev-server.ts`), donde
- * inventar no le miente a nadie. Cuando La Birra Bar confirme su carta, entran acá.
+ * inventar no le miente a nadie. Cuando Borcelle Burger confirme su carta, entran acá.
  */
+const FOTO = {
+  portada: "https://a.storyblok.com/f/293831091573700/2560x1440/3866018887/axe-os-portada.jpg",
+  galeria: [
+    "https://a.storyblok.com/f/293831091573700/1600x1200/d82ece3683/axe-os-fotos-galeria.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/b6239d5695/axe-os-fotos-galeria-2.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/415661678d/axe-os-fotos-galeria-3.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/056a2a7774/axe-os-fotos-galeria-4.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/1a75e62a1f/axe-os-fotos-galeria-5.jpg",
+    "https://a.storyblok.com/f/293831091573700/1600x1200/8eb4949666/axe-os-fotos-galeria-6.jpg",
+  ],
+  categoriaHamburguesas: "https://a.storyblok.com/f/293831091573700/1200x800/8fbaedf133/axe-og-categories.jpg",
+  categoriaEntrantes:
+    "https://a.storyblok.com/f/293831091573700/1200x800/194ffe59a5/axe-og-categories-starters.jpg",
+  plato: "https://a.storyblok.com/f/293831091573700/800x800/e0f8442ce6/axe-og-menu-item.jpg",
+  local: "https://a.storyblok.com/f/293831091573700/1600x1200/46847c4d05/axe-os-locations.jpg",
+  logo: "https://a.storyblok.com/f/293831091573700/250x250/ec3d723b80/axe-os-logo-color.png",
+} as const;
+
 export const PERFIL_DEMO = {
-  name: "La Birra Bar",
-  priceRange: "€€",
+  name: "Borcelle Burger",
+  telephone: "+34 915 55 44 33",
+  address: { streetAddress: "Calle de Fuencarral 88", postalCode: "28004", addressLocality: "Madrid" },
+  opening_hours: "Lun-Dom 12:30-16:30, 20:00-00:00",
   brand: {
     plantilla: "base",
     colores: {
-      primario: "#c8102e",
-      secundario: "#f2b705",
-      titulo: "#1a1a1a",
-      texto: "#3d3d3d",
-      fondo: "#ffffff",
-      fondoAlt: "#faf7f2",
+      primario: "#8c1c13",
+      secundario: "#c8963e",
+      titulo: "#1c1917",
+      texto: "#44403c",
+      fondo: "#fffdf9",
+      fondoAlt: "#f5f1ea",
     },
-    fuentes: { titulo: "condensada", texto: "humanista" },
-    // El legacy va JUNTO al manual nuevo, y no es redundancia: hasta que la entrega 2 emita los
-    // tokens, el CSS solo sabe leer `color`/`font` — un perfil solo con `colores.primario` dejaría la
-    // web de este cliente con el rojo por defecto. Lo atrapó el test de más abajo, no una lectura.
-    // Cuando la emisión lea el manual, `colores.primario` gana sobre `color` (decisión explícita
-    // sobre herencia) y estas dos claves se pueden quitar de un solo sitio.
-    color: "#c8102e",
-    font: "moderna",
+    fuentes: { titulo: "condensada", texto: "humanista", decorativa: "script" },
+    logo: FOTO.logo,
   },
-  portada: { src: "https://a.storyblok.com/f/demo/la-birra-portada.jpg", alt: "" },
+  portada: { src: FOTO.portada, alt: "El local de Borcelle Burger" },
+  // Seis fotos DISTINTAS, y la tercera **sin `alt` a propósito**: `renderImagen` emite `alt=""` cuando
+  // falta, que es lo correcto para una imagen decorativa, y es una rama que conviene ver dibujada.
   fotos: [
-    { src: "https://a.storyblok.com/f/demo/la-birra-sala.jpg" },
-    { src: "https://a.storyblok.com/f/demo/la-birra-barra.jpg" },
-    { src: "https://a.storyblok.com/f/demo/la-birra-parrilla.jpg", alt: "La parrilla, vista desde la barra" },
-  ],
-  locations: [
-    {
-      name: "Centro (Puerta del Sol)",
-      address: { streetAddress: "Carrera de San Jerónimo 3", addressLocality: "Madrid" },
-      opening_hours: "Lun-Dom 11:00-01:00 · Vie-Sáb hasta las 02:00",
-      foto: { src: "https://a.storyblok.com/f/demo/la-birra-local-centro.jpg" },
-    },
-    {
-      name: "Salamanca",
-      address: { streetAddress: "Calle de José Ortega y Gasset 79", addressLocality: "Madrid" },
-      opening_hours: "Dom-Mié hasta 00:30 · Vie-Sáb hasta la 01:00",
-    },
+    { src: FOTO.galeria[0], alt: "La barra" },
+    { src: FOTO.galeria[1], alt: "La sala" },
+    { src: FOTO.galeria[2] },
+    { src: FOTO.galeria[3], alt: "La terraza" },
+    { src: FOTO.galeria[4], alt: "La parrilla" },
+    { src: FOTO.galeria[5], alt: "El comedor de arriba" },
   ],
   menu_categorias: [
-    {
-      nombre: "Hamburguesas",
-      foto: { src: "https://a.storyblok.com/f/demo/cat-hamburguesas.jpg" },
-      orden: 0,
-    },
-    { nombre: "Acompañamientos", orden: 1 },
-    {
-      nombre: "Cervezas artesanales",
-      foto: { src: "https://a.storyblok.com/f/demo/cat-cervezas.jpg" },
-      orden: 2,
-    },
+    { nombre: "Hamburguesas", foto: { src: FOTO.categoriaHamburguesas }, orden: 0 },
+    { nombre: "Entrantes", foto: { src: FOTO.categoriaEntrantes }, orden: 1 },
+    // Sin foto a propósito: una categoría sin imagen es un caso soportado, y conviene que la demo lo
+    // enseñe — es el estado de casi toda ficha antes de que la agencia suba los assets.
+    { nombre: "Bebidas", orden: 2 },
   ],
   menu: [
     {
       category: "Hamburguesas",
       name: "Golden Burger",
-      description: "La hamburguesa insignia de la casa, la que los lanzó a la fama mundial.",
-      foto: { src: "https://a.storyblok.com/f/demo/golden-burger.jpg" },
+      description: "Doble de vacuno, cheddar curado, cebolla caramelizada y pan brioche.",
+      precios: [
+        { etiqueta: "Sencilla", importe: "12,50 €" },
+        { etiqueta: "Doble", importe: "15,90 €" },
+      ],
+      nota: "Punto al gusto",
+      foto: { src: FOTO.plato },
     },
-    { category: "Cervezas artesanales", name: "Ale de Ogham", description: "De barril, bien fría." },
-    { category: "Cervezas artesanales", name: "Honey de Ogham", description: "De barril, bien fría." },
     {
-      category: "Acompañamientos",
-      name: "Patatas fritas especiales",
-      description: "Con un toque crocante único y salsas de la casa.",
-      nota: "Sin gluten",
+      category: "Hamburguesas",
+      name: "Classic Cheese",
+      description: "Vacuno, cheddar fundido, pepinillo y salsa de la casa.",
+      price: "10,90 €",
+    },
+    {
+      category: "Hamburguesas",
+      name: "Doble Bacon",
+      description: "Doble carne, bacon ahumado y cebolla crujiente.",
+      price: "14,50 €",
+      nota: "Picante suave",
+    },
+    {
+      category: "Entrantes",
+      name: "Patatas bravas",
+      description: "Salsa brava de la casa.",
+      price: "6,50 €",
+      foto: { src: FOTO.plato },
+    },
+    {
+      category: "Entrantes",
+      name: "Croquetas de la casa",
+      description: "Seis unidades, jamón ibérico.",
+      price: "7,20 €",
+    },
+    {
+      category: "Bebidas",
+      name: "Cerveza artesanal de barril",
+      description: "Rubia o tostada, tirada al momento.",
+      precios: [
+        { etiqueta: "Caña", importe: "2,80 €" },
+        { etiqueta: "Pinta", importe: "4,50 €" },
+      ],
     },
   ],
-};
+  locations: [
+    {
+      name: "Fuencarral",
+      address: { streetAddress: "Calle de Fuencarral 88", postalCode: "28004", addressLocality: "Madrid" },
+      telephone: "+34 915 55 44 33",
+      opening_hours: "Lun-Dom 12:30-16:30, 20:00-00:00",
+      foto: { src: FOTO.local },
+    },
+    {
+      name: "Chamberí",
+      address: { streetAddress: "Calle de Trafalgar 12", postalCode: "28010", addressLocality: "Madrid" },
+      telephone: "+34 915 55 44 34",
+      opening_hours: "Mar-Dom 13:00-16:30, 20:00-23:30",
+      foto: { src: FOTO.local },
+    },
+  ],
+  // Las tres secciones de plantilla (bloque K, etapa 3). Están acá para poder MIRARLAS en el
+  // navegador, que en esta área encuentra lo que los tests no ven.
+  //
+  // ⚠️ Las reseñas son de un negocio FICTICIO —Borcelle Burger no existe— y por eso pueden estar
+  // escritas. La misma regla que impide poner sus fotos de stock en la ficha de un restaurante real
+  // vale, y más fuerte, para una reseña: `testimonios` NO tiene default en el renderizador
+  // justamente para que un cliente real nunca publique una que no le dijo nadie.
+  bienvenida:
+    "Hamburguesas a la parrilla en el centro de Madrid. Pasa, siéntate donde quieras y pide en la barra.",
+  destacados: [
+    { titulo: "Carne del día", texto: "Se pica cada mañana en el propio local." },
+    { titulo: "Pan de la casa", texto: "Brioche horneado a diario." },
+    { titulo: "Dos locales", texto: "Fuencarral y Chamberí, con la misma carta." },
+  ],
+  testimonios: [
+    { texto: "La mejor hamburguesa que he comido en Madrid, y he probado unas cuantas.", autor: "Marta G." },
+    { texto: "Sitio pequeño, servicio rápido y la carne en su punto. Volveremos." },
+    { texto: "Pedimos las bravas para compartir y se nos fue de las manos. Muy recomendable.", autor: "Álex R." },
+  ],};
 
 /**
  * IDs FIJOS del cliente y del run de demo. Son la clave estable que hace el seed idempotente **sin
@@ -545,10 +611,10 @@ export const DEMO_RUN_ID = "d3305eba-11a5-4e0e-9c1f-000000000002";
 export const COSTE_MICROS_DEMO = 309_700;
 
 const PROMPT_DEMO =
-  "Hamburguesería gourmet argentina en Madrid, con dos locales (Puerta del Sol y barrio de Salamanca). Especialidades: hamburguesas de autor, cerveza artesanal de barril y patatas fritas especiales.";
+  "Hamburguesería gourmet en Madrid, con dos locales (Fuencarral y Chamberí). Especialidades: hamburguesas de autor a la parrilla, pan brioche horneado a diario y patatas bravas de la casa.";
 
 /** El nombre del cliente. Constante y no literal porque lo escriben dos lugares: `clients` y el informe. */
-const NOMBRE_CLIENTE_DEMO = "La Birra Bar";
+const NOMBRE_CLIENTE_DEMO = "Borcelle Burger";
 
 /**
  * El objetivo del `satisfies` de `CALIDAD_DATOS_DEMO`, y por qué nombra los tres huecos como `null` en

@@ -71,7 +71,7 @@ await pg.query(
   `insert into auth.users (id, email, raw_app_meta_data) values
      ($1, 'frank@amg.dev', '{"name":"Frank"}'::jsonb),
      ($2, 'juan@amg.dev', '{"name":"Juan"}'::jsonb),
-     ($3, 'dueno@labirrabar.dev', '{"name":"Dueño La Birra Bar"}'::jsonb)`,
+     ($3, 'dueno@borcelleburger.dev', '{"name":"Dueño Borcelle Burger"}'::jsonb)`,
   [FRANK, JUAN, DUENO],
 );
 await pg.query(
@@ -174,7 +174,7 @@ serve({ fetch: app.fetch, port: 3000 }, () => {
     rol: "equipo",
   };
   console.log("\n▶ API de desarrollo en http://localhost:3000  (PGlite en memoria, token falso)\n");
-  console.log(`  La Birra Bar — el brief de la demo (14 páginas, 8✅/6⚠️): ${r.runId}`);
+  console.log(`  Borcelle Burger — el brief de la demo (14 páginas, 8✅/6⚠️): ${r.runId}`);
   console.log(`     ↑ SIN workflow: aprobar da 409 RUN_SIN_WORKFLOW (0019). El botón va apagado.`);
   console.log(`  lista para aprobar (1 página, CON workflow):             ${runAprobable}`);
   console.log(`  corrida anterior (aprobada):                            ${runAprobado}`);

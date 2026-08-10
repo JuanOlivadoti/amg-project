@@ -8,7 +8,7 @@
  * exactamente lo que esa frase dejaba pasar: el seed cambió sus 14 keywords —`f0c1387`, que las trajo
  * de Storyblok— y el mock se quedó con las viejas. Producción terminó mostrando **las mismas métricas
  * con nombres distintos** en dos pantallas a dos clics: "cerveza Ale Ogham Madrid — 74" en Cartera y
- * "hamburgueseria barrio salamanca — 74" en Research. La suite entera en verde.
+ * "hamburgueseria chamberi — 74" en Research. La suite entera en verde.
  *
  * Estar fuera del monorepo impide **importar el paquete**; no impide **leer el archivo**. `cartera-mock.ts`
  * es un módulo puro (solo tipos y una constante), así que se carga con un `import()` dinámico y se

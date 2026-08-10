@@ -11,7 +11,7 @@ test('genera entre 4 y 6 clientes, según el roadmap (seed de 4-6 restaurantes)'
 
 /**
  * Antes esto exigía 2 runs POR cliente. Se relajó a lo que el gráfico necesita de verdad —que la serie
- * tenga puntos— porque el cliente real (La Birra Bar) tiene UN run: el de la acción 06. Darle un
+ * tenga puntos— porque el cliente real (Borcelle Burger) tiene UN run: el de la acción 06. Darle un
  * segundo run de relleno sería inventar una corrida que no existió, justo en la fila que Frank va a
  * reconocer.
  */
@@ -30,11 +30,11 @@ test('la serie temporal tiene al menos 2 puntos, para que el gráfico sea una l�
  * Límite conocido: los UUID están copiados del seed, no importados (`portal/` está fuera del monorepo
  * a propósito, ADR-16/21). Si los IDs fijos del seed cambian, hay que tocar los dos lados.
  */
-test('el primer cliente es La Birra Bar, con los IDs y el coste reales del seed', () => {
+test('el primer cliente es Borcelle Burger, con los IDs y el coste reales del seed', () => {
   const d = generarCarteraMock();
   const primero = d.clientes[0];
 
-  assert.equal(primero?.nombre, 'La Birra Bar', 'la cartera tiene que abrir con el cliente real');
+  assert.equal(primero?.nombre, 'Borcelle Burger', 'la cartera tiene que abrir con el cliente real');
   assert.equal(primero?.client_id, 'd3305eba-11a5-4e0e-9c1f-000000000001', 'el client_id del seed');
   assert.equal(primero?.runs.length, 1, 'el único run real: el de la acción 06');
   assert.equal(primero?.runs[0]?.id, 'd3305eba-11a5-4e0e-9c1f-000000000002', 'el run_id del seed');

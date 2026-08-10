@@ -181,7 +181,7 @@ describe('InformePage — el informe se pinta como texto, nunca como HTML', () =
      * que no parece un fallo. Cada assert ata una fecha a su etiqueta, no solo comprueba que hay dos.
      */
     const { el } = await renderEstable({
-      informe_md: '# Keyword Research — La Birra Bar\n\n_ES · es · 2026-07-30T00:16:15.000Z_\n',
+      informe_md: '# Keyword Research — Borcelle Burger\n\n_ES · es · 2026-07-30T00:16:15.000Z_\n',
       generado_at: '2026-08-06T17:42:00.000Z',
     });
     const aviso = el.querySelector('header p')!.textContent!;

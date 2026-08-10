@@ -37,7 +37,7 @@ after(async () => {
   await db.close();
 });
 
-test("Frank (maestro) ve el run de La Birra Bar en su lista, en pending_approval", async () => {
+test("Frank (maestro) ve el run de Borcelle Burger en su lista, en pending_approval", async () => {
   const runs = await db.asUser<{ id: string; status: string; prompt: string }>(
     { tenantId: r.tenantId, userId: FRANK },
     "select id, status, prompt from kr_runs",
@@ -66,7 +66,7 @@ test("Juan (equipo) también ve el cliente y el run (staff ve toda la cartera de
     "select nombre from clients",
   );
   assert.ok(
-    clientes.some((c) => c.nombre.includes("La Birra Bar")),
+    clientes.some((c) => c.nombre.includes("Borcelle Burger")),
     "ve el cliente de demo",
   );
   const runs = await db.asUser({ tenantId: r.tenantId, userId: JUAN }, "select id from kr_runs");
@@ -294,36 +294,46 @@ test("lo sembrado sobrevive la allowlist: el perfil público trae los 2 locales 
     menu?: { category?: string; name?: string }[];
   };
 
-  assert.equal(perfil?.name, "La Birra Bar");
-  assert.ok(perfil?.brand?.color, "sin brand la web sale con el rojo por defecto, no con marca propia");
-
-  // `font` NO es texto libre: el renderizador solo acepta tres valores (`renderer/src/perfil.ts`,
-  // `FUENTES`) y el Zod de escritura los mismos (`web-builder/src/contract.ts`). El seed anterior
-  // ponía "Fraunces", que no está en la lista: se descartaba EN SILENCIO y la web salía con la fuente
-  // por defecto. Límite conocido de este test: la lista está copiada, no importada (`db` no depende de
+  assert.equal(perfil?.name, "Borcelle Burger");
+  // ⚠️ **Ya NO se exige el legacy `{color, font}`, y el cambio es deliberado.** Este test lo pedía
+  // porque hasta la entrega 2 la emisión del CSS solo sabía leer la forma vieja: un perfil solo con
+  // `colores.primario` se servía con el rojo por defecto. Desde que `tokensDeMarca` resuelve
+  // `colores.primario ?? color`, el manual basta — y seguir exigiendo el legacy obligaría a cada ficha
+  // nueva a escribir su color dos veces para pasar un test.
+  //
+  // Lo que se comprueba es la garantía de verdad, que no cambió: **que la marca del cliente llegue al
+  // otro lado de la allowlist**, por la forma que sea. Sin esto, la web sale con la paleta por defecto
+  // y nadie se entera hasta mirarla.
+  const marca = perfil?.brand as {
+    color?: string;
+    colores?: Record<string, string>;
+    fuentes?: Record<string, string>;
+  };
+  assert.ok(
+    marca?.colores?.["primario"] ?? marca?.color,
+    "la marca no cruzó la allowlist: la web saldría con la paleta por defecto",
+  );
+  assert.equal(marca?.colores?.["primario"], "#8c1c13", "el token primario del manual no cruzó la allowlist");
+  assert.equal(marca?.colores?.["fondoAlt"], "#f5f1ea", "los tokens de fondo son los que más fácil se pierden");
+  // Los roles tipográficos son de una allowlist del CÓDIGO (`FuenteNombre`, siete nombres), nunca una
+  // familia ni un stack CSS. Límite conocido: la lista está copiada y no importada (`db` no depende de
   // `renderer`); si la allowlist cambia, hay que tocar los dos lados.
   assert.ok(
-    ["sistema", "serif", "moderna"].includes((perfil?.brand as { font?: string })?.font ?? ""),
-    "la fuente de marca tiene que ser una de las que la allowlist del renderizador acepta",
+    ["sistema", "serif", "moderna", "condensada", "geometrica", "humanista", "script"].includes(
+      marca?.fuentes?.["titulo"] ?? "",
+    ),
+    "el rol tipográfico de titulares no cruzó, o no es uno de los que el renderizador acepta",
   );
 
-  // El manual de marca (`0014`) viaja ADEMÁS del legacy. Las dos formas conviven a propósito mientras
-  // la emisión del CSS solo sepa leer la vieja: sin `color`, este cliente perdería su marca hasta la
-  // entrega 2; sin `colores`, el manual no llegaría nunca y nadie se enteraría hasta mirar la web.
-  const marca = perfil?.brand as { colores?: Record<string, string>; fuentes?: Record<string, string> };
-  assert.equal(marca?.colores?.["primario"], "#c8102e", "el token primario del manual no cruzó la allowlist");
-  assert.equal(marca?.colores?.["fondoAlt"], "#faf7f2", "los tokens de fondo son los que más fácil se pierden");
-  assert.equal(marca?.fuentes?.["titulo"], "condensada", "el rol tipográfico de titulares no cruzó");
-
   // Los locales alimentan el footer NAP multi-local y la sección "Ubicaciones" de la nav fija.
-  assert.equal(perfil?.locations?.length, 2, "los dos locales de Madrid (Centro y Salamanca)");
+  assert.equal(perfil?.locations?.length, 2, "los dos locales de Madrid (Centro y Chamberí)");
   assert.ok(
     perfil.locations?.every((l) => l.name && l.address?.streetAddress && l.opening_hours),
     "cada local necesita nombre, calle y horario para que el footer no salga a medias",
   );
 
   // La carta alimenta `/menu` (JSON-LD `Menu`). Sin esto, la nav muestra "Menú" y la página da 404.
-  assert.ok((perfil?.menu?.length ?? 0) >= 4, "la carta real de La Birra Bar");
+  assert.ok((perfil?.menu?.length ?? 0) >= 4, "la carta real de Borcelle Burger");
   assert.ok(
     perfil.menu?.some((i) => i.name === "Golden Burger"),
     "el producto insignia tiene que estar en la carta pública",
@@ -332,7 +342,7 @@ test("lo sembrado sobrevive la allowlist: el perfil público trae los 2 locales 
 
 /**
  * El ancla contra la deriva que causó todo esto: el seed decía "Bella Napoli" mientras Storyblok ya
- * servía "La Birra Bar", porque el perfil vivía DOS veces sin nada que atara las copias. Este test
+ * servía "Borcelle Burger", porque el perfil vivía DOS veces sin nada que atara las copias. Este test
  * ata el perfil del seed (lo que el portal muestra) a `web-builder/business-profile.json` (lo que se
  * publica). Cambiar uno sin el otro cae acá, no en la demo delante de Frank.
  */

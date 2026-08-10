@@ -1,5 +1,5 @@
 /**
- * reseed-demo — re-siembra la demo (La Birra Bar) leyendo las credenciales de la FUENTE ÚNICA.
+ * reseed-demo — re-siembra la demo (Borcelle Burger) leyendo las credenciales de la FUENTE ÚNICA.
  *
  *   npm run reseed:demo              # muestra a qué base va y pide confirmación
  *   npm run reseed:demo -- --si      # sin confirmación (para automatizar)
@@ -180,7 +180,7 @@ async function main(): Promise<void> {
     morir(`No encuentro ${cmd}\nCorré \`npm install\` en la raíz del monorepo y volvé a intentar.`);
   }
 
-  console.log("Re-siembra del caso de demo (La Birra Bar), leyendo de docs/private/credenciales.env\n");
+  console.log("Re-siembra del caso de demo (Borcelle Burger), leyendo de docs/private/credenciales.env\n");
   console.log(`  base:  ${resumirDsn(claves.get("DATABASE_URL_ADMIN")!)}`);
   console.log(`  Frank: ${claves.get("SEED_FRANK_USER_ID")}  (maestro)`);
   console.log(`  Juan:  ${claves.get("SEED_JUAN_USER_ID")}  (equipo)`);

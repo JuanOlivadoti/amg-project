@@ -125,6 +125,29 @@ que `auditar:railway` la va a listar como una diferencia más — intencional.
 ⚠️ **El wildcard resuelve las demos, no la cartera en producción**: el dominio propio de cada cliente
 sigue consumiendo un custom domain de Railway, y el plan está en su límite. Es el bloque G.
 
+## 🍔 El cliente de demo es Borcelle Burger — decidido el 2026-08-10
+
+**Un solo cliente, y ficticio.** El seed, `web-builder/business-profile.json`, el mock del portal y el
+dev-server nombran ahora a «Borcelle Burger». El perfil tiene **una sola fuente** (`PERFIL_DEMO` en
+`db/src/seed-demo.ts`); `renderer/src/perfil-demo.ts` lo re-exporta y `npm run sql:demo -w renderer`
+genera el `update` que lo pone en un dominio.
+
+**Por qué ficticio:** es la única forma de enseñar fotos y reseñas sin ponerle en la boca a un negocio
+real cosas que no dijo. `testimonios` no tiene default justamente por eso.
+
+**Por qué un `update` y no un `insert`:** el cliente de demo tiene id fijo, y las cuatro FK que apuntan
+a `clients` son `on delete cascade` — deshacer un duplicado borrando uno se lleva sus runs, sus páginas
+y sus membresías.
+
+⚠️ **Lo que se perdió, dicho para que nadie lo redescubra:** el seed traía el research **real** de un
+cliente real, medido y pagado ($0.3097). Las keywords genéricas se conservaron —le valen igual a
+cualquier hamburguesería de Madrid— pero **el informe del portal ya no es un caso medido de verdad**.
+Recuperarlo es volver a correr el pipeline.
+
+⏳ **Falta en producción:** `reseed:demo` (para que research, ideas e informe lleven el nombre nuevo),
+el `update` del dominio a `borcelle.bigballs.es`, y **despublicar en Storyblok las 12 landings** que
+siguen diciendo el nombre anterior.
+
 ## ⏸️ Pausado, no abandonado
 
 **Bloque J, pieza 3 (Ideas).** Etapas **1-4 commiteadas** (`afe1725`, `73fcd35`, `c929a98`); faltan

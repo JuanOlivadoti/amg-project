@@ -61,7 +61,7 @@ async function get(path: string, user: string, tenant: string): Promise<Response
   });
 }
 
-test("GET /runs como Frank devuelve el run de La Birra Bar en pending_approval", async () => {
+test("GET /runs como Frank devuelve el run de Borcelle Burger en pending_approval", async () => {
   const res = await get("/runs", FRANK, r.tenantId);
   assert.equal(res.status, 200);
   const { runs } = (await res.json()) as { runs: Array<{ id: string; status: string }> };
