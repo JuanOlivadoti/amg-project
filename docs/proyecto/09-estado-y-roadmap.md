@@ -9,8 +9,11 @@
 >
 > Sigue abierto, de antes: el
 > [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md) —
-> las piezas **1 (CRM de clientes)** y **2 (usuarios)** están mergeadas a `main`; quedan la **3
-> (Ideas)** y la **4 (Dashboard)**, las dos con plan escrito. Es el bloque **J** del plan.
+> las piezas **1 (CRM de clientes)** y **2 (usuarios)** están mergeadas a `main`. La **3 (Ideas)** va
+> por la mitad: sus **etapas 1-4 están hechas** (la migración `0013`, la capa de datos, los tres
+> endpoints y el seed de ejemplo — todo `db` y `api`), y **quedan las 5-7**, que son enteras del portal:
+> las pantallas, las rutas, y retirar el módulo de ideas **mock** que la pieza 1 dejó dentro de la ficha
+> del cliente. La **4 (Dashboard)** no ha empezado y depende de la 3. Es el bloque **J** del plan.
 >
 > 📓 **La historia está en [`progress/history.md`](../../progress/history.md)**: qué se hizo cada día,
 > con sus tropiezos y sus lecciones. Acá vive solo el estado de hoy y lo que falta — si buscás *por
