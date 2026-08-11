@@ -23,6 +23,53 @@ function sinComentarios(fuente: string): string {
   return fuente.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 }
 
+/**
+ * Lo que hay entre los paréntesis de `funcion(...)`, contando los anidados.
+ *
+ * Contar paréntesis en vez de escribirlos en un regex es lo que hace que la comprobación no dependa
+ * del formateo: los saltos de línea, la sangría y —sobre todo— **la coma final que pone Prettier**
+ * dejan de importar, porque nunca se empareja la puntuación, solo se delimita el argumento.
+ */
+function argumentosDe(codigo: string, funcion: string): string | null {
+  const i = codigo.indexOf(`${funcion}(`);
+  if (i < 0) return null;
+  const abre = i + funcion.length;
+  let nivel = 0;
+  for (let j = abre; j < codigo.length; j++) {
+    if (codigo[j] === '(') nivel++;
+    else if (codigo[j] === ')') {
+      nivel--;
+      if (nivel === 0) return codigo.slice(abre + 1, j);
+    }
+  }
+  return null; // paréntesis sin cerrar: no es código válido, no opinamos
+}
+
+/**
+ * `null` si el fuente conserva la garantía; si no, el motivo exacto por el que se perdió.
+ *
+ * Son **tres comprobaciones que se sostienen solas** —hay una llamada a `provideRouter`; entre sus
+ * argumentos hay un `withRouterConfig(...)`; y dentro de ÉSE está el parámetro— en vez de un único
+ * match que ate además la puntuación intermedia. Cada una puede fallar por su cuenta y decir cuál
+ * falló, que es lo que hace accionable el rojo.
+ *
+ * Que el `withRouterConfig` se busque **dentro de los argumentos de `provideRouter`** y no en el
+ * archivo entero es lo que impide el caso `const cfg = withRouterConfig({…})` sin pasárselo a nadie.
+ */
+function porQueNoHeredaParams(fuente: string): string | null {
+  const codigo = sinComentarios(fuente);
+  const args = argumentosDe(codigo, 'provideRouter');
+  if (args === null) return 'app.config.ts no llama a `provideRouter(...)`';
+  const config = argumentosDe(args, 'withRouterConfig');
+  if (config === null) {
+    return "`provideRouter(...)` no recibe un `withRouterConfig(...)`: sin él las rutas hijas de path no vacío no ven el `:id` del padre";
+  }
+  if (!/paramsInheritanceStrategy:\s*'always'/.test(config)) {
+    return "el `withRouterConfig(...)` de `provideRouter` no lleva `paramsInheritanceStrategy: 'always'`";
+  }
+  return null;
+}
+
 test('login es una ruta hermana, sin hijas — no vive dentro del shell', () => {
   const login = routes.find((r) => r.path === 'login');
   assert.ok(login, 'no encontré la ruta login');
@@ -122,12 +169,94 @@ test('el router hereda los params del padre: sin esto, /clientes/:id/research no
    * Lo que se protege es una garantía SILENCIOSA: con el default `'emptyOnly'`, `params.get('id')`
    * en un tab devuelve `null` y la pantalla se queda vacía sin un solo error en consola.
    */
-  const codigo = sinComentarios(readFileSync(new URL('./app.config.ts', import.meta.url), 'utf8'));
-  assert.match(
-    codigo,
-    /provideRouter\(\s*routes\s*,\s*withRouterConfig\(\s*\{[^}]*paramsInheritanceStrategy:\s*'always'[^}]*\}\s*\)\s*\)/,
-    "app.config.ts debe PASARLE `withRouterConfig({ paramsInheritanceStrategy: 'always' })` a `provideRouter`",
-  );
+  const fallo = porQueNoHeredaParams(readFileSync(new URL('./app.config.ts', import.meta.url), 'utf8'));
+  assert.equal(fallo, null, fallo ?? '');
+});
+
+/**
+ * Las siete formas de escribir la MISMA garantía. Las siete tienen que pasar.
+ *
+ * El primer intento de este test era un solo regex que ataba también la puntuación
+ * (`…\}\s*\)\s*\)`), y eso exigía que `withRouterConfig(...)` fuera el último argumento y que no
+ * hubiera nada entre su `)` y el de `provideRouter`. Medido: **la coma final lo rompía**, y Prettier 3
+ * la pone cuando parte una llamada (`portal/package.json` no fija `trailingComma`, cuyo default es
+ * `"all"`). De estas siete escrituras, cinco fallaban — todas con la garantía intacta.
+ *
+ * Importa por lo que pasa después de un rojo falso: el mensaje habría dicho «`app.config.ts` debe
+ * pasarle `withRouterConfig(...)` a `provideRouter`» mientras el archivo hace exactamente eso, y la
+ * salida más corta para quien lo sufriera es aflojar el regex hasta que vuelva a emparejar la mención
+ * suelta — que es el defecto original, de vuelta. Un test que se rompe al reformatear se termina
+ * relajando hasta que deja de morder.
+ */
+const ESCRITURAS_VALIDAS: readonly (readonly [string, string])[] = [
+  ['la de hoy, en una línea', `provideRouter(routes, withRouterConfig({ paramsInheritanceStrategy: 'always' })),`],
+  [
+    'Prettier parte los argumentos',
+    `provideRouter(
+      routes,
+      withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+    ),`,
+  ],
+  [
+    'Prettier parte también el objeto',
+    `provideRouter(
+      routes,
+      withRouterConfig({
+        paramsInheritanceStrategy: 'always',
+      }),
+    ),`,
+  ],
+  [
+    'otra feature del router después',
+    `provideRouter(routes, withRouterConfig({ paramsInheritanceStrategy: 'always' }), withComponentInputBinding()),`,
+  ],
+  [
+    'otra feature, con Prettier partiendo',
+    `provideRouter(
+      routes,
+      withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+      withComponentInputBinding(),
+    ),`,
+  ],
+  [
+    'el objeto lleva otra opción antes',
+    `provideRouter(routes, withRouterConfig({ onSameUrlNavigation: 'reload', paramsInheritanceStrategy: 'always' })),`,
+  ],
+  [
+    'un comentario de línea dentro de la llamada partida',
+    `provideRouter(
+      routes,
+      // los tabs necesitan el :id del padre
+      withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+    ),`,
+  ],
+];
+
+test('🔴 la garantía se reconoce escrita de las 7 formas válidas: reformatear no puede ponerlo rojo', () => {
+  for (const [nombre, codigo] of ESCRITURAS_VALIDAS) {
+    assert.equal(
+      porQueNoHeredaParams(codigo),
+      null,
+      `«${nombre}» conserva la garantía y el test la rechazó: ${porQueNoHeredaParams(codigo)}`,
+    );
+  }
+});
+
+test('🔴 …y sigue cazando las cuatro formas de perderla', () => {
+  // El complemento obligatorio del test de arriba: aflojar hasta que las 7 pasen es fácil si de paso
+  // se deja pasar todo. Cada una de éstas borra la garantía de una manera distinta.
+  const invalidas: readonly (readonly [string, string])[] = [
+    ['sin withRouterConfig (la mutación A)', `provideRouter(routes),`],
+    ['withRouterConfig vacío', `provideRouter(routes, withRouterConfig({})),`],
+    ["con el default explícito", `provideRouter(routes, withRouterConfig({ paramsInheritanceStrategy: 'emptyOnly' })),`],
+    [
+      'withRouterConfig existe pero NO se lo pasa a provideRouter',
+      `const cfg = withRouterConfig({ paramsInheritanceStrategy: 'always' });\nprovideRouter(routes),`,
+    ],
+  ];
+  for (const [nombre, codigo] of invalidas) {
+    assert.notEqual(porQueNoHeredaParams(codigo), null, `«${nombre}» perdió la garantía y el test la dejó pasar`);
+  }
 });
 
 test('🔴 el barrido de app.config.ts descarta los comentarios: si no, la prosa hace pasar al test', () => {
