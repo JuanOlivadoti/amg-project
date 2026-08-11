@@ -30,8 +30,12 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./shared/layout/app-shell').then((m) => m.AppShellComponent),
     children: [
-      { path: 'runs', loadComponent: () => import('./pages/runs/runs').then((m) => m.RunsPage) },
       {
+        /*
+         * No hay lista global de runs: el research de un cliente se alcanza desde su ficha
+         * (`clientes/:id/research`). `runs/:id` y `runs/:id/informe` siguen acá hasta la tarea 3,
+         * que los muda bajo el cliente.
+         */
         path: 'runs/:id',
         loadComponent: () => import('./pages/brief/brief').then((m) => m.BriefPage),
       },
@@ -70,6 +74,11 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/clientes/cliente-perfil').then((m) => m.ClientePerfilPage),
           },
+          {
+            path: 'research',
+            loadComponent: () =>
+              import('./pages/clientes/cliente-research').then((m) => m.ClienteResearchPage),
+          },
           { path: '', pathMatch: 'full', redirectTo: 'perfil' },
         ],
       },
@@ -87,8 +96,11 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./pages/usuarios/usuario-perfil').then((m) => m.UsuarioPerfilPage),
       },
-      { path: '', pathMatch: 'full', redirectTo: 'runs' },
+      // La home del portal es la cartera de clientes desde que Research dejó el menú: ya no hay
+      // ninguna pantalla global de research a la que abrir, y `clientes` es por donde empieza
+      // cualquier recorrido (de ahí se entra a la ficha, y de la ficha a su research).
+      { path: '', pathMatch: 'full', redirectTo: 'clientes' },
     ],
   },
-  { path: '**', redirectTo: 'runs' },
+  { path: '**', redirectTo: 'clientes' },
 ];

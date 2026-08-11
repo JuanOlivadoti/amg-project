@@ -9,7 +9,6 @@ describe('AppSidebarComponent', () => {
       imports: [AppSidebarComponent],
       providers: [
         provideRouter([
-          { path: 'runs', children: [] },
           { path: 'cartera', children: [] },
           { path: 'clientes', children: [] },
           { path: 'usuarios', children: [] },
@@ -23,7 +22,8 @@ describe('AppSidebarComponent', () => {
 
   it('renderiza los ítems de navegación', () => {
     const el = render().nativeElement as HTMLElement;
-    expect(el.textContent).toContain('Research');
+    // Research YA NO está: el research de un cliente se alcanza desde su ficha, no desde el menú.
+    expect(el.textContent).not.toContain('Research');
     expect(el.textContent).toContain('Cartera');
     expect(el.textContent).toContain('Clientes');
     expect(el.textContent).toContain('Usuarios');

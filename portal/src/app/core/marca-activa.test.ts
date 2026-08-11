@@ -1,15 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { TOKENS } from '../../core/contraste';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { TOKENS } from './contraste';
 
 /**
- * La marca del tab activo, defendida.
+ * La marca del elemento activo, defendida — en **toda** plantilla que use `routerLinkActive`.
  *
  * Entre dos utilidades de Tailwind que pisan la misma propiedad con la misma especificidad gana la
  * que va DESPUÉS en la hoja de estilos; el orden dentro del atributo `class` no decide nada. Así que
- * `routerLinkActive` puede poner sus clases y la cascada ignorarlas: las dos que marcan el tab activo
- * pierden contra las dos del estado inactivo, y sin el `!` el tab activo se ve idéntico a los demás.
+ * `routerLinkActive` puede poner sus clases y la cascada ignorarlas: las que marcan el estado activo
+ * pierden contra las del estado inactivo, y sin el `!` el activo se ve idéntico a los demás.
  *
  * Es una garantía silenciosa de manual: las clases están en el elemento (un test de DOM las encuentra
  * y pasa), no hay error en consola, y el único síntoma es visual. Se descubrió manejando la app, no
@@ -18,6 +20,15 @@ import { TOKENS } from '../../core/contraste';
  * puede cubrirlo: los specs de componente no compilan Tailwind, así que ahí `border-accion` no tiene
  * ningún valor computado que comparar.
  *
+ * ## Por qué barre el árbol y no un archivo
+ *
+ * Nació en la tarea 1 mirando **solo** `cliente-ficha.ts`, y la tarea 2 encontró el mismo defecto,
+ * preexistente y sin cubrir, en `app-sidebar.ts`: su `text-texto` activo perdía contra el
+ * `text-texto-tenue` de la base. No se notaba porque el `bg-superficie-2` (que no compite con nada)
+ * marcaba el activo igual — pero quien le quitara el fondo se quedaba sin marca de activo y sin nada
+ * rojo. Un test que enumera archivos cubre las pantallas de hoy; recorrer el directorio es lo que
+ * hace que la regla se cumpla sola en las de mañana. Mismo criterio que `contraste.test.ts`.
+ *
  * ## El criterio, y las dos veces que estuvo mal calibrado
  *
  * 1. La primera versión exigía `!` en **toda** clase del `routerLinkActive`. Con dos clases que
@@ -25,14 +36,13 @@ import { TOKENS } from '../../core/contraste';
  *    clase que no compitiera con nada — enseñando el reflejo contrario al que este test existe para
  *    dejar.
  * 2. La segunda solo miraba **colores**, y con eso dejó de ver que `font-bold` en el activo pierde
- *    contra el `font-medium` de la base: el tab activo no se pondría en negrita, con el test en verde.
- *    Se generalizó desde el único ejemplo examinado (`font-semibold`, que sí gana solo) tomando por
- *    propiedad de la familia lo que era suerte alfabética de ese valor.
+ *    contra el `font-medium` de la base: el elemento activo no se pondría en negrita, con el test en
+ *    verde. Se generalizó desde el único ejemplo examinado (`font-semibold`, que sí gana solo)
+ *    tomando por propiedad de la familia lo que era suerte alfabética de ese valor.
  *
  * Lo que decide de verdad son **dos** cosas, y el criterio de acá abajo mira las dos: que las clases
  * pisen la misma propiedad, y **cuál de las dos va después en la hoja**.
  */
-const fuente = readFileSync(new URL('./cliente-ficha.ts', import.meta.url), 'utf8');
 
 /**
  * Los colores que puede llevar una utilidad: los 17 roles del portal (la fuente de verdad es
@@ -116,41 +126,101 @@ function pisadaPor(activa: string, base: readonly string[]): string | null {
   return null;
 }
 
-/** El `<a>` de la barra de tabs, con sus dos listas de clases. */
-function anclaDeTabs(): { activas: string[]; base: string[] } {
-  const ancla = [...fuente.matchAll(/<a\b[^>]*>/g)]
-    .map((m) => m[0])
-    .find((a) => a.includes('routerLinkActive='));
-  assert.ok(ancla, 'no encontré el <a> de la barra de tabs con su routerLinkActive');
-  const activas = /routerLinkActive="([^"]+)"/.exec(ancla)?.[1];
-  const base = /\bclass="([^"]+)"/.exec(ancla)?.[1];
-  assert.ok(activas, 'el <a> de los tabs no tiene routerLinkActive');
-  assert.ok(base, 'el <a> de los tabs no tiene class');
-  return { activas: activas.split(/\s+/).filter(Boolean), base: base.split(/\s+/).filter(Boolean) };
+/**
+ * Todo `src/` menos los tests — igual que `core/sin-html-crudo.test.ts`.
+ *
+ * Los `*.test.ts` y `*.spec.ts` quedan fuera porque un test legítimamente escribe el fragmento que
+ * examina: este mismo archivo lleva anclas de ejemplo abajo, y contarlas sería medirse a sí mismo.
+ */
+function fuentes(): string[] {
+  const raiz = fileURLToPath(new URL('../..', import.meta.url));
+  const encontradas: string[] = [];
+  const recorrer = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const ruta = join(dir, e.name);
+      if (e.isDirectory()) recorrer(ruta);
+      else if (/\.(ts|html)$/.test(e.name) && !/\.(test|spec)\.ts$/.test(e.name)) {
+        encontradas.push(ruta);
+      }
+    }
+  };
+  recorrer(raiz);
+  return encontradas;
 }
 
-test('🔴 toda clase activa del tab a la que la base le gana lleva `!`: si no, el activo no se distingue', () => {
-  const { activas, base } = anclaDeTabs();
-  assert.ok(activas.length >= 2, `esperaba al menos 2 clases activas, encontré ${activas.length}`);
+interface Ancla {
+  readonly archivo: string;
+  readonly etiqueta: string;
+  readonly activas: string[];
+  readonly base: string[];
+}
 
-  const pisadas = activas
-    .map((clase) => ({ clase, por: pisadaPor(clase, base) }))
-    .filter((x): x is { clase: string; por: string } => x.por !== null);
+/**
+ * Cada elemento del portal que se marca con `routerLinkActive`, con sus dos listas de clases.
+ *
+ * Se acepta cualquier etiqueta y no solo `<a>`: el defecto es de la cascada, no del anchor. Un
+ * elemento con `routerLinkActive` y **sin** `class=` estático se salta a propósito — no tiene ninguna
+ * clase base contra la que perder, así que no hay nada que exigirle.
+ */
+function anclasActivas(): Ancla[] {
+  const anclas: Ancla[] = [];
+  for (const archivo of fuentes()) {
+    const texto = readFileSync(archivo, 'utf8');
+    for (const m of texto.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*\brouterLinkActive\b[^>]*)>/g)) {
+      const etiqueta = m[1] ?? '?';
+      const atributos = m[2] ?? '';
+      const activas = /\brouterLinkActive="([^"]+)"/.exec(atributos)?.[1];
+      // La forma ligada (`[routerLinkActive]="expr"`) no se puede leer desde el fuente, y dejarla
+      // pasar en silencio convertiría el barrido en algo que se esquiva sin desobedecerlo.
+      assert.ok(
+        activas,
+        `${archivo}: <${etiqueta}> usa routerLinkActive sin un valor estático ("…"). El criterio de ` +
+          'este test analiza el fuente: escribilo estático, o extendé el test antes de ligarlo.',
+      );
+      const base = /\bclass="([^"]+)"/.exec(atributos)?.[1];
+      if (!base) continue;
+      anclas.push({
+        archivo,
+        etiqueta,
+        activas: activas.split(/\s+/).filter(Boolean),
+        base: base.split(/\s+/).filter(Boolean),
+      });
+    }
+  }
+  return anclas;
+}
 
-  // Si el barrido dejara de encontrar colisiones (un regex desactualizado, un template reescrito), el
-  // bucle de abajo no correría y el test pasaría sin haber probado nada.
+test('🔴 toda clase activa a la que la base le gana lleva `!`: si no, el activo no se distingue', () => {
+  const anclas = anclasActivas();
+
+  // Dos anclas hoy: la barra de tabs de la ficha y el menú del sidebar. Si el regex dejara de
+  // emparejar una (un template reescrito, el atributo partido en otra línea), el barrido pasaría en
+  // verde sin haberla mirado — y el defecto del sidebar es exactamente el que estuvo así de invisible.
   assert.ok(
-    pisadas.length >= 2,
-    `esperaba al menos las 2 colisiones conocidas (border-*, text-*), encontré ${pisadas.length}: ` +
-      `activas=[${activas.join(' ')}] base=[${base.join(' ')}]`,
+    anclas.length >= 2,
+    `esperaba al menos 2 elementos con routerLinkActive, encontré ${anclas.length}: ` +
+      anclas.map((a) => `${a.archivo} <${a.etiqueta}>`).join(', '),
   );
 
-  for (const { clase, por } of pisadas) {
+  const pisadas = anclas.flatMap((ancla) =>
+    ancla.activas
+      .map((clase) => ({ ancla, clase, por: pisadaPor(clase, ancla.base) }))
+      .filter((x): x is { ancla: Ancla; clase: string; por: string } => x.por !== null),
+  );
+
+  // Y si el barrido dejara de encontrar colisiones, el bucle de abajo no correría: verde sin probar.
+  assert.ok(
+    pisadas.length >= 2,
+    `esperaba al menos las colisiones conocidas (border-*, text-*), encontré ${pisadas.length}: ` +
+      anclas.map((a) => `${a.archivo}: activas=[${a.activas.join(' ')}] base=[${a.base.join(' ')}]`).join(' | '),
+  );
+
+  for (const { ancla, clase, por } of pisadas) {
     assert.ok(
       clase.endsWith('!'),
-      `\`${clase}\` no lleva \`!\` y \`${por}\` (del estado inactivo) va después en la hoja, así que la ` +
-        'pisa: el tab activo se vería igual que los demás. Tailwind emite por orden alfabético, y el ' +
-        'orden del atributo `class` no decide nada.',
+      `${ancla.archivo}: \`${clase}\` no lleva \`!\` y \`${por}\` (del estado inactivo) va después en ` +
+        'la hoja, así que la pisa: el elemento activo se vería igual que los demás. Tailwind emite por ' +
+        'orden alfabético, y el orden del atributo `class` no decide nada.',
     );
   }
 });
@@ -192,4 +262,20 @@ test('el criterio de colisión mira la propiedad Y el orden de emisión, no solo
   assert.equal(grupoDePropiedad('font-bold'), 'font:peso');
   assert.equal(grupoDePropiedad('font-mono'), 'font:tipografía');
   assert.equal(grupoDePropiedad('border-accion!'), 'border:color', 'el `!` no cambia qué propiedad pisa');
+});
+
+test('🔴 el caso del sidebar: `bg-*` gana solo, pero el `text-texto` activo pierde y necesita `!`', () => {
+  /*
+   * El defecto que este barrido encontró al dejar de mirar un solo archivo. Va aparte del barrido
+   * porque el barrido afirma sobre lo que HAY: si mañana alguien reescribe el menú, el barrido lo
+   * sigue cubriendo pero deja de documentar por qué el `!` estaba ahí.
+   *
+   * Las dos mitades importan. `bg-superficie-2` NO lleva `!` porque la base no tiene ningún `bg-*`
+   * en estado normal (solo `hover:bg-superficie-2`, que es otra cosa) — pedírselo enseñaría a poner
+   * `!important` por reflejo. `text-texto` SÍ, porque `text-texto-tenue` va después en la hoja.
+   */
+  const base = ['flex', 'items-center', 'gap-3', 'rounded-md', 'px-3', 'py-2', 'text-sm', 'text-texto-tenue', 'hover:text-texto', 'hover:bg-superficie-2'];
+
+  assert.equal(pisadaPor('bg-superficie-2', base), null, 'no hay bg-* en la base: el activo gana solo');
+  assert.equal(pisadaPor('text-texto', base), 'text-texto-tenue', 'el activo pierde: necesita `!`');
 });

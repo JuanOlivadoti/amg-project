@@ -5,11 +5,13 @@ import { SidebarService } from '../services/sidebar';
 interface ItemNav {
   readonly etiqueta: string;
   readonly ruta: string;
-  readonly icono: 'research' | 'cartera' | 'clientes' | 'usuarios';
+  readonly icono: 'cartera' | 'clientes' | 'usuarios';
 }
 
 const ITEMS_NAV: readonly ItemNav[] = [
-  { etiqueta: 'Research', ruta: '/runs', icono: 'research' },
+  // Research NO está: el research es de un cliente, y se alcanza desde su ficha
+  // (`/clientes/:id/research`). Una entrada de menú global obligaba a elegir el cliente después,
+  // pegando su uuid en un input.
   { etiqueta: 'Cartera', ruta: '/cartera', icono: 'cartera' },
   { etiqueta: 'Clientes', ruta: '/clientes', icono: 'clientes' },
   // Aditivo, y visible para todos: la pantalla se defiende sola. Un rol `cliente` que entre ve una
@@ -18,6 +20,20 @@ const ITEMS_NAV: readonly ItemNav[] = [
   { etiqueta: 'Usuarios', ruta: '/usuarios', icono: 'usuarios' },
 ];
 
+/**
+ * El menú de la plataforma. Solo lo que es de la AGENCIA: lo que pertenece a un cliente vive en su
+ * ficha (`/clientes/:id`), no acá.
+ *
+ * **Por qué el `!` va en `text-texto!` y no en `bg-superficie-2`, y la asimetría es el punto.**
+ * Tailwind emite las utilidades por orden alfabético y, a igual especificidad, gana la última de la
+ * hoja: `text-texto-tenue` (de la clase base) va después de `text-texto` (del estado activo) y lo
+ * pisa. El fondo, en cambio, no compite con nada en estado normal —la base solo tiene
+ * `hover:bg-superficie-2`—, así que gana solo, y pedirle un `!` enseñaría a poner `!important` por
+ * reflejo.
+ *
+ * El defecto era real y estaba escondido: el activo se distinguía por el fondo, así que quien le
+ * quitara el fondo se quedaba sin marca de activo y sin nada rojo. Lo caza `core/marca-activa.test.ts`.
+ */
 @Component({
   selector: 'app-sidebar',
   imports: [RouterLink, RouterLinkActive],
@@ -30,19 +46,16 @@ const ITEMS_NAV: readonly ItemNav[] = [
         <span class="text-sm font-semibold text-texto">AMG OS</span>
       </div>
       <nav class="flex-1 px-2 py-3 space-y-1">
+        <!-- El porqué del ! asimétrico está en el docblock del componente: acá los backticks de un
+             comentario cerrarían el template literal a mitad. -->
         @for (item of items; track item.ruta) {
           <a
             [routerLink]="item.ruta"
-            routerLinkActive="bg-superficie-2 text-texto"
+            routerLinkActive="bg-superficie-2 text-texto!"
             class="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-texto-tenue hover:text-texto hover:bg-superficie-2"
             (click)="sidebar.cerrarMobile()"
           >
             @switch (item.icono) {
-              @case ('research') {
-                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm9 16-4.35-4.35" />
-                </svg>
-              }
               @case ('cartera') {
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3 13h4v7H3zM10 8h4v12h-4zM17 3h4v17h-4z" />

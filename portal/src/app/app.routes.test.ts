@@ -76,13 +76,13 @@ test('login es una ruta hermana, sin hijas — no vive dentro del shell', () => 
   assert.equal(login?.children, undefined, '/login no debería tener rutas hijas de un shell');
 });
 
-test('runs, runs/:id y cartera son hijas de la ruta del shell, protegidas por authGuard', () => {
+test('la lista global de runs ya no existe; runs/:id y cartera siguen siendo hijas del shell', () => {
   const shell = routes.find((r) => r.path === '' && r.children);
   assert.ok(shell, 'no encontré la ruta padre del shell (path vacío con children)');
   assert.deepEqual(shell?.canActivate, [authGuard], 'el shell debe estar protegido por authGuard');
   const hijos = (shell?.children ?? []).map((r) => r.path);
-  assert.ok(hijos.includes('runs'), 'runs debe ser hija del shell');
-  assert.ok(hijos.includes('runs/:id'), 'runs/:id debe ser hija del shell');
+  assert.ok(!hijos.includes('runs'), 'la lista global de runs se retiró: vive en el tab del cliente');
+  assert.ok(hijos.includes('runs/:id'), 'runs/:id sigue siendo hija del shell (se muda en la tarea 3)');
   assert.ok(hijos.includes('cartera'), 'cartera debe ser hija del shell');
 });
 
@@ -136,6 +136,14 @@ test('clientes/:id es un shell con tabs: carga la ficha y redirige a perfil por 
 
   const tabs = (ficha?.children ?? []).map((r) => r.path);
   assert.ok(tabs.includes('perfil'), 'el tab perfil debe existir');
+  assert.ok(tabs.includes('research'), 'el tab research debe existir');
+
+  // Y que el `loadComponent` del tab nuevo resuelva de verdad. Un import mal escrito no rompe el
+  // build (es una función perezosa) y acá el fallo sería mudo: sin ruta `research`, el link del tab
+  // cae en el comodín y el portal manda a `/clientes` como si nada.
+  const research = (ficha?.children ?? []).find((r) => r.path === 'research');
+  const componenteResearch = await research?.loadComponent?.();
+  assert.equal((componenteResearch as { name?: string })?.name, 'ClienteResearchPage');
 
   const porDefecto = (ficha?.children ?? []).find((r) => r.path === '');
   assert.equal(porDefecto?.redirectTo, 'perfil');
@@ -279,15 +287,26 @@ test('🔴 el barrido de app.config.ts descarta los comentarios: si no, la prosa
   assert.match(sinComentarios(bueno), /withRouterConfig\(\{ paramsInheritanceStrategy: 'always' \}\)/);
 });
 
-test('usuarios y usuarios/:id son hijas del shell, y el redirectTo a runs no se toca', () => {
+test('usuarios y usuarios/:id son hijas del shell, y la home abre en clientes', () => {
   const shell = routes.find((r) => r.path === '' && r.children);
   const hijos = (shell?.children ?? []).map((r) => r.path);
   assert.ok(hijos.includes('usuarios'), 'usuarios debe ser hija del shell (y del authGuard)');
   assert.ok(hijos.includes('usuarios/:id'), 'usuarios/:id debe ser hija del shell');
 
-  // El default de la demo. La pieza 2 es aditiva: si esto cambiara, el portal abriría en otra
-  // pantalla y la demo empezaría en un lugar que nadie ensayó.
+  // El default de la demo: si esto cambiara, el portal abriría en otra pantalla y la demo empezaría
+  // en un lugar que nadie ensayó.
+  // El default cambió de `runs` a `clientes` cuando Research dejó el menú: la home del portal es
+  // ahora la cartera de clientes, que es por donde empieza cualquier recorrido.
   const raiz = (shell?.children ?? []).find((r) => r.path === '');
-  assert.equal(raiz?.redirectTo, 'runs');
+  assert.equal(raiz?.redirectTo, 'clientes');
   assert.equal(raiz?.pathMatch, 'full');
+});
+
+test('el comodín `**` también cae en clientes: /runs ya no resuelve a ninguna pantalla', () => {
+  // Va con el redirect de la home, y no dentro de él, porque son dos defaults distintos: uno decide
+  // dónde abre el portal, el otro dónde termina una URL que no existe. Dejar el `**` apuntando a
+  // `runs` mandaría a una ruta retirada, y el router encadenaría wildcard → runs → wildcard.
+  const comodin = routes.find((r) => r.path === '**');
+  assert.ok(comodin, 'no encontré la ruta comodín');
+  assert.equal(comodin?.redirectTo, 'clientes');
 });

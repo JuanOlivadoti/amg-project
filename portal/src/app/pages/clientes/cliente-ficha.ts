@@ -10,10 +10,13 @@ interface TabFicha {
 }
 
 /**
- * Los tabs de la ficha. Se amplía en las tareas 2 (Research) y 4 (Reseñas, Ideas) — y el orden acá
- * ES el orden en pantalla.
+ * Los tabs de la ficha. Se amplía en la tarea 4 (Reseñas, Ideas) — y el orden acá ES el orden en
+ * pantalla. `Perfil` va primero porque es el tab por defecto (el `redirectTo` de `app.routes.ts`).
  */
-export const TABS_FICHA: readonly TabFicha[] = [{ etiqueta: 'Perfil', ruta: 'perfil' }];
+export const TABS_FICHA: readonly TabFicha[] = [
+  { etiqueta: 'Perfil', ruta: 'perfil' },
+  { etiqueta: 'Research', ruta: 'research' },
+];
 
 /**
  * Shell de `/clientes/:id`: la ficha del cliente como CONTENEDOR de sus secciones, no como pantalla.
@@ -35,9 +38,10 @@ export const TABS_FICHA: readonly TabFicha[] = [{ etiqueta: 'Perfil', ruta: 'per
  * en el atributo `class` — y Tailwind las emite por orden alfabético. Medido en el CSS servido:
  * `.border-transparent` sale después de `.border-accion`, y `.text-texto-tenue` después de
  * `.text-texto`. Sin el `!`, el tab activo conserva el borde transparente y el texto tenue: se ve
- * exactamente igual que los inactivos. No lo caza ningún test —las dos clases ESTÁN en el elemento—,
- * solo se ve en el navegador. (Mismo motivo por el que el link activo del sidebar se marca con
- * `bg-superficie-2`, que no compite con nada, y su `text-texto` tampoco llega a aplicarse.)
+ * exactamente igual que los inactivos. **Ningún test de DOM lo caza** —las dos clases ESTÁN en el
+ * elemento—, así que lo fija leyendo el fuente `core/marca-activa.test.ts`, que barre TODA plantilla
+ * con `routerLinkActive` (el sidebar tenía el mismo defecto, sin cubrir, hasta que ese barrido dejó
+ * de mirar un solo archivo).
  */
 @Component({
   selector: 'app-cliente-ficha',

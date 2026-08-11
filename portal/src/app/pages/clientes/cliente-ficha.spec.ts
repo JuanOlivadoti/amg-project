@@ -144,12 +144,13 @@ describe('ClienteFichaComponent', () => {
     expect(el.textContent).toContain('soy el tab montado en el outlet');
   });
 
-  it('renderiza el tab Perfil apuntando a /clientes/c1/perfil', async () => {
+  it('renderiza los tabs Perfil y Research apuntando al cliente de la ruta', async () => {
     const { fixture } = crear(clienteDePrueba());
     const el = await estabilizar(fixture);
 
     const hrefs = [...el.querySelectorAll('nav a')].map((a) => a.getAttribute('href'));
     expect(hrefs).toContain('/clientes/c1/perfil');
+    expect(hrefs).toContain('/clientes/c1/research');
   });
 
   it('cliente no encontrado (`cliente()` queda en null tras `verCliente`): navega a /clientes', async () => {
