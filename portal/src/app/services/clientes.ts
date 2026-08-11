@@ -4,7 +4,8 @@ import type { CambiosClienteAgencia, ClienteAgencia, NuevoClienteAgencia } from 
 import { filtrarClientes, filtroVacio, type FiltroClientes } from '../core/clientes-filtro';
 
 /**
- * Estado del CRM de clientes en signals (sin NgRx). Mismo criterio que `pages/runs/runs.ts`:
+ * Estado del CRM de clientes en signals (sin NgRx). Mismo criterio que
+ * `pages/clientes/cliente-research.ts`:
  * `cargando`/`error` con `try/finally`, y acá además un `filtro` + un `filtrados` derivado.
  *
  * El filtrado/ordenamiento en sí NO vive acá: `filtrados` solo LLAMA a la función pura de

@@ -67,6 +67,23 @@ test('listarRuns con clientId lo pasa como query', async () => {
   assert.equal(capturado.url, 'http://api.test/runs?clientId=cli-1');
 });
 
+test('🔴 listarRuns("") NO degrada a la lista global: lanza ANTES de salir a la red', async () => {
+  /*
+   * Un `clientId` vacío no es «todos»: es un id que no llegó — un `:id` ausente en la ruta, un signal
+   * todavía sin escribir. Con el `clientId ? … : ''` a secas, ese caso construía `GET /runs` **sin
+   * filtro**: la lista de research de TODA la cartera, que el portal retiró al mudar el research bajo
+   * la ficha del cliente. El fallo era mudo —200, una lista más larga, ningún error— y la única cosa
+   * que lo evitaba era una guarda en el `ngOnInit` de una pantalla, que se lee como un dedup
+   * redundante y se borra sin miedo.
+   *
+   * Omitir el argumento SÍ sigue siendo la lista sin filtro (lo usa el primer test de este archivo):
+   * la distinción entre «no pedí filtro» y «pedí filtrar por nada» es justamente el arreglo.
+   */
+  const { fn, capturado } = fakeFetch({ body: { runs: [] } });
+  await assert.rejects(() => crearApi(opts(fn)).listarRuns(''), /clientId/);
+  assert.equal(capturado.url, undefined, 'no tenía que haber salido ninguna petición');
+});
+
 test('crearRun postea el cuerpo y devuelve el runId', async () => {
   const { fn, capturado } = fakeFetch({ status: 201, body: { runId: 'run-9' } });
   const runId = await crearApi(opts(fn)).crearRun({ clientId: 'cli-1', prompt: 'pizza' });

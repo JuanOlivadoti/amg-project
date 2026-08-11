@@ -17,8 +17,8 @@
  * fija acá les quitaría esa elección a las tres.
  *
  * Vive en `core/` y no en los componentes porque estaba duplicada como método privado en `BriefPage`
- * y en `RunsPage`, y dos copias de una regla de formato son dos oportunidades de que solo una
- * aprenda el caso `null`.
+ * y en la pantalla de research (hoy `ClienteResearchPage`, el tab de la ficha del cliente), y dos
+ * copias de una regla de formato son dos oportunidades de que solo una aprenda el caso `null`.
  */
 export function usdDeMicros(micros: number | null): string | null {
   // `=== null` y no `!micros`: un coste de CERO es un dato, y con la guarda falsy desaparecería.

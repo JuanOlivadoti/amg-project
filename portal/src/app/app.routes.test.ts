@@ -70,6 +70,60 @@ function porQueNoHeredaParams(fuente: string): string | null {
   return null;
 }
 
+/**
+ * A dónde manda `LoginPage` después de autenticar, leído del FUENTE.
+ *
+ * Se lee el fuente por el mismo motivo que `paramsInheritanceStrategy`: el destino es un literal
+ * dentro de un método `async`, y comprobarlo montando el componente fija el comportamiento pero no
+ * lo ata a la configuración de rutas — que es justo lo que se desincronizó. `null` si no hay un
+ * `this.router.navigate(['…'])` con un destino literal, y entonces el test falla en vez de callarse.
+ */
+function destinoPostLogin(fuente: string): string | null {
+  const args = argumentosDe(sinComentarios(fuente), 'this.router.navigate');
+  if (args === null) return null;
+  return /^\s*\[\s*'([^']*)'\s*\]\s*,?\s*$/.exec(args)?.[1] ?? null;
+}
+
+test('🔴 el login aterriza en la HOME declarada, no en una ruta que recoge el comodín', () => {
+  /*
+   * El defecto que esto fija: el commit que retiró la lista global de runs cambió los DOS
+   * `redirectTo` y dejó el tercer sitio que decide dónde abre el portal —`login.ts`— navegando a
+   * `/runs`. No se rompía nada porque el comodín `**` lo recogía y lo mandaba a `/clientes`: el
+   * destino correcto, por accidente del catch-all y no por decisión. Un rediseño de la navegación
+   * (la tarea 3 toca rutas) podía moverlo sin que cayera un solo test.
+   *
+   * Por eso no se compara contra la cadena `'/clientes'` escrita acá: se compara contra el
+   * `redirectTo` de la home REAL. Cambiar la home y olvidarse del login vuelve a poner esto rojo.
+   */
+  const destino = destinoPostLogin(
+    readFileSync(new URL('./pages/login/login.ts', import.meta.url), 'utf8'),
+  );
+  assert.ok(
+    destino,
+    'no encontré en `login.ts` un `this.router.navigate([\'…\'])` con un destino literal: si el ' +
+      'destino pasó a calcularse, extendé este test antes de dejarlo sin cubrir',
+  );
+
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const hijos = shell?.children ?? [];
+  const home = hijos.find((r) => r.path === '')?.redirectTo;
+  assert.ok(typeof home === 'string' && home, 'no encontré el redirect de la home del shell');
+
+  assert.equal(
+    destino,
+    `/${home}`,
+    `el login manda a \`${destino}\` y la home del portal es \`/${home}\`: son dos decisiones sobre ` +
+      'el mismo aterrizaje y tienen que decir lo mismo',
+  );
+
+  // Y que ese destino sea una ruta DECLARADA. Sin esto, login y home podrían coincidir los dos en una
+  // ruta retirada y el comodín seguiría tapándolo — que es exactamente como se veía el defecto.
+  assert.ok(
+    hijos.some((r) => r.path === home),
+    `\`${home}\` no está declarada como hija del shell: el login caería en el comodín \`**\``,
+  );
+});
+
 test('login es una ruta hermana, sin hijas — no vive dentro del shell', () => {
   const login = routes.find((r) => r.path === 'login');
   assert.ok(login, 'no encontré la ruta login');

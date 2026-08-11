@@ -137,6 +137,12 @@ export interface ApiOpts {
  * red. El `ApiService` de Angular es una cáscara fina encima de esto.
  */
 export interface ClienteApi {
+  /**
+   * Los runs de un cliente, o los de todo el tenant si se OMITE el argumento.
+   *
+   * Un `clientId` vacío **lanza**: no es «todos», es un id que no llegó. Ver el motivo largo en la
+   * implementación y en su test.
+   */
   listarRuns(clientId?: string): Promise<RunSummary[]>;
   crearRun(nuevo: NuevoRun): Promise<string>;
   verBrief(runId: string): Promise<Brief>;
@@ -254,6 +260,18 @@ export function crearApi(opts: ApiOpts): ClienteApi {
 
   return {
     async listarRuns(clientId) {
+      /*
+       * Una cadena vacía NO es «todos los runs»: es un id que no llegó — un `:id` ausente en la ruta,
+       * un signal todavía sin escribir. Sin esta línea caía en la rama sin query y pedía `GET /runs`,
+       * **la lista de research de toda la cartera**, que es justo lo que el portal retiró al mudar el
+       * research bajo la ficha del cliente. Y fallaba en silencio: 200, más filas, ninguna alarma.
+       *
+       * Se distingue de OMITIRLO (`listarRuns()`), que sigue siendo la lista sin filtro a propósito:
+       * quien la quiera tiene que decirlo, no llegar ahí por un valor vacío que se coló.
+       */
+      if (clientId === '') {
+        throw new Error('listarRuns: clientId vacío. Omitilo si querés la lista sin filtrar.');
+      }
       const qs = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
       const { runs } = await pedir<{ runs: RunSummary[] }>('GET', `/runs${qs}`);
       return runs;

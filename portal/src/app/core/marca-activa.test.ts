@@ -29,7 +29,7 @@ import { TOKENS } from './contraste';
  * rojo. Un test que enumera archivos cubre las pantallas de hoy; recorrer el directorio es lo que
  * hace que la regla se cumpla sola en las de mañana. Mismo criterio que `contraste.test.ts`.
  *
- * ## El criterio, y las dos veces que estuvo mal calibrado
+ * ## El criterio, y las tres veces que estuvo mal calibrado
  *
  * 1. La primera versión exigía `!` en **toda** clase del `routerLinkActive`. Con dos clases que
  *    compiten daba el resultado correcto, pero habría obligado a poner `!important` en la primera
@@ -39,6 +39,13 @@ import { TOKENS } from './contraste';
  *    contra el `font-medium` de la base: el elemento activo no se pondría en negrita, con el test en
  *    verde. Se generalizó desde el único ejemplo examinado (`font-semibold`, que sí gana solo)
  *    tomando por propiedad de la familia lo que era suerte alfabética de ese valor.
+ * 3. La tercera no fue el criterio sino sus **guardas de cobertura**, y la encontró la revisión de la
+ *    tarea 2: eran dos cuotas absolutas (`anclas.length >= 2`, `pisadas.length >= 2`) mientras el
+ *    numerador crece con cada tab que el plan agrega. Medido: con la barra de tabs escrita como
+ *    `[class]="clasesBase"` —que el barrido se saltaba en silencio— y **tres** anclas en el árbol, la
+ *    ficha con el defecto REAL puesto pasaba en verde. Las guardas de hoy son relativas a lo que el
+ *    recorrido encuentra (cada mención emparejada, cada ancla analizada) y el salto silencioso es un
+ *    fallo; lo único absoluto que queda son dos pisos de sanidad que no dependen del tamaño del árbol.
  *
  * Lo que decide de verdad son **dos** cosas, y el criterio de acá abajo mira las dos: que las clases
  * pisen la misma propiedad, y **cuál de las dos va después en la hoja**.
@@ -156,63 +163,146 @@ interface Ancla {
 }
 
 /**
- * Cada elemento del portal que se marca con `routerLinkActive`, con sus dos listas de clases.
+ * El fuente **sin comentarios**: los de bloque y línea de TypeScript y los `<!-- … -->` de plantilla.
+ *
+ * Hace falta para CONTAR menciones de `routerLinkActive` sin contar la prosa que las explica — el
+ * docblock de `cliente-ficha.ts` nombra el atributo dos veces, y sin esto el barrido se pondría rojo
+ * por escribir documentación. Mismo criterio que `sinComentarios` en `app.routes.test.ts`.
+ *
+ * El `[^:]` antes de `//` es lo que evita comerse el resto de una línea que trae una URL (`https://`).
+ */
+function sinComentarios(texto: string): string {
+  return texto
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
+
+/**
+ * Los elementos de UN archivo que se marcan con `routerLinkActive`, con sus dos listas de clases.
  *
  * Se acepta cualquier etiqueta y no solo `<a>`: el defecto es de la cascada, no del anchor. Un
- * elemento con `routerLinkActive` y **sin** `class=` estático se salta a propósito — no tiene ninguna
- * clase base contra la que perder, así que no hay nada que exigirle.
+ * elemento con `routerLinkActive` y **sin ninguna** clase base se salta a propósito — no tiene contra
+ * qué perder, así que no hay nada que exigirle.
+ *
+ * Recibe el texto en vez de leerlo para poder ejercitar sus tres rechazos con fragmentos sintéticos:
+ * un test que solo corre sobre el árbol real solo prueba lo que hoy hay escrito en el árbol real.
  */
-function anclasActivas(): Ancla[] {
+function anclasDe(archivo: string, texto: string): Ancla[] {
   const anclas: Ancla[] = [];
-  for (const archivo of fuentes()) {
-    const texto = readFileSync(archivo, 'utf8');
-    for (const m of texto.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*\brouterLinkActive\b[^>]*)>/g)) {
-      const etiqueta = m[1] ?? '?';
-      const atributos = m[2] ?? '';
-      const activas = /\brouterLinkActive="([^"]+)"/.exec(atributos)?.[1];
-      // La forma ligada (`[routerLinkActive]="expr"`) no se puede leer desde el fuente, y dejarla
-      // pasar en silencio convertiría el barrido en algo que se esquiva sin desobedecerlo.
+  let emparejados = 0;
+  for (const m of texto.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*\brouterLinkActive\b[^>]*)>/g)) {
+    emparejados++;
+    const etiqueta = m[1] ?? '?';
+    const atributos = m[2] ?? '';
+    const activas = /\brouterLinkActive="([^"]+)"/.exec(atributos)?.[1];
+    // La forma ligada (`[routerLinkActive]="expr"`) no se puede leer desde el fuente, y dejarla
+    // pasar en silencio convertiría el barrido en algo que se esquiva sin desobedecerlo.
+    assert.ok(
+      activas,
+      `${archivo}: <${etiqueta}> usa routerLinkActive sin un valor estático ("…"). El criterio de ` +
+        'este test analiza el fuente: escribilo estático, o extendé el test antes de ligarlo.',
+    );
+    const base = /\bclass="([^"]+)"/.exec(atributos)?.[1];
+    if (!base) {
+      /*
+       * Sin `class=` estático hay dos casos MUY distintos, y confundirlos fue el agujero que midió la
+       * revisión de la tarea 2: un elemento sin ninguna clase no tiene base contra la que perder (se
+       * salta bien), pero uno con `[class]`/`[ngClass]` **sí la tiene** — solo que no se puede leer
+       * desde el fuente. Saltarlo era la salida silenciosa: con `[class]="clasesBase"` la barra de
+       * tabs desaparecía del barrido con el defecto puesto, y en cuanto hubiera una tercera ancla la
+       * guarda de conteo tampoco lo tapaba. Mismo criterio que el `assert` de arriba.
+       */
       assert.ok(
-        activas,
-        `${archivo}: <${etiqueta}> usa routerLinkActive sin un valor estático ("…"). El criterio de ` +
-          'este test analiza el fuente: escribilo estático, o extendé el test antes de ligarlo.',
+        !/\[(?:class|ngClass)\]/.test(atributos),
+        `${archivo}: <${etiqueta}> tiene routerLinkActive y una clase base LIGADA ([class]/[ngClass]), ` +
+          'que este barrido no puede leer del fuente. Dejá las clases base estáticas en `class="…"`, o ' +
+          'extendé el test antes de ligarlas: saltarlo lo deja sin cubrir justo donde el defecto vive.',
       );
-      const base = /\bclass="([^"]+)"/.exec(atributos)?.[1];
-      if (!base) continue;
-      anclas.push({
-        archivo,
-        etiqueta,
-        activas: activas.split(/\s+/).filter(Boolean),
-        base: base.split(/\s+/).filter(Boolean),
-      });
+      continue;
     }
+    anclas.push({
+      archivo,
+      etiqueta,
+      activas: activas.split(/\s+/).filter(Boolean),
+      base: base.split(/\s+/).filter(Boolean),
+    });
   }
+
+  /*
+   * La guarda de cobertura, **relativa al propio archivo**: cada mención de `routerLinkActive` en el
+   * código tiene que corresponder a un elemento que el regex emparejó. Reemplaza a un
+   * `anclas.length >= 2` global que dejaba de morder en cuanto hubiera una tercera ancla — las
+   * guardas absolutas se aflojan solas mientras el numerador crece, y el plan agrega tabs.
+   *
+   * El modo de fallo que caza, medido: un `>` dentro de un valor de atributo (`title="a > b"`) corta
+   * el `[^>]*` del regex y el elemento deja de emparejar, sin que nada avise.
+   */
+  const menciones = (sinComentarios(texto).match(/\brouterLinkActive\b/g) ?? []).length;
+  assert.ok(
+    emparejados >= menciones,
+    `${archivo}: el código menciona routerLinkActive ${menciones} vez/veces y el barrido solo emparejó ` +
+      `${emparejados} elemento(s). Alguno se le escapa al regex —¿un \`>\` dentro de un atributo, el ` +
+      'atributo partido de otra forma?— y quedaría sin comprobar, en verde.',
+  );
   return anclas;
 }
 
-test('🔴 toda clase activa a la que la base le gana lleva `!`: si no, el activo no se distingue', () => {
-  const anclas = anclasActivas();
+/** Todas las anclas del árbol, archivo por archivo. */
+function anclasActivas(): { anclas: Ancla[]; archivos: number; conMarca: number } {
+  const archivos = fuentes();
+  const anclas: Ancla[] = [];
+  let conMarca = 0;
+  for (const archivo of archivos) {
+    const texto = readFileSync(archivo, 'utf8');
+    if (!/\brouterLinkActive\b/.test(sinComentarios(texto))) continue;
+    conMarca++;
+    anclas.push(...anclasDe(archivo, texto));
+  }
+  return { anclas, archivos: archivos.length, conMarca };
+}
 
-  // Dos anclas hoy: la barra de tabs de la ficha y el menú del sidebar. Si el regex dejara de
-  // emparejar una (un template reescrito, el atributo partido en otra línea), el barrido pasaría en
-  // verde sin haberla mirado — y el defecto del sidebar es exactamente el que estuvo así de invisible.
+test('🔴 toda clase activa a la que la base le gana lleva `!`: si no, el activo no se distingue', () => {
+  const { anclas, archivos, conMarca } = anclasActivas();
+
+  /*
+   * Los dos pisos de sanidad — que el recorrido corrió, no cuánto cubre. **No son cuotas**: no se
+   * aflojan cuando el árbol crece, porque no dependen de cuántas anclas haya. La cobertura de verdad
+   * la imponen las guardas relativas: la de `anclasDe` (cada mención emparejada) y la de más abajo
+   * (cada ancla analizada).
+   */
   assert.ok(
-    anclas.length >= 2,
-    `esperaba al menos 2 elementos con routerLinkActive, encontré ${anclas.length}: ` +
-      anclas.map((a) => `${a.archivo} <${a.etiqueta}>`).join(', '),
+    archivos >= 20,
+    `el recorrido de fuentes() encontró ${archivos} archivos: son ~70 en src/. ¿Se rompió el filtro ` +
+      'de extensiones o la ruta raíz? Con cero archivos, todo lo de abajo pasa sin haber mirado nada.',
   );
+  assert.ok(
+    conMarca >= 1,
+    'ningún archivo del portal usa routerLinkActive: o desapareció la marca de elemento activo, o el ' +
+      'barrido dejó de encontrarla. Las dos cosas hay que mirarlas.',
+  );
+
+  /*
+   * Guarda relativa **por ancla**: cada elemento encontrado tiene que aportar al menos una clase
+   * activa que el criterio sepa clasificar. Reemplaza al `pisadas.length >= 2` global, que era una
+   * cuota constante mientras el numerador crece — con tres anclas, las dos colisiones de siempre ya
+   * lo satisfacían y una tercera podía entrar sin analizarse. Lo que caza: `grupoDePropiedad`
+   * dejando de reconocer las utilidades del portal, con lo que `pisadaPor` devolvería `null` para
+   * todo y el bucle final no correría.
+   */
+  for (const ancla of anclas) {
+    assert.ok(
+      ancla.activas.some((clase) => grupoDePropiedad(clase) !== null),
+      `${ancla.archivo}: ninguna de las clases activas de <${ancla.etiqueta}> ` +
+        `([${ancla.activas.join(' ')}]) se pudo clasificar, así que no se comparó con la base contra ` +
+        'la que compite. El ancla estaría en verde sin haberse analizado.',
+    );
+  }
 
   const pisadas = anclas.flatMap((ancla) =>
     ancla.activas
       .map((clase) => ({ ancla, clase, por: pisadaPor(clase, ancla.base) }))
       .filter((x): x is { ancla: Ancla; clase: string; por: string } => x.por !== null),
-  );
-
-  // Y si el barrido dejara de encontrar colisiones, el bucle de abajo no correría: verde sin probar.
-  assert.ok(
-    pisadas.length >= 2,
-    `esperaba al menos las colisiones conocidas (border-*, text-*), encontré ${pisadas.length}: ` +
-      anclas.map((a) => `${a.archivo}: activas=[${a.activas.join(' ')}] base=[${a.base.join(' ')}]`).join(' | '),
   );
 
   for (const { ancla, clase, por } of pisadas) {
@@ -262,6 +352,50 @@ test('el criterio de colisión mira la propiedad Y el orden de emisión, no solo
   assert.equal(grupoDePropiedad('font-bold'), 'font:peso');
   assert.equal(grupoDePropiedad('font-mono'), 'font:tipografía');
   assert.equal(grupoDePropiedad('border-accion!'), 'border:color', 'el `!` no cambia qué propiedad pisa');
+});
+
+test('🔴 la base LIGADA (`[class]`) no es un salto: es la salida silenciosa, y ahora falla', () => {
+  /*
+   * El agujero que midió la revisión de la tarea 2, con el defecto REAL puesto: la barra de tabs con
+   * `[class]="clasesBase"` + `routerLinkActive="border-accion text-texto"` (sin los `!`) se saltaba
+   * en silencio, y con dos anclas el barrido lo tapaba porque la guarda absoluta `>= 2` seguía
+   * satisfecha por el sidebar… hasta que con tres anclas dejaba de fallar del todo. El elemento tiene
+   * base —la ligada— así que sí hay contra qué perder: saltarlo es no mirar.
+   */
+  assert.throws(
+    () => anclasDe('pages/futuro/tab.ts', `<a routerLinkActive="border-accion text-texto" [class]="clasesBase">`),
+    /\[class\]/,
+    'un ancla con la base ligada se saltó en silencio',
+  );
+  assert.throws(
+    () => anclasDe('pages/futuro/tab.ts', `<a routerLinkActive="text-texto" [ngClass]="clases">`),
+    /ngClass|\[class\]/,
+  );
+
+  // Y el salto que SÍ es legítimo sigue siéndolo: sin ninguna clase base no hay cascada que perder, y
+  // exigirle un `!` enseñaría el reflejo que este archivo entero existe para no enseñar.
+  assert.deepEqual(anclasDe('x.ts', `<a routerLinkActive="bg-superficie-2">`), []);
+});
+
+test('🔴 cada mención de routerLinkActive queda emparejada: la cobertura es relativa, no un `>= 2`', () => {
+  // Un `>` dentro de un valor de atributo corta el `[^>]*` del regex: el elemento deja de emparejar y
+  // el barrido lo ignora. Con la guarda vieja alcanzaba con que hubiera otras dos anclas para que
+  // nadie se enterara; con la relativa, el archivo que lo esconda cae.
+  assert.throws(
+    () => anclasDe('x.ts', `<a title="a > b" routerLinkActive="border-accion" class="border-transparent">`),
+    /menciona routerLinkActive/,
+  );
+
+  // Dos elementos legítimos en el mismo archivo: las dos menciones emparejan, y salen las dos anclas.
+  const dos = `<a routerLinkActive="border-accion!" class="border-transparent"></a>
+    <button routerLinkActive="text-texto!" class="text-texto-tenue"></button>`;
+  assert.deepEqual(anclasDe('x.ts', dos).map((a) => a.etiqueta), ['a', 'button']);
+
+  // Y la mención que vive en PROSA no cuenta: si contara, el docblock de `cliente-ficha.ts` —que
+  // explica por qué el `!` está ahí— pondría el barrido rojo por documentar la regla.
+  assert.deepEqual(anclasDe('x.ts', `/** el \`routerLinkActive\` de la barra de tabs */`), []);
+  assert.deepEqual(anclasDe('x.ts', `<!-- routerLinkActive, explicado arriba -->`), []);
+  assert.deepEqual(anclasDe('x.ts', `// ver routerLinkActive en el docblock`), []);
 });
 
 test('🔴 el caso del sidebar: `bg-*` gana solo, pero el `text-texto` activo pierde y necesita `!`', () => {

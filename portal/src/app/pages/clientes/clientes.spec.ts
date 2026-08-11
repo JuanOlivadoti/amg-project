@@ -5,7 +5,8 @@ import { ApiService } from '../../services/api';
 import type { ClienteAgencia } from '../../core/models';
 
 /**
- * Test de componente (Karma) del listado `/clientes`. Mismo criterio que `pages/runs/runs.spec.ts`:
+ * Test de componente (Karma) del listado `/clientes`. Mismo criterio que
+ * `pages/clientes/cliente-research.spec.ts`:
  * se renderiza la pantalla REAL con `ClientesService` real (no un mock del servicio) y solo se
  * sustituye `ApiService` — así el spec fija tanto el template como el cableado a
  * `ClientesService.filtrados`/`filtro`, no una reimplementación paralela del filtrado en el test.

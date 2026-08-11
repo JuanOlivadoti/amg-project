@@ -13,8 +13,8 @@ import type { ApiError } from '../../core/api-core';
 
 /**
  * Guarda el gate del botón "Aprobar el run y publicar" (§A.5 / 10ª review #2), igual que el spec de
- * RunsPage guarda el de "lanzar research". En Fase 1 el botón NO se renderiza —aprobar el run emitiría
- * un evento sin orquestador—, pero la aprobación de PÁGINAS sí sigue disponible.
+ * `ClienteResearchPage` guarda el de "lanzar research". En Fase 1 el botón NO se renderiza —aprobar
+ * el run emitiría un evento sin orquestador—, pero la aprobación de PÁGINAS sí sigue disponible.
  */
 const BRIEF: Brief = {
   run: {

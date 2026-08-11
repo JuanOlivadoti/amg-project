@@ -8,6 +8,7 @@ import { MembresiaService } from '../../services/membresia';
 import type { RunStatus, RunSummary } from '../../core/models';
 import { mostrarLanzarResearch } from '../../core/features';
 import { usdDeMicros } from '../../core/dinero';
+import { Vigencia } from '../../core/vigencia';
 import { environment } from '../../../environments/environment';
 
 const ETIQUETA: Record<RunStatus, string> = {
@@ -106,6 +107,25 @@ export class ClienteResearchPage implements OnInit, OnDestroy {
   // El rol sale de `memberships`, no del token: ver la cabecera de `MembresiaService`.
   readonly membresia = inject(MembresiaService);
 
+  /**
+   * A qué cliente corresponde el trabajo en vuelo, y si el tab sigue vivo. Ver `core/vigencia.ts`.
+   *
+   * Mismo patrón que `brief`, `informe` y `entregable`. Una promesa no se cancela: si `paramMap`
+   * emite A y después B, la respuesta lenta de A llega cuando el componente ya es de B y sobrescribe
+   * la lista — **el research del cliente A bajo la ficha del cliente B**, que es exactamente el daño
+   * que esta pantalla existe para impedir. Medido en el spec (Karma) y en el navegador.
+   *
+   * **Qué pasa HOY al cambiar de cliente, medido y no supuesto** (Chrome, 2026-08-11): Angular
+   * *recrea* el tab, porque se recrea el shell `clientes/:id`. Pero la instancia saliente **recibe
+   * igual la emisión del `:id` nuevo antes de que la destruyan** —se la vio pedir `/runs?clientId=B`
+   * y quedarse con `clienteId() === 'B'`—, así que la carrera ocurre dentro de ella; lo único que la
+   * vuelve invisible es que su DOM ya fue reemplazado. Con la guarda quitada, esa instancia terminaba
+   * con los runs de A bajo `clienteId() === 'B'`. Saltar entre tabs del MISMO cliente sí reutiliza la
+   * instancia, y la tarea 3 —que mete rutas hijas dentro de `research`— vuelve normal el caso
+   * reutilizado con `:id` distinto. Por eso la guarda va ahora y no cuando el síntoma se vea.
+   */
+  private readonly vigencia = new Vigencia();
+
   /** El cliente del que es esta pantalla. Viene del `:id` del shell — ver `paramsInheritanceStrategy`. */
   readonly clienteId = signal('');
 
@@ -130,42 +150,67 @@ export class ClienteResearchPage implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Suscripción y no un `ngOnInit` a secas: Angular reutiliza la instancia del tab si algún día se
     // navega de `/clientes/A/research` a `/clientes/B/research` sin desmontarlo, y ahí `ngOnInit` no
-    // vuelve a dispararse. El filtro por `clienteId()` evita repetir el GET cuando el id no cambió.
+    // vuelve a dispararse.
     this.sub = this.route.paramMap.subscribe((params) => {
       const id = params.get('id') ?? '';
-      if (id === this.clienteId()) return;
+      /*
+       * Esta línea hace DOS cosas, y ninguna es cosmética:
+       *
+       *  1. No repite el GET cuando el `:id` no cambió (saltar de tab reemite el mismo id).
+       *  2. Con la vigencia todavía en su valor inicial (`''`), corta el caso «no llegó ningún
+       *     `:id`». Sin eso se llamaría `listarRuns('')`, que en `core/api-core.ts` NO filtra por
+       *     nada: degrada a `GET /runs`, la lista global de toda la cartera que esta tarea retiró.
+       *
+       * Las dos las fija el spec («sin `:id` en la ruta no se pide NADA»), porque leída sin él la
+       * línea parece un dedup redundante. La segunda mitad de esa garantía la impone `api-core`,
+       * que hoy lanza en vez de degradar.
+       */
+      if (id === this.vigencia.actual) return;
+      // La vigencia cambia ANTES de pedir nada: lo pedido para el cliente anterior queda obsoleto solo.
+      this.vigencia.cambiarA(id);
       this.clienteId.set(id);
       // Los runs del cliente anterior no son de éste: vaciarlos antes de pedir evita que la lista
       // muestre trabajo ajeno mientras la respuesta viaja.
       this.runs.set([]);
-      void this.cargar();
+      this.error.set('');
+      void this.cargar(id);
     });
   }
 
   ngOnDestroy(): void {
+    this.vigencia.destruir();
     this.sub?.unsubscribe();
   }
 
-  async cargar(): Promise<void> {
+  /**
+   * `pedido` es el cliente al que corresponde ESTA carga, capturado antes del `await`: comparar
+   * contra `clienteId()` al volver no serviría de nada, porque para entonces ya vale el otro.
+   */
+  private async cargar(pedido: string): Promise<void> {
     this.cargando.set(true);
-    this.error.set('');
     try {
-      this.runs.set(await this.api.listarRuns(this.clienteId()));
+      const runs = await this.api.listarRuns(pedido);
+      if (this.vigencia.obsoleta(pedido)) return; // llegó tarde: ya es otro cliente, o nos fuimos
+      this.runs.set(runs);
     } catch (e) {
+      if (this.vigencia.obsoleta(pedido)) return;
       this.error.set((e as Error).message);
     } finally {
-      this.cargando.set(false);
+      if (!this.vigencia.obsoleta(pedido)) this.cargando.set(false);
     }
   }
 
   async lanzar(): Promise<void> {
-    if (!this.prompt()) return;
+    // Sin cliente no se lanza: `crearRun({ clientId: '' })` crearía un run huérfano y el `cargar()`
+    // que le sigue pediría la lista global. La guarda existía antes de la mudanza (sobre el input de
+    // uuid, que ya no está) y vuelve apuntando al `:id` de la ruta, que es de donde sale el cliente.
+    if (!this.clienteId() || !this.prompt()) return;
     this.lanzando.set(true);
     this.error.set('');
     try {
       await this.api.crearRun({ clientId: this.clienteId(), prompt: this.prompt() });
       this.prompt.set('');
-      await this.cargar();
+      await this.cargar(this.clienteId());
     } catch (e) {
       this.error.set((e as Error).message);
     } finally {
