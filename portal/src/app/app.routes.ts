@@ -74,13 +74,22 @@ export const routes: Routes = [
             path: 'research/:runId/informe',
             loadComponent: () => import('./pages/informe/informe').then((m) => m.InformePage),
           },
+          {
+            // Placeholder deliberado: el Bloque F (respondedor de reseñas de Google) todavía no
+            // tiene ni código ni spec. El tab existe para que el hueco se vea y se pueda nombrar.
+            path: 'resenas',
+            loadComponent: () =>
+              import('./pages/clientes/cliente-resenas').then((m) => m.ClienteResenasPage),
+          },
+          {
+            // Ídem, pero al revés: acá el backend YA existe (migración 0013, `PgIdeas`, tres
+            // endpoints) y lo que falta son las pantallas — etapas 5-7 de la pieza 3.
+            path: 'ideas',
+            loadComponent: () =>
+              import('./pages/clientes/cliente-ideas').then((m) => m.ClienteIdeasPage),
+          },
           { path: '', pathMatch: 'full', redirectTo: 'perfil' },
         ],
-      },
-      {
-        path: 'clientes/:id/ver',
-        loadComponent: () =>
-          import('./pages/clientes/cliente-vista').then((m) => m.ClienteVistaPage),
       },
       {
         path: 'usuarios',

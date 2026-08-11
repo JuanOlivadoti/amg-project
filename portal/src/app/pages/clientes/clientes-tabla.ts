@@ -25,7 +25,7 @@ const ETIQUETA_ESTADO: Record<EstadoContrato, string> = {
  * `cartera-tabla.ts`) y sin las columnas de ideas (`totalIdeas`, `lastIdeaDate`) que no existen en
  * este dominio.
  *
- * Acciones por fila: ver/editar (links a rutas que se registran en la Etapa 6) y
+ * Acciones por fila: **una** sola de navegación —«Abrir», que lleva a la ficha del cliente— más
  * archivar/desarchivar (emitido como evento — la llamada real a la API la hace `ClientesPage` a
  * través de `ClientesService`, esta tabla no toca el servicio). Sin "eliminar": esta pieza no
  * borra clientes.
@@ -76,19 +76,18 @@ const ETIQUETA_ESTADO: Record<EstadoContrato, string> = {
                     ⋮
                   </button>
                   <div menu class="flex flex-col text-sm">
+                    <!--
+                      «Abrir» y no «Editar»: desde que la ficha es un shell con tabs, este link
+                      lleva a la ficha ENTERA (perfil, research, reseñas, ideas) y no a un
+                      formulario. La segunda acción, «Ver», apuntaba a la pantalla «Mi Portal» —la
+                      de los datos inventados, retirada— y no se reemplaza por nada.
+                    -->
                     <a
                       menu
                       [routerLink]="['/clientes', c.id]"
                       class="rounded-md px-3 py-1.5 text-texto hover:bg-superficie-2"
                     >
-                      Editar
-                    </a>
-                    <a
-                      menu
-                      [routerLink]="['/clientes', c.id, 'ver']"
-                      class="rounded-md px-3 py-1.5 text-texto hover:bg-superficie-2"
-                    >
-                      Ver
+                      Abrir
                     </a>
                     @if (c.archived_at) {
                       <button

@@ -234,22 +234,46 @@ test('clientes/:id es un shell con tabs: carga la ficha y redirige a perfil por 
   assert.equal(porDefecto?.pathMatch, 'full');
 });
 
-test('clientes/:id/ver sigue declarada, ahora que clientes/:id tiene hijas', () => {
+test('«Mi Portal» (clientes/:id/ver) se retiró: sus secciones son tabs de la ficha', () => {
   /*
-   * ⏳ **Este test lo borra la Tarea 4**, que es la que retira `clientes/:id/ver` y la reemplaza por
-   * un tab de la ficha. Hasta entonces existe porque el shell le cambió el terreno debajo: desde que
-   * `clientes/:id` tiene `children`, resolver `/clientes/<id>/ver` depende de que el matcher de
-   * Angular no encuentre hija que empareje `ver` y **retroceda** al hermano. Funciona —comprobado en
-   * el navegador, monta `ClienteVistaPage`— pero es un comportamiento del router que nada fijaba, y
-   * la ruta se va a producción antes de que la Tarea 4 la saque.
+   * Sus tres tabs eran datos inventados para una audiencia que no existe (no hay login de cliente).
+   * Reseñas e Ideas viven ahora como tabs de la ficha, con un placeholder que dice qué falta.
    *
-   * Lo que fija es lo barato y estable: que la ruta siga DECLARADA. Si alguien la borra por creer
-   * que el shell ya la cubre, o la mueve adentro de los tabs sin construir el tab, cae acá.
+   * El `deepEqual` fija el ORDEN a propósito: en un array de rutas el orden es semántica, no estilo
+   * —`clientes/nuevo` antes que `clientes/:id` tiene su propio test por eso mismo— y el `''` con
+   * `redirectTo` tiene que quedar al final. Un `includes` por tab dejaría eso sin cubrir.
    */
   const shell = routes.find((r) => r.path === '' && r.children);
-  const ver = (shell?.children ?? []).find((r) => r.path === 'clientes/:id/ver');
-  assert.ok(ver, 'clientes/:id/ver debe seguir siendo hija del shell hasta que la Tarea 4 la retire');
-  assert.equal(ver?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+  const hijos = (shell?.children ?? []).map((r) => r.path);
+  assert.ok(!hijos.includes('clientes/:id/ver'), 'clientes/:id/ver no debe existir');
+
+  const ficha = (shell?.children ?? []).find((r) => r.path === 'clientes/:id');
+  const tabs = (ficha?.children ?? []).map((r) => r.path);
+  assert.deepEqual(tabs, [
+    'perfil',
+    'research',
+    'research/:runId',
+    'research/:runId/informe',
+    'resenas',
+    'ideas',
+    '',
+  ]);
+});
+
+test('los tabs resenas e ideas cargan sus pantallas de verdad', async () => {
+  // Mismo motivo que el del brief y el del informe: el `loadComponent` es perezoso, así que un import
+  // mal escrito no rompe el build — se rompe al navegar, y el síntoma sería mudo (el link del tab
+  // caería en el comodín `**` y el portal mandaría a `/clientes` como si nada).
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const ficha = (shell?.children ?? []).find((r) => r.path === 'clientes/:id');
+
+  const resenas = (ficha?.children ?? []).find((r) => r.path === 'resenas');
+  assert.equal(resenas?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+  assert.equal(((await resenas?.loadComponent?.()) as { name?: string })?.name, 'ClienteResenasPage');
+
+  const ideas = (ficha?.children ?? []).find((r) => r.path === 'ideas');
+  assert.equal(ideas?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+  assert.equal(((await ideas?.loadComponent?.()) as { name?: string })?.name, 'ClienteIdeasPage');
 });
 
 test('el router hereda los params del padre: sin esto, /clientes/:id/research no ve el :id', () => {

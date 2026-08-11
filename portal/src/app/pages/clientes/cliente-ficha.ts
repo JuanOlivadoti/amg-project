@@ -10,12 +10,16 @@ interface TabFicha {
 }
 
 /**
- * Los tabs de la ficha. Se amplía en la tarea 4 (Reseñas, Ideas) — y el orden acá ES el orden en
- * pantalla. `Perfil` va primero porque es el tab por defecto (el `redirectTo` de `app.routes.ts`).
+ * Los cuatro tabs de la ficha, y el orden acá ES el orden en pantalla. `Perfil` va primero porque es
+ * el tab por defecto (el `redirectTo` de `app.routes.ts`); `Reseñas` e `Ideas` van al final porque
+ * todavía son placeholders — poner un hueco delante de una pantalla que funciona sería ordenar la
+ * barra por lo que falta en vez de por lo que se usa.
  */
 export const TABS_FICHA: readonly TabFicha[] = [
   { etiqueta: 'Perfil', ruta: 'perfil' },
   { etiqueta: 'Research', ruta: 'research' },
+  { etiqueta: 'Reseñas', ruta: 'resenas' },
+  { etiqueta: 'Ideas', ruta: 'ideas' },
 ];
 
 /**
@@ -98,7 +102,13 @@ export const TABS_FICHA: readonly TabFicha[] = [
         }
 
         <div class="border-b border-borde">
-          <nav class="-mb-px flex gap-8">
+          <!--
+            El aria-label no es decorativo: el breadcrumb de arriba declara SU propio <nav> (el link
+            «Clientes»), así que esta pantalla tiene dos landmarks de navegación y sin nombre los dos
+            se anuncian igual, como «navigation». Lo destapó el test de los cuatro tabs, que con un
+            selector "nav a" a secas recogía también el ancla del breadcrumb.
+          -->
+          <nav class="-mb-px flex gap-8" aria-label="Secciones del cliente">
             @for (tab of tabs; track tab.ruta) {
               <a
                 [routerLink]="['/clientes', id(), tab.ruta]"

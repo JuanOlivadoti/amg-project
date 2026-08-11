@@ -325,8 +325,8 @@ test('🔴 quien usa el breadcrumb COMO encabezado no declara además su propio 
       cuenta(fuente, 1),
       0,
       `${archivo} usa <app-page-breadcrumb> como encabezado —que ya pinta un <h1>— y además declara ` +
-        'el suyo: son dos h1 en el mismo documento, y en la ficha y en la vista de cliente encima con ' +
-        'el mismo texto. Dejá uno: el del breadcrumb, y el otro a <p> con las mismas clases.',
+        'el suyo: son dos h1 en el mismo documento, y en la ficha del cliente encima con el mismo ' +
+        'texto. Dejá uno: el del breadcrumb, y el otro a <p> con las mismas clases.',
     );
   }
 });

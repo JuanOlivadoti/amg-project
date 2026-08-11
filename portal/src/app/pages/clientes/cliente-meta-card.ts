@@ -1,6 +1,5 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { ClientesService } from '../../services/clientes';
 import { ComponentCardComponent } from '../../shared/components/component-card';
 import type { CambiosClienteAgencia, ClienteAgencia } from '../../core/models';
@@ -64,7 +63,7 @@ function metaDesde(c: ClienteAgencia): FormularioMeta {
  */
 @Component({
   selector: 'app-cliente-meta-card',
-  imports: [FormsModule, RouterLink, ComponentCardComponent],
+  imports: [FormsModule, ComponentCardComponent],
   template: `
     <app-component-card titulo="Redes e imágenes">
       @if (!editando()) {
@@ -107,13 +106,12 @@ function metaDesde(c: ClienteAgencia): FormularioMeta {
               <p class="text-base font-medium text-texto break-all">{{ form().portadaUrl || '—' }}</p>
             </div>
           </div>
+          <!--
+            Acá había un botón «Ver sitio» que no llevaba al sitio del cliente sino a «Mi Portal»,
+            la pantalla de datos inventados que se retiró. No se reemplaza: el sitio público lo
+            sirve el renderizador en el dominio del cliente, y el portal no tiene hoy ese enlace.
+          -->
           <div class="flex justify-end gap-3">
-            <a
-              [routerLink]="['/clientes', cliente().id, 'ver']"
-              class="rounded-md border border-borde-fuerte px-4 py-2 text-sm font-medium text-texto hover:bg-superficie-2"
-            >
-              Ver sitio
-            </a>
             <button
               type="button"
               (click)="editar()"

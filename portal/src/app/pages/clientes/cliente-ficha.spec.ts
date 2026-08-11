@@ -144,13 +144,28 @@ describe('ClienteFichaComponent', () => {
     expect(el.textContent).toContain('soy el tab montado en el outlet');
   });
 
-  it('renderiza los tabs Perfil y Research apuntando al cliente de la ruta', async () => {
+  it('renderiza los cuatro tabs apuntando al cliente de la ruta', async () => {
+    /*
+     * `toEqual` sobre el array entero y no cuatro `toContain`: el ORDEN de la barra es una decisión
+     * (Perfil primero porque es el `redirectTo` por defecto), y un `toContain` la deja sin cubrir.
+     *
+     * El selector va por `aria-label` y no por `nav a` a secas, y eso lo destapó este mismo test al
+     * escribirse: la ficha tiene DOS `<nav>` —el del breadcrumb, con su link «Clientes», y el de los
+     * tabs— así que `nav a` devolvía tres anclas con `/clientes` a la cabeza. El `toContain` de antes
+     * lo tapaba. Además de precisar el test, ponerle nombre al landmark es lo correcto: dos `<nav>`
+     * sin nombre accesible se anuncian los dos como «navigation» y no hay forma de distinguirlos.
+     */
     const { fixture } = crear(clienteDePrueba());
     const el = await estabilizar(fixture);
 
-    const hrefs = [...el.querySelectorAll('nav a')].map((a) => a.getAttribute('href'));
-    expect(hrefs).toContain('/clientes/c1/perfil');
-    expect(hrefs).toContain('/clientes/c1/research');
+    const tabs = el.querySelectorAll('nav[aria-label="Secciones del cliente"] a');
+    const hrefs = [...tabs].map((a) => a.getAttribute('href'));
+    expect(hrefs).toEqual([
+      '/clientes/c1/perfil',
+      '/clientes/c1/research',
+      '/clientes/c1/resenas',
+      '/clientes/c1/ideas',
+    ]);
   });
 
   it('cliente no encontrado (`cliente()` queda en null tras `verCliente`): navega a /clientes', async () => {
