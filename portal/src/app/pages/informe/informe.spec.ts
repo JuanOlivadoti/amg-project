@@ -46,7 +46,12 @@ function montar(verInforme: () => Promise<Informe>, descargas?: Partial<Descarga
     imports: [InformePage],
     providers: [
       provideRouter([]),
-      { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id: 'run-1' })) } },
+      // DOS parámetros: el run vive bajo su cliente. `id` es el CLIENTE y `runId` el run — con el
+      // paramMap viejo esta pantalla cargaría el run `null` y fallaría sin decir por qué.
+      {
+        provide: ActivatedRoute,
+        useValue: { paramMap: of(convertToParamMap({ id: 'c1', runId: 'run-1' })) },
+      },
       {
         provide: ApiService,
         useValue: {

@@ -36,7 +36,10 @@ import { InformeInlineComponent } from '../../shared/components/informe-inline';
   imports: [RouterLink, InformeInlineComponent],
   template: `
     <div class="max-w-4xl mx-auto px-4 py-8 space-y-6">
-      <a [routerLink]="['/runs', runId()]" class="text-sm text-texto-tenue hover:text-texto">
+      <a
+        [routerLink]="['/clientes', clienteId(), 'research', runId()]"
+        class="text-sm text-texto-tenue hover:text-texto"
+      >
         ← Volver al brief
       </a>
 
@@ -186,8 +189,8 @@ export class InformePage implements OnInit, OnDestroy {
 
   /**
    * A qué run corresponde el trabajo en vuelo, y si el componente sigue vivo. Ver `core/vigencia.ts`.
-   * Mismo motivo que en el brief: Angular REUTILIZA la instancia al navegar de `/runs/A/informe` a
-   * `/runs/B/informe`, así que una respuesta lenta de A puede llegar cuando la URL ya dice B. Acá el daño
+   * Mismo motivo que en el brief: Angular REUTILIZA la instancia al navegar del informe de un run al
+   * de otro, así que una respuesta lenta de A puede llegar cuando la URL ya dice B. Acá el daño
    * sería pintar el informe de otro run —con su coste— bajo el título del que se está mirando.
    */
   private readonly vigencia = new Vigencia();
@@ -195,6 +198,15 @@ export class InformePage implements OnInit, OnDestroy {
 
   /** El id de la URL, para el link de volver. Se escribe junto con la vigencia, nunca por separado. */
   readonly runId = signal('');
+
+  /**
+   * El CLIENTE de la URL (`/clientes/:id/research/:runId/informe`), solo para el enlace de vuelta.
+   *
+   * **Acá NO se concilia con el dueño del run, y no es un olvido**: a esta pantalla se llega desde el
+   * brief, que ya lo hizo y ya corrigió la URL. Duplicar la comprobación pediría el `client_id` a un
+   * endpoint que no lo devuelve (`GET /runs/:id/informe` trae `informe_md` y `generado_at`, nada más).
+   */
+  readonly clienteId = signal('');
 
   readonly informe = signal<Informe | null>(null);
   readonly cargando = signal(true);
@@ -229,7 +241,10 @@ export class InformePage implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.sub = this.route.paramMap.subscribe((params) => {
-      const id = params.get('id') ?? '';
+      // OJO: `id` es el CLIENTE y `runId` el run. Antes de que el run se mudara bajo la ficha, `id`
+      // era el run — leerlo mal acá pide el informe de un uuid de cliente y devuelve 404.
+      this.clienteId.set(params.get('id') ?? '');
+      const id = params.get('runId') ?? '';
       if (id === this.vigencia.actual) return;
       // La vigencia cambia ANTES de pedir nada: lo que venga del run anterior queda obsoleto solo.
       this.vigencia.cambiarA(id);

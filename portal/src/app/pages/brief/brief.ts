@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgTemplateOutlet } from '@angular/common';
-import { RouterLink, ActivatedRoute } from '@angular/router';
+import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
 import { MembresiaService } from '../../services/membresia';
@@ -19,7 +19,11 @@ import { Vigencia } from '../../core/vigencia';
   imports: [FormsModule, RouterLink, NgTemplateOutlet],
   template: `
     <div class="max-w-3xl mx-auto px-4 py-8 space-y-6">
-      <a routerLink="/runs" class="text-sm text-texto-tenue hover:text-texto">← Volver</a>
+      <a
+        [routerLink]="['/clientes', clienteId(), 'research']"
+        class="text-sm text-texto-tenue hover:text-texto"
+        >← Volver</a
+      >
 
       @if (cargando()) {
         <p class="text-sm text-texto-tenue">Cargando…</p>
@@ -54,7 +58,7 @@ import { Vigencia } from '../../core/vigencia';
             los tests). w-fit mantiene el área clickeable del ancho del texto y no de la tarjeta.
           -->
           <a
-            [routerLink]="['/runs', b.run.id, 'informe']"
+            [routerLink]="['/clientes', clienteId(), 'research', b.run.id, 'informe']"
             class="mt-2 block w-fit text-sm text-texto hover:underline"
           >
             Ver el informe del research →
@@ -101,7 +105,7 @@ import { Vigencia } from '../../core/vigencia';
           @if (membresia.esEquipo()) {
             @if (puedeAprobar()) {
               <a
-                [routerLink]="['/runs', b.run.id, 'entregable']"
+                [routerLink]="['/clientes', clienteId(), 'research', b.run.id, 'entregable']"
                 class="mt-1 block w-fit text-sm text-texto hover:underline"
               >
                 Ver el entregable del restaurante (sin coste) →
@@ -253,6 +257,7 @@ export class BriefPage implements OnInit, OnDestroy {
   // El rol sale de `memberships`, no del token: ver la cabecera de `MembresiaService`.
   readonly membresia = inject(MembresiaService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   /** Cada cuánto se repregunta por un research que sigue corriendo (ADR-21: polling, no realtime). */
   private static readonly POLL_MS = 4000;
@@ -263,6 +268,15 @@ export class BriefPage implements OnInit, OnDestroy {
   private get runId(): string {
     return this.vigencia.actual;
   }
+
+  /**
+   * El CLIENTE de la URL (`/clientes/:id/research/:runId`), para armar los enlaces de esta pantalla.
+   *
+   * **No es el dueño del run**: es lo que dice la ruta, que puede estar equivocado. Quién es el dueño
+   * lo dice `brief().run.client_id`, y `cargar()` los concilia.
+   */
+  readonly clienteId = signal('');
+
   readonly brief = signal<Brief | null>(null);
   readonly cargando = signal(true);
   readonly error = signal('');
@@ -324,15 +338,22 @@ export class BriefPage implements OnInit, OnDestroy {
   private sub: Subscription | null = null;
 
   /**
-   * Se SUSCRIBE al parámetro, no lee el snapshot.
+   * Se SUSCRIBE a los parámetros, no lee el snapshot.
    *
-   * Angular **reutiliza el componente** al navegar de `/runs/A` a `/runs/B` (misma ruta): con
-   * `snapshot`, `runId` se quedaba en A mientras la pantalla decía B. El polling seguía preguntando
-   * por A y —lo grave— **aprobar una página en la pantalla de B iba contra el run A**.
+   * Angular **reutiliza el componente** al navegar de un run a otro (misma ruta): con `snapshot`,
+   * `runId` se quedaba en A mientras la pantalla decía B. El polling seguía preguntando por A y —lo
+   * grave— **aprobar una página en la pantalla de B iba contra el run A**.
    */
   ngOnInit(): void {
     this.sub = this.route.paramMap.subscribe((params) => {
-      const id = params.get('id') ?? '';
+      // OJO: `id` es el CLIENTE y `runId` el run. Antes de que el run se mudara bajo la ficha, `id`
+      // era el run — leerlo mal acá pide el brief de un uuid de cliente y devuelve 404.
+      //
+      // Se escribe ANTES de la guarda de abajo a propósito: cuando la conciliación corrige la URL,
+      // lo único que cambia es el `:id`, y los enlaces de la pantalla tienen que seguirlo sin
+      // recargar el brief (que es el mismo run).
+      this.clienteId.set(params.get('id') ?? '');
+      const id = params.get('runId') ?? '';
       if (id === this.runId) return;
       // Cambiar la vigencia ANTES de nada: lo que venga del run anterior queda obsoleto solo.
       this.vigencia.cambiarA(id);
@@ -340,8 +361,9 @@ export class BriefPage implements OnInit, OnDestroy {
       this.brief.set(null);
       this.editando.set(null);
       this.error.set('');
-      // El rechazo era del run ANTERIOR. Sin esto, Angular reutiliza la instancia al navegar de
-      // /runs/A a /runs/B y el botón de B quedaría apagado por un 409 que no era suyo.
+      // El rechazo era del run ANTERIOR. Sin esto, Angular reutiliza la instancia al navegar del run
+      // A al B (mismo cliente, mismo `routeConfig`) y el botón de B quedaría apagado por un 409 que
+      // no era suyo.
       this.rechazadoSinWorkflow.set(false);
       void this.cargar();
     });
@@ -364,6 +386,15 @@ export class BriefPage implements OnInit, OnDestroy {
       if (this.vigencia.obsoleta(pedido)) return; // llegó tarde: ya es otro run, o nos fuimos
       this.brief.set(brief);
       this.ajustarPolling();
+      // El `:id` de la URL y el dueño real del run son dos afirmaciones independientes: nada obliga a
+      // que coincidan. Si no coinciden, la cabecera de la ficha estaría diciendo un cliente y el
+      // contenido perteneciendo a otro — en una agencia con cartera, eso es un error de facturación
+      // esperando. Se corrige la URL, no se oculta el run.
+      const duenio = this.brief()?.run.client_id;
+      if (duenio && duenio !== this.clienteId()) {
+        await this.router.navigate(['/clientes', duenio, 'research', this.runId]);
+        return;
+      }
     } catch (e) {
       if (this.vigencia.obsoleta(pedido)) return;
       this.error.set((e as Error).message);

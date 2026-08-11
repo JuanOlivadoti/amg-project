@@ -30,7 +30,12 @@ import { InformeInlineComponent } from '../../shared/components/informe-inline';
  * ── POR QUÉ ESTÁ FUERA DEL SHELL ──────────────────────────────────────────────────────────────────
  *
  * La ruta cuelga de la raíz con `authGuard`, **no** de `AppShellComponent`, y es una desviación
- * consciente del resto del portal. La spec pide una hoja «sin la barra de navegación, sin botones,
+ * consciente del resto del portal. Su URL sí es la anidada (`/clientes/:id/research/:runId/entregable`)
+ * para que el enlace sea coherente con las otras dos pantallas del run: **la URL está anidada y la
+ * declaración no**, a propósito. Declararla dentro del shell la devolvería al sidebar `fixed` y al
+ * `lg:pl-64`, que es justo lo que la hace imprimible.
+ *
+ * La spec pide una hoja «sin la barra de navegación, sin botones,
  * sin el shell» y lo pone bajo `@media print`; sacar la ruta del shell lo hace verdad de estructura
  * en vez de verdad de CSS, y de paso borra toda una clase de bugs de impresión (un sidebar `fixed`
  * que reaparece en la hoja 2, un `lg:pl-64` que deja margen fantasma). El precio: acá no corre el
@@ -64,7 +69,10 @@ import { InformeInlineComponent } from '../../shared/components/informe-inline';
       <div
         class="print:hidden max-w-4xl mx-auto px-4 pt-6 flex flex-wrap items-center justify-between gap-3"
       >
-        <a [routerLink]="['/runs', runId()]" class="text-sm text-texto-tenue hover:text-texto">
+        <a
+          [routerLink]="['/clientes', clienteId(), 'research', runId()]"
+          class="text-sm text-texto-tenue hover:text-texto"
+        >
           ← Volver al brief
         </a>
         @if (hayDocumento()) {
@@ -104,7 +112,7 @@ import { InformeInlineComponent } from '../../shared/components/informe-inline';
           <div class="bg-superficie rounded-xl border border-borde p-6 space-y-3">
             <p class="text-sm text-alerta">{{ error() }}</p>
             <a
-              [routerLink]="['/runs', runId()]"
+              [routerLink]="['/clientes', clienteId(), 'research', runId()]"
               class="block w-fit text-sm text-texto hover:underline"
             >
               Ir al brief y aprobar páginas →
@@ -244,7 +252,7 @@ export class EntregablePage implements OnInit, OnDestroy {
 
   /**
    * A qué run corresponde el trabajo en vuelo, y si el componente sigue vivo. Ver `core/vigencia.ts`.
-   * Angular REUTILIZA la instancia al navegar de `/runs/A/entregable` a `/runs/B/entregable`: sin
+   * Angular REUTILIZA la instancia al navegar del entregable de un run al de otro: sin
    * esto, una respuesta lenta de A puede llegar cuando la URL ya dice B, y acá el daño es el peor de
    * los tres: una hoja con el nombre de un cliente y las páginas de otro, camino a un PDF.
    */
@@ -253,6 +261,15 @@ export class EntregablePage implements OnInit, OnDestroy {
 
   /** El id de la URL, para el link de volver. Se escribe junto con la vigencia, nunca por separado. */
   readonly runId = signal('');
+
+  /**
+   * El CLIENTE de la URL (`/clientes/:id/research/:runId/entregable`), solo para el enlace de vuelta.
+   *
+   * **Acá NO se concilia con el dueño del run, y no es un olvido**: a esta hoja se llega desde el
+   * brief, que ya lo hizo y ya corrigió la URL. Y no podría hacerlo aunque quisiera — el endpoint
+   * devuelve Markdown y nada más, así que el `client_id` del run no viaja hasta acá.
+   */
+  readonly clienteId = signal('');
 
   readonly md = signal<string | null>(null);
   readonly cargando = signal(true);
@@ -297,7 +314,10 @@ export class EntregablePage implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.sub = this.route.paramMap.subscribe((params) => {
-      const id = params.get('id') ?? '';
+      // OJO: `id` es el CLIENTE y `runId` el run. Antes de que el run se mudara bajo la ficha, `id`
+      // era el run — leerlo mal acá pide el entregable de un uuid de cliente y devuelve 404.
+      this.clienteId.set(params.get('id') ?? '');
+      const id = params.get('runId') ?? '';
       if (id === this.vigencia.actual) return;
       // La vigencia cambia ANTES de pedir nada: lo que venga del run anterior queda obsoleto solo.
       this.vigencia.cambiarA(id);

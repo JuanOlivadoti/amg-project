@@ -1,5 +1,5 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
 import { BriefPage } from './brief';
@@ -72,12 +72,22 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
    */
   type ApiDoble = { aprobarRun?: (id: string) => Promise<void> };
 
-  async function renderFixture(
+  /**
+   * El fixture **sin el primer `detectChanges`**, que es el ciclo donde corre `ngOnInit`.
+   *
+   * Se separa de `renderFixture` para poder preparar el escenario antes de que la pantalla haga nada
+   * — hoy, espiar al `Router` antes de que la conciliación de cliente pueda navegar. Mismo criterio
+   * que `crear()` en `cliente-perfil.spec.ts`.
+   */
+  function configurar(
     esEquipo: boolean,
     aprobarHabilitado: boolean,
     brief: Brief = BRIEF,
     api: ApiDoble = {},
-  ): Promise<ComponentFixture<BriefPage>> {
+    // El run vive bajo su cliente: la ruta lleva DOS parámetros y el componente los distingue.
+    // `c1` es el `client_id` de `BRIEF`, así que por defecto coinciden y nada redirige.
+    params: { id: string; runId: string } = { id: 'c1', runId: 'run-1' },
+  ): ComponentFixture<BriefPage> {
     environment.features.aprobarRun = aprobarHabilitado;
     // Un `it` puede renderizar DOS veces (los dos lados de la misma condición), y el TestBed no se
     // deja reconfigurar una vez instanciado. Resetear acá es lo mismo que Karma hace entre specs.
@@ -86,12 +96,22 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
       imports: [BriefPage],
       providers: [
         provideRouter([]),
-        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id: 'run-1' })) } },
+        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap(params)) } },
         { provide: ApiService, useValue: { verBrief: async () => brief, ...api } },
         { provide: MembresiaService, useValue: { esEquipo: () => esEquipo } },
       ],
     });
-    const fixture = TestBed.createComponent(BriefPage);
+    return TestBed.createComponent(BriefPage);
+  }
+
+  async function renderFixture(
+    esEquipo: boolean,
+    aprobarHabilitado: boolean,
+    brief: Brief = BRIEF,
+    api: ApiDoble = {},
+    params: { id: string; runId: string } = { id: 'c1', runId: 'run-1' },
+  ): Promise<ComponentFixture<BriefPage>> {
+    const fixture = configurar(esEquipo, aprobarHabilitado, brief, api, params);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
@@ -158,9 +178,9 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
    *
    * Sin este test, borrar el link deja la suite entera en verde y la funcionalidad inalcanzable.
    */
-  it('🔴 el link al informe está, apuntando a runs/:id/informe', async () => {
+  it('🔴 el link al informe está, apuntando a clientes/:id/research/:runId/informe', async () => {
     const el = await render(true, false);
-    const link = el.querySelector<HTMLAnchorElement>('a[href="/runs/run-1/informe"]');
+    const link = el.querySelector<HTMLAnchorElement>('a[href="/clientes/c1/research/run-1/informe"]');
     expect(link).withContext('no encontré el link al informe del research').not.toBeNull();
     expect(link!.textContent).toContain('Ver el informe');
   });
@@ -170,7 +190,7 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     // El link sigue estando: la pantalla del informe le dice con palabras que no está disponible, que es
     // mejor que un link que aparece y desaparece según quién mira.
     const el = await render(false, false);
-    expect(el.querySelector('a[href="/runs/run-1/informe"]')).not.toBeNull();
+    expect(el.querySelector('a[href="/clientes/c1/research/run-1/informe"]')).not.toBeNull();
   });
 
   /*
@@ -183,19 +203,19 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
    * y la pantalla solo podría decir «Run no encontrado». Y la decisión del dueño (spec 2026-08-07) es
    * que el entregable lo manda la AGENCIA: no es una pantalla del cliente.
    */
-  it('🔴 el link al entregable está para el equipo, apuntando a runs/:id/entregable', async () => {
+  it('🔴 el link al entregable está para el equipo, apuntando a su URL bajo el cliente', async () => {
     // Sin este test, borrar el link deja la suite en verde y la pantalla imprimible inalcanzable: no
     // está en el sidebar (cuelga de un run) y nadie va a escribir la URL a mano.
     // Con una página aprobada: sin ninguna, el entregable saldría vacío y deja de ser un link (abajo).
     const el = await render(true, false, conPaginaAprobada());
-    const link = el.querySelector<HTMLAnchorElement>('a[href="/runs/run-1/entregable"]');
+    const link = el.querySelector<HTMLAnchorElement>('a[href="/clientes/c1/research/run-1/entregable"]');
     expect(link).withContext('no encontré el link al entregable del restaurante').not.toBeNull();
     expect(link!.textContent).toContain('entregable del restaurante');
   });
 
   it('🔴 el link al entregable NO aparece para un rol que no es equipo', async () => {
     const el = await render(false, false, conPaginaAprobada());
-    expect(el.querySelector('a[href="/runs/run-1/entregable"]'))
+    expect(el.querySelector('a[href="/clientes/c1/research/run-1/entregable"]'))
       .withContext('se le está insinuando al cliente una pantalla que la API le va a negar con un 404')
       .toBeNull();
     // Ni siquiera apagado: la variante deshabilitada tampoco puede nombrarle el entregable a un cliente.
@@ -215,7 +235,7 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     // Un `<a>` con clase de apagado sigue navegando —y sigue abriéndose en una pestaña nueva con el
     // clic del medio—, así que lo que se comprueba es que NO EXISTE el ancla, no que se vea gris.
     const el = await render(true, false);
-    expect(el.querySelector('a[href="/runs/run-1/entregable"]'))
+    expect(el.querySelector('a[href="/clientes/c1/research/run-1/entregable"]'))
       .withContext('el link lleva a un 409: el entregable saldría vacío')
       .toBeNull();
     expect(el.querySelector('[href*="entregable"]'))
@@ -247,11 +267,11 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
      */
     const sinAprobar = await render(true, true);
     expect(botonDelRun(sinAprobar).disabled).toBe(true);
-    expect(sinAprobar.querySelector('a[href="/runs/run-1/entregable"]')).toBeNull();
+    expect(sinAprobar.querySelector('a[href="/clientes/c1/research/run-1/entregable"]')).toBeNull();
 
     const conAprobada = await render(true, true, conPaginaAprobada());
     expect(botonDelRun(conAprobada).disabled).toBe(false);
-    expect(conAprobada.querySelector('a[href="/runs/run-1/entregable"]')).not.toBeNull();
+    expect(conAprobada.querySelector('a[href="/clientes/c1/research/run-1/entregable"]')).not.toBeNull();
   });
 
   /*
@@ -306,7 +326,7 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
      */
     const el = await render(true, true, sinWorkflow(conPaginaAprobada()));
     expect(botonDelRun(el).disabled).toBe(true);
-    expect(el.querySelector('a[href="/runs/run-1/entregable"]'))
+    expect(el.querySelector('a[href="/clientes/c1/research/run-1/entregable"]'))
       .withContext('el entregable se apagó por un motivo que no es suyo')
       .not.toBeNull();
   });
@@ -350,7 +370,7 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
      * Un `BehaviorSubject` y no `of(...)`: hace falta emitir DOS veces, que es justo lo que un
      * `of()` de una sola emisión no puede reproducir.
      */
-    const params = new BehaviorSubject(convertToParamMap({ id: 'run-1' }));
+    const params = new BehaviorSubject(convertToParamMap({ id: 'c1', runId: 'run-1' }));
     const briefs: Record<string, Brief> = {
       'run-1': conPaginaAprobada(),
       'run-2': { ...conPaginaAprobada(), run: { ...BRIEF.run, id: 'run-2' } },
@@ -383,8 +403,8 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     fixture.detectChanges();
     expect(botonDelRun(el).disabled).withContext('el 409 no apagó el botón de run-1').toBe(true);
 
-    // La MISMA instancia, otro run: solo cambia el parámetro.
-    params.next(convertToParamMap({ id: 'run-2' }));
+    // La MISMA instancia, otro run del MISMO cliente: solo cambia el `:runId`.
+    params.next(convertToParamMap({ id: 'c1', runId: 'run-2' }));
     await fixture.whenStable();
     fixture.detectChanges();
 
@@ -414,6 +434,51 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
       .withContext('un error que no es el de C0 no puede contar el motivo de C0')
       .not.toContain(MOTIVO_SIN_WORKFLOW);
     expect(el.textContent).toContain('El run no admite aprobación.');
+  });
+
+  /*
+   * ------------------------------------------------ la conciliación cliente ↔ dueño del run
+   * Con DOS parámetros en la URL (`/clientes/:id/research/:runId`), el cliente que dice la ruta y el
+   * dueño real del run son dos afirmaciones independientes: nada obliga a que coincidan.
+   *
+   * Los dos tests van juntos y ninguno sirve solo: uno solo lo pasaría un componente que redirigiera
+   * SIEMPRE —dejando la pantalla navegando sobre sí misma en cada carga—, y el otro solo lo pasaría
+   * uno que no conciliara nada.
+   */
+  it('🔴 run de OTRO cliente que el de la URL: corrige la URL a la ficha del dueño', async () => {
+    /*
+     * RLS impide ver runs de otro TENANT, pero no impide abrir /clientes/<A>/research/<run-de-B>
+     * dentro del mismo tenant: la API devolvería el brief bueno y la cabecera diría el cliente
+     * equivocado. No es una fuga; es una pantalla que miente sobre de quién es el trabajo — y en una
+     * agencia con cartera, eso es un error de facturación esperando.
+     *
+     * El fixture se crea SIN el primer `detectChanges` (`configurar`) para instalar el spy antes de
+     * que corra `ngOnInit`: la redirección sale de la carga que ese ciclo dispara, así que con
+     * `renderFixture` el spy llegaría tarde y el test pasaría sin haber mirado la llamada.
+     */
+    const fixture = configurar(true, true, BRIEF, {}, { id: 'otro-cliente', runId: 'run-1' });
+    const navegar = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // `BRIEF.run.client_id` es 'c1' y la URL dice 'otro-cliente'.
+    expect(navegar).toHaveBeenCalledWith(['/clientes', 'c1', 'research', 'run-1']);
+  });
+
+  it('🔴 …y si el cliente de la URL SÍ es el dueño, no se navega a ningún lado', async () => {
+    // La mitad simétrica. Sin ella, «redirigir siempre» pasa el test de arriba: la pantalla se
+    // recargaría a sí misma en cada visita y el `routerLink` de vuelta apuntaría al sitio correcto
+    // por accidente. Los params por defecto son `id: 'c1'`, que es el `client_id` de `BRIEF`.
+    const fixture = configurar(true, true);
+    const navegar = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(navegar)
+      .withContext('el brief es de este cliente y la pantalla se fue igual: navegación en bucle')
+      .not.toHaveBeenCalled();
   });
 
   /*

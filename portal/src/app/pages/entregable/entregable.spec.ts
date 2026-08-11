@@ -55,7 +55,12 @@ function montar(verEntregableMd: () => Promise<string>, impresion?: Partial<Impr
     imports: [EntregablePage],
     providers: [
       provideRouter([]),
-      { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id: 'run-1' })) } },
+      // DOS parámetros: el run vive bajo su cliente. `id` es el CLIENTE y `runId` el run — con el
+      // paramMap viejo esta pantalla cargaría el run `null` y fallaría sin decir por qué.
+      {
+        provide: ActivatedRoute,
+        useValue: { paramMap: of(convertToParamMap({ id: 'c1', runId: 'run-1' })) },
+      },
       { provide: ApiService, useValue: { verEntregableMd } },
       // Un doble SIEMPRE: el real llama a `window.print()`, y eso le abriría el diálogo de impresión
       // —modal y bloqueante— a quien corre la suite.
@@ -216,7 +221,7 @@ describe('EntregablePage — la hoja que se le manda al restaurante', () => {
       a.textContent!.includes(ACCION_409),
     );
     expect(accion).withContext('sin la acción, el usuario sabe qué falta pero no adónde ir').toBeTruthy();
-    expect(accion!.getAttribute('href')).toBe('/runs/run-1');
+    expect(accion!.getAttribute('href')).toBe('/clientes/c1/research/run-1');
     expect(el.querySelector('button'))
       .withContext('no se ofrece imprimir un documento que el servidor se negó a generar')
       .toBeNull();
@@ -237,8 +242,9 @@ describe('EntregablePage — la hoja que se le manda al restaurante', () => {
 
   it('🔴 al pasar a OTRO run, el aviso del anterior no se queda pegado', async () => {
     /*
-     * Angular REUTILIZA la instancia al navegar de `/runs/A/entregable` a `/runs/B/entregable`: no se
-     * dispara `ngOnInit` de nuevo. Si el aviso del 409 no se limpia con el parámetro, el run B —que sí
+     * Angular REUTILIZA la instancia al navegar del entregable de un run al de otro (mismo cliente,
+     * mismo `routeConfig`): no se dispara `ngOnInit` de nuevo. Si el aviso del 409 no se limpia con
+     * el parámetro, el run B —que sí
      * tiene páginas aprobadas y sí trae documento— se pinta con el cartel de «aprobá páginas» encima
      * del run equivocado. Es la misma clase de bug que ya obligó a poner la vigencia en esta pantalla.
      */
@@ -246,7 +252,7 @@ describe('EntregablePage — la hoja que se le manda al restaurante', () => {
       status: 409,
       codigo: 'SIN_PAGINAS_APROBADAS',
     }) as ApiError;
-    const params = new BehaviorSubject(convertToParamMap({ id: 'run-1' }));
+    const params = new BehaviorSubject(convertToParamMap({ id: 'c1', runId: 'run-1' }));
     TestBed.configureTestingModule({
       imports: [EntregablePage],
       providers: [
@@ -269,7 +275,7 @@ describe('EntregablePage — la hoja que se le manda al restaurante', () => {
     const { el } = await estabilizar(fixture);
     expect(el.textContent).toContain(ACCION_409);
 
-    params.next(convertToParamMap({ id: 'run-2' }));
+    params.next(convertToParamMap({ id: 'c1', runId: 'run-2' }));
     await estabilizar(fixture);
     expect(el.textContent)
       .withContext('el aviso del run anterior sigue puesto sobre el documento del nuevo')

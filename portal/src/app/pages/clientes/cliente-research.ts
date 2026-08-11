@@ -76,7 +76,7 @@ const ETIQUETA: Record<RunStatus, string> = {
             @for (run of runs(); track run.id) {
               <li>
                 <a
-                  [routerLink]="['/runs', run.id]"
+                  [routerLink]="['/clientes', clienteId(), 'research', run.id]"
                   class="block bg-superficie rounded-lg border border-borde p-4 hover:border-borde-fuerte"
                 >
                   <div class="flex items-center justify-between gap-3">

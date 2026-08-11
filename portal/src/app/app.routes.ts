@@ -9,19 +9,19 @@ export const routes: Routes = [
   {
     /*
      * El entregable del restaurante cuelga de la RAÍZ, no del shell, y el orden acá **sí** es
-     * load-bearing (a diferencia del de `runs/:id/informe` dentro del shell): tiene que ir ANTES de la
-     * ruta `''`, que es la que intenta emparejar todo lo demás.
+     * load-bearing: tiene que ir ANTES de la ruta `''`, que intenta emparejar todo lo demás.
      *
-     * Fuera del shell porque es una HOJA, no una pantalla: sin sidebar, sin header y sin el `lg:pl-64`
-     * del contenedor. La spec pedía eso «con `@media print`»; sacarlo del shell lo hace verdad de
-     * estructura en vez de verdad de CSS, y elimina los bugs de impresión que vienen de un sidebar
-     * `fixed` y un margen que la hoja hereda. Ver la cabecera de `EntregablePage`.
+     * Fuera del shell porque es una HOJA, no una pantalla: sin sidebar, sin header y sin el
+     * `lg:pl-64` del contenedor. La spec pedía eso «con `@media print`»; sacarlo del shell lo hace
+     * verdad de estructura en vez de verdad de CSS. Anidarlo bajo la ficha del cliente lo devolvería
+     * al shell y reintroduciría los bugs de impresión — por eso lleva la URL del cliente pero no su
+     * jerarquía.
      *
      * Lleva `authGuard` propio: al salir del shell, deja de heredar el suyo. Sin esta línea la hoja
      * sería alcanzable sin sesión (la API igual respondería 401, pero la pantalla sería una promesa
      * rota en vez de un redirect al login).
      */
-    path: 'runs/:id/entregable',
+    path: 'clientes/:id/research/:runId/entregable',
     canActivate: [authGuard],
     loadComponent: () => import('./pages/entregable/entregable').then((m) => m.EntregablePage),
   },
@@ -30,22 +30,6 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () => import('./shared/layout/app-shell').then((m) => m.AppShellComponent),
     children: [
-      {
-        /*
-         * No hay lista global de runs: el research de un cliente se alcanza desde su ficha
-         * (`clientes/:id/research`). `runs/:id` y `runs/:id/informe` siguen acá hasta la tarea 3,
-         * que los muda bajo el cliente.
-         */
-        path: 'runs/:id',
-        loadComponent: () => import('./pages/brief/brief').then((m) => m.BriefPage),
-      },
-      {
-        // Va DESPUÉS de `runs/:id` y no antes, y no cambia nada: el router de Angular no hace prefijo
-        // parcial con una ruta sin hijas, así que `/runs/x/informe` no lo puede atrapar `runs/:id`.
-        // El orden es por legibilidad —la pantalla que cuelga de la de arriba— no por precedencia.
-        path: 'runs/:id/informe',
-        loadComponent: () => import('./pages/informe/informe').then((m) => m.InformePage),
-      },
       {
         path: 'cartera',
         loadComponent: () => import('./pages/cartera/cartera').then((m) => m.CarteraPage),
@@ -78,6 +62,17 @@ export const routes: Routes = [
             path: 'research',
             loadComponent: () =>
               import('./pages/clientes/cliente-research').then((m) => m.ClienteResearchPage),
+          },
+          {
+            path: 'research/:runId',
+            loadComponent: () => import('./pages/brief/brief').then((m) => m.BriefPage),
+          },
+          {
+            // Va DESPUÉS de `research/:runId` por legibilidad, no por precedencia: el router no hace
+            // prefijo parcial con una ruta sin hijas, así que `research/x/informe` no lo puede
+            // atrapar `research/:runId`.
+            path: 'research/:runId/informe',
+            loadComponent: () => import('./pages/informe/informe').then((m) => m.InformePage),
           },
           { path: '', pathMatch: 'full', redirectTo: 'perfil' },
         ],

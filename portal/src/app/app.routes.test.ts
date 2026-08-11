@@ -130,29 +130,59 @@ test('login es una ruta hermana, sin hijas — no vive dentro del shell', () => 
   assert.equal(login?.children, undefined, '/login no debería tener rutas hijas de un shell');
 });
 
-test('la lista global de runs ya no existe; runs/:id y cartera siguen siendo hijas del shell', () => {
+test('las tres pantallas de un run cuelgan del cliente; la lista global de runs ya no existe', () => {
   const shell = routes.find((r) => r.path === '' && r.children);
   assert.ok(shell, 'no encontré la ruta padre del shell (path vacío con children)');
   assert.deepEqual(shell?.canActivate, [authGuard], 'el shell debe estar protegido por authGuard');
   const hijos = (shell?.children ?? []).map((r) => r.path);
-  assert.ok(!hijos.includes('runs'), 'la lista global de runs se retiró: vive en el tab del cliente');
-  assert.ok(hijos.includes('runs/:id'), 'runs/:id sigue siendo hija del shell (se muda en la tarea 3)');
+  assert.ok(!hijos.includes('runs'), 'la lista global de runs se retiró');
+  assert.ok(!hijos.includes('runs/:id'), 'el brief se mudó bajo el cliente');
+  assert.ok(!hijos.includes('runs/:id/informe'), 'el informe se mudó bajo el cliente');
   assert.ok(hijos.includes('cartera'), 'cartera debe ser hija del shell');
+
+  const ficha = (shell?.children ?? []).find((r) => r.path === 'clientes/:id');
+  const tabs = (ficha?.children ?? []).map((r) => r.path);
+  assert.ok(tabs.includes('research/:runId'), 'el brief debe colgar del tab research');
+  assert.ok(tabs.includes('research/:runId/informe'), 'el informe debe colgar del brief');
 });
 
-test('runs/:id/informe es hija del shell (y del authGuard), y carga la pantalla del informe', async () => {
-  // El informe lleva el desglose de lo que la agencia le paga a DataForSEO. Que la ruta cuelgue del shell
-  // no es lo que lo protege —eso lo hace la política `informe_staff` (0016) dentro de Postgres— pero una
-  // ruta hermana de `/login` quedaría fuera del authGuard, y sería la única pantalla del portal sin puerta.
+test('el informe hereda el authGuard del shell y carga la pantalla del informe', async () => {
+  // El informe lleva el desglose de lo que la agencia le paga a DataForSEO. Que la ruta cuelgue del
+  // shell no es lo que lo protege —eso lo hace la política `informe_staff` (0016) dentro de
+  // Postgres— pero una ruta fuera del shell quedaría sin authGuard.
   const shell = routes.find((r) => r.path === '' && r.children);
-  const informe = (shell?.children ?? []).find((r) => r.path === 'runs/:id/informe');
-  assert.ok(informe, 'runs/:id/informe debe ser hija del shell');
+  const ficha = (shell?.children ?? []).find((r) => r.path === 'clientes/:id');
+  const informe = (ficha?.children ?? []).find((r) => r.path === 'research/:runId/informe');
+  assert.ok(informe, 'no encontré la ruta del informe');
   assert.equal(informe?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
 
   // Y que el `loadComponent` resuelva de verdad: un import mal escrito no rompe el build (es una función
   // perezosa), se rompe al navegar. Acá se paga el import una vez y se sabe.
   const cargado = await informe?.loadComponent?.();
   assert.equal((cargado as { name?: string })?.name, 'InformePage');
+});
+
+test('el brief cuelga del tab research y carga BriefPage', async () => {
+  // Mismo motivo que el del informe: el `loadComponent` es perezoso y un import mal escrito se rompe
+  // al navegar, no al compilar. La pantalla del brief es la puerta a las otras dos.
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const ficha = (shell?.children ?? []).find((r) => r.path === 'clientes/:id');
+  const brief = (ficha?.children ?? []).find((r) => r.path === 'research/:runId');
+  assert.ok(brief, 'no encontré la ruta del brief');
+  assert.equal(brief?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+
+  const cargado = await brief?.loadComponent?.();
+  assert.equal((cargado as { name?: string })?.name, 'BriefPage');
+});
+
+test('el entregable vive en la RAÍZ con la URL del cliente, y lleva su propio authGuard', () => {
+  // Fuera del shell para poder imprimirse (sin sidebar `fixed`, sin `lg:pl-64`), pero con la URL
+  // anidada para que el enlace sea coherente con el resto. Las dos cosas a la vez, a propósito.
+  const i = routes.findIndex((r) => r.path === 'clientes/:id/research/:runId/entregable');
+  const iShell = routes.findIndex((r) => r.path === '' && r.children);
+  assert.ok(i >= 0, 'no encontré la ruta del entregable en la raíz');
+  assert.ok(i < iShell, 'el entregable debe declararse ANTES de la ruta del shell');
+  assert.deepEqual(routes[i]?.canActivate, [authGuard], 'fuera del shell no hereda: necesita el suyo');
 });
 
 test('ninguna ruta hija ni nieta repite su propio authGuard — lo hereda del padre', () => {
