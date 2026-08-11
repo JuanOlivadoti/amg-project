@@ -11,6 +11,70 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-11 — la navegación del portal se vuelve cliente-céntrica
+
+**Lo que se pidió.** Que el trabajo de un cliente se alcance **desde su ficha** y no desde el menú de
+la plataforma, como en el `dashboard-project` del que ya se portaron el CRM y la vista del cliente.
+
+**Los dos síntomas que lo justificaban** no eran opiniones de diseño: el formulario de lanzar research
+hacía **pegar el uuid del cliente a mano en un `<input>`** —un dato que había que ir a buscar y que se
+podía escribir mal sin que nada avisara—, y las reseñas vivían como datos inventados en una pantalla
+(`/clientes/:id/ver`) cuyo propósito declarado era *«lo que verá el cliente»*, una audiencia que no
+existe porque no hay login de cliente.
+
+**Cómo quedó.** `/clientes/:id` dejó de ser una hoja y es un **shell** que carga el cliente una vez y
+monta cuatro tabs como rutas hijas: Perfil · Research · Reseñas · Ideas. Las tres pantallas de un run
+se mudaron a `/clientes/:id/research/:runId/*`. Research salió del sidebar (quedan tres ítems) y la
+home del portal pasó de `/runs` a `/clientes`. Se retiró `/clientes/:id/ver` con sus tres tabs mock.
+
+**Lo que enseñó, que es más que la feature.** Las cuatro tareas se revisaron una por una, y **las
+cuatro reviews encontraron la misma clase de defecto**: código correcto que nada mantenía correcto.
+
+- Un test que emparejaba **su propio comentario**: quitar `withRouterConfig(...)` dejando el comentario
+  lo dejaba en verde. Era la garantía de la que colgaba la tarea siguiente.
+- Un `<router-outlet>` que se podía **borrar** con los 110 tests en verde.
+- El login navegando a `/runs` después de que esa ruta se retirara: **aterrizaba bien por accidente**
+  del comodín `**`, y nada fijaba el destino post-login.
+- El tab de research copió de sus tres pantallas hermanas la suscripción a `paramMap` pero **no su
+  `Vigencia`**: medido, con la URL en el cliente B la lista mostraba los runs de A.
+- El orden de dos líneas (`clienteId.set` antes de su guarda) del que depende que el error corregido
+  no reaparezca **un clic más tarde**, explicado solo en un comentario.
+
+Ninguno era un bug visible. Todos habrían llegado a producción.
+
+**Dos trampas nuevas, y las dos ahora tienen barrido propio.**
+
+1. **`routerLinkActive` aplica sus clases pero pierde la cascada.** Tailwind emite las utilidades en
+   orden **alfabético** y, a igual especificidad, gana la última de la hoja: `border-transparent`
+   (base) pisaba a `border-accion` (activo). El tab activo no se distinguía. Y el sidebar arrastraba el
+   mismo defecto **desde antes**, escondido porque su fondo marcaba el activo igual. Lo caza
+   `core/marca-activa.test.ts`, y su criterio necesitó dos dimensiones, no una: `font-bold` necesita
+   `!` contra `font-medium` y `font-semibold` **no**, y solo los separa cuál va después en la hoja.
+2. **Dos `h1` en el documento** al anidar el run bajo la ficha. La decisión: **el `h1` es del run**, no
+   del cliente — la ficha se declara a sí misma contenedor, y con el cliente como dueño las cuatro
+   rutas anunciarían el mismo encabezado. De paso apareció que `page-breadcrumb` emitía `h2` **antes**
+   del `h1` real, así que el documento arrancaba por debajo de su propio título. Lo caza
+   `core/arbol-encabezados.test.ts`, con un criterio que no enumera nada: *contenedor es quien declara
+   un `<router-outlet>`*.
+
+**Un cambio de opinión, anotado porque el motivo sirve.** Yo había decidido que el `h1` era del
+cliente. El argumento que lo dio vuelta fue medible: el desplazamiento de niveles del informe **ya
+diverge** del entregable en uno (`informe.ts` hace `1→h2`, `entregable.ts` hace `1→h1`, cada uno con su
+razón), y con el cliente como dueño divergirían en **dos**, exigiendo un `h5` que el sistema visual no
+tiene.
+
+**Deuda anotada, decidida y no hecha:** el `<nav>` de `page-breadcrumb.ts` no tiene nombre accesible.
+Se detectó al arreglar los dos `<nav>` sin nombre de la ficha; no se tocó porque ese componente lo
+comparten cinco pantallas y el arreglo pide decidir el nombre de cada una. Se anota acá porque el
+informe donde vivía **no se versiona**.
+
+**Verificado en el navegador, no solo en tests:** que el tab pide `GET /runs?clientId=<uuid real>`
+—primera vez que se ejercita de verdad `paramsInheritanceStrategy`, cuyo fallo sería silencioso—, que
+el cliente se pide **una** vez para los cuatro tabs, y los colores computados del tab activo y del
+sidebar en tema claro y oscuro.
+
+---
+
 ## 2026-08-10 (noche) — el rediseño, terminado: las doce secciones, el pie y las tres nuevas
 
 Las etapas 2 y 3 del bloque K, de una sentada. Doce piezas de contenido con el patrón de sección, el

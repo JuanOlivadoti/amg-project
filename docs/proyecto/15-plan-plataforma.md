@@ -1110,6 +1110,11 @@ qué reseñas, con qué autorización de Google, con qué compuerta humana (¿se
 generada por IA en el perfil de un cliente?), y qué pasa con el multi-tenancy de las credenciales de
 Google.
 
+**Desde el 2026-08-11 ya tiene dónde caer en el portal:** el tab `/clientes/:id/resenas`, hoy un
+placeholder que enuncia justamente esas preguntas sin resolverlas. Lo que **se retiró** ese día son
+las tres reseñas inventadas que vivían en `/clientes/:id/ver`: un tab con datos ficticios de un
+restaurante que no los tiene miente con más detalle que uno vacío.
+
 ---
 
 ## Bloque G — lo que ADR-19 dejó a medias
@@ -1157,7 +1162,7 @@ Es un programa de **cuatro piezas** y van **dos**:
 | --- | --- | --- |
 | 1 | **CRM de clientes** — listado, alta, perfil editable | ✅ mergeada el 2026-08-01 |
 | 2 | **Usuarios** — 6 etapas | ✅ mergeada el 2026-08-02 |
-| 3 | **Ideas** — módulo nuevo completo | 🟡 **en curso** ([plan](../superpowers/plans/2026-08-01-modulo-ideas-portal.md)). **Etapas 1–4 hechas**: la `0013`, `PgIdeas` y las transiciones (47 tests) y los tres endpoints con su borde HTTP (34 tests) el 2026-08-09; el **seed de ejemplo** (19 tests) el 2026-08-10. Las decisiones que el plan no fijaba están en las **tres notas de enmienda** al pie de las Etapas 2, 3 y 4 — versionadas a propósito, porque las tres veces vivían solo en un informe gitignoreado. **Falta 5–7** (pantallas, rutas y retirar el mock de ideas de la pieza 1; agente `front`) |
+| 3 | **Ideas** — módulo nuevo completo | 🟡 **en curso** ([plan](../superpowers/plans/2026-08-01-modulo-ideas-portal.md)). **Etapas 1–4 hechas**: la `0013`, `PgIdeas` y las transiciones (47 tests) y los tres endpoints con su borde HTTP (34 tests) el 2026-08-09; el **seed de ejemplo** (19 tests) el 2026-08-10. Las decisiones que el plan no fijaba están en las **tres notas de enmienda** al pie de las Etapas 2, 3 y 4 — versionadas a propósito, porque las tres veces vivían solo en un informe gitignoreado. **Falta 5–7** (pantallas y rutas; agente `front`). ✅ **Lo del «retirar el mock de ideas de la pieza 1» ya está hecho** (2026-08-11): se fue entero con `/clientes/:id/ver`, junto al de Instagram y al de reseñas. **Y las pantallas ya tienen dónde caer**: el tab `/clientes/:id/ideas`, hoy un placeholder que dice qué falta |
 | 4 | **Dashboard** — la home con métricas | 🔵 [plan escrito](../superpowers/plans/2026-08-01-dashboard-home-portal.md), sin empezar |
 
 **El orden no es negociable: la 4 depende de la 3.** El dashboard es stats de ideas más una tabla de
