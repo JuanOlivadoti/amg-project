@@ -344,7 +344,7 @@ FTP): lo de **adentro** de `browser/`, no la carpeta — `index.html` va en la r
 **Verificá:**
 
 - `https://bigballs.es` abre la pantalla de login.
-- **Entrá directo a una ruta profunda** (`https://bigballs.es/runs`) y **recargá**: debe cargar, no dar 404. Si da 404, falta el `.htaccess` en `public_html` (o no se subió por ser oculto): revisá el paso 3.
+- **Entrá directo a una ruta profunda** (`https://bigballs.es/clientes`) y **recargá**: debe cargar, no dar 404. Si da 404, falta el `.htaccess` en `public_html` (o no se subió por ser oculto): revisá el paso 3.
 
 ### C.7 — Dominios (DNS en Hostinger)
 
@@ -1117,7 +1117,7 @@ darle a un cliente más de un dominio: una migración (columna o tabla `client_d
 | La API no arranca, error sobre `CORS_ORIGINS`                                                              | Pusiste `*`, vacío, o una URL sin esquema               | Poné el origen completo, ej. `https://bigballs.es`.                                                                                                |
 | `/health` da 404                                                                                           | La URL o el service están mal                           | Es `GET /health` en la raíz de la API, sin `/api` adelante.                                                                                        |
 | El portal carga pero el login/llamadas fallan con error de CORS                                            | `CORS_ORIGINS` de la API ≠ origen real del portal       | Que sean idénticos (`https://bigballs.es`, sin barra final). Si entrás por `www.`, agregá `https://www.bigballs.es`.                               |
-| Recargar en `/runs/:id` da 404                                                                             | Falta el `.htaccess` en `public_html`                   | Es un dotfile: subilo explícitamente (o activá "mostrar ocultos" en File Manager). Debe estar junto a `index.html`.                                |
+| Recargar en `/clientes/:id/perfil` da 404                                                                             | Falta el `.htaccess` en `public_html`                   | Es un dotfile: subilo explícitamente (o activá "mostrar ocultos" en File Manager). Debe estar junto a `index.html`.                                |
 | El portal (https) no puede llamar a la API                                                                 | La API responde por http, no https                      | Activá el custom domain con TLS en Railway; `apiBaseUrl` debe ser `https://api.bigballs.es`.                                                       |
 | Login OK pero Frank no ve nada                                                                             | El `app_metadata.tenant_id` no coincide con el del seed | Copiá el `tenant_id` que imprimió `seed:demo` al `app_metadata` de cada usuario.                                                                   |
 | **Deploy del portal:** `npm ci` falla con `EUSAGE ... can only install with an existing package-lock.json` | `portal/package-lock.json` no está en el repo           | Es la excepción `!portal/package-lock.json` del `.gitignore`. Commitealo. No se reproduce en local: ahí el archivo existe en disco.                |

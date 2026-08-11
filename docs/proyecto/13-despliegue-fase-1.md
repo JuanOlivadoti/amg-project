@@ -247,7 +247,7 @@ click":
    realistas**, no el detalle del brief. El seed carga igual el `content_brief` (es la forma real del
    dato y lo devuelve la API), pero la demo no depende de él. Si se quiere mostrar el brief completo,
    es trabajo de portal aparte, no del seed.
-2. **El botón "Lanzar research" (§A.5) es el `<form>` de `portal/.../runs.ts`, visible bajo
+2. **El botón "Lanzar research" (§A.5) es el `<form>` de `portal/.../cliente-research.ts` (era `pages/runs/runs.ts` hasta el 2026-08-11), visible bajo
    `auth.esEquipo()`.** Frank es `maestro` → hoy lo vería. A.5 = ocultar ese formulario en Fase 1
    (recomendado en §10). Ahí también está el botón "Aprobar el run y publicar" del brief: decidir si
    en Nivel 1 la aprobación queda visible (no publica en vivo, pero sí cambia el estado en la base).

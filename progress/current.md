@@ -6,22 +6,27 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-10
-**En curso:** nada. **El bloque K —el rediseño de la plantilla base— está CERRADO**, sus tres etapas.
-**Estado:** **1387 tests**, `verificar` en verde entero, gate de paridad re-capturado, y el sitio
-manejado en un navegador a 1440 y a 390.
+**Sesión:** 2026-08-11
+**En curso:** nada. **La navegación del portal es cliente-céntrica**, sus cuatro tareas cerradas y
+revisadas. Antes, el 2026-08-10, se cerró el **bloque K** (el rediseño de la plantilla base).
+**Estado:** **1764 tests** (1395 monorepo + 369 portal: 248 `node:test` + 121 Karma), `verificar` en
+verde entero, y el portal manejado en un navegador.
 
 ```text
-a6753ec  etapa 1  tema claro por defecto · cabecera · portada con carrusel
-34e2ac9  etapa 2  el patrón de sección compartido + cartaCategorias
-bc15f6d  etapa 2  barraDatos · platosDestacados · galeria · ctaFinal (agente `render`)
-cc1c8e3  etapa 3  la decisión sobre el contenido por defecto, escrita antes de implementarla
-(este)   etapas 2 y 3  las siete piezas restantes, el pie en columnas, y las tres secciones nuevas
+3ee24ed + 2 rondas  tarea 1  la ficha pasa a ser un shell con tabs
+43164d9 + 1 ronda   tarea 2  el tab Research; Research deja el menú
+97ccde6 + 2 rondas  tarea 3  las tres pantallas de un run cuelgan del cliente
+7d6fa89 + 1 ronda   tarea 4  tabs Reseñas e Ideas; se retira «Mi Portal»
 ```
 
-De paso se cerró la **etapa C del plan de agentes**: existe el agente `render` con tres skills y la
-documentación del sistema de render en [`renderer/docs/`](../renderer/docs/README.md). El relato de
-todo esto está en [`history.md`](history.md).
+**Lo que cambió para quien use el portal:** `/clientes/:id` ya no es una pantalla, es un **shell** con
+cuatro tabs como rutas hijas (Perfil · Research · Reseñas · Ideas). Las tres pantallas de un run viven
+en `/clientes/:id/research/:runId/*`. El sidebar tiene tres ítems y la home abre en `/clientes`.
+**Rutas retiradas sin redirect, medido con el Router real:** `/runs`, `/runs/:id`, `/runs/:id/informe`,
+`/runs/:id/entregable` y `/clientes/:id/ver` rebotan en silencio a `/clientes`.
+
+El relato, con las dos trampas nuevas que destapó, está en [`history.md`](history.md); el diseño en
+[`la spec`](../docs/superpowers/specs/2026-08-11-ficha-cliente-navegacion-design.md).
 
 ## 🎯 Lo próximo, y por qué no lo hace el agente `render`
 
@@ -30,19 +35,29 @@ Hoy solo se pueden escribir a mano en `business_profile`, y eso es lo que hace a
 defecto **aceptable y temporal a la vez**: un default que el cliente no puede cambiar deja de ser una
 propuesta y pasa a ser una afirmación que le pusimos en la boca.
 
-Es trabajo del agente **`front`** (`portal/`), sobre la ficha de cliente que ya existe. Lo demás del
-bloque K está hecho.
+Es trabajo del agente **`front`** (`portal/`). Lo demás del bloque K está hecho.
 
 ```text
 Continuamos con el portal. Leé primero:
   - progress/current.md (este archivo)
+  - docs/superpowers/specs/2026-08-11-ficha-cliente-navegacion-design.md
   - docs/proyecto/15-plan-plataforma.md § Bloque K, etapa 3
   - renderer/docs/04-plantilla-base.md § Las tres secciones nuevas
 
-Falta la pantalla de la ficha de cliente para cargar `bienvenida` (texto),
-`destacados` (lista de titulo+texto, máx 6) y `testimonios` (lista de
-texto+autor, máx 12). Los campos YA cruzan las cuatro fronteras: Zod en
-contract.ts, la migración 0020, perfilValido y las piezas.
+Falta la pantalla para cargar `bienvenida` (texto), `destacados` (lista de
+titulo+texto, máx 6) y `testimonios` (lista de texto+autor, máx 12). Los
+campos YA cruzan las cuatro fronteras: Zod en contract.ts, la migración
+0020, perfilValido y las piezas.
+
+⚠️ La ficha del cliente cambió el 2026-08-11: `/clientes/:id` es un SHELL
+con tabs, y `cliente-perfil.ts` es el tab que pinta los cards (ya no carga
+nada: eso lo hace el shell). Estos tres campos son del perfil, así que su
+sitio es una card más en ese tab — no un tab nuevo.
+
+⚠️ Dos barridos van a opinar sobre lo que escribas, y tienen razón:
+`core/marca-activa.test.ts` (una clase de routerLinkActive que compite con
+la base necesita `!`) y `core/arbol-encabezados.test.ts` (contenedor sin
+`h1`, hoja con `h1`).
 
 ⚠️ NO agregar un campo de puntuación a los testimonios. No existe en ninguna
 de las cuatro capas, y su ausencia es la decisión — ver la pieza y la 0020.
@@ -158,7 +173,9 @@ la base, así que el seed no las tocó.
 ## ⏸️ Pausado, no abandonado
 
 **Bloque J, pieza 3 (Ideas).** Etapas **1-4 commiteadas** (`afe1725`, `73fcd35`, `c929a98`); faltan
-las **5-7**, las pantallas, que son del agente `front`.
+las **5-7**, las pantallas, que son del agente `front`. **Ya tienen dónde caer**: el tab
+`/clientes/:id/ideas`, hoy un placeholder que dice qué falta. Y lo de «retirar el mock de ideas» que
+esas etapas incluían **ya está hecho**: se fue el 2026-08-11 con `/clientes/:id/ver`.
 
 ## ⏳ Lo que espera a Juan
 

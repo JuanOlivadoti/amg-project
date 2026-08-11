@@ -96,17 +96,23 @@ propósito (`valid:<uuid>`) — es un harness de desarrollo, no hay Supabase det
 
 ### 3. Entrar a producción
 
-Abrí `https://bigballs.es`, logueate con tu usuario y **dejá la sesión abierta**. Entra por `/runs`,
-no por el dashboard: el primer golpe está a un clic en «Cartera», en la barra lateral.
+Abrí `https://bigballs.es`, logueate con tu usuario y **dejá la sesión abierta**. Entra por
+`/clientes`, que es donde abre el portal: el primer golpe está a un clic en «Cartera», en la barra
+lateral.
+
+> **Cambió el 2026-08-11**, cuando la navegación se volvió cliente-céntrica: la home era `/runs` y el
+> research se alcanzaba desde el menú. Hoy el research es un **tab de la ficha del cliente**, y las URLs
+> `/runs/*` de las pestañas de abajo ya no existen — rebotan a `/clientes`. Si venís de un guion
+> impreso, usá estas.
 
 ### 4. Las pestañas, en este orden
 
 | Pestaña | URL | Para qué |
 |---|---|---|
 | 1 | `https://bigballs.es/cartera` | Golpe 1 — el panorama |
-| 2 | `https://bigballs.es/runs/d3305eba-11a5-4e0e-9c1f-000000000002` | Golpes 2 y 3 — la compuerta y la evidencia |
+| 2 | `https://bigballs.es/clientes/d3305eba-11a5-4e0e-9c1f-000000000001/research/d3305eba-11a5-4e0e-9c1f-000000000002` | Golpes 2 y 3 — la compuerta y la evidencia |
 | 3 | `https://amg-renderer-production.up.railway.app` | Golpe 4 — la web viva, **en internet** |
-| 4 | `http://localhost:4200/runs/d3305eba-11a5-4e0e-9c1f-000000000002` | El cierre — aprobar y publicar |
+| 4 | `http://localhost:4200/clientes/d3305eba-11a5-4e0e-9c1f-000000000001/research/d3305eba-11a5-4e0e-9c1f-000000000002` | El cierre — aprobar y publicar |
 
 Dejalas cargadas antes de que entre Frank. Cambiar de pestaña es instantáneo; cargar una página
 delante de alguien se siente lento aunque tarde un segundo.
