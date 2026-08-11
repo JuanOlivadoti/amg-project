@@ -178,8 +178,10 @@ lo que sigue no es código de la demo, y apareció un pendiente nuevo que sí es
 
 1. **Mostrarle la demo a Frank.** Depende de Juan, no de código. Tres cosas que conviene tener
    decididas antes, porque son del guion y no del software (ninguna bloquea, todas se notan):
-   - **La puerta de entrada es `/runs`, no el dashboard** (`app.routes.ts` redirige `''` a `runs`):
-     el primer golpe del recorrido queda a un clic en el sidebar.
+   - **La puerta de entrada es `/clientes`, no el dashboard** (`app.routes.ts` redirige `''` a
+     `clientes`): el recorrido empieza en la cartera, se entra a la ficha de un cliente y de ahí a su
+     research. _(Decía `/runs` hasta el 2026-08-11, cuando la navegación se volvió cliente-céntrica:
+     Research dejó el sidebar y el research pasó a ser un tab de la ficha.)_
    - **`aprobarRun` está apagado en producción** (decisión de Fase 1: no hay orquestador detrás), así
      que el cierre del ciclo —"aprobar y publicar"— **no se puede mostrar en `bigballs.es`**. O se
      enseña en local, o se narra.
