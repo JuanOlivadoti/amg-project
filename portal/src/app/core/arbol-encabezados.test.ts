@@ -24,6 +24,18 @@ import { routes } from '../app.routes';
  * h1   <prompt del run>     ← y el segundo h1
  * ```
  *
+ * ## La regla, en una línea
+ *
+ * **El `<h1>` es de la HOJA de la ruta. Un contenedor —quien declara un `<router-outlet>`— no
+ * declara ninguno, y quien se declare contenedor con `[esEncabezado]="false"` tiene que serlo.**
+ *
+ * Que «contenedor» se defina por el `<router-outlet>` y no por una lista de nombres es lo que hace
+ * que la regla cubra lo que todavía no existe. La primera versión de este barrido miraba solo la
+ * ficha, y la re-revisión midió los dos agujeros que dejaba: un `<h1>` en `AppShellComponent` pasaba
+ * en verde (y le da dos `h1` a **todas** las pantallas de una vez), y `[esEncabezado]="false"` en una
+ * pantalla suelta la dejaba con cero `<h1>`, porque el atributo era a la vez la vía de escape y la
+ * exención de la única regla que cazaría su mal uso.
+ *
  * ## Quién es el dueño del `h1`, y por qué
  *
  * **La hoja de la ruta, no el contenedor.** Tres motivos, y el tercero es el que decide:
@@ -124,22 +136,71 @@ function hojasDeLaFicha(): { shell: string; hojas: string[] } {
   return { shell, hojas };
 }
 
-test('🔴 la ficha es un CONTENEDOR: no declara ningún <h1> — el h1 lo pone la hoja de su outlet', () => {
-  const { shell } = hojasDeLaFicha();
-  const fuente = leer(shell);
+test('🔴 un CONTENEDOR —quien declara <router-outlet>— no declara ningún <h1>', () => {
+  /*
+   * La regla general, y la que cubre lo que la primera versión de este barrido dejaba pasar: no es
+   * «la ficha no tiene h1», es «nadie que envuelva otra pantalla tiene h1». El `<h1>` es de la HOJA de
+   * la ruta, y un contenedor que se quede uno se lo suma al de todas las pantallas que monta.
+   */
+  const encontrados = contenedores();
 
-  assert.equal(
-    cuenta(fuente, 1),
-    0,
-    `${shell} declara un <h1>. La ficha es un shell con tabs: su <h1> se suma al de la pantalla que ` +
-      'monta en el `<router-outlet>` y deja DOS h1 en el documento. Usá un <p> con las mismas clases ' +
-      '(el tamaño lo manda la clase, no la etiqueta).',
+  // El piso de sanidad: con cero contenedores el bucle de abajo no mira nada y pasa igual. Hoy son
+  // tres —`app.html`, `app-shell.ts` y `cliente-ficha.ts`— y son los únicos del portal.
+  assert.ok(
+    encontrados.length >= 3,
+    `el barrido encontró ${encontrados.length} contenedor(es) y hay al menos 3 (app.html, ` +
+      'app-shell.ts, cliente-ficha.ts). ¿Dejó de reconocer el <router-outlet>?',
   );
 
-  // Y el breadcrumb, que es el otro sitio desde donde la ficha puede emitir un encabezado. Sin esto,
-  // el `h1` vuelve por la puerta de al lado: `<app-page-breadcrumb>` lo pinta por defecto.
+  for (const archivo of encontrados) {
+    assert.equal(
+      cuenta(readFileSync(archivo, 'utf8'), 1),
+      0,
+      `${archivo} declara un <router-outlet> —es un CONTENEDOR— y además un <h1>. Ese <h1> se suma al ` +
+        'de cada pantalla que monte adentro y deja DOS en el documento. Usá un <p> con las mismas ' +
+        'clases: el tamaño lo manda la clase, no la etiqueta.',
+    );
+  }
+});
+
+test('🔴 quien se declara contenedor con [esEncabezado]="false" tiene que serlo de verdad', () => {
+  /*
+   * `[esEncabezado]="false"` es la vía de escape de la regla de más abajo («quien usa el breadcrumb
+   * como encabezado no declara además su propio h1»), y hasta la re-revisión era **también** la
+   * exención de la única comprobación que cazaría su mal uso: ponérselo a una pantalla suelta la
+   * dejaba con CERO `<h1>` y el barrido en verde. Medido sobre `pages/clientes/clientes.ts`, cuyo
+   * breadcrumb es su único encabezado.
+   *
+   * Ahora la afirmación se comprueba en vez de creerse: si decís que sos un contenedor, tenés que
+   * declarar un `<router-outlet>`.
+   */
+  const conFlag = fuentes().filter((archivo) =>
+    esShell(sinComentarios(readFileSync(archivo, 'utf8'))),
+  );
   assert.ok(
-    esShell(sinComentarios(fuente)),
+    conFlag.length >= 1,
+    'ningún archivo usa `[esEncabezado]="false"`. La ficha lo necesita: sin él su breadcrumb pinta un ' +
+      '<h1> y vuelve a haber dos en el documento.',
+  );
+
+  const esContenedor = new Set(contenedores());
+  for (const archivo of conFlag) {
+    assert.ok(
+      esContenedor.has(archivo),
+      `${archivo} pone \`[esEncabezado]="false"\` —que significa «el <h1> lo pone la hoja de mi ` +
+        'outlet»— pero no declara ningún <router-outlet>: no monta ninguna hoja. Si es una pantalla ' +
+        'suelta, su breadcrumb ES su encabezado y se queda sin ninguno. Quitá el atributo.',
+    );
+  }
+});
+
+test('🔴 el breadcrumb de la ficha va con [esEncabezado]="false": si no, pone un segundo <h1>', () => {
+  // El caso concreto, que la regla general no alcanza: la ficha no declara el `<h1>` ella misma, se
+  // lo pinta un componente hijo. Sin este atributo su fuente sigue teniendo cero `<h1>` —el test de
+  // arriba pasa— y el documento igual termina con dos.
+  const { shell } = hojasDeLaFicha();
+  assert.ok(
+    esShell(sinComentarios(leer(shell))),
     `${shell}: el breadcrumb de un SHELL tiene que ir con \`[esEncabezado]="false"\` (ligado, con ` +
       'corchetes). Por defecto pinta el título como <h1> —correcto en una pantalla suelta— y acá sería ' +
       'el segundo h1 del documento.',
@@ -188,6 +249,28 @@ test('🔴 ningún encabezado precede al <h1> de la pantalla: el breadcrumb no e
   }
   assert.equal(cuenta(fuente, 1), 1, 'el breadcrumb debe pintar su título como <h1> cuando es el encabezado');
 });
+
+/**
+ * Los **contenedores** del portal: todo archivo que declara un `<router-outlet>`.
+ *
+ * La definición es estructural a propósito, y no una lista de nombres: contenedor es quien monta otra
+ * pantalla dentro suyo, y eso lo dice el `<router-outlet>` y nada más. Así entran los tres de hoy
+ * —`app.html`, `app-shell.ts` y `cliente-ficha.ts`— y entrará solo el que alguien escriba mañana.
+ *
+ * La primera versión de este barrido solo miraba la ficha, y eso dejaba **dos agujeros latentes** que
+ * midió la re-revisión: un `<h1>` en `AppShellComponent` —que envuelve todas las pantallas menos
+ * `/login` y el entregable— le habría dado dos `h1` a cada una de una vez, con el barrido en verde.
+ * El defecto que este archivo existe para cerrar, un nivel más arriba.
+ *
+ * `sinComentarios` no es opcional acá: `app.routes.ts` y `page-breadcrumb.ts` nombran el
+ * `router-outlet` en su prosa, y sin el barrido de comentarios entrarían como contenedores — el
+ * segundo declara un `<h1>` legítimo y la regla lo tumbaría por escribir documentación.
+ */
+function contenedores(): string[] {
+  return fuentes().filter((archivo) =>
+    /<router-outlet\b/.test(sinComentarios(readFileSync(archivo, 'utf8'))),
+  );
+}
 
 /**
  * ¿Este archivo usa el breadcrumb como CONTENEDOR (y no como encabezado de pantalla)?
@@ -257,6 +340,17 @@ test('el criterio distingue una declaración de su prosa, y cuenta por nivel', (
   assert.equal(cuenta('/** el <h1> de la pantalla */', 1), 0, 'la prosa de un docblock no declara nada');
   assert.equal(cuenta('<!-- ojo con el <h1> de acá -->', 1), 0, 'ni un comentario de plantilla');
   assert.equal(cuenta('// ver el <h1>', 1), 0, 'ni un comentario de línea');
+
+  // La detección de contenedor mira una DECLARACIÓN, no una mención: `app.routes.ts` y
+  // `page-breadcrumb.ts` nombran el router-outlet en su prosa, y contarlos como contenedores tumbaría
+  // al segundo por su <h1> legítimo.
+  const declara = (t: string): boolean => /<router-outlet\b/.test(sinComentarios(t));
+  assert.equal(declara('<router-outlet />'), true);
+  assert.equal(declara('<router-outlet></router-outlet>'), true);
+  assert.equal(declara('/** monta en el <router-outlet> del shell */'), false, 'la prosa no declara');
+  assert.equal(declara('<!-- ver el <router-outlet> de abajo -->'), false);
+  assert.equal(declara('// el <router-outlet> lo pone la ficha'), false);
+  assert.equal(declara('<router-outlets />'), false, 'el \\b evita emparejar otro nombre');
 
   // La marca de shell, y el rechazo que importa: sin corchetes se pasa la CADENA "false", que es
   // truthy, y el breadcrumb seguiría pintando su <h1> con el atributo puesto.
