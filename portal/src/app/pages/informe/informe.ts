@@ -35,7 +35,12 @@ import { InformeInlineComponent } from '../../shared/components/informe-inline';
   selector: 'app-informe',
   imports: [RouterLink, InformeInlineComponent],
   template: `
-    <div class="max-w-4xl mx-auto px-4 py-8 space-y-6">
+    <!--
+      Sin contenedor propio: monta DENTRO de la ficha, que ya pone el suyo. Mismo motivo que el brief
+      —dos contenedores centrados anidados desalinean el contenido y duplican el py-8—. El entregable,
+      en cambio, SÍ conserva el suyo: vive fuera del shell y es la página entera.
+    -->
+    <div class="space-y-6">
       <a
         [routerLink]="['/clientes', clienteId(), 'research', runId()]"
         class="text-sm text-texto-tenue hover:text-texto"

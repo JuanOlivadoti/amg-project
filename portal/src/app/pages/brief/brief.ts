@@ -18,7 +18,15 @@ import { Vigencia } from '../../core/vigencia';
   selector: 'app-brief',
   imports: [FormsModule, RouterLink, NgTemplateOutlet],
   template: `
-    <div class="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <!--
+      Sin max-w, sin mx-auto y sin px/py: esta pantalla monta DENTRO de la ficha del cliente, que ya
+      pone su "max-w-5xl mx-auto px-4 py-8". Cuando el brief vivía en /runs/:id era una pantalla
+      suelta y los necesitaba; anidada, eran dos contenedores centrados uno dentro de otro — el
+      contenido arrancaba más a la derecha que la barra de tabs y el py-8 se pagaba dos veces. Visto
+      en el navegador. Mismo patrón que el tab research, que es su hermano: space-y a secas, y el
+      ancho lo manda la ficha.
+    -->
+    <div class="space-y-6">
       <a
         [routerLink]="['/clientes', clienteId(), 'research']"
         class="text-sm text-texto-tenue hover:text-texto"

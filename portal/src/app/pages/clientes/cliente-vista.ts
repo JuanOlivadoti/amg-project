@@ -73,7 +73,12 @@ const CLASE_ESTADO_POST: Record<EstadoPost, string> = {
             {{ cliente.nombre.charAt(0).toUpperCase() }}
           </div>
           <div>
-            <h1 class="text-2xl font-bold text-texto">{{ cliente.nombre }}</h1>
+            <!--
+              Un p y no un h1, con las mismas clases: el breadcrumb de arriba ya pinta el h1 de esta
+              pantalla, y con el MISMO texto (cliente.nombre). Eran dos encabezados iguales seguidos.
+              Cero cambio visual. Lo fija core/arbol-encabezados.test.ts.
+            -->
+            <p class="text-2xl font-bold text-texto">{{ cliente.nombre }}</p>
             @if (cliente.industria) {
               <p class="text-sm text-texto-tenue mt-1">{{ cliente.industria }}</p>
             }

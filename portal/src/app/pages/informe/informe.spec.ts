@@ -40,8 +40,16 @@ const HOSTIL = [
  * Que sea una función es lo que permite montar la pantalla con un `verInforme` que **rechaza**, que es el
  * caso del run inexistente (404). Con un valor no había forma de ejercer la rama de error, y esa rama es
  * justamente la que separa «no hay run» de «no hay informe».
+ *
+ * **Y recibe el `id`, que no es decorativo.** Mientras el doble era `() => Promise<Informe>` nadie podía
+ * observar QUÉ run se pidió, y esta pantalla es la que lee dos parámetros de la ruta (`:id` es el
+ * cliente, `:runId` el run). Medido: con el doble sin parámetro se podían cruzar los dos ids en
+ * `informe.ts` y la suite entera quedaba en verde. `pedidos` es lo que lo caza.
  */
-function montar(verInforme: () => Promise<Informe>, descargas?: Partial<DescargasService>) {
+const pedidos: string[] = [];
+
+function montar(verInforme: (id: string) => Promise<Informe>, descargas?: Partial<DescargasService>) {
+  pedidos.length = 0;
   TestBed.configureTestingModule({
     imports: [InformePage],
     providers: [
@@ -55,7 +63,10 @@ function montar(verInforme: () => Promise<Informe>, descargas?: Partial<Descarga
       {
         provide: ApiService,
         useValue: {
-          verInforme,
+          verInforme: (id: string) => {
+            pedidos.push(id);
+            return verInforme(id);
+          },
           descargarInformeMd: async (): Promise<ArchivoDescargado> => ({
             nombre: 'informe-run-1.md',
             blob: new Blob(['# Informe'], { type: 'text/markdown' }),
@@ -95,6 +106,34 @@ function renderEstableConFallo(status: number, mensaje: string) {
 }
 
 describe('InformePage — el informe se pinta como texto, nunca como HTML', () => {
+  /*
+   * Los dos parámetros de la ruta, y las DOS direcciones en que se pueden cruzar. Van juntos: uno solo
+   * deja media garantía, porque `:id` y `:runId` se pueden intercambiar de forma independiente.
+   *
+   * El brief llama a esto «el cambio silencioso de la tarea», y con razón: los tres componentes leían
+   * `params.get('id')` esperando el run, y bajo la ruta nueva ese `id` es el CLIENTE. Acá no hay nada
+   * ruidoso que avise — se pediría el informe de un uuid de cliente (404 «Run no encontrado») y el
+   * enlace de vuelta llevaría a `/clientes/<runId>/research/…`, un cliente que no existe, del que
+   * `cliente-ficha` rebota a `/clientes`. Todo mudo.
+   */
+  it('🔴 se pide el informe del :runId, no el del :id (que es el CLIENTE)', async () => {
+    await renderEstable({ informe_md: '# Informe', generado_at: null });
+    expect(pedidos)
+      .withContext('se pidió el informe con el uuid del cliente en vez del run')
+      .toEqual(['run-1']);
+  });
+
+  it('🔴 el «← Volver al brief» apunta al brief BAJO EL CLIENTE, con los dos ids en su sitio', async () => {
+    // La otra dirección: `clienteId` tiene que salir de `:id`. Con los dos cruzados el href sería
+    // `/clientes/run-1/research/c1` — una URL que resuelve a una ficha inexistente, sin error visible.
+    const { el } = await renderEstable({ informe_md: '# Informe', generado_at: null });
+    const volver = Array.from(el.querySelectorAll('a')).find((a) =>
+      a.textContent!.includes('Volver al brief'),
+    );
+    expect(volver).withContext('no encontré el enlace de vuelta al brief').toBeTruthy();
+    expect(volver!.getAttribute('href')).toBe('/clientes/c1/research/run-1');
+  });
+
   it('🔴 un informe con <script> NO mete un <script> en el DOM, y el texto sí se ve', async () => {
     const { el } = await renderEstable({
       informe_md: HOSTIL,

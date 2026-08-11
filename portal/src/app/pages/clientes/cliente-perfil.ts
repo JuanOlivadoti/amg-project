@@ -29,6 +29,13 @@ import { ClienteRecursosCardComponent } from './cliente-recursos-card';
   template: `
     @if (clientesService.cliente(); as cliente) {
       <div class="space-y-6">
+        <!--
+          El h1 del documento, y va sr-only a propósito: la ficha es un contenedor y no declara
+          ninguno (ver cliente-ficha.ts), así que sin esto la pantalla se queda sin encabezado
+          principal. Visible sería ruido — la barra de tabs, con el tab activo marcado, ya dice dónde
+          estás; el árbol de accesibilidad no tiene esa pista y necesita el título escrito.
+        -->
+        <h1 class="sr-only">Perfil</h1>
         <app-cliente-info-card [cliente]="cliente" />
         <app-cliente-direccion-card [cliente]="cliente" />
         <app-cliente-meta-card [cliente]="cliente" />

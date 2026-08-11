@@ -130,6 +130,16 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
   const botonDelRun = (el: HTMLElement): HTMLButtonElement =>
     el.querySelector<HTMLButtonElement>('header button')!;
 
+  /**
+   * El «← Volver», buscado por su TEXTO y no por posición.
+   *
+   * Es el único enlace de la pantalla que sale del run —los otros dos entran en sus pantallas hijas—,
+   * y es el que se apoya en `clienteId()` sin pasar por el brief cargado. Por eso tiene su propio
+   * selector: los dos tests que lo usan (el href y la corrección de URL) miran justo eso.
+   */
+  const volverDelBrief = (el: HTMLElement): HTMLAnchorElement | undefined =>
+    Array.from(el.querySelectorAll('a')).find((a) => a.textContent!.includes('Volver'));
+
   /** El mismo brief, con el coste que se le pida. `null` = quien pregunta no es staff. */
   const conCoste = (coste: number | null): Brief => ({
     ...BRIEF,
@@ -362,7 +372,8 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
 
   it('🔴 el rechazo del servidor es de SU run: al navegar a otro, el botón vuelve a la vida', async () => {
     /*
-     * Angular **reutiliza la instancia** al navegar de /runs/A a /runs/B (misma ruta): no hay
+     * Angular **reutiliza la instancia** al navegar del run A al B del mismo cliente (mismo
+     * `routeConfig`, solo cambia el `:runId`): no hay
      * `ngOnInit` de nuevo, solo una emisión más del `paramMap`. Sin limpiar el rechazo ahí, el 409 de
      * A dejaría el botón de B apagado para siempre contándole a alguien un motivo que no es el suyo —
      * y como el rechazo gana sobre `tiene_workflow`, ni recargar el brief lo destrabaría.
@@ -436,6 +447,22 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     expect(el.textContent).toContain('El run no admite aprobación.');
   });
 
+  it('🔴 el «← Volver» lleva al tab Research DEL CLIENTE de la ruta', async () => {
+    /*
+     * El tercer enlace de la pantalla, y el único que no estaba cubierto: los del informe y el
+     * entregable tienen sus tests desde KR-2b, éste se quedó fuera. Medido: apuntarlo a `['/clientes']`
+     * a secas deja la suite entera en verde, y el usuario sale de la ficha en la que estaba trabajando.
+     *
+     * Se diferencia de los otros dos en algo que importa: se arma con `clienteId()` **solo**, sin
+     * `b.run.id`, así que es el único que sigue estando cuando el brief no cargó — y por eso es el que
+     * usa el test de la corrección de URL de más abajo.
+     */
+    const el = await render(true, false);
+    const volver = volverDelBrief(el);
+    expect(volver).withContext('no encontré el enlace «← Volver»').toBeTruthy();
+    expect(volver!.getAttribute('href')).toBe('/clientes/c1/research');
+  });
+
   /*
    * ------------------------------------------------ la conciliación cliente ↔ dueño del run
    * Con DOS parámetros en la URL (`/clientes/:id/research/:runId`), el cliente que dice la ruta y el
@@ -479,6 +506,62 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     expect(navegar)
       .withContext('el brief es de este cliente y la pantalla se fue igual: navegación en bucle')
       .not.toHaveBeenCalled();
+  });
+
+  it('🔴 corregida la URL, los enlaces la siguen: el `clienteId` se escribe ANTES de la guarda del run', async () => {
+    /*
+     * La segunda mitad de la conciliación, y la que no miraba nadie.
+     *
+     * Cuando `cargar()` corrige la URL, el router reemite el `paramMap` con el `:id` del dueño y el
+     * MISMO `:runId`. En `ngOnInit`, la guarda `if (id === this.runId) return` corta ahí — y hace
+     * bien: el run no cambió, no hay nada que recargar. Pero `clienteId.set(...)` va **antes** de esa
+     * guarda, y ese orden es load-bearing: debajo de ella, la pantalla se queda con el cliente viejo
+     * en sus seis `routerLink` justo después de haberlo corregido en la barra de direcciones.
+     *
+     * El daño no es cosmético: un clic en «Ver el informe» llevaría a
+     * `/clientes/<A>/research/<run-de-B>/informe`, y el informe **no concilia** —por diseño, su
+     * premisa documentada es que se llega desde el brief, que ya corrigió—. O sea: el error que esta
+     * tarea elimina reaparecería un clic más tarde, con la URL ya «arreglada».
+     *
+     * Medido: mover el `set` debajo de la guarda deja la suite entera en verde sin este test. Es
+     * exactamente «una garantía en un comentario es una intención, no una garantía».
+     *
+     * Un `BehaviorSubject` y no `of(...)`: hacen falta DOS emisiones, que es lo que un `of()` de una
+     * sola no puede reproducir.
+     */
+    const params = new BehaviorSubject(convertToParamMap({ id: 'otro-cliente', runId: 'run-1' }));
+    environment.features.aprobarRun = false;
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [BriefPage],
+      providers: [
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { paramMap: params.asObservable() } },
+        { provide: ApiService, useValue: { verBrief: async () => BRIEF } },
+        { provide: MembresiaService, useValue: { esEquipo: () => true } },
+      ],
+    });
+    const fixture = TestBed.createComponent(BriefPage);
+    // El spy va antes del primer ciclo: si no, la conciliación navega de verdad y desmonta la
+    // pantalla que este test quiere mirar.
+    spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(volverDelBrief(el)!.getAttribute('href'))
+      .withContext('el escenario no es el que cree: la URL de partida ya era la correcta')
+      .toBe('/clientes/otro-cliente/research');
+
+    // Lo que hace el router al aplicar la corrección: el MISMO run, con el `:id` ya arreglado.
+    params.next(convertToParamMap({ id: 'c1', runId: 'run-1' }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(volverDelBrief(el)!.getAttribute('href'))
+      .withContext('la URL se corrigió y los enlaces siguen apuntando al cliente equivocado')
+      .toBe('/clientes/c1/research');
   });
 
   /*

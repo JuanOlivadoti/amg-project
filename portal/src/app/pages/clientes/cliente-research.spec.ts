@@ -96,6 +96,34 @@ describe('ClienteResearchPage', () => {
     expect(listarRunsSpy).toHaveBeenCalledWith('c1');
   });
 
+  it('🔴 cada run enlaza a su brief BAJO EL CLIENTE: /clientes/:id/research/:runId', async () => {
+    /*
+     * Éste es el enlace de ENTRADA a las tres pantallas de un run, y es el único que hay: el brief no
+     * está en el sidebar ni en ningún otro sitio, así que nadie llega a él de otra manera.
+     *
+     * Sin este test se puede volver al `['/runs', run.id]` de antes de la mudanza y la suite entera
+     * queda en verde (medido: 121 SUCCESS). Y no fallaría de forma ruidosa: `/runs/:id` ya no existe,
+     * así que no da 404 — lo recoge el comodín `**` y manda a `/clientes`. El síntoma sería «hago clic
+     * en un run y vuelvo a la lista de clientes», mudo, con toda la pantalla del brief inalcanzable.
+     *
+     * Es el mismo razonamiento que `brief.spec.ts` escribe para los enlaces de SALIDA de esa pantalla
+     * («borrar el link deja la suite entera en verde y la funcionalidad inalcanzable»), aplicado al de
+     * entrada. Se afirma el `href` COMPLETO y no un fragmento: media URL correcta no lleva a ningún
+     * lado, y el `:id` del cliente es justo la mitad que esta tarea agregó.
+     */
+    const listarRuns = jasmine
+      .createSpy('listarRuns')
+      .and.resolveTo([runDePrueba({ id: 'run-9', prompt: 'Cervecería en Chamberí' })]);
+    const { fixture } = crear(true, false, { listarRuns });
+    const el = await estabilizar(fixture);
+
+    const enlace = Array.from(el.querySelectorAll('a')).find((a) =>
+      a.textContent!.includes('Cervecería en Chamberí'),
+    );
+    expect(enlace).withContext('no encontré el enlace del run en la lista').toBeTruthy();
+    expect(enlace!.getAttribute('href')).toBe('/clientes/c1/research/run-9');
+  });
+
   it('lanzar research toma el cliente de la ruta, sin input de UUID', async () => {
     const { fixture, crearRunSpy } = crear(true, true);
     fixture.detectChanges();

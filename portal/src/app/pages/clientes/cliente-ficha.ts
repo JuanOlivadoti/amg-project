@@ -33,6 +33,15 @@ export const TABS_FICHA: readonly TabFicha[] = [
  * se resuelve, y eso es exactamente el tipo de magia que se rompe en silencio cuando alguien anida
  * un nivel más.
  *
+ * **Esta ficha NO declara el `<h1>` del documento, y es deliberado.** Es un contenedor: el `<h1>` lo
+ * pone la pantalla que monta en su `<router-outlet>` (el prompt del run, «Informe de keyword
+ * research», «Perfil»…). Cuando el run se mudó bajo la ficha, el `<h1>` del nombre del cliente pasó a
+ * sumarse al de la hoja y el documento quedó con DOS —medido en Chrome, no deducido—, además de un
+ * `<h2>` (el breadcrumb) por delante del primero y del nombre del cliente repetido en dos niveles.
+ * Por eso el título grande es un `<p>` y el breadcrumb va con `esEncabezado="false"`. El `<h1>` tiene
+ * que distinguir la URL, y con el cliente como dueño las cuatro rutas de la ficha anunciarían lo
+ * mismo. Lo fija `core/arbol-encabezados.test.ts`, que barre las hojas y no una lista escrita a mano.
+ *
  * **El `!` de `routerLinkActive` no es adorno.** Entre dos utilidades de Tailwind que pisan la misma
  * propiedad y tienen la misma especificidad gana la que va DESPUÉS en la hoja, no la que va después
  * en el atributo `class` — y Tailwind las emite por orden alfabético. Medido en el CSS servido:
@@ -49,7 +58,16 @@ export const TABS_FICHA: readonly TabFicha[] = [
   template: `
     <div class="max-w-5xl mx-auto px-4 py-8 space-y-6">
       @if (clientesService.cliente(); as cliente) {
-        <app-page-breadcrumb [titulo]="cliente.nombre" rutaAtras="/clientes" etiquetaAtras="Clientes" />
+        <!--
+          esEncabezado en false: esta ficha es un SHELL, y el h1 del documento es el de la pantalla
+          que monta en el router-outlet de abajo. Ver el docblock de la clase.
+        -->
+        <app-page-breadcrumb
+          [titulo]="cliente.nombre"
+          [esEncabezado]="false"
+          rutaAtras="/clientes"
+          etiquetaAtras="Clientes"
+        />
 
         <div class="flex items-center gap-4">
           <div
@@ -58,7 +76,11 @@ export const TABS_FICHA: readonly TabFicha[] = [
             {{ cliente.nombre.charAt(0).toUpperCase() }}
           </div>
           <div>
-            <h1 class="text-2xl font-bold text-texto">{{ cliente.nombre }}</h1>
+            <!--
+              Un p y no un h1, con las MISMAS clases: no cambia un píxel, cambia el árbol de
+              accesibilidad. Ver el docblock de la clase — el h1 es de la hoja, no del contenedor.
+            -->
+            <p class="text-2xl font-bold text-texto">{{ cliente.nombre }}</p>
             @if (cliente.industria) {
               <p class="text-sm text-texto-tenue mt-1">{{ cliente.industria }}</p>
             }

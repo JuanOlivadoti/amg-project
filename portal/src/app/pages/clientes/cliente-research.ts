@@ -41,6 +41,12 @@ const ETIQUETA: Record<RunStatus, string> = {
   imports: [FormsModule, RouterLink, DatePipe],
   template: `
     <div class="space-y-8">
+      <!--
+        El h1 del documento, sr-only por el mismo motivo que el de cliente-perfil.ts: la ficha es un
+        contenedor y no declara ninguno, y un título visible acá duplicaría lo que ya dice el tab
+        activo. El h2 de «Lanzar un research» cuelga debajo de éste, como corresponde.
+      -->
+      <h1 class="sr-only">Research</h1>
       @if (puedeLanzar()) {
         <section class="bg-superficie rounded-xl border border-borde p-6">
           <h2 class="text-sm font-semibold text-texto mb-3">Lanzar un research</h2>
