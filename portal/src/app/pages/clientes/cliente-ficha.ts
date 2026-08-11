@@ -43,8 +43,9 @@ export const TABS_FICHA: readonly TabFicha[] = [
  * sumarse al de la hoja y el documento quedó con DOS —medido en Chrome, no deducido—, además de un
  * `<h2>` (el breadcrumb) por delante del primero y del nombre del cliente repetido en dos niveles.
  * Por eso el título grande es un `<p>` y el breadcrumb va con `esEncabezado="false"`. El `<h1>` tiene
- * que distinguir la URL, y con el cliente como dueño las cuatro rutas de la ficha anunciarían lo
- * mismo. Lo fija `core/arbol-encabezados.test.ts`, que barre las hojas y no una lista escrita a mano.
+ * que distinguir la URL, y con el cliente como dueño las seis rutas de la ficha —los cuatro tabs, más
+ * el brief y el informe de un run— anunciarían lo mismo. Lo fija `core/arbol-encabezados.test.ts`,
+ * que barre las hojas y no una lista escrita a mano.
  *
  * **El `!` de `routerLinkActive` no es adorno.** Entre dos utilidades de Tailwind que pisan la misma
  * propiedad y tienen la misma especificidad gana la que va DESPUÉS en la hoja, no la que va después

@@ -42,8 +42,9 @@ import { routes } from '../app.routes';
  *
  * 1. `cliente-ficha.ts` se declara a sí misma «CONTENEDOR de sus secciones, **no** pantalla». Un
  *    contenedor que se queda el `h1` es un shell haciéndose pasar por página.
- * 2. El `h1` tiene que distinguir la URL. Con el cliente como dueño, las cuatro rutas de la ficha
- *    anuncian el mismo encabezado — que es justo lo que la regla existe para evitar.
+ * 2. El `h1` tiene que distinguir la URL. Con el cliente como dueño, las seis rutas de la ficha
+ *    —cuatro tabs, más el brief y el informe de un run— anuncian el mismo encabezado, que es justo
+ *    lo que la regla existe para evitar.
  * 3. El documento del informe **ya** se renderiza con dos desplazamientos distintos según dónde vive
  *    (`informe.ts` baja `#`→h2 porque está anidado; `entregable.ts` lo deja en `h1` porque ahí el
  *    documento ES la página). Si el cliente se quedara el `h1`, el informe tendría que bajar otro
@@ -210,11 +211,17 @@ test('🔴 el breadcrumb de la ficha va con [esEncabezado]="false": si no, pone 
 test('🔴 cada pantalla que monta dentro de la ficha declara su propio <h1>', () => {
   const { hojas } = hojasDeLaFicha();
 
-  // El piso de sanidad: con cero hojas todo lo de abajo pasa sin haber mirado nada. Hoy son 4
-  // (perfil, research, el brief y el informe) y la Tarea 4 suma más.
+  /*
+   * El piso de sanidad: con cero hojas todo lo de abajo pasa sin haber mirado nada. Hoy son 6
+   * —perfil, research, el brief, el informe, reseñas e ideas— y el piso las cuenta a las 6, sin
+   * holgura. Cuando la Tarea 4 sumó las dos últimas, este piso se quedó en 4 y pasó a tolerar que
+   * DOS hojas desaparecieran del barrido sin que nada avisara. Un piso que no se mueve con el árbol
+   * se afloja solo; es el mismo modo de fallo que `core/marca-activa.test.ts` documenta como error
+   * ya cometido dos veces acá. Al agregar una hoja, subilo.
+   */
   assert.ok(
-    hojas.length >= 4,
-    `el barrido encontró ${hojas.length} hoja(s) bajo la ficha y hay al menos 4. ¿Se rompió el ` +
+    hojas.length >= 6,
+    `el barrido encontró ${hojas.length} hoja(s) bajo la ficha y hay al menos 6. ¿Se rompió el ` +
       'parseo de `app.routes.ts` o cambió la forma del `loadComponent`?',
   );
 
@@ -234,9 +241,10 @@ test('🔴 ningún encabezado precede al <h1> de la pantalla: el breadcrumb no e
    * `h1` sale bien igual: el breadcrumb pintaba su título como `<h2>` y aparece ANTES del `<h1>` de la
    * hoja, así que el documento empezaba en el nivel 2 y bajaba al 1.
    *
-   * El componente lo comparten seis pantallas y en cuatro de ellas es el ÚNICO encabezado que hay
+   * El componente lo comparten cinco pantallas y en cuatro de ellas es el ÚNICO encabezado que hay
    * (`clientes`, `usuarios`, `usuario-perfil`, `cliente-crear`): bajarlo a `<p>` las habría dejado sin
-   * ninguno. Por eso sube a `<h1>` y el caso del shell se declara con `esEncabezado="false"`.
+   * ninguno. Por eso sube a `<h1>` y el caso del shell —la quinta, `cliente-ficha`— se declara con
+   * `esEncabezado="false"`. Eran seis hasta que la Tarea 4 retiró «Mi Portal».
    */
   const fuente = leer('../shared/components/page-breadcrumb.ts');
   for (const nivel of [2, 3, 4, 5, 6]) {
@@ -304,8 +312,9 @@ test('🔴 quien usa el breadcrumb COMO encabezado no declara además su propio 
    * breadcrumb y como título grande de la pantalla— con el mismo string y en dos niveles distintos.
    * Ahora que el breadcrumb pinta un `<h1>`, esa duplicación sería directamente dos `h1` iguales.
    *
-   * La regla se barre sobre TODO el árbol y no sobre una lista: el breadcrumb lo comparten seis
-   * pantallas hoy y la Tarea 4 toca la ficha otra vez.
+   * La regla se barre sobre TODO el árbol y no sobre una lista: el breadcrumb lo comparten cinco
+   * pantallas hoy —eran seis antes de que la Tarea 4 retirara «Mi Portal»— y el número se mueve con
+   * cada pantalla que se agrega o se saca. Por eso el piso de abajo es 5 y no una lista de nombres.
    */
   const conBreadcrumb = fuentes().filter((archivo) =>
     /<app-page-breadcrumb\b/.test(sinComentarios(readFileSync(archivo, 'utf8'))),

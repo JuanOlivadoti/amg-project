@@ -88,6 +88,43 @@ describe('ClientesPage', () => {
     expect(el.querySelectorAll('tbody tr').length).toBe(1);
   });
 
+  it('el menú de una fila tiene UNA sola acción de navegación, y dice «Abrir»', async () => {
+    /*
+     * La fila tenía DOS acciones de navegación —«Editar» a la ficha y «Ver» a `/clientes/:id/ver`— y
+     * quedó con una cuando se retiró «Mi Portal». Nada lo fijaba: `app.routes.test.ts` impide que la
+     * ruta vuelva, pero no que vuelva el LINK, y un `routerLink` a una ruta inexistente no rompe nada
+     * —el Router no valida el destino hasta que se navega— así que el síntoma sería una entrada de
+     * menú que manda al comodín y devuelve al listado, sin un error en consola.
+     *
+     * Se afirma sobre el `<a>` y no sobre el texto de la fila porque «acción de navegación» es
+     * exactamente eso: los `<button>` del menú (archivar/desarchivar) no navegan y no compiten. Y se
+     * comprueba también el `href`: «una sola acción» con el destino equivocado no es lo que se pidió.
+     *
+     * El menú se renderiza bajo un `@if (abierto())`, así que hay que abrirlo de verdad: sin el clic
+     * el `[role="menu"]` no existe en el DOM y el test pasaría contando cero anclas.
+     */
+    const { fixture, el } = await render([clienteDePrueba({ id: 'c1', nombre: 'Pizza Nonna' })]);
+
+    const disparador = el.querySelector<HTMLButtonElement>('tbody button[aria-label="Acciones"]');
+    expect(disparador)
+      .withContext('no encontré el botón que abre el menú de acciones de la fila')
+      .not.toBeNull();
+    disparador!.click();
+    fixture.detectChanges();
+
+    const menu = el.querySelector('[role="menu"]');
+    expect(menu).withContext('el menú no se abrió: ¿cambió el disparador?').not.toBeNull();
+
+    const navegacion = [...menu!.querySelectorAll('a')];
+    expect(navegacion.length).toBe(1);
+    expect(navegacion[0]!.textContent!.trim()).toBe('Abrir');
+    expect(navegacion[0]!.getAttribute('href')).toBe('/clientes/c1');
+
+    // Y que «una sola acción de navegación» no se cumpla vaciando el menú: la de estado sigue ahí.
+    const botones = [...menu!.querySelectorAll('button')].map((b) => b.textContent!.trim());
+    expect(botones).toEqual(['Archivar']);
+  });
+
   it('archivados: se ocultan por default y aparecen con "Mostrar archivados"', async () => {
     const { fixture, el } = await render([
       clienteDePrueba({ id: 'c1', nombre: 'Activo SRL', archived_at: null }),
