@@ -56,9 +56,22 @@ export const routes: Routes = [
           import('./pages/clientes/cliente-crear').then((m) => m.ClienteCrearPage),
       },
       {
+        /*
+         * La ficha es un SHELL con tabs, no una pantalla: carga el cliente una vez y sus hijas se
+         * montan en su `<router-outlet>`. Va DESPUÉS de `clientes/nuevo` y eso sí es load-bearing:
+         * `:id` empareja la palabra literal "nuevo" y se tragaría el alta. Hay un test.
+         */
         path: 'clientes/:id',
         loadComponent: () =>
-          import('./pages/clientes/cliente-perfil').then((m) => m.ClientePerfilPage),
+          import('./pages/clientes/cliente-ficha').then((m) => m.ClienteFichaComponent),
+        children: [
+          {
+            path: 'perfil',
+            loadComponent: () =>
+              import('./pages/clientes/cliente-perfil').then((m) => m.ClientePerfilPage),
+          },
+          { path: '', pathMatch: 'full', redirectTo: 'perfil' },
+        ],
       },
       {
         path: 'clientes/:id/ver',

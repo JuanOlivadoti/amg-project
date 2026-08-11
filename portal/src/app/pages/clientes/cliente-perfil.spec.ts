@@ -1,18 +1,21 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
-import { of } from 'rxjs';
 import { ClientePerfilPage } from './cliente-perfil';
 import { ClientesService } from '../../services/clientes';
 import type { CambiosClienteAgencia, ClienteAgencia } from '../../core/models';
 
 /**
- * Test de componente (Karma) de `/clientes/:id`. Mismo criterio que `cliente-crear.spec.ts` (Etapa
- * 5b): se mockea `ClientesService` directamente (no `ApiService`) — lo que fija es el CONTRATO con
- * el servicio: qué `verCliente` pide, qué `CambiosClienteAgencia` arma cada card al guardar, y sobre
- * todo que el `contacto` que manda cada card viene MERGEADO con el resto de las claves ya cargadas
- * (el riesgo de seguridad que señala el brief de la 5c: un card que mande `contacto` parcial borra
- * lo que guardaron los otros).
+ * Test de componente (Karma) del TAB `/clientes/:id/perfil`. Mismo criterio que `cliente-crear.spec.ts`
+ * (Etapa 5b): se mockea `ClientesService` directamente (no `ApiService`) — lo que fija es el CONTRATO
+ * con el servicio: qué `CambiosClienteAgencia` arma cada card al guardar, y sobre todo que el
+ * `contacto` que manda cada card viene MERGEADO con el resto de las claves ya cargadas (el riesgo de
+ * seguridad que señala el brief de la 5c: un card que mande `contacto` parcial borra lo que guardaron
+ * los otros).
+ *
+ * Lo que ya NO se prueba acá: cargar el cliente y el redirect cuando no existe. Eso subió al shell
+ * (`cliente-ficha.spec.ts`) cuando la ficha pasó a tener tabs — y en su lugar queda el test que fija
+ * la frontera nueva, que este tab no pide nada.
  *
  * El mock de `ClientesService` es compartido por la página Y sus 4 cards (todos lo inyectan del
  * mismo `TestBed` — mismo mecanismo que en la app real, donde es un singleton `providedIn: 'root'`).
@@ -43,17 +46,21 @@ function clienteDePrueba(overrides: Partial<ClienteAgencia> = {}): ClienteAgenci
 }
 
 interface Mocks {
+  /** Se conserva SOLO para afirmar que este tab no lo llama: cargar el cliente es del shell. */
   verClienteSpy: jasmine.Spy;
   actualizarSpy: jasmine.Spy;
   errorSignal: ReturnType<typeof signal<string>>;
 }
 
-/** Crea el fixture SIN disparar `detectChanges` — para poder instalar spies (p. ej. en `router`)
- * antes de que `ngOnInit` dispare su cadena async (se suscribe a `paramMap` en el primer ciclo). */
+/**
+ * Crea el fixture SIN disparar `detectChanges`, para poder preparar el escenario antes del primer
+ * ciclo. Ya no hace falta un `ActivatedRoute`: el tab no lee el `:id` (lo lee el shell), y el único
+ * `routerLink` que queda —el «ver sitio» del meta-card— es absoluto y le alcanza `provideRouter([])`.
+ */
 function crear(
   cliente: ClienteAgencia | null,
   overrides: Partial<Mocks> = {},
-): { fixture: ComponentFixture<ClientePerfilPage>; router: Router; mocks: Mocks } {
+): { fixture: ComponentFixture<ClientePerfilPage>; mocks: Mocks } {
   const clienteSignal = signal<ClienteAgencia | null>(cliente);
   const mocks: Mocks = {
     verClienteSpy: overrides.verClienteSpy ?? jasmine.createSpy('verCliente').and.callFake(async () => undefined),
@@ -65,7 +72,6 @@ function crear(
     imports: [ClientePerfilPage],
     providers: [
       provideRouter([]),
-      { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id: 'c1' })) } },
       {
         provide: ClientesService,
         useValue: {
@@ -79,8 +85,7 @@ function crear(
     ],
   });
   const fixture = TestBed.createComponent(ClientePerfilPage);
-  const router = TestBed.inject(Router);
-  return { fixture, router, mocks };
+  return { fixture, mocks };
 }
 
 async function estabilizar(fixture: ComponentFixture<ClientePerfilPage>): Promise<HTMLElement> {
@@ -91,23 +96,14 @@ async function estabilizar(fixture: ComponentFixture<ClientePerfilPage>): Promis
 }
 
 describe('ClientePerfilPage', () => {
-  it('carga el cliente por id (llama a ClientesService.verCliente) y lo muestra', async () => {
+  it('NO pide el cliente: cargarlo es del shell (cliente-ficha), no del tab', async () => {
+    // Si este tab volviera a pedir el cliente, cada clic en la barra de tabs dispararía un GET.
+    // Se afirma el CONTRATO observable —que no llama al servicio— y no la ausencia de `ngOnInit`,
+    // que es un detalle de implementación y no diría nada si mañana la carga se mueve a un `effect`.
     const { fixture, mocks } = crear(clienteDePrueba());
-    const el = await estabilizar(fixture);
-
-    expect(mocks.verClienteSpy).toHaveBeenCalledWith('c1');
-    expect(el.textContent).toContain('Pizza Nonna');
-    expect(el.textContent).toContain('hola@pizzanonna.es');
-    expect(el.textContent).toContain('premium');
-    expect(el.textContent).toContain('Madrid');
-  });
-
-  it('cliente no encontrado (`cliente()` queda en null tras `verCliente`): navega a /clientes', async () => {
-    const { fixture, router } = crear(null);
-    spyOn(router, 'navigate').and.resolveTo(true); // instalado ANTES del primer detectChanges
     await estabilizar(fixture);
 
-    expect(router.navigate).toHaveBeenCalledWith(['/clientes']);
+    expect(mocks.verClienteSpy).not.toHaveBeenCalled();
   });
 
   it(

@@ -5,6 +5,7 @@
 import '@angular/compiler';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { routes } from './app.routes';
 import { authGuard } from './guards/auth-guard';
 
@@ -39,11 +40,62 @@ test('runs/:id/informe es hija del shell (y del authGuard), y carga la pantalla 
   assert.equal((cargado as { name?: string })?.name, 'InformePage');
 });
 
-test('ninguna ruta hija repite su propio authGuard — lo hereda del padre', () => {
+test('ninguna ruta hija ni nieta repite su propio authGuard — lo hereda del padre', () => {
   const shell = routes.find((r) => r.path === '' && r.children);
   for (const hijo of shell?.children ?? []) {
     assert.equal(hijo.canActivate, undefined, `${hijo.path} no debería tener su propio canActivate`);
+    for (const nieto of hijo.children ?? []) {
+      assert.equal(
+        nieto.canActivate,
+        undefined,
+        `${hijo.path}/${nieto.path} no debería tener su propio canActivate`,
+      );
+    }
   }
+});
+
+test('clientes/nuevo se declara ANTES que clientes/:id — si no, :id se traga la palabra "nuevo"', () => {
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const hijos = (shell?.children ?? []).map((r) => r.path);
+  const iNuevo = hijos.indexOf('clientes/nuevo');
+  const iFicha = hijos.indexOf('clientes/:id');
+  assert.ok(iNuevo >= 0, 'no encontré clientes/nuevo');
+  assert.ok(iFicha >= 0, 'no encontré clientes/:id');
+  assert.ok(iNuevo < iFicha, 'clientes/nuevo debe declararse antes que clientes/:id');
+});
+
+test('clientes/:id es un shell con tabs: carga la ficha y redirige a perfil por defecto', async () => {
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const ficha = (shell?.children ?? []).find((r) => r.path === 'clientes/:id');
+  assert.ok(ficha, 'clientes/:id debe ser hija del shell');
+  assert.ok(ficha?.children, 'clientes/:id debe tener rutas hijas (los tabs)');
+
+  const cargado = await ficha?.loadComponent?.();
+  assert.equal((cargado as { name?: string })?.name, 'ClienteFichaComponent');
+
+  const tabs = (ficha?.children ?? []).map((r) => r.path);
+  assert.ok(tabs.includes('perfil'), 'el tab perfil debe existir');
+
+  const porDefecto = (ficha?.children ?? []).find((r) => r.path === '');
+  assert.equal(porDefecto?.redirectTo, 'perfil');
+  assert.equal(porDefecto?.pathMatch, 'full');
+});
+
+test('el router hereda los params del padre: sin esto, /clientes/:id/research no ve el :id', () => {
+  /*
+   * Se lee el FUENTE y no se inspecciona el provider porque `provideRouter(routes, withRouterConfig(...))`
+   * devuelve un `EnvironmentProviders` opaco: su configuración no se puede leer sin arrancar el
+   * router. Es el mismo patrón que usa `core/sin-html-crudo.test.ts` para barrer plantillas.
+   *
+   * Lo que se protege es una garantía SILENCIOSA: con el default `'emptyOnly'`, `params.get('id')`
+   * en un tab devuelve `null` y la pantalla se queda vacía sin un solo error en consola.
+   */
+  const fuente = readFileSync(new URL('./app.config.ts', import.meta.url), 'utf8');
+  assert.match(
+    fuente,
+    /paramsInheritanceStrategy:\s*'always'/,
+    "app.config.ts debe pasar `withRouterConfig({ paramsInheritanceStrategy: 'always' })`",
+  );
 });
 
 test('usuarios y usuarios/:id son hijas del shell, y el redirectTo a runs no se toca', () => {
