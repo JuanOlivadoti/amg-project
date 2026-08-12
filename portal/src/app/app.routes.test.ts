@@ -256,6 +256,7 @@ test('«Mi Portal» (clientes/:id/ver) se retiró: sus secciones son tabs de la 
     'research/:runId/informe',
     'resenas',
     'ideas',
+    'ideas/:ideaId',
     '',
   ]);
 });
@@ -274,6 +275,24 @@ test('los tabs resenas e ideas cargan sus pantallas de verdad', async () => {
   const ideas = (ficha?.children ?? []).find((r) => r.path === 'ideas');
   assert.equal(ideas?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
   assert.equal(((await ideas?.loadComponent?.()) as { name?: string })?.name, 'ClienteIdeasPage');
+});
+
+test('el detalle de una idea (ideas/:ideaId) cuelga del cliente, hereda el authGuard y carga ClienteIdeaDetallePage', async () => {
+  // Mismo motivo que el resto: el `loadComponent` es perezoso, así que un import mal escrito no
+  // rompe el build — se rompe al navegar, y el síntoma sería mudo (el enlace del listado de ideas
+  // caería en el comodín `**` y el portal mandaría a `/clientes` como si nada).
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const ficha = (shell?.children ?? []).find((r) => r.path === 'clientes/:id');
+  const detalle = (ficha?.children ?? []).find((r) => r.path === 'ideas/:ideaId');
+  assert.ok(detalle, 'no encontré la ruta del detalle de una idea');
+  assert.equal(detalle?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+  const cargado = await detalle?.loadComponent?.();
+  assert.equal((cargado as { name?: string })?.name, 'ClienteIdeaDetallePage');
+
+  // Y que vaya DESPUÉS de `ideas`, mismo criterio que `research/:runId/informe` después de
+  // `research/:runId` (comentario en `app.routes.ts`).
+  const tabs = (ficha?.children ?? []).map((r) => r.path);
+  assert.ok(tabs.indexOf('ideas') < tabs.indexOf('ideas/:ideaId'), 'ideas/:ideaId debe ir después de ideas');
 });
 
 test('el router hereda los params del padre: sin esto, /clientes/:id/research no ve el :id', () => {

@@ -107,6 +107,79 @@ test('🔴 listarIdeas("") NO expone la cartera entera: lanza ANTES de salir a l
   assert.equal(capturado.url, undefined, 'no tenía que haber salido ninguna petición');
 });
 
+// ---------------------------------------------------------------- el detalle de una idea (Task 2)
+
+test('obtenerIdea pega a /ideas/:id y devuelve la idea', async () => {
+  const idea = { id: 'idea-1', client_id: 'c1', titulo: 'x', estado: 'nueva', creada_en: '2026-01-01T00:00:00.000Z' };
+  const { fn, capturado } = fakeFetch({ body: { idea } });
+  const res = await crearApi(opts(fn)).obtenerIdea('idea-1');
+  assert.equal(capturado.url, 'http://api.test/ideas/idea-1');
+  assert.equal(capturado.method, 'GET');
+  assert.deepEqual(res, idea);
+});
+
+test('🔴 obtenerIdea devuelve null en un 404, no lanza — mismo patrón que "no existe / no es visible"', async () => {
+  /*
+   * `GET /ideas/:id` unifica a propósito "no existe", "es de otro tenant" y "no la puede ver" en un
+   * solo 404 (`api/src/app.ts`). La pantalla de detalle tiene que poder mostrar "no encontrada" sin
+   * que cada llamador tenga que envolver la promesa en un try/catch — por eso `null` y no una
+   * excepción, al revés que `cambiarEstadoIdea`/`editarIdea`, donde SÍ hace falta el mensaje del
+   * servidor (ver los tests de abajo).
+   */
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Idea no encontrada.' } });
+  const res = await crearApi(opts(fn)).obtenerIdea('idea-inexistente');
+  assert.equal(res, null);
+});
+
+test('obtenerIdea relanza cualquier otro error (no se traga un 401/500 disfrazándolo de "no existe")', async () => {
+  const { fn } = fakeFetch({ status: 500, body: { error: 'boom' } });
+  await assert.rejects(() => crearApi(opts(fn)).obtenerIdea('idea-1'), /boom/);
+});
+
+test('cambiarEstadoIdea manda SOLO { estado } por PATCH, nunca contenido', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true, estado: 'en_revision' } });
+  await crearApi(opts(fn)).cambiarEstadoIdea('idea-1', 'en_revision');
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/ideas/idea-1');
+  assert.deepEqual(JSON.parse(capturado.body!), { estado: 'en_revision' });
+});
+
+test('🔴 cambiarEstadoIdea lanza con el mensaje del servidor ante una transición inválida (400)', async () => {
+  // La pantalla necesita MOSTRAR este error (el brief lo pide explícitamente): tragárselo dejaría un
+  // botón que parece funcionar y no hace nada, el mismo defecto que "Aprobar el run" (15ª review, H1).
+  const { fn } = fakeFetch({
+    status: 400,
+    body: { error: 'Transición de estado inválida: nueva → aprobada.', desde: 'nueva', hacia: 'aprobada' },
+  });
+  await assert.rejects(
+    () => crearApi(opts(fn)).cambiarEstadoIdea('idea-1', 'aprobada'),
+    /Transición de estado inválida/,
+  );
+});
+
+test('🔴 cambiarEstadoIdea lanza en un 404 (no encontrada / no visible / sin permiso, unificados)', async () => {
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Idea no encontrada.' } });
+  await assert.rejects(() => crearApi(opts(fn)).cambiarEstadoIdea('idea-1', 'en_revision'), /no encontrada/);
+});
+
+test('editarIdea manda por PATCH exactamente el subconjunto de cambios, sin `estado`', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).editarIdea('idea-1', { titulo: 'Nuevo título', resumen: null });
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/ideas/idea-1');
+  const body = JSON.parse(capturado.body!);
+  assert.deepEqual(body, { titulo: 'Nuevo título', resumen: null });
+  assert.ok(!('estado' in body), 'editarIdea nunca debe mandar `estado`: eso es cambiarEstadoIdea');
+});
+
+test('🔴 editarIdea lanza con el mensaje del servidor si el body no pasa la allowlist (400)', async () => {
+  const { fn } = fakeFetch({ status: 400, body: { error: 'audio_url debe ser una URL http(s).' } });
+  await assert.rejects(
+    () => crearApi(opts(fn)).editarIdea('idea-1', { audio_url: 'javascript:alert(1)' as never }),
+    /URL http\(s\)/,
+  );
+});
+
 test('crearRun postea el cuerpo y devuelve el runId', async () => {
   const { fn, capturado } = fakeFetch({ status: 201, body: { runId: 'run-9' } });
   const runId = await crearApi(opts(fn)).crearRun({ clientId: 'cli-1', prompt: 'pizza' });
