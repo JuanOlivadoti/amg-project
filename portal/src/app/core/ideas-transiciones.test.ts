@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TRANSICIONES_IDEA, transicionesDesde } from './ideas-transiciones';
 import type { EstadoIdea } from './models';
 
@@ -39,11 +39,18 @@ test('aprobada y rechazada son terminales: sin transiciones salientes', () => {
  * una revisión externa; corregido acá cargando el archivo real en runtime.
  *
  * La ruta se arma con `new URL(...)` a propósito: `tsc` no la resuelve estáticamente (no se lleva
- * medio `db/` por delante en el typecheck del portal); solo `tsx` la sigue al correr el test — y
- * **en Windows, ese `import()` de una ruta absoluta `c:\...` sin `file://` es el mismo bug
- * preexistente que ya hace fallar los dos tests de `codigos.test.ts`** (`Only URLs with a scheme in:
- * file, data, and node are supported`). Este test se suma a esa lista de fallos CONOCIDOS de Windows
- * — no es un fallo nuevo de esta lógica, es el mismo bug de plataforma, documentado y sin tocar.
+ * medio `db/` por delante en el typecheck del portal); solo `tsx` la sigue al correr el test.
+ *
+ * **`RUTA_DB` (el path crudo, para el mensaje de error) y la URL que de verdad se le pasa a
+ * `import()` NO son la misma cadena, y esa diferencia es la que hace que este test corra en
+ * Windows.** Una revisión de integración encontró que la primera versión de este archivo le pasaba
+ * `RUTA_DB` —una ruta absoluta cruda, `C:\...`— directo a `import()`: eso lanza en Windows ("Only
+ * URLs with a scheme in: file, data, and node are supported") ANTES de llegar al `deepEqual`, así
+ * que el test quedaba permanentemente rojo por una excepción y su assert nunca corría — la misma
+ * garantía-que-no-se-cumple del hallazgo anterior, con una causa distinta. `codigos.test.ts` tiene
+ * el mismo defecto (`import(RUTA_API)` con la ruta cruda) y por eso hoy SÍ falla en Windows — es
+ * deuda preexistente de otra pieza, no se toca acá. Este archivo usa `pathToFileURL(RUTA_DB).href`
+ * para la llamada real: es la diferencia entre un test que corre y uno que solo parece correr.
  */
 const RUTA_DB = fileURLToPath(new URL('../../../../db/src/ideas.ts', import.meta.url));
 
@@ -53,7 +60,10 @@ interface ModuloIdeas {
 
 const cargarDb = async (): Promise<ModuloIdeas> => {
   try {
-    return (await import(RUTA_DB)) as ModuloIdeas;
+    // `pathToFileURL(...).href` y NO `RUTA_DB` a secas: `import()` exige una URL `file://` en
+    // Windows, y una ruta absoluta cruda (`C:\...`) lanza antes de llegar al `deepEqual` de abajo —
+    // el test quedaba rojo por una excepción, no por el assert, y la atadura no ataba nada.
+    return (await import(pathToFileURL(RUTA_DB).href)) as ModuloIdeas;
   } catch (e) {
     throw new Error(
       `no pude cargar la máquina de estados de db en ${RUTA_DB}: ${(e as Error).message}\n` +

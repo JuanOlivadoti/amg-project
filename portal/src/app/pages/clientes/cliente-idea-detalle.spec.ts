@@ -176,6 +176,46 @@ describe('ClienteIdeaDetallePage', () => {
     expect(cambiarEstadoIdeaSpy).not.toHaveBeenCalled();
   });
 
+  it('🔴 un título vacío no se guarda: editarIdea no se llama y se ve el error de validación', async () => {
+    // Deuda que el plan (Etapa 5) dejaba anotada: `titulo` solo tiene TECHO en la 0013, nunca piso.
+    // Sin esta guarda, vaciar el campo y guardar mandaba `titulo: ''` al servidor sin que nada lo
+    // impidiera del lado del cliente.
+    const { fixture, editarIdeaSpy } = crear();
+    const el = await estabilizar(fixture);
+
+    boton(el, 'Editar')!.click();
+    await estabilizar(fixture);
+
+    const inputTitulo = el.querySelector<HTMLInputElement>('input[name="titulo"]')!;
+    inputTitulo.value = '   '; // solo espacios: `trim()` lo deja vacío, mismo caso que ''
+    inputTitulo.dispatchEvent(new Event('input'));
+    await estabilizar(fixture);
+
+    const form = el.querySelector('form')!;
+    form.dispatchEvent(new Event('submit'));
+    await estabilizar(fixture);
+
+    expect(editarIdeaSpy).withContext('un título vacío no debería llegar a pedir el PATCH').not.toHaveBeenCalled();
+    expect(el.textContent).toContain('El título no puede quedar vacío.');
+  });
+
+  it('🔴 la idea de OTRO cliente se trata como no encontrada: la URL manda, no el client_id de la respuesta', async () => {
+    // GET /ideas/:id no filtra por cliente (lo aísla RLS, por tenant) — sin este chequeo, una URL
+    // escrita a mano bajo el cliente equivocado pintaría igual el detalle de la idea ajena.
+    const idea = ideaDetalleDePrueba({ client_id: 'cliente-ajeno' });
+    const params = new BehaviorSubject(convertToParamMap({ id: 'c1', ideaId: 'idea-1' }));
+    const { fixture } = crear({
+      obtenerIdea: jasmine.createSpy('obtenerIdea').and.resolveTo(idea),
+      params,
+    });
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('.text-error')?.textContent)
+      .withContext('la idea de otro cliente se mostró como si fuera de éste')
+      .toContain('Idea no encontrada.');
+    expect(el.querySelector('h1')).toBeFalsy();
+  });
+
   it('🔴 la respuesta que llega tarde NO pisa el detalle: cuando A contesta, el :ideaId vigente ya es B', async () => {
     const pendientes: Array<(idea: IdeaDetalle | null) => void> = [];
     const diferido = jasmine

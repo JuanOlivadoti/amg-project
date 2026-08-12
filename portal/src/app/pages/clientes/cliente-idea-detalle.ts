@@ -155,7 +155,6 @@ interface EntradaAnalisis {
                   >
                     Abrir el audio en otra pestaña
                   </a>
-                  <!-- eslint-disable-next-line -->
                   <audio [src]="i.audio_url" controls class="mt-2 w-full"></audio>
                 </div>
               }
@@ -204,7 +203,9 @@ interface EntradaAnalisis {
           } @else {
             <form (ngSubmit)="guardar()" class="space-y-4">
               <div class="flex flex-col gap-1">
-                <label class="text-sm font-medium text-texto-medio" for="idea-titulo">Título</label>
+                <label class="text-sm font-medium text-texto-medio" for="idea-titulo">
+                  Título <span class="text-error">*</span>
+                </label>
                 <input
                   id="idea-titulo"
                   name="titulo"
@@ -213,6 +214,9 @@ interface EntradaAnalisis {
                   (ngModelChange)="actualizar('titulo', $event)"
                   class="rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
                 />
+                @if (intentoGuardar() && !tituloValido()) {
+                  <p class="text-xs text-error">El título no puede quedar vacío.</p>
+                }
               </div>
               <div class="flex flex-col gap-1">
                 <label class="text-sm font-medium text-texto-medio" for="idea-resumen">Resumen</label>
@@ -288,6 +292,16 @@ export class ClienteIdeaDetallePage implements OnInit, OnDestroy {
   readonly errorGuardar = signal('');
   readonly form = signal<FormularioIdea>({ titulo: '', resumen: '', mensajeDe: '' });
 
+  /**
+   * Validación de UX para `titulo`: la `0013` solo le puso TECHO (200 B) y ningún piso, así que sin
+   * esto el formulario podía guardar `''` — deuda que el plan asignaba a esta etapa y una revisión
+   * de integración encontró sin cerrar. Mismo patrón que `cliente-crear.ts`
+   * (`intentoEnviar`/`nombreValido`): el error solo se muestra DESPUÉS de un intento de guardar, no
+   * mientras se escribe.
+   */
+  readonly intentoGuardar = signal(false);
+  readonly tituloValido = computed(() => this.form().titulo.trim().length > 0);
+
   readonly cambiandoEstado = signal(false);
   readonly errorEstado = signal('');
 
@@ -314,7 +328,8 @@ export class ClienteIdeaDetallePage implements OnInit, OnDestroy {
     // del mismo cliente (o entre clientes) sin desmontar el componente. Mismo motivo que en el resto
     // de las pantallas anidadas bajo la ficha.
     this.sub = this.route.paramMap.subscribe((params) => {
-      this.clienteId.set(params.get('id') ?? '');
+      const clienteId = params.get('id') ?? '';
+      this.clienteId.set(clienteId);
       const id = params.get('ideaId') ?? '';
       if (id === this.vigencia.actual) return;
       this.vigencia.cambiarA(id);
@@ -324,7 +339,7 @@ export class ClienteIdeaDetallePage implements OnInit, OnDestroy {
       this.idea.set(null);
       this.error.set('');
       this.editando.set(false);
-      void this.cargar(id);
+      void this.cargar(id, clienteId);
     });
   }
 
@@ -333,12 +348,21 @@ export class ClienteIdeaDetallePage implements OnInit, OnDestroy {
     this.sub?.unsubscribe();
   }
 
-  private async cargar(pedido: string): Promise<void> {
+  /**
+   * `pedidoCliente` es el `:id` de la URL en el momento en que se pidió ESTA idea — capturado antes
+   * del `await`, mismo criterio que `pedido` (la clave de vigencia). `GET /ideas/:id` no filtra por
+   * cliente (lo que aísla es RLS, por tenant), así que sin este chequeo una URL escrita a mano
+   * `/clientes/<B>/ideas/<idea-de-A>` pintaría la idea de A bajo la ficha de B — no es un agujero de
+   * seguridad, es una incoherencia de UI que una revisión de integración encontró (M4). Un cliente
+   * equivocado se trata IGUAL que "no encontrada": revelar que la idea existe bajo otro cliente no
+   * aporta nada y complicaría el mensaje sin necesidad.
+   */
+  private async cargar(pedido: string, pedidoCliente: string): Promise<void> {
     this.cargando.set(true);
     try {
       const idea = await this.api.obtenerIdea(pedido);
       if (this.vigencia.obsoleta(pedido)) return; // llegó tarde: ya es otra idea, o nos fuimos
-      if (idea === null) {
+      if (idea === null || idea.client_id !== pedidoCliente) {
         this.error.set('Idea no encontrada.');
       } else {
         this.idea.set(idea);
@@ -383,6 +407,7 @@ export class ClienteIdeaDetallePage implements OnInit, OnDestroy {
     if (!i) return;
     this.form.set(formularioDesde(i));
     this.errorGuardar.set('');
+    this.intentoGuardar.set(false);
     this.editando.set(true);
   }
 
@@ -398,6 +423,13 @@ export class ClienteIdeaDetallePage implements OnInit, OnDestroy {
   async guardar(): Promise<void> {
     const i = this.idea();
     if (!i) return;
+    this.intentoGuardar.set(true);
+    // `titulo` tiene techo en la base (200 B, `idea_titulo_razonable`) pero NUNCA piso: un string
+    // vacío es válido para Postgres y para `PATCH /ideas/:id` (ver `ideas-http.ts`). Sin esta guarda
+    // acá, el formulario podía guardar un título vacío — es UX, no autorización: el servidor lo
+    // seguiría aceptando igual si alguien la salta.
+    if (!this.tituloValido()) return;
+
     const id = i.id;
     this.guardando.set(true);
     this.errorGuardar.set('');
