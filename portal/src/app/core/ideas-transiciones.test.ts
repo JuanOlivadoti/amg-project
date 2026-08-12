@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import { TRANSICIONES_IDEA, transicionesDesde } from './ideas-transiciones';
 import type { EstadoIdea } from './models';
 
@@ -22,22 +23,63 @@ test('aprobada y rechazada son terminales: sin transiciones salientes', () => {
   assert.deepEqual(transicionesDesde('rechazada'), []);
 });
 
-test('🔴 espeja EXACTAMENTE TRANSICIONES_IDEA de db/src/ideas.ts: mismos pares, mismo orden', () => {
-  /*
-   * Esta es la SEGUNDA copia de la máquina de estados dentro del portal (la primera ya es una
-   * segunda copia de la de Postgres — ver el comentario de `db/src/ideas.ts`). Un desalineo acá no
-   * lo detecta ningún test que corra en `db` ni en `api`: el portal no importa de ahí (ADR-21). Si
-   * alguien cambia una transición en la base y se olvida de esta tabla, la UI seguiría ofreciendo (o
-   * negando) un botón que ya no corresponde — la API lo rechazaría igual, pero el mensaje sería "no
-   * se pudo" en vez de que el botón ni apareciera.
-   */
-  const esperado: Record<EstadoIdea, readonly EstadoIdea[]> = {
-    nueva: ['en_revision'],
-    en_revision: ['aprobada', 'rechazada'],
-    aprobada: [],
-    rechazada: [],
-  };
-  for (const estado of ESTADOS) {
-    assert.deepEqual(TRANSICIONES_IDEA[estado], esperado[estado], `transiciones desde ${estado}`);
+/*
+ * ---------------------------------------------------------------- la atadura cross-paquete
+ *
+ * Mismo mecanismo que `core/codigos.test.ts` (leelo para el porqué largo): el portal vive FUERA del
+ * monorepo a propósito (ADR-21), así que no puede `import`ar el paquete `db`. Eso impide importar el
+ * PAQUETE, no impide LEER EL ARCHIVO — y leerlo de verdad es la única forma de que esta prueba ate
+ * algo, en vez de compararse contra una tercera copia escrita a mano en este mismo archivo.
+ *
+ * La primera versión de este test comparaba `TRANSICIONES_IDEA` (portal) contra un objeto `esperado`
+ * tipeado a mano acá mismo, con los mismos cuatro pares que `db/src/ideas.ts` tenía en ese momento.
+ * Pasaba en verde, pero no ataba nada: si alguien agrega una transición nueva en `db/src/ideas.ts` y
+ * se olvida de tocar el portal, ese test seguía verde — exactamente el defecto que el comentario de
+ * `db/src/ideas.ts` (sobre por qué la máquina está duplicada) dice que existe para prevenir. Lo marcó
+ * una revisión externa; corregido acá cargando el archivo real en runtime.
+ *
+ * La ruta se arma con `new URL(...)` a propósito: `tsc` no la resuelve estáticamente (no se lleva
+ * medio `db/` por delante en el typecheck del portal); solo `tsx` la sigue al correr el test — y
+ * **en Windows, ese `import()` de una ruta absoluta `c:\...` sin `file://` es el mismo bug
+ * preexistente que ya hace fallar los dos tests de `codigos.test.ts`** (`Only URLs with a scheme in:
+ * file, data, and node are supported`). Este test se suma a esa lista de fallos CONOCIDOS de Windows
+ * — no es un fallo nuevo de esta lógica, es el mismo bug de plataforma, documentado y sin tocar.
+ */
+const RUTA_DB = fileURLToPath(new URL('../../../../db/src/ideas.ts', import.meta.url));
+
+interface ModuloIdeas {
+  readonly TRANSICIONES_IDEA: Readonly<Record<EstadoIdea, readonly EstadoIdea[]>>;
+}
+
+const cargarDb = async (): Promise<ModuloIdeas> => {
+  try {
+    return (await import(RUTA_DB)) as ModuloIdeas;
+  } catch (e) {
+    throw new Error(
+      `no pude cargar la máquina de estados de db en ${RUTA_DB}: ${(e as Error).message}\n` +
+        'Si el archivo se movió, actualizá la ruta — pero NO borres este test: es lo único que ' +
+        'impide que las dos copias de TRANSICIONES_IDEA se separen sin que nada avise.',
+    );
   }
+};
+
+test('🔴 espeja EXACTAMENTE TRANSICIONES_IDEA de db/src/ideas.ts: mismos pares, mismo orden (leído del archivo real)', async () => {
+  const db = await cargarDb();
+
+  // Un recorrido que no encuentra nada pasa en verde sin haber probado nada: si `db` se quedara sin
+  // la tabla, esto tiene que caer y no felicitarnos.
+  assert.ok(
+    Object.keys(db.TRANSICIONES_IDEA).length >= 1,
+    `db/src/ideas.ts no exporta TRANSICIONES_IDEA (o está vacía): ${JSON.stringify(db.TRANSICIONES_IDEA)}`,
+  );
+
+  // deepEqual sobre el objeto ENTERO: caza a la vez un par que sobra, uno que falta, un orden
+  // distinto dentro de un mismo par, o un estado que se agregó de un lado y no del otro.
+  assert.deepEqual(
+    TRANSICIONES_IDEA,
+    db.TRANSICIONES_IDEA,
+    'la máquina de estados del portal y la de db/src/ideas.ts dejaron de coincidir: los botones de ' +
+      'transición de la pantalla ramifican sobre esto, así que una diferencia acá es un botón que se ' +
+      'ofrece (o se niega) en el cliente por algo que la base ya no dice',
+  );
 });
