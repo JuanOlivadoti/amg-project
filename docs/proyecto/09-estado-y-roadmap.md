@@ -7,14 +7,30 @@
 > en [**15-plan-plataforma.md**](15-plan-plataforma.md) — nueve bloques, con qué archivos toca cada
 > uno y cómo se verifica.
 >
+> 🧭 **Nuevo (2026-08-12): pieza 3 (Ideas) del programa del portal, COMPLETA — quedan las cuatro
+> piezas del programa hechas, salvo el Dashboard.** Las etapas 5-6 (las que faltaban: pantallas +
+> rutas + cierre) sobre la rama `feature/modulo-ideas`, con `superpowers:subagent-driven-development`.
+> El listado vive en `clientes/:id/ideas` (reemplaza el placeholder) filtrado por estado, y el detalle
+> en `clientes/:id/ideas/:ideaId` — lectura completa (transcripción, análisis, adjuntos), edición
+> inline de título/resumen/remitente, y aprobar/rechazar contra la máquina de estados real. Dos tasks,
+> una con un hallazgo bloqueante real en la primera ronda de revisión: el test que decía atar la copia
+> del portal de la máquina de transiciones a `db/src/ideas.ts` en realidad comparaba contra un objeto
+> hardcodeado dentro del mismo archivo — nunca leía la base. Corregido con el mismo mecanismo de
+> `codigos.test.ts` (import en runtime del archivo real) y verificado por mutación de verdad (se mutó
+> `db/src/ideas.ts` a mano, se confirmó que el test cae, se revirtió). Portal: **265 tests** `node:test`
+> (262 pass + 3 con el mismo bug preexistente de Windows en `import()` de ruta absoluta — subió de 2 a
+> 3 porque el test corregido ahora usa ese mismo patrón, documentado, no es una regresión de lógica) +
+> **136 Karma**. Verificado también en el navegador (API real sobre PGlite, MCP chrome-devtools):
+> listar, filtrar, abrir, editar, aprobar, rechazar, transición inválida deshabilitada, claro y
+> oscuro, consola sin errores propios. **El hueco explícito, documentado y no oculto:** el ingreso
+> real de ideas (flujo de audio por n8n) sigue sin existir — las 5 ideas que se ven son el seed de
+> ejemplo. Detalle en [Bloque J](15-plan-plataforma.md#bloque-j--el-programa-del-portal-piezas-3-ideas-y-4-dashboard).
+>
 > Sigue abierto, de antes: el
 > [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md) —
-> las piezas **1 (CRM de clientes)** y **2 (usuarios)** están mergeadas a `main`. La **3 (Ideas)** va
-> por la mitad: sus **etapas 1-4 están hechas** (la migración `0013`, la capa de datos, los tres
-> endpoints y el seed de ejemplo — todo `db` y `api`), y **quedan las 5-7**: las pantallas y las rutas.
-> (Retirar el módulo de ideas **mock** también era de las 5-7, y **ya está hecho**: se fue el
-> 2026-08-11 con la pantalla que lo mostraba.) La **4 (Dashboard)** no ha empezado y depende de la 3.
-> Es el bloque **J** del plan.
+> las piezas **1 (CRM de clientes)**, **2 (usuarios)** y **3 (Ideas)** están mergeadas/completas. La
+> **4 (Dashboard)** no ha empezado y depende de la 3, que ya está lista para alimentarla. Es el bloque
+> **J** del plan.
 >
 > 🧭 **La navegación del portal es cliente-céntrica desde el 2026-08-11**
 > ([spec](../superpowers/specs/2026-08-11-ficha-cliente-navegacion-design.md) ·
@@ -23,8 +39,8 @@
 > las tres pantallas de un run cuelgan de `/clientes/:id/research/:runId/*`; Research salió del
 > sidebar (quedan tres ítems) y la home pasó de `/runs` a `/clientes`; y se retiró `/clientes/:id/ver`
 > con sus tres tabs de datos inventados. Lo que lo motivó: **el formulario de lanzar research pedía
-> el uuid del cliente pegado a mano**. Reseñas e Ideas son placeholders que dicen qué falta — son los
-> huecos donde caen el bloque **F** y las etapas 5-7 de la pieza 3.
+> el uuid del cliente pegado a mano**. Reseñas sigue siendo un placeholder que dice qué falta (el
+> bloque **F**, sin empezar); Ideas dejó de serlo el 2026-08-12.
 >
 > 📓 **La historia está en [`progress/history.md`](../../progress/history.md)**: qué se hizo cada día,
 > con sus tropiezos y sus lecciones. Acá vive solo el estado de hoy y lo que falta — si buscás *por

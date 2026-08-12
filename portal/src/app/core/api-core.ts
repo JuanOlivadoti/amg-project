@@ -4,6 +4,9 @@ import type {
   CambiosClienteAgencia,
   CambiosPagina,
   ClienteAgencia,
+  EstadoIdea,
+  IdeaDetalle,
+  IdeaResumen,
   Informe,
   Miembro,
   NuevoClienteAgencia,
@@ -145,6 +148,45 @@ export interface ClienteApi {
    */
   listarRuns(clientId?: string): Promise<RunSummary[]>;
   crearRun(nuevo: NuevoRun): Promise<string>;
+  /**
+   * Las ideas de un cliente, opcionalmente filtradas por `estado`.
+   *
+   * A diferencia de `listarRuns`, `clientId` no es opcional: este tab siempre cuelga de
+   * `/clientes/:id/ideas` y no hay pantalla que necesite la cartera entera, así que la interfaz no
+   * ofrece ese modo. Un `clientId` vacío **lanza**, mismo criterio que `listarRuns('')`: no es «sin
+   * filtro», es un id que no llegó (ver el test de `cliente-ideas.ts`).
+   */
+  listarIdeas(clientId: string, estado?: EstadoIdea): Promise<IdeaResumen[]>;
+  /**
+   * El detalle completo de UNA idea (transcripción + análisis), para la pantalla de revisión (Task
+   * 2). `null` en 404 — que unifica "no existe", "es de otro tenant" y "no la puede ver"
+   * (`api/src/app.ts`) — para que la pantalla pueda mostrar "no encontrada" sin envolver cada
+   * llamado en un `try/catch`. Distinto de `cambiarEstadoIdea`/`editarIdea`, donde un error SÍ debe
+   * propagarse: ahí el 400/404 lleva un motivo que la pantalla tiene que mostrar, no callar.
+   */
+  obtenerIdea(id: string): Promise<IdeaDetalle | null>;
+  /**
+   * Mueve una idea por su máquina de estados. Manda **solo** `{ estado }` — nunca junto con
+   * contenido, el servidor rechaza la mezcla con 400 (`api/src/app.ts`: "El cambio de estado va
+   * solo"). Lanza con el mensaje del servidor ante una transición inválida (400, con `desde`/`hacia`
+   * en el cuerpo) o si la idea no existe/no es visible/no se puede escribir (404, los tres
+   * unificados a propósito). No se traga el error: la pantalla lo necesita para explicar el rechazo.
+   */
+  cambiarEstadoIdea(id: string, estado: EstadoIdea): Promise<void>;
+  /**
+   * Edita el CONTENIDO de una idea — nunca su estado, eso es `cambiarEstadoIdea`. El subconjunto que
+   * se mande viaja tal cual, sin agregar `estado`: dos acciones separadas en la UI ("guardar
+   * contenido" y "aprobar/rechazar/revisar"), nunca un botón único que mande las dos cosas juntas.
+   */
+  editarIdea(
+    id: string,
+    cambios: Partial<
+      Pick<
+        IdeaDetalle,
+        'titulo' | 'resumen' | 'transcripcion' | 'audio_url' | 'carpeta_url' | 'mensaje_de' | 'analisis'
+      >
+    >,
+  ): Promise<void>;
   verBrief(runId: string): Promise<Brief>;
   /**
    * El informe del run. **`informe_md: null` NO es un error**: es «todavía no hay informe» (o el rol no
@@ -275,6 +317,38 @@ export function crearApi(opts: ApiOpts): ClienteApi {
       const qs = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
       const { runs } = await pedir<{ runs: RunSummary[] }>('GET', `/runs${qs}`);
       return runs;
+    },
+    async listarIdeas(clientId, estado) {
+      // Mismo motivo que `listarRuns('')`: un clientId vacío no filtra nada, así que sin esta guarda
+      // la query quedaría `?estado=…` a secas (o vacía del todo) y `GET /ideas` degradaría a la
+      // cartera entera — el módulo de ideas no expone ese modo desde este tab.
+      if (clientId === '') {
+        throw new Error('listarIdeas: clientId vacío. Este tab siempre necesita un cliente.');
+      }
+      const params = new URLSearchParams({ clientId });
+      if (estado) params.set('estado', estado);
+      const { ideas } = await pedir<{ ideas: IdeaResumen[] }>('GET', `/ideas?${params.toString()}`);
+      return ideas;
+    },
+    async obtenerIdea(id) {
+      try {
+        const { idea } = await pedir<{ idea: IdeaDetalle }>('GET', `/ideas/${encodeURIComponent(id)}`);
+        return idea;
+      } catch (e) {
+        // Solo el 404 se traduce a `null`. Cualquier otro status (401, 500, …) se relanza tal cual:
+        // tragárselo acá lo disfrazaría de "no existe" cuando en realidad es "no se pudo preguntar".
+        if ((e as ApiError).status === 404) return null;
+        throw e;
+      }
+    },
+    async cambiarEstadoIdea(id, estado) {
+      // Objeto armado a mano y no un `{ estado }` reenviado: dice, en el propio código, que este
+      // PATCH NUNCA lleva nada más — es la mitad de la garantía "el cambio de estado va solo" (la
+      // otra mitad la impone el servidor, que rechaza la mezcla).
+      await pedir('PATCH', `/ideas/${encodeURIComponent(id)}`, { estado });
+    },
+    async editarIdea(id, cambios) {
+      await pedir('PATCH', `/ideas/${encodeURIComponent(id)}`, cambios);
     },
     async crearRun(nuevo) {
       const { runId } = await pedir<{ runId: string }>('POST', '/runs', nuevo);

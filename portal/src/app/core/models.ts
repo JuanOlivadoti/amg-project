@@ -209,6 +209,51 @@ export interface CambioRolMiembro {
   client_id?: string | null;
 }
 
+/** Los cuatro estados de una idea (`idea_estado`, migración 0013). Espeja `EstadoIdea` de `db/src/ideas.ts`. */
+export type EstadoIdea = 'nueva' | 'en_revision' | 'aprobada' | 'rechazada';
+
+/**
+ * El resumen RECORTADO de una idea, tal como lo devuelve `GET /ideas` (`IdeaResumenHttp` en
+ * `api/src/ideas-http.ts`). Sin `transcripcion` ni `analisis`: ese recorte lo hace el `select` de
+ * `listarIdeas` en la base, y este tipo solo describe lo que llega. El detalle completo (Task 2) es
+ * otro tipo, `IdeaDetalle`, que todavía no existe en el portal.
+ */
+export interface IdeaResumen {
+  id: string;
+  client_id: string;
+  titulo: string;
+  estado: EstadoIdea;
+  /** `timestamptz` → string ISO-8601 UTC, ya normalizado por `api/src/ideas-http.ts`. */
+  creada_en: string;
+}
+
+/**
+ * El detalle COMPLETO de una idea, tal como lo devuelve `GET /ideas/:id` (`IdeaDetalleHttp` en
+ * `api/src/ideas-http.ts`). Extiende el resumen con la transcripción entera y el análisis del LLM —
+ * una idea a la vez, abierta a propósito por quien la está revisando (Task 2).
+ *
+ * `transcripcion` es la VOZ del cliente, texto generado a partir de un audio: superficie de
+ * inyección. Se pinta como texto (`white-space: pre-wrap`), **nunca** con `innerHTML`.
+ *
+ * `analisis` es SIEMPRE un objeto (nunca `null`, lo impone un `check` en la 0013), pero ninguna de
+ * sus ocho claves posibles está garantizada — cualquiera puede faltar. Las claves: `audiencia_objetivo`,
+ * `canales_comunicacion`, `intencion`, `materiales_formatos`, `observaciones`,
+ * `checklist_interpretacion`, `ideas_complementarias`, `tipo_accion` (`CLAVES_ANALISIS` en
+ * `api/src/ideas-http.ts`). El valor de cada clave puede ser texto o una lista — la pantalla lo
+ * distingue con `Array.isArray`, no por el nombre de la clave, porque el tipo de acá no lo fija.
+ */
+export interface IdeaDetalle extends IdeaResumen {
+  resumen: string | null;
+  transcripcion: string | null;
+  /** URL externa al audio ya alojado. AMG OS no tiene storage: nunca hay upload acá. */
+  audio_url: string | null;
+  carpeta_url: string | null;
+  mensaje_de: string | null;
+  analisis: Record<string, unknown>;
+  /** `timestamptz` → string ISO-8601 UTC. */
+  actualizada_en: string;
+}
+
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */
 export interface Sesion {
   accessToken: string;

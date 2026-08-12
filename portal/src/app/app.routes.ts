@@ -88,6 +88,15 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/clientes/cliente-ideas').then((m) => m.ClienteIdeasPage),
           },
+          {
+            // El detalle de UNA idea (Task 2). Va DESPUÉS de `ideas` por el mismo criterio que
+            // `research/:runId/informe` va después de `research/:runId`: el router no hace prefijo
+            // parcial con una ruta sin hijas, así que `ideas/x` no lo puede atrapar `ideas` — el
+            // orden es por legibilidad, no por precedencia.
+            path: 'ideas/:ideaId',
+            loadComponent: () =>
+              import('./pages/clientes/cliente-idea-detalle').then((m) => m.ClienteIdeaDetallePage),
+          },
           { path: '', pathMatch: 'full', redirectTo: 'perfil' },
         ],
       },

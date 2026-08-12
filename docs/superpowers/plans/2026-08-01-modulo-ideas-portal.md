@@ -349,35 +349,54 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 > existir** — el seed es hoy la única vía de creación, y que necesite la conexión de infraestructura es
 > lo que mantiene visible ese hueco.
 
-## Etapa 5 — Las pantallas
+## Etapa 5 — Las pantallas ✅ hecha el 2026-08-12
 
-- [ ] **`/ideas` (listado).** Portar `ideas-table` + los filtros (búsqueda, cliente, estado). Con
-      signals y `computed`, no con un `subscribe` que reasigna.
-- [ ] **`/ideas/:id` (detalle).** Portar `idea.component` con `idea-header-card`, `idea-info-card` y
-      `idea-edit-form`. El audio se ofrece como **enlace** a `audio_url` (o un `<audio>` si la URL lo
-      permite), nunca subiendo nada.
-- [ ] La transcripción y el análisis se renderizan como texto. Si el análisis viene con listas
-      (`canales_comunicacion`, `materiales_formatos`, `ideas_complementarias`), se listan; **nada de
-      `innerHTML`**.
-- [ ] Aprobar/rechazar: acciones explícitas, con el estado reflejado en la UI y las transiciones
-      inválidas deshabilitadas (y **también** rechazadas en el servidor: deshabilitar un botón no es
-      autorización).
-- [ ] Tests de componente (Karma) del listado y del cambio de estado.
+> **Desviación del plan, acordada con el usuario antes de ejecutar.** Este plan es del 2026-08-01 y
+> asume un listado global `/ideas` (de toda la cartera) con filtro de cliente, más `/ideas/:id`. El
+> rediseño de navegación del 2026-08-11 ([spec](2026-08-11-ficha-cliente-navegacion-design.md)) hizo
+> el portal 100% cliente-céntrico — no existe `/runs` ni ningún listado global. El listado real quedó
+> en `clientes/:id/ideas` (reemplazando el placeholder `ClienteIdeasPage`, que ya señalaba el hueco) y
+> el detalle en `clientes/:id/ideas/:ideaId`, siguiendo el mismo patrón que el tab hermano
+> `cliente-research.ts` (Vigencia, `paramMap` heredado, sin pedir el cliente de nuevo). No hay
+> selector de cliente en la pantalla de ideas: el cliente lo fija la URL, igual que en research.
 
-## Etapa 6 — Rutas, navegación y cierre
+- [x] **Listado, en `clientes/:id/ideas`** (no un `/ideas` global — ver desviación arriba). Filtro de
+      estado con signals/`computed`. Task 1 de `feature/modulo-ideas`, commit `340fb51`.
+- [x] **Detalle, en `clientes/:id/ideas/:ideaId`** (no `/ideas/:id`). El audio se ofrece como enlace a
+      `audio_url` (y `<audio>` si el navegador puede reproducirlo), nunca se sube nada. Task 2, commits
+      `f34eb24` + fix `c86e5aa`.
+- [x] La transcripción y el análisis se renderizan como texto/listas (por `Array.isArray` en runtime,
+      no por nombre de clave fijo). Nada de `innerHTML` — confirmado por el test estructural que
+      recorre `src/` completo.
+- [x] Aprobar/rechazar: acciones explícitas contra `ideas-transiciones.ts` (la máquina de estados del
+      portal, atada por test a `db/src/ideas.ts` con el mismo mecanismo de import en runtime que
+      `codigos.test.ts` — la primera versión de esa atadura era falsa, hallazgo de la revisión,
+      corregido). El servidor rechaza igual una transición inválida.
+- [x] Tests de componente (Karma): 136/136 (128 antes de esta etapa + 8 nuevos).
 
-- [ ] Rutas `loadComponent` bajo `authGuard`, item aditivo en `ITEMS_NAV` + su `.spec.ts`. **Sin
-      tocar** el `redirectTo: 'runs'`.
-- [ ] **Navegador** contra `npm run dev:server -w api`: listar, filtrar, abrir una idea, editarla,
-      aprobarla, intentar una transición inválida. **En tema claro y oscuro.** Consola sin errores.
-- [ ] Confirmar `/runs`, `/runs/:id` y `/cartera` intactas.
-- [ ] `npm test` + `npm run typecheck` desde la raíz, `npm test -w portal`,
-      `npm run test:components -w portal`, comparado con la línea base.
-- [ ] Auto-revisión adversarial, docs actualizadas (`09`, `11`), cifras sincronizadas, pieza marcada en
-      el [programa](2026-08-01-portal-agencia-programa.md).
-- [ ] **Informe de cierre con el hueco explícito:** el ingreso real no existe todavía. Decirlo en la
-      documentación y en la propia pantalla si hace falta ("las ideas entran por el flujo de audio —
-      pendiente de conectar"), para que nadie crea que está enchufado.
+## Etapa 6 — Rutas, navegación y cierre ✅ hecha el 2026-08-12
+
+- [x] Ruta `ideas/:ideaId` agregada como hija de `clientes/:id`, hereda `authGuard` del padre. El tab
+      "Ideas" ya estaba en `TABS_FICHA` desde el rediseño del 2026-08-11 (no hizo falta tocar
+      navegación de nivel superior). `app.routes.test.ts` actualizado.
+- [x] **Navegador**, verificado dos veces (por los implementadores por task, y por el controlador de
+      forma integrada al cerrar la etapa): listar, filtrar, abrir, editar, aprobar, rechazar,
+      transición inválida deshabilitada, tema claro y oscuro, consola sin errores propios. Un detalle
+      preexistente y no de esta pieza, encontrado y no corregido (no es de este diff): un id de idea
+      malformado (no-UUID) da un mensaje de error genérico y equivocado del `onError` compartido de
+      `api/src/app.ts` — con un UUID válido pero inexistente el 404 real dice correctamente "Idea no
+      encontrada."
+- [x] Confirmado intactas: `/clientes`, `/clientes/:id/perfil`, `/clientes/:id/research`,
+      `/clientes/:id/research/:runId`, `/cartera` (no hay `/runs` desde el rediseño del 2026-08-11).
+- [x] `npm test` + `npm run typecheck` desde la raíz: limpio, sin fallas nuevas. `npm test -w portal`:
+      265/262/3 (los 3 son el mismo bug preexistente de Windows). `npm run test:components -w portal`:
+      136/136.
+- [x] Docs actualizadas: `09-estado-y-roadmap.md`, `15-plan-plataforma.md` (que reemplazó al `11` como
+      plan activo), pieza marcada en la tabla del [programa](2026-08-01-portal-agencia-programa.md) vía
+      el estado en el `15`. Cifras sincronizadas.
+- [x] **El hueco explícito:** el ingreso real de ideas (n8n) no existe. Documentado acá y en
+      `09-estado-y-roadmap.md`; las 5 ideas que se ven en el portal son el seed de ejemplo
+      (`db/src/seed-ideas-demo.ts`), marcadas `[EJEMPLO]` en el propio título.
 
 ## Etapa 7 — Retirar el módulo de ideas mock de la pieza 1
 
