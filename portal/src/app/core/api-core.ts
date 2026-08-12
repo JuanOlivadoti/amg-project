@@ -4,6 +4,8 @@ import type {
   CambiosClienteAgencia,
   CambiosPagina,
   ClienteAgencia,
+  EstadoIdea,
+  IdeaResumen,
   Informe,
   Miembro,
   NuevoClienteAgencia,
@@ -145,6 +147,15 @@ export interface ClienteApi {
    */
   listarRuns(clientId?: string): Promise<RunSummary[]>;
   crearRun(nuevo: NuevoRun): Promise<string>;
+  /**
+   * Las ideas de un cliente, opcionalmente filtradas por `estado`.
+   *
+   * A diferencia de `listarRuns`, `clientId` no es opcional: este tab siempre cuelga de
+   * `/clientes/:id/ideas` y no hay pantalla que necesite la cartera entera, así que la interfaz no
+   * ofrece ese modo. Un `clientId` vacío **lanza**, mismo criterio que `listarRuns('')`: no es «sin
+   * filtro», es un id que no llegó (ver el test de `cliente-ideas.ts`).
+   */
+  listarIdeas(clientId: string, estado?: EstadoIdea): Promise<IdeaResumen[]>;
   verBrief(runId: string): Promise<Brief>;
   /**
    * El informe del run. **`informe_md: null` NO es un error**: es «todavía no hay informe» (o el rol no
@@ -275,6 +286,18 @@ export function crearApi(opts: ApiOpts): ClienteApi {
       const qs = clientId ? `?clientId=${encodeURIComponent(clientId)}` : '';
       const { runs } = await pedir<{ runs: RunSummary[] }>('GET', `/runs${qs}`);
       return runs;
+    },
+    async listarIdeas(clientId, estado) {
+      // Mismo motivo que `listarRuns('')`: un clientId vacío no filtra nada, así que sin esta guarda
+      // la query quedaría `?estado=…` a secas (o vacía del todo) y `GET /ideas` degradaría a la
+      // cartera entera — el módulo de ideas no expone ese modo desde este tab.
+      if (clientId === '') {
+        throw new Error('listarIdeas: clientId vacío. Este tab siempre necesita un cliente.');
+      }
+      const params = new URLSearchParams({ clientId });
+      if (estado) params.set('estado', estado);
+      const { ideas } = await pedir<{ ideas: IdeaResumen[] }>('GET', `/ideas?${params.toString()}`);
+      return ideas;
     },
     async crearRun(nuevo) {
       const { runId } = await pedir<{ runId: string }>('POST', '/runs', nuevo);

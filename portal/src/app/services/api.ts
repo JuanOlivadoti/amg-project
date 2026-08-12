@@ -22,6 +22,7 @@ export class ApiService {
   });
 
   readonly listarRuns = this.cliente.listarRuns;
+  readonly listarIdeas = this.cliente.listarIdeas;
   readonly crearRun = this.cliente.crearRun;
   readonly verBrief = this.cliente.verBrief;
   readonly verInforme = this.cliente.verInforme;

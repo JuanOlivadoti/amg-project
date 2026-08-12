@@ -209,6 +209,24 @@ export interface CambioRolMiembro {
   client_id?: string | null;
 }
 
+/** Los cuatro estados de una idea (`idea_estado`, migración 0013). Espeja `EstadoIdea` de `db/src/ideas.ts`. */
+export type EstadoIdea = 'nueva' | 'en_revision' | 'aprobada' | 'rechazada';
+
+/**
+ * El resumen RECORTADO de una idea, tal como lo devuelve `GET /ideas` (`IdeaResumenHttp` en
+ * `api/src/ideas-http.ts`). Sin `transcripcion` ni `analisis`: ese recorte lo hace el `select` de
+ * `listarIdeas` en la base, y este tipo solo describe lo que llega. El detalle completo (Task 2) es
+ * otro tipo, `IdeaDetalle`, que todavía no existe en el portal.
+ */
+export interface IdeaResumen {
+  id: string;
+  client_id: string;
+  titulo: string;
+  estado: EstadoIdea;
+  /** `timestamptz` → string ISO-8601 UTC, ya normalizado por `api/src/ideas-http.ts`. */
+  creada_en: string;
+}
+
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */
 export interface Sesion {
   accessToken: string;

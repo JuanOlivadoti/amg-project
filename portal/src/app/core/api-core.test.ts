@@ -84,6 +84,29 @@ test('🔴 listarRuns("") NO degrada a la lista global: lanza ANTES de salir a l
   assert.equal(capturado.url, undefined, 'no tenía que haber salido ninguna petición');
 });
 
+test('listarIdeas con clientId lo pasa como query', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ideas: [] } });
+  await crearApi(opts(fn)).listarIdeas('cli-1');
+  assert.equal(capturado.url, 'http://api.test/ideas?clientId=cli-1');
+});
+
+test('listarIdeas con estado lo agrega a la query, junto al clientId', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ideas: [] } });
+  await crearApi(opts(fn)).listarIdeas('cli-1', 'en_revision');
+  assert.equal(capturado.url, 'http://api.test/ideas?clientId=cli-1&estado=en_revision');
+});
+
+test('🔴 listarIdeas("") NO expone la cartera entera: lanza ANTES de salir a la red', async () => {
+  /*
+   * Mismo motivo que `listarRuns('')`, pero acá NO hay variante «sin clientId»: este tab siempre
+   * tiene un cliente (sale del `:id` de la ruta), así que la interfaz no ofrece un modo sin filtrar
+   * y un clientId vacío no puede significar «dame todo» — solo puede ser un id que no llegó.
+   */
+  const { fn, capturado } = fakeFetch({ body: { ideas: [] } });
+  await assert.rejects(() => crearApi(opts(fn)).listarIdeas(''), /clientId/);
+  assert.equal(capturado.url, undefined, 'no tenía que haber salido ninguna petición');
+});
+
 test('crearRun postea el cuerpo y devuelve el runId', async () => {
   const { fn, capturado } = fakeFetch({ status: 201, body: { runId: 'run-9' } });
   const runId = await crearApi(opts(fn)).crearRun({ clientId: 'cli-1', prompt: 'pizza' });
