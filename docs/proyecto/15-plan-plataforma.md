@@ -1156,14 +1156,14 @@ Nada de esto bloquea hoy; **todo bloquea un SLA**.
 encontró la review externa: apareció al contrastar el plan contra el `09`, que lo declara *en curso*
 desde el 2026-08-02 ([`09:5-9`](09-estado-y-roadmap.md#L5)).
 
-Es un programa de **cuatro piezas** y van **dos**:
+Es un programa de **cuatro piezas** y van **tres**:
 
 | Pieza | Qué | Estado |
 | --- | --- | --- |
 | 1 | **CRM de clientes** — listado, alta, perfil editable | ✅ mergeada el 2026-08-01 |
 | 2 | **Usuarios** — 6 etapas | ✅ mergeada el 2026-08-02 |
-| 3 | **Ideas** — módulo nuevo completo | 🟡 **en curso** ([plan](../superpowers/plans/2026-08-01-modulo-ideas-portal.md)). **Etapas 1–4 hechas**: la `0013`, `PgIdeas` y las transiciones (47 tests) y los tres endpoints con su borde HTTP (34 tests) el 2026-08-09; el **seed de ejemplo** (19 tests) el 2026-08-10. Las decisiones que el plan no fijaba están en las **tres notas de enmienda** al pie de las Etapas 2, 3 y 4 — versionadas a propósito, porque las tres veces vivían solo en un informe gitignoreado. **Falta 5–7** (pantallas y rutas; agente `front`). ✅ **Lo del «retirar el mock de ideas de la pieza 1» ya está hecho** (2026-08-11): se fue entero con `/clientes/:id/ver`, junto al de Instagram y al de reseñas. **Y las pantallas ya tienen dónde caer**: el tab `/clientes/:id/ideas`, hoy un placeholder que dice qué falta |
-| 4 | **Dashboard** — la home con métricas | 🔵 [plan escrito](../superpowers/plans/2026-08-01-dashboard-home-portal.md), sin empezar |
+| 3 | **Ideas** — módulo nuevo completo | ✅ **completa el 2026-08-12** ([plan](../superpowers/plans/2026-08-01-modulo-ideas-portal.md)). **Etapas 1–4** (`db`/`api`): la `0013`, `PgIdeas` y las transiciones (47 tests) y los tres endpoints con su borde HTTP (34 tests) el 2026-08-09; el **seed de ejemplo** (19 tests) el 2026-08-10. **Etapa 7** (retirar el mock de la pieza 1): hecha el 2026-08-11, junto con el rediseño de navegación. **Etapas 5–6** (pantallas, rutas, cierre): hechas el 2026-08-12 en `feature/modulo-ideas`, con `superpowers:subagent-driven-development` — listado en `clientes/:id/ideas`, detalle con edición y aprobar/rechazar en `clientes/:id/ideas/:ideaId`. Un hallazgo bloqueante real en la revisión (la atadura de la máquina de transiciones del portal contra `db/src/ideas.ts` no leía el archivo real), corregido y verificado por mutación. Portal: 265 `node:test` (262 + 3 del mismo bug preexistente de Windows en `codigos.test.ts`/`ideas-transiciones.test.ts`) + 136 Karma. Verificado en navegador, claro y oscuro. **El hueco que queda, a propósito y documentado:** el ingreso real de ideas (n8n) no existe — las que se ven son el seed de ejemplo. Detalle completo en `.superpowers/sdd/progress.md` |
+| 4 | **Dashboard** — la home con métricas | 🔵 [plan escrito](../superpowers/plans/2026-08-01-dashboard-home-portal.md), sin empezar — ya puede apoyarse en la pieza 3 completa |
 
 **El orden no es negociable: la 4 depende de la 3.** El dashboard es stats de ideas más una tabla de
 ideas, así que sin el modelo de la pieza 3 no hay nada que mostrar.
