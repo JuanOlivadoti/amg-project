@@ -23,6 +23,7 @@ export class ApiService {
 
   readonly listarRuns = this.cliente.listarRuns;
   readonly listarIdeas = this.cliente.listarIdeas;
+  readonly listarTodasLasIdeas = this.cliente.listarTodasLasIdeas;
   readonly obtenerIdea = this.cliente.obtenerIdea;
   readonly cambiarEstadoIdea = this.cliente.cambiarEstadoIdea;
   readonly editarIdea = this.cliente.editarIdea;
