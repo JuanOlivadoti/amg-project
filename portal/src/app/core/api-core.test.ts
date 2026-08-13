@@ -107,6 +107,20 @@ test('🔴 listarIdeas("") NO expone la cartera entera: lanza ANTES de salir a l
   assert.equal(capturado.url, undefined, 'no tenía que haber salido ninguna petición');
 });
 
+// ---------------------------------------------------------------- todas las ideas del tenant (dashboard)
+
+test('listarTodasLasIdeas() pide GET /ideas SIN clientId en el query string', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ideas: [] } });
+  await crearApi(opts(fn)).listarTodasLasIdeas();
+  assert.equal(capturado.url, 'http://api.test/ideas');
+});
+
+test('listarTodasLasIdeas(estado) agrega ?estado=… a la query', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ideas: [] } });
+  await crearApi(opts(fn)).listarTodasLasIdeas('en_revision');
+  assert.equal(capturado.url, 'http://api.test/ideas?estado=en_revision');
+});
+
 // ---------------------------------------------------------------- el detalle de una idea (Task 2)
 
 test('obtenerIdea pega a /ideas/:id y devuelve la idea', async () => {

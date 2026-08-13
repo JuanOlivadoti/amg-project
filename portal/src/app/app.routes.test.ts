@@ -419,6 +419,7 @@ test('usuarios y usuarios/:id son hijas del shell, y la home abre en clientes', 
   const hijos = (shell?.children ?? []).map((r) => r.path);
   assert.ok(hijos.includes('usuarios'), 'usuarios debe ser hija del shell (y del authGuard)');
   assert.ok(hijos.includes('usuarios/:id'), 'usuarios/:id debe ser hija del shell');
+  assert.ok(hijos.includes('inicio'), 'inicio debe ser hija del shell (y del authGuard)');
 
   // El default de la demo: si esto cambiara, el portal abriría en otra pantalla y la demo empezaría
   // en un lugar que nadie ensayó.

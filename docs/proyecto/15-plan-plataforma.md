@@ -42,7 +42,7 @@ pendientes, que se pueden hacer seguidas. El **C** es el único tramo del produc
 | **F** | Módulo 3 — reseñas de Google | Completar el alcance base | alcance |
 | **G** | Lo que ADR-19 dejó a medias | Un SLA | infraestructura |
 | **H** | Offboarding y OBS-04 | Firmar ADR-11 | comercial |
-| **J** | Piezas 3 y 4 del portal | Cerrar el programa del portal | ninguna: hay plan escrito |
+| **J** | Piezas 3 y 4 del portal | Cerrar el programa del portal | ✅ cerrado el 2026-08-13 |
 | **I** | Deuda menor, sin bloqueo | — | — |
 
 > **Enmendado el 2026-08-07 tras la 15ª review externa** (Codex). Cambió más de lo que parece: **A1**
@@ -1150,23 +1150,23 @@ Nada de esto bloquea hoy; **todo bloquea un SLA**.
 
 ---
 
-## Bloque J — el programa del portal: piezas 3 (Ideas) y 4 (Dashboard)
+## Bloque J — el programa del portal: piezas 3 (Ideas) y 4 (Dashboard) — CERRADO
 
 **Esto faltaba en la primera versión de este plan, y es el hueco más grande que tenía.** No lo
 encontró la review externa: apareció al contrastar el plan contra el `09`, que lo declara *en curso*
 desde el 2026-08-02 ([`09:5-9`](09-estado-y-roadmap.md#L5)).
 
-Es un programa de **cuatro piezas** y van **tres**:
+Era un programa de **cuatro piezas**, y las cuatro están **completas** (la última, el 2026-08-13):
 
 | Pieza | Qué | Estado |
 | --- | --- | --- |
 | 1 | **CRM de clientes** — listado, alta, perfil editable | ✅ mergeada el 2026-08-01 |
 | 2 | **Usuarios** — 6 etapas | ✅ mergeada el 2026-08-02 |
 | 3 | **Ideas** — módulo nuevo completo | ✅ **completa el 2026-08-12** ([plan](../superpowers/plans/2026-08-01-modulo-ideas-portal.md)). **Etapas 1–4** (`db`/`api`): la `0013`, `PgIdeas` y las transiciones (47 tests) y los tres endpoints con su borde HTTP (34 tests) el 2026-08-09; el **seed de ejemplo** (19 tests) el 2026-08-10. **Etapa 7** (retirar el mock de la pieza 1): hecha el 2026-08-11, junto con el rediseño de navegación. **Etapas 5–6** (pantallas, rutas, cierre): hechas el 2026-08-12 en `feature/modulo-ideas`, con `superpowers:subagent-driven-development` — listado en `clientes/:id/ideas`, detalle con edición y aprobar/rechazar en `clientes/:id/ideas/:ideaId`. Un hallazgo bloqueante real en la revisión (la atadura de la máquina de transiciones del portal contra `db/src/ideas.ts` no leía el archivo real), corregido y verificado por mutación. Portal: 265 `node:test` (262 + 3 del mismo bug preexistente de Windows en `codigos.test.ts`/`ideas-transiciones.test.ts`) + 136 Karma. Verificado en navegador, claro y oscuro. **El hueco que queda, a propósito y documentado:** el ingreso real de ideas (n8n) no existe — las que se ven son el seed de ejemplo. Detalle completo en `.superpowers/sdd/progress.md` |
-| 4 | **Dashboard** — la home con métricas | 🔵 [plan escrito](../superpowers/plans/2026-08-01-dashboard-home-portal.md), sin empezar — ya puede apoyarse en la pieza 3 completa |
+| 4 | **Dashboard** — la home con métricas | ✅ **completa el 2026-08-13** ([plan](../superpowers/plans/2026-08-01-dashboard-home-portal.md)). Tres tasks sobre `feature/dashboard-home`: `metricas.ts` (funciones puras) + `listarTodasLasIdeas` en `api-core.ts`; la pantalla `InicioPage` (seis tiles + tabla de últimas ideas, tres fuentes independientes en su falla); ruta `/inicio` + ítem primero en el sidebar + cierre. **No hizo falta ningún endpoint ni migración nueva** — se calcula todo en el cliente sobre lo que las piezas 1 y 3 ya exponían. El test de aislamiento de los conteos ya estaba cubierto por piezas anteriores con la misma forma de consulta; se confirmó en verde, no se duplicó. Drift resuelto con el usuario: el `redirectTo` de la puerta de entrada ya no es `runs` (retirado el 2026-08-11) sino `clientes` — esa es la regla que no se tocó. Verificado en navegador: datos reales, sin datos (ceros reales, no huecos), API caída (error explícito, sin pantalla en blanco), los dos temas. **Revisión final de integración de rama, cerrada el 2026-08-13**: `CAMBIOS_PEDIDOS` con 2 bloqueantes (cifras de tests desincronizadas, y el límite real de 5 filas sin test que lo distinguiera de otro número) + 4 Minor agrupados en el mismo commit (se borró `calcularMetricas` código muerto y sus tests, los tres signals `cargando*` write-only, se sumó el caso simétrico "clientes falla" y el guardarraíl de ruta de `inicio`). Portal, cifras finales: **282 `node:test` + 143 Karma**. Root: 1395/1395, sin regresiones. Detalle completo en `.superpowers/sdd/task-3-report.md` y `.superpowers/sdd/final-fix-report.md` |
 
-**El orden no es negociable: la 4 depende de la 3.** El dashboard es stats de ideas más una tabla de
-ideas, así que sin el modelo de la pieza 3 no hay nada que mostrar.
+**El programa del portal de la agencia queda cerrado con sus cuatro piezas.** Lo que sigue del portal
+es trabajo nuevo, no deuda de este programa.
 
 **Y explica un misterio del repo:** la migración **`0013` está reservada para Ideas**
 (`0013_ideas.sql`), que es la mitad de por qué `0013`/`0014` no se usan y la próxima libre es la

@@ -7,6 +7,12 @@
 > **Leé primero el [programa](2026-08-01-portal-agencia-programa.md).** Esta pieza es la última y la
 > más chica, pero es la que más fácil pisa la demo: toca la puerta de entrada del portal. La sección
 > [La trampa de esta pieza](#la-trampa-de-esta-pieza-la-puerta-de-entrada) es de lectura obligatoria.
+>
+> **PIEZA COMPLETA (2026-08-13).** Con una corrección de destino respecto a lo escrito acá: el
+> rediseño client-céntrico del 2026-08-11 cambió `redirectTo: 'runs'` por `redirectTo: 'clientes'`
+> — el route `/runs` global ya no existe. La regla de fondo (**no tocar el destino por defecto en
+> esta pieza**) se sostuvo tal cual, solo que apunta a `clientes`, no a `runs`. Decisión confirmada
+> con el usuario el 2026-08-13, ver `.superpowers/sdd/progress.md`.
 
 **Goal:** una pantalla de inicio que responda "cómo va la agencia hoy" de un vistazo. Origen:
 `dashboard-project/src/app/pages/dashboard` (181 líneas) + `stat-box` + `ideas-table` +
@@ -97,47 +103,56 @@ Las del [programa](2026-08-01-portal-agencia-programa.md#cómo-no-interrumpir-la
 
 ## Etapa 1 — Decidir y fijar las métricas
 
-- [ ] Confirmar la lista de tiles de la tabla de arriba contra lo que las piezas 1 y 3 dejaron
+- [x] Confirmar la lista de tiles de la tabla de arriba contra lo que las piezas 1 y 3 dejaron
       realmente construido. Si "briefs esperando aprobación" no se puede obtener con los endpoints que
-      existen, decidir: ¿se agrega el conteo a la API o se calcula de `GET /runs`?
-- [ ] Escribir el módulo de cálculo en `portal/src/app/pages/inicio/metricas.ts` con **funciones puras**
+      existen, decidir: ¿se agrega el conteo a la API o se calcula de `GET /runs`? — se calcula en el
+      cliente, de `GET /runs` sin filtro; no hizo falta ningún endpoint nuevo.
+- [x] Escribir el módulo de cálculo en `portal/src/app/pages/inicio/metricas.ts` con **funciones puras**
       (entran las filas, salen los números) y sus tests en `node:test`. Puro para que sea testeable sin
       Angular, como el resto de la lógica del portal.
-- [ ] **Rojo primero** en `metricas.test.ts`: los conteos por estado con listas vacías, con un solo
+- [x] **Rojo primero** en `metricas.test.ts`: los conteos por estado con listas vacías, con un solo
       elemento, y con estados repetidos; que un estado desconocido no se cuente en silencio en otro
       grupo (si llega `'aprovada'`, el total no cuadra y hay que verlo, no absorberlo).
 
 ## Etapa 2 — La pantalla
 
-- [ ] `portal/src/app/pages/inicio/inicio.ts`: los tiles con `app-stat-box` (ya existe) y la tabla de
-      últimas ideas reutilizando el componente de la pieza 3 — **sin duplicarlo**.
-- [ ] Los datos se cargan con los servicios de las piezas 1 y 3; los derivados son `computed`, no
+- [x] `portal/src/app/pages/inicio/inicio.ts`: los tiles con `app-stat-box` (ya existe) y la tabla de
+      últimas ideas reutilizando el componente de la pieza 3 — **sin duplicarlo**. (No hay componente
+      de tabla separado en la pieza 3 para reusar — `cliente-ideas.ts` la pinta inline, con filtros y
+      paginación que esta tile no necesita — así que la tabla de "últimas ideas" es markup propio y
+      chico en `inicio.ts`, documentado en el código.)
+- [x] Los datos se cargan con los servicios de las piezas 1 y 3; los derivados son `computed`, no
       `effect`.
-- [ ] Estados de carga y de error explícitos: una home que se queda en blanco cuando la API falla es
+- [x] Estados de carga y de error explícitos: una home que se queda en blanco cuando la API falla es
       peor que un mensaje. Y si un módulo falla, **los otros tiles se siguen mostrando** (un
       enhancement no puede tumbar la página que enriquece — el mismo criterio que el renderizador aplica
       con la nav).
-- [ ] Test de componente (Karma) del render de los tiles y del caso "sin datos".
+- [x] Test de componente (Karma) del render de los tiles y del caso "sin datos".
 
 ## Etapa 3 — Rutas, navegación y cierre
 
-- [ ] Ruta `loadComponent` bajo `authGuard` dentro del `AppShellComponent`, en `/inicio` (o
-      `/dashboard`). **`redirectTo: 'runs'` intacto.**
-- [ ] Item aditivo en `ITEMS_NAV` de `app-sidebar.ts` + su `.spec.ts`. Va **primero** en el orden del
+- [x] Ruta `loadComponent` bajo `authGuard` dentro del `AppShellComponent`, en `/inicio`.
+      **`redirectTo: 'clientes'` intacto** (target actualizado respecto al `runs` original, ver nota
+      de cierre arriba).
+- [x] Item aditivo en `ITEMS_NAV` de `app-sidebar.ts` + su `.spec.ts`. Va **primero** en el orden del
       menú (es una home), aunque no sea la ruta por defecto.
-- [ ] **Test de aislamiento de los conteos:** dos tenants con datos distintos; los números de uno no
-      incluyen nada del otro. Si se agregó un endpoint de métricas, el test va contra el endpoint;
-      si se calcula en el cliente, va contra los endpoints que lo alimentan.
-- [ ] **Navegador** contra `npm run dev:server -w api`: ver la home con datos, con datos vacíos, y con
+- [x] **Test de aislamiento de los conteos:** dos tenants con datos distintos; los números de uno no
+      incluyen nada del otro. Se calcula en el cliente, así que el test va contra los TRES endpoints
+      que lo alimentan — ya cubiertos por piezas anteriores, con la misma forma de consulta (sin
+      filtro) que usa el dashboard: `api/src/ideas.test.ts:176`, `api/src/app.test.ts:409`,
+      `api/src/app.test.ts:578`. Confirmados en verde puntualmente en el cierre de esta etapa, no
+      duplicados.
+- [x] **Navegador** contra `npm run dev:server -w api`: ver la home con datos, con datos vacíos, y con
       la API caída (parar el `dev-server` y recargar). **En tema claro y oscuro.** Consola sin errores.
-- [ ] Confirmar que `/runs` sigue siendo la puerta de entrada: entrar a `/` y verificar que aterriza en
-      Research, no en la home nueva.
-- [ ] `npm test` + `npm run typecheck` desde la raíz, `npm test -w portal`,
+- [x] Confirmar que `/clientes` sigue siendo la puerta de entrada: entrar a `/` y verificar que
+      redirige a Clientes, no a la home nueva.
+- [x] `npm test` + `npm run typecheck` desde la raíz, `npm test -w portal`,
       `npm run test:components -w portal`, comparado con la línea base.
-- [ ] Auto-revisión adversarial, docs (`09`, `11`) actualizadas, cifras sincronizadas, pieza marcada en
+- [x] Auto-revisión adversarial, docs (`09`, `15`) actualizadas, cifras sincronizadas, pieza marcada en
       el [programa](2026-08-01-portal-agencia-programa.md).
-- [ ] **En el informe de cierre**, dos preguntas para Juan: (a) ¿la home pasa a ser la ruta por
+- [x] **En el informe de cierre**, dos preguntas para Juan: (a) ¿la home pasa a ser la ruta por
       defecto, ahora que existe?; (b) ¿algún tile sobra o falta después de verla con datos reales?
+      Ver `.superpowers/sdd/task-3-report.md`.
 
 ## Riesgos y cómo se cierran
 
