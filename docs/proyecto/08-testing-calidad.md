@@ -21,9 +21,9 @@ sin cuenta.
 
 > Las cifras de esta tabla se miden con `npm run verificar`, que las cuenta de la salida de
 > `node:test`. Si no coinciden, la que está mal es la tabla. Última medición: **2026-08-13** —
-> `npx tsc --noEmit` limpio, `npm test` (`node:test`) y `npm run test:components` (Karma) del
-> portal, y `npm test` + `npm run typecheck` de la raíz, al cierre de la revisión final de
-> integración de la Pieza 4 (2 bloqueantes + 4 minor arreglados en el mismo commit).
+> `npm run verificar -- --con-portal` en verde de punta a punta (typecheck, 1395 tests del monorepo,
+> 282 `node:test` del portal), más `npm run test:components` (Karma, 143) aparte, al cierre de la
+> revisión final de integración de la Pieza 4 (2 bloqueantes + 4 minor arreglados en el mismo commit).
 
 | Paquete | Tests | Qué cubre |
 |---|---|---|

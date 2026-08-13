@@ -110,8 +110,8 @@ describe('InicioPage', () => {
   it('con las tres fuentes resolviendo datos: los 6 tiles muestran los números correctos y la tabla las filas esperadas', async () => {
     // 7 ideas, no 5: con exactamente 5 de entrada un límite de 5, 10 o 100 pintan la misma tabla y
     // el test no podría distinguirlos (el hallazgo del bloqueante 2 de la revisión de integración).
-    // i6 e i7 quedan afuera de la tabla — eso fija el límite real de `ultimasIdeasCon` en
-    // `inicio.ts`, no el default (muerto) de `calcularMetricas`.
+    // i6 e i7 quedan afuera de la tabla — eso fija el límite real que corre en producción, el
+    // literal `5` del sitio de llamada en `inicio.ts`.
     const ideas = [
       ideaDePrueba({ id: 'i1', estado: 'nueva' }),
       ideaDePrueba({ id: 'i2', estado: 'nueva' }),
