@@ -414,7 +414,7 @@ test('🔴 el barrido de app.config.ts descarta los comentarios: si no, la prosa
   assert.match(sinComentarios(bueno), /withRouterConfig\(\{ paramsInheritanceStrategy: 'always' \}\)/);
 });
 
-test('usuarios y usuarios/:id son hijas del shell, y la home abre en clientes', () => {
+test('usuarios y usuarios/:id son hijas del shell, y la home abre en inicio', () => {
   const shell = routes.find((r) => r.path === '' && r.children);
   const hijos = (shell?.children ?? []).map((r) => r.path);
   assert.ok(hijos.includes('usuarios'), 'usuarios debe ser hija del shell (y del authGuard)');
@@ -423,10 +423,12 @@ test('usuarios y usuarios/:id son hijas del shell, y la home abre en clientes', 
 
   // El default de la demo: si esto cambiara, el portal abriría en otra pantalla y la demo empezaría
   // en un lugar que nadie ensayó.
-  // El default cambió de `runs` a `clientes` cuando Research dejó el menú: la home del portal es
-  // ahora la cartera de clientes, que es por donde empieza cualquier recorrido.
+  // El default pasó de `clientes` a `inicio` el 2026-08-13, decisión de Juan al cerrar la Pieza 4
+  // (Dashboard) — la pregunta quedó abierta a propósito en el informe de cierre, y esta es la
+  // respuesta. `clientes` sigue siendo por donde empieza el recorrido de un cliente puntual, solo
+  // que ya no es lo primero que se ve al entrar.
   const raiz = (shell?.children ?? []).find((r) => r.path === '');
-  assert.equal(raiz?.redirectTo, 'clientes');
+  assert.equal(raiz?.redirectTo, 'inicio');
   assert.equal(raiz?.pathMatch, 'full');
 });
 

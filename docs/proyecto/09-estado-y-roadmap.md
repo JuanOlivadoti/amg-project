@@ -79,9 +79,19 @@
 > `{ideas:[]}`/`{clientes:[]}`/`{runs:[]}`, ya que el seed de demo no trae un tenant vacío), la API
 > caída (los tres bloques muestran su error, sin pantalla en blanco, solo los `ERR_CONNECTION_REFUSED`
 > esperados en consola), y los dos temas. Portal (al integrar los tres tasks): 284 `node:test` + 142
-> Karma. Root: sin regresiones. **Dos preguntas para Juan, sin responder acá a propósito:** (a)
-> ¿`/inicio` pasa a ser la ruta por defecto ahora que existe?; (b) ¿algún tile sobra o falta después
-> de verla con datos reales? Detalle completo en `.superpowers/sdd/task-3-report.md`.
+> Karma. Root: sin regresiones. Tras el cierre: revisión final de rama con 2 bloqueantes reales
+> (cifras de doc desincronizadas, un límite de producción de "5 filas" sin test) + 4 Minor, todos
+> cerrados y reverificados por mutación — **APROBADA, mergeada a `main` el 2026-08-13**. Portal final:
+> 282 `node:test` + 143 Karma.
+>
+> **La primera de las dos preguntas para Juan, respondida (2026-08-13): sí, `/inicio` pasa a ser la
+> ruta por defecto.** `redirectTo: 'clientes'` → `'inicio'` en `app.routes.ts` (el `''` de la raíz del
+> shell), y el post-login de `login.ts` actualizado igual — son dos decisiones sobre el mismo
+> aterrizaje y `app.routes.test.ts` las ata para que no se desincronicen. El comodín `**` sigue en
+> `clientes`, a propósito: es una decisión distinta (dónde cae una URL que no existe, no dónde abre el
+> portal). Verificado en el navegador: `/` aterriza en `/inicio` con datos reales. **La segunda queda
+> abierta:** ¿algún tile sobra o falta después de verla con datos reales? Detalle completo en
+> `.superpowers/sdd/task-3-report.md`.
 >
 > El [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md)
 > queda con sus **cuatro piezas completas**: **1 (CRM de clientes)**, **2 (usuarios)**, **3 (Ideas)** y

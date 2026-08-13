@@ -113,14 +113,12 @@ export const routes: Routes = [
         path: 'inicio',
         loadComponent: () => import('./pages/inicio/inicio').then((m) => m.InicioPage),
       },
-      // La home del portal es la cartera de clientes desde que Research dejó el menú: ya no hay
-      // ninguna pantalla global de research a la que abrir, y `clientes` es por donde empieza
-      // cualquier recorrido (de ahí se entra a la ficha, y de la ficha a su research).
-      //
-      // `/inicio` (arriba) existe como pantalla propia desde la Pieza 4 (Dashboard, 2026-08-13) pero
-      // NO es el destino por defecto: es una decisión de producto explícita, no un descuido — ver
-      // la pregunta abierta para Juan en el informe de cierre de esa pieza.
-      { path: '', pathMatch: 'full', redirectTo: 'clientes' },
+      // La home del portal es `/inicio` desde el 2026-08-13: decisión de Juan al cerrar la Pieza 4
+      // (Dashboard), en respuesta a la pregunta que el informe de cierre dejó abierta a propósito.
+      // Antes era `clientes` (desde que Research dejó el menú, sin pantalla global a la que abrir);
+      // `clientes` sigue siendo por donde empieza cualquier recorrido de un cliente puntual, solo
+      // que ya no es lo primero que se ve al entrar.
+      { path: '', pathMatch: 'full', redirectTo: 'inicio' },
     ],
   },
   { path: '**', redirectTo: 'clientes' },

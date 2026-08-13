@@ -58,18 +58,18 @@ async function entrar(fixture: ComponentFixture<LoginPage>, el: HTMLElement): Pr
 }
 
 describe('LoginPage', () => {
-  it('🔴 entrar aterriza en la home del portal (/clientes), no en la ruta retirada /runs', async () => {
+  it('🔴 entrar aterriza en la home del portal (/inicio), no en la ruta retirada /runs', async () => {
     const login = jasmine.createSpy('login').and.resolveTo(undefined);
     const { fixture, el, router } = await montar(login);
 
     await entrar(fixture, el);
 
     expect(login).toHaveBeenCalledWith('ana@amg.es', 'secreta');
-    expect(router.navigate).toHaveBeenCalledWith(['/clientes']);
+    expect(router.navigate).toHaveBeenCalledWith(['/inicio']);
   });
 
   it('si el login falla no navega a ningún lado y muestra el error en pantalla', async () => {
-    // La otra mitad del contrato: sin esto, «navega a /clientes» se podría cumplir navegando SIEMPRE
+    // La otra mitad del contrato: sin esto, «navega a /inicio» se podría cumplir navegando SIEMPRE
     // —incluido con las credenciales mal— y el usuario entraría al portal sin sesión.
     const login = jasmine.createSpy('login').and.rejectWith(new Error('Credenciales inválidas'));
     const { fixture, el, router } = await montar(login);

@@ -77,7 +77,7 @@ export class LoginPage {
       // `app.routes.ts`: son dos decisiones sobre el mismo aterrizaje. Estuvo en `/runs` después de
       // que esa ruta se retirara, y no se notó porque el comodín `**` la recogía — aterrizaba bien
       // por accidente del catch-all. Lo atan `app.routes.test.ts` y `login.spec.ts`.
-      await this.router.navigate(['/clientes']);
+      await this.router.navigate(['/inicio']);
     } catch (e) {
       this.error.set((e as Error).message);
     } finally {
