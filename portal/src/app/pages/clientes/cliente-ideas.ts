@@ -5,17 +5,8 @@ import { DatePipe } from '@angular/common';
 import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
 import type { EstadoIdea, IdeaResumen } from '../../core/models';
+import { ESTADOS_IDEA, ETIQUETA_ESTADO_IDEA, claseEstadoIdea } from '../../core/ideas-estado';
 import { Vigencia } from '../../core/vigencia';
-
-/** Los cuatro estados posibles, en el orden en que se ofrecen en el filtro. Espeja `ESTADOS_IDEA` de `db/src/ideas.ts` (el portal no la importa — ADR-21 — así que se repite acá). */
-const ESTADOS_IDEA: readonly EstadoIdea[] = ['nueva', 'en_revision', 'aprobada', 'rechazada'];
-
-const ETIQUETA: Record<EstadoIdea, string> = {
-  nueva: 'Nueva',
-  en_revision: 'En revisión',
-  aprobada: 'Aprobada',
-  rechazada: 'Rechazada',
-};
 
 /**
  * El tab Ideas de la ficha del cliente: el listado RECORTADO de `GET /ideas`, solo lectura.
@@ -178,13 +169,10 @@ export class ClienteIdeasPage implements OnInit, OnDestroy {
   }
 
   etiqueta(s: EstadoIdea): string {
-    return ETIQUETA[s];
+    return ETIQUETA_ESTADO_IDEA[s];
   }
 
   estadoClase(s: EstadoIdea): string {
-    if (s === 'aprobada') return 'bg-respaldo-suave text-respaldo';
-    if (s === 'rechazada') return 'bg-error-suave text-error';
-    if (s === 'en_revision') return 'bg-alerta-suave text-alerta';
-    return 'bg-superficie-2 text-texto-medio'; // nueva
+    return claseEstadoIdea(s);
   }
 }

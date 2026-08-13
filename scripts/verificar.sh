@@ -23,10 +23,10 @@ ok()   { printf "${VERDE}[OK]${NC}    %s\n" "$1"; }
 warn() { printf "${AMARILLO}[AVISO]${NC} %s\n" "$1"; }
 fail() { printf "${ROJO}[FALLA]${NC} %s\n" "$1"; }
 
-LOG_TYPECHECK=$(mktemp -t amg-verificar-typecheck)
-LOG_TEST=$(mktemp -t amg-verificar-test)
-LOG_PORTAL=$(mktemp -t amg-verificar-portal)
-LOG_SECRETOS=$(mktemp -t amg-verificar-secretos)
+LOG_TYPECHECK=$(mktemp -t amg-verificar-typecheck.XXXXXX)
+LOG_TEST=$(mktemp -t amg-verificar-test.XXXXXX)
+LOG_PORTAL=$(mktemp -t amg-verificar-portal.XXXXXX)
+LOG_SECRETOS=$(mktemp -t amg-verificar-secretos.XXXXXX)
 trap 'rm -f "$LOG_TYPECHECK" "$LOG_TEST" "$LOG_PORTAL" "$LOG_SECRETOS"' EXIT
 
 SALIDA=0

@@ -18,13 +18,45 @@
 > hardcodeado dentro del mismo archivo — nunca leía la base. Corregido con el mismo mecanismo de
 > `codigos.test.ts` (import en runtime del archivo real) y verificado por mutación de verdad (se mutó
 > `db/src/ideas.ts` a mano, se confirmó que el test cae, se revirtió). Portal: **265 tests** `node:test`
-> (262 pass + 3 con el mismo bug preexistente de Windows en `import()` de ruta absoluta — subió de 2 a
-> 3 porque el test corregido ahora usa ese mismo patrón, documentado, no es una regresión de lógica) +
-> **136 Karma**. Verificado también en el navegador (API real sobre PGlite, MCP chrome-devtools):
+> (entonces, 262 pasaban y 3 caían por el bug de Windows en `import()` de ruta absoluta — **corregido
+> del todo el 2026-08-13**, ver el bloque de abajo) + **136 Karma**. Verificado también en el
+> navegador (API real sobre PGlite, MCP chrome-devtools):
 > listar, filtrar, abrir, editar, aprobar, rechazar, transición inválida deshabilitada, claro y
 > oscuro, consola sin errores propios. **El hueco explícito, documentado y no oculto:** el ingreso
 > real de ideas (flujo de audio por n8n) sigue sin existir — las 5 ideas que se ven son el seed de
 > ejemplo. Detalle en [Bloque J](15-plan-plataforma.md#bloque-j--el-programa-del-portal-piezas-3-ideas-y-4-dashboard).
+>
+> 🧭 **Nuevo (2026-08-13): la deuda no bloqueante que quedó abierta al cerrar la pieza 3, resuelta.**
+> Eran tres cosas, las tres reales:
+>
+> 1. **`npm test` de la raíz estaba en rojo** (12 fallos: 4 en `db/src/cartera-portal.test.ts`, 8 en
+>    `web-builder`'s paridad). Los 4 de `db` eran el MISMO bug que ya se había corregido en
+>    `codigos.test.ts` e `ideas-transiciones.test.ts` — un `import()` con un path crudo de Windows en
+>    vez de `pathToFileURL(...).href` — y no se había propagado a este tercer archivo. Corregido igual.
+>    Los 8 de `web-builder` no eran del render: las fixtures de paridad (`.html`, comparadas byte a
+>    byte contra el JSON-LD que emite Node, que siempre usa `\n`) se traían con `\r\n` al clonar en
+>    Windows por `core.autocrlf=true` sin que ningún `.gitattributes` las excluyera. Arreglado con un
+>    `.gitattributes` scoped a `web-builder/src/render/paridad/fixtures/*.html` (`text eol=lf`) — la
+>    fixture que arreglé por accidente. **Con eso, `npm test --workspaces` dejó de cortar en rojo, y
+>    por primera vez en esta máquina corrió la segunda mitad del comando (`&&
+>    node --test scripts/*.test.mts`) — que reveló 2 fallos MÁS, enmascarados hasta ahora**: el mismo
+>    bug de Windows, pero con `.pathname` en vez de `import()` crudo, en `scripts/contar-tests.test.mts`
+>    (un `cwd` de `spawnSync`) y `scripts/paquetes.test.mts` (un `readFileSync`, daba
+>    `C:\C:\Users\...`). Corregidos con `fileURLToPath`. **`npm test` de la raíz: 1395/1395, exit 0.**
+> 2. **`scripts/verificar.sh` no corría en este Git Bash.** `mktemp -t nombre` sin una plantilla
+>    `XXXXXX` es válido en Linux/macOS pero no acá — fallaba con "too few X's" y tiraba abajo las
+>    secciones 3 y 4 (secretos, typecheck) con un `cannot open ''`. Arreglado agregando `.XXXXXX` a las
+>    cuatro plantillas. `npm run verificar -- --con-portal` corre limpio de punta a punta: entorno,
+>    arnés, secretos, typecheck, **1395 tests del monorepo, 265 del portal**.
+> 3. **M3 de la revisión final de la pieza 3** (el vocabulario de estados de Ideas duplicado entre
+>    `cliente-ideas.ts` y `cliente-idea-detalle.ts`). Extraído a `portal/src/app/core/ideas-estado.ts`
+>    — `ESTADOS_IDEA`, `ETIQUETA_ESTADO_IDEA`, `claseEstadoIdea()` — que ambas pantallas importan.
+>    `ESTADOS_IDEA` ya no es una tercera copia a mano: se deriva de `TRANSICIONES_IDEA`
+>    (`ideas-transiciones.ts`), que ya está atada a `db/src/ideas.ts` por test.
+>
+> Con las tres cerradas, **el arnés (`npm run verificar`) da verde de punta a punta en esta máquina**
+> por primera vez: **1395 tests del monorepo + 265 `node:test` del portal + 138 Karma**, typecheck y
+> secretos limpios. Ningún fallo pendiente conocido.
 >
 > Sigue abierto, de antes: el
 > [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md) —

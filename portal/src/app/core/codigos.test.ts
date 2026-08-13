@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as portal from './codigos';
 
 /**
@@ -24,7 +24,15 @@ import * as portal from './codigos';
  * el typecheck del portal no se lleva medio `api/` por delante. Solo `tsx` la sigue, al correr el test.
  */
 
-/** Ruta armada en runtime: `tsc` no la sigue, `tsx` sí. Ver el encabezado. */
+/**
+ * Ruta armada en runtime: `tsc` no la sigue, `tsx` sí. Ver el encabezado.
+ *
+ * `RUTA_API` (el path crudo, para el mensaje de error) y la URL que de verdad se le pasa a
+ * `import()` no son la misma cadena: pasar un path absoluto crudo (`C:\...`) directo a `import()`
+ * lanza en Windows ("Only URLs with a scheme in: file, data, and node are supported"). Por eso acá
+ * se usa `pathToFileURL(RUTA_API).href` y no `RUTA_API` a secas — el mismo defecto que tenía
+ * `db/src/cartera-portal.test.ts` hasta que se corrigió.
+ */
 const RUTA_API = fileURLToPath(new URL('../../../../api/src/codigos.ts', import.meta.url));
 
 interface ModuloCodigos {
@@ -34,7 +42,7 @@ interface ModuloCodigos {
 
 const cargarApi = async (): Promise<ModuloCodigos> => {
   try {
-    return (await import(RUTA_API)) as ModuloCodigos;
+    return (await import(pathToFileURL(RUTA_API).href)) as ModuloCodigos;
   } catch (e) {
     throw new Error(
       `no pude cargar los códigos de la API en ${RUTA_API}: ${(e as Error).message}\n` +

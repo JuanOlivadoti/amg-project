@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /*
  * `npm test` y `npm run typecheck` de la raíz corren con `--workspaces --if-present`: un paquete que
@@ -10,7 +11,10 @@ import { join } from "node:path";
  *
  * Lo pidió la 14ª review externa, que lo encontró como riesgo del paquete `contrato/`.
  */
-const raiz = new URL("..", import.meta.url).pathname;
+// `fileURLToPath`, no `.pathname`: en Windows el pathname trae la barra inicial delante de la
+// unidad (`/C:/...`), y `join("/C:/...", "package.json")` da `C:\C:\...` — mismo defecto que ya
+// tenían las ataduras por `import()` de otros archivos, acá en un `readFileSync`.
+const raiz = fileURLToPath(new URL("..", import.meta.url));
 const workspaces = JSON.parse(readFileSync(join(raiz, "package.json"), "utf8")).workspaces as string[];
 
 test("todo workspace declara `test` y `typecheck`", () => {

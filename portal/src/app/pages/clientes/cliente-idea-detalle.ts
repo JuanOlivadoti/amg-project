@@ -5,15 +5,8 @@ import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
 import type { EstadoIdea, IdeaDetalle } from '../../core/models';
 import { transicionesDesde } from '../../core/ideas-transiciones';
+import { ETIQUETA_ESTADO_IDEA, claseEstadoIdea } from '../../core/ideas-estado';
 import { Vigencia } from '../../core/vigencia';
-
-/** Espeja `ETIQUETA` de `cliente-ideas.ts` — se duplica porque ese archivo está cerrado (Task 1). */
-const ETIQUETA_ESTADO: Record<EstadoIdea, string> = {
-  nueva: 'Nueva',
-  en_revision: 'En revisión',
-  aprobada: 'Aprobada',
-  rechazada: 'Rechazada',
-};
 
 /** El texto del botón para CADA transición posible. `nueva` no aparece: nada transiciona hacia ahí. */
 const ETIQUETA_ACCION: Partial<Record<EstadoIdea, string>> = {
@@ -104,7 +97,7 @@ interface EntradaAnalisis {
           <div class="flex items-center justify-between gap-3">
             <h2 class="text-lg font-semibold text-texto">{{ i.titulo }}</h2>
             <span class="text-xs shrink-0 rounded-full px-2 py-0.5" [class]="estadoClase(i.estado)">
-              {{ ETIQUETA_ESTADO[i.estado] }}
+              {{ ETIQUETA_ESTADO_IDEA[i.estado] }}
             </span>
           </div>
 
@@ -273,7 +266,7 @@ export class ClienteIdeaDetallePage implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
 
-  readonly ETIQUETA_ESTADO = ETIQUETA_ESTADO;
+  readonly ETIQUETA_ESTADO_IDEA = ETIQUETA_ESTADO_IDEA;
   readonly ETIQUETA_ACCION = ETIQUETA_ACCION;
 
   /** Ver el docblock de la clase: la clave de vigencia es la IDEA, no el cliente. */
@@ -376,10 +369,7 @@ export class ClienteIdeaDetallePage implements OnInit, OnDestroy {
   }
 
   estadoClase(s: EstadoIdea): string {
-    if (s === 'aprobada') return 'bg-respaldo-suave text-respaldo';
-    if (s === 'rechazada') return 'bg-error-suave text-error';
-    if (s === 'en_revision') return 'bg-alerta-suave text-alerta';
-    return 'bg-superficie-2 text-texto-medio'; // nueva
+    return claseEstadoIdea(s);
   }
 
   /** Mueve la idea al estado `hacia`. Un PATCH `{ estado }` únicamente — ver el docblock de la clase. */

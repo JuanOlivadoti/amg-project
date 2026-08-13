@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { contarTests } from "./contar-tests.mts";
 
 /*
@@ -100,8 +101,11 @@ test("🔴 el CLI sale con código distinto de 0 cuando no puede contar", () => 
   const log = join(dir, "sin-resumen.txt");
   writeFileSync(log, "✔ un test que pasa (0.2ms)\n");
 
+  // `fileURLToPath`, no `.pathname`: en Windows el pathname trae la barra inicial delante de la
+  // unidad (`/C:/...`), que no es un path válido — mismo defecto que ya tenían las ataduras por
+  // `import()`, acá en un `cwd` de `spawnSync`.
   const r = spawnSync(process.execPath, ["--import", "tsx", "contar-tests.mts", log], {
-    cwd: new URL(".", import.meta.url).pathname,
+    cwd: fileURLToPath(new URL(".", import.meta.url)),
     encoding: "utf8",
   });
 

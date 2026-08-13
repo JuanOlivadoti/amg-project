@@ -1,0 +1,5 @@
+# Estas fixtures se comparan byte a byte contra el HTML que emite el render (siempre con `\n`,
+# porque así lo escribe Node). Sin esto, `core.autocrlf=true` en Windows las trae con `\r\n` al
+# clonar y paridad.test.ts falla por línea de final, no por contenido — 8 falsos negativos que no
+# tienen nada que ver con el render. Ver web-builder/src/render/paridad/paridad.test.ts.
+*.html text eol=lf

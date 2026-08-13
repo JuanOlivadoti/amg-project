@@ -38,7 +38,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   CALIDAD_DATOS_DEMO,
   COSTE_MICROS_DEMO,
@@ -78,12 +78,19 @@ interface MockDelPortal {
   };
 }
 
-/** Ruta armada en runtime: `tsc` no la sigue, `tsx` sí. Ver el encabezado. */
+/**
+ * Ruta armada en runtime: `tsc` no la sigue, `tsx` sí. Ver el encabezado.
+ *
+ * `RUTA_MOCK` (el path crudo, para el mensaje de error) y la URL que de verdad se le pasa a
+ * `import()` no son la misma cadena: pasar un path absoluto crudo (`C:\...`) directo a `import()`
+ * lanza en Windows ("Only URLs with a scheme in: file, data, and node are supported"). Por eso acá
+ * se usa `pathToFileURL(RUTA_MOCK).href` y no `RUTA_MOCK` a secas.
+ */
 const RUTA_MOCK = fileURLToPath(new URL("../../portal/src/app/core/cartera-mock.ts", import.meta.url));
 
 const cargarMock = async (): Promise<MockDelPortal> => {
   try {
-    return (await import(RUTA_MOCK)) as MockDelPortal;
+    return (await import(pathToFileURL(RUTA_MOCK).href)) as MockDelPortal;
   } catch (e) {
     throw new Error(
       `no pude cargar el mock del dashboard en ${RUTA_MOCK}: ${(e as Error).message}\n` +
