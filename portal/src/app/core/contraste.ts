@@ -7,7 +7,7 @@
  */
 
 /**
- * Los 17 nombres de rol. Si se agrega uno, va acá y a **los tres** bloques de `styles.css`: claro,
+ * Los 18 nombres de rol. Si se agrega uno, va acá y a **los tres** bloques de `styles.css`: claro,
  * oscuro y **papel** (`@media print`, desde el 2026-08-07). El de papel no es decorativo — el navegador
  * no imprime fondos, así que sin él el texto del tema oscuro sale a **1.10:1** sobre hoja blanca, y el
  * PDF *es* el entregable del restaurante.
@@ -23,6 +23,7 @@ export const TOKENS: readonly string[] = [
   'borde',
   'borde-fuerte',
   'accion',
+  'accion-suave',
   'respaldo',
   'respaldo-suave',
   'alerta',
@@ -52,6 +53,7 @@ export const PARES: readonly (readonly [string, string])[] = [
   ['texto-tenue', 'fondo'],
   ['texto-invertido', 'accion'],
   ['texto-invertido', 'respaldo'],
+  ['accion', 'accion-suave'], // el ítem activo del sidebar
   ['respaldo', 'respaldo-suave'], // el badge ✅
   ['respaldo', 'fondo'], // el TÍTULO ✅, que va sobre el fondo de página
   ['alerta', 'alerta-suave'], // el badge ⚠️

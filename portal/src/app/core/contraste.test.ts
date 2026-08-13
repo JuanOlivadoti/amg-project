@@ -80,7 +80,7 @@ test('🔴 los tres temas definen exactamente los mismos tokens', () => {
   }
 });
 
-test('🔴 los 17 pares de la UI llegan a AA en los tres temas', () => {
+test('🔴 los 18 pares de la UI llegan a AA en los tres temas', () => {
   for (const [nombre, tokens] of TEMAS) {
     for (const [frente, fondo] of PARES) {
       const a = tokens[frente];

@@ -11,6 +11,7 @@
   --color-borde: var(--borde);
   --color-borde-fuerte: var(--borde-fuerte);
   --color-accion: var(--accion);
+  --color-accion-suave: var(--accion-suave);
   --color-respaldo: var(--respaldo);
   --color-respaldo-suave: var(--respaldo-suave);
   --color-alerta: var(--alerta);
@@ -58,7 +59,8 @@
   --texto-invertido: #ffffff;
   --borde: #e5e7eb;
   --borde-fuerte: #d1d5db;
-  --accion: #111827;
+  --accion: #1d4ed8;
+  --accion-suave: #dbeafe;
   --respaldo: #15803d;
   --respaldo-suave: #dcfce7;
   --alerta: #b45309;
@@ -87,7 +89,8 @@
   --texto-invertido: #0f1419;
   --borde: #2a3441;
   --borde-fuerte: #3d4859;
-  --accion: #f3f4f6;
+  --accion: #60a5fa;
+  --accion-suave: #172554;
   --respaldo: #4ade80;
   --respaldo-suave: #10331d;
   --alerta: #fbbf24;
@@ -133,7 +136,7 @@ textarea::placeholder {
  *
  * `:root.oscuro` (0,2,0) le gana a `.oscuro` (0,1,0) por especificidad, y `:root` de acá le gana al
  * `:root` de arriba por orden. `core/contraste.test.ts` lo trata como un TERCER tema y le exige los
- * mismos 17 tokens y el mismo AA: sin eso, esta copia se desincronizaría en silencio, que es
+ * mismos 18 tokens y el mismo AA: sin eso, esta copia se desincronizaría en silencio, que es
  * exactamente lo que le pasa a las copias que nadie ata.
  */
 @media print {
@@ -150,7 +153,8 @@ textarea::placeholder {
     --texto-invertido: #ffffff;
     --borde: #9ca3af;
     --borde-fuerte: #4b5563;
-    --accion: #000000;
+    --accion: #1e3a8a;
+    --accion-suave: #ffffff;
     --respaldo: #14532d;
     --respaldo-suave: #ffffff;
     --alerta: #713f12;

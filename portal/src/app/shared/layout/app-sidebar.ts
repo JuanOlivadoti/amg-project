@@ -28,9 +28,9 @@ const ITEMS_NAV: readonly ItemNav[] = [
  * El menú de la plataforma. Solo lo que es de la AGENCIA: lo que pertenece a un cliente vive en su
  * ficha (`/clientes/:id`), no acá.
  *
- * **Por qué el `!` va en `text-texto!` y no en `bg-superficie-2`, y la asimetría es el punto.**
+ * **Por qué el `!` va en `text-accion!` y no en `bg-accion-suave`, y la asimetría es el punto.**
  * Tailwind emite las utilidades por orden alfabético y, a igual especificidad, gana la última de la
- * hoja: `text-texto-tenue` (de la clase base) va después de `text-texto` (del estado activo) y lo
+ * hoja: `text-texto-tenue` (de la clase base) va después de `text-accion` (del estado activo) y lo
  * pisa. El fondo, en cambio, no compite con nada en estado normal —la base solo tiene
  * `hover:bg-superficie-2`—, así que gana solo, y pedirle un `!` enseñaría a poner `!important` por
  * reflejo.
@@ -55,7 +55,7 @@ const ITEMS_NAV: readonly ItemNav[] = [
         @for (item of items; track item.ruta) {
           <a
             [routerLink]="item.ruta"
-            routerLinkActive="bg-superficie-2 text-texto!"
+            routerLinkActive="bg-accion-suave text-accion!"
             class="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-texto-tenue hover:text-texto hover:bg-superficie-2"
             (click)="sidebar.cerrarMobile()"
           >
