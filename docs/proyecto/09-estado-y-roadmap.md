@@ -58,11 +58,35 @@
 > por primera vez: **1395 tests del monorepo + 265 `node:test` del portal + 138 Karma**, typecheck y
 > secretos limpios. Ningún fallo pendiente conocido.
 >
-> Sigue abierto, de antes: el
-> [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md) —
-> las piezas **1 (CRM de clientes)**, **2 (usuarios)** y **3 (Ideas)** están mergeadas/completas. La
-> **4 (Dashboard)** no ha empezado y depende de la 3, que ya está lista para alimentarla. Es el bloque
-> **J** del plan.
+> 🧭 **Nuevo (2026-08-13): pieza 4 (Dashboard) del programa del portal, COMPLETA — el programa entero
+> queda cerrado.** Tres tasks sobre `feature/dashboard-home`. Task 1: `metricas.ts` (funciones puras:
+> conteo de ideas por estado, clientes activos, briefs esperando aprobación, últimas ideas) +
+> `listarTodasLasIdeas` (`GET /ideas` sin `clientId`) en `api-core.ts`. Task 2: la pantalla
+> `InicioPage` (`portal/src/app/pages/inicio/inicio.ts`) — seis tiles (`app-stat-box`) + tabla de
+> últimas ideas, alimentados por TRES fuentes independientes (ideas/clientes/runs) con fallas
+> totalmente independientes entre sí. Task 3: ruta `/inicio` (`app.routes.ts`), ítem **primero** en
+> `ITEMS_NAV` del sidebar, y cierre. **No hizo falta ningún endpoint ni migración nueva** — las tres
+> fuentes ya existían de las piezas 1 y 3; se calcula todo en el cliente. **El test de aislamiento de
+> los conteos ya estaba cubierto**, con la MISMA forma de consulta que usa el dashboard (sin filtro,
+> la lista completa del tenant): `api/src/ideas.test.ts:176`, `api/src/app.test.ts:409` y
+> `api/src/app.test.ts:578`, confirmados en verde puntualmente en vez de duplicados. Un drift resuelto
+> con el usuario antes de tocar código: el plan escrito fijaba "`redirectTo: 'runs'` no se toca", pero
+> ese route ya no existe desde el rediseño client-céntrico del 2026-08-11 — la regla real pasó a ser
+> **"`redirectTo: 'clientes'` no se toca"**, y sigue así: `/` redirige a Clientes, no a la home nueva
+> (confirmado en el navegador). Verificado en navegador (API real sobre PGlite, MCP chrome-devtools):
+> datos reales con enlaces funcionando, el caso sin datos (los seis tiles muestran `0`, no un hueco en
+> blanco — verificado interceptando la respuesta de red con la forma exacta que espera el cliente,
+> `{ideas:[]}`/`{clientes:[]}`/`{runs:[]}`, ya que el seed de demo no trae un tenant vacío), la API
+> caída (los tres bloques muestran su error, sin pantalla en blanco, solo los `ERR_CONNECTION_REFUSED`
+> esperados en consola), y los dos temas. Portal: **284 `node:test`** (sin cambios: Task 1/2 ya
+> traían las suyas) **+ 142 Karma** (+1, el orden del ítem "Inicio"). Root: sin regresiones. **Dos
+> preguntas para Juan, sin responder acá a propósito:** (a) ¿`/inicio` pasa a ser la ruta por defecto
+> ahora que existe?; (b) ¿algún tile sobra o falta después de verla con datos reales? Detalle completo
+> en `.superpowers/sdd/task-3-report.md`.
+>
+> El [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md)
+> queda con sus **cuatro piezas completas**: **1 (CRM de clientes)**, **2 (usuarios)**, **3 (Ideas)** y
+> **4 (Dashboard)**. Es el bloque **J** del plan, cerrado.
 >
 > 🧭 **La navegación del portal es cliente-céntrica desde el 2026-08-11**
 > ([spec](../superpowers/specs/2026-08-11-ficha-cliente-navegacion-design.md) ·

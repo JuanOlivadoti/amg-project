@@ -5,10 +5,14 @@ import { SidebarService } from '../services/sidebar';
 interface ItemNav {
   readonly etiqueta: string;
   readonly ruta: string;
-  readonly icono: 'cartera' | 'clientes' | 'usuarios';
+  readonly icono: 'inicio' | 'cartera' | 'clientes' | 'usuarios';
 }
 
 const ITEMS_NAV: readonly ItemNav[] = [
+  // Va PRIMERO en el orden del menú a propósito (Pieza 4, Dashboard): es la home del recorrido de
+  // la agencia, aunque todavía no sea el destino por defecto de `/` (esa es una decisión de
+  // producto aparte, ver app.routes.ts).
+  { etiqueta: 'Inicio', ruta: '/inicio', icono: 'inicio' },
   // Research NO está: el research es de un cliente, y se alcanza desde su ficha
   // (`/clientes/:id/research`). Una entrada de menú global obligaba a elegir el cliente después,
   // pegando su uuid en un input.
@@ -56,6 +60,11 @@ const ITEMS_NAV: readonly ItemNav[] = [
             (click)="sidebar.cerrarMobile()"
           >
             @switch (item.icono) {
+              @case ('inicio') {
+                <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 11.5 12 4l9 7.5M5.5 10v9a1 1 0 0 0 1 1h4v-6h3v6h4a1 1 0 0 0 1-1v-9" />
+                </svg>
+              }
               @case ('cartera') {
                 <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M3 13h4v7H3zM10 8h4v12h-4zM17 3h4v17h-4z" />

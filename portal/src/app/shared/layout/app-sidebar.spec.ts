@@ -9,6 +9,7 @@ describe('AppSidebarComponent', () => {
       imports: [AppSidebarComponent],
       providers: [
         provideRouter([
+          { path: 'inicio', children: [] },
           { path: 'cartera', children: [] },
           { path: 'clientes', children: [] },
           { path: 'usuarios', children: [] },
@@ -24,9 +25,17 @@ describe('AppSidebarComponent', () => {
     const el = render().nativeElement as HTMLElement;
     // Research YA NO está: el research de un cliente se alcanza desde su ficha, no desde el menú.
     expect(el.textContent).not.toContain('Research');
+    expect(el.textContent).toContain('Inicio');
     expect(el.textContent).toContain('Cartera');
     expect(el.textContent).toContain('Clientes');
     expect(el.textContent).toContain('Usuarios');
+  });
+
+  it('"Inicio" es el PRIMER enlace renderizado (Pieza 4: va primero en el orden del menú)', () => {
+    const el = render().nativeElement as HTMLElement;
+    const primerEnlace = el.querySelector('a');
+    expect(primerEnlace?.getAttribute('href')).toBe('/inicio');
+    expect(primerEnlace?.textContent?.trim()).toBe('Inicio');
   });
 
   it('el ítem de Usuarios apunta a /usuarios y NO se oculta por rol', () => {
