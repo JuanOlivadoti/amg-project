@@ -78,15 +78,29 @@
 > blanco — verificado interceptando la respuesta de red con la forma exacta que espera el cliente,
 > `{ideas:[]}`/`{clientes:[]}`/`{runs:[]}`, ya que el seed de demo no trae un tenant vacío), la API
 > caída (los tres bloques muestran su error, sin pantalla en blanco, solo los `ERR_CONNECTION_REFUSED`
-> esperados en consola), y los dos temas. Portal: **284 `node:test`** (sin cambios: Task 1/2 ya
-> traían las suyas) **+ 142 Karma** (+1, el orden del ítem "Inicio"). Root: sin regresiones. **Dos
-> preguntas para Juan, sin responder acá a propósito:** (a) ¿`/inicio` pasa a ser la ruta por defecto
-> ahora que existe?; (b) ¿algún tile sobra o falta después de verla con datos reales? Detalle completo
-> en `.superpowers/sdd/task-3-report.md`.
+> esperados en consola), y los dos temas. Portal (al integrar los tres tasks): 284 `node:test` + 142
+> Karma. Root: sin regresiones. **Dos preguntas para Juan, sin responder acá a propósito:** (a)
+> ¿`/inicio` pasa a ser la ruta por defecto ahora que existe?; (b) ¿algún tile sobra o falta después
+> de verla con datos reales? Detalle completo en `.superpowers/sdd/task-3-report.md`.
 >
 > El [programa del portal de la agencia](../superpowers/plans/2026-08-01-portal-agencia-programa.md)
 > queda con sus **cuatro piezas completas**: **1 (CRM de clientes)**, **2 (usuarios)**, **3 (Ideas)** y
 > **4 (Dashboard)**. Es el bloque **J** del plan, cerrado.
+>
+> 🧭 **Nuevo (2026-08-13): la revisión final de integración de la Pieza 4, cerrada.** La rama completa
+> (tres tasks) volvió `CAMBIOS_PEDIDOS` con **2 bloqueantes**: las cifras de tests del portal
+> desincronizadas en `08-testing-calidad.md`, y el límite real de 5 filas de "últimas ideas"
+> (`inicio.ts:147`) sin ningún test que lo distinguiera de otro número — el único test con datos
+> entraba con exactamente 5 ideas. Agrupados en el mismo commit, 4 hallazgos Minor: se borró
+> `calcularMetricas` (código muerto con un docblock que mentía sobre ser "lo único que la pantalla
+> necesita llamar") y sus dos tests, se borraron los tres signals `cargandoIdeas`/`cargandoClientes`/
+> `cargandoRuns` (write-only, nadie los leía), se agregó el caso simétrico "clientes falla" a
+> `inicio.spec.ts`, y se agregó el guardarraíl de que `inicio` es hija del shell en
+> `app.routes.test.ts`. El Minor del `throw` de `contarIdeasPorEstado` dentro de un `computed` sin
+> `try/catch` queda **documentado y aceptado**, no arreglado: `idea_estado` es un enum de Postgres de
+> 4 valores, así que hoy es inalcanzable. Portal, tras el fix: **282 `node:test`** (284 − 2 de
+> `calcularMetricas`) **+ 143 Karma** (142 + 1, el caso "clientes falla"). Root: 1395/1395, sin
+> regresiones.
 >
 > 🧭 **La navegación del portal es cliente-céntrica desde el 2026-08-11**
 > ([spec](../superpowers/specs/2026-08-11-ficha-cliente-navegacion-design.md) ·

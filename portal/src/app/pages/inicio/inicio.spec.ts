@@ -108,12 +108,18 @@ function tiles(el: HTMLElement): Record<string, string> {
 
 describe('InicioPage', () => {
   it('con las tres fuentes resolviendo datos: los 6 tiles muestran los números correctos y la tabla las filas esperadas', async () => {
+    // 7 ideas, no 5: con exactamente 5 de entrada un límite de 5, 10 o 100 pintan la misma tabla y
+    // el test no podría distinguirlos (el hallazgo del bloqueante 2 de la revisión de integración).
+    // i6 e i7 quedan afuera de la tabla — eso fija el límite real de `ultimasIdeasCon` en
+    // `inicio.ts`, no el default (muerto) de `calcularMetricas`.
     const ideas = [
       ideaDePrueba({ id: 'i1', estado: 'nueva' }),
       ideaDePrueba({ id: 'i2', estado: 'nueva' }),
       ideaDePrueba({ id: 'i3', estado: 'en_revision' }),
       ideaDePrueba({ id: 'i4', estado: 'aprobada', titulo: 'Carrusel de maridajes', client_id: 'c1' }),
       ideaDePrueba({ id: 'i5', estado: 'rechazada' }),
+      ideaDePrueba({ id: 'i6', estado: 'rechazada' }),
+      ideaDePrueba({ id: 'i7', estado: 'rechazada' }),
     ];
     const clientes = [
       clienteDePrueba({ id: 'c1', nombre: 'Restaurante Uno', archived_at: null }),
@@ -134,13 +140,22 @@ describe('InicioPage', () => {
     expect(t['Ideas nuevas']).toBe('2');
     expect(t['Ideas en revisión']).toBe('1');
     expect(t['Ideas aprobadas']).toBe('1');
-    expect(t['Ideas rechazadas']).toBe('1');
+    expect(t['Ideas rechazadas']).toBe('3'); // i5, i6, i7
     expect(t['Clientes activos']).toBe('1'); // solo c1: c2 tiene archived_at
     expect(t['Briefs esperando aprobación']).toBe('1'); // solo r1: r2 no está pending_approval
 
-    // La tabla: 5 filas (todas las ideas caben en el límite de 5), con el enlace correcto.
+    // La tabla: exactamente 5 filas, aunque llegaron 7 ideas — y son las 5 PRIMERAS (i1..i5, las
+    // más recientes, tal como las entrega la API), no las últimas ni una selección reordenada.
     const filas = el.querySelectorAll('tbody tr');
     expect(filas.length).toBe(5);
+    const hrefs = Array.from(filas).map((tr) => tr.querySelector('a')?.getAttribute('href'));
+    expect(hrefs).toEqual([
+      '/clientes/c1/ideas/i1',
+      '/clientes/c1/ideas/i2',
+      '/clientes/c1/ideas/i3',
+      '/clientes/c1/ideas/i4',
+      '/clientes/c1/ideas/i5',
+    ]);
     const enlace = Array.from(el.querySelectorAll('a')).find((a) =>
       a.textContent!.includes('Carrusel de maridajes'),
     );
@@ -187,5 +202,33 @@ describe('InicioPage', () => {
 
     // La tabla de últimas ideas también refleja el error de ideas, no una tabla vacía silenciosa.
     expect(el.textContent).not.toContain('Todavía no hay ideas.');
+  });
+
+  it('falla simétrica: si listarClientes rechaza, el tile de clientes muestra error y la tabla de ideas se sigue pintando con "Cliente desconocido"', async () => {
+    const ideas = [ideaDePrueba({ id: 'i1', client_id: 'c1' })];
+    const runs = [runDePrueba({ id: 'r1', status: 'pending_approval' })];
+    const { fixture } = crear({
+      listarTodasLasIdeas: jasmine.createSpy('listarTodasLasIdeas').and.resolveTo(ideas),
+      listarClientes: jasmine.createSpy('listarClientes').and.rejectWith(new Error('falló clientes')),
+      listarRuns: jasmine.createSpy('listarRuns').and.resolveTo(runs),
+    });
+    const el = await estabilizar(fixture);
+
+    // (a) El tile de clientes muestra su propio error, no un número.
+    expect(el.textContent).toContain('No se pudieron cargar los clientes.');
+    const t = tiles(el);
+    expect(t['Clientes activos']).toBeUndefined();
+
+    // Ideas y runs son independientes de la falla de clientes: sus tiles se pintan igual.
+    expect(t['Ideas nuevas']).toBe('1');
+    expect(t['Briefs esperando aprobación']).toBe('1');
+
+    // (b) La tabla de últimas ideas se sigue pintando (no se rompe, no queda vacía). `clientes()`
+    // quedó en null y `ultimasIdeas` degrada a [] (inicio.ts:144-146), así que cada fila cae al
+    // fallback de `ultimasIdeasCon` — esto confirma que la PANTALLA lo usa en este escenario, no
+    // solo que la función lo soporta (ese caso ya está en metricas.test.ts).
+    const filas = el.querySelectorAll('tbody tr');
+    expect(filas.length).toBe(1);
+    expect(el.textContent).toContain('Cliente desconocido');
   });
 });

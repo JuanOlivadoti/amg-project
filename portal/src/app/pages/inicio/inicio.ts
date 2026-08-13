@@ -17,13 +17,16 @@ import {
  * La pantalla de inicio: seis tiles + la tabla de últimas ideas, alimentados por TRES fuentes
  * independientes (`listarTodasLasIdeas`, `listarClientes`, `listarRuns`). Independientes también en
  * su falla — el requisito central del plan: si una de las tres rechaza, las otras dos se siguen
- * mostrando. Por eso hay tres pares `cargando`/`error` propios en vez de uno solo compartido, y por
- * qué cada `fetch` va en su propio `try/catch` en vez de un único `Promise.all`.
+ * mostrando. Por eso hay tres signals `error` propios en vez de uno solo compartido, y por qué cada
+ * `fetch` va en su propio `try/catch` en vez de un único `Promise.all`. El estado "cargando" no
+ * lleva signal propia: se infiere de `ideas()`/`clientes()`/`runs()` en `null` sin error (ver
+ * `tileIdeas` y `ultimasIdeas` más abajo).
  *
- * Por qué NO se usa `calcularMetricas` (la función de `metricas.ts` que junta las cuatro) directo:
- * esa función exige los tres arrays ya completos y no distingue "todavía cargando" de "falló" — que
- * es justo la distinción que esta pantalla necesita pintar en el DOM. Acá se llaman las cuatro
- * funciones sueltas, cada una gateada por su propio signal de datos crudos.
+ * Por qué se llaman las cuatro funciones sueltas de `metricas.ts` (`contarIdeasPorEstado`,
+ * `contarClientesActivos`, `contarBriefsPendientes`, `ultimasIdeasCon`) en vez de una sola
+ * agregadora: cada una necesita distinguir "todavía cargando" de "falló" para SU fuente, y una
+ * función que exigiera los tres arrays ya completos no podría pintar esa distinción en el DOM. Acá
+ * cada una va gateada por su propio signal de datos crudos.
  *
  * Sin params de ruta que cambien (a diferencia de `cliente-ideas.ts`), así que no hace falta
  * `Vigencia`: la única carrera posible es que una de las tres respuestas llegue después de que el
@@ -112,15 +115,12 @@ export class InicioPage implements OnInit, OnDestroy {
   private destruido = false;
 
   readonly ideas = signal<IdeaResumen[] | null>(null);
-  readonly cargandoIdeas = signal(true);
   readonly errorIdeas = signal('');
 
   readonly clientes = signal<ClienteAgencia[] | null>(null);
-  readonly cargandoClientes = signal(true);
   readonly errorClientes = signal('');
 
   readonly runs = signal<RunSummary[] | null>(null);
-  readonly cargandoRuns = signal(true);
   readonly errorRuns = signal('');
 
   readonly conteoIdeas = computed<ConteoPorEstado | null>(() => {
@@ -167,8 +167,6 @@ export class InicioPage implements OnInit, OnDestroy {
     } catch (e) {
       if (this.destruido) return;
       this.errorIdeas.set((e as Error).message);
-    } finally {
-      if (!this.destruido) this.cargandoIdeas.set(false);
     }
   }
 
@@ -180,8 +178,6 @@ export class InicioPage implements OnInit, OnDestroy {
     } catch (e) {
       if (this.destruido) return;
       this.errorClientes.set((e as Error).message);
-    } finally {
-      if (!this.destruido) this.cargandoClientes.set(false);
     }
   }
 
@@ -193,8 +189,6 @@ export class InicioPage implements OnInit, OnDestroy {
     } catch (e) {
       if (this.destruido) return;
       this.errorRuns.set((e as Error).message);
-    } finally {
-      if (!this.destruido) this.cargandoRuns.set(false);
     }
   }
 

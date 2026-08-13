@@ -16,13 +16,6 @@ export interface UltimaIdea {
   clienteNombre: string;
 }
 
-export interface MetricasInicio {
-  ideasPorEstado: ConteoPorEstado;
-  clientesActivos: number;
-  briefsPendientes: number;
-  ultimasIdeas: readonly UltimaIdea[];
-}
-
 /** El nombre que se muestra cuando un `client_id` no aparece en la lista de clientes cargada. */
 const CLIENTE_DESCONOCIDO = 'Cliente desconocido';
 
@@ -34,6 +27,13 @@ const CLIENTE_DESCONOCIDO = 'Cliente desconocido';
  * Un estado que NO es ninguno de los cuatro válidos **lanza**, en vez de contarse en silencio en
  * otro grupo o descartarse mudo: la regla del plan es que un dato corrupto (una migración mal
  * hecha, un typo del lado de la API) no puede inflar un contador sin que nadie se entere.
+ *
+ * Aceptado, no arreglado: en `inicio.ts` esta función se llama dentro de un `computed` (fuera de
+ * cualquier `try/catch`), así que hoy un estado desconocido tumbaría toda la pantalla de inicio en
+ * vez de degradar solo el bloque de ideas — la composición de "gritar ante un dato corrupto" (acá)
+ * con "que una fuente no tumbe a las otras" (el diseño de `inicio.ts`) no se decidió. Se deja así
+ * a propósito porque `idea_estado` (`db/migrations/0013_ideas.sql`) es un enum de Postgres de 4
+ * valores: hoy es inalcanzable. Si se agrega un quinto valor al enum, hay que revisar esto.
  */
 export function contarIdeasPorEstado(ideas: readonly IdeaResumen[]): ConteoPorEstado {
   const conteo: ConteoPorEstado = { nueva: 0, en_revision: 0, aprobada: 0, rechazada: 0 };
@@ -85,19 +85,4 @@ export function ultimasIdeasCon(
       clienteNombre: cliente?.nombre ?? CLIENTE_DESCONOCIDO,
     };
   });
-}
-
-/** Junta las cuatro funciones de arriba. Es lo único que la pantalla de inicio necesita llamar. */
-export function calcularMetricas(
-  ideas: readonly IdeaResumen[],
-  clientes: readonly ClienteAgencia[],
-  runs: readonly RunSummary[],
-  limiteUltimasIdeas = 5,
-): MetricasInicio {
-  return {
-    ideasPorEstado: contarIdeasPorEstado(ideas),
-    clientesActivos: contarClientesActivos(clientes),
-    briefsPendientes: contarBriefsPendientes(runs),
-    ultimasIdeas: ultimasIdeasCon(ideas, clientes, limiteUltimasIdeas),
-  };
 }

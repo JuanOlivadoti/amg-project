@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  calcularMetricas,
   contarBriefsPendientes,
   contarClientesActivos,
   contarIdeasPorEstado,
@@ -185,33 +184,4 @@ test('ultimasIdeasCon agrega clienteNombre buscando por client_id === id del cli
   const res = ultimasIdeasCon(ideas, clientes, 5);
   assert.equal(res[0]!.clienteNombre, 'Pizzería Roma');
   assert.equal(res[0]!.clienteId, 'c1');
-});
-
-// ---------------------------------------------------------------- calcularMetricas
-
-test('calcularMetricas: arma MetricasInicio combinando las cuatro piezas', () => {
-  const ideas = [
-    idea({ id: 'a', client_id: 'c1', estado: 'nueva', creada_en: '2026-03-01T00:00:00.000Z' }),
-    idea({ id: 'b', client_id: 'c2', estado: 'aprobada', creada_en: '2026-02-01T00:00:00.000Z' }),
-  ];
-  const clientes = [
-    cliente({ id: 'c1', nombre: 'Pizzería Roma', archived_at: null }),
-    cliente({ id: 'c2', nombre: 'Sushi Ken', archived_at: '2026-01-01T00:00:00.000Z' }),
-  ];
-  const runs = [run({ id: 'r1', status: 'pending_approval' }), run({ id: 'r2', status: 'approved' })];
-
-  const res = calcularMetricas(ideas, clientes, runs, 5);
-
-  assert.deepEqual(res.ideasPorEstado, { nueva: 1, en_revision: 0, aprobada: 1, rechazada: 0 });
-  assert.equal(res.clientesActivos, 1);
-  assert.equal(res.briefsPendientes, 1);
-  assert.equal(res.ultimasIdeas.length, 2);
-  assert.equal(res.ultimasIdeas[0]!.id, 'a');
-  assert.equal(res.ultimasIdeas[0]!.clienteNombre, 'Pizzería Roma');
-});
-
-test('calcularMetricas: el límite de últimas ideas tiene default 5', () => {
-  const ideas = Array.from({ length: 7 }, (_, i) => idea({ id: `i${i}` }));
-  const res = calcularMetricas(ideas, [], []);
-  assert.equal(res.ultimasIdeas.length, 5);
 });
