@@ -158,6 +158,14 @@ export interface ClienteApi {
    */
   listarIdeas(clientId: string, estado?: EstadoIdea): Promise<IdeaResumen[]>;
   /**
+   * Las ideas de TODO el tenant (sin filtrar por cliente), opcionalmente por `estado`. A diferencia de
+   * `listarIdeas`, que exige un cliente porque su pantalla siempre cuelga de una ficha, esta es la
+   * fuente del dashboard: necesita ver el estado de trabajo de la agencia entera. RLS decide el
+   * conjunto visible según el rol de quien pregunta (ADR-15) — un `cliente` solo ve lo suyo, por
+   * construcción del lado del servidor, no de este método.
+   */
+  listarTodasLasIdeas(estado?: EstadoIdea): Promise<IdeaResumen[]>;
+  /**
    * El detalle completo de UNA idea (transcripción + análisis), para la pantalla de revisión (Task
    * 2). `null` en 404 — que unifica "no existe", "es de otro tenant" y "no la puede ver"
    * (`api/src/app.ts`) — para que la pantalla pueda mostrar "no encontrada" sin envolver cada
@@ -328,6 +336,16 @@ export function crearApi(opts: ApiOpts): ClienteApi {
       const params = new URLSearchParams({ clientId });
       if (estado) params.set('estado', estado);
       const { ideas } = await pedir<{ ideas: IdeaResumen[] }>('GET', `/ideas?${params.toString()}`);
+      return ideas;
+    },
+    async listarTodasLasIdeas(estado) {
+      // Sin `clientId`: acá no hay guarda de vacío que hacer porque el parámetro ni existe. `GET
+      // /ideas` ya trata `clientId` como opcional (`api/src/app.ts`), así que omitirlo del query es
+      // justamente pedir la cartera entera — el modo que `listarIdeas` deliberadamente no ofrece.
+      const params = new URLSearchParams();
+      if (estado) params.set('estado', estado);
+      const qs = params.toString();
+      const { ideas } = await pedir<{ ideas: IdeaResumen[] }>('GET', `/ideas${qs ? `?${qs}` : ''}`);
       return ideas;
     },
     async obtenerIdea(id) {
