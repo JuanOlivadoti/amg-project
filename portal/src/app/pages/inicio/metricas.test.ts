@@ -97,6 +97,19 @@ test('🔴 un estado fuera del tipo LANZA, no se cuenta en silencio en otro grup
   assert.throws(() => contarIdeasPorEstado(ideas), /aprovada/);
 });
 
+test('🔴 un estado heredado del prototipo (\'toString\') también LANZA, no cuenta ni corrompe el objeto', () => {
+  /*
+   * `'aprovada' in conteo` da `false` sin ayuda de ningún bug, así que ese test no cubre esto: `in`
+   * recorre la cadena de PROTOTIPOS, y `conteo` (un objeto literal) hereda de `Object.prototype`. Con
+   * un chequeo `idea.estado in conteo`, `'toString' in conteo` da `true` — y la función, en vez de
+   * lanzar, ejecutaba `conteo['toString']++`, corrompiendo el resultado con una clave espuria
+   * (`toString: NaN`) que ni siquiera es uno de los cuatro estados válidos. `Object.hasOwn` es lo que
+   * lo evita: solo mira las claves PROPIAS de `conteo`, nunca las heredadas.
+   */
+  const ideas = [idea({ id: 'a', estado: 'toString' as EstadoIdea })];
+  assert.throws(() => contarIdeasPorEstado(ideas), /toString/);
+});
+
 // ---------------------------------------------------------------- contarClientesActivos
 
 test('contarClientesActivos: lista vacía da 0', () => {

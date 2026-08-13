@@ -38,7 +38,11 @@ const CLIENTE_DESCONOCIDO = 'Cliente desconocido';
 export function contarIdeasPorEstado(ideas: readonly IdeaResumen[]): ConteoPorEstado {
   const conteo: ConteoPorEstado = { nueva: 0, en_revision: 0, aprobada: 0, rechazada: 0 };
   for (const idea of ideas) {
-    if (!(idea.estado in conteo)) {
+    // `Object.hasOwn` y NO `in`: `in` recorre la cadena de prototipos, así que un estado como
+    // 'toString' o 'constructor' da `in` === true (heredado de Object.prototype) sin ser una clave
+    // propia de `conteo`, y la guarda de abajo se saltearía en silencio — justo lo que el brief pide
+    // impedir (ver el 🔴 de más abajo, que reproduce exactamente este caso).
+    if (!Object.hasOwn(conteo, idea.estado)) {
       throw new Error(`contarIdeasPorEstado: estado desconocido "${idea.estado}" (idea ${idea.id}).`);
     }
     conteo[idea.estado]++;
