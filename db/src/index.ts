@@ -16,6 +16,8 @@ export type {
   RunSummary,
   InformeRow,
   DatosEntregable,
+  ClienteConectadoGoogle,
+  ResenaParaGuardar,
 } from "./store.js";
 
 export { PgSitios, MemSitios } from "./sitios.js";

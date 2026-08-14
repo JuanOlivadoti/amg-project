@@ -1654,3 +1654,258 @@ test("🔴 barrido: la 0018 se aplica con un rol NO superusuario (la condición 
     await pg.close();
   }
 });
+
+// =============================================================================
+// El polling de reseñas de Google (migración 0022) — segunda `security definer`, mismo molde
+// que `app_barrido`. La amenaza acá no es el silencio (0018): es que el rol cross-tenant, o el
+// grant preexistente de `app_service` sobre `clients`, filtren el refresh token de OAuth de un
+// cliente. Ver `.superpowers/sdd/task-1-report.md` — el hallazgo que la Task 1 dejó anotado para
+// esta migración.
+// =============================================================================
+
+test("🔴 credenciales: app_resenas no tiene login concedible (SET) a ningún rol con login", async () => {
+  const { rows } = await pg.query<{ login: string; puede: boolean }>(
+    `select rolname as login, pg_has_role(rolname, 'app_resenas', 'SET') as puede
+       from pg_roles where rolname in ('amg_api','amg_orquestador','amg_cache','amg_render')`,
+  );
+  assert.equal(rows.length, 4, "los cuatro logins existen (si no, este test no comprueba nada)");
+  for (const r of rows) assert.equal(r.puede, false, `🔴 ${r.login} NO puede asumir app_resenas`);
+});
+
+test("🔴 app_user NO puede ejecutar clientes_conectados_google (42501)", async () => {
+  await assert.rejects(
+    () => store.clientesConectadosGoogle(),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre la función del polling",
+  );
+});
+
+test("🔴 app_user NO puede ejecutar registrar_resena_google (42501)", async () => {
+  await assert.rejects(
+    () =>
+      store.registrarResenaGoogle({
+        clientId: clientA1,
+        tenantId: tenantA,
+        googleReviewId: "gr-intento-api",
+        puntuacion: 5,
+        autor: "Alguien",
+        texto: null,
+        publicadaEn: new Date().toISOString(),
+      }),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre el registro de reseñas",
+  );
+});
+
+test("clientesConectadosGoogle solo devuelve clientes con refresh_token no nulo, de todos los tenants", async () => {
+  await pg.query(
+    "update clients set google_refresh_token = 'tok-a1', google_location_id = 'loc-a1' where id = $1",
+    [clientA1],
+  );
+  await pg.query(
+    "update clients set google_refresh_token = 'tok-b1', google_location_id = 'loc-b1' where id = $1",
+    [clientB1],
+  );
+  // clientA2 se queda sin conectar.
+
+  const conectados = await storeServicio.clientesConectadosGoogle();
+  const ids = conectados.map((c) => c.clientId);
+
+  assert.ok(ids.includes(clientA1) && ids.includes(clientB1), "🔴 cruza los dos tenants");
+  assert.ok(!ids.includes(clientA2), "el que no conectó no aparece");
+
+  const a1 = conectados.find((c) => c.clientId === clientA1);
+  assert.deepEqual(
+    a1 && { tenantId: a1.tenantId, locationId: a1.locationId, refreshToken: a1.refreshToken },
+    { tenantId: tenantA, locationId: "loc-a1", refreshToken: "tok-a1" },
+    "trae el tenant, el location_id y el token -- lo que el polling necesita para pedir reseñas",
+  );
+});
+
+/**
+ * Lleva control positivo A PROPÓSITO: `clientA2` queda conectado y SIN archivar. Sin él, este test
+ * pasaría también con la visibilidad de `app_resenas` totalmente rota (cero filas siempre, el modo
+ * de fallo silencioso que el comentario de la 0022 describe) -- `!includes(clientA1)` es trivialmente
+ * cierto si la lista está vacía. Medido: quitar la política `client_ve_app_resenas` tumba el test de
+ * arriba (el que exige que clientA1/clientB1 SÍ aparezcan) pero NO este, si este no tuviera el control.
+ */
+test("clientesConectadosGoogle ignora un cliente archivado aunque tenga token", async () => {
+  await pg.query(
+    "update clients set google_refresh_token = 'tok-archivado', archived_at = now() where id = $1",
+    [clientA1],
+  );
+  await pg.query(
+    "update clients set google_refresh_token = 'tok-a2', google_location_id = 'loc-a2' where id = $1",
+    [clientA2],
+  );
+
+  const conectados = await storeServicio.clientesConectadosGoogle();
+  const ids = conectados.map((c) => c.clientId);
+
+  assert.ok(!ids.includes(clientA1), "archivado: el polling no lo toca");
+  assert.ok(ids.includes(clientA2), "control positivo: el conectado SIN archivar sí tiene que aparecer");
+});
+
+test("🔴 registrarResenaGoogle es idempotente: la segunda llamada con el mismo google_review_id no duplica", async () => {
+  const resena = {
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-1",
+    puntuacion: 4,
+    autor: "Ana",
+    texto: "Bien",
+    publicadaEn: new Date().toISOString(),
+  };
+
+  const primera = await storeServicio.registrarResenaGoogle(resena);
+  const segunda = await storeServicio.registrarResenaGoogle(resena);
+
+  assert.equal(primera, true, "la primera inserta");
+  assert.equal(segunda, false, "🔴 ya existía: no se duplica");
+  const { rows } = await pg.query<{ n: string }>(
+    "select count(*)::text as n from resenas_google where google_review_id = 'gr-1'",
+  );
+  assert.equal(rows[0]?.n, "1");
+});
+
+test("🔴 registrarResenaGoogle escribe bajo el tenant que se le pasa, no el que decida el motor", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientB1,
+    tenantId: tenantB,
+    googleReviewId: "gr-cruzado",
+    puntuacion: 3,
+    autor: "B",
+    texto: null,
+    publicadaEn: new Date().toISOString(),
+  });
+
+  const { rows } = await pg.query<{ tenant_id: string }>(
+    "select tenant_id from resenas_google where google_review_id = 'gr-cruzado'",
+  );
+  assert.equal(rows[0]?.tenant_id, tenantB, "la fila queda bajo el tenant del CLIENTE, no de quien migró");
+});
+
+/**
+ * 🔴 EL HALLAZGO DE LA TASK 1, CERRADO ACÁ. `app_service` ya tenía `select` de TABLA sobre
+ * `clients` desde la 0002 (`grant select, insert, update, delete on clients, ... to app_service`).
+ * Sin el `revoke select on clients from app_service` + `grant select (columnas)` de la 0022, el
+ * orquestador podría leer `google_refresh_token` con un `select` pelado, sin pasar nunca por
+ * `app.clientes_conectados_google()` -- exactamente el mismo bypass que la 0021 cerró para
+ * `app_user`, aplicado al otro rol con login que toca `clients`.
+ *
+ * Se exige el RECHAZO del motor (`permission denied`), no cero filas: `clients` no tiene ninguna
+ * política que oculte la columna -- lo único que existía para pararla era el grant, y es
+ * exactamente eso lo que se está probando.
+ */
+test("🔴 app_service NO puede leer clients.google_refresh_token por SQL directo (el bypass que la Task 1 dejó señalado)", async () => {
+  await pg.query("update clients set google_refresh_token = 'secreto-oauth' where id = $1", [clientA1]);
+
+  // Dos transacciones separadas: un `permission denied` aborta la transacción entera, así que un
+  // segundo intento en la MISMA transacción solo vería "current transaction is aborted" -- que no
+  // es la garantía que este test fija.
+  await pg.exec("begin");
+  await pg.exec("set local role app_service");
+  try {
+    await assert.rejects(
+      () => pg.query("select google_refresh_token from clients where id = $1", [clientA1]),
+      /permission denied/i,
+      "🔴 app_service no tiene select de tabla ni de columna sobre google_refresh_token",
+    );
+  } finally {
+    await pg.exec("rollback");
+  }
+
+  await pg.exec("begin");
+  await pg.exec("set local role app_service");
+  try {
+    await assert.rejects(
+      () => pg.query("select * from clients where id = $1", [clientA1]),
+      /permission denied/i,
+      "🔴 select * exige TODAS las columnas: con una faltante, el motor rechaza la sentencia entera",
+    );
+  } finally {
+    await pg.exec("rollback");
+  }
+});
+
+/**
+ * Control positivo del test de arriba: `app_service` SIGUE pudiendo leer, por columna explícita,
+ * exactamente lo que `getClient()` pide en producción (`db/src/store.ts`). Sin este test, el de
+ * arriba podría estar pasando porque se le cerró TODO a `app_service`, no solo el token -- que
+ * rompería `getClient()` en silencio para el orquestador real.
+ *
+ * Pasa por `storeServicio.getClient` (el método real, con `withTenant`) y no por un `select`
+ * crudo: sin el contexto de tenant que `withTenant` fija (`set_config('app.tenant_id', ...)`), la
+ * política `client_select` (`tenant_id = app.current_tenant_id()`) no ve la fila aunque el grant de
+ * columna esté -- y eso probaría RLS, no el grant, que es lo que este test fija.
+ */
+test("app_service SÍ puede leer las columnas de clients que getClient() usa en producción", async () => {
+  const viaApiUser = await store.getClient(ctxA(), clientA1);
+  assert.ok(viaApiUser, "getClient sigue funcionando bajo app_user");
+
+  const viaOrquestador = await storeServicio.getClient(ctxA(), clientA1);
+  assert.deepEqual(
+    viaOrquestador,
+    viaApiUser,
+    "app_service sigue leyendo exactamente las cuatro columnas de ClientRow",
+  );
+});
+
+/**
+ * La lectura es la garantía nueva de esta migración: NINGÚN rol con login lee el token, ni de
+ * tabla ni de columna.
+ *
+ * La escritura es asimétrica A PROPÓSITO, y por dos motivos distintos:
+ *  · `app_user` la tiene por columna (0021): el callback de OAuth corre con su identidad.
+ *  · `app_service` la tiene todavía, pero de TABLA y sin tocar (0002, `grant ... update ... on
+ *    clients to app_service`) -- esta migración deliberadamente NO la angostó. El hallazgo de la
+ *    Task 1 era sobre LECTURA (un token que se puede exfiltrar); ningún código de producción del
+ *    orquestador escribe `clients` hoy, así que cerrar un privilegio no ejercitado sin evidencia de
+ *    uso es una decisión de diseño que esta migración no toma (ver el comentario de la 0022). Si
+ *    algún día se decide angostarlo, este assert es el que hay que voltear.
+ */
+test("🔴 los grants de clients.google_refresh_token: LECTURA cerrada para los DOS roles con login", async () => {
+  const { rows } = await pg.query<{ rol: string; puede_leer: boolean; puede_escribir_columna: boolean; puede_escribir_tabla: boolean }>(
+    `select r.rolname as rol,
+            has_column_privilege(r.rolname, 'clients', 'google_refresh_token', 'select') as puede_leer,
+            has_column_privilege(r.rolname, 'clients', 'google_refresh_token', 'update') as puede_escribir_columna,
+            has_table_privilege(r.rolname, 'clients', 'update') as puede_escribir_tabla
+       from pg_roles r where r.rolname in ('app_user', 'app_service')`,
+  );
+  assert.equal(rows.length, 2, "los dos roles existen (si no, este test no comprueba nada)");
+  for (const r of rows) {
+    assert.equal(r.puede_leer, false, `🔴 ${r.rol} NO puede leer google_refresh_token`);
+  }
+  const appUser = rows.find((r) => r.rol === "app_user");
+  assert.equal(appUser?.puede_escribir_columna, true, "app_user SÍ puede escribirlo por columna: el callback de OAuth corre con su identidad");
+  const appService = rows.find((r) => r.rol === "app_service");
+  assert.equal(
+    appService?.puede_escribir_tabla,
+    true,
+    "app_service conserva su UPDATE de tabla preexistente (0002) -- fuera del alcance de esta migración, ver el comentario",
+  );
+});
+
+/**
+ * 🔴 Mismo control estructural que el barrido: dueño, `security definer` y `search_path` fijado
+ * para LAS DOS funciones nuevas.
+ */
+test("🔴 resenas: las dos funciones son SECURITY DEFINER de app_resenas, con search_path fijado", async () => {
+  const { rows } = await pg.query<{
+    nombre: string; owner: string; prosecdef: boolean; proconfig: string[] | null;
+  }>(
+    `select p.proname as nombre, pg_get_userbyid(p.proowner) as owner, p.prosecdef, p.proconfig
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'app' and p.proname in ('clientes_conectados_google', 'registrar_resena_google')
+      order by p.proname`,
+  );
+  assert.equal(rows.length, 2, "las dos funciones existen (si no, el resto no comprueba nada)");
+  for (const fn of rows) {
+    assert.equal(fn.owner, "app_resenas", `🔴 ${fn.nombre}: NO puede pertenecer a quien corre la migración`);
+    assert.equal(fn.prosecdef, true, `🔴 ${fn.nombre}: sin security definer no hay cruce de tenants`);
+    assert.ok(
+      (fn.proconfig ?? []).some((c) => c.startsWith("search_path=")),
+      `🔴 ${fn.nombre}: sin search_path fijado es una escalada de privilegios`,
+    );
+  }
+});
