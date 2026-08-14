@@ -679,19 +679,25 @@ test("🔴 barrido: el cron es horario y no una expresión que no dispara nunca"
 });
 
 /**
- * 🔴 Las dos funciones quedan registradas, y `/_health` tiene que poder decirlo.
+ * 🔴 Las tres funciones quedan registradas, y `/_health` tiene que poder decirlo.
  *
  * `server.ts` no se puede importar en un test (arranca el proceso y lee el entorno), así que lo que
- * se fija acá es que las dos fábricas existan y produzcan funciones con ids distintos. El número que
- * reporta `/_health` sale de `funciones.length` en `server.ts`; tras desplegar esto tiene que decir 2.
+ * se fija acá es que las tres fábricas existan y produzcan funciones con ids distintos. El número que
+ * reporta `/_health` sale de `funciones.length` en `server.ts`; tras desplegar esto tiene que decir 3.
  */
 test("🔴 barrido: la fábrica produce una función con id propio, distinta de la del research", async () => {
-  const { crearFuncionBarrido, crearFuncionResearch } = await import("./functions.js");
+  const { crearFuncionBarrido, crearFuncionResearch, crearFuncionPollingResenas } = await import(
+    "./functions.js"
+  );
   const deps = {} as Parameters<typeof crearFuncionBarrido>[0];
 
   const barrido = crearFuncionBarrido(deps);
   const research = crearFuncionResearch(deps);
+  const polling = crearFuncionPollingResenas(deps);
 
   assert.notEqual(barrido.id(), research.id(), "dos funciones distintas, dos ids distintos");
+  assert.notEqual(polling.id(), research.id(), "el polling es una tercera función, no el research");
+  assert.notEqual(polling.id(), barrido.id(), "el polling es una tercera función, no el barrido");
   assert.match(barrido.id(), /barrido/);
+  assert.match(polling.id(), /polling/);
 });

@@ -68,6 +68,10 @@ function depsSobreBaseCaida(): Deps {
     validarContrato: () => {
       throw new Error("un health check no valida briefs");
     },
+    resenasProvider: {
+      refrescarToken: () => Promise.reject(new Error("un health check no pollea reseñas")),
+      listarResenas: () => Promise.reject(new Error("un health check no pollea reseñas")),
+    },
   };
 }
 

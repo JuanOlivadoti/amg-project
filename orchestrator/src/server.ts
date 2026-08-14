@@ -17,7 +17,7 @@ import { modoProsa, modoPublicacion } from "web-builder";
 import { crearServidor, opcionesDeServe } from "./app.js";
 import { leerConfig } from "./config.js";
 import { crearDeps, crearConexiones } from "./deps.js";
-import { crearFuncionBarrido, crearFuncionResearch, inngest } from "./functions.js";
+import { crearFuncionBarrido, crearFuncionPollingResenas, crearFuncionResearch, inngest } from "./functions.js";
 import { crearSonda } from "./salud.js";
 
 /**
@@ -36,10 +36,10 @@ const config = leerConfig();
 
 const cx = await crearConexiones(config);
 const deps = crearDeps(cx);
-// Dos: el workflow del research y el barrido programado. `/_health` reporta el número, así que tras
-// desplegar esto tiene que decir `funciones: 2` — y en el panel de Inngest se ven tres, porque cuenta
-// el `onFailure` del research como una función aparte.
-const funciones = [crearFuncionResearch(deps), crearFuncionBarrido(deps)];
+// Tres: el workflow del research, el barrido programado y el polling de reseñas de Google.
+// `/_health` reporta el número, así que tras desplegar esto tiene que decir `funciones: 3` — y en el
+// panel de Inngest se ven cuatro, porque cuenta el `onFailure` del research como una función aparte.
+const funciones = [crearFuncionResearch(deps), crearFuncionBarrido(deps), crearFuncionPollingResenas(deps)];
 
 /*
  * En qué modo publica este proceso. Se pregunta UNA vez —la config de `web-builder` se congela al
