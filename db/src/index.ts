@@ -37,6 +37,9 @@ export type {
   ResultadoCambioEstado,
 } from "./ideas.js";
 
+export { PgResenas } from "./resenas.js";
+export type { ResenaGoogle } from "./resenas.js";
+
 export { NodePgPool, PglitePool, ejecutorDe } from "./pool.js";
 export type { DbPool, Tx, SqlExecutor, NodePgPoolLike, NodePgClientLike } from "./pool.js";
 

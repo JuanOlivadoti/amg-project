@@ -48,9 +48,15 @@ test("RLS: un tenant NO ve los runs de otro", async () => {
 
 test("RLS: pedir explícitamente el id de otro tenant devuelve VACÍO, no el dato", async () => {
   // El ataque obvio: conozco el UUID del cliente ajeno y lo pido por id.
+  //
+  // Columnas explícitas, no `select *`: desde la 0021, `google_refresh_token` sacó a `app_user` del
+  // `grant select` de TABLA de `clients` (columna por columna, sin esa) -- `select *` expande a
+  // TODAS las columnas de la tabla y falla con `permission denied` para CUALQUIER fila, tenant
+  // propio incluido. Esta prueba es de RLS (la fila no se alcanza), no de grants: pide columnas que
+  // `app_user` sí puede leer, para que un rechazo solo pueda venir de la política.
   const rows = await db.asUser(
     { tenantId: s.tenantA, userId: s.equipoA },
-    "select * from clients where id = $1",
+    "select id, nombre, business_profile from clients where id = $1",
     [s.clientB1],
   );
 
