@@ -445,6 +445,53 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
   });
 
   /*
+   * Los dos endpoints de RESEÑAS (Bloque F, fase 1). Igual que arriba, ninguno de los dos decide
+   * autorización acá:
+   *
+   *  · **GET no distingue "cliente de otro tenant" de "cliente sin reseñas".** `listarResenas` hace
+   *    `where client_id = $1` bajo RLS (`resena_select`, 0021), así que un `clientId` ajeno da CERO
+   *    FILAS, no un error — mismo criterio que `GET /runs?clientId=`. No hay un `getClient` previo
+   *    para decidir 404: sería una consulta extra solo para llegar al mismo resultado observable.
+   *  · **El orden ya lo impone el SQL de `listarResenas`** (1-3★ sin ver primero, más nueva
+   *    después): este handler no reordena nada — reordenar acá sería el mismo error que ya corrigió
+   *    la migración 0015 para `kr_pages`, con el mismo síntoma (el array pierde su forma al pasar por
+   *    otra capa).
+   *  · **PATCH: `{"vista": true}` es el ÚNICO cambio soportado.** No es una allowlist de columnas
+   *    (como `filtrarCambios`/`filtrarCamposCliente`): es una forma fija, así que se compara el body
+   *    entero contra esa forma en vez de filtrar campo por campo.
+   *  · **ADR-20 por RLS, no por un `if` de rol.** `marcarVista` hace el `update` bajo `app_user`; la
+   *    política `resena_marcar_vista` (0021) exige `app.puede_escribir()` en el `using`, así que para
+   *    el rol `cliente` el `update` no matchea ninguna fila y `marcarVista` devuelve `false` sin que
+   *    este handler sepa qué rol es quien llama — mismo mecanismo que `PATCH /pages/:id` o
+   *    `PATCH /ideas/:id`. El mismo 404 cubre además "no existe", "es de otro tenant" y "ya estaba
+   *    vista" (el `where vista_en is null` de `marcarVista`): distinguirlos revelaría la fila.
+   */
+
+  /** GET /clients/:id/resenas — las reseñas del cliente, en el orden que ya fija `listarResenas`. */
+  app.get("/clients/:id/resenas", async (c) => {
+    const ctx = c.get("ctx");
+    const clientId = c.req.param("id");
+    const resenas = await deps.resenas.listarResenas(ctx, clientId);
+    return c.json({ resenas });
+  });
+
+  /** PATCH /clients/:id/resenas/:resenaId — marca una reseña como vista. Único cambio soportado. */
+  app.patch("/clients/:id/resenas/:resenaId", async (c) => {
+    const ctx = c.get("ctx");
+    const clientId = c.req.param("id");
+    const resenaId = c.req.param("resenaId");
+    const body = await c.req.json().catch(() => null);
+
+    if (!body || typeof body !== "object" || body["vista"] !== true) {
+      return c.json({ error: 'El único cambio soportado es {"vista": true}.' }, 400);
+    }
+
+    const ok = await deps.resenas.marcarVista(ctx, clientId, resenaId);
+    if (!ok) return c.json({ error: "Reseña no encontrada, ya vista, o sin permiso." }, 404);
+    return c.json({ ok: true });
+  });
+
+  /*
    * Los dos endpoints de miembros (pieza 2 — Usuarios, Etapa 2). `GET` reusa
    * `listarMiembros` (Etapa 1): la visibilidad por rol (staff ve el tenant, cliente ve solo su
    * fila) vive ENTERA en la vista `membresias_perfil` (0012) — este handler no filtra nada.

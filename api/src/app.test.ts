@@ -1054,3 +1054,114 @@ test("🔴 GET /clients/:id/google/callback de OTRO tenant → 404, sin escribir
   );
   assert.equal(fila!.google_conectado_en, null, "el tenant B no pudo conectar el cliente de A");
 });
+
+// ---------------------------------------------------------------- GET/PATCH de reseñas (Bloque F, fase 1)
+
+/**
+ * Siembra una reseña de Google directamente (superusuario, salta RLS): así el test de LECTURA
+ * ejercita el camino real -- `listarResenas` bajo `app_user` -- contra un dato que no pasó por la
+ * API para entrar. El polling real las escribe con `app_resenas` (0022), que acá no corre.
+ */
+async function sembrarResena(
+  clientId: string,
+  opts: {
+    googleReviewId: string;
+    puntuacion?: number;
+    autor?: string;
+    texto?: string | null;
+    publicadaEn?: string;
+  },
+): Promise<Array<{ id: string }>> {
+  const [fila] = await sql<{ tenant_id: string }>("select tenant_id from clients where id = $1", [clientId]);
+  return sql<{ id: string }>(
+    `insert into resenas_google (tenant_id, client_id, google_review_id, puntuacion, autor, texto, publicada_en)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     returning id`,
+    [
+      fila!.tenant_id,
+      clientId,
+      opts.googleReviewId,
+      opts.puntuacion ?? 5,
+      opts.autor ?? "Cliente Anónimo",
+      opts.texto ?? null,
+      opts.publicadaEn ?? new Date().toISOString(),
+    ],
+  );
+}
+
+test("GET /clients/:id/resenas devuelve solo las del cliente, ordenadas 1-3★ sin ver primero", async () => {
+  await sembrarResena(clientA1, { puntuacion: 5, googleReviewId: "buena" });
+  await sembrarResena(clientA1, { puntuacion: 2, googleReviewId: "mala" });
+
+  const res = await req("GET", `/clients/${clientA1}/resenas`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { resenas: Array<{ id: string; puntuacion: number }> };
+  assert.equal(body.resenas.length, 2);
+  assert.equal(body.resenas[0]?.puntuacion, 2, "la de 2★ sin ver va primero (orden ya fijado en listarResenas)");
+});
+
+test("🔴 GET /clients/:id/resenas de OTRO tenant devuelve lista vacía, no un error (RLS)", async () => {
+  const [clientB1] = await sql<{ id: string }>(
+    "insert into clients (tenant_id, nombre) values ($1,'Sushi Zen') returning id",
+    [tenantB],
+  );
+  await sembrarResena(clientB1!.id, { googleReviewId: "de-otro-tenant" });
+
+  const res = await req("GET", `/clients/${clientB1!.id}/resenas`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200, "no un error: mismo criterio que GET /runs?clientId= de otro tenant");
+  const body = (await res.json()) as { resenas: unknown[] };
+  assert.deepEqual(body.resenas, []);
+});
+
+test("PATCH .../resenas/:id marca vista=true, escribe de verdad, y una segunda vez da 404", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-marcar" });
+  const primera = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { vista: true },
+  });
+  assert.equal(primera.status, 200);
+  assert.deepEqual(await primera.json(), { ok: true });
+
+  const [fila] = await sql<{ vista_en: string | null }>("select vista_en from resenas_google where id = $1", [
+    r!.id,
+  ]);
+  assert.notEqual(fila!.vista_en, null, "la fila quedó marcada de verdad, no solo la respuesta");
+
+  const segunda = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { vista: true },
+  });
+  assert.equal(segunda.status, 404, "ya estaba vista: el `where vista_en is null` no matchea de nuevo");
+});
+
+test("PATCH .../resenas/:id con un body distinto de {vista:true} → 400", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-body-malo" });
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { vista: false },
+  });
+  assert.equal(res.status, 400);
+
+  const [fila] = await sql<{ vista_en: string | null }>("select vista_en from resenas_google where id = $1", [
+    r!.id,
+  ]);
+  assert.equal(fila!.vista_en, null, "un body inválido no tuvo ningún efecto");
+});
+
+test("🔴 con rol 'cliente', PATCH .../resenas/:id da 404 (ADR-20: solo lee)", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-solo-lectura" });
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: duenoA1,
+    tenant: tenantA,
+    body: { vista: true },
+  });
+  assert.equal(res.status, 404);
+
+  const [fila] = await sql<{ vista_en: string | null }>("select vista_en from resenas_google where id = $1", [
+    r!.id,
+  ]);
+  assert.equal(fila!.vista_en, null, "el rol cliente no pudo escribir: la fila no cambió");
+});
