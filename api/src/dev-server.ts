@@ -159,6 +159,10 @@ const app = createApp({
   ideas,
   resenas,
   googleOAuth: new MockGoogleOAuthProvider(),
+  // FIJO a propósito, y NUNCA en producción (ver el `throw` de arriba): un secreto real vive en
+  // OAUTH_STATE_SECRET, que `leerConfig` exige y este archivo no lee. Este valor solo firma states
+  // dentro de un proceso que se reinicia con datos en memoria.
+  oauthStateSecret: "dev-oauth-state-secret-inseguro-no-usar-en-produccion",
   emisor,
   verificar,
   corsOrigins: ["http://localhost:4200"],

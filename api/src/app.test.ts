@@ -8,9 +8,13 @@ import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
 import { RUN_SIN_WORKFLOW } from "./codigos.js";
 import { MockGoogleOAuthProvider } from "./google-oauth.js";
+import { firmarEstado, type EstadoOAuth } from "./oauth-state.js";
 
 /** Origen del portal para los tests del callback OAuth (`GET .../google/callback`). */
 const PORTAL_URL_TEST = "http://localhost:4200";
+
+/** Secreto de test para firmar/verificar el `state` de OAuth — nunca el de producción. */
+const OAUTH_STATE_SECRET_TEST = "secreto-de-test-oauth-state-no-es-el-de-produccion";
 
 /**
  * La API entera contra Postgres REAL (PGlite), sin red y sin Supabase.
@@ -79,6 +83,7 @@ beforeEach(async () => {
     ideas,
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
+    oauthStateSecret: OAUTH_STATE_SECRET_TEST,
     emisor,
     verificar,
     portalUrl: PORTAL_URL_TEST,
@@ -348,6 +353,7 @@ test("🔴 POST /runs: si el evento no se puede emitir, el run NO queda huérfan
     ideas,
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
+    oauthStateSecret: OAUTH_STATE_SECRET_TEST,
     verificar,
     emisor: emisorQueLanza(fallo),
     portalUrl: PORTAL_URL_TEST,
@@ -941,6 +947,7 @@ test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", 
     ideas,
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
+    oauthStateSecret: OAUTH_STATE_SECRET_TEST,
     emisor: emisorInerte,
     verificar: caido,
     portalUrl: PORTAL_URL_TEST,
@@ -962,16 +969,37 @@ test("POST /clients/:id/google/conectar devuelve una URL absoluta que apunta al 
 });
 
 test("GET /clients/:id/google/callback sin code o sin state → 400", async () => {
-  const res = await req("GET", `/clients/${clientA1}/google/callback`, { user: equipoA, tenant: tenantA });
+  // Sin headers: esta ruta es ANÓNIMA (corre antes de `autenticar()`), así que ningún `user`/`tenant`
+  // viaja en una llamada real — mandarlos no cambiaría nada, pero omitirlos es fiel al camino real.
+  const res = await req("GET", `/clients/${clientA1}/google/callback`, {});
   assert.equal(res.status, 400);
 });
 
+/**
+ * Firma un `state` como lo haría `POST /clients/:id/google/conectar`, sin pasar por HTTP — para los
+ * tests que necesitan un `state` VÁLIDAMENTE firmado pero con un `clientId` que no es el de la ruta
+ * (el ataque que `estado.clientId !== clientId` está para frenar). Mismo secreto que `createApp`
+ * recibió en el `beforeEach`.
+ */
+function firmarStateDeTest(estado: Partial<EstadoOAuth> & { clientId: string }): string {
+  return firmarEstado(
+    {
+      tenantId: tenantA,
+      userId: equipoA,
+      nonce: "nonce-de-test",
+      emitidoEn: Date.now(),
+      ...estado,
+    },
+    OAUTH_STATE_SECRET_TEST,
+  );
+}
+
 test("🔴 GET /clients/:id/google/callback con state de OTRO cliente → 400, no escribe nada", async () => {
-  const stateAjeno = Buffer.from(JSON.stringify({ clientId: "otro-cliente" })).toString("base64url");
-  const res = await req("GET", `/clients/${clientA1}/google/callback?code=abc&state=${stateAjeno}`, {
-    user: equipoA,
-    tenant: tenantA,
-  });
+  // El state está firmado de VERDAD (con el secreto del proceso) -- lo que está mal es que apunta a
+  // un cliente distinto del de la ruta. Antes del fix esto se podía forjar a mano (JSON en base64url
+  // plano); ahora ni siquiera un state genuino de OTRO cliente sirve para éste.
+  const stateAjeno = firmarStateDeTest({ clientId: "00000000-0000-4000-8000-000000000099" });
+  const res = await req("GET", `/clients/${clientA1}/google/callback?code=abc&state=${stateAjeno}`, {});
   assert.equal(res.status, 400);
   const [fila] = await sql<{ google_conectado_en: string | null }>(
     "select google_conectado_en from clients where id = $1",
@@ -980,12 +1008,36 @@ test("🔴 GET /clients/:id/google/callback con state de OTRO cliente → 400, n
   assert.equal(fila!.google_conectado_en, null, "un state que apunta a otro cliente no puede haber escrito nada");
 });
 
+/** Firma el state pasando por el endpoint REAL (`POST .../conectar`), como lo hace el portal. */
+async function obtenerStateFirmado(clientId: string, user: string, tenant: string): Promise<string> {
+  const res = await req("POST", `/clients/${clientId}/google/conectar`, { user, tenant });
+  assert.equal(res.status, 200, "el control positivo empieza por poder pedir la URL de consentimiento");
+  const { url } = (await res.json()) as { url: string };
+  const state = new URL(url).searchParams.get("state");
+  assert.ok(state, "la URL de consentimiento tiene que traer un state");
+  return state as string;
+}
+
+test("🔴 GET /clients/:id/google/callback SIN Authorization completa el flujo (bug real de Task 7)", async () => {
+  // Esta es la reproducción del bug que Task 7 encontró en un navegador real: una navegación de nivel
+  // superior (`window.location.href`) NUNCA lleva el header `Authorization` -- no es un detalle de
+  // esta implementación. Antes del fix, este endpoint vivía detrás de `autenticar()` y esta misma
+  // llamada daba 401 "Falta el token Bearer.", rompiendo el flujo de punta a punta.
+  const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
+  const res = await req("GET", `/clients/${clientA1}/google/callback?code=verificacion&state=${state}`, {});
+  assert.equal(res.status, 302, "el callback anónimo tiene que completar el flujo, no pedir un token que nunca llega");
+  assert.ok(res.headers.get("location")?.startsWith(PORTAL_URL_TEST));
+
+  const [fila] = await sql<{ google_refresh_token: string | null }>(
+    "select google_refresh_token from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(fila!.google_refresh_token, "mock-refresh-verificacion");
+});
+
 test("🔴 el flujo completo conecta (redirect 302 de vuelta al portal) y desconectar limpia las tres columnas", async () => {
-  const state = Buffer.from(JSON.stringify({ clientId: clientA1 })).toString("base64url");
-  const conectar = await req("GET", `/clients/${clientA1}/google/callback?code=xyz&state=${state}`, {
-    user: equipoA,
-    tenant: tenantA,
-  });
+  const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
+  const conectar = await req("GET", `/clients/${clientA1}/google/callback?code=xyz&state=${state}`, {});
   assert.equal(conectar.status, 302);
   assert.ok(conectar.headers.get("location")?.startsWith(PORTAL_URL_TEST), "vuelve al ORIGEN del portal");
   assert.ok(conectar.headers.get("location")?.includes(`/clientes/${clientA1}/resenas`));
@@ -1040,13 +1092,15 @@ test("🔴 con rol 'cliente', desconectar no afecta ninguna fila (ADR-20: solo l
 });
 
 test("🔴 GET /clients/:id/google/callback de OTRO tenant → 404, sin escribir (RLS, no un `if` de rol)", async () => {
-  // El state SÍ coincide con el client_id (no es el ataque de state cruzado, es aislamiento por
-  // tenant): equipoB reclama el tenant B, pero la fila de clientA1 vive en el tenant A.
-  const state = Buffer.from(JSON.stringify({ clientId: clientA1 })).toString("base64url");
-  const res = await req("GET", `/clients/${clientA1}/google/callback?code=xyz2&state=${state}`, {
-    user: equipoB,
-    tenant: tenantB,
-  });
+  // El `state` viaja HONESTAMENTE firmado para la identidad REAL de equipoB (tenantB) -- `POST
+  // .../conectar` no comprueba a quién pertenece `clientId` (esa decisión es deliberada, ver el
+  // comentario del bloque en app.ts): equipoB puede pedir un state para el cliente de OTRO tenant sin
+  // que nada se lo impida acá. Lo que sí lo frena es RLS al escribir: `conectarGoogle` hace el UPDATE
+  // con `ctx.tenantId = tenantB`, y la fila de `clientA1` vive en `tenantA` -- cero filas, 404. No es
+  // el ataque de state cruzado (eso ya lo cubre el test de arriba): acá el clientId SÍ coincide con
+  // la ruta, lo que no coincide es el tenant.
+  const state = await obtenerStateFirmado(clientA1, equipoB, tenantB);
+  const res = await req("GET", `/clients/${clientA1}/google/callback?code=xyz2&state=${state}`, {});
   assert.equal(res.status, 404);
   const [fila] = await sql<{ google_conectado_en: string | null }>(
     "select google_conectado_en from clients where id = $1",

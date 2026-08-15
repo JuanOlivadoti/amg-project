@@ -36,6 +36,14 @@ export interface ConfigApi {
   corsOrigins?: string[];
   /** `aud` esperado del JWT. Default `authenticated` (lo que emite Supabase). */
   jwtAudience?: string;
+  /**
+   * Secreto con el que se firma/verifica el `state` de OAuth de Google (`oauth-state.ts`). Sin él,
+   * `GET /clients/:id/google/callback` no tiene forma de confiar en la identidad que trae el `state`
+   * —esa ruta corre ANTES del middleware de auth, así que no hay ningún `ctx` que pedirle a Hono—.
+   * **Obligatorio**, sin default: un valor fijo acá sería una credencial de facto compartida entre
+   * todos los despliegues, exactamente el error que ya se corrigió para `SUPABASE_JWT_SECRET`.
+   */
+  oauthStateSecret: string;
 }
 
 /** Lee la config del entorno y **falla cerrado** si falta algo: una API a medio configurar no arranca. */
@@ -43,6 +51,7 @@ export function leerConfig(): ConfigApi {
   const databaseUrl = process.env["DATABASE_URL_API"];
   const issCrudo = process.env["SUPABASE_JWT_ISS"]?.trim();
   const corsRaw = process.env["CORS_ORIGINS"]?.trim();
+  const oauthStateSecret = process.env["OAUTH_STATE_SECRET"]?.trim();
   // CORS_ORIGINS es OBLIGATORIO acá a propósito. `createApp` defaultea a `origin: *`, y para la API
   // local (dev-server, que arma sus deps a mano) eso está bien. Pero este `leerConfig` es el arranque
   // de PRODUCCIÓN, y la API es la única pieza autenticada expuesta a internet: dejarla en `*` porque
@@ -53,6 +62,8 @@ export function leerConfig(): ConfigApi {
     !databaseUrl && "DATABASE_URL_API (login amg_api → rol app_user)",
     !issCrudo && "SUPABASE_JWT_ISS (https://<proy>.supabase.co/auth/v1; de acá sale el JWKS)",
     !corsRaw && "CORS_ORIGINS (origen del portal; en producción no se sirve con `*`)",
+    !oauthStateSecret &&
+      "OAUTH_STATE_SECRET (firma el `state` del callback OAuth de Google; sin él, GET /clients/:id/google/callback no puede confiar en la identidad que trae)",
   ].filter((x): x is string => Boolean(x));
   if (faltan.length > 0) {
     throw new Error(`Faltan variables de entorno de la API:\n  - ${faltan.join("\n  - ")}`);
@@ -84,6 +95,7 @@ export function leerConfig(): ConfigApi {
     databaseUrl: databaseUrl as string,
     emisor,
     corsOrigins,
+    oauthStateSecret: oauthStateSecret as string,
     ...(aud ? { jwtAudience: aud } : {}),
     ...(inngestEventKey ? { inngestEventKey } : {}),
   };
@@ -223,6 +235,7 @@ export async function crearDeps(
       ideas,
       resenas,
       googleOAuth,
+      oauthStateSecret: config.oauthStateSecret,
       emisor,
       verificar,
       ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}),

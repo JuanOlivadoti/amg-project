@@ -64,6 +64,10 @@ export const CATALOGO: Record<string, Entrada> = {
   // --- Secretos opacos compartidos entre procesos nuestros. ---
   PREVIEW_SECRET: { familia: "secreto", nota: "firma los enlaces de preview del Visual Editor" },
   STORYBLOK_WEBHOOK_SECRET: { familia: "secreto", nota: "valida los webhooks entrantes de Storyblok" },
+  OAUTH_STATE_SECRET: {
+    familia: "secreto",
+    nota: "firma el `state` del callback OAuth de Google (api/src/oauth-state.ts) — sin él, el callback anónimo no puede confiar en el tenantId/userId que trae",
+  },
 
   /*
    * El DSN del DUEÑO de la base, y por eso no está en la familia `dsn`: su password la fija Supabase

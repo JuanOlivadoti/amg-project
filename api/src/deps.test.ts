@@ -23,6 +23,7 @@ function conEntorno(vars: Record<string, string>): void {
     "CORS_ORIGINS",
     "SUPABASE_JWT_AUD",
     "SUPABASE_JWT_ISS",
+    "OAUTH_STATE_SECRET",
     // El SDK de Inngest infiere su modo del entorno: si la máquina que corre los tests tuviera
     // `NODE_ENV=production` o `RAILWAY_GIT_BRANCH`, la mitad de estos tests cambiaría de resultado
     // sin que nadie tocara el código. Se limpian, y cada test declara el entorno que quiere probar.
@@ -39,6 +40,7 @@ function conEntorno(vars: Record<string, string>): void {
 const BASE = {
   DATABASE_URL_API: "postgres://amg_api@host/db",
   SUPABASE_JWT_ISS: "https://proyecto.supabase.co/auth/v1",
+  OAUTH_STATE_SECRET: "secreto-de-test-no-para-produccion",
   // Modo dev EXPLÍCITO. `INNGEST_DEV` gana sobre toda la inferencia del SDK (medido), así que estos
   // tests —que no van sobre Inngest— dan igual en un portátil que en un CI que se crea producción.
   // Los que SÍ van sobre el modo lo borran y ponen las variables del PaaS de verdad.
@@ -74,6 +76,15 @@ test("🔴 falla cerrado si falta SUPABASE_JWT_ISS: sin issuer no hay de dónde 
 test("🔴 un issuer de un host ajeno no arranca la API", () => {
   conEntorno({ ...BASE, SUPABASE_JWT_ISS: "https://atacante.example/auth/v1", CORS_ORIGINS: "https://app.tudominio.com" });
   assert.throws(() => leerConfig(), /Supabase/);
+});
+
+test("🔴 falla cerrado si falta OAUTH_STATE_SECRET: sin él, el callback OAuth no puede confiar en el state", () => {
+  // Mismo criterio que SUPABASE_JWT_ISS arriba: sin este secreto, `GET /clients/:id/google/callback`
+  // (anónimo, fuera de `autenticar()`) no tendría con qué verificar el `tenantId`/`userId` que trae
+  // el `state` -- un valor fijo acá sería una credencial compartida entre despliegues.
+  const { OAUTH_STATE_SECRET: _sinSecreto, ...sinEsteVar } = BASE;
+  conEntorno({ ...sinEsteVar, CORS_ORIGINS: "https://app.tudominio.com" });
+  assert.throws(() => leerConfig(), /OAUTH_STATE_SECRET/);
 });
 
 test("el emisor válido queda canonizado en la config, con su URL de JWKS", () => {

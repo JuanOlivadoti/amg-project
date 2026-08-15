@@ -17,6 +17,7 @@ import { validarCambiosIdea, serializarResumen, serializarDetalle } from "./idea
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
 import type { GoogleOAuthProvider } from "./google-oauth.js";
+import { firmarEstado, verificarEstado, type EstadoOAuth } from "./oauth-state.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
 import { SIN_PAGINAS_APROBADAS, RUN_SIN_WORKFLOW } from "./codigos.js";
@@ -47,6 +48,15 @@ export interface ApiDeps {
   resenas: PgResenas;
   /** Conexión OAuth con Google (mock/live) — ver `google-oauth.ts`. Bloque F fase 1 es mock-first. */
   googleOAuth: GoogleOAuthProvider;
+  /**
+   * Secreto con el que se firma/verifica el `state` de OAuth (`oauth-state.ts`). `POST
+   * /clients/:id/google/conectar` (autenticado) FIRMA la identidad de quien conecta dentro del
+   * `state`; `GET .../google/callback` (anónimo, fuera de `autenticar()`) la VERIFICA — es lo único
+   * que le permite a una ruta que ningún header puede alcanzar confiar en el `tenantId`/`userId` que
+   * trae. Sin este secreto cualquiera podría escribir `google_refresh_token` en un cliente ajeno
+   * fabricando un `state` a mano.
+   */
+  oauthStateSecret: string;
   emisor: EmisorEventos;
   verificar: VerificadorToken;
   /**
@@ -102,6 +112,55 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
    * necesitara un JWT válido no serviría para eso. No toca la base ni revela nada: responde `ok` y ya.
    */
   app.get("/health", (c) => c.json({ status: "ok" }));
+
+  /*
+   * GET /clients/:id/google/callback — SIN auth y ANTES del middleware que exige token, mismo
+   * mecanismo que `/health` arriba (y por el mismo motivo del comentario ahí: en Hono el orden de
+   * registro decide qué handlers componen la cadena de una request, y una ruta registrada antes de
+   * `app.use("*", autenticar(...))` nunca pasa por ese middleware).
+   *
+   * Esto NO es una relajación de seguridad: la ruta la pega una NAVEGACIÓN DE NIVEL SUPERIOR real del
+   * navegador (`window.location.href` desde el portal) — ninguna navegación `href` lleva el header
+   * `Authorization`, no es un detalle de esta implementación sino de cómo funciona la plataforma web.
+   * Exigirle `autenticar()` a esta ruta no la protege: la vuelve inalcanzable (401 `Falta el token
+   * Bearer.` en el 100% de los casos, confirmado en un navegador real).
+   *
+   * La identidad de quien conecta viaja DENTRO del `state`, y ese `state` está FIRMADO con HMAC-SHA256
+   * (`oauth-state.ts`) por el mismo proceso que lo firmó al armar la URL de consentimiento (`POST
+   * /clients/:id/google/conectar`, más abajo, SÍ autenticado). `verificarEstado` es lo que impide que
+   * cualquiera golpee esta URL a mano con un `tenantId`/`userId` inventado: sin la firma correcta (y
+   * sin que `emitidoEn` esté dentro de la ventana), el callback ni siquiera llega a construir un `ctx`.
+   */
+  app.get("/clients/:id/google/callback", async (c) => {
+    const clientId = c.req.param("id");
+    const code = c.req.query("code");
+    const stateCrudo = c.req.query("state");
+
+    if (!code || !stateCrudo) {
+      return c.json({ error: "Falta code o state en el callback de Google." }, 400);
+    }
+
+    const estado = verificarEstado(stateCrudo, deps.oauthStateSecret);
+    if (!estado) {
+      return c.json({ error: "state inválido, alterado o vencido." }, 400);
+    }
+    if (estado.clientId !== clientId) {
+      return c.json({ error: "El state no corresponde a este cliente." }, 400);
+    }
+
+    // El ctx sale ENTERO del state firmado: acá no hay `c.get("ctx")` porque esta ruta corre ANTES
+    // del middleware de auth y nunca lo va a tener. Lo que autoriza la escritura sigue siendo RLS
+    // (`conectarGoogle`, ADR-20) — este `ctx` es solo la identidad que el state trajo verificada.
+    const ctx = { tenantId: estado.tenantId, userId: estado.userId };
+    const { refreshToken, locationId } = await deps.googleOAuth.intercambiarCode(code);
+
+    const ok = await deps.resenas.conectarGoogle(ctx, clientId, { refreshToken, locationId });
+    if (!ok) return c.json({ error: "Cliente no encontrado o sin permiso para conectar." }, 404);
+
+    // Redirect real: este endpoint lo pega el NAVEGADOR (window.location.href del portal), no un
+    // fetch, así que la respuesta tiene que ser una navegación de vuelta, no JSON.
+    return c.redirect(`${deps.portalUrl}/clientes/${clientId}/resenas`);
+  });
 
   // Del resto de la superficie, todo exige token. Seguro por defecto.
   app.use("*", autenticar(deps.verificar));
@@ -371,68 +430,41 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
   });
 
   /*
-   * Los tres endpoints de conexión OAuth con Google (Bloque F, fase 1). Tres cosas que decide este
-   * bloque, y ninguna es autorización:
+   * Los dos endpoints de conexión OAuth con Google que quedan DETRÁS de `autenticar()` (Bloque F,
+   * fase 1) — el tercero, el callback, vive ANTES del middleware (ver el bloque junto a `/health`,
+   * más arriba, con el porqué). Lo que decide este bloque, y no es autorización:
    *
-   *  1. **El `state` ata el callback al `client_id` correcto.** Sin esto, dos conexiones en
-   *     simultáneo (dos pestañas, dos clientes) podrían escribir el token del uno en la fila del
-   *     otro: el callback solo confía en el `client_id` de la RUTA después de confirmar que coincide
-   *     con el que viajó en el `state` que ESTA API firmó al armar la URL de consentimiento.
+   *  1. **`conectar` FIRMA la identidad de quien conecta dentro del `state`.** `ctx.tenantId` y
+   *     `ctx.userId` (ya autenticados acá) viajan firmados con HMAC (`oauth-state.ts`) para que el
+   *     callback anónimo pueda confiar en ellos sin poder ser falsificados por cualquiera que golpee
+   *     la URL a mano. El `clientId` también viaja adentro y ata el callback al cliente correcto —sin
+   *     eso, dos conexiones en simultáneo (dos pestañas, dos clientes) podrían mezclar el token del
+   *     uno con la fila del otro.
    *  2. **ADR-20 por RLS, no por un `if`.** `conectarGoogle`/`desconectarGoogle` (`db/src/resenas.ts`)
    *     escriben `clients` bajo la política `client_write` (0001), que exige `app.puede_escribir()`
    *     en su `using` — el rol `cliente` nunca afecta filas, así que el 404 de acá es EXACTAMENTE el
    *     mismo mecanismo que "un CLIENTE no puede aprobar una página" o "no puede modificar clientes",
    *     ya probados en `app.test.ts`. Este handler no sabe qué rol es quien llama.
-   *  3. **El callback lo pega el NAVEGADOR, no un `fetch` del portal** (`window.location.href`, una
-   *     navegación completa) — así que en el camino de éxito responde con un REDIRECT real
-   *     (`c.redirect`), nunca JSON. `deps.portalUrl` es el único dato nuevo de config de este bloque.
    */
 
   /** POST /clients/:id/google/conectar — arma la URL de consentimiento (mock: apunta al propio callback). */
   app.post("/clients/:id/google/conectar", async (c) => {
+    const ctx = c.get("ctx");
     const clientId = c.req.param("id");
-    const state = Buffer.from(JSON.stringify({ clientId, nonce: crypto.randomUUID() })).toString("base64url");
+    const estado: EstadoOAuth = {
+      clientId,
+      tenantId: ctx.tenantId,
+      // `ctx.userId` puede faltar en teoría (el tipo lo permite para el orquestador), pero esta ruta
+      // vive detrás de `autenticar()` y siempre lo deja puesto para un humano — nunca llega vacío.
+      userId: ctx.userId ?? "",
+      nonce: crypto.randomUUID(),
+      emitidoEn: Date.now(),
+    };
+    const state = firmarEstado(estado, deps.oauthStateSecret);
     // El origen de ESTA request, no un valor fijo: en dev la API vive en :3000, en producción en su
     // propio dominio — `urlDeConsentimiento` (mock) lo necesita para armar un callback absoluto.
     const origen = new URL(c.req.url).origin;
     return c.json({ url: deps.googleOAuth.urlDeConsentimiento(clientId, state, origen) });
-  });
-
-  /*
-   * GET /clients/:id/google/callback — intercambia el `code` y ESCRIBE la conexión bajo RLS antes de
-   * redirigir. El 404 (cliente inexistente/ajeno/rol `cliente`) también vuelve como JSON: no hay
-   * pantalla del portal a la que mandar a alguien cuya escritura la base rechazó, y el navegador que
-   * llega hasta acá ya trae un `state` que ESTA API firmó, así que un 404 en este tramo es un caso de
-   * borde de operación (carrera con un archivado, por ejemplo), no el camino esperado.
-   */
-  app.get("/clients/:id/google/callback", async (c) => {
-    const ctx = c.get("ctx");
-    const clientId = c.req.param("id");
-    const code = c.req.query("code");
-    const stateCrudo = c.req.query("state");
-
-    if (!code || !stateCrudo) {
-      return c.json({ error: "Falta code o state en el callback de Google." }, 400);
-    }
-
-    let state: { clientId: string };
-    try {
-      state = JSON.parse(Buffer.from(stateCrudo, "base64url").toString("utf8"));
-    } catch {
-      return c.json({ error: "state inválido." }, 400);
-    }
-    if (state.clientId !== clientId) {
-      return c.json({ error: "El state no corresponde a este cliente." }, 400);
-    }
-
-    const { refreshToken, locationId } = await deps.googleOAuth.intercambiarCode(code);
-
-    const ok = await deps.resenas.conectarGoogle(ctx, clientId, { refreshToken, locationId });
-    if (!ok) return c.json({ error: "Cliente no encontrado o sin permiso para conectar." }, 404);
-
-    // Redirect real: este endpoint lo pega el NAVEGADOR (window.location.href del portal), no un
-    // fetch, así que la respuesta tiene que ser una navegación de vuelta, no JSON.
-    return c.redirect(`${deps.portalUrl}/clientes/${clientId}/resenas`);
   });
 
   /** POST /clients/:id/google/desconectar — limpia las tres columnas. Mismo criterio de 404 que arriba. */

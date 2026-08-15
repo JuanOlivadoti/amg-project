@@ -58,6 +58,7 @@ beforeEach(async () => {
     ideas,
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
+    oauthStateSecret: "secreto-de-test-no-para-produccion",
     emisor,
     verificar,
     portalUrl: "http://localhost:4200",
