@@ -85,6 +85,65 @@ const locationSchema = z.object({
   foto: fotoSchema.optional(),
 });
 
+/** Los 14 alérgenos del Reglamento UE 1169/2011. Tiene que coincidir EXACTAMENTE con `Alergeno` de
+ *  `types.ts` y con el `Set` de `renderer/src/perfil.ts` — un valor en dos de las tres listas y no en
+ *  la tercera es la misma clase de fuga silenciosa que ya documentan las otras fronteras. */
+const ALERGENOS = [
+  "gluten",
+  "crustaceos",
+  "huevos",
+  "pescado",
+  "cacahuetes",
+  "soja",
+  "lacteos",
+  "frutos_cascara",
+  "apio",
+  "mostaza",
+  "sesamo",
+  "sulfitos",
+  "altramuces",
+  "moluscos",
+] as const;
+const alergenoSchema = z.enum(ALERGENOS);
+/** El tope es el TAMAÑO de la taxonomía: un plato nunca declara un alérgeno dos veces con sentido. */
+const MAX_ALERGENOS = ALERGENOS.length;
+
+const ETIQUETAS_DIETETICAS = [
+  "vegano",
+  "vegetariano",
+  "sin_gluten",
+  "sin_lactosa",
+  "picante",
+  "halal",
+  "kosher",
+] as const;
+const etiquetaDieteticaSchema = z.enum(ETIQUETAS_DIETETICAS);
+const MAX_ETIQUETAS = ETIQUETAS_DIETETICAS.length;
+
+/** De la ración de referencia. Cada clave es independiente: un plato puede declarar solo calorías. */
+const infoNutricionalSchema = z.object({
+  calorias: z.number().optional(),
+  proteinas_g: z.number().optional(),
+  carbohidratos_g: z.number().optional(),
+  grasas_g: z.number().optional(),
+});
+
+/**
+ * Un video. Mismo criterio de `fotoSchema`: https obligatorio, la allowlist de hosts vive en el
+ * render (frontera 4), no acá.
+ *
+ * `poster` es OPCIONAL en el modelo a propósito: exigirlo acá sería una regla de RENDER (sin poster
+ * no se emite el `<video>`) colada en el modelo de datos. Un video sin poster todavía es un dato
+ * válido — el render decide qué hacer con él.
+ */
+const videoSchema = z.object({
+  src: z
+    .string()
+    .url()
+    .refine((u) => /^https:\/\//i.test(u), "el video debe ser una URL https"),
+  poster: fotoSchema.optional(),
+});
+
 /** `name` es lo único obligatorio: un ítem de carta sin nombre no se puede mostrar. */
 const menuItemSchema = z.object({
   category: z.string().optional(),
@@ -99,11 +158,22 @@ const menuItemSchema = z.object({
   // descartan la entrada sola y dejan vivo el plato, porque ahí el dato ya está guardado y tirar la
   // carta por un precio mal cargado sería peor.
   precios: z
-    .array(z.object({ etiqueta: z.string().min(1), importe: z.string().min(1) }))
+    .array(
+      z.object({
+        etiqueta: z.string().min(1),
+        importe: z.string().min(1),
+        // "1-2 personas" — libre, por el mismo motivo que `etiqueta`/`importe`.
+        comensales: z.string().optional(),
+      }),
+    )
     .max(MAX_PRECIOS)
     .optional(),
   nota: z.string().optional(),
   foto: fotoSchema.optional(),
+  video: videoSchema.optional(),
+  alergenos: z.array(alergenoSchema).max(MAX_ALERGENOS).optional(),
+  etiquetas: z.array(etiquetaDieteticaSchema).max(MAX_ETIQUETAS).optional(),
+  nutricion: infoNutricionalSchema.optional(),
 });
 
 /**

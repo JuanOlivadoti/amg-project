@@ -192,3 +192,66 @@ test("frontera 1 — una entrada de `precios` a medias se rechaza: media fila de
   assert.throws(() => parseProfile({ name: "X", menu: [{ name: "P", precios: [{ etiqueta: "Media" }] }] }), /inválido/);
   assert.throws(() => parseProfile({ name: "X", menu: [{ name: "P", precios: [{ etiqueta: "", importe: "9 €" }] }] }), /inválido/);
 });
+
+test("frontera 1 — el menú enriquecido (video, alérgenos, etiquetas, nutrición, comensales) pasa entero", () => {
+  const p = parseProfile({
+    name: "X",
+    menu: [
+      {
+        name: "Margherita",
+        precios: [{ etiqueta: "Media", importe: "9 €", comensales: "1 persona" }],
+        video: {
+          src: "https://a.storyblok.com/f/1/margherita.mp4",
+          poster: { src: "https://a.storyblok.com/f/1/poster.jpg", alt: "Pizza recién horneada" },
+        },
+        alergenos: ["gluten", "lacteos"],
+        etiquetas: ["vegetariano"],
+        nutricion: { calorias: 820, proteinas_g: 34, carbohidratos_g: 96, grasas_g: 28 },
+      },
+    ],
+  });
+
+  const item = p.menu?.[0];
+  assert.equal(item?.precios?.[0]?.comensales, "1 persona");
+  assert.equal(item?.video?.src, "https://a.storyblok.com/f/1/margherita.mp4");
+  assert.equal(item?.video?.poster?.alt, "Pizza recién horneada");
+  assert.deepEqual(item?.alergenos, ["gluten", "lacteos"]);
+  assert.deepEqual(item?.etiquetas, ["vegetariano"]);
+  assert.equal(item?.nutricion?.calorias, 820);
+  assert.equal(item?.nutricion?.proteinas_g, 34);
+});
+
+test("frontera 1 — un alérgeno o etiqueta fuera de la taxonomía fija se rechaza (nunca texto libre)", () => {
+  assert.throws(
+    () => parseProfile({ name: "X", menu: [{ name: "P", alergenos: ["gluten-free"] }] }),
+    /inválido/,
+  );
+  assert.throws(
+    () => parseProfile({ name: "X", menu: [{ name: "P", etiquetas: ["sin gluten"] }] }),
+    /inválido/,
+  );
+});
+
+test("frontera 1 — un video sin https se rechaza, igual que una foto", () => {
+  assert.throws(
+    () => parseProfile({ name: "X", menu: [{ name: "P", video: { src: "http://a.storyblok.com/f/1/x.mp4" } }] }),
+    /https/,
+  );
+});
+
+test("frontera 1 — un video sin `poster` es válido: el poster lo exige el RENDER, no el modelo", () => {
+  const p = parseProfile({
+    name: "X",
+    menu: [{ name: "P", video: { src: "https://a.storyblok.com/f/1/x.mp4" } }],
+  });
+  assert.equal(p.menu?.[0]?.video?.src, "https://a.storyblok.com/f/1/x.mp4");
+  assert.equal(p.menu?.[0]?.video?.poster, undefined);
+});
+
+test("frontera 1 — 15 alérgenos o 8 etiquetas se rechazan (los topes son 14 y 7, el tamaño de cada taxonomía)", () => {
+  const alergeno15 = Array(15).fill("gluten");
+  assert.throws(() => parseProfile({ name: "X", menu: [{ name: "P", alergenos: alergeno15 }] }), /inválido/);
+
+  const etiqueta8 = Array(8).fill("vegano");
+  assert.throws(() => parseProfile({ name: "X", menu: [{ name: "P", etiquetas: etiqueta8 }] }), /inválido/);
+});

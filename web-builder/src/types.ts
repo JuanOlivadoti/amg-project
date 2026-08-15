@@ -192,6 +192,52 @@ export interface Location {
  * `price` es **texto libre** a propósito ("12,50 €", "s/ mercado"): tipificarlo como número obligaría
  * a decidir moneda y formato acá, y lo único que hace falta es imprimir lo que escribió el cliente.
  */
+/** Los 14 alérgenos del Reglamento UE 1169/2011. Taxonomía FIJA: texto libre produciría "sin gluten"
+ *  y "gluten-free" como dos alérgenos distintos en la misma carta. Ampliarla es un cambio de código
+ *  revisado — igual que `HOSTS_DE_ASSETS` — nunca un campo de la ficha. */
+export type Alergeno =
+  | "gluten"
+  | "crustaceos"
+  | "huevos"
+  | "pescado"
+  | "cacahuetes"
+  | "soja"
+  | "lacteos"
+  | "frutos_cascara"
+  | "apio"
+  | "mostaza"
+  | "sesamo"
+  | "sulfitos"
+  | "altramuces"
+  | "moluscos";
+
+/** Etiquetas dietéticas. Misma taxonomía fija que `Alergeno`, por la misma razón. */
+export type EtiquetaDietetica =
+  | "vegano"
+  | "vegetariano"
+  | "sin_gluten"
+  | "sin_lactosa"
+  | "picante"
+  | "halal"
+  | "kosher";
+
+/** Nutrición de la RACIÓN DE REFERENCIA del plato (la primera entrada de `precios`, o el `price`
+ *  único si no hay variantes) — no un valor distinto por cada variante de tamaño. */
+export interface InfoNutricional {
+  calorias?: number;
+  proteinas_g?: number;
+  carbohidratos_g?: number;
+  grasas_g?: number;
+}
+
+/** Un video autoalojado. Mismo criterio de seguridad que `Foto` — allowlist de hosts propia en
+ *  `render/videos.ts`. Sin `poster` el render no emite el `<video>` (ver esa función para el porqué),
+ *  pero acá es opcional: el modelo no impone una regla que es del render. */
+export interface Video {
+  src: string;
+  poster?: Foto;
+}
+
 export interface MenuItem {
   /** Agrupador ("Hamburguesas", "Cervezas"). Los ítems sin categoría se muestran juntos, al final. */
   category?: string;
@@ -203,11 +249,23 @@ export interface MenuItem {
    * como el atajo del caso de un solo importe. `importe` sigue siendo texto libre por la misma razón
    * que `price`. Máx 3: una carta con seis columnas de precio deja de ser legible.
    */
-  precios?: Array<{ etiqueta: string; importe: string }>;
+  precios?: Array<{
+    etiqueta: string;
+    importe: string;
+    /** "1-2 personas", libre — mismo criterio que `etiqueta`/`importe`: alcanza con imprimir lo que
+     *  escribió el cliente. Es un dato de PORCIÓN, distinto del tamaño con su propio precio. */
+    comensales?: string;
+  }>;
   /** Aviso corto del plato ("Sin gluten", "Picante"). */
   nota?: string;
   /** Miniatura del plato. */
   foto?: Foto;
+  /** Video del plato. Si el plato tiene los dos, el render usa el video en la miniatura y no la foto. */
+  video?: Video;
+  alergenos?: Alergeno[];
+  etiquetas?: EtiquetaDietetica[];
+  /** De la ración de referencia — ver `InfoNutricional`. */
+  nutricion?: InfoNutricional;
 }
 
 /**
