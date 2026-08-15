@@ -1101,19 +1101,67 @@ propuesta. Es trabajo del agente `front`.
 
 ## Bloque F — módulo 3: respondedor de reseñas de Google
 
-**Lo único del alcance base sin construir.** El PRD describe cuatro módulos; están hechos el 1 y el 2.
-El calendario de redes y el gestor de tareas quedaron en **línea futura**, fuera del presupuesto
-inicial (OBS-01, cerrada el 2026-07-19).
+**Fase 1 (monitoreo + alerta): ✅ COMPLETA el 2026-08-15.** El PRD describe cuatro módulos; están
+hechos el 1, el 2 y ahora la primera fase del 3 (el "Gestor de Reseñas" — RF-016 a RF-018). El
+calendario de redes y el gestor de tareas quedaron en **línea futura**, fuera del presupuesto inicial
+(OBS-01, cerrada el 2026-07-19).
 
-No tiene ni una línea de código ni una spec. Antes de planificarlo hace falta una sesión de diseño:
-qué reseñas, con qué autorización de Google, con qué compuerta humana (¿se publica sola una respuesta
-generada por IA en el perfil de un cliente?), y qué pasa con el multi-tenancy de las credenciales de
-Google.
+La sesión de diseño ([spec](../superpowers/specs/2026-08-13-modulo-resenas-google-design.md)) resolvió
+las cuatro preguntas abiertas: **alcance** — solo monitoreo + alerta esta vuelta, el borrador de IA y
+la publicación de respuestas son fase 2 (el PRD ya exige que las negativas las redacte siempre un
+humano); **acceso a Google** — mock-first, AMG todavía no pidió acceso a la Business Profile API;
+**conexión** — OAuth por cliente, `refresh_token` en `clients` bajo RLS, escribible pero no legible
+para `app_user` ni `app_service`; **detección** — polling periódico, no Pub/Sub. El
+[plan de 8 tasks](../superpowers/plans/2026-08-13-modulo-resenas-google.md) se ejecutó completo con
+`superpowers:subagent-driven-development` sobre `feature/resenas-google` (todavía sin mergear a
+`main`, a la espera del merge/PR):
 
-**Desde el 2026-08-11 ya tiene dónde caer en el portal:** el tab `/clientes/:id/resenas`, hoy un
-placeholder que enuncia justamente esas preguntas sin resolverlas. Lo que **se retiró** ese día son
-las tres reseñas inventadas que vivían en `/clientes/:id/ver`: un tab con datos ficticios de un
-restaurante que no los tiene miente con más detalle que uno vacío.
+| Task | Qué | Migración/commit |
+| --- | --- | --- |
+| 1 | Tabla `resenas_google` + columnas de conexión en `clients`, RLS estándar (mismo molde que `ideas`) | `0021` |
+| 2 | Rol cross-tenant `app_resenas` (sin login) + 2 funciones `security definer` para el polling — mismo molde que `app_barrido` (`0018`) | `0022` |
+| 3 | `GoogleReviewsProvider` mock/live en `orchestrator/` (`live` lanza explícito, fase 1 no lo implementa) | `fc6cb71` |
+| 4 | El polling: función Inngest programada, aislamiento por cliente, idempotente | `f2632cd` |
+| 5 | Endpoints de conexión OAuth (`conectar`/`callback`/`desconectar`) + `GoogleOAuthProvider` mock/live | `553e47f` |
+| 6 | `GET`/`PATCH` de reseñas por cliente | `abdeb2e` |
+| 7 | El tab `/clientes/:id/resenas` real (los cuatro estados) + botón "Conectar Google" | `9811ec6` |
+| fix | El callback OAuth firmado — ver abajo | `cb39245` |
+
+**El hallazgo más serio de la pieza, y por qué importa manejar la app en un navegador y no solo
+confiar en los tests.** La Task 7, probando el flujo en un navegador real (no el mock de los tests),
+encontró que `GET /clients/:id/google/callback` estaba roto de punta a punta: vivía detrás del
+middleware de autenticación global, pero lo pega una **navegación anónima del navegador**
+(`window.location.href`) que nunca puede llevar el header `Authorization` — ninguna navegación
+`href` lo lleva, no era un detalle de esta implementación. Los tests de la Task 5 no lo agarraron
+porque simulaban el callback adjuntando el header a mano, algo que un navegador real no puede hacer.
+Cerrado moviendo el callback fuera de `autenticar()` (mismo lugar que `/health`) y firmando el
+`state` con HMAC-SHA256 (`OAUTH_STATE_SECRET`, obligatorio en producción, catálogo de credenciales
+sincronizado — familia `secreto`, como `PREVIEW_SECRET`) para que la identidad de quien conecta viaje
+sin depender de un header que la navegación no puede llevar; RLS queda como segunda capa de defensa
+independiente (si alguien lograra firmar un `state` para un cliente ajeno, la escritura de todos
+modos falla por `client_write`).
+
+**Tres tasks (1, 2 y 5) encontraron bugs de seguridad reales en el SQL que el propio plan proponía**,
+los tres verificados por mutación real: un `revoke select` por columna no angosta un `grant` de tabla
+ya concedido (`app_user` y `app_service` tenían SELECT de tabla sobre `clients` desde antes de este
+bloque — la 0021/0022 tuvieron que revocarlo y re-concederlo columna por columna); y las políticas RLS
+de `resenas_google` no llevaban `tenant_id = app.current_tenant_id()` (cualquier staff de cualquier
+tenant habría visto las reseñas de todos los demás — `app.ve_cliente()` da `true` para cualquier
+`client_id` cuando quien pregunta es staff, sin mirar el tenant).
+
+Verificado en el navegador: el flujo completo de conexión (botón → mock → callback → escritura bajo
+RLS → redirect de vuelta al tab) persistiendo tras un refresh, rol `cliente` con acceso de solo
+lectura, claro y oscuro, consola limpia. `db` 352/352, `api` 211/211, `orchestrator` 92/92, `scripts`
+95/95, portal 288 `node:test` + 152 Karma.
+
+**Deuda anotada, no bloqueante:** el `nonce` del `state` no se invalida tras el primer uso — la única
+defensa contra un `state` filtrado es la ventana de 10 minutos; invalidarlo tras el primer uso exige
+una migración (una tabla o columna de nonces usados). Las migraciones `0021`/`0022` **todavía no se
+desplegaron a producción**.
+
+**Lo que sigue siendo fase 2, sin empezar:** borrador de respuesta con IA para 4-5★, publicar la
+respuesta de vuelta a Google, alertas por WhatsApp/email (hoy la alerta vive solo en el portal), y el
+acceso real a la Business Profile API (`GOOGLE_REVIEWS_MODO=live`).
 
 ---
 
@@ -1248,5 +1296,5 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
    decisiones**: los dos planes están escritos. **E** (el aspecto de las webs) es lo que más cambia lo
    que se puede vender, pero necesita decisiones de diseño. Si hay ganas de avanzar sin reuniones, J;
    si lo que aprieta es enseñar algo vendible, E.
-7. **D** cuando Juan quiera gastar; **F** cuando haya sesión de diseño; **G** y **H** antes de un SLA
-   o de firmar una baja.
+7. **D** cuando Juan quiera gastar; ~~F cuando haya sesión de diseño~~ — ✅ la sesión pasó y la fase 1
+   de **F** ya está completa (2026-08-15); **G** y **H** antes de un SLA o de firmar una baja.
