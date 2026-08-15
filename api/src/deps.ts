@@ -1,4 +1,4 @@
-import { NodePgPool, PgStore, PgClientes, PgMembresias, PgIdeas } from "db";
+import { NodePgPool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
 import { Inngest } from "inngest";
 import {
   verificadorDeEmisor,
@@ -6,6 +6,7 @@ import {
   type EmisorSupabase,
   type VerificadorToken,
 } from "./auth.js";
+import { getGoogleOAuthProvider } from "./google-oauth.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { ApiDeps } from "./app.js";
 
@@ -35,6 +36,48 @@ export interface ConfigApi {
   corsOrigins?: string[];
   /** `aud` esperado del JWT. Default `authenticated` (lo que emite Supabase). */
   jwtAudience?: string;
+  /**
+   * Secreto con el que se firma/verifica el `state` de OAuth de Google (`oauth-state.ts`). Sin él,
+   * `GET /clients/:id/google/callback` no tiene forma de confiar en la identidad que trae el `state`
+   * —esa ruta corre ANTES del middleware de auth, así que no hay ningún `ctx` que pedirle a Hono—.
+   * **Obligatorio**, sin default: un valor fijo acá sería una credencial de facto compartida entre
+   * todos los despliegues, exactamente el error que ya se corrigió para `SUPABASE_JWT_SECRET`.
+   */
+  oauthStateSecret: string;
+  /**
+   * `GOOGLE_REVIEWS_MODO`, ya validada. Mismo botón de operación que lee
+   * `orchestrator/src/config.ts` (dos procesos, misma variable, misma semántica): opcional, con
+   * default `mock` cuando la variable está AUSENTE, pero un valor presente que no sea `mock`/`live`
+   * hace fallar el arranque -- igual de cerrado que el orquestador. Antes esto se leía suelto en
+   * `crearDeps` con un `=== "live" ? "live" : "mock"` que hacía caer cualquier typo a `mock` en
+   * silencio (hallazgo 3 de la revisión final de `feature/resenas-google`).
+   */
+  modoResenasGoogle: ModoResenasGoogle;
+}
+
+/** Igual forma que `orchestrator/src/config.ts` (`ModoResenasGoogle`), pero es un módulo distinto. */
+export type ModoResenasGoogle = "mock" | "live";
+const MODOS_RESENAS_GOOGLE: readonly string[] = ["mock", "live"];
+
+/**
+ * Falla tan cerrado como `validarModoResenasGoogle` en `orchestrator/src/config.ts`: cualquier valor
+ * que no sea exactamente `mock` o `live` lanza. Es la misma variable leída por dos procesos
+ * separados -- que discrepen en silencio sobre el mismo botón de operación es justo lo que
+ * `verificarCoherencia` existe para impedir del lado de `PIPELINE_MODO`.
+ */
+function validarModoResenasGoogle(crudo: string): ModoResenasGoogle {
+  if (!MODOS_RESENAS_GOOGLE.includes(crudo)) {
+    throw new Error(
+      `GOOGLE_REVIEWS_MODO inválido: "${crudo}". Los únicos valores son \`mock\` y \`live\`.`,
+    );
+  }
+  return crudo as ModoResenasGoogle;
+}
+
+/** Default `mock` SOLO si la variable está ausente. Presente-pero-inválida lanza, no cae a `mock`. */
+function leerModoResenasGoogle(): ModoResenasGoogle {
+  const crudo = process.env["GOOGLE_REVIEWS_MODO"]?.trim();
+  return crudo ? validarModoResenasGoogle(crudo) : "mock";
 }
 
 /** Lee la config del entorno y **falla cerrado** si falta algo: una API a medio configurar no arranca. */
@@ -42,6 +85,7 @@ export function leerConfig(): ConfigApi {
   const databaseUrl = process.env["DATABASE_URL_API"];
   const issCrudo = process.env["SUPABASE_JWT_ISS"]?.trim();
   const corsRaw = process.env["CORS_ORIGINS"]?.trim();
+  const oauthStateSecret = process.env["OAUTH_STATE_SECRET"]?.trim();
   // CORS_ORIGINS es OBLIGATORIO acá a propósito. `createApp` defaultea a `origin: *`, y para la API
   // local (dev-server, que arma sus deps a mano) eso está bien. Pero este `leerConfig` es el arranque
   // de PRODUCCIÓN, y la API es la única pieza autenticada expuesta a internet: dejarla en `*` porque
@@ -52,6 +96,8 @@ export function leerConfig(): ConfigApi {
     !databaseUrl && "DATABASE_URL_API (login amg_api → rol app_user)",
     !issCrudo && "SUPABASE_JWT_ISS (https://<proy>.supabase.co/auth/v1; de acá sale el JWKS)",
     !corsRaw && "CORS_ORIGINS (origen del portal; en producción no se sirve con `*`)",
+    !oauthStateSecret &&
+      "OAUTH_STATE_SECRET (firma el `state` del callback OAuth de Google; sin él, GET /clients/:id/google/callback no puede confiar en la identidad que trae)",
   ].filter((x): x is string => Boolean(x));
   if (faltan.length > 0) {
     throw new Error(`Faltan variables de entorno de la API:\n  - ${faltan.join("\n  - ")}`);
@@ -79,10 +125,14 @@ export function leerConfig(): ConfigApi {
   const emisor = emisorSupabase(issCrudo as string);
   // Mismo razonamiento para Inngest: sin event key en cloud, `POST /runs` falla en cada petición.
   const inngestEventKey = exigirEventKeySiEsCloud();
+  // Falla tan cerrado como el orquestador ante un GOOGLE_REVIEWS_MODO mal escrito (ver la función).
+  const modoResenasGoogle = leerModoResenasGoogle();
   return {
     databaseUrl: databaseUrl as string,
     emisor,
     corsOrigins,
+    oauthStateSecret: oauthStateSecret as string,
+    modoResenasGoogle,
     ...(aud ? { jwtAudience: aud } : {}),
     ...(inngestEventKey ? { inngestEventKey } : {}),
   };
@@ -179,6 +229,8 @@ export async function crearDeps(
    * que este literal diga `app_user`, acá la da el tipo — no hay nada que un test pueda mutar.
    */
   const ideas = new PgIdeas(new NodePgPool(pool));
+  // Reseñas de Google (Bloque F, fase 1). Mismo criterio que `ideas`: sin literal de rol.
+  const resenas = new PgResenas(new NodePgPool(pool));
 
   // Inngest como emisor. La API solo ENVÍA (`research/solicitado`, `research/aprobado`); las funciones
   // suscritas viven en el orquestador. `send({name, data})` ya cumple la interfaz `EmisorEventos`.
@@ -204,15 +256,32 @@ export async function crearDeps(
     ...(config.jwtAudience ? { audience: config.jwtAudience } : {}),
   });
 
+  // Mock-first (Bloque F fase 1): mismo `GOOGLE_REVIEWS_MODO` que ya usa `orchestrator/src/config.ts`
+  // para el polling — es el mismo botón de operación ("¿Google ya tiene credenciales reales?"),
+  // aunque API y orquestador sean procesos separados con sus propias variables de entorno. Ya
+  // validado por `leerConfig()` (falla al arrancar ante un valor que no sea `mock`/`live`); acá NO
+  // se vuelve a leer `process.env` para que lo comprobado y lo usado sean el mismo valor.
+  const googleOAuth = getGoogleOAuthProvider(config.modoResenasGoogle);
+
   return {
     deps: {
       store,
       clientes,
       membresias,
       ideas,
+      resenas,
+      googleOAuth,
+      oauthStateSecret: config.oauthStateSecret,
       emisor,
       verificar,
       ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}),
+      // El origen del PORTAL para el redirect final del callback OAuth: MISMO dato que `corsOrigins`,
+      // tomado como el primero de la lista. El array puede llevar varios orígenes (front + un futuro
+      // panel admin, por ejemplo) pero el callback solo necesita UNO para volver a aterrizar en una
+      // pantalla — no es una variable de entorno conceptualmente nueva, es la misma que ya validó
+      // `leerConfig` (CORS_ORIGINS), colapsada al primer elemento. El fallback de desarrollo es el
+      // mismo puerto que usa `dev-server.ts` para el portal.
+      portalUrl: config.corsOrigins?.[0] ?? "http://localhost:4200",
     },
     cerrar: () => pool.end(),
   };

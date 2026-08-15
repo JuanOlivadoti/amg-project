@@ -161,3 +161,92 @@ export function crearFuncionBarrido(deps: Deps) {
     async ({ step }) => step.run("expirar", () => barrerRunsColgados(deps, console.log)),
   );
 }
+
+/**
+ * Cada cuánto se pollea. 30 minutos: las reseñas nuevas no son urgentes -- lo que importa es que el
+ * polling CORRA, no que corra cada minuto. A calibrar, igual que `CRON_BARRIDO`.
+ *
+ * Constante PROPIA, separada de `CRON_BARRIDO`: son dos crons con motivos distintos (uno vigila runs
+ * colgados, el otro trae reseñas nuevas) y calibrarlos juntos acoplaría dos decisiones que no tienen
+ * nada que ver entre sí.
+ */
+export const CRON_POLLING_RESENAS = "*/30 * * * *";
+
+/**
+ * El polling de reseñas de Google: recorre TODOS los clientes conectados (de todos los tenants --
+ * `clientesConectadosGoogle` cruza tenants a propósito, ver `db/src/store.ts`) y trae sus reseñas
+ * nuevas.
+ *
+ * ## Un cliente no frena a los demás
+ *
+ * Mismo criterio que `barrerRunsColgados` frente a un run individual: el refresh token de un cliente
+ * puede estar revocado (el dueño desconectó la cuenta de Google, o la revocó Google mismo) sin que
+ * eso le impida al resto seguir polleándose. Por eso el try/catch está DENTRO del loop, por cliente,
+ * y el error se loguea con el `tenantId` para poder rastrearlo -- sin él, un fallo de un cliente
+ * cualquiera sería indistinguible de otro en los logs.
+ *
+ * ## La idempotencia la da `registrarResenaGoogle`, no acá
+ *
+ * `registrarResenaGoogle` hace `on conflict do nothing` (Task 2): correr el polling dos veces con las
+ * mismas reseñas no duplica nada. Lo único que esta función tiene que hacer bien es NO IGNORAR su
+ * valor de retorno -- si contara todas las reseñas devueltas por el proveedor en vez de las que de
+ * verdad se insertaron, `resenasNuevas` mentiría en cada corrida de más.
+ */
+export async function pollearResenas(
+  deps: Pick<Deps, "store" | "resenasProvider">,
+  log: (msg: string) => void = () => {},
+): Promise<{ clientesRecorridos: number; resenasNuevas: number; fallidos: number }> {
+  const clientes = await deps.store.clientesConectadosGoogle();
+
+  let resenasNuevas = 0;
+  let fallidos = 0;
+
+  for (const cliente of clientes) {
+    try {
+      const accessToken = await deps.resenasProvider.refrescarToken(cliente.refreshToken);
+      const crudas = await deps.resenasProvider.listarResenas(accessToken, cliente.locationId);
+
+      for (const r of crudas) {
+        const insertada = await deps.store.registrarResenaGoogle({
+          clientId: cliente.clientId,
+          tenantId: cliente.tenantId,
+          googleReviewId: r.googleReviewId,
+          puntuacion: r.puntuacion,
+          autor: r.autor,
+          texto: r.texto,
+          publicadaEn: r.publicadaEn,
+        });
+        if (insertada) resenasNuevas++;
+      }
+    } catch (e) {
+      // Un cliente con el token revocado no frena a los demás. Se loguea con el tenant para poder
+      // rastrearlo -- ver la nota de arriba.
+      fallidos++;
+      log(
+        `[polling-resenas] cliente ${cliente.clientId} (tenant ${cliente.tenantId}) falló: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  log(
+    `[polling-resenas] ${clientes.length} clientes conectados, ${resenasNuevas} reseñas nuevas, ${fallidos} fallidos`,
+  );
+  return { clientesRecorridos: clientes.length, resenasNuevas, fallidos };
+}
+
+export function crearFuncionPollingResenas(deps: Deps) {
+  return inngest.createFunction(
+    {
+      id: "polling-resenas-google",
+      // Uno a la vez, mismo motivo que el barrido: dos polleos simultáneos harían el mismo trabajo
+      // por partida doble sin romper nada (`registrarResenaGoogle` es idempotente), pero es trabajo
+      // tirado y llamadas de más a la Business Profile API de Google.
+      concurrency: [{ limit: 1 }],
+      // Sin reintentos: si falla, el próximo ciclo (30 min) hace lo mismo. Reintentar en caliente
+      // contra una API externa que no responde es el mismo error que ya se descartó en el barrido.
+      retries: 0,
+    },
+    { cron: CRON_POLLING_RESENAS },
+    async ({ step }) => step.run("pollear", () => pollearResenas(deps, console.log)),
+  );
+}

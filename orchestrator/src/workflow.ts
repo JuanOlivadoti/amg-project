@@ -1,6 +1,7 @@
 import { renderReport } from "contrato";
 import type { KeywordResearchBrief, ProposedPage } from "contrato";
 import type { PgStore, TenantContext, PageRow, RunSummary } from "db";
+import type { GoogleReviewsProvider } from "./google/provider.js";
 
 /**
  * El workflow del research, de punta a punta: pipeline → persistencia → compuerta humana →
@@ -57,6 +58,8 @@ export interface Deps {
   ) => Promise<Array<{ slug: string; location: string; published: boolean }>>;
   /** Valida el brief contra el contrato del M1 (Zod). Lanza si no cuadra. */
   validarContrato: (raw: unknown) => unknown;
+  /** El polling de reseñas de Google (Bloque F). No lo usa `workflowResearch` -- lo usa `pollearResenas`. */
+  resenasProvider: GoogleReviewsProvider;
   log?: (msg: string) => void;
 }
 

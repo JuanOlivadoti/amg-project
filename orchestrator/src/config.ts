@@ -57,10 +57,22 @@ export interface ConfigOrquestador {
   readonly inngestSigningKey?: string;
   /** Lo declarado por el operador (cloud) o lo derivado de `DATAFORSEO_MODE` (dev). */
   readonly pipeline: ModoPipeline;
+  /**
+   * En qué modo lee reseñas de Google. **A diferencia de `pipeline`, esta variable NO es obligatoria
+   * en producción y SÍ tiene default** (`mock`): Bloque F fase 1 no tiene acceso real a la Business
+   * Profile API todavía — `live` ni siquiera está implementado (lanza un error explícito, ver
+   * `google/provider.ts`). Exigirle la variable a un despliegue que no tiene un `live` real que
+   * ofrecer sería pedirle al desplegador un valor que no puede usar. Ver {@link leerModoResenasGoogle}.
+   */
+  readonly resenasGoogle: ModoResenasGoogle;
 }
 
 const PUERTO_DEFECTO = 3100;
 const MODOS_PIPELINE: readonly string[] = ["mock", "live"];
+
+/** Igual forma que `ModoPipeline`, pero es un módulo distinto (Bloque F): ver `google/provider.ts`. */
+export type ModoResenasGoogle = "mock" | "live";
+const MODOS_RESENAS_GOOGLE: readonly string[] = ["mock", "live"];
 
 /**
  * ¿Estamos en producción? **Se le pregunta al SDK; no se reimplementa su heurística.**
@@ -109,6 +121,7 @@ export function esModoProduccion(): boolean {
 export function leerConfig(): ConfigOrquestador {
   const esProduccion = esModoProduccion();
   const puerto = leerPuerto();
+  const resenasGoogle = leerModoResenasGoogle();
 
   const urlOrquestador = process.env["DATABASE_URL_ORQUESTADOR"]?.trim();
   const urlCache = process.env["DATABASE_URL_CACHE"]?.trim();
@@ -168,6 +181,7 @@ export function leerConfig(): ConfigOrquestador {
       },
       inngestSigningKey: signingKey as string,
       pipeline,
+      resenasGoogle,
     };
   }
 
@@ -195,6 +209,7 @@ export function leerConfig(): ConfigOrquestador {
     puerto,
     esProduccion,
     pipeline,
+    resenasGoogle,
     ...(signingKey ? { inngestSigningKey: signingKey } : {}),
   };
 
@@ -232,6 +247,27 @@ function validarModoPipeline(crudo: string): ModoPipeline {
     );
   }
   return crudo as ModoPipeline;
+}
+
+function validarModoResenasGoogle(crudo: string): ModoResenasGoogle {
+  if (!MODOS_RESENAS_GOOGLE.includes(crudo)) {
+    throw new Error(
+      `GOOGLE_REVIEWS_MODO inválido: "${crudo}". Los únicos valores son \`mock\` y \`live\`.`,
+    );
+  }
+  return crudo as ModoResenasGoogle;
+}
+
+/**
+ * `GOOGLE_REVIEWS_MODO`, con default — a propósito distinto de `PIPELINE_MODO` (sin default, exigida
+ * en producción). Ese exige la variable porque `live` gasta dinero real y un olvido paga sin que
+ * nadie lo haya decidido; acá no hay nada real que `live` pueda hacer todavía (fase 1 del Bloque F es
+ * mock-first), así que exigirla le pediría al desplegador un valor que no puede usar. Se valida
+ * también fuera de producción: un typo silencioso no debe pasar inadvertido en dev.
+ */
+function leerModoResenasGoogle(): ModoResenasGoogle {
+  const crudo = process.env["GOOGLE_REVIEWS_MODO"]?.trim();
+  return crudo ? validarModoResenasGoogle(crudo) : "mock";
 }
 
 /**

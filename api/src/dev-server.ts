@@ -21,11 +21,13 @@ import {
   PgClientes,
   PgMembresias,
   PgIdeas,
+  PgResenas,
   sembrarDemo,
   sembrarIdeasDemo,
   IDEAS_DEMO,
 } from "db";
 import { createApp } from "./app.js";
+import { MockGoogleOAuthProvider } from "./google-oauth.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { VerificadorToken } from "./auth.js";
 
@@ -39,6 +41,7 @@ const store = new PgStore(new PglitePool(pg));
 const clientes = new PgClientes(new PglitePool(pg));
 const membresias = new PgMembresias(new PglitePool(pg));
 const ideas = new PgIdeas(new PglitePool(pg));
+const resenas = new PgResenas(new PglitePool(pg));
 
 const sql = async <T = Record<string, unknown>>(q: string, p: unknown[] = []): Promise<T[]> =>
   (await pg.query<T>(q, p)).rows;
@@ -154,9 +157,16 @@ const app = createApp({
   clientes,
   membresias,
   ideas,
+  resenas,
+  googleOAuth: new MockGoogleOAuthProvider(),
+  // FIJO a propósito, y NUNCA en producción (ver el `throw` de arriba): un secreto real vive en
+  // OAUTH_STATE_SECRET, que `leerConfig` exige y este archivo no lee. Este valor solo firma states
+  // dentro de un proceso que se reinicia con datos en memoria.
+  oauthStateSecret: "dev-oauth-state-secret-inseguro-no-usar-en-produccion",
   emisor,
   verificar,
   corsOrigins: ["http://localhost:4200"],
+  portalUrl: "http://localhost:4200",
 });
 
 // Un run EN CURSO: es el que dispara el polling del brief (y con el que se comprueba que no quede

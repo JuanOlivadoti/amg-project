@@ -45,4 +45,9 @@ export class ApiService {
 
   readonly listarMiembros = this.cliente.listarMiembros;
   readonly cambiarRolMiembro = this.cliente.cambiarRolMiembro;
+
+  readonly listarResenas = this.cliente.listarResenas;
+  readonly marcarResenaVista = this.cliente.marcarResenaVista;
+  readonly conectarGoogle = this.cliente.conectarGoogle;
+  readonly desconectarGoogle = this.cliente.desconectarGoogle;
 }

@@ -1,9 +1,10 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas } from "db";
+import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
 import { createApp } from "./app.js";
 import { nombreArchivo } from "./informe-nombre.js";
+import { MockGoogleOAuthProvider } from "./google-oauth.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { VerificadorToken } from "./auth.js";
 
@@ -166,8 +167,12 @@ describe("GET /runs/:id/informe y /informe.md", () => {
       clientes: new PgClientes(pool),
       membresias: new PgMembresias(pool),
       ideas: new PgIdeas(pool),
+      resenas: new PgResenas(pool),
+      googleOAuth: new MockGoogleOAuthProvider(),
+      oauthStateSecret: "secreto-de-test-no-para-produccion",
       emisor,
       verificar,
+      portalUrl: "http://localhost:4200",
     });
 
     [tenantA, tenantB] = (

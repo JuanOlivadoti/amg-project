@@ -11,6 +11,57 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-15 — Bloque F, fase 1: reseñas de Google (monitoreo + alerta)
+
+**Lo que se pidió.** Una revisión del diseño del portal derivó en un acento de color para el tema
+(commit aparte), y de ahí a "¿con qué seguimos del plan?" — el bloque F (respondedor de reseñas de
+Google) era la única pieza del alcance base sin ni una línea de código ni de spec. Se armó con
+`superpowers:brainstorming` → spec → `superpowers:writing-plans` → `superpowers:subagent-driven-development`,
+de punta a punta en una sesión.
+
+**Las decisiones de diseño**, cerradas antes de escribir código: solo monitoreo + alerta esta vuelta
+(el borrador de IA y publicar respuestas son fase 2, y el PRD ya exige que las negativas las escriba
+siempre un humano); mock-first porque AMG no pidió acceso a la Business Profile API; OAuth por
+cliente con el `refresh_token` bajo RLS; polling en vez de Pub/Sub; la alerta solo en el portal
+(ni WhatsApp ni email existen hoy en el proyecto).
+
+**Ocho tasks, y tres encontraron bugs de seguridad reales en el SQL que el propio plan proponía** —
+no en la ejecución, en el plan mismo. Un `revoke select` por columna no angosta un `grant` de tabla
+ya concedido (tanto `app_user` como `app_service` ya tenían SELECT de tabla entera sobre `clients`
+desde migraciones viejas); las políticas RLS de la tabla nueva no llevaban `tenant_id =
+app.current_tenant_id()`, y `app.ve_cliente()` da `true` para cualquier `client_id` cuando quien
+pregunta es staff — sin ese chequeo, cualquier staff de cualquier tenant habría visto las reseñas de
+todos los demás. Los tres, encontrados verificando contra PGlite real en vez de transcribiendo el
+pseudocódigo del brief, y cerrados con verificación por mutación (dos veces: el implementador y,
+después, el `revisor` de forma independiente).
+
+**El hallazgo más serio salió de manejar la app en un navegador, no de los tests.** La Task 7 probó
+el flujo de conexión de verdad y encontró que `GET /clients/:id/google/callback` daba 401 siempre:
+vivía detrás del middleware de autenticación global, pero lo pega una navegación anónima del
+navegador que nunca puede llevar el header `Authorization`. Los tests de la task anterior no lo
+agarraron porque simulaban el callback con el header puesto a mano — algo que ningún navegador real
+hace. Se cerró moviendo el callback fuera del middleware (mismo lugar que `/health`) y firmando el
+`state` de OAuth con HMAC-SHA256, para que la identidad de quien conecta viaje sin depender de un
+header que la navegación no puede llevar. Es la enésima confirmación de la regla del proyecto: leer
+el código y manejar la app encuentran cosas distintas.
+
+**Fricción operativa, no de diseño.** El working tree lo compartía otra sesión concurrente todo el
+tiempo (otro trabajo, sobre `kr-service/`) — un archivo suyo se coló en un commit por el índice de
+git compartido, corregido con un segundo commit (`git rm --cached`, sin `--amend`). Y tres veces un
+subagente dejó `db/migrations/0001_init.sql` (ya aplicada en producción) mutada a mitad de una
+verificación por mutación, mientras esperaba pasivamente un resultado en background que como
+subagente nunca le iba a llegar — cortado cada vez por el coordinador (`git checkout --` inmediato +
+instrucción explícita de no volver a tocar esa migración). Ninguno de los dos golpeó el código final.
+
+**Cómo quedó.** `db` 352/352, `api` 211/211, `orchestrator` 92/92, `scripts` 95/95, portal 288
+`node:test` + 152 Karma. Root completo (`npm run verificar`): 1473 tests, typecheck limpio, sin
+secretos. Verificado en el navegador: el flujo completo de conexión persiste tras un refresh, el rol
+`cliente` ve pero no conecta, claro y oscuro, consola limpia. Migraciones `0021`/`0022` sin desplegar
+a producción todavía. Detalle completo en `docs/proyecto/15-plan-plataforma.md` (Bloque F) y
+`.superpowers/sdd/progress.md`.
+
+---
+
 ## 2026-08-11 — la navegación del portal se vuelve cliente-céntrica
 
 **Lo que se pidió.** Que el trabajo de un cliente se alcance **desde su ficha** y no desde el menú de

@@ -112,6 +112,47 @@
 > `calcularMetricas`) **+ 143 Karma** (142 + 1, el caso "clientes falla"). Root: 1395/1395, sin
 > regresiones.
 >
+> 🧭 **Nuevo (2026-08-15): Bloque F — módulo de reseñas de Google, fase 1 (monitoreo + alerta),
+> COMPLETO.** Spec ([diseño](../superpowers/specs/2026-08-13-modulo-resenas-google-design.md)) y plan
+> ([8 tasks](../superpowers/plans/2026-08-13-modulo-resenas-google.md)) ejecutados con
+> `superpowers:subagent-driven-development` sobre `feature/resenas-google`. Conexión OAuth por
+> cliente (el `refresh_token` vive en `clients`, escribible pero **no legible** por `app_user` —
+> grant por columna, migración `0021`), polling periódico cross-tenant vía un rol sin login
+> (`app_resenas`, dos funciones `security definer`, mismo molde que `app_barrido`, migración `0022`),
+> y el tab `/clientes/:id/resenas` real (los cuatro estados: sin conectar, conectado sin reseñas, con
+> reseñas —1-3★ sin ver primero—, error). **Mock-first de punta a punta**: ni el polling
+> (`GoogleReviewsProvider`) ni el intercambio OAuth (`GoogleOAuthProvider`) hablan con Google de
+> verdad todavía — `GOOGLE_REVIEWS_MODO=live` lanza un error explícito, a propósito (AMG no pidió
+> acceso a la Business Profile API). Sin borrador de IA ni publicación de respuestas: eso es la fase 2
+> del bloque, y el PRD ya exige que las reseñas negativas las redacte siempre un humano.
+>
+> Tres tasks (1, 2 y 5) encontraron y corrigieron bugs de seguridad reales en el SQL que el propio
+> plan proponía, los tres verificados por mutación real y confirmados de forma independiente por el
+> `revisor`: un `revoke select` por columna que no angosta un `grant` de tabla ya concedido (`app_user`
+> y, señalado para la `0022`, también `app_service`, tenían SELECT de tabla sobre `clients` desde
+> antes de este bloque); políticas RLS de `resenas_google` sin `tenant_id = app.current_tenant_id()`
+> (cualquier staff de cualquier tenant habría visto las reseñas de todos los demás); y el hallazgo más
+> serio, encontrado manejando la app en un navegador real y no solo con tests: el callback OAuth
+> (`GET /clients/:id/google/callback`) vivía detrás del middleware de autenticación global, pero lo
+> pega una navegación anónima del navegador que nunca lleva el header `Authorization` — el flujo
+> estaba roto de punta a punta, incluso en mock. Cerrado moviendo el callback fuera de `autenticar()`
+> (mismo lugar que `/health`) y firmando el `state` con HMAC-SHA256 (`OAUTH_STATE_SECRET`, obligatorio
+> en producción, catálogo de credenciales sincronizado) para que la identidad de quien conecta viaje
+> sin depender de un header que una navegación anónima no puede llevar; RLS queda como segunda capa
+> de defensa independiente.
+>
+> Verificado en el navegador (API real sobre PGlite, MCP chrome-devtools): el flujo completo de
+> conexión —botón → mock → callback → escritura bajo RLS → redirect de vuelta al tab— funcionando de
+> punta a punta y **persistiendo tras un refresh** (no una actualización optimista en memoria); rol
+> `cliente` con acceso de solo lectura (ve la conexión, no el botón); claro y oscuro; consola limpia.
+> `db` 352/352, `api` 211/211, `orchestrator` 92/92, `scripts` 95/95, portal 288 `node:test` + 152
+> Karma. Root completo (`npm run verificar`): 1473 tests, typecheck limpio, sin secretos.
+>
+> **Deuda anotada, no bloqueante**: el `nonce` del `state` no se invalida tras el primer uso (sin
+> tabla de nonces, la única defensa contra un `state` filtrado es la ventana de 10 minutos) — cerrarlo
+> del todo exige una migración, y queda para si hace falta. Migraciones `0021`/`0022` **todavía no
+> desplegadas a producción**.
+>
 > 🧭 **La navegación del portal es cliente-céntrica desde el 2026-08-11**
 > ([spec](../superpowers/specs/2026-08-11-ficha-cliente-navegacion-design.md) ·
 > [plan](../superpowers/plans/2026-08-11-ficha-cliente-navegacion.md)). `/clientes/:id` dejó de ser una
@@ -119,8 +160,9 @@
 > las tres pantallas de un run cuelgan de `/clientes/:id/research/:runId/*`; Research salió del
 > sidebar (quedan tres ítems) y la home pasó de `/runs` a `/clientes`; y se retiró `/clientes/:id/ver`
 > con sus tres tabs de datos inventados. Lo que lo motivó: **el formulario de lanzar research pedía
-> el uuid del cliente pegado a mano**. Reseñas sigue siendo un placeholder que dice qué falta (el
-> bloque **F**, sin empezar); Ideas dejó de serlo el 2026-08-12.
+> el uuid del cliente pegado a mano**. Reseñas era, a esa fecha, un placeholder que decía qué falta
+> (el bloque **F**) — dejó de serlo el 2026-08-15 (ver el bloque de arriba); Ideas dejó de serlo el
+> 2026-08-12.
 >
 > 📓 **La historia está en [`progress/history.md`](../../progress/history.md)**: qué se hizo cada día,
 > con sus tropiezos y sus lecciones. Acá vive solo el estado de hoy y lo que falta — si buscás *por
@@ -180,8 +222,8 @@ como real, o gasto en un despliegue anotado como gratuito—.
 | | |
 |---|---|
 | **Paquetes** | 7 workspaces (`contrato`, `db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`) + `portal/` (Angular, fuera del monorepo a propósito) |
-| **Tests** | **1764** — 1395 en el monorepo + **369 en el portal** (248 `node:test` + 121 Karma). Subió 25 el **2026-08-11** con la navegación cliente-céntrica, y el saldo esconde un movimiento mayor: se **borraron** los specs de `/clientes/:id/ver` y de su mock al retirar la pantalla, y entraron los de los cuatro tabs, la conciliación cliente↔run, el destino post-login y **dos barridos nuevos** (`marca-activa`, que caza la clase de `routerLinkActive` que pierde la cascada; y `arbol-encabezados`, que impone contenedor-sin-`h1` / hoja-con-`h1`). Los dos barridos **descubren** las plantillas en vez de enumerarlas, así que cubren las pantallas que se agreguen. Los de seguridad, contra Postgres real. Cubre los bloques A (**A4 incluido**), B y **C entero**, el **bloque E completo** (entregas 1, 2 y 3), las **etapas 1-4 del bloque J** (Ideas) y el **bloque K entero** — el rediseño de la plantilla base, sus tres etapas (venía de 1199 → … → 1712 → 1716 → 1731 → 1739). El portal, con `-- --con-portal` y Karma aparte. ✅ **La cifra del 2026-08-10 (noche) es una corrida de `npm run verificar` en verde entero**, con el gate de paridad **re-capturado** tras medir que no se perdía nada (cero palabras, `href`, `id`, JSON-LD ni trazas en los diez casos) y con el sitio **manejado en un navegador** a 1440 y a 390. |
-| **Migraciones** | **20 en `main`, las 20 aplicadas en producción** — la `0013` (Ideas) y la `0020` (las tres secciones de plantilla) se aplicaron el **2026-08-10 por la noche** con `npm run migrate:deploy -w db`, y con eso **producción va al día por primera vez desde el 2026-08-08**. Las dos corrieron contra una base que ya tenía la `0014`-`0019`, que es exactamente el escenario "al final" que modela el test de orden de la `0013`; la `0020` corrió después de la `0014`, que era su única dependencia real. La próxima libre es la **`0021`**. ⚠️ **La `0020` reemplaza `app.nap_publico`, así que la `0014` ya no puede aplicarse después de ella**: sería reponer la allowlist vieja y perder `bienvenida`, `destacados` y `testimonios` en silencio. Nadie produce ese orden —`migrarConRegistro` aplica las pendientes **ordenadas**— y el test de independencia de orden se reescribió para modelar el real. La lección, que vale para la próxima que reemplace una función: **una migración solo se puede reordenar contra las que no tocan lo mismo que ella.** **Historial de tropiezos que siguen valiendo:** la `0014` aplicó en la posición que su test predecía —entre la `0012` y la `0015`, no al final— y **el `grant` sobrevivió al `drop column`**, verificado donde importa: el renderizador sirve «La Birra Bar» con las dos direcciones del footer, y ese dato solo puede venir de `business_profile_publico`. **Desde el 2026-08-10 ese sitio ya no responde en `amg-renderer-production.up.railway.app`**, sino en `birrabar.bigballs.es`: la URL del servicio se estaba usando como dominio de cliente, y ahí el sitio era **indexable** (el `noindex` cubre `*.bigballs.es`, no el dominio de Railway). **El primer intento de la `0018` falló** (`must be able to SET ROLE "app_barrido"`) y se revirtió sola: en PGlite el rol que migra es superusuario y en Supabase alojado no, así que `alter … owner to` exigía dos permisos que nadie había concedido. Arreglado y con un test que aplica esa migración **como rol no-superusuario** — sin él, la clase entera volvería a escaparse |
+| **Tests** | **1915** — 1473 en el monorepo + **442 en el portal** (288 `node:test` + 154 Karma). Subió con el Bloque F (reseñas de Google, fase 1: monitoreo + alerta, ocho tasks + el fix del callback OAuth firmado, 2026-08-15) — tests nuevos de RLS/credenciales en `db`, del `state` firmado y la conexión OAuth en `api`, del polling en `orchestrator`, y de `api-core.ts`/`cliente-resenas.spec.ts` en el portal. Subió 25 el **2026-08-11** con la navegación cliente-céntrica, y el saldo esconde un movimiento mayor: se **borraron** los specs de `/clientes/:id/ver` y de su mock al retirar la pantalla, y entraron los de los cuatro tabs, la conciliación cliente↔run, el destino post-login y **dos barridos nuevos** (`marca-activa`, que caza la clase de `routerLinkActive` que pierde la cascada; y `arbol-encabezados`, que impone contenedor-sin-`h1` / hoja-con-`h1`). Los dos barridos **descubren** las plantillas en vez de enumerarlas, así que cubren las pantallas que se agreguen. Los de seguridad, contra Postgres real. Cubre los bloques A (**A4 incluido**), B y **C entero**, el **bloque E completo** (entregas 1, 2 y 3), las **etapas 1-4 del bloque J** (Ideas) y el **bloque K entero** — el rediseño de la plantilla base, sus tres etapas (venía de 1199 → … → 1712 → 1716 → 1731 → 1739). El portal, con `-- --con-portal` y Karma aparte. ✅ **La cifra del 2026-08-10 (noche) es una corrida de `npm run verificar` en verde entero**, con el gate de paridad **re-capturado** tras medir que no se perdía nada (cero palabras, `href`, `id`, JSON-LD ni trazas en los diez casos) y con el sitio **manejado en un navegador** a 1440 y a 390. |
+| **Migraciones** | **22 en `main`, 20 aplicadas en producción** — las `0021`/`0022` (Bloque F: tabla `resenas_google` + columnas de conexión en `clients`, y el rol cross-tenant `app_resenas` del polling, 2026-08-15) todavía no se desplegaron. La `0013` (Ideas) y la `0020` (las tres secciones de plantilla) se aplicaron el **2026-08-10 por la noche** con `npm run migrate:deploy -w db`, y con eso **producción fue al día por primera vez desde el 2026-08-08** (hasta la `0020`). Las dos corrieron contra una base que ya tenía la `0014`-`0019`, que es exactamente el escenario "al final" que modela el test de orden de la `0013`; la `0020` corrió después de la `0014`, que era su única dependencia real. La próxima libre es la **`0023`**. ⚠️ **La `0020` reemplaza `app.nap_publico`, así que la `0014` ya no puede aplicarse después de ella**: sería reponer la allowlist vieja y perder `bienvenida`, `destacados` y `testimonios` en silencio. Nadie produce ese orden —`migrarConRegistro` aplica las pendientes **ordenadas**— y el test de independencia de orden se reescribió para modelar el real. La lección, que vale para la próxima que reemplace una función: **una migración solo se puede reordenar contra las que no tocan lo mismo que ella.** **Historial de tropiezos que siguen valiendo:** la `0014` aplicó en la posición que su test predecía —entre la `0012` y la `0015`, no al final— y **el `grant` sobrevivió al `drop column`**, verificado donde importa: el renderizador sirve «La Birra Bar» con las dos direcciones del footer, y ese dato solo puede venir de `business_profile_publico`. **Desde el 2026-08-10 ese sitio ya no responde en `amg-renderer-production.up.railway.app`**, sino en `birrabar.bigballs.es`: la URL del servicio se estaba usando como dominio de cliente, y ahí el sitio era **indexable** (el `noindex` cubre `*.bigballs.es`, no el dominio de Railway). **El primer intento de la `0018` falló** (`must be able to SET ROLE "app_barrido"`) y se revirtió sola: en PGlite el rol que migra es superusuario y en Supabase alojado no, así que `alter … owner to` exigía dos permisos que nadie había concedido. Arreglado y con un test que aplica esa migración **como rol no-superusuario** — sin él, la clase entera volvería a escaparse |
 | **ADRs** | 24 (la `ADR-24`, membresías escribibles bajo RLS, aceptada el 2026-08-02), más 4 observaciones — 3 cerradas y **`OBS-04` abierta** (quién edita la web no lo gobierna nuestro RBAC; bloquea reescribir ADR-11) |
 | **Reviews externas** | **15 rondas** (Codex), **21 tandas** de correcciones — la 13ª fue la primera sobre el arnés `.claude/`, la 14ª la primera sobre un **documento de diseño** (la spec de KR-2) y la 15ª la primera **híbrida** (código + el plan de la plataforma). El detalle, tanda por tanda, en [08-testing-calidad.md](08-testing-calidad.md#revisiones-externas-codex--qué-encontraron-y-qué-se-corrigió) |
 | **Corre sin credenciales** | Sí — providers mock + PGlite en memoria |

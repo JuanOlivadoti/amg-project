@@ -64,6 +64,10 @@ export const CATALOGO: Record<string, Entrada> = {
   // --- Secretos opacos compartidos entre procesos nuestros. ---
   PREVIEW_SECRET: { familia: "secreto", nota: "firma los enlaces de preview del Visual Editor" },
   STORYBLOK_WEBHOOK_SECRET: { familia: "secreto", nota: "valida los webhooks entrantes de Storyblok" },
+  OAUTH_STATE_SECRET: {
+    familia: "secreto",
+    nota: "firma el `state` del callback OAuth de Google (api/src/oauth-state.ts) — sin él, el callback anónimo no puede confiar en el tenantId/userId que trae",
+  },
 
   /*
    * El DSN del DUEÑO de la base, y por eso no está en la familia `dsn`: su password la fija Supabase
@@ -98,6 +102,10 @@ export const CATALOGO: Record<string, Entrada> = {
   PROSE_MODE: { familia: "config" },
   WEB_PUBLISH_MODE: { familia: "config", nota: "`dry-run` no publica" },
   PIPELINE_MODO: { familia: "config", nota: "`mock` | `live`, sin default: declara qué corre este despliegue" },
+  GOOGLE_REVIEWS_MODO: {
+    familia: "config",
+    nota: "`mock` | `live`, opcional (default `mock`): en qué modo lee reseñas de Google (Bloque F, fase 1)",
+  },
   STORYBLOK_SPACE_ID: { familia: "config" },
   STORYBLOK_REGION: { familia: "config" },
   DEMO_DOMAIN: { familia: "config" },

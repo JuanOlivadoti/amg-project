@@ -11,6 +11,7 @@ import {
 } from "web-builder";
 import type { BusinessProfile } from "web-builder";
 import { leerConfig, type ConfigOrquestador } from "./config.js";
+import { getGoogleReviewsProvider } from "./google/provider.js";
 import type { Deps, KeywordParaGuardar } from "./workflow.js";
 
 /**
@@ -187,6 +188,10 @@ export function crearDeps(cx: Conexiones): Deps {
 
       return getPublisher(destino.storyblokSpaceId).publish(stories, html);
     },
+
+    // El selector lee `leerConfig().resenasGoogle` -- mismo criterio que `getPublisher`: acá NO se
+    // vuelve a leer el entorno, se deja que la función resuelva su propio default (ver provider.ts).
+    resenasProvider: getGoogleReviewsProvider(),
 
     log: (msg) => console.log(msg),
   };

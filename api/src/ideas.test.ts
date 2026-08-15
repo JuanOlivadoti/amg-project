@@ -1,8 +1,9 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas } from "db";
+import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
 import { createApp } from "./app.js";
+import { MockGoogleOAuthProvider } from "./google-oauth.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { VerificadorToken } from "./auth.js";
 
@@ -73,8 +74,12 @@ beforeEach(async () => {
     clientes: new PgClientes(pool),
     membresias: new PgMembresias(pool),
     ideas: new PgIdeas(pool),
+    resenas: new PgResenas(pool),
+    googleOAuth: new MockGoogleOAuthProvider(),
+    oauthStateSecret: "secreto-de-test-no-para-produccion",
     emisor,
     verificar,
+    portalUrl: "http://localhost:4200",
   });
 
   // --- seed (superusuario: saltea RLS, que es lo que hace la infraestructura, no la app) ---
@@ -360,8 +365,12 @@ test("🔴 si la capa de datos entregara las fechas como STRING de Postgres, la 
     clientes: new PgClientes(pool),
     membresias: new PgMembresias(pool),
     ideas: ideasFalsas,
+    resenas: new PgResenas(pool),
+    googleOAuth: new MockGoogleOAuthProvider(),
+    oauthStateSecret: "secreto-de-test-no-para-produccion",
     emisor: { send: async () => ({}) },
     verificar,
+    portalUrl: "http://localhost:4200",
   });
 
   const res = await appFalsa.request("/ideas", {

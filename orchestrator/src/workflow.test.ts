@@ -261,6 +261,12 @@ function depsFalsas(paginas: ProposedPage[]): Espia {
         published: !espia.simularDraft,
       }));
     },
+    // `workflowResearch` no toca el polling de reseñas -- eso vive en `pollearResenas`
+    // (`functions.test.ts`). El stub existe solo para satisfacer el tipo `Deps`.
+    resenasProvider: {
+      refrescarToken: () => Promise.reject(new Error("workflowResearch no pollea reseñas")),
+      listarResenas: () => Promise.reject(new Error("workflowResearch no pollea reseñas")),
+    },
   };
 
   return espia;

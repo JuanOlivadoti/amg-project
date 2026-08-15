@@ -36,6 +36,7 @@ const VARS = [
   "PORT",
   "PIPELINE_MODO",
   "DATAFORSEO_MODE",
+  "GOOGLE_REVIEWS_MODO",
 ];
 
 const GUARDADO = { ...process.env };
@@ -386,6 +387,42 @@ test("🔴 sin PIPELINE_MODO, leerConfig NUNCA aborta por coherencia (el loop si
   }
 });
 
+// --------------------------------------- GOOGLE_REVIEWS_MODO: mock-first, sin exigir la variable
+
+/**
+ * A diferencia de `PIPELINE_MODO`, esta variable NO gasta nada mientras sea `mock`, y `live` ni
+ * siquiera está implementado en esta fase (Bloque F fase 1). Por eso el default sin la variable es
+ * `mock`, y no se exige en producción — exigirla sería pedirle al desplegador un valor que `live`
+ * todavía no puede usar.
+ */
+test("GOOGLE_REVIEWS_MODO por defecto es 'mock' si no está la variable", () => {
+  conEntorno({});
+  const c = leerConfig();
+  assert.equal(c.resenasGoogle, "mock");
+});
+
+test("🔴 GOOGLE_REVIEWS_MODO con un valor que no es mock/live lanza", () => {
+  conEntorno({ GOOGLE_REVIEWS_MODO: "produccion" });
+  assert.throws(() => leerConfig(), /GOOGLE_REVIEWS_MODO inválido/);
+});
+
+/**
+ * 🔴 La diferencia deliberada con `PIPELINE_MODO`: en producción, sin la variable, el arranque tiene
+ * que seguir adelante (con `mock`), no abortar. Si esto lanzara, `GOOGLE_REVIEWS_MODO` habría quedado
+ * tan obligatoria como `PIPELINE_MODO` sin que ese fuera el pedido — acá no hay nada real que exigir.
+ */
+test("en producción, sin GOOGLE_REVIEWS_MODO arranca igual (default mock, no se exige)", () => {
+  conEntorno(PROD_COMPLETO); // PROD_COMPLETO no incluye GOOGLE_REVIEWS_MODO
+  const c = leerConfig();
+  assert.equal(c.resenasGoogle, "mock");
+});
+
+test("GOOGLE_REVIEWS_MODO=live en producción queda declarado (el provider lo rechaza después, no la config)", () => {
+  conEntorno({ ...PROD_COMPLETO, GOOGLE_REVIEWS_MODO: "live" });
+  const c = leerConfig();
+  assert.equal(c.resenasGoogle, "live");
+});
+
 // ------------------------------------------------------- fuera de producción, nada cambia
 
 /**
@@ -445,6 +482,7 @@ test("🔴 crearConexiones rechaza PGlite en memoria si la config dice producci�
         puerto: 3100,
         esProduccion: true,
         pipeline: "mock",
+        resenasGoogle: "mock",
         persistencia: { tipo: "pglite-en-memoria" },
       }),
     /PGlite/,
@@ -459,6 +497,7 @@ test("crearConexiones abre PGlite en memoria fuera de producción", async () => 
     puerto: 3100,
     esProduccion: false,
     pipeline: "mock",
+    resenasGoogle: "mock",
     persistencia: { tipo: "pglite-en-memoria" },
   });
   assert.ok(cx.orquestador);
@@ -640,19 +679,25 @@ test("🔴 barrido: el cron es horario y no una expresión que no dispara nunca"
 });
 
 /**
- * 🔴 Las dos funciones quedan registradas, y `/_health` tiene que poder decirlo.
+ * 🔴 Las tres funciones quedan registradas, y `/_health` tiene que poder decirlo.
  *
  * `server.ts` no se puede importar en un test (arranca el proceso y lee el entorno), así que lo que
- * se fija acá es que las dos fábricas existan y produzcan funciones con ids distintos. El número que
- * reporta `/_health` sale de `funciones.length` en `server.ts`; tras desplegar esto tiene que decir 2.
+ * se fija acá es que las tres fábricas existan y produzcan funciones con ids distintos. El número que
+ * reporta `/_health` sale de `funciones.length` en `server.ts`; tras desplegar esto tiene que decir 3.
  */
 test("🔴 barrido: la fábrica produce una función con id propio, distinta de la del research", async () => {
-  const { crearFuncionBarrido, crearFuncionResearch } = await import("./functions.js");
+  const { crearFuncionBarrido, crearFuncionResearch, crearFuncionPollingResenas } = await import(
+    "./functions.js"
+  );
   const deps = {} as Parameters<typeof crearFuncionBarrido>[0];
 
   const barrido = crearFuncionBarrido(deps);
   const research = crearFuncionResearch(deps);
+  const polling = crearFuncionPollingResenas(deps);
 
   assert.notEqual(barrido.id(), research.id(), "dos funciones distintas, dos ids distintos");
+  assert.notEqual(polling.id(), research.id(), "el polling es una tercera función, no el research");
+  assert.notEqual(polling.id(), barrido.id(), "el polling es una tercera función, no el barrido");
   assert.match(barrido.id(), /barrido/);
+  assert.match(polling.id(), /polling/);
 });

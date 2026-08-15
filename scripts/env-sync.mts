@@ -23,7 +23,15 @@ export const FUENTE = join(RAIZ, "docs", "private", "credenciales.env");
  * que alguien decida acá quién puede verla.
  */
 export const MAPA = {
-  api: ["DATABASE_URL_API", "SUPABASE_JWT_ISS", "CORS_ORIGINS", "SUPABASE_JWT_AUD", "INNGEST_EVENT_KEY"],
+  api: [
+    "DATABASE_URL_API",
+    "SUPABASE_JWT_ISS",
+    "CORS_ORIGINS",
+    "SUPABASE_JWT_AUD",
+    "INNGEST_EVENT_KEY",
+    "OAUTH_STATE_SECRET",
+    "GOOGLE_REVIEWS_MODO",
+  ],
   db: ["DATABASE_URL_ADMIN", "SEED_FRANK_USER_ID", "SEED_JUAN_USER_ID"],
   "kr-service": [
     "DATAFORSEO_MODE",
@@ -51,6 +59,7 @@ export const MAPA = {
     "DATABASE_URL_CACHE",
     "INNGEST_SIGNING_KEY",
     "PIPELINE_MODO",
+    "GOOGLE_REVIEWS_MODO",
   ],
   renderer: [
     "STORYBLOK_PUBLIC_TOKEN",

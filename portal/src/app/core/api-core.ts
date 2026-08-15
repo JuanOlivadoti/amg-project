@@ -11,6 +11,7 @@ import type {
   Miembro,
   NuevoClienteAgencia,
   NuevoRun,
+  ResenaGoogle,
   RunSummary,
 } from './models';
 import { RUN_SIN_WORKFLOW, SIN_PAGINAS_APROBADAS } from './codigos';
@@ -241,6 +242,22 @@ export interface ClienteApi {
    */
   listarMiembros(): Promise<Miembro[]>;
   cambiarRolMiembro(userId: string, cambio: CambioRolMiembro): Promise<void>;
+
+  /**
+   * Las reseñas de Google del cliente, en el orden que ya fija el SQL de `PgResenas.listarResenas`
+   * (1-3★ sin ver primero, más nueva después). Este método no reordena nada — quien lo consuma
+   * tampoco debería.
+   */
+  listarResenas(clientId: string): Promise<ResenaGoogle[]>;
+  /** Marca una reseña como vista. Único cambio soportado por el endpoint (`{"vista": true}`). */
+  marcarResenaVista(clientId: string, resenaId: string): Promise<void>;
+  /**
+   * Arma la URL de consentimiento de Google para este cliente. Quien llama navega ahí de verdad
+   * (`window.location.href`), no es un `fetch` que se quede esperando una respuesta JSON del OAuth.
+   */
+  conectarGoogle(clientId: string): Promise<{ url: string }>;
+  /** Desconecta la cuenta de Google del cliente: limpia las tres columnas en `clients`. */
+  desconectarGoogle(clientId: string): Promise<void>;
 }
 
 export function crearApi(opts: ApiOpts): ClienteApi {
@@ -442,6 +459,30 @@ export function crearApi(opts: ApiOpts): ClienteApi {
         // null igual (`cliente_exige_client_id`, 0001), y mandarlo sugeriría que se conserva.
         ...(cambio.rol === 'cliente' ? { client_id: cambio.client_id ?? null } : {}),
       });
+    },
+
+    async listarResenas(clientId) {
+      const { resenas } = await pedir<{ resenas: ResenaGoogle[] }>(
+        'GET',
+        `/clients/${encodeURIComponent(clientId)}/resenas`,
+      );
+      return resenas;
+    },
+    async marcarResenaVista(clientId, resenaId) {
+      // Cuerpo armado a mano, mismo criterio que `cambiarEstadoIdea`: el endpoint solo acepta esta
+      // forma exacta (`api/src/app.ts` la compara entera), así que el código dice, mirándolo, que
+      // nunca viaja nada más.
+      await pedir(
+        'PATCH',
+        `/clients/${encodeURIComponent(clientId)}/resenas/${encodeURIComponent(resenaId)}`,
+        { vista: true },
+      );
+    },
+    async conectarGoogle(clientId) {
+      return pedir<{ url: string }>('POST', `/clients/${encodeURIComponent(clientId)}/google/conectar`);
+    },
+    async desconectarGoogle(clientId) {
+      await pedir('POST', `/clients/${encodeURIComponent(clientId)}/google/desconectar`);
     },
   };
 }

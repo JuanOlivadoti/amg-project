@@ -401,6 +401,28 @@ export class RunSinWorkflowError extends Error {
   }
 }
 
+/**
+ * Un cliente con Google conectado, tal como lo devuelve `app.clientes_conectados_google()`
+ * (0022). Cruza TODOS los tenants -- ver `PgStore.clientesConectadosGoogle`.
+ */
+export interface ClienteConectadoGoogle {
+  clientId: string;
+  tenantId: string;
+  locationId: string;
+  refreshToken: string;
+}
+
+/** Lo que hace falta para registrar una reseña vía `app.registrar_resena_google()` (0022). */
+export interface ResenaParaGuardar {
+  clientId: string;
+  tenantId: string;
+  googleReviewId: string;
+  puntuacion: number;
+  autor: string;
+  texto: string | null;
+  publicadaEn: string;
+}
+
 export class PgStore {
   /**
    * @param pool  Pool ATADO a un login concreto (`amg_api` o `amg_orquestador`).
@@ -935,6 +957,46 @@ export class PgStore {
         [plazo],
       );
       return rows.map((r) => ({ id: r.id, tenantId: r.tenant_id }));
+    });
+  }
+
+  /**
+   * Cross-tenant, solo para el polling de reseñas (rol `app_service`). Ver
+   * `app.clientes_conectados_google` en la 0022 para por qué esto no se puede hacer con un `select`
+   * normal bajo RLS: ninguna sesión con identidad ve clientes de todos los tenants a la vez, y el
+   * polling los necesita a todos en la misma corrida.
+   *
+   * Igual que `expirarRunsColgados`, no lleva `TenantContext`: no hay ninguno que sea verdad del
+   * otro lado. Va por `sinTenant`, así que si un `PgStore` construido con `app_user` la llama,
+   * Postgres la rechaza con 42501 -- no hay ningún `if` mío en el medio.
+   */
+  async clientesConectadosGoogle(): Promise<ClienteConectadoGoogle[]> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{
+        client_id: string; tenant_id: string; location_id: string; refresh_token: string;
+      }>("select * from app.clientes_conectados_google()");
+      return rows.map((r) => ({
+        clientId: r.client_id, tenantId: r.tenant_id,
+        locationId: r.location_id, refreshToken: r.refresh_token,
+      }));
+    });
+  }
+
+  /**
+   * Registra una reseña bajo el tenant/cliente que YA trae `r` (de `clientesConectadosGoogle`), vía
+   * `app.registrar_resena_google` (0022). Cross-tenant por el mismo motivo que el método anterior.
+   *
+   * @returns true si insertó una fila nueva; false si ya existía (idempotencia: el unique
+   *          `(client_id, google_review_id)` de la 0021 es lo que hace que un segundo polling con la
+   *          misma reseña no falle ni duplique).
+   */
+  async registrarResenaGoogle(r: ResenaParaGuardar): Promise<boolean> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ registrar_resena_google: boolean }>(
+        "select app.registrar_resena_google($1, $2, $3, $4, $5, $6, $7) as registrar_resena_google",
+        [r.clientId, r.tenantId, r.googleReviewId, r.puntuacion, r.autor, r.texto, r.publicadaEn],
+      );
+      return rows[0]?.registrar_resena_google ?? false;
     });
   }
 

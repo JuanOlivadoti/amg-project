@@ -11,9 +11,9 @@ interface TabFicha {
 
 /**
  * Los cuatro tabs de la ficha, y el orden acá ES el orden en pantalla. `Perfil` va primero porque es
- * el tab por defecto (el `redirectTo` de `app.routes.ts`); `Reseñas` e `Ideas` van al final porque
- * todavía son placeholders — poner un hueco delante de una pantalla que funciona sería ordenar la
- * barra por lo que falta en vez de por lo que se usa.
+ * el tab por defecto (el `redirectTo` de `app.routes.ts`); `Reseñas` e `Ideas` van al final por orden
+ * histórico de cuándo se agregaron a la ficha, no por ningún criterio activo — las dos dejaron de ser
+ * placeholders (Ideas el 2026-08-12, Reseñas el 2026-08-15) sin que nadie reordenara la barra.
  */
 export const TABS_FICHA: readonly TabFicha[] = [
   { etiqueta: 'Perfil', ruta: 'perfil' },
