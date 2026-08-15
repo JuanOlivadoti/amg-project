@@ -49,6 +49,9 @@ export interface ClienteCRM {
    *  sea `{}`, no `null`. */
   contacto: Record<string, unknown> | null;
   origen: string | null;
+  /** NO enmascarada: a diferencia de las columnas de CRM interno, el rol `cliente` necesita saber si
+   *  su propio Google Business Profile está conectado (Bloque F) para pintar el tab de reseñas. */
+  google_conectado_en: string | null;
   archived_at: string | null;
   created_at: string;
 }
@@ -146,6 +149,8 @@ const CLIENTE_CRM_COLS = [
   ...Object.entries(CLIENTE_CRM_MASKED_COLS).map(
     ([alias, expr]) => `case when app.es_staff() then ${expr} else null end as ${alias}`,
   ),
+  // Sin enmascarar (ver el docblock de ClienteCRM.google_conectado_en): el rol `cliente` la necesita.
+  "google_conectado_en",
   "archived_at",
   "created_at",
 ].join(", ");

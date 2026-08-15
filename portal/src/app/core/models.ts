@@ -157,6 +157,9 @@ export interface ClienteAgencia {
   asignado_a: string | null;
   contacto: Record<string, unknown> | null;
   origen: string | null;
+  /** NO enmascarado para el rol `cliente` (ver `db/src/clientes.ts`): hace falta para pintar el tab
+   *  de reseñas de Google (Bloque F). `null` = no conectado. */
+  google_conectado_en: string | null;
   archived_at: string | null;
   created_at: string;
 }
