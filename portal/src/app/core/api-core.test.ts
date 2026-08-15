@@ -700,3 +700,53 @@ test('cambiarRolMiembro propaga el 403 de RLS con su status', async () => {
   const api = crearApi(opts(fn));
   await assert.rejects(() => api.cambiarRolMiembro('u2', { rol: 'maestro' }), (e: ApiError) => e.status === 403);
 });
+
+// ---------------------------------------------------------------- reseñas de Google (Bloque F)
+
+test('listarResenas pega a GET /clients/:id/resenas y desenvuelve { resenas }, en el orden que llega', async () => {
+  const resenas = [
+    { id: 'r1', clientId: 'c1', puntuacion: 2, autor: 'Ana', texto: 'Tardaron mucho', publicadaEn: '2026-08-01T00:00:00.000Z', vistaEn: null },
+    { id: 'r2', clientId: 'c1', puntuacion: 5, autor: 'Beto', texto: null, publicadaEn: '2026-07-01T00:00:00.000Z', vistaEn: '2026-07-02T00:00:00.000Z' },
+  ];
+  const { fn, capturado } = fakeFetch({ body: { resenas } });
+  const res = await crearApi(opts(fn)).listarResenas('c1');
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/resenas');
+  // El orden lo impone el SQL (`PgResenas.listarResenas`): este cliente NO reordena, solo desenvuelve.
+  assert.deepEqual(res, resenas);
+});
+
+test('marcarResenaVista manda PATCH { vista: true } y nada más, con los dos ids escapados', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).marcarResenaVista('c1/../otro', 'r1');
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/clients/c1%2F..%2Fotro/resenas/r1');
+  assert.deepEqual(JSON.parse(capturado.body!), { vista: true });
+});
+
+test('🔴 marcarResenaVista lanza en un 404 (no encontrada / ya vista / sin permiso, unificados)', async () => {
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Reseña no encontrada, ya vista, o sin permiso.' } });
+  await assert.rejects(() => crearApi(opts(fn)).marcarResenaVista('c1', 'r1'), /Reseña no encontrada/);
+});
+
+test('conectarGoogle postea a /clients/:id/google/conectar y devuelve { url }', async () => {
+  const { fn, capturado } = fakeFetch({ body: { url: 'https://accounts.google.test/consent?state=abc' } });
+  const res = await crearApi(opts(fn)).conectarGoogle('c1');
+  assert.equal(capturado.method, 'POST');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/google/conectar');
+  assert.deepEqual(res, { url: 'https://accounts.google.test/consent?state=abc' });
+});
+
+test('desconectarGoogle postea a /clients/:id/google/desconectar', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).desconectarGoogle('c1');
+  assert.equal(capturado.method, 'POST');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/google/desconectar');
+});
+
+test('🔴 conectarGoogle/desconectarGoogle propagan el 404 de RLS (rol cliente no puede escribir clients)', async () => {
+  // `client_write` exige `app.puede_escribir()`: para un rol `cliente` el update no matchea ninguna
+  // fila y el endpoint responde 404 sin que este cliente HTTP sepa qué rol es quien llama.
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Cliente no encontrado o sin permiso para conectar.' } });
+  await assert.rejects(() => crearApi(opts(fn)).conectarGoogle('c1'), /sin permiso/);
+});

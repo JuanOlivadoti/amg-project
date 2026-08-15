@@ -25,6 +25,7 @@ function clienteDePrueba(overrides: Partial<ClienteAgencia> = {}): ClienteAgenci
     asignado_a: null,
     contacto: {},
     origen: null,
+    google_conectado_en: null,
     archived_at: null,
     created_at: '2026-01-01T00:00:00.000Z',
     ...overrides,

@@ -257,6 +257,25 @@ export interface IdeaDetalle extends IdeaResumen {
   actualizada_en: string;
 }
 
+/**
+ * Una reseña de Google del cliente, tal como la devuelve `GET /clients/:id/resenas` (Bloque F).
+ * Espeja `ResenaGoogle` de `db/src/resenas.ts` campo por campo — el portal NO importa ese tipo
+ * (ADR-21), así que lo duplica a propósito. El orden en el que llegan (1-3★ sin ver primero, más
+ * nueva después) lo impone el `order by` de `PgResenas.listarResenas`: este tipo describe la forma
+ * de una fila, no el orden de la lista.
+ */
+export interface ResenaGoogle {
+  id: string;
+  clientId: string;
+  puntuacion: number;
+  autor: string;
+  texto: string | null;
+  /** `timestamptz` → string ISO-8601 UTC. */
+  publicadaEn: string;
+  /** `null` = todavía sin ver. */
+  vistaEn: string | null;
+}
+
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */
 export interface Sesion {
   accessToken: string;

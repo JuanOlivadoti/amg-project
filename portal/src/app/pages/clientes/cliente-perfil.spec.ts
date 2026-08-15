@@ -38,6 +38,7 @@ function clienteDePrueba(overrides: Partial<ClienteAgencia> = {}): ClienteAgenci
       direccion: { ciudad: 'Madrid', calle: 'Gran Vía' },
       recursos: 'Somos una pizzería artesanal.',
     },
+    google_conectado_en: null,
     origen: null,
     archived_at: null,
     created_at: '2026-01-01T00:00:00.000Z',
