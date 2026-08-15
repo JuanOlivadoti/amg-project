@@ -24,6 +24,7 @@ function conEntorno(vars: Record<string, string>): void {
     "SUPABASE_JWT_AUD",
     "SUPABASE_JWT_ISS",
     "OAUTH_STATE_SECRET",
+    "GOOGLE_REVIEWS_MODO",
     // El SDK de Inngest infiere su modo del entorno: si la máquina que corre los tests tuviera
     // `NODE_ENV=production` o `RAILWAY_GIT_BRANCH`, la mitad de estos tests cambiaría de resultado
     // sin que nadie tocara el código. Se limpian, y cada test declara el entorno que quiere probar.
@@ -184,4 +185,29 @@ test("🔴 una event key en blanco no cuenta como puesta", () => {
     INNGEST_EVENT_KEY: "   ",
   });
   assert.throws(() => leerConfig(), /INNGEST_EVENT_KEY/);
+});
+
+// --------------------------------------------------------------------- GOOGLE_REVIEWS_MODO
+//
+// Hallazgo 3 de la revisión final de `feature/resenas-google`: la API leía esta variable suelta en
+// `crearDeps` con `=== "live" ? "live" : "mock"`, así que un typo (`"liv"`) caía a `mock` EN
+// SILENCIO, mientras `orchestrator/src/config.ts` (`validarModoResenasGoogle`) lanza ante el mismo
+// valor. Mismo botón de operación, dos procesos, dos comportamientos — estos tests fijan que la API
+// ahora falle tan cerrado como el orquestador.
+
+test("GOOGLE_REVIEWS_MODO por defecto es 'mock' si no está la variable", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: CORS });
+  const config = leerConfig();
+  assert.equal(config.modoResenasGoogle, "mock");
+});
+
+test("acepta GOOGLE_REVIEWS_MODO=live explícito", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: CORS, GOOGLE_REVIEWS_MODO: "live" });
+  const config = leerConfig();
+  assert.equal(config.modoResenasGoogle, "live");
+});
+
+test("🔴 GOOGLE_REVIEWS_MODO con un valor que no es mock/live NO cae a 'mock' en silencio: lanza", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: CORS, GOOGLE_REVIEWS_MODO: "liv" });
+  assert.throws(() => leerConfig(), /GOOGLE_REVIEWS_MODO inválido/);
 });

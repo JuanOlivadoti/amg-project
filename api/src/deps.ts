@@ -44,6 +44,40 @@ export interface ConfigApi {
    * todos los despliegues, exactamente el error que ya se corrigió para `SUPABASE_JWT_SECRET`.
    */
   oauthStateSecret: string;
+  /**
+   * `GOOGLE_REVIEWS_MODO`, ya validada. Mismo botón de operación que lee
+   * `orchestrator/src/config.ts` (dos procesos, misma variable, misma semántica): opcional, con
+   * default `mock` cuando la variable está AUSENTE, pero un valor presente que no sea `mock`/`live`
+   * hace fallar el arranque -- igual de cerrado que el orquestador. Antes esto se leía suelto en
+   * `crearDeps` con un `=== "live" ? "live" : "mock"` que hacía caer cualquier typo a `mock` en
+   * silencio (hallazgo 3 de la revisión final de `feature/resenas-google`).
+   */
+  modoResenasGoogle: ModoResenasGoogle;
+}
+
+/** Igual forma que `orchestrator/src/config.ts` (`ModoResenasGoogle`), pero es un módulo distinto. */
+export type ModoResenasGoogle = "mock" | "live";
+const MODOS_RESENAS_GOOGLE: readonly string[] = ["mock", "live"];
+
+/**
+ * Falla tan cerrado como `validarModoResenasGoogle` en `orchestrator/src/config.ts`: cualquier valor
+ * que no sea exactamente `mock` o `live` lanza. Es la misma variable leída por dos procesos
+ * separados -- que discrepen en silencio sobre el mismo botón de operación es justo lo que
+ * `verificarCoherencia` existe para impedir del lado de `PIPELINE_MODO`.
+ */
+function validarModoResenasGoogle(crudo: string): ModoResenasGoogle {
+  if (!MODOS_RESENAS_GOOGLE.includes(crudo)) {
+    throw new Error(
+      `GOOGLE_REVIEWS_MODO inválido: "${crudo}". Los únicos valores son \`mock\` y \`live\`.`,
+    );
+  }
+  return crudo as ModoResenasGoogle;
+}
+
+/** Default `mock` SOLO si la variable está ausente. Presente-pero-inválida lanza, no cae a `mock`. */
+function leerModoResenasGoogle(): ModoResenasGoogle {
+  const crudo = process.env["GOOGLE_REVIEWS_MODO"]?.trim();
+  return crudo ? validarModoResenasGoogle(crudo) : "mock";
 }
 
 /** Lee la config del entorno y **falla cerrado** si falta algo: una API a medio configurar no arranca. */
@@ -91,11 +125,14 @@ export function leerConfig(): ConfigApi {
   const emisor = emisorSupabase(issCrudo as string);
   // Mismo razonamiento para Inngest: sin event key en cloud, `POST /runs` falla en cada petición.
   const inngestEventKey = exigirEventKeySiEsCloud();
+  // Falla tan cerrado como el orquestador ante un GOOGLE_REVIEWS_MODO mal escrito (ver la función).
+  const modoResenasGoogle = leerModoResenasGoogle();
   return {
     databaseUrl: databaseUrl as string,
     emisor,
     corsOrigins,
     oauthStateSecret: oauthStateSecret as string,
+    modoResenasGoogle,
     ...(aud ? { jwtAudience: aud } : {}),
     ...(inngestEventKey ? { inngestEventKey } : {}),
   };
@@ -221,11 +258,10 @@ export async function crearDeps(
 
   // Mock-first (Bloque F fase 1): mismo `GOOGLE_REVIEWS_MODO` que ya usa `orchestrator/src/config.ts`
   // para el polling — es el mismo botón de operación ("¿Google ya tiene credenciales reales?"),
-  // aunque API y orquestador sean procesos separados con sus propias variables de entorno. Default
-  // `mock`, igual que ahí: sin la variable, un despliegue nuevo no se rompe por no tener todavía la
-  // integración real.
-  const modoGoogleOAuth = process.env["GOOGLE_REVIEWS_MODO"]?.trim() === "live" ? "live" : "mock";
-  const googleOAuth = getGoogleOAuthProvider(modoGoogleOAuth);
+  // aunque API y orquestador sean procesos separados con sus propias variables de entorno. Ya
+  // validado por `leerConfig()` (falla al arrancar ante un valor que no sea `mock`/`live`); acá NO
+  // se vuelve a leer `process.env` para que lo comprobado y lo usado sean el mismo valor.
+  const googleOAuth = getGoogleOAuthProvider(config.modoResenasGoogle);
 
   return {
     deps: {

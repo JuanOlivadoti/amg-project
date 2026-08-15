@@ -390,6 +390,17 @@ const RUN_SUMMARY_COLS = `id, client_id, status, prompt, schema_version,
  * Con una clase, renombrarla o dejar de exportarla rompe la compilación de `api/`, que es el aviso
  * que un `includes()` no da.
  */
+export class RunSinWorkflowError extends Error {
+  constructor(readonly runId: string) {
+    super(
+      `No se puede aprobar el run ${runId}: no hay ninguna ejecución esperando la aprobación. ` +
+        `Este run no lo creó el pipeline (se insertó directo en la base), así que aprobarlo no ` +
+        `publicaría nada. Lanzá un research nuevo desde el portal.`,
+    );
+    this.name = "RunSinWorkflowError";
+  }
+}
+
 /**
  * Un cliente con Google conectado, tal como lo devuelve `app.clientes_conectados_google()`
  * (0022). Cruza TODOS los tenants -- ver `PgStore.clientesConectadosGoogle`.
@@ -410,17 +421,6 @@ export interface ResenaParaGuardar {
   autor: string;
   texto: string | null;
   publicadaEn: string;
-}
-
-export class RunSinWorkflowError extends Error {
-  constructor(readonly runId: string) {
-    super(
-      `No se puede aprobar el run ${runId}: no hay ninguna ejecución esperando la aprobación. ` +
-        `Este run no lo creó el pipeline (se insertó directo en la base), así que aprobarlo no ` +
-        `publicaría nada. Lanzá un research nuevo desde el portal.`,
-    );
-    this.name = "RunSinWorkflowError";
-  }
 }
 
 export class PgStore {

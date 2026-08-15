@@ -1160,8 +1160,11 @@ una migración (una tabla o columna de nonces usados). Las migraciones `0021`/`0
 desplegaron a producción**.
 
 **Lo que sigue siendo fase 2, sin empezar:** borrador de respuesta con IA para 4-5★, publicar la
-respuesta de vuelta a Google, alertas por WhatsApp/email (hoy la alerta vive solo en el portal), y el
-acceso real a la Business Profile API (`GOOGLE_REVIEWS_MODO=live`).
+respuesta de vuelta a Google, alertas por WhatsApp/email (hoy la alerta vive solo en el portal), el
+acceso real a la Business Profile API (`GOOGLE_REVIEWS_MODO=live`), y limpiar la conexión
+(`google_conectado_en` y las otras dos columnas) cuando el polling detecta que el refresh token fue
+revocado del lado de Google — hoy `pollearResenas` (`orchestrator/src/functions.ts`) solo cuenta el
+fallo y lo loguea.
 
 ---
 

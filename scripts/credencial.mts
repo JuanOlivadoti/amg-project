@@ -102,6 +102,10 @@ export const CATALOGO: Record<string, Entrada> = {
   PROSE_MODE: { familia: "config" },
   WEB_PUBLISH_MODE: { familia: "config", nota: "`dry-run` no publica" },
   PIPELINE_MODO: { familia: "config", nota: "`mock` | `live`, sin default: declara qué corre este despliegue" },
+  GOOGLE_REVIEWS_MODO: {
+    familia: "config",
+    nota: "`mock` | `live`, opcional (default `mock`): en qué modo lee reseñas de Google (Bloque F, fase 1)",
+  },
   STORYBLOK_SPACE_ID: { familia: "config" },
   STORYBLOK_REGION: { familia: "config" },
   DEMO_DOMAIN: { familia: "config" },

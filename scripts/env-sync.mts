@@ -30,6 +30,7 @@ export const MAPA = {
     "SUPABASE_JWT_AUD",
     "INNGEST_EVENT_KEY",
     "OAUTH_STATE_SECRET",
+    "GOOGLE_REVIEWS_MODO",
   ],
   db: ["DATABASE_URL_ADMIN", "SEED_FRANK_USER_ID", "SEED_JUAN_USER_ID"],
   "kr-service": [
@@ -58,6 +59,7 @@ export const MAPA = {
     "DATABASE_URL_CACHE",
     "INNGEST_SIGNING_KEY",
     "PIPELINE_MODO",
+    "GOOGLE_REVIEWS_MODO",
   ],
   renderer: [
     "STORYBLOK_PUBLIC_TOKEN",

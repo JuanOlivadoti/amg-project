@@ -49,10 +49,11 @@ function aResena(r: {
  * constructor porque `app_service` (el orquestador) no tiene ningún grant sobre esta tabla -- lo
  * cross-tenant vive en `PgStore.clientesConectadosGoogle`/`registrarResenaGoogle` (Task 2), no acá.
  *
- * Orden explícito: `puntuacion asc` (1-3★ primero) y dentro de cada bucket, sin ver antes que
- * vistas, y más nueva primero. Es el orden que la spec pide para la pantalla ("1-3★ sin ver
- * primero"), impuesto en SQL y no en el portal -- así ningún consumidor nuevo lo puede pintar en
- * otro orden por accidente.
+ * Orden explícito, y la clave EXTERNA es `vista_en`, no `puntuacion`: primero TODAS las sin ver
+ * (sin importar la puntuación, incluida una 5★), después TODAS las vistas; dentro de cada uno de
+ * esos dos grupos, `puntuacion asc` (1-3★ primero) y más nueva primero. Es el orden que la spec
+ * pide para la pantalla ("1-3★ sin ver primero"), impuesto en SQL y no en el portal -- así ningún
+ * consumidor nuevo lo puede pintar en otro orden por accidente.
  */
 export class PgResenas {
   constructor(private readonly pool: DbPool) {}

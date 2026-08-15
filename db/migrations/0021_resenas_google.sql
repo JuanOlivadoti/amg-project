@@ -33,8 +33,10 @@ comment on column clients.google_refresh_token is
   '(el callback de OAuth) pero NUNCA leerla de vuelta -- ver los grants por columna de la 0022. Solo '
   'la lee app_resenas, vía una funcion security definer.';
 comment on column clients.google_conectado_en is
-  'Cuando se completo el flujo de OAuth. NULL = no conectado. Se limpia (junto a las otras dos) si '
-  'el polling detecta que el refresh token fue revocado del lado de Google.';
+  'Cuando se completo el flujo de OAuth. NULL = no conectado. Hoy se limpia (junto a las otras dos) '
+  'SOLO via POST /clients/:id/google/desconectar -- el polling (Task 4) todavia no lo hace cuando '
+  'detecta un refresh token revocado: cuenta el fallo y lo loguea, nada mas. Ver la lista de fase 2 '
+  'en docs/proyecto/15-plan-plataforma.md (Bloque F).';
 
 -- -----------------------------------------------------------------------------
 -- La tabla. Mismo esqueleto que `ideas` (0013): tenant_id + client_id con FK compuesta, para que
