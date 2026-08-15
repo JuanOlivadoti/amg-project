@@ -32,8 +32,19 @@ import { Vigencia } from '../../core/vigencia';
   selector: 'app-cliente-resenas',
   template: `
     <div class="space-y-4">
-      <!-- <h1> y no <h2>: esta pantalla es una HOJA de la ruta, la ficha es el contenedor. -->
-      <h1 class="text-sm font-semibold text-texto">Reseñas de Google</h1>
+      <div class="flex items-center justify-between gap-3">
+        <!-- <h1> y no <h2>: esta pantalla es una HOJA de la ruta, la ficha es el contenedor. -->
+        <h1 class="text-sm font-semibold text-texto">Reseñas de Google</h1>
+        @if (conectado() && membresia.esEquipo()) {
+          <button
+            type="button"
+            (click)="desconectar()"
+            class="text-xs text-error shrink-0 hover:underline"
+          >
+            Desconectar Google
+          </button>
+        }
+      </div>
 
       @if (cargando()) {
         <p class="text-sm text-texto-tenue">Cargando reseñas…</p>
@@ -159,6 +170,20 @@ export class ClienteResenasPage implements OnInit, OnDestroy {
   async conectar(): Promise<void> {
     const { url } = await this.api.conectarGoogle(this.clienteId());
     window.location.href = url;
+  }
+
+  /**
+   * Desconecta la cuenta de Google del cliente (limpia las tres columnas en `clients`) y refresca
+   * `clientesService.cliente()` para que `conectado()` vuelva a `false` y el tab muestre el CTA de
+   * "Conectar Google" de nuevo. A diferencia de `conectar()`, acá no hay navegación de por medio que
+   * fuerce una recarga sola: este tab nunca vuelve a pedir el cliente por su cuenta (ver el docblock
+   * de la clase), así que el refresco de `cliente()` es explícito.
+   */
+  async desconectar(): Promise<void> {
+    await this.api.desconectarGoogle(this.clienteId());
+    this.resenas.set([]);
+    this.error.set('');
+    await this.clientesService.verCliente(this.clienteId());
   }
 
   /** Marca una reseña como vista y actualiza la lista local, sin volver a pedir todo el listado. */

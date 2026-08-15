@@ -66,6 +66,8 @@ function crear(
     listarResenas?: jasmine.Spy;
     marcarResenaVista?: jasmine.Spy;
     conectarGoogle?: jasmine.Spy;
+    desconectarGoogle?: jasmine.Spy;
+    verCliente?: jasmine.Spy;
     esEquipo?: boolean;
     params?: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   } = {},
@@ -76,6 +78,9 @@ function crear(
   const conectarGoogleSpy =
     opciones.conectarGoogle ??
     jasmine.createSpy('conectarGoogle').and.resolveTo({ url: 'https://accounts.google.test/consent' });
+  const desconectarGoogleSpy =
+    opciones.desconectarGoogle ?? jasmine.createSpy('desconectarGoogle').and.resolveTo(undefined);
+  const verClienteSpy = opciones.verCliente ?? jasmine.createSpy('verCliente').and.resolveTo(undefined);
   const params = opciones.params ?? new BehaviorSubject(convertToParamMap({ id: 'c1' }));
   const cliente = opciones.cliente === undefined ? clienteDePrueba() : opciones.cliente;
 
@@ -90,14 +95,15 @@ function crear(
           listarResenas: listarResenasSpy,
           marcarResenaVista: marcarResenaVistaSpy,
           conectarGoogle: conectarGoogleSpy,
+          desconectarGoogle: desconectarGoogleSpy,
         },
       },
-      { provide: ClientesService, useValue: { cliente: signal(cliente) } },
+      { provide: ClientesService, useValue: { cliente: signal(cliente), verCliente: verClienteSpy } },
       { provide: MembresiaService, useValue: { esEquipo: signal(opciones.esEquipo ?? false) } },
     ],
   });
   const fixture = TestBed.createComponent(ClienteResenasPage);
-  return { fixture, listarResenasSpy, marcarResenaVistaSpy, conectarGoogleSpy, params };
+  return { fixture, listarResenasSpy, marcarResenaVistaSpy, conectarGoogleSpy, desconectarGoogleSpy, verClienteSpy, params };
 }
 
 async function estabilizar(fixture: ComponentFixture<ClienteResenasPage>): Promise<HTMLElement> {
@@ -147,6 +153,34 @@ describe('ClienteResenasPage', () => {
 
     boton!.click();
     expect(conectarGoogleSpy).toHaveBeenCalledWith('c1');
+  });
+
+  it('conectado sin esEquipo: no se ve el botón "Desconectar Google"', async () => {
+    const { fixture } = crear({ esEquipo: false });
+    const el = await estabilizar(fixture);
+
+    const boton = Array.from(el.querySelectorAll('button')).find((b) =>
+      b.textContent!.includes('Desconectar Google'),
+    );
+    expect(boton).withContext('sin esEquipo el botón de desconectar no debe verse').toBeUndefined();
+  });
+
+  it('conectado + esEquipo: el botón "Desconectar Google" llama desconectarGoogle y refresca el cliente', async () => {
+    const { fixture, desconectarGoogleSpy, verClienteSpy } = crear({ esEquipo: true });
+    const el = await estabilizar(fixture);
+
+    const boton = Array.from(el.querySelectorAll('button')).find((b) =>
+      b.textContent!.includes('Desconectar Google'),
+    );
+    expect(boton).withContext('no encontré el botón de desconectar').toBeTruthy();
+
+    boton!.click();
+    await estabilizar(fixture);
+
+    expect(desconectarGoogleSpy).toHaveBeenCalledWith('c1');
+    expect(verClienteSpy)
+      .withContext('sin volver a pedir el cliente, `conectado()` se queda pegado en true')
+      .toHaveBeenCalledWith('c1');
   });
 
   it('conectado sin reseñas: mensaje vacío, sin error y sin el CTA de conectar', async () => {
