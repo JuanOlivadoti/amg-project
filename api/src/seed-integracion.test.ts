@@ -7,12 +7,14 @@ import {
   PgClientes,
   PgMembresias,
   PgIdeas,
+  PgResenas,
   ConexionReservada,
   sembrarDemo,
   migrarConRegistro,
 } from "db";
 import type { ResultadoSeed } from "db";
 import { createApp } from "./app.js";
+import { MockGoogleOAuthProvider } from "./google-oauth.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { VerificadorToken } from "./auth.js";
 
@@ -47,8 +49,19 @@ beforeEach(async () => {
   const clientes = new PgClientes(new PglitePool(pg));
   const membresias = new PgMembresias(new PglitePool(pg));
   const ideas = new PgIdeas(new PglitePool(pg));
+  const resenas = new PgResenas(new PglitePool(pg));
   const emisor: EmisorEventos = { send: async () => ({}) };
-  app = createApp({ store, clientes, membresias, ideas, emisor, verificar });
+  app = createApp({
+    store,
+    clientes,
+    membresias,
+    ideas,
+    resenas,
+    googleOAuth: new MockGoogleOAuthProvider(),
+    emisor,
+    verificar,
+    portalUrl: "http://localhost:4200",
+  });
 });
 
 afterEach(async () => {

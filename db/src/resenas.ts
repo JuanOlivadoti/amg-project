@@ -1,4 +1,5 @@
 import type { DbPool, Tx } from "./pool.js";
+import type { TenantContext } from "./store.js";
 
 /** Una fila de `resenas_google`, tal como la ve el portal. */
 export interface ResenaGoogle {
@@ -11,10 +12,15 @@ export interface ResenaGoogle {
   vistaEn: string | null;
 }
 
-export interface TenantContext {
-  tenantId: string;
-  userId: string;
-}
+/*
+ * `TenantContext` se importa de `store.ts` (mismo patrón que `ideas.ts`), NO se redeclara acá. La
+ * versión anterior la duplicaba con `userId: string` (no opcional) -- una interfaz local que
+ * contradecía su propio `withTenant`, que ya hacía `ctx.userId ?? ""` de manera defensiva (línea de
+ * abajo). Se notó al conectar `app.ts`: el `ctx` real que deja `autenticar()` es el `TenantContext`
+ * de `store.ts` (`userId?: string | null`, opcional porque el orquestador no tiene), y ese tipo más
+ * ancho no encajaba en el más angosto de acá. La base de RLS no cambia -- lo único que se corrige es
+ * el tipo de TypeScript para que dos módulos no describan la misma forma de dos maneras distintas.
+ */
 
 const COLS = "id, client_id, puntuacion, autor, texto, publicada_en, vista_en";
 
@@ -86,6 +92,44 @@ export class PgResenas {
          where id = $1 and client_id = $2 and vista_en is null
          returning id`,
         [resenaId, clientId],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
+   * Conecta la cuenta de Google del cliente: escribe las tres columnas de `clients` bajo RLS
+   * (`app_user`). `false` si el cliente no existe, es de otro tenant, o quien pide no puede escribir
+   * -- nunca lanza por eso. ADR-20 se cumple SOLO por la política: `client_write` (0001) exige
+   * `app.puede_escribir()` en su `using`, así que para el rol `cliente` el `update` no matchea
+   * ninguna fila y esto devuelve `false` sin que este método sepa qué rol es quien llama.
+   *
+   * `returning id` + `rows.length`, no `rowCount` -- mismo motivo que `marcarVista`, arriba.
+   */
+  async conectarGoogle(
+    ctx: TenantContext,
+    clientId: string,
+    datos: { refreshToken: string; locationId: string },
+  ): Promise<boolean> {
+    return this.withTenant(ctx, async (tx: Tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update clients set google_refresh_token = $1, google_location_id = $2, google_conectado_en = now()
+         where id = $3
+         returning id`,
+        [datos.refreshToken, datos.locationId, clientId],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /** Limpia las tres columnas de conexión. Mismo criterio de `false`/RLS que `conectarGoogle`. */
+  async desconectarGoogle(ctx: TenantContext, clientId: string): Promise<boolean> {
+    return this.withTenant(ctx, async (tx: Tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update clients set google_refresh_token = null, google_location_id = null, google_conectado_en = null
+         where id = $1
+         returning id`,
+        [clientId],
       );
       return rows.length > 0;
     });

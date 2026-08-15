@@ -1,12 +1,16 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas } from "db";
+import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
 import type { TenantContext } from "db";
 import { createApp } from "./app.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
 import { RUN_SIN_WORKFLOW } from "./codigos.js";
+import { MockGoogleOAuthProvider } from "./google-oauth.js";
+
+/** Origen del portal para los tests del callback OAuth (`GET .../google/callback`). */
+const PORTAL_URL_TEST = "http://localhost:4200";
 
 /**
  * La API entera contra Postgres REAL (PGlite), sin red y sin Supabase.
@@ -27,6 +31,7 @@ let store: PgStore;
 let clientes: PgClientes;
 let membresias: PgMembresias;
 let ideas: PgIdeas;
+let resenas: PgResenas;
 let eventos: Array<{ name: string; data: Record<string, unknown> }>;
 let app: ReturnType<typeof createApp>;
 
@@ -59,6 +64,7 @@ beforeEach(async () => {
   clientes = new PgClientes(pool); // mismo login/rol
   membresias = new PgMembresias(pool); // mismo login/rol
   ideas = new PgIdeas(pool); // sin parámetro de rol: la clase fija app_user (0013 no da grants a app_service)
+  resenas = new PgResenas(pool); // ídem: app_service no tiene grants sobre resenas_google (0021)
   eventos = [];
   const emisor: EmisorEventos = {
     send: async (e) => {
@@ -66,7 +72,17 @@ beforeEach(async () => {
       return {};
     },
   };
-  app = createApp({ store, clientes, membresias, ideas, emisor, verificar });
+  app = createApp({
+    store,
+    clientes,
+    membresias,
+    ideas,
+    resenas,
+    googleOAuth: new MockGoogleOAuthProvider(),
+    emisor,
+    verificar,
+    portalUrl: PORTAL_URL_TEST,
+  });
 
   // --- seed (superusuario) ---
   [tenantA, tenantB] = (
@@ -330,8 +346,11 @@ test("🔴 POST /runs: si el evento no se puede emitir, el run NO queda huérfan
     clientes,
     membresias,
     ideas,
+    resenas,
+    googleOAuth: new MockGoogleOAuthProvider(),
     verificar,
     emisor: emisorQueLanza(fallo),
+    portalUrl: PORTAL_URL_TEST,
   });
   const res = await appSinInngest.request("/runs", {
     method: "POST",
@@ -915,9 +934,123 @@ test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", 
   // de Supabase. Sigue sin dejar pasar a nadie.
   const caido: VerificadorToken = async () => NO_DISPONIBLE;
   const emisorInerte: EmisorEventos = { send: async () => ({}) };
-  const appCaida = createApp({ store, clientes, membresias, ideas, emisor: emisorInerte, verificar: caido });
+  const appCaida = createApp({
+    store,
+    clientes,
+    membresias,
+    ideas,
+    resenas,
+    googleOAuth: new MockGoogleOAuthProvider(),
+    emisor: emisorInerte,
+    verificar: caido,
+    portalUrl: PORTAL_URL_TEST,
+  });
   const res = await appCaida.request("/runs", {
     headers: { authorization: "Bearer lo-que-sea", "x-amg-tenant": tenantA },
   });
   assert.equal(res.status, 503);
+});
+
+// ---------------------------------------------------------------- conexión OAuth con Google (Bloque F, fase 1)
+
+test("POST /clients/:id/google/conectar devuelve una URL absoluta que apunta al propio callback (mock)", async () => {
+  const res = await req("POST", `/clients/${clientA1}/google/conectar`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { url: string };
+  assert.ok(body.url.includes(`/clients/${clientA1}/google/callback`), "apunta al propio callback, no a Google");
+  assert.ok(body.url.includes("code=mock-code"));
+});
+
+test("GET /clients/:id/google/callback sin code o sin state → 400", async () => {
+  const res = await req("GET", `/clients/${clientA1}/google/callback`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 400);
+});
+
+test("🔴 GET /clients/:id/google/callback con state de OTRO cliente → 400, no escribe nada", async () => {
+  const stateAjeno = Buffer.from(JSON.stringify({ clientId: "otro-cliente" })).toString("base64url");
+  const res = await req("GET", `/clients/${clientA1}/google/callback?code=abc&state=${stateAjeno}`, {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(res.status, 400);
+  const [fila] = await sql<{ google_conectado_en: string | null }>(
+    "select google_conectado_en from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(fila!.google_conectado_en, null, "un state que apunta a otro cliente no puede haber escrito nada");
+});
+
+test("🔴 el flujo completo conecta (redirect 302 de vuelta al portal) y desconectar limpia las tres columnas", async () => {
+  const state = Buffer.from(JSON.stringify({ clientId: clientA1 })).toString("base64url");
+  const conectar = await req("GET", `/clients/${clientA1}/google/callback?code=xyz&state=${state}`, {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(conectar.status, 302);
+  assert.ok(conectar.headers.get("location")?.startsWith(PORTAL_URL_TEST), "vuelve al ORIGEN del portal");
+  assert.ok(conectar.headers.get("location")?.includes(`/clientes/${clientA1}/resenas`));
+
+  const [conectado] = await sql<{
+    google_refresh_token: string | null;
+    google_location_id: string | null;
+    google_conectado_en: string | null;
+  }>("select google_refresh_token, google_location_id, google_conectado_en from clients where id = $1", [
+    clientA1,
+  ]);
+  assert.equal(conectado!.google_refresh_token, "mock-refresh-xyz");
+  assert.equal(conectado!.google_location_id, "mock-location-xyz");
+  assert.notEqual(conectado!.google_conectado_en, null);
+
+  const desconectar = await req("POST", `/clients/${clientA1}/google/desconectar`, {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(desconectar.status, 200);
+  assert.deepEqual(await desconectar.json(), { ok: true });
+
+  const [desconectado] = await sql<{
+    google_refresh_token: string | null;
+    google_location_id: string | null;
+    google_conectado_en: string | null;
+  }>("select google_refresh_token, google_location_id, google_conectado_en from clients where id = $1", [
+    clientA1,
+  ]);
+  assert.equal(desconectado!.google_refresh_token, null);
+  assert.equal(desconectado!.google_location_id, null);
+  assert.equal(desconectado!.google_conectado_en, null);
+});
+
+test("🔴 con rol 'cliente', desconectar no afecta ninguna fila (ADR-20: solo lee)", async () => {
+  // Se conecta de antemano con el superusuario (infraestructura), para que el intento del cliente
+  // tenga algo que fallar en desconectar y no un simple "no había nada que hacer".
+  await sql(
+    `update clients set google_refresh_token = 'secreto', google_location_id = 'loc-1',
+                        google_conectado_en = now() where id = $1`,
+    [clientA1],
+  );
+
+  const res = await req("POST", `/clients/${clientA1}/google/desconectar`, { user: duenoA1, tenant: tenantA });
+  assert.equal(res.status, 404, "el update de RLS no afectó filas: el endpoint lo reporta como no encontrado");
+
+  const [fila] = await sql<{ google_refresh_token: string | null }>(
+    "select google_refresh_token from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(fila!.google_refresh_token, "secreto", "el rol cliente no pudo desconectar: la fila no cambió");
+});
+
+test("🔴 GET /clients/:id/google/callback de OTRO tenant → 404, sin escribir (RLS, no un `if` de rol)", async () => {
+  // El state SÍ coincide con el client_id (no es el ataque de state cruzado, es aislamiento por
+  // tenant): equipoB reclama el tenant B, pero la fila de clientA1 vive en el tenant A.
+  const state = Buffer.from(JSON.stringify({ clientId: clientA1 })).toString("base64url");
+  const res = await req("GET", `/clients/${clientA1}/google/callback?code=xyz2&state=${state}`, {
+    user: equipoB,
+    tenant: tenantB,
+  });
+  assert.equal(res.status, 404);
+  const [fila] = await sql<{ google_conectado_en: string | null }>(
+    "select google_conectado_en from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(fila!.google_conectado_en, null, "el tenant B no pudo conectar el cliente de A");
 });

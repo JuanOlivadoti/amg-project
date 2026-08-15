@@ -11,10 +11,12 @@ import type {
   PgMembresias,
   PgIdeas,
   FiltrosIdeas,
+  PgResenas,
 } from "db";
 import { validarCambiosIdea, serializarResumen, serializarDetalle } from "./ideas-http.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
+import type { GoogleOAuthProvider } from "./google-oauth.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
 import { SIN_PAGINAS_APROBADAS, RUN_SIN_WORKFLOW } from "./codigos.js";
@@ -37,6 +39,14 @@ export interface ApiDeps {
    * alguien pueda pasar mal — ver `db/src/ideas.ts`.
    */
   ideas: PgIdeas;
+  /**
+   * Reseñas de Google (Bloque F, fase 1). Sin parámetro de rol, como `ideas`: `app_service` no
+   * tiene ningún grant sobre `resenas_google` ni sobre las columnas de conexión de `clients` — ver
+   * `db/src/resenas.ts`.
+   */
+  resenas: PgResenas;
+  /** Conexión OAuth con Google (mock/live) — ver `google-oauth.ts`. Bloque F fase 1 es mock-first. */
+  googleOAuth: GoogleOAuthProvider;
   emisor: EmisorEventos;
   verificar: VerificadorToken;
   /**
@@ -46,6 +56,14 @@ export interface ApiDeps {
    * ajeno pueda robar—; el token igual hay que tenerlo. En producción se acota a los dominios reales.
    */
   corsOrigins?: string | string[];
+  /**
+   * Origen del PORTAL (no de la API), para el redirect final de `GET /clients/:id/google/callback`.
+   * Ese endpoint lo pega el NAVEGADOR con una navegación completa (no un `fetch` del portal), así que
+   * tiene que devolver un redirect real de vuelta a una pantalla — no JSON. Es el mismo dato que hoy
+   * arma `corsOrigins`: quien construye `ApiDeps` (`deps.ts`/`dev-server.ts`) lo deriva de ahí, no es
+   * una variable de entorno conceptualmente nueva.
+   */
+  portalUrl: string;
 }
 
 export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
@@ -350,6 +368,80 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     const ctx = c.get("ctx");
     const ok = await deps.clientes.desarchivarCliente(ctx, c.req.param("id"));
     return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
+  });
+
+  /*
+   * Los tres endpoints de conexión OAuth con Google (Bloque F, fase 1). Tres cosas que decide este
+   * bloque, y ninguna es autorización:
+   *
+   *  1. **El `state` ata el callback al `client_id` correcto.** Sin esto, dos conexiones en
+   *     simultáneo (dos pestañas, dos clientes) podrían escribir el token del uno en la fila del
+   *     otro: el callback solo confía en el `client_id` de la RUTA después de confirmar que coincide
+   *     con el que viajó en el `state` que ESTA API firmó al armar la URL de consentimiento.
+   *  2. **ADR-20 por RLS, no por un `if`.** `conectarGoogle`/`desconectarGoogle` (`db/src/resenas.ts`)
+   *     escriben `clients` bajo la política `client_write` (0001), que exige `app.puede_escribir()`
+   *     en su `using` — el rol `cliente` nunca afecta filas, así que el 404 de acá es EXACTAMENTE el
+   *     mismo mecanismo que "un CLIENTE no puede aprobar una página" o "no puede modificar clientes",
+   *     ya probados en `app.test.ts`. Este handler no sabe qué rol es quien llama.
+   *  3. **El callback lo pega el NAVEGADOR, no un `fetch` del portal** (`window.location.href`, una
+   *     navegación completa) — así que en el camino de éxito responde con un REDIRECT real
+   *     (`c.redirect`), nunca JSON. `deps.portalUrl` es el único dato nuevo de config de este bloque.
+   */
+
+  /** POST /clients/:id/google/conectar — arma la URL de consentimiento (mock: apunta al propio callback). */
+  app.post("/clients/:id/google/conectar", async (c) => {
+    const clientId = c.req.param("id");
+    const state = Buffer.from(JSON.stringify({ clientId, nonce: crypto.randomUUID() })).toString("base64url");
+    // El origen de ESTA request, no un valor fijo: en dev la API vive en :3000, en producción en su
+    // propio dominio — `urlDeConsentimiento` (mock) lo necesita para armar un callback absoluto.
+    const origen = new URL(c.req.url).origin;
+    return c.json({ url: deps.googleOAuth.urlDeConsentimiento(clientId, state, origen) });
+  });
+
+  /*
+   * GET /clients/:id/google/callback — intercambia el `code` y ESCRIBE la conexión bajo RLS antes de
+   * redirigir. El 404 (cliente inexistente/ajeno/rol `cliente`) también vuelve como JSON: no hay
+   * pantalla del portal a la que mandar a alguien cuya escritura la base rechazó, y el navegador que
+   * llega hasta acá ya trae un `state` que ESTA API firmó, así que un 404 en este tramo es un caso de
+   * borde de operación (carrera con un archivado, por ejemplo), no el camino esperado.
+   */
+  app.get("/clients/:id/google/callback", async (c) => {
+    const ctx = c.get("ctx");
+    const clientId = c.req.param("id");
+    const code = c.req.query("code");
+    const stateCrudo = c.req.query("state");
+
+    if (!code || !stateCrudo) {
+      return c.json({ error: "Falta code o state en el callback de Google." }, 400);
+    }
+
+    let state: { clientId: string };
+    try {
+      state = JSON.parse(Buffer.from(stateCrudo, "base64url").toString("utf8"));
+    } catch {
+      return c.json({ error: "state inválido." }, 400);
+    }
+    if (state.clientId !== clientId) {
+      return c.json({ error: "El state no corresponde a este cliente." }, 400);
+    }
+
+    const { refreshToken, locationId } = await deps.googleOAuth.intercambiarCode(code);
+
+    const ok = await deps.resenas.conectarGoogle(ctx, clientId, { refreshToken, locationId });
+    if (!ok) return c.json({ error: "Cliente no encontrado o sin permiso para conectar." }, 404);
+
+    // Redirect real: este endpoint lo pega el NAVEGADOR (window.location.href del portal), no un
+    // fetch, así que la respuesta tiene que ser una navegación de vuelta, no JSON.
+    return c.redirect(`${deps.portalUrl}/clientes/${clientId}/resenas`);
+  });
+
+  /** POST /clients/:id/google/desconectar — limpia las tres columnas. Mismo criterio de 404 que arriba. */
+  app.post("/clients/:id/google/desconectar", async (c) => {
+    const ctx = c.get("ctx");
+    const clientId = c.req.param("id");
+    const ok = await deps.resenas.desconectarGoogle(ctx, clientId);
+    if (!ok) return c.json({ error: "Cliente no encontrado o sin permiso para desconectar." }, 404);
+    return c.json({ ok: true });
   });
 
   /*

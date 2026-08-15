@@ -1,4 +1,4 @@
-import { NodePgPool, PgStore, PgClientes, PgMembresias, PgIdeas } from "db";
+import { NodePgPool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
 import { Inngest } from "inngest";
 import {
   verificadorDeEmisor,
@@ -6,6 +6,7 @@ import {
   type EmisorSupabase,
   type VerificadorToken,
 } from "./auth.js";
+import { getGoogleOAuthProvider } from "./google-oauth.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { ApiDeps } from "./app.js";
 
@@ -179,6 +180,8 @@ export async function crearDeps(
    * que este literal diga `app_user`, acá la da el tipo — no hay nada que un test pueda mutar.
    */
   const ideas = new PgIdeas(new NodePgPool(pool));
+  // Reseñas de Google (Bloque F, fase 1). Mismo criterio que `ideas`: sin literal de rol.
+  const resenas = new PgResenas(new NodePgPool(pool));
 
   // Inngest como emisor. La API solo ENVÍA (`research/solicitado`, `research/aprobado`); las funciones
   // suscritas viven en el orquestador. `send({name, data})` ya cumple la interfaz `EmisorEventos`.
@@ -204,15 +207,32 @@ export async function crearDeps(
     ...(config.jwtAudience ? { audience: config.jwtAudience } : {}),
   });
 
+  // Mock-first (Bloque F fase 1): mismo `GOOGLE_REVIEWS_MODO` que ya usa `orchestrator/src/config.ts`
+  // para el polling — es el mismo botón de operación ("¿Google ya tiene credenciales reales?"),
+  // aunque API y orquestador sean procesos separados con sus propias variables de entorno. Default
+  // `mock`, igual que ahí: sin la variable, un despliegue nuevo no se rompe por no tener todavía la
+  // integración real.
+  const modoGoogleOAuth = process.env["GOOGLE_REVIEWS_MODO"]?.trim() === "live" ? "live" : "mock";
+  const googleOAuth = getGoogleOAuthProvider(modoGoogleOAuth);
+
   return {
     deps: {
       store,
       clientes,
       membresias,
       ideas,
+      resenas,
+      googleOAuth,
       emisor,
       verificar,
       ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}),
+      // El origen del PORTAL para el redirect final del callback OAuth: MISMO dato que `corsOrigins`,
+      // tomado como el primero de la lista. El array puede llevar varios orígenes (front + un futuro
+      // panel admin, por ejemplo) pero el callback solo necesita UNO para volver a aterrizar en una
+      // pantalla — no es una variable de entorno conceptualmente nueva, es la misma que ya validó
+      // `leerConfig` (CORS_ORIGINS), colapsada al primer elemento. El fallback de desarrollo es el
+      // mismo puerto que usa `dev-server.ts` para el portal.
+      portalUrl: config.corsOrigins?.[0] ?? "http://localhost:4200",
     },
     cerrar: () => pool.end(),
   };

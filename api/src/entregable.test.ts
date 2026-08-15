@@ -1,11 +1,12 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas } from "db";
+import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
 import type { DatosEntregable, PageRow } from "db";
 import { renderReport } from "contrato";
 import { createApp } from "./app.js";
 import { briefDelEntregable } from "./entregable.js";
+import { MockGoogleOAuthProvider } from "./google-oauth.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { VerificadorToken } from "./auth.js";
 import { SIN_PAGINAS_APROBADAS } from "./codigos.js";
@@ -142,8 +143,11 @@ describe("GET /runs/:id/entregable.md", () => {
       clientes: new PgClientes(pool),
       membresias: new PgMembresias(pool),
       ideas: new PgIdeas(pool),
+      resenas: new PgResenas(pool),
+      googleOAuth: new MockGoogleOAuthProvider(),
       emisor,
       verificar,
+      portalUrl: "http://localhost:4200",
     });
 
     [tenantA, tenantB] = (
