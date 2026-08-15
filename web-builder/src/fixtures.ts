@@ -115,11 +115,21 @@ export function perfilConManual(over: Partial<BusinessProfile> = {}): BusinessPr
         name: "Margherita",
         description: "Tomate San Marzano, mozzarella fior di latte, albahaca",
         precios: [
-          { etiqueta: "Media", importe: "9,00 €" },
-          { etiqueta: "Ración", importe: "14,50 €" },
+          { etiqueta: "Media", importe: "9,00 €", comensales: "1 persona" },
+          { etiqueta: "Ración", importe: "14,50 €", comensales: "2-3 personas" },
         ],
         nota: "Disponible sin gluten",
         foto: { src: "https://a.storyblok.com/f/1/margherita.jpg" },
+        video: {
+          src: "https://a.storyblok.com/f/1/margherita.mp4",
+          poster: {
+            src: "https://a.storyblok.com/f/1/margherita-poster.jpg",
+            alt: "Pizza Margherita recién horneada",
+          },
+        },
+        alergenos: ["gluten", "lacteos"],
+        etiquetas: ["vegetariano"],
+        nutricion: { calorias: 820, proteinas_g: 34, carbohidratos_g: 96, grasas_g: 28 },
       },
       { category: "Pastas", name: "Cacio e pepe", price: "13,00 €" },
     ],
