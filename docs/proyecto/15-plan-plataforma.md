@@ -1152,7 +1152,7 @@ tenant habría visto las reseñas de todos los demás — `app.ve_cliente()` da 
 Verificado en el navegador: el flujo completo de conexión (botón → mock → callback → escritura bajo
 RLS → redirect de vuelta al tab) persistiendo tras un refresh, rol `cliente` con acceso de solo
 lectura, claro y oscuro, consola limpia. `db` 352/352, `api` 211/211, `orchestrator` 92/92, `scripts`
-95/95, portal 288 `node:test` + 152 Karma.
+95/95, portal 288 `node:test` + 154 Karma.
 
 **Deuda anotada, no bloqueante:** el `nonce` del `state` no se invalida tras el primer uso — la única
 defensa contra un `state` filtrado es la ventana de 10 minutos; invalidarlo tras el primer uso exige
