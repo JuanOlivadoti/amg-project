@@ -186,12 +186,6 @@ export interface Location {
   foto?: Foto;
 }
 
-/**
- * Un ítem de la carta.
- *
- * `price` es **texto libre** a propósito ("12,50 €", "s/ mercado"): tipificarlo como número obligaría
- * a decidir moneda y formato acá, y lo único que hace falta es imprimir lo que escribió el cliente.
- */
 /** Los 14 alérgenos del Reglamento UE 1169/2011. Taxonomía FIJA: texto libre produciría "sin gluten"
  *  y "gluten-free" como dos alérgenos distintos en la misma carta. Ampliarla es un cambio de código
  *  revisado — igual que `HOSTS_DE_ASSETS` — nunca un campo de la ficha. */
@@ -238,6 +232,12 @@ export interface Video {
   poster?: Foto;
 }
 
+/**
+ * Un ítem de la carta.
+ *
+ * `price` es **texto libre** a propósito ("12,50 €", "s/ mercado"): tipificarlo como número obligaría
+ * a decidir moneda y formato acá, y lo único que hace falta es imprimir lo que escribió el cliente.
+ */
 export interface MenuItem {
   /** Agrupador ("Hamburguesas", "Cervezas"). Los ítems sin categoría se muestran juntos, al final. */
   category?: string;
