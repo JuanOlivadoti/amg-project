@@ -107,7 +107,7 @@ export const cartaCategorias: Pieza = {
 .p-cartaCategorias .nutricion{margin:6px 0 0;font-size:.85rem}
 .p-cartaCategorias .nutricion summary{cursor:pointer;color:var(--acento-legible)}
 .p-cartaCategorias .nutricion ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
-.p-cartaCategorias .comensales{color:var(--muted);font-weight:400;font-size:.78rem}
+.p-cartaCategorias .comensales{color:var(--muted);font-weight:400;font-size:.78rem;display:block;white-space:normal}
 `,
 
   /* El velo se redeclara en oscuro **con el mismo valor**, y no es ruido: el detector exige que todo
