@@ -622,6 +622,16 @@ Hay tres piezas, con spec escrita y **sin empezar**:
 3. **Rediseño de la carta** — categorías con foto, precios por ración. **Los campos ✅ entraron con la
    entrega 1**; falta la pieza `cartaCategorias` (entrega 3).
 
+   > 🧭 **Ampliado el 2026-08-16: el menú digital enriquecido.** `MenuItem` suma `video`, `alergenos`
+   > (14, Reglamento UE 1169/2011), `etiquetas` dietéticas (7), `nutricion` (calorías + macros de la
+   > ración de referencia) y `precios[].comensales` — cruzando las cuatro fronteras. `cartaCategorias`
+   > los dibuja: el video reemplaza a la foto en la miniatura cuando el plato tiene los dos, badges de
+   > texto (no iconos) para alérgenos/etiquetas, un `<details>` sin JS para la nutrición. Migración
+   > `0023`. Sin editor en el portal — spec y plan en
+   > [2026-08-14-menu-digital-enriquecido-design.md](../superpowers/specs/2026-08-14-menu-digital-enriquecido-design.md)
+   > y [2026-08-14-menu-digital-enriquecido.md](../superpowers/plans/2026-08-14-menu-digital-enriquecido.md).
+   > Detalle completo en el `09`.
+
 ### 🟡 Entrega 3 — piezas nuevas y arreglos visuales (A ✅, C ✅, B a medias)
 
 **Es la entrega donde el sitio cambia de aspecto**, y por eso va después de que la 2 haya demostrado
