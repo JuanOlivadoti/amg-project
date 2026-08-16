@@ -69,7 +69,14 @@ export const cartaCategorias: Pieza = {
    columnas CSS una fila se puede partir por la mitad entre dos columnas. */
 .p-cartaCategorias .platos{list-style:none;margin:24px 0 0;padding:0;display:grid;gap:0 48px}
 @media(min-width:992px){.p-cartaCategorias .platos{grid-template-columns:1fr 1fr}}
-.p-cartaCategorias .platos li{padding:16px 0;border-bottom:1px solid #f5f4f2}
+/* \`min-width:0\`: sin esto, un \`<li>\` de una grilla (\`display:grid\`) nunca se achica por debajo del
+   ancho natural de su fila más ancha — es la misma trampa que \`.datos\`/\`.precios\` ya evitan con
+   \`min-width:0\` en flex, pero acá el contenedor es un grid item, y el default de un grid item es
+   \`min-width:auto\` (= su min-content), no cero. Sin esto, un plato con \`comensales\` largo estira la
+   COLUMNA entera de la grilla más allá del viewport — y de paso desborda también los platos que no
+   tienen \`comensales\`, porque comparten la misma columna. Medido a 390px: sin esta línea, la fila
+   entera se renderiza a 431px con la columna del grid estirada a esa medida. */
+.p-cartaCategorias .platos li{padding:16px 0;border-bottom:1px solid #f5f4f2;min-width:0}
 /* El DOBLE BORDE del final de cada categoría: la última fila dibujaba su separador y el contenedor
    dibujaba el suyo justo debajo, dos líneas pegadas. Gana el del contenedor, que es el que separa una
    categoría de la siguiente; el de la fila solo separa platos ENTRE sí y después de la última no
@@ -99,7 +106,14 @@ export const cartaCategorias: Pieza = {
 .p-cartaCategorias .precios{flex:0 1 auto;min-width:0;margin:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 /* \`--acento-legible\` y no \`--accent\`: es texto de acento sobre el fondo de la página, y en oscuro el
    acento pleno de un cliente puede quedar ilegible. */
-.p-cartaCategorias .precio{color:var(--acento-legible);font-weight:600;white-space:nowrap}
+/* \`min-width:0;max-width:100%\`: sin esto, \`.precio\` (un flex item DENTRO de \`.precios\`, que ya se
+   achica) sigue dibujándose a su ancho de contenido completo e ignora el achique del padre —
+   \`comensales\`, ya \`white-space:normal\`, nunca llega a partirse porque nada lo obliga a caber en el
+   espacio que \`.precios\` le dejó. Con estas dos líneas, \`.precio\` respeta el ancho de su contenedor y
+   \`comensales\` envuelve de verdad cuando no entra. \`white-space:nowrap\` se queda: "14,50 €" sigue sin
+   partirse, porque esa parte del contenido no tiene dónde envolver salvo el espacio antes de
+   \`comensales\`. */
+.p-cartaCategorias .precio{color:var(--acento-legible);font-weight:600;white-space:nowrap;min-width:0;max-width:100%}
 .p-cartaCategorias .precio .etiqueta{color:var(--muted);font-weight:400;font-size:.8rem;margin-right:6px}
 .p-cartaCategorias .alergenos{margin:4px 0 0;color:var(--muted);font-size:.82rem}
 .p-cartaCategorias .tags{margin:4px 0 0;display:flex;flex-wrap:wrap;gap:4px}
