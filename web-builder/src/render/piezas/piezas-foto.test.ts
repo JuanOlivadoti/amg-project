@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { MAX_CATEGORIAS, MAX_DESTACADOS, MAX_FOTOS, MAX_PRECIOS, MAX_TESTIMONIOS } from "../../contract.js";
 import { pageToStory } from "../../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../../fixtures.js";
-import type { BusinessProfile, Story } from "../../types.js";
+import type { Alergeno, BusinessProfile, Story } from "../../types.js";
 import { ctxCompleto, ctxDe, perfilCompleto } from "../ctx-de-prueba.js";
 import { renderMenu, renderStory } from "../html.js";
 import {
@@ -689,6 +689,62 @@ test("🔴 cartaCategorias: SIN cupo de imágenes, el poster no se emite y por l
   ctx.presupuestoImagenes.restantes = 0;
   const html = cartaCategorias.render(ctx);
   assert.doesNotMatch(html, /<video/);
+});
+
+test("🔴 cartaCategorias: un video que NO llega a emitirse (cuello de botella del presupuesto de VIDEO) no gasta un hueco de imágenes", () => {
+  // El bug real que encontró la revisión final: `renderVideo` consumía `presupuestoImagenes` ANTES de
+  // comprobar `presupuestoVideos`. Con 12 platos con video+poster válidos y el tope de VIDEO en 10
+  // (más bajo que el de imágenes, 60), los últimos 2 videos no llegan a emitirse — pero la versión
+  // vieja les gastaba igual el hueco de imagen. Con el fix, el presupuesto de imágenes consumido tiene
+  // que ser el mismo que el de video efectivamente emitido: 10, no 12.
+  const ctx = ctxDe({ profile: validProfile({ menu: menuConVideos(12) }) });
+  const antes = ctx.presupuestoImagenes.restantes;
+  const html = cartaCategorias.render(ctx);
+  assert.equal(videosDe(html).length, MAX_VIDEOS_POR_DOCUMENTO, "el caso tiene que agotar el tope de video");
+  assert.equal(
+    antes - ctx.presupuestoImagenes.restantes,
+    MAX_VIDEOS_POR_DOCUMENTO,
+    "el presupuesto de imágenes gastado tiene que ser el de video EFECTIVAMENTE emitido, no el de platos con video en la ficha",
+  );
+});
+
+/** `n` alérgenos válidos, repitiendo la taxonomía si `n` la excede (para poder pedir más de 14). */
+function alergenosRepetidos(n: number): Array<Alergeno> {
+  const taxonomia: Alergeno[] = [
+    "gluten",
+    "crustaceos",
+    "huevos",
+    "pescado",
+    "cacahuetes",
+    "soja",
+    "lacteos",
+    "frutos_cascara",
+    "apio",
+    "mostaza",
+    "sesamo",
+    "sulfitos",
+    "altramuces",
+    "moluscos",
+  ];
+  return Array.from({ length: n }, (_, i) => taxonomia[i % taxonomia.length]!);
+}
+
+test("🔴 cartaCategorias: el tope de la frontera 4 corta alérgenos y etiquetas, igual que el resto de las listas", () => {
+  // Todas las demás listas de la frontera 4 (precios, categorías, galería, destacados, testimonios)
+  // cortan con `.slice`. `alergenosDe`/`etiquetasDe` solo filtraban contra la taxonomía sin tope: hoy
+  // no hay forma de que lleguen más de 14/7 porque las fronteras anteriores ya cortan, pero el render
+  // tiene que cortar por su cuenta igual (frontera 4: en PROD el perfil llega de la base sin Zod).
+  const html = cartaCategorias.render(
+    ctxDe({
+      profile: validProfile({
+        menu: [{ name: "P", alergenos: alergenosRepetidos(20), etiquetas: ["vegano", "vegetariano", "sin_gluten", "sin_lactosa", "picante", "halal", "kosher", "vegano", "vegetariano"] }],
+      }),
+    }),
+  );
+  const badgesAlergenos = (html.match(/Gluten|Crustáceos|Huevos|Pescado|Cacahuetes|Soja|Lácteos|Frutos de cáscara|Apio|Mostaza|Sésamo|Sulfitos|Altramuces|Moluscos/g) ?? []).length;
+  assert.equal(badgesAlergenos, 14, "20 alérgenos (con repetición) tienen que cortar en 14, no pasar de largo");
+  const tags = (html.match(/class="tag"/g) ?? []).length;
+  assert.equal(tags, 7, "9 etiquetas (con repetición) tienen que cortar en 7, no pasar de largo");
 });
 
 // ═══════════════════════════════════════════════════════════════════ galeria

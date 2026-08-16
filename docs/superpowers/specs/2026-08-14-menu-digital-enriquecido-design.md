@@ -1,6 +1,8 @@
 # Menú digital enriquecido — diseño
 
-> **Estado:** 🟡 diseñado, sin empezar.
+> **Estado:** ✅ implementado — ver `docs/proyecto/09-estado-y-roadmap.md` (entrada 2026-08-16) y el
+> ledger de ejecución. Lo que sigue es la especificación tal como se escribió antes de implementar,
+> como registro histórico.
 >
 > Enfoque: extender `MenuItem` con video, alérgenos, etiquetas dietéticas y nutrición, cruzando **las
 > cuatro fronteras** que ya defiende el sistema (Zod → allowlist de Postgres → `perfilValido` →

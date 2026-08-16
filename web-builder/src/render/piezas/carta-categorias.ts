@@ -174,21 +174,28 @@ const ETIQUETA_DIETETICA: Record<EtiquetaDietetica, string> = {
   kosher: "Kosher",
 };
 
+// Frontera 4: mismo criterio que `MAX_PRECIOS_RENDER`/`MAX_CATEGORIAS_RENDER` de `lib.ts` — en PROD
+// el perfil llega de la base sin pasar por Zod, así que el render corta por su cuenta. Derivados de
+// las tablas de arriba (no un número mágico repetido): no pueden desincronizarse de la taxonomía que
+// ya vive acá.
+const MAX_ALERGENOS_RENDER = Object.keys(ETIQUETA_ALERGENO).length;
+const MAX_ETIQUETAS_RENDER = Object.keys(ETIQUETA_DIETETICA).length;
+
 /** "Contiene: gluten, lácteos" — o `""` sin alérgenos. Revalida contra la allowlist (frontera 4:
  *  en PROD el dato llega de la base sin pasar por Zod), igual que hace `preciosDe` con sus entradas. */
 function alergenosDe(it: MenuItem): string {
-  const lista = (Array.isArray(it.alergenos) ? it.alergenos : []).filter(
-    (a): a is Alergeno => typeof a === "string" && a in ETIQUETA_ALERGENO,
-  );
+  const lista = (Array.isArray(it.alergenos) ? it.alergenos : [])
+    .filter((a): a is Alergeno => typeof a === "string" && a in ETIQUETA_ALERGENO)
+    .slice(0, MAX_ALERGENOS_RENDER);
   if (lista.length === 0) return "";
   return `<p class="alergenos">Contiene: ${lista.map((a) => esc(ETIQUETA_ALERGENO[a])).join(", ")}</p>`;
 }
 
 /** Píldoras de etiquetas dietéticas — o `""` sin ninguna. */
 function etiquetasDe(it: MenuItem): string {
-  const lista = (Array.isArray(it.etiquetas) ? it.etiquetas : []).filter(
-    (e): e is EtiquetaDietetica => typeof e === "string" && e in ETIQUETA_DIETETICA,
-  );
+  const lista = (Array.isArray(it.etiquetas) ? it.etiquetas : [])
+    .filter((e): e is EtiquetaDietetica => typeof e === "string" && e in ETIQUETA_DIETETICA)
+    .slice(0, MAX_ETIQUETAS_RENDER);
   if (lista.length === 0) return "";
   return `<p class="tags">${lista.map((e) => `<span class="tag">${esc(ETIQUETA_DIETETICA[e])}</span>`).join("")}</p>`;
 }

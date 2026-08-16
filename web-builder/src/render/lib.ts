@@ -341,8 +341,17 @@ export function comoVideo(video: Video | undefined): VideoRenderable | undefined
  * `<img>` — el navegador del visitante la dispara sola — así que cuenta contra el mismo tope de 60 de
  * la página entera (§Política de imágenes, punto 5). Un documento que ya gastó su presupuesto de
  * fotos no puede sumar videos nuevos: es la semántica correcta (el poster ES una imagen del
- * documento), no un efecto colateral. Se consume el cupo de imágenes primero: si no queda, no se gasta
- * tampoco el de video por un poster que no se va a poder mostrar.
+ * documento), no un efecto colateral.
+ *
+ * ⚠️ **Se comprueban los DOS cupos ANTES de gastar cualquiera de los dos — nunca "primero uno, después
+ * el otro".** La primera versión de esta función consumía `presupuestoImagenes` y RECIÉN DESPUÉS
+ * comprobaba `presupuestoVideos`: si el de imágenes alcanzaba pero el de video ya estaba agotado (una
+ * carta de 12 platos con video, tope de video en 10), el hueco de imagen se gastaba igual por un video
+ * que terminaba sin emitirse — la misma fuga que el punto 1 de la §Política de imágenes prohíbe
+ * (`imagenes.ts`: "una URL rechazada no puede consumir presupuesto"). Acá el video no es una URL
+ * rechazada, pero el efecto es idéntico: presupuesto gastado por algo que no llega a servirse. La
+ * comprobación (`.restantes <= 0`, sin mutar) va ANTES de las dos llamadas que sí mutan, así que un
+ * cupo insuficiente en cualquiera de los dos presupuestos no toca ninguno.
  *
  * **`poster` no lleva `referrerpolicy`, a diferencia de `<img>` — es una limitación real del estándar
  * HTML, no un descuido.** El atributo `poster` de `<video>` nunca soportó `referrerpolicy` en ninguna
@@ -364,8 +373,11 @@ export function renderVideo(
 ): string {
   if (!video || !fuenteVideoPermitida(video.src)) return "";
   if (!video.poster || !fuentePermitida(video.poster.src)) return "";
-  if (!consumirCupo(presupuestoImagenes)) return "";
-  if (!consumirCupoVideo(presupuestoVideos)) return "";
+  // Peek de los dos cupos, SIN mutar — ver el docstring para por qué no alcanza con encadenar los dos
+  // `if (!consumirX())`.
+  if (presupuestoImagenes.restantes <= 0 || presupuestoVideos.restantes <= 0) return "";
+  consumirCupo(presupuestoImagenes);
+  consumirCupoVideo(presupuestoVideos);
   const ariaLabel = video.poster.alt.length > 0 ? ` aria-label="${esc(video.poster.alt)}"` : "";
   return `<video class="${clase}"${ariaLabel} src="${esc(video.src)}" poster="${esc(video.poster.src)}" controls preload="none"></video>`;
 }

@@ -15,6 +15,13 @@
 -- y `perfilValido`). Meter esa regla acá daría una falsa sensación de defensa y dejaría que alguien
 -- quitara la de las otras dos creyendo que Postgres cubre.
 --
+-- Excepción declarada: `app.video_publico` SÍ exige que `src` esté presente (no solo su FORMA). No es
+-- una regla de taxonomía como "gluten" — es la misma clase de comprobación que ya hace el resto de la
+-- capa al descartar un elemento con `jsonb_typeof(...) <> 'object'`, aplicada un nivel más profundo:
+-- sin `src` no queda un video, queda un `poster` colgado solo (un fotograma sin nada que reproducir),
+-- que es peor que ningún campo — el mismo motivo por el que el render exige `poster` para emitir el
+-- video, al revés.
+--
 -- Se REEMPLAZA `app.nap_publico` y se re-materializa la columna generada, porque una columna STORED
 -- no se recalcula porque cambie la función. Mismo mecanismo que la 0009, la 0010, la 0014 y la 0020.
 -- =============================================================================

@@ -1,5 +1,9 @@
 # Menú digital enriquecido — plan de implementación
 
+> **Estado:** ✅ implementado — ver `docs/proyecto/09-estado-y-roadmap.md` (entrada 2026-08-16) y el
+> ledger de ejecución. Los checkboxes de abajo quedan como se escribieron, sin tildar uno por uno: lo
+> que sigue es el plan tal como se planificó, como registro histórico, no un tablero de seguimiento.
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Extender el menú digital de un cliente con video (autoalojado), alérgenos, etiquetas
