@@ -2,6 +2,7 @@ import { pageToStory } from "../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../fixtures.js";
 import type { BusinessProfile } from "../types.js";
 import { nuevoPresupuestoImagenes } from "./imagenes.js";
+import { nuevoPresupuestoVideos } from "./videos.js";
 import type { CtxPieza } from "./piezas/tipos.js";
 
 /**
@@ -30,6 +31,7 @@ export function ctxDe(over: Partial<CtxPieza> = {}): CtxPieza {
     bajada: "",
     paginas: [],
     presupuestoImagenes: nuevoPresupuestoImagenes(),
+    presupuestoVideos: nuevoPresupuestoVideos(),
     ...over,
   };
 }

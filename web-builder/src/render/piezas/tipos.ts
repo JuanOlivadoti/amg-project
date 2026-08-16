@@ -1,5 +1,6 @@
 import type { BusinessProfile, NavItem, Story } from "../../types.js";
 import type { PresupuestoImagenes } from "../imagenes.js";
+import type { PresupuestoVideos } from "../videos.js";
 
 /**
  * El contrato de una **pieza** del catálogo de render (spec de plantillas de landing, §2).
@@ -72,4 +73,6 @@ export interface CtxPieza {
    * separado. Lo crea `renderDocumento`, uno por documento — nunca un contador de módulo.
    */
   presupuestoImagenes: PresupuestoImagenes;
+  /** El presupuesto de videos de ESTE documento — mismo criterio que `presupuestoImagenes`, ver ahí. */
+  presupuestoVideos: PresupuestoVideos;
 }

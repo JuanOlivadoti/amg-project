@@ -1,13 +1,16 @@
-import type { BusinessProfile, Foto, MenuItem } from "../../types.js";
+import type { Alergeno, BusinessProfile, EtiquetaDietetica, Foto, MenuItem } from "../../types.js";
 import type { PresupuestoImagenes } from "../imagenes.js";
+import type { PresupuestoVideos } from "../videos.js";
 import {
   MAX_CATEGORIAS_RENDER,
   agruparCarta,
   comoImagen,
+  comoVideo,
   envolver,
   esc,
   preciosDe,
   renderImagen,
+  renderVideo,
 } from "../lib.js";
 import type { CtxPieza, Pieza } from "./tipos.js";
 
@@ -93,6 +96,13 @@ export const cartaCategorias: Pieza = {
    acento pleno de un cliente puede quedar ilegible. */
 .p-cartaCategorias .precio{color:var(--acento-legible);font-weight:600;white-space:nowrap}
 .p-cartaCategorias .precio .etiqueta{color:var(--muted);font-weight:400;font-size:.8rem;margin-right:6px}
+.p-cartaCategorias .alergenos{margin:4px 0 0;color:var(--muted);font-size:.82rem}
+.p-cartaCategorias .tags{margin:4px 0 0;display:flex;flex-wrap:wrap;gap:4px}
+.p-cartaCategorias .tag{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--muted);font-size:.75rem}
+.p-cartaCategorias .nutricion{margin:6px 0 0;font-size:.85rem}
+.p-cartaCategorias .nutricion summary{cursor:pointer;color:var(--acento-legible)}
+.p-cartaCategorias .nutricion ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
+.p-cartaCategorias .comensales{color:var(--muted);font-weight:400;font-size:.78rem}
 `,
 
   /* El velo se redeclara en oscuro **con el mismo valor**, y no es ruido: el detector exige que todo
@@ -109,7 +119,7 @@ export const cartaCategorias: Pieza = {
     if (!profile || !profile.menu || profile.menu.length === 0) return "";
 
     const bloques = gruposDe(profile)
-      .map((g) => unaCategoria(g, ctx.presupuestoImagenes))
+      .map((g) => unaCategoria(g, ctx.presupuestoImagenes, ctx.presupuestoVideos))
       .join("\n");
     // El antetítulo y el título son ETIQUETAS DE PLANTILLA, no contenido del negocio — igual que
     // "Inicio" o "Contacto" en el nav. Lo que no se inventa es el dato del cliente; cómo se rotula
@@ -128,6 +138,68 @@ interface GrupoCarta {
   categoria: string | null;
   foto?: Foto;
   items: MenuItem[];
+}
+
+/** Nombres en español de los 14 alérgenos, para el badge de texto. Viven ACÁ y no en `lib.ts`:
+ *  `cartaCategorias` es la única pieza que los usa hoy (YAGNI). */
+const ETIQUETA_ALERGENO: Record<Alergeno, string> = {
+  gluten: "Gluten",
+  crustaceos: "Crustáceos",
+  huevos: "Huevos",
+  pescado: "Pescado",
+  cacahuetes: "Cacahuetes",
+  soja: "Soja",
+  lacteos: "Lácteos",
+  frutos_cascara: "Frutos de cáscara",
+  apio: "Apio",
+  mostaza: "Mostaza",
+  sesamo: "Sésamo",
+  sulfitos: "Sulfitos",
+  altramuces: "Altramuces",
+  moluscos: "Moluscos",
+};
+
+const ETIQUETA_DIETETICA: Record<EtiquetaDietetica, string> = {
+  vegano: "Vegano",
+  vegetariano: "Vegetariano",
+  sin_gluten: "Sin gluten",
+  sin_lactosa: "Sin lactosa",
+  picante: "Picante",
+  halal: "Halal",
+  kosher: "Kosher",
+};
+
+/** "Contiene: gluten, lácteos" — o `""` sin alérgenos. Revalida contra la allowlist (frontera 4:
+ *  en PROD el dato llega de la base sin pasar por Zod), igual que hace `preciosDe` con sus entradas. */
+function alergenosDe(it: MenuItem): string {
+  const lista = (Array.isArray(it.alergenos) ? it.alergenos : []).filter(
+    (a): a is Alergeno => typeof a === "string" && a in ETIQUETA_ALERGENO,
+  );
+  if (lista.length === 0) return "";
+  return `<p class="alergenos">Contiene: ${lista.map((a) => esc(ETIQUETA_ALERGENO[a])).join(", ")}</p>`;
+}
+
+/** Píldoras de etiquetas dietéticas — o `""` sin ninguna. */
+function etiquetasDe(it: MenuItem): string {
+  const lista = (Array.isArray(it.etiquetas) ? it.etiquetas : []).filter(
+    (e): e is EtiquetaDietetica => typeof e === "string" && e in ETIQUETA_DIETETICA,
+  );
+  if (lista.length === 0) return "";
+  return `<p class="tags">${lista.map((e) => `<span class="tag">${esc(ETIQUETA_DIETETICA[e])}</span>`).join("")}</p>`;
+}
+
+/** El `<details>` de información nutricional — o `""` sin ningún campo presente. Colapsado por
+ *  defecto (sin JS: es el widget nativo del navegador) para no saturar una carta de 40 platos. */
+function nutricionDe(it: MenuItem): string {
+  const n = it.nutricion;
+  if (!n || typeof n !== "object") return "";
+  const filas: string[] = [];
+  if (typeof n.calorias === "number") filas.push(`<li>${n.calorias} kcal</li>`);
+  if (typeof n.proteinas_g === "number") filas.push(`<li>Proteínas: ${n.proteinas_g} g</li>`);
+  if (typeof n.carbohidratos_g === "number") filas.push(`<li>Carbohidratos: ${n.carbohidratos_g} g</li>`);
+  if (typeof n.grasas_g === "number") filas.push(`<li>Grasas: ${n.grasas_g} g</li>`);
+  if (filas.length === 0) return "";
+  return `<details class="nutricion"><summary>Información nutricional</summary><ul>${filas.join("")}</ul></details>`;
 }
 
 /**
@@ -173,9 +245,9 @@ function gruposDe(profile: BusinessProfile): GrupoCarta[] {
   return conMeta.map((x) => x.grupo);
 }
 
-function unaCategoria(g: GrupoCarta, presupuesto: PresupuestoImagenes): string {
+function unaCategoria(g: GrupoCarta, presupuesto: PresupuestoImagenes, presupuestoVideos: PresupuestoVideos): string {
   const foto = renderImagen(comoImagen(g.foto), "categoria-img", presupuesto);
-  const filas = g.items.map((it) => unPlato(it, presupuesto)).join("\n");
+  const filas = g.items.map((it) => unPlato(it, presupuesto, presupuestoVideos)).join("\n");
   // El conteo es un dato REAL: sale de los platos que tiene el grupo, no de un campo que alguien
   // rellene a mano y se desincronice. La referencia rotula "18 Items" con un número escrito en su
   // fixture; acá no puede mentir.
@@ -193,17 +265,22 @@ ${filas}
 </section>`;
 }
 
-function unPlato(it: MenuItem, presupuesto: PresupuestoImagenes): string {
-  const foto = renderImagen(comoImagen(it.foto), "plato-foto", presupuesto);
+function unPlato(it: MenuItem, presupuesto: PresupuestoImagenes, presupuestoVideos: PresupuestoVideos): string {
+  // El video reemplaza a la foto en la miniatura si el plato tiene los dos: un plato, una miniatura.
+  const video = renderVideo(comoVideo(it.video), "plato-foto", presupuestoVideos);
+  const foto = video ? "" : renderImagen(comoImagen(it.foto), "plato-foto", presupuesto);
   const nota = it.nota ? `<span class="nota">${esc(it.nota)}</span>` : "";
+  const alergenos = alergenosDe(it);
+  const etiquetas = etiquetasDe(it);
   const desc = it.description ? `<p class="desc">${esc(it.description)}</p>` : "";
+  const nutricion = nutricionDe(it);
   // TODOS los importes, cada uno con su etiqueta. La etiqueta vacía es el caso de `price` (un solo
   // importe), y entonces no se dibuja el rótulo: "12,50 €" no necesita que le expliquen qué es.
   const precios = preciosDe(it)
     .map(
       (p) =>
-        `<span class="precio">${p.etiqueta ? `<span class="etiqueta">${esc(p.etiqueta)}</span>` : ""}${esc(p.importe)}</span>`,
+        `<span class="precio">${p.etiqueta ? `<span class="etiqueta">${esc(p.etiqueta)}</span>` : ""}${esc(p.importe)}${p.comensales ? ` <span class="comensales">(${esc(p.comensales)})</span>` : ""}</span>`,
     )
     .join("");
-  return `    <li><div class="fila">${foto}<div class="datos"><p class="nombre">${esc(it.name)}${nota}</p>${desc}</div>${precios ? `<p class="precios">${precios}</p>` : ""}</div></li>`;
+  return `    <li><div class="fila">${video || foto}<div class="datos"><p class="nombre">${esc(it.name)}${nota}</p>${alergenos}${etiquetas}${desc}${nutricion}</div>${precios ? `<p class="precios">${precios}</p>` : ""}</div></li>`;
 }

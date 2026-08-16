@@ -2,6 +2,7 @@ import type { BrandTheme } from "../types.js";
 import { ensamblarCss, rolDeTitulares } from "./css.js";
 import { archivoTitulares, rutaPublica } from "./fuentes.js";
 import { nuevoPresupuestoImagenes } from "./imagenes.js";
+import { nuevoPresupuestoVideos } from "./videos.js";
 import { SLUG_BLOG, esc, safeJson } from "./lib.js";
 import { CATALOGO, piezaPorId } from "./piezas/index.js";
 import type { CtxPieza, Pieza } from "./piezas/tipos.js";
@@ -67,7 +68,7 @@ export interface Documento {
    * sobrescribe igual. El `Omit` sigue valiendo la pena —documenta la intención y caza el error obvio—
    * pero quien no puede romperse es esa línea, no este tipo.
    */
-  ctx: Omit<CtxPieza, "presupuestoImagenes">;
+  ctx: Omit<CtxPieza, "presupuestoImagenes" | "presupuestoVideos">;
   pie: PieDocumento;
 }
 
@@ -92,7 +93,11 @@ export function renderDocumento(doc: Documento): string {
   // **El orden del spread es la garantía, no el `Omit` del tipo** (ver `Documento.ctx`): si alguien
   // moviera `presupuestoImagenes` ANTES del `...doc.ctx`, un contexto que trajera uno propio lo
   // pisaría y volveríamos al contador compartido. Esa es la línea que no se puede tocar.
-  const ctx: CtxPieza = { ...doc.ctx, presupuestoImagenes: nuevoPresupuestoImagenes() };
+  const ctx: CtxPieza = {
+    ...doc.ctx,
+    presupuestoImagenes: nuevoPresupuestoImagenes(),
+    presupuestoVideos: nuevoPresupuestoVideos(),
+  };
 
   const usadas = new Set<string>();
   const emitir = (id: string): string => {

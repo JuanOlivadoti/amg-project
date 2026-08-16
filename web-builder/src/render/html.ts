@@ -24,10 +24,10 @@ import { renderDocumento } from "./shell.js";
 /**
  * El contexto que reciben las piezas, con los huecos de las páginas sintetizadas ya rellenos.
  *
- * **Sin `presupuestoImagenes`**: ese lo crea `renderDocumento`, uno por documento. Acá ni se nombra,
- * y el tipo de `Documento.ctx` lo impide — ver el `Omit` en `shell.ts`.
+ * **Sin `presupuestoImagenes` ni `presupuestoVideos`**: esos los crea `renderDocumento`, uno por
+ * documento. Acá ni se nombran, y el tipo de `Documento.ctx` lo impide — ver el `Omit` en `shell.ts`.
  */
-type CtxDeEntrada = Omit<CtxPieza, "presupuestoImagenes">;
+type CtxDeEntrada = Omit<CtxPieza, "presupuestoImagenes" | "presupuestoVideos">;
 
 function ctx(over: Partial<CtxDeEntrada> & Pick<CtxDeEntrada, "activeSlug">): CtxDeEntrada {
   return {

@@ -499,6 +499,121 @@ test("🔴 cartaCategorias: nombre, precio, descripción, nota y categoría se e
   assert.ok(!html.includes('"><b>'));
 });
 
+const VIDEO_OK = "https://a.storyblok.com/f/1/margherita.mp4";
+const POSTER_OK = { src: FOTO_OK, alt: "Pizza recién horneada" };
+
+test("cartaCategorias: un plato con video Y foto muestra el VIDEO, no la foto", () => {
+  const html = cartaCategorias.render(
+    ctxDe({
+      profile: validProfile({
+        menu: [{ name: "Margherita", foto: { src: FOTO_OK }, video: { src: VIDEO_OK, poster: POSTER_OK } }],
+      }),
+    }),
+  );
+  assert.match(html, /<video class="plato-foto"[^>]*src="https:\/\/a\.storyblok\.com\/f\/1\/margherita\.mp4"/);
+  assert.doesNotMatch(html, /<img class="plato-foto"/, "la foto no se dibuja cuando hay video");
+});
+
+test("cartaCategorias: un video de host prohibido cae a la FOTO, no a un hueco", () => {
+  const html = cartaCategorias.render(
+    ctxDe({
+      profile: validProfile({
+        menu: [{ name: "Margherita", foto: { src: FOTO_OK }, video: { src: "https://cdn.evil.tld/x.mp4", poster: POSTER_OK } }],
+      }),
+    }),
+  );
+  assert.doesNotMatch(html, /<video/);
+  assert.match(html, /<img class="plato-foto"[^>]*src="https:\/\/a\.storyblok\.com/);
+});
+
+test("cartaCategorias: un video SIN poster no se dibuja (cae a la foto si la hay, si no a nada)", () => {
+  const conFoto = cartaCategorias.render(
+    ctxDe({ profile: validProfile({ menu: [{ name: "P", foto: { src: FOTO_OK }, video: { src: VIDEO_OK } }] }) }),
+  );
+  assert.doesNotMatch(conFoto, /<video/);
+  assert.match(conFoto, /<img class="plato-foto"/);
+
+  const sinFoto = cartaCategorias.render(
+    ctxDe({ profile: validProfile({ menu: [{ name: "P", video: { src: VIDEO_OK } }] }) }),
+  );
+  assert.doesNotMatch(sinFoto, /<video|<img class="plato-foto"/);
+});
+
+test("cartaCategorias: TODO <video> lleva controls, preload=\"none\" y NUNCA autoplay", () => {
+  const html = cartaCategorias.render(
+    ctxDe({ profile: validProfile({ menu: [{ name: "P", video: { src: VIDEO_OK, poster: POSTER_OK } }] }) }),
+  );
+  assert.match(html, /<video[^>]*\bcontrols\b/);
+  assert.match(html, /<video[^>]*preload="none"/);
+  assert.doesNotMatch(html, /autoplay/);
+});
+
+test("cartaCategorias: alérgenos y etiquetas se dibujan como texto, escapado", () => {
+  const html = cartaCategorias.render(
+    ctxDe({
+      profile: validProfile({
+        menu: [{ name: "Margherita", alergenos: ["gluten", "lacteos"], etiquetas: ["vegetariano"] }],
+      }),
+    }),
+  );
+  assert.match(html, /class="alergenos"/);
+  assert.match(html, /Gluten/);
+  assert.match(html, /Lácteos/);
+  assert.match(html, /class="tag">Vegetariano</);
+});
+
+test("cartaCategorias: sin alérgenos ni etiquetas, no se dibuja ningún bloque vacío", () => {
+  const html = cartaCategorias.render(ctxDe({ profile: validProfile({ menu: [{ name: "Cacio e pepe" }] }) }));
+  assert.doesNotMatch(html, /class="alergenos"|class="tags"/);
+});
+
+test("cartaCategorias: la nutrición sale en un <details> colapsado, con solo los campos presentes", () => {
+  const html = cartaCategorias.render(
+    ctxDe({
+      profile: validProfile({
+        menu: [{ name: "Margherita", nutricion: { calorias: 820, proteinas_g: 34 } }],
+      }),
+    }),
+  );
+  assert.match(html, /<details class="nutricion"><summary>Información nutricional<\/summary>/);
+  assert.match(html, /820 kcal/);
+  assert.match(html, /Proteínas: 34 g/);
+  assert.doesNotMatch(html, /Carbohidratos:|Grasas:/);
+});
+
+test("cartaCategorias: sin nutrición, no se dibuja el <details>", () => {
+  const html = cartaCategorias.render(ctxDe({ profile: validProfile({ menu: [{ name: "Cacio e pepe" }] }) }));
+  assert.doesNotMatch(html, /<details class="nutricion"/);
+});
+
+test("cartaCategorias: `comensales` se muestra junto a su precio", () => {
+  const html = cartaCategorias.render(
+    ctxDe({
+      profile: validProfile({
+        menu: [{ name: "Margherita", precios: [{ etiqueta: "Ración", importe: "14,50 €", comensales: "2-3 personas" }] }],
+      }),
+    }),
+  );
+  assert.match(html, /14,50 €.*\(2-3 personas\)/);
+});
+
+test("🔴 cartaCategorias: alérgenos, etiquetas y comensales se escapan", () => {
+  const html = cartaCategorias.render(
+    ctxDe({
+      profile: validProfile({
+        menu: [
+          {
+            name: "P",
+            alergenos: ["gluten"],
+            precios: [{ etiqueta: VENENO, importe: "9 €", comensales: VENENO }],
+          },
+        ],
+      }),
+    }),
+  );
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+});
+
 // ═══════════════════════════════════════════════════════════════════ galeria
 
 function fotos(n: number): Array<{ src: string; alt?: string }> {

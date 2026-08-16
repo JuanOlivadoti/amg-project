@@ -1,6 +1,7 @@
-import type { BusinessProfile, Foto, Imagen, Location, MenuItem, NavItem } from "../types.js";
+import type { BusinessProfile, Foto, Imagen, Location, MenuItem, NavItem, Video } from "../types.js";
 import type { CtxPieza } from "./piezas/tipos.js";
 import { type PresupuestoImagenes, consumirCupo, fuentePermitida } from "./imagenes.js";
+import { type PresupuestoVideos, consumirCupoVideo, fuenteVideoPermitida } from "./videos.js";
 
 /**
  * Las utilidades que comparten el shell, las piezas y el JSON-LD.
@@ -259,6 +260,8 @@ export function hrefTelefono(telefono: string): string {
 export interface Precio {
   etiqueta: string;
   importe: string;
+  /** "1-2 personas" — ver `MenuItem.precios[].comensales`. */
+  comensales?: string;
 }
 
 /**
@@ -280,13 +283,18 @@ export function preciosDe(item: MenuItem): Precio[] {
   const brutos = Array.isArray(item.precios) ? item.precios : [];
   const validos = brutos
     .filter(
-      (p): p is Precio =>
+      (p): p is { etiqueta: string; importe: string; comensales?: string } =>
         typeof p?.etiqueta === "string" &&
         p.etiqueta.length > 0 &&
         typeof p.importe === "string" &&
         p.importe.length > 0,
     )
-    .slice(0, MAX_PRECIOS_RENDER);
+    .slice(0, MAX_PRECIOS_RENDER)
+    .map((p) => ({
+      etiqueta: p.etiqueta,
+      importe: p.importe,
+      ...(typeof p.comensales === "string" && p.comensales.length > 0 ? { comensales: p.comensales } : {}),
+    }));
   if (validos.length > 0) return validos;
   return typeof item.price === "string" && item.price.length > 0
     ? [{ etiqueta: "", importe: item.price }]
@@ -305,6 +313,41 @@ export function preciosDe(item: MenuItem): Precio[] {
 export function comoImagen(foto: Foto | undefined): Imagen | undefined {
   if (!foto || typeof foto.src !== "string") return undefined;
   return { src: foto.src, alt: typeof foto.alt === "string" ? foto.alt : "" };
+}
+
+/** Un video listo para el render: `src` + `poster` ya convertido a `Imagen`. */
+export interface VideoRenderable {
+  src: string;
+  poster?: Imagen;
+}
+
+/** Mismo criterio que `comoImagen`: la conversión del tipo del perfil (`Video`) al que habla el
+ *  render, en un solo sitio. */
+export function comoVideo(video: Video | undefined): VideoRenderable | undefined {
+  if (!video || typeof video.src !== "string") return undefined;
+  return { src: video.src, poster: comoImagen(video.poster) };
+}
+
+/**
+ * Un `<video>`, listo para la §Política de video (`videos.ts`). **Sin `poster` válido no se emite
+ * nada** — un video sin fotograma de portada forzaría al navegador a descargarlo entero solo para
+ * mostrar la carta, y eso es peor que no mostrar video.
+ *
+ * Mismo orden que `renderImagen`: primero la allowlist de host, después el presupuesto — una URL
+ * rechazada no puede consumir cupo.
+ *
+ * **Nunca autoplay.** `controls preload="none"`: el visitante decide si lo reproduce, y el navegador
+ * no descarga nada hasta que lo haga.
+ */
+export function renderVideo(
+  video: VideoRenderable | undefined,
+  clase: string,
+  presupuesto: PresupuestoVideos,
+): string {
+  if (!video || !fuenteVideoPermitida(video.src)) return "";
+  if (!video.poster || !fuentePermitida(video.poster.src)) return "";
+  if (!consumirCupoVideo(presupuesto)) return "";
+  return `<video class="${clase}" src="${esc(video.src)}" poster="${esc(video.poster.src)}" controls preload="none"></video>`;
 }
 
 /**
