@@ -350,4 +350,59 @@ describe("perfilValido — el perfil extendido (fotos, manual de marca, carta)",
     assert.equal((p as unknown as Record<string, unknown>)["portada_grande"], undefined);
     assert.equal((p?.brand?.colores as Record<string, unknown> | undefined)?.["acento"], undefined);
   });
+
+  it("🔴 `menu[].video`: cruza con src+poster; sin poster también es válido (lo exige el render, no acá)", () => {
+    const p = perfilValido({
+      name: "N",
+      menu: [
+        {
+          name: "Margherita",
+          video: {
+            src: "https://a.storyblok.com/f/1/x.mp4",
+            poster: { src: "https://a.storyblok.com/f/1/poster.jpg", alt: "Pizza" },
+          },
+        },
+        { name: "Sin poster", video: { src: "https://a.storyblok.com/f/1/y.mp4" } },
+      ],
+    });
+    assert.equal(p?.menu?.[0]?.video?.src, "https://a.storyblok.com/f/1/x.mp4");
+    assert.equal(p?.menu?.[0]?.video?.poster?.alt, "Pizza");
+    assert.equal(p?.menu?.[1]?.video?.src, "https://a.storyblok.com/f/1/y.mp4");
+    assert.equal(p?.menu?.[1]?.video?.poster, undefined);
+  });
+
+  it("🔴 `menu[].video` sin `src` https se descarta entero", () => {
+    const p = perfilValido({ name: "N", menu: [{ name: "P", video: { src: "http://a.storyblok.com/f/1/x.mp4" } }] });
+    assert.equal(p?.menu?.[0]?.video, undefined);
+  });
+
+  it("🔴 `menu[].alergenos`: los de la taxonomía cruzan, uno inventado se descarta SOLO (no tira el plato)", () => {
+    const p = perfilValido({
+      name: "N",
+      menu: [{ name: "Margherita", alergenos: ["gluten", "lacteos", "gluten-free-inventado"] }],
+    });
+    assert.deepEqual(p?.menu?.[0]?.alergenos, ["gluten", "lacteos"]);
+  });
+
+  it("🔴 `menu[].etiquetas`: mismo criterio que alergenos", () => {
+    const p = perfilValido({ name: "N", menu: [{ name: "P", etiquetas: ["vegano", "sin gluten"] }] });
+    assert.deepEqual(p?.menu?.[0]?.etiquetas, ["vegano"]);
+  });
+
+  it("🔴 `menu[].nutricion`: cada clave numérica sobrevive sola; una en texto se descarta esa clave", () => {
+    const p = perfilValido({
+      name: "N",
+      menu: [{ name: "Margherita", nutricion: { calorias: 820, proteinas_g: "34" } }],
+    });
+    assert.equal(p?.menu?.[0]?.nutricion?.calorias, 820);
+    assert.equal(p?.menu?.[0]?.nutricion?.proteinas_g, undefined);
+  });
+
+  it("🔴 `menu[].precios[].comensales`: cruza junto con etiqueta e importe", () => {
+    const p = perfilValido({
+      name: "N",
+      menu: [{ name: "Margherita", precios: [{ etiqueta: "Ración", importe: "14,50 €", comensales: "2-3 personas" }] }],
+    });
+    assert.equal(p?.menu?.[0]?.precios?.[0]?.comensales, "2-3 personas");
+  });
 });

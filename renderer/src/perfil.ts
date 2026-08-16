@@ -1,7 +1,9 @@
 import type {
   BrandTheme,
   BusinessProfile,
+  Alergeno,
   Destacado,
+  EtiquetaDietetica,
   Foto,
   FuenteNombre,
   Location,
@@ -182,6 +184,36 @@ const MAX_CATEGORIAS = 20;
 const MAX_DESTACADOS = 6;
 const MAX_TESTIMONIOS = 12;
 
+/** Los 14 alérgenos del Reglamento UE 1169/2011. Tiene que coincidir EXACTAMENTE con `Alergeno` de
+ *  `types.ts` y con `ALERGENOS` de `web-builder/src/contract.ts` — ver el comentario ahí. */
+const ALERGENOS = new Set<string>([
+  "gluten",
+  "crustaceos",
+  "huevos",
+  "pescado",
+  "cacahuetes",
+  "soja",
+  "lacteos",
+  "frutos_cascara",
+  "apio",
+  "mostaza",
+  "sesamo",
+  "sulfitos",
+  "altramuces",
+  "moluscos",
+]);
+const ETIQUETAS_DIETETICAS = new Set<string>([
+  "vegano",
+  "vegetariano",
+  "sin_gluten",
+  "sin_lactosa",
+  "picante",
+  "halal",
+  "kosher",
+]);
+const MAX_ALERGENOS = ALERGENOS.size;
+const MAX_ETIQUETAS = ETIQUETAS_DIETETICAS.size;
+
 /** Los locales, validados uno por uno. Un local sin NINGÚN dato usable no es un local: se descarta. */
 function locales(v: unknown): Location[] | undefined {
   if (!Array.isArray(v)) return undefined;
@@ -222,9 +254,55 @@ function precios(v: unknown): MenuItem["precios"] | undefined {
     const etiqueta = texto(p["etiqueta"]);
     const importe = texto(p["importe"]);
     if (!etiqueta || !importe) continue;
-    out.push({ etiqueta, importe });
+    out.push({
+      etiqueta,
+      importe,
+      ...(texto(p["comensales"]) ? { comensales: texto(p["comensales"])! } : {}),
+    });
   }
   return out.length ? out : undefined;
+}
+
+/** Una lista de valores de una allowlist FIJA (alérgenos, etiquetas). Los que no están en el `Set`
+ *  se descartan uno a uno — mismo criterio que una entrada de `precios` a medias: el resto sobrevive. */
+function listaDeAllowlist<T extends string>(
+  v: unknown,
+  permitidos: ReadonlySet<string>,
+  tope: number,
+): T[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: T[] = [];
+  for (const item of v.slice(0, tope)) {
+    if (typeof item === "string" && permitidos.has(item)) out.push(item as T);
+  }
+  return out.length ? out : undefined;
+}
+
+/**
+ * El video de un plato. Sin `src` https no hay video. `poster` es OPCIONAL acá a propósito: exigirlo
+ * sería una regla del RENDER (frontera 4, que no emite `<video>` sin poster) colada en esta capa —
+ * mismo criterio que aplica `videoSchema` en el Zod (frontera 1).
+ */
+function video(v: unknown): MenuItem["video"] | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  const src = texto(o["src"]);
+  if (!src || !/^https:\/\//i.test(src)) return undefined;
+  const p = foto(o["poster"]);
+  return p ? { src, poster: p } : { src };
+}
+
+/** Nutrición de la ración de referencia. Cada clave sobrevive sola: un plato puede declarar solo
+ *  calorías y nada más — mismo criterio que `locales`, donde un local con un solo dato usable no se
+ *  descarta entero. */
+function nutricion(v: unknown): MenuItem["nutricion"] | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  const out: NonNullable<MenuItem["nutricion"]> = {};
+  for (const k of ["calorias", "proteinas_g", "carbohidratos_g", "grasas_g"] as const) {
+    if (typeof o[k] === "number") out[k] = o[k] as number;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** La carta, validada. Sin `name` no hay ítem que mostrar. */
@@ -238,6 +316,10 @@ function carta(v: unknown): MenuItem[] | undefined {
     if (!nombre) continue;
     const lista = precios(m["precios"]);
     const f = foto(m["foto"]);
+    const v2 = video(m["video"]);
+    const alergenos = listaDeAllowlist<Alergeno>(m["alergenos"], ALERGENOS, MAX_ALERGENOS);
+    const etiquetas = listaDeAllowlist<EtiquetaDietetica>(m["etiquetas"], ETIQUETAS_DIETETICAS, MAX_ETIQUETAS);
+    const nut = nutricion(m["nutricion"]);
     out.push({
       name: nombre,
       ...(texto(m["category"]) ? { category: texto(m["category"])! } : {}),
@@ -246,6 +328,10 @@ function carta(v: unknown): MenuItem[] | undefined {
       ...(lista ? { precios: lista } : {}),
       ...(texto(m["nota"]) ? { nota: texto(m["nota"])! } : {}),
       ...(f ? { foto: f } : {}),
+      ...(v2 ? { video: v2 } : {}),
+      ...(alergenos ? { alergenos } : {}),
+      ...(etiquetas ? { etiquetas } : {}),
+      ...(nut ? { nutricion: nut } : {}),
     });
   }
   return out.length ? out : undefined;
