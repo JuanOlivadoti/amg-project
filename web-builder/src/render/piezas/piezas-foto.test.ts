@@ -5,7 +5,7 @@ import { pageToStory } from "../../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../../fixtures.js";
 import type { BusinessProfile, Story } from "../../types.js";
 import { ctxCompleto, ctxDe, perfilCompleto } from "../ctx-de-prueba.js";
-import { renderStory } from "../html.js";
+import { renderMenu, renderStory } from "../html.js";
 import {
   MAX_CATEGORIAS_RENDER,
   MAX_DESTACADOS_RENDER,
@@ -14,6 +14,7 @@ import {
   MAX_PRECIOS_RENDER,
   MAX_TESTIMONIOS_RENDER,
 } from "../lib.js";
+import { MAX_VIDEOS_POR_DOCUMENTO } from "../videos.js";
 import { barraDatos } from "./barra-datos.js";
 import { cartaCategorias } from "./carta-categorias.js";
 import { ctaFinal } from "./cta-final.js";
@@ -612,6 +613,82 @@ test("🔴 cartaCategorias: alérgenos, etiquetas y comensales se escapan", () =
     }),
   );
   assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+});
+
+/** `n` platos, cada uno con un video+poster válidos y distintos (host permitido). */
+function menuConVideos(n: number): Array<{ name: string; video: { src: string; poster: { src: string; alt?: string } } }> {
+  return Array.from({ length: n }, (_, i) => ({
+    name: `Plato ${i}`,
+    video: { src: `https://a.storyblok.com/f/1/v${i}.mp4`, poster: { src: FOTO_OK } },
+  }));
+}
+
+/**
+ * Las etiquetas `<video>` REALES del documento, en orden.
+ *
+ * ⚠️ Exige `class="plato-foto"` y no `<video\b[^>]*>` a secas: el CSS de `cartaCategorias` tiene un
+ * comentario que menciona `<video>` en texto libre (ver esa pieza), y ese comentario viaja dentro del
+ * `<style>` de cualquier documento completo (`renderMenu`, a diferencia de `cartaCategorias.render()`
+ * suelto, que no lleva CSS). Un regex genérico lo cuenta como un video de más.
+ */
+function videosDe(html: string): string[] {
+  return html.match(/<video class="plato-foto"[^>]*>/g) ?? [];
+}
+
+test("🔴 cartaCategorias: presupuesto de video — más videos que el tope emite EXACTAMENTE el tope", () => {
+  // Mismo test que `imagenes.test.ts` («presupuesto: un documento con más imágenes que el tope emite
+  // exactamente el tope») pero para video: sin esto, borrar `consumirCupoVideo` de `renderVideo` deja
+  // los 412 tests en verde — ningún otro test renderiza más de un video.
+  const html = cartaCategorias.render(ctxDe({ profile: validProfile({ menu: menuConVideos(12) }) }));
+  assert.equal(videosDe(html).length, MAX_VIDEOS_POR_DOCUMENTO);
+});
+
+test("🔴 presupuesto de video: es POR DOCUMENTO — dos renders de `renderMenu()` dan bytes idénticos", () => {
+  // Mismo test que `imagenes.test.ts` («presupuesto: es POR DOCUMENTO») para video: si
+  // `presupuestoVideos: nuevoPresupuestoVideos()` se moviera antes del `...doc.ctx` en
+  // `renderDocumento`, el presupuesto se compartiría entre documentos y esto lo detecta — los tests que
+  // llaman a `cartaCategorias.render(ctxDe(...))` directo nunca pasan por `renderDocumento`.
+  const profile = validProfile({ menu: menuConVideos(3) });
+  const primera = renderMenu(profile);
+  const segunda = renderMenu(profile);
+  assert.equal(segunda, primera, "el segundo render del mismo menú salió distinto");
+  assert.equal(videosDe(segunda).length, 3);
+});
+
+test("cartaCategorias: el `<video>` lleva `aria-label` con el `alt` del poster; sin alt, no lleva ninguno", () => {
+  const conAlt = cartaCategorias.render(
+    ctxDe({ profile: validProfile({ menu: [{ name: "P", video: { src: VIDEO_OK, poster: POSTER_OK } }] }) }),
+  );
+  assert.match(conAlt, /<video[^>]*\baria-label="Pizza recién horneada"/);
+
+  const sinAlt = cartaCategorias.render(
+    ctxDe({
+      profile: validProfile({ menu: [{ name: "P", video: { src: VIDEO_OK, poster: { src: FOTO_OK } } }] }),
+    }),
+  );
+  assert.doesNotMatch(sinAlt, /aria-label/, "un poster sin alt (decorativo) no inventa un nombre accesible");
+});
+
+test("🔴 cartaCategorias: el poster de un video gasta un hueco del presupuesto de IMÁGENES", () => {
+  // El poster ES una imagen del documento (§Política de imágenes): sin este test, que `renderVideo`
+  // deje de consumir `presupuestoImagenes` no lo detecta nada — el presupuesto de video por sí solo
+  // no lo cubre.
+  const ctx = ctxDe({
+    profile: validProfile({ menu: [{ name: "P", video: { src: VIDEO_OK, poster: POSTER_OK } }] }),
+  });
+  const antes = ctx.presupuestoImagenes.restantes;
+  const html = cartaCategorias.render(ctx);
+  assert.match(html, /<video/, "el caso tiene que emitir el video para probar algo");
+  assert.equal(ctx.presupuestoImagenes.restantes, antes - 1);
+});
+
+test("🔴 cartaCategorias: SIN cupo de imágenes, el poster no se emite y por lo tanto tampoco el video", () => {
+  const ctx = ctxDe({
+    profile: validProfile({ menu: [{ name: "P", video: { src: VIDEO_OK, poster: POSTER_OK } }] }),
+  });
+  ctx.presupuestoImagenes.restantes = 0;
+  const html = cartaCategorias.render(ctx);
+  assert.doesNotMatch(html, /<video/);
 });
 
 // ═══════════════════════════════════════════════════════════════════ galeria

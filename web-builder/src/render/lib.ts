@@ -336,18 +336,38 @@ export function comoVideo(video: Video | undefined): VideoRenderable | undefined
  * Mismo orden que `renderImagen`: primero la allowlist de host, después el presupuesto — una URL
  * rechazada no puede consumir cupo.
  *
+ * **El `poster` gasta un hueco de `presupuestoImagenes`, ADEMÁS del hueco propio de
+ * `presupuestoVideos`.** El `poster` de un `<video>` es una petición de imagen igual que cualquier
+ * `<img>` — el navegador del visitante la dispara sola — así que cuenta contra el mismo tope de 60 de
+ * la página entera (§Política de imágenes, punto 5). Un documento que ya gastó su presupuesto de
+ * fotos no puede sumar videos nuevos: es la semántica correcta (el poster ES una imagen del
+ * documento), no un efecto colateral. Se consume el cupo de imágenes primero: si no queda, no se gasta
+ * tampoco el de video por un poster que no se va a poder mostrar.
+ *
+ * **`poster` no lleva `referrerpolicy`, a diferencia de `<img>` — es una limitación real del estándar
+ * HTML, no un descuido.** El atributo `poster` de `<video>` nunca soportó `referrerpolicy` en ninguna
+ * versión de la especificación; no hay forma de agregarlo.
+ *
  * **Nunca autoplay.** `controls preload="none"`: el visitante decide si lo reproduce, y el navegador
  * no descarga nada hasta que lo haga.
+ *
+ * El `alt` del poster, si lo hay, sale como `aria-label` del `<video>`: sin eso, un lector de
+ * pantalla anuncia el video sin ningún nombre accesible, mientras la foto del plato de al lado sí lo
+ * tiene. Un `alt` vacío (el caso decorativo, el normal en el formulario del portal) no agrega el
+ * atributo — mismo criterio que `renderImagen` con `alt=""`.
  */
 export function renderVideo(
   video: VideoRenderable | undefined,
   clase: string,
-  presupuesto: PresupuestoVideos,
+  presupuestoVideos: PresupuestoVideos,
+  presupuestoImagenes: PresupuestoImagenes,
 ): string {
   if (!video || !fuenteVideoPermitida(video.src)) return "";
   if (!video.poster || !fuentePermitida(video.poster.src)) return "";
-  if (!consumirCupoVideo(presupuesto)) return "";
-  return `<video class="${clase}" src="${esc(video.src)}" poster="${esc(video.poster.src)}" controls preload="none"></video>`;
+  if (!consumirCupo(presupuestoImagenes)) return "";
+  if (!consumirCupoVideo(presupuestoVideos)) return "";
+  const ariaLabel = video.poster.alt.length > 0 ? ` aria-label="${esc(video.poster.alt)}"` : "";
+  return `<video class="${clase}"${ariaLabel} src="${esc(video.src)}" poster="${esc(video.poster.src)}" controls preload="none"></video>`;
 }
 
 /**

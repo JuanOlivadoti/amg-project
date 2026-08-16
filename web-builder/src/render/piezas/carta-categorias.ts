@@ -85,6 +85,11 @@ export const cartaCategorias: Pieza = {
 /* La miniatura no crece ni se encoge (\`flex:0 0 auto\`): sin eso, una descripción larga la aplasta y
    la carta queda con miniaturas de anchos distintos fila a fila. */
 .p-cartaCategorias .plato-foto{flex:0 0 auto;width:72px;height:72px;object-fit:cover;border-radius:8px}
+/* El <video> es más ancho que la miniatura de foto A PROPÓSITO: los controles nativos (play, barra de
+   progreso, volumen, pantalla completa) necesitan más que 72px para no quedar amontonados o
+   recortados. Selector específico a \`video.plato-foto\` para no tocar el tamaño de la \`<img>\` — las
+   dos comparten clase porque comparten posición en la fila, no tamaño. */
+.p-cartaCategorias .fila video.plato-foto{width:160px;height:120px;flex:0 0 auto;object-fit:cover;border-radius:8px}
 .p-cartaCategorias .datos{flex:1 1 auto;min-width:0}
 .p-cartaCategorias .nombre{margin:0;font-weight:600}
 .p-cartaCategorias .nota{margin-left:8px;font-weight:400;font-size:.8rem;color:var(--muted)}
@@ -267,7 +272,7 @@ ${filas}
 
 function unPlato(it: MenuItem, presupuesto: PresupuestoImagenes, presupuestoVideos: PresupuestoVideos): string {
   // El video reemplaza a la foto en la miniatura si el plato tiene los dos: un plato, una miniatura.
-  const video = renderVideo(comoVideo(it.video), "plato-foto", presupuestoVideos);
+  const video = renderVideo(comoVideo(it.video), "plato-foto", presupuestoVideos, presupuesto);
   const foto = video ? "" : renderImagen(comoImagen(it.foto), "plato-foto", presupuesto);
   const nota = it.nota ? `<span class="nota">${esc(it.nota)}</span>` : "";
   const alergenos = alergenosDe(it);
