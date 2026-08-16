@@ -96,7 +96,7 @@ export const cartaCategorias: Pieza = {
 .p-cartaCategorias .desc{margin:4px 0 0;color:var(--muted);font-size:.95rem}
 /* Los precios se alinean a la derecha en columna y no se parten (\`white-space:nowrap\`): "14,50 €"
    cortado en dos líneas deja de ser un precio. */
-.p-cartaCategorias .precios{flex:0 0 auto;margin:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.p-cartaCategorias .precios{flex:0 1 auto;min-width:0;margin:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 /* \`--acento-legible\` y no \`--accent\`: es texto de acento sobre el fondo de la página, y en oscuro el
    acento pleno de un cliente puede quedar ilegible. */
 .p-cartaCategorias .precio{color:var(--acento-legible);font-weight:600;white-space:nowrap}
