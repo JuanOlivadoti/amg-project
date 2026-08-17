@@ -258,6 +258,7 @@ test('«Mi Portal» (clientes/:id/ver) se retiró: sus secciones son tabs de la 
     'ideas',
     'ideas/:ideaId',
     'menu',
+    'menu/:index',
     '',
   ]);
 });

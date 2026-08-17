@@ -102,6 +102,14 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/clientes/cliente-menu').then((m) => m.ClienteMenuPage),
           },
+          {
+            // El detalle de UN plato, por posición — ver "Por qué la identidad de un plato es su
+            // posición" en el spec. Va DESPUÉS de `menu` por el mismo motivo que `ideas/:ideaId` va
+            // después de `ideas`: legibilidad, no precedencia (el router no hace prefijo parcial).
+            path: 'menu/:index',
+            loadComponent: () =>
+              import('./pages/clientes/cliente-menu-detalle').then((m) => m.ClienteMenuDetallePage),
+          },
           { path: '', pathMatch: 'full', redirectTo: 'perfil' },
         ],
       },
