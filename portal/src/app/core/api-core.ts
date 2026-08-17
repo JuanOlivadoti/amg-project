@@ -8,6 +8,7 @@ import type {
   IdeaDetalle,
   IdeaResumen,
   Informe,
+  MenuCarta,
   Miembro,
   NuevoClienteAgencia,
   NuevoRun,
@@ -258,6 +259,18 @@ export interface ClienteApi {
   conectarGoogle(clientId: string): Promise<{ url: string }>;
   /** Desconecta la cuenta de Google del cliente: limpia las tres columnas en `clients`. */
   desconectarGoogle(clientId: string): Promise<void>;
+
+  /**
+   * La carta completa del cliente (platos + categorías), tal como vive en `business_profile`. `[]`
+   * en cada array si el cliente no tiene carta todavía — nunca `null`.
+   */
+  obtenerMenu(clientId: string): Promise<MenuCarta>;
+  /**
+   * Reemplaza la carta completa. Manda SIEMPRE los dos arrays enteros, nunca un parche parcial —
+   * mismo criterio que `editarIdea` pero sin el recorte de campos: acá no hay "subconjunto editado",
+   * el servidor exige las dos claves completas (`PATCH /clients/:id/menu`, `menuPatchSchema`).
+   */
+  guardarMenu(clientId: string, carta: MenuCarta): Promise<void>;
 }
 
 export function crearApi(opts: ApiOpts): ClienteApi {
@@ -483,6 +496,13 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     },
     async desconectarGoogle(clientId) {
       await pedir('POST', `/clients/${encodeURIComponent(clientId)}/google/desconectar`);
+    },
+
+    async obtenerMenu(clientId) {
+      return pedir<MenuCarta>('GET', `/clients/${encodeURIComponent(clientId)}/menu`);
+    },
+    async guardarMenu(clientId, carta) {
+      await pedir('PATCH', `/clients/${encodeURIComponent(clientId)}/menu`, carta);
     },
   };
 }

@@ -276,6 +276,101 @@ export interface ResenaGoogle {
   vistaEn: string | null;
 }
 
+/**
+ * Los 14 alérgenos del Reglamento UE 1169/2011. Espeja `Alergeno` de `web-builder/src/types.ts`
+ * campo por campo — el portal NO importa ese tipo (ADR-21), mismo criterio que `ResenaGoogle`.
+ * Taxonomía FIJA: ampliarla es un cambio de código en los DOS lados (acá y `web-builder`), nunca un
+ * dato de la ficha.
+ */
+export type Alergeno =
+  | 'gluten'
+  | 'crustaceos'
+  | 'huevos'
+  | 'pescado'
+  | 'cacahuetes'
+  | 'soja'
+  | 'lacteos'
+  | 'frutos_cascara'
+  | 'apio'
+  | 'mostaza'
+  | 'sesamo'
+  | 'sulfitos'
+  | 'altramuces'
+  | 'moluscos';
+
+/** Las 7 etiquetas dietéticas. Espeja `EtiquetaDietetica` de `web-builder/src/types.ts`. */
+export type EtiquetaDietetica =
+  | 'vegano'
+  | 'vegetariano'
+  | 'sin_gluten'
+  | 'sin_lactosa'
+  | 'picante'
+  | 'halal'
+  | 'kosher';
+
+/** Una foto o el poster de un video: `src` obligatoria, `alt` opcional. Espeja `Foto`. */
+export interface FotoMenu {
+  src: string;
+  alt?: string;
+}
+
+/**
+ * Un video autoalojado. Sin `poster` válido, el render público NO dibuja el `<video>` — el
+ * formulario del detalle (Task 6) tiene que dejarlo claro, no es un detalle de esta interfaz.
+ */
+export interface VideoMenu {
+  src: string;
+  poster?: FotoMenu;
+}
+
+/** Un importe con etiqueta ("Media", "Ración") y, opcional, para cuántas personas. */
+export interface PrecioMenu {
+  etiqueta: string;
+  importe: string;
+  comensales?: string;
+}
+
+/** Nutrición de la ración de referencia. Las cuatro claves son independientes. */
+export interface InfoNutricional {
+  calorias?: number;
+  proteinas_g?: number;
+  carbohidratos_g?: number;
+  grasas_g?: number;
+}
+
+/**
+ * Un plato de la carta. Espeja `MenuItem` de `web-builder/src/types.ts` campo por campo. `price` NO
+ * está acá a propósito: el editor del portal siempre escribe con `precios` (ver
+ * `cliente-menu-detalle.ts`), aunque sea una sola fila — un plato cargado por SQL/seed con `price`
+ * suelto (sin `precios`) sigue siendo válido para el servidor, y el formulario lo migra a `precios`
+ * al abrirlo (ver `formularioDesde`), nunca lo pierde.
+ */
+export interface MenuItem {
+  category?: string;
+  name: string;
+  description?: string;
+  precios?: PrecioMenu[];
+  nota?: string;
+  foto?: FotoMenu;
+  video?: VideoMenu;
+  alergenos?: Alergeno[];
+  etiquetas?: EtiquetaDietetica[];
+  nutricion?: InfoNutricional;
+}
+
+/** Una categoría de la carta. Espeja `MenuCategoria`. */
+export interface MenuCategoria {
+  nombre: string;
+  foto?: FotoMenu;
+  orden?: number;
+}
+
+/** El cuerpo de `GET`/`PATCH /clients/:id/menu`: la carta completa. */
+export interface MenuCarta {
+  menu: MenuItem[];
+  menu_categorias: MenuCategoria[];
+}
+
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */
 export interface Sesion {
   accessToken: string;

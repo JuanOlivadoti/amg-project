@@ -729,6 +729,40 @@ test('🔴 marcarResenaVista lanza en un 404 (no encontrada / ya vista / sin per
   await assert.rejects(() => crearApi(opts(fn)).marcarResenaVista('c1', 'r1'), /Reseña no encontrada/);
 });
 
+// ---------------------------------------------------------------- menú (editor del portal)
+
+test('obtenerMenu pega a GET /clients/:id/menu y devuelve la carta tal cual', async () => {
+  const carta = {
+    menu: [{ name: 'Margherita', precios: [{ etiqueta: 'Media', importe: '9,00 €' }] }],
+    menu_categorias: [{ nombre: 'Pizzas' }],
+  };
+  const { fn, capturado } = fakeFetch({ body: carta });
+  const res = await crearApi(opts(fn)).obtenerMenu('c1');
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/menu');
+  assert.deepEqual(res, carta);
+});
+
+test('guardarMenu manda PATCH con la carta completa, con el id escapado', async () => {
+  const carta = { menu: [{ name: 'Margherita' }], menu_categorias: [] };
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).guardarMenu('c1/../otro', carta);
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/clients/c1%2F..%2Fotro/menu');
+  assert.deepEqual(JSON.parse(capturado.body!), carta);
+});
+
+test('🔴 guardarMenu propaga el error del servidor (400 con campos) sin envolverlo', async () => {
+  const { fn } = fakeFetch({
+    status: 400,
+    body: { error: 'El menú no es válido.', campos: [{ ruta: 'menu.0.name', mensaje: 'Required' }] },
+  });
+  await assert.rejects(
+    () => crearApi(opts(fn)).guardarMenu('c1', { menu: [{}], menu_categorias: [] } as never),
+    /El menú no es válido/,
+  );
+});
+
 test('conectarGoogle postea a /clients/:id/google/conectar y devuelve { url }', async () => {
   const { fn, capturado } = fakeFetch({ body: { url: 'https://accounts.google.test/consent?state=abc' } });
   const res = await crearApi(opts(fn)).conectarGoogle('c1');
