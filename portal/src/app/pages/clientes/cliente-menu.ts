@@ -143,6 +143,11 @@ export class ClienteMenuPage implements OnInit, OnDestroy {
       if (this.vigencia.obsoleta(pedido)) return;
       this.menu.set(carta.menu);
       this.categorias.set(carta.menu_categorias);
+      // Sin esto, un `guardar()` fallido (borrar plato, alta/baja de categoría) deja `error()` seteado
+      // para siempre: su `catch` llama a `cargar()` para resincronizar, pero si ESTA carga sale bien
+      // nadie más lo limpia — `ngOnInit` solo lo hace cuando cambia el `:id` de la ruta — y el `@else
+      // if (error())` del template tapa la lista aunque los datos ya estén al día.
+      this.error.set('');
     } catch (e) {
       if (this.vigencia.obsoleta(pedido)) return;
       this.error.set((e as Error).message);
@@ -174,8 +179,20 @@ export class ClienteMenuPage implements OnInit, OnDestroy {
     return this.menu().filter((p) => p.category === nombre);
   }
 
+  /**
+   * `orden` ausente va al FINAL, no al principio: mismo criterio que el render público
+   * (`web-builder/src/render/piezas/carta-categorias.ts`), que trata la ausencia como
+   * `Number.POSITIVE_INFINITY` a propósito — mezclar "sin `orden`" con "`orden: 0`" reordenaría
+   * categorías que nadie tocó. Una categoría recién creada por `agregarCategoria()` no lleva `orden`,
+   * así que sin esto podía saltar antes de una categoría existente con `orden` explícito en el editor,
+   * mientras en el sitio publicado seguía yendo al final: dos pantallas mostrando dos órdenes
+   * distintos del mismo dato. El `sort` de JS es estable desde ES2019, así que dos categorías sin
+   * `orden` conservan su orden de aparición entre ellas, igual que el renderer.
+   */
   categoriasOrdenadas(): MenuCategoria[] {
-    return [...this.categorias()].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+    return [...this.categorias()].sort(
+      (a, b) => (a.orden ?? Number.POSITIVE_INFINITY) - (b.orden ?? Number.POSITIVE_INFINITY),
+    );
   }
 
   /** Agrupa los platos por categoría, en el orden de `categoriasOrdenadas()`, y agrega al final un

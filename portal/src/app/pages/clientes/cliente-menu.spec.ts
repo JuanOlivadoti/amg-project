@@ -160,4 +160,43 @@ describe('ClienteMenuPage', () => {
     const link = el.querySelector<HTMLAnchorElement>('a[href$="/menu/2"]');
     expect(link).withContext('2 platos cargados (índices 0 y 1): agregar va al índice 2').toBeTruthy();
   });
+
+  it('🔴 un guardarMenu fallido, tras la recarga de recuperación exitosa, no deja el error pegado para siempre', async () => {
+    // guardarMenu SIEMPRE rechaza en este test, pero solo se llama una vez (un borrado); la recarga
+    // de recuperación que dispara guardar() usa obtenerMenu, que sigue resolviendo bien.
+    const guardarMenuSpy = jasmine.createSpy('guardarMenu').and.rejectWith(new Error('temporal'));
+    const { fixture, obtenerMenuSpy } = crear({ guardarMenu: guardarMenuSpy });
+    const el = await estabilizar(fixture);
+
+    boton(el, 'Borrar')!.click();
+    await estabilizar(fixture);
+
+    // La recarga de recuperación (segundo obtenerMenu) trajo datos frescos con éxito: el mensaje de
+    // error no puede seguir tapando la lista.
+    expect(obtenerMenuSpy).toHaveBeenCalledTimes(2);
+    expect(el.textContent).not.toContain('temporal');
+    expect(el.textContent).toContain('Margherita');
+  });
+
+  it('🔴 una categoría nueva sin `orden` va al final, no salta antes de una con orden explícito', async () => {
+    const carta = cartaDePrueba({
+      menu: [],
+      menu_categorias: [{ nombre: 'Bebidas', orden: 5 }],
+    });
+    const { fixture } = crear({ obtenerMenu: jasmine.createSpy('obtenerMenu').and.resolveTo(carta) });
+    const el = await estabilizar(fixture);
+
+    const inputNombre = el.querySelector<HTMLInputElement>('input[name="nuevaCategoriaNombre"]')!;
+    inputNombre.value = 'Postres';
+    inputNombre.dispatchEvent(new Event('input'));
+    await estabilizar(fixture);
+
+    boton(el, 'Agregar categoría')!.click();
+    await estabilizar(fixture);
+
+    // Único <ul> presente: el de categorías (no hay platos en este test, así que no se renderiza
+    // ningún <ul> de platos). Mismo criterio que el renderer público: `orden` ausente va al FINAL.
+    const nombres = Array.from(el.querySelectorAll('ul span')).map((s) => s.textContent!.trim());
+    expect(nombres).toEqual(['Bebidas', 'Postres']);
+  });
 });
