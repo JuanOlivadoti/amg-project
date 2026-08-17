@@ -627,10 +627,19 @@ Hay tres piezas, con spec escrita y **sin empezar**:
    > ración de referencia) y `precios[].comensales` — cruzando las cuatro fronteras. `cartaCategorias`
    > los dibuja: el video reemplaza a la foto en la miniatura cuando el plato tiene los dos, badges de
    > texto (no iconos) para alérgenos/etiquetas, un `<details>` sin JS para la nutrición. Migración
-   > `0023`. Sin editor en el portal — spec y plan en
+   > `0023`. Spec y plan en
    > [2026-08-14-menu-digital-enriquecido-design.md](../superpowers/specs/2026-08-14-menu-digital-enriquecido-design.md)
    > y [2026-08-14-menu-digital-enriquecido.md](../superpowers/plans/2026-08-14-menu-digital-enriquecido.md).
    > Detalle completo en el `09`.
+   >
+   > 🧭 **Editor en el portal, 2026-08-17.** `equipo`/`maestro` ya cargan la carta completa desde
+   > `/clientes/:id/menu` — sin SQL/seed. `GET`/`PATCH /clients/:id/menu` sobre `PgClientes`
+   > existente, sin migración nueva (el `grant update` de la 0001 sigue vigente). El rol `cliente`
+   > queda afuera de esta etapa, a propósito — diferido, anotado junto a ADR-20/OBS-04. Spec y plan en
+   > [2026-08-17-editor-menu-portal-design.md](../superpowers/specs/2026-08-17-editor-menu-portal-design.md)
+   > y [2026-08-17-editor-menu-portal.md](../superpowers/plans/2026-08-17-editor-menu-portal.md).
+   > `npm run verificar`: 1538 tests del monorepo + 291 (`node:test`) y 176 (Karma) del portal, todos
+   > en verde.
 
 ### 🟡 Entrega 3 — piezas nuevas y arreglos visuales (A ✅, C ✅, B a medias)
 

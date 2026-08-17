@@ -971,6 +971,18 @@ sabe*. Enseñarlo es más fuerte que mandarlo en un PDF.
 
 **Estado.** Aceptada. Amplía el alcance de ADR-16 (no lo reemplaza: el portal sigue siendo uno solo).
 
+> **Nota (2026-08-17), al cerrar el editor de carta del portal.** Al diseñar esa etapa se evaluó
+> también dejar que el rol `cliente` edite su propia carta —coherente con "es su negocio"— y se
+> **DIFIRIÓ a propósito**, no por olvido: `app.puede_escribir()` es la función que gobierna la
+> política de escritura de **cinco tablas** (`clients`, `kr_runs`, `kr_keywords`, `ideas`,
+> `resenas_google`), y darle una excepción de escritura al `cliente` ahí abriría las cinco a la vez,
+> no solo el menú. El mecanismo real para cuando se retome —descrito en el spec de esa etapa, no
+> implementado— es un trigger `BEFORE UPDATE` sobre `clients` que compare `OLD`/`NEW` de
+> `business_profile` y solo permita el cambio si las claves tocadas son exactamente `menu`/
+> `menu_categorias`, sin pasar por `app.puede_escribir()` en absoluto. Detalle en
+> [2026-08-17-editor-menu-portal-design.md](superpowers/specs/2026-08-17-editor-menu-portal-design.md).
+> Por ahora, **solo `equipo`/`maestro` editan la carta** — el resto de esta ADR no cambia.
+
 ---
 
 ## ADR-21 — El stack del portal, cerrado (completa ADR-16)
