@@ -10,16 +10,16 @@ interface TabFicha {
 }
 
 /**
- * Los cuatro tabs de la ficha, y el orden acá ES el orden en pantalla. `Perfil` va primero porque es
- * el tab por defecto (el `redirectTo` de `app.routes.ts`); `Reseñas` e `Ideas` van al final por orden
- * histórico de cuándo se agregaron a la ficha, no por ningún criterio activo — las dos dejaron de ser
- * placeholders (Ideas el 2026-08-12, Reseñas el 2026-08-15) sin que nadie reordenara la barra.
+ * Los CINCO tabs de la ficha, y el orden acá ES el orden en pantalla. `Perfil` va primero porque es
+ * el tab por defecto (el `redirectTo` de `app.routes.ts`); `Reseñas`, `Ideas` y `Menú` van al final
+ * por orden histórico de cuándo se agregaron a la ficha, no por ningún criterio activo.
  */
 export const TABS_FICHA: readonly TabFicha[] = [
   { etiqueta: 'Perfil', ruta: 'perfil' },
   { etiqueta: 'Research', ruta: 'research' },
   { etiqueta: 'Reseñas', ruta: 'resenas' },
   { etiqueta: 'Ideas', ruta: 'ideas' },
+  { etiqueta: 'Menú', ruta: 'menu' },
 ];
 
 /**
@@ -43,7 +43,7 @@ export const TABS_FICHA: readonly TabFicha[] = [
  * sumarse al de la hoja y el documento quedó con DOS —medido en Chrome, no deducido—, además de un
  * `<h2>` (el breadcrumb) por delante del primero y del nombre del cliente repetido en dos niveles.
  * Por eso el título grande es un `<p>` y el breadcrumb va con `[esEncabezado]="false"`. El `<h1>` tiene
- * que distinguir la URL, y con el cliente como dueño las seis rutas de la ficha —los cuatro tabs, más
+ * que distinguir la URL, y con el cliente como dueño las siete rutas de la ficha —los cinco tabs, más
  * el brief y el informe de un run— anunciarían lo mismo. Lo fija `core/arbol-encabezados.test.ts`,
  * que barre las hojas y no una lista escrita a mano.
  *

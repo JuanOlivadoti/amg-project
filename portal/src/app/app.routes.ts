@@ -97,6 +97,11 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/clientes/cliente-idea-detalle').then((m) => m.ClienteIdeaDetallePage),
           },
+          {
+            path: 'menu',
+            loadComponent: () =>
+              import('./pages/clientes/cliente-menu').then((m) => m.ClienteMenuPage),
+          },
           { path: '', pathMatch: 'full', redirectTo: 'perfil' },
         ],
       },

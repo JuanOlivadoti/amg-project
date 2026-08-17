@@ -145,7 +145,7 @@ describe('ClienteFichaComponent', () => {
     expect(el.textContent).toContain('soy el tab montado en el outlet');
   });
 
-  it('renderiza los cuatro tabs apuntando al cliente de la ruta', async () => {
+  it('renderiza los cinco tabs apuntando al cliente de la ruta', async () => {
     /*
      * `toEqual` sobre el array entero y no cuatro `toContain`: el ORDEN de la barra es una decisión
      * (Perfil primero porque es el `redirectTo` por defecto), y un `toContain` la deja sin cubrir.
@@ -166,6 +166,7 @@ describe('ClienteFichaComponent', () => {
       '/clientes/c1/research',
       '/clientes/c1/resenas',
       '/clientes/c1/ideas',
+      '/clientes/c1/menu',
     ]);
   });
 
