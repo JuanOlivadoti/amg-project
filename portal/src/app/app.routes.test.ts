@@ -263,7 +263,7 @@ test('«Mi Portal» (clientes/:id/ver) se retiró: sus secciones son tabs de la 
   ]);
 });
 
-test('los tabs resenas e ideas cargan sus pantallas de verdad', async () => {
+test('los tabs resenas, ideas y menu cargan sus pantallas de verdad', async () => {
   // Mismo motivo que el del brief y el del informe: el `loadComponent` es perezoso, así que un import
   // mal escrito no rompe el build — se rompe al navegar, y el síntoma sería mudo (el link del tab
   // caería en el comodín `**` y el portal mandaría a `/clientes` como si nada).
@@ -277,6 +277,17 @@ test('los tabs resenas e ideas cargan sus pantallas de verdad', async () => {
   const ideas = (ficha?.children ?? []).find((r) => r.path === 'ideas');
   assert.equal(ideas?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
   assert.equal(((await ideas?.loadComponent?.()) as { name?: string })?.name, 'ClienteIdeasPage');
+
+  const menu = (ficha?.children ?? []).find((r) => r.path === 'menu');
+  assert.equal(menu?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+  assert.equal(((await menu?.loadComponent?.()) as { name?: string })?.name, 'ClienteMenuPage');
+
+  const menuDetalle = (ficha?.children ?? []).find((r) => r.path === 'menu/:index');
+  assert.equal(menuDetalle?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+  assert.equal(
+    ((await menuDetalle?.loadComponent?.()) as { name?: string })?.name,
+    'ClienteMenuDetallePage',
+  );
 });
 
 test('el detalle de una idea (ideas/:ideaId) cuelga del cliente, hereda el authGuard y carga ClienteIdeaDetallePage', async () => {

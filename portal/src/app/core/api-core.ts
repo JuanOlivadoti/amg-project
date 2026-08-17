@@ -24,10 +24,16 @@ import { RUN_SIN_WORKFLOW, SIN_PAGINAS_APROBADAS } from './codigos';
  * alcance): los 400/403/404 que ya existían responden `{ error }` a secas y el portal no ramifica
  * sobre ellos. Ausente significa ausente — no se rellena con el status ni con una cadena vacía, o
  * dejaría de poder distinguirse «este 409 es aquel caso» de «este 409 es cualquier otro».
+ *
+ * `campos` es opcional por el mismo motivo: **solo los 400 de validación Zod lo llevan** (el editor
+ * de menú, `menuPatchSchema` en `api/src/app.ts`) — el resto de los errores sigue respondiendo
+ * `{ error }` a secas. Cuando viene, cada entrada dice qué `ruta` del body falló y por qué, para que
+ * la pantalla señale el campo sin depender del texto de `mensaje` (que puede cambiar).
  */
 export interface ApiError extends Error {
   status: number;
   codigo?: string;
+  campos?: Array<{ ruta: string; mensaje: string }>;
 }
 
 /**
@@ -313,18 +319,27 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     if (!res.ok) {
       let mensaje = `${res.status} ${res.statusText}`;
       let codigo: string | undefined;
+      let campos: Array<{ ruta: string; mensaje: string }> | undefined;
       try {
-        const j = (await res.json()) as { error?: string; codigo?: string };
+        const j = (await res.json()) as {
+          error?: string;
+          codigo?: string;
+          campos?: Array<{ ruta: string; mensaje: string }>;
+        };
         if (j?.error) mensaje = j.error;
         // Solo si viene y es una cadena: un `codigo` inventado acá haría que la pantalla eligiera una
         // rama por un dato que el servidor no mandó.
         if (typeof j?.codigo === 'string') codigo = j.codigo;
+        // Mismo criterio que `codigo`: solo si viene de verdad, y tal cual — no se reconstruye ni se
+        // completa nada que el servidor no haya mandado.
+        if (Array.isArray(j?.campos)) campos = j.campos;
       } catch {
         /* el cuerpo no era JSON; nos quedamos con el status */
       }
       const err = new Error(mensaje) as ApiError;
       err.status = res.status;
       if (codigo !== undefined) err.codigo = codigo;
+      if (campos !== undefined) err.campos = campos;
       throw err;
     }
 

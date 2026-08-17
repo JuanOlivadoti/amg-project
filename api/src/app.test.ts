@@ -842,7 +842,7 @@ test("equivalencia: el mismo set de casos límite se acepta/rechaza igual en men
     { plato: { name: "Margherita" }, valido: true },
     { plato: { name: "" }, valido: false }, // nombre vacío
     { plato: { name: "Sin precio con importe vacío", precios: [{ etiqueta: "Media", importe: "" }] }, valido: false },
-    { plato: { name: "17 alérgenos" }, valido: true }, // placeholder: el caso real de tope va abajo
+    { plato: { name: "P", alergenos: Array(15).fill("gluten") }, valido: false }, // 15 > MAX_ALERGENOS (14)
   ];
 
   for (const { plato, valido } of casos) {

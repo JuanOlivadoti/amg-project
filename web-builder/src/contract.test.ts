@@ -298,3 +298,68 @@ test("menuPatchSchema rechaza más de MAX_ITEMS_CARTA platos", () => {
   const menu201 = Array.from({ length: 201 }, (_, i) => ({ name: `Plato ${i}` }));
   assert.equal(menuPatchSchema.safeParse({ menu: menu201, menu_categorias: [] }).success, false);
 });
+
+/*
+ * `portal/src/app/core/menu-taxonomia.ts` copia a mano estas dos listas (ADR-21: el portal no puede
+ * importar `web-builder`). Estos dos arrays son la copia PEGADA, no un import — a propósito, porque
+ * este test tampoco puede importar del portal, y es justo eso lo que ata la copia al Zod real: si
+ * alguien renombra un valor acá (`web-builder/src/contract.ts`) y se olvida del portal, este test cae
+ * ANTES de que el portal empiece a mandar un enum que el servidor rechaza. Ver el docblock de
+ * `menu-taxonomia.ts` para el resto del razonamiento.
+ */
+const ALERGENOS_COPIA_PORTAL = [
+  "gluten",
+  "crustaceos",
+  "huevos",
+  "pescado",
+  "cacahuetes",
+  "soja",
+  "lacteos",
+  "frutos_cascara",
+  "apio",
+  "mostaza",
+  "sesamo",
+  "sulfitos",
+  "altramuces",
+  "moluscos",
+];
+
+const ETIQUETAS_DIETETICAS_COPIA_PORTAL = [
+  "vegano",
+  "vegetariano",
+  "sin_gluten",
+  "sin_lactosa",
+  "picante",
+  "halal",
+  "kosher",
+];
+
+test("la copia de ALERGENOS del portal (menu-taxonomia.ts) coincide valor por valor con el enum real de menuItemSchema", () => {
+  for (const valor of ALERGENOS_COPIA_PORTAL) {
+    assert.equal(
+      menuItemSchema.safeParse({ name: "x", alergenos: [valor] }).success,
+      true,
+      `menuItemSchema rechazó '${valor}': la copia del portal tiene un valor que el Zod real no acepta`,
+    );
+  }
+  assert.equal(
+    menuItemSchema.safeParse({ name: "x", alergenos: ["no_existe"] }).success,
+    false,
+    "un alérgeno inventado tiene que seguir rechazándose",
+  );
+});
+
+test("la copia de ETIQUETAS_DIETETICAS del portal (menu-taxonomia.ts) coincide valor por valor con el enum real de menuItemSchema", () => {
+  for (const valor of ETIQUETAS_DIETETICAS_COPIA_PORTAL) {
+    assert.equal(
+      menuItemSchema.safeParse({ name: "x", etiquetas: [valor] }).success,
+      true,
+      `menuItemSchema rechazó '${valor}': la copia del portal tiene un valor que el Zod real no acepta`,
+    );
+  }
+  assert.equal(
+    menuItemSchema.safeParse({ name: "x", etiquetas: ["no_existe"] }).success,
+    false,
+    "una etiqueta dietética inventada tiene que seguir rechazándose",
+  );
+});

@@ -178,6 +178,23 @@ describe('ClienteMenuPage', () => {
     expect(el.textContent).toContain('Margherita');
   });
 
+  it('🔴 agregar una categoría con un nombre ya existente NO la duplica ni dispara un guardado de más', async () => {
+    const { fixture, guardarMenuSpy } = crear(); // carta de prueba trae 'Pizzas' y 'Pastas'
+    const el = await estabilizar(fixture);
+
+    const inputNombre = el.querySelector<HTMLInputElement>('input[name="nuevaCategoriaNombre"]')!;
+    inputNombre.value = '  pizzas  '; // mismo nombre, con mayúsculas/espacios distintos
+    inputNombre.dispatchEvent(new Event('input'));
+    await estabilizar(fixture);
+
+    boton(el, 'Agregar categoría')!.click();
+    await estabilizar(fixture);
+
+    expect(guardarMenuSpy).not.toHaveBeenCalled();
+    const nombres = Array.from(el.querySelectorAll('ul span')).map((s) => s.textContent!.trim());
+    expect(nombres).toEqual(['Pizzas', 'Pastas']);
+  });
+
   it('🔴 una categoría nueva sin `orden` va al final, no salta antes de una con orden explícito', async () => {
     const carta = cartaDePrueba({
       menu: [],

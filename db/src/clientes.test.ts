@@ -686,3 +686,24 @@ test("actualizarMenu de un cliente de OTRO tenant no afecta ninguna fila", async
   const menu = await clientes.obtenerMenu({ tenantId: s.tenantA, userId: s.equipoA }, id);
   assert.deepEqual(menu, { menu: [], menu_categorias: [] }, "el menú de A no cambió");
 });
+
+test("🔴 actualizarMenu con rol cliente (duenoA1) no escribe — client_write/app.puede_escribir() lo bloquea", async () => {
+  // Restricción #2 del plan (Global Constraints: "Solo maestro/equipo editan"). No es una política
+  // nueva —`client_write` (0001) ya lo impone y ningún cambio de esta etapa la tocó— pero hasta ahora
+  // solo quedaba cubierta transitivamente por los tests de `client_write` sobre `PATCH /clients/:id`,
+  // nunca por un test directo sobre `actualizarMenu`.
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Con carta" });
+  await clientes.actualizarMenu({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    menu: [{ name: "Margherita" }],
+    menu_categorias: [],
+  });
+
+  const ok = await clientes.actualizarMenu({ tenantId: s.tenantA, userId: s.duenoA1 }, id, {
+    menu: [{ name: "Intento de fuga" }],
+    menu_categorias: [],
+  });
+  assert.equal(ok, false);
+
+  const menu = await clientes.obtenerMenu({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(menu, { menu: [{ name: "Margherita" }], menu_categorias: [] }, "el menú no cambió");
+});

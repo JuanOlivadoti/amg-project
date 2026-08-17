@@ -187,7 +187,11 @@ export class ClienteMenuPage implements OnInit, OnDestroy {
    * así que sin esto podía saltar antes de una categoría existente con `orden` explícito en el editor,
    * mientras en el sitio publicado seguía yendo al final: dos pantallas mostrando dos órdenes
    * distintos del mismo dato. El `sort` de JS es estable desde ES2019, así que dos categorías sin
-   * `orden` conservan su orden de aparición entre ellas, igual que el renderer.
+   * `orden` conservan su posición relativa en `menu_categorias`; esto NO es exactamente el mismo
+   * desempate que usa el renderer (que ordena por primera aparición en `menu`, los platos, no por
+   * posición en `menu_categorias`), así que una categoría sin platos o con el primer plato en otro
+   * orden puede mostrarse en un orden distinto acá que en el sitio publicado — caso de borde
+   * aceptado, no corregido en esta etapa.
    */
   categoriasOrdenadas(): MenuCategoria[] {
     return [...this.categorias()].sort(
@@ -210,13 +214,21 @@ export class ClienteMenuPage implements OnInit, OnDestroy {
     const huerfanos = conIndice.filter((e) => !e.plato.category || !nombresConocidos.has(e.plato.category));
     if (huerfanos.length > 0) grupos.push({ nombre: 'Sin categoría', entradas: huerfanos });
 
-    return grupos.filter((g) => g.entradas.length > 0 || this.categoriasOrdenadas().some((c) => c.nombre === g.nombre));
+    // Sin filtro adicional: `grupos` ya son exactamente las categorías conocidas (con o sin platos)
+    // más, si corresponde, "Sin categoría" — que solo se empuja arriba cuando tiene entradas.
+    return grupos;
   }
 
   agregarCategoria(evento: Event): void {
     evento.preventDefault();
     const nombre = this.nuevaCategoriaNombre().trim();
     if (!nombre) return;
+    // Nombre duplicado (insensible a mayúsculas/espacios): no se agrega. `borrarCategoria` filtra por
+    // `c.nombre !== nombre`, así que dos categorías con el mismo nombre no se pueden borrar una sin la
+    // otra — permitir el alta duplicada dejaría sin forma de deshacerla. El input queda como está para
+    // que quien lo escribió elija otro nombre.
+    const yaExiste = this.categorias().some((c) => c.nombre.trim().toLowerCase() === nombre.toLowerCase());
+    if (yaExiste) return;
     this.categorias.set([...this.categorias(), { nombre }]);
     this.nuevaCategoriaNombre.set('');
     void this.guardar();

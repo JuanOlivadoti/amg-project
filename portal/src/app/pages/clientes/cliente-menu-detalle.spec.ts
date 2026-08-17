@@ -208,4 +208,52 @@ describe('ClienteMenuDetallePage', () => {
 
     expect(el.textContent).toContain('El menú no es válido.');
   });
+
+  it('foto.alt sobrevive un guardado que no lo toca', async () => {
+    const carta = cartaDePrueba({
+      menu: [{ name: 'Margherita', foto: { src: 'https://a.storyblok.com/f/1/margherita.jpg', alt: 'Pizza margherita recién horneada' } }],
+    });
+    const { fixture, guardarMenuSpy } = crear({ obtenerMenu: jasmine.createSpy('obtenerMenu').and.resolveTo(carta) });
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector<HTMLInputElement>('input[name="fotoAlt"]')?.value).toBe(
+      'Pizza margherita recién horneada',
+    );
+
+    // Se toca un campo cualquiera (no `fotoAlt`) para simular una edición real, y se guarda.
+    const inputNota = el.querySelector<HTMLInputElement>('input[name="nota"]')!;
+    inputNota.value = 'Recomendado';
+    inputNota.dispatchEvent(new Event('input'));
+    await estabilizar(fixture);
+
+    el.querySelector('form')!.dispatchEvent(new Event('submit'));
+    await estabilizar(fixture);
+
+    const [, cartaGuardada] = guardarMenuSpy.calls.mostRecent().args as [string, MenuCarta];
+    expect(cartaGuardada.menu[0]?.foto).toEqual({
+      src: 'https://a.storyblok.com/f/1/margherita.jpg',
+      alt: 'Pizza margherita recién horneada',
+    });
+  });
+
+  it('🔴 el 400 estructurado (`campos`) se muestra como una lista de `ruta: mensaje`, sin depender del texto de `mensaje`', async () => {
+    const params = new BehaviorSubject(convertToParamMap({ id: 'c1', index: '1' }));
+    const error = Object.assign(new Error('El menú no es válido.'), {
+      status: 400,
+      campos: [{ ruta: 'menu.0.name', mensaje: 'Requerido' }],
+    });
+    const guardarMenuSpy = jasmine.createSpy('guardarMenu').and.rejectWith(error);
+    const { fixture } = crear({ params, guardarMenu: guardarMenuSpy });
+    const el = await estabilizar(fixture);
+
+    const inputNombre = el.querySelector<HTMLInputElement>('input[name="name"]')!;
+    inputNombre.value = 'Plato con error de campo';
+    inputNombre.dispatchEvent(new Event('input'));
+    await estabilizar(fixture);
+
+    el.querySelector('form')!.dispatchEvent(new Event('submit'));
+    await estabilizar(fixture);
+
+    expect(el.textContent).toContain('menu.0.name: Requerido');
+  });
 });

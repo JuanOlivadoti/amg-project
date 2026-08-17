@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
+import type { ApiError } from '../../core/api-core';
 import type { Alergeno, EtiquetaDietetica, MenuCategoria, MenuItem, PrecioMenu } from '../../core/models';
 import { ALERGENOS, ETIQUETA_ALERGENO, ETIQUETAS_DIETETICAS, ETIQUETA_DIETETICA_LABEL } from '../../core/menu-taxonomia';
 import { Vigencia } from '../../core/vigencia';
@@ -25,6 +26,7 @@ interface FormularioPlato {
   nota: string;
   precios: PrecioForm[];
   fotoSrc: string;
+  fotoAlt: string;
   videoSrc: string;
   videoPosterSrc: string;
   videoPosterAlt: string;
@@ -44,6 +46,7 @@ function formularioVacio(): FormularioPlato {
     nota: '',
     precios: [{ etiqueta: '', importe: '', comensales: '' }],
     fotoSrc: '',
+    fotoAlt: '',
     videoSrc: '',
     videoPosterSrc: '',
     videoPosterAlt: '',
@@ -81,6 +84,7 @@ function formularioDesde(item: MenuItem): FormularioPlato {
     nota: item.nota ?? '',
     precios,
     fotoSrc: item.foto?.src ?? '',
+    fotoAlt: item.foto?.alt ?? '',
     videoSrc: item.video?.src ?? '',
     videoPosterSrc: item.video?.poster?.src ?? '',
     videoPosterAlt: item.video?.poster?.alt ?? '',
@@ -121,7 +125,9 @@ function platoDesdeFormulario(f: FormularioPlato): MenuItem {
   if (f.category.trim()) plato.category = f.category.trim();
   if (f.nota.trim()) plato.nota = f.nota.trim();
   if (precios.length > 0) plato.precios = precios;
-  if (f.fotoSrc.trim()) plato.foto = { src: f.fotoSrc.trim() };
+  if (f.fotoSrc.trim()) {
+    plato.foto = { src: f.fotoSrc.trim(), ...(f.fotoAlt.trim() ? { alt: f.fotoAlt.trim() } : {}) };
+  }
   if (f.videoSrc.trim()) {
     plato.video = {
       src: f.videoSrc.trim(),
@@ -157,6 +163,13 @@ function platoDesdeFormulario(f: FormularioPlato): MenuItem {
 
         @if (errorGuardar()) {
           <p class="text-sm text-error">{{ errorGuardar() }}</p>
+        }
+        @if (errorCampos().length > 0) {
+          <ul class="text-sm text-error list-disc pl-4">
+            @for (c of errorCampos(); track c.ruta) {
+              <li>{{ c.ruta }}: {{ c.mensaje }}</li>
+            }
+          </ul>
         }
         @if (errorValidacion()) {
           <p class="text-sm text-error">{{ errorValidacion() }}</p>
@@ -261,15 +274,26 @@ function platoDesdeFormulario(f: FormularioPlato): MenuItem {
               />
             </div>
             <div>
-              <label for="videoSrc" class="block text-xs text-texto-tenue">Video (URL)</label>
+              <label for="fotoAlt" class="block text-xs text-texto-tenue">Texto alternativo de la foto</label>
               <input
-                id="videoSrc"
-                name="videoSrc"
-                [ngModel]="formulario().videoSrc"
-                (ngModelChange)="actualizar({ videoSrc: $event })"
+                id="fotoAlt"
+                name="fotoAlt"
+                [ngModel]="formulario().fotoAlt"
+                (ngModelChange)="actualizar({ fotoAlt: $event })"
                 class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
               />
             </div>
+          </div>
+
+          <div>
+            <label for="videoSrc" class="block text-xs text-texto-tenue">Video (URL)</label>
+            <input
+              id="videoSrc"
+              name="videoSrc"
+              [ngModel]="formulario().videoSrc"
+              (ngModelChange)="actualizar({ videoSrc: $event })"
+              class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+            />
           </div>
 
           @if (formulario().videoSrc.trim()) {
@@ -418,6 +442,10 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
   readonly cargando = signal(true);
   readonly guardando = signal(false);
   readonly errorGuardar = signal('');
+  /** Los `campos` del 400 de validación (`menuPatchSchema`), si el último intento de guardar los
+   *  trajo — ver `ApiError.campos`. `ruta` identifica el campo que falló; no se resalta un input
+   *  puntual (alcance acotado a propósito), pero la lista ya deja de depender del texto de `mensaje`. */
+  readonly errorCampos = signal<Array<{ ruta: string; mensaje: string }>>([]);
   readonly errorValidacion = signal('');
 
   private sub: Subscription | null = null;
@@ -433,6 +461,7 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
       this.indice = Number(indiceParam);
       this.noEncontrado.set(false);
       this.errorGuardar.set('');
+      this.errorCampos.set([]);
       this.errorValidacion.set('');
       void this.cargar(clave, clienteId);
     });
@@ -532,6 +561,7 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
     const clave = this.vigencia.actual;
     this.guardando.set(true);
     this.errorGuardar.set('');
+    this.errorCampos.set([]);
     try {
       await this.api.guardarMenu(this.clienteId, { menu: nuevoMenu, menu_categorias: this.categorias() });
       if (this.vigencia.obsoleta(clave)) return;
@@ -539,6 +569,7 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
     } catch (e) {
       if (this.vigencia.obsoleta(clave)) return;
       this.errorGuardar.set((e as Error).message);
+      if ((e as ApiError).campos) this.errorCampos.set((e as ApiError).campos!);
     } finally {
       if (!this.vigencia.obsoleta(clave)) this.guardando.set(false);
     }
