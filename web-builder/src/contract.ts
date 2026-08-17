@@ -26,7 +26,13 @@ export { parseBrief, SUPPORTED_SCHEMA_VERSIONS } from "contrato";
  * tres reciben datos ya guardados, donde tirar la página entera por un exceso sería peor que recortar.
  */
 const MAX_LOCALES = 20;
-const MAX_ITEMS_CARTA = 200;
+/**
+ * Exportado para el editor del portal (`api/src/app.ts`, `PATCH /clients/:id/menu`): valida el
+ * tamaño del array ANTES de construir el `update`, con el mismo tope que esta frontera. No es una de
+ * las tres que ya exportaba el comentario de abajo ("la frontera 4 también aplica") — ésta la
+ * necesita una frontera de ESCRITURA, no de render, y es honesto decirlo así.
+ */
+export const MAX_ITEMS_CARTA = 200;
 /*
  * Los tres que la **frontera 4 (el render) también aplica** se exportan, y ese es todo el motivo de
  * que estén exportados y los otros dos no: `render/lib.ts` declara los suyos y un test exige que
@@ -145,7 +151,7 @@ const videoSchema = z.object({
 });
 
 /** `name` es lo único obligatorio: un ítem de carta sin nombre no se puede mostrar. */
-const menuItemSchema = z.object({
+export const menuItemSchema = z.object({
   category: z.string().optional(),
   name: z.string().min(1),
   description: z.string().optional(),
@@ -188,7 +194,7 @@ const destacadoSchema = z.object({ titulo: z.string().min(1), texto: z.string().
 const testimonioSchema = z.object({ texto: z.string().min(1), autor: z.string().optional() });
 
 /** `nombre` es lo que se compara contra `MenuItem.category`: sin él la categoría no agrupa nada. */
-const menuCategoriaSchema = z.object({
+export const menuCategoriaSchema = z.object({
   nombre: z.string().min(1),
   foto: fotoSchema.optional(),
   orden: z.number().int().min(0).optional(),
@@ -258,6 +264,17 @@ const businessProfileSchema = z.object({
   bienvenida: z.string().optional(),
   destacados: z.array(destacadoSchema).max(MAX_DESTACADOS).optional(),
   testimonios: z.array(testimonioSchema).max(MAX_TESTIMONIOS).optional(),
+});
+
+/**
+ * El contrato de `PATCH /clients/:id/menu` (editor del portal): las DOS claves obligatorias, nunca
+ * opcionales — el portal manda siempre su copia completa de ambos arrays (`[]` si no hay
+ * categorías). Reutiliza `menuItemSchema`/`menuCategoriaSchema` tal cual: es el mismo plato que
+ * valida `businessProfileSchema.menu`, no una copia con reglas propias.
+ */
+export const menuPatchSchema = z.object({
+  menu: z.array(menuItemSchema).max(MAX_ITEMS_CARTA),
+  menu_categorias: z.array(menuCategoriaSchema).max(MAX_CATEGORIAS),
 });
 
 /** Valida el perfil de negocio. Lanza si el JSON existe pero está mal formado. */

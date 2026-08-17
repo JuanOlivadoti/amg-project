@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./fixtures": "./src/fixtures.ts",
-    "./fuentes": "./src/render/fuentes.ts"
+    "./fuentes": "./src/render/fuentes.ts",
+    "./contract": "./src/contract.ts"
   },
   "scripts": {
     "build:web": "tsx src/cli/build.ts",

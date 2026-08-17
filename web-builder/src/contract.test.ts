@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseBrief, parseProfile } from "./contract.js";
+import {
+  parseBrief,
+  parseProfile,
+  menuItemSchema,
+  menuCategoriaSchema,
+  MAX_ITEMS_CARTA,
+  menuPatchSchema,
+} from "./contract.js";
 import { perfilConManual, perfilLegacy, validBrief, validPage, validProfile } from "./fixtures.js";
 
 test("#3 parseBrief: acepta un brief válido kr.v0.2", () => {
@@ -254,4 +261,40 @@ test("frontera 1 — 15 alérgenos o 8 etiquetas se rechazan (los topes son 14 y
 
   const etiqueta8 = Array(8).fill("vegano");
   assert.throws(() => parseProfile({ name: "X", menu: [{ name: "P", etiquetas: etiqueta8 }] }), /inválido/);
+});
+
+test("menuItemSchema exportado acepta el mismo plato válido que parseProfile()", () => {
+  const plato = { name: "Margherita", precios: [{ etiqueta: "Media", importe: "9,00 €" }] };
+  assert.equal(menuItemSchema.safeParse(plato).success, true);
+  assert.equal(
+    parseProfile({ name: "X", menu: [plato] }).menu?.[0]?.name,
+    "Margherita",
+  );
+});
+
+test("menuCategoriaSchema exportado rechaza una categoría sin nombre, igual que parseProfile()", () => {
+  const categoria = { orden: 0 };
+  assert.equal(menuCategoriaSchema.safeParse(categoria).success, false);
+  assert.throws(() => parseProfile({ name: "X", menu_categorias: [categoria] }));
+});
+
+test("MAX_ITEMS_CARTA exportado es el mismo tope que aplica businessProfileSchema (200)", () => {
+  assert.equal(MAX_ITEMS_CARTA, 200);
+  const menu201 = Array.from({ length: 201 }, (_, i) => ({ name: `Plato ${i}` }));
+  assert.throws(() => parseProfile({ name: "X", menu: menu201 }));
+});
+
+test("menuPatchSchema exige las DOS claves — menu_categorias ausente es inválido, no 'se conserva'", () => {
+  const soloMenu = { menu: [{ name: "Margherita" }] };
+  assert.equal(menuPatchSchema.safeParse(soloMenu).success, false);
+});
+
+test("menuPatchSchema acepta el caso sin categorías con un array vacío explícito", () => {
+  const sinCategorias = { menu: [{ name: "Margherita" }], menu_categorias: [] };
+  assert.equal(menuPatchSchema.safeParse(sinCategorias).success, true);
+});
+
+test("menuPatchSchema rechaza más de MAX_ITEMS_CARTA platos", () => {
+  const menu201 = Array.from({ length: 201 }, (_, i) => ({ name: `Plato ${i}` }));
+  assert.equal(menuPatchSchema.safeParse({ menu: menu201, menu_categorias: [] }).success, false);
 });
