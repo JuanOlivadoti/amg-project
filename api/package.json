@@ -21,7 +21,8 @@
     "hono": "^4.6.14",
     "inngest": "^3.27.0",
     "jose": "^5.9.6",
-    "pg": "^8.22.0"
+    "pg": "^8.22.0",
+    "web-builder": "*"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.4",

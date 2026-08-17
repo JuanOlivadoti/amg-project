@@ -13,6 +13,7 @@ import type {
   FiltrosIdeas,
   PgResenas,
 } from "db";
+import { menuPatchSchema } from "web-builder/contract";
 import { validarCambiosIdea, serializarResumen, serializarDetalle } from "./ideas-http.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
@@ -413,6 +414,33 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return ok
       ? c.json({ ok: true })
       : c.json({ error: "Cliente no encontrado, o sin cambios válidos." }, 404);
+  });
+
+  /** GET /clients/:id/menu — la carta del cliente (platos + categorías), tal como vive en business_profile. */
+  app.get("/clients/:id/menu", async (c) => {
+    const ctx = c.get("ctx");
+    const resultado = await deps.clientes.obtenerMenu(ctx, c.req.param("id"));
+    if (!resultado) return c.json({ error: "Cliente no encontrado." }, 404);
+    return c.json(resultado);
+  });
+
+  /**
+   * PATCH /clients/:id/menu — reemplaza la carta completa (`menu` + `menu_categorias`).
+   *
+   * Las dos claves del body son OBLIGATORIAS (`menuPatchSchema`, `web-builder/contract`): el portal
+   * manda siempre su copia completa de ambos arrays, `[]` si no hay categorías. Un body con una
+   * clave ausente es 400, no "se conserva lo que había" — ver el spec.
+   */
+  app.patch("/clients/:id/menu", async (c) => {
+    const ctx = c.get("ctx");
+    const body = await c.req.json().catch(() => null);
+    const parsed = menuPatchSchema.safeParse(body);
+    if (!parsed.success) {
+      const campos = parsed.error.issues.map((i) => ({ ruta: i.path.join("."), mensaje: i.message }));
+      return c.json({ error: "El menú no es válido.", campos }, 400);
+    }
+    const ok = await deps.clientes.actualizarMenu(ctx, c.req.param("id"), parsed.data);
+    return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
   });
 
   /** POST /clients/:id/archive — archiva (soft-delete). Mismo criterio de 404 que PATCH /clients/:id. */

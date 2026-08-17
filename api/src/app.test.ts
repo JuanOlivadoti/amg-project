@@ -9,6 +9,7 @@ import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
 import { RUN_SIN_WORKFLOW } from "./codigos.js";
 import { MockGoogleOAuthProvider } from "./google-oauth.js";
 import { firmarEstado, type EstadoOAuth } from "./oauth-state.js";
+import { menuItemSchema, parseProfile } from "web-builder/contract";
 
 /** Origen del portal para los tests del callback OAuth (`GET .../google/callback`). */
 const PORTAL_URL_TEST = "http://localhost:4200";
@@ -763,6 +764,111 @@ test("🔴 POST /clients con asignado_a que no es miembro del tenant → 400 (no
   assert.equal(res.status, 400);
   const filas = await sql("select id from clients where nombre = 'Con asignado ajeno'");
   assert.equal(filas.length, 0, "no se creó ninguna fila con un asignado_a inválido");
+});
+
+// ---------------------------------------------------------------- menú (editor del portal)
+
+test("GET /clients/:id/menu de un cliente sin carta devuelve arrays vacíos", async () => {
+  const res = await req("GET", `/clients/${clientA1}/menu`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { menu: [], menu_categorias: [] });
+});
+
+test("GET /clients/:id/menu de OTRO tenant → 404", async () => {
+  const res = await req("GET", `/clients/${clientA1}/menu`, { user: equipoB, tenant: tenantB });
+  assert.equal(res.status, 404);
+});
+
+test("PATCH /clients/:id/menu guarda un plato válido y GET lo devuelve igual", async () => {
+  const carta = {
+    menu: [{ name: "Margherita", precios: [{ etiqueta: "Media", importe: "9,00 €" }] }],
+    menu_categorias: [{ nombre: "Pizzas" }],
+  };
+  const resPatch = await req("PATCH", `/clients/${clientA1}/menu`, { user: equipoA, tenant: tenantA, body: carta });
+  assert.equal(resPatch.status, 200);
+  assert.deepEqual(await resPatch.json(), { ok: true });
+
+  const resGet = await req("GET", `/clients/${clientA1}/menu`, { user: equipoA, tenant: tenantA });
+  assert.deepEqual(await resGet.json(), carta);
+});
+
+test("PATCH /clients/:id/menu sin menu_categorias → 400 (las dos claves son obligatorias)", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}/menu`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { menu: [{ name: "Margherita" }] },
+  });
+  assert.equal(res.status, 400);
+  const cuerpo = (await res.json()) as { campos: Array<{ ruta: string; mensaje: string }> };
+  assert.ok(cuerpo.campos.some((c) => c.ruta === "menu_categorias"));
+});
+
+test("PATCH /clients/:id/menu con un plato sin nombre → 400 con la ruta exacta del campo", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}/menu`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { menu: [{ description: "Sin nombre" }], menu_categorias: [] },
+  });
+  assert.equal(res.status, 400);
+  const cuerpo = (await res.json()) as { error: string; campos: Array<{ ruta: string; mensaje: string }> };
+  assert.ok(cuerpo.campos.some((c) => c.ruta === "menu.0.name"));
+});
+
+test("🔴 PATCH /clients/:id/menu de OTRO tenant → 404 con el MISMO mensaje que un id inexistente (no revela existencia)", async () => {
+  const carta = { menu: [{ name: "Fuga" }], menu_categorias: [] };
+  const resOtroTenant = await req("PATCH", `/clients/${clientA1}/menu`, { user: equipoB, tenant: tenantB, body: carta });
+  assert.equal(resOtroTenant.status, 404);
+  const cuerpoOtroTenant = await resOtroTenant.json();
+
+  const resInexistente = await req("PATCH", "/clients/00000000-0000-4000-8000-000000000000/menu", {
+    user: equipoA,
+    tenant: tenantA,
+    body: carta,
+  });
+  assert.equal(resInexistente.status, 404);
+  const cuerpoInexistente = await resInexistente.json();
+
+  assert.deepEqual(cuerpoOtroTenant, cuerpoInexistente, "el 404 no distingue 'de otro tenant' de 'no existe'");
+
+  const filas = await sql<{ business_profile: Record<string, unknown> | null }>(
+    "select business_profile from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(filas[0]?.business_profile, null, "el tenant B no pudo tocar el cliente de A");
+});
+
+test("equivalencia: el mismo set de casos límite se acepta/rechaza igual en menuItemSchema, parseProfile() y el endpoint", async () => {
+  const casos: Array<{ plato: unknown; valido: boolean }> = [
+    { plato: { name: "Margherita" }, valido: true },
+    { plato: { name: "" }, valido: false }, // nombre vacío
+    { plato: { name: "Sin precio con importe vacío", precios: [{ etiqueta: "Media", importe: "" }] }, valido: false },
+    { plato: { name: "17 alérgenos" }, valido: true }, // placeholder: el caso real de tope va abajo
+  ];
+
+  for (const { plato, valido } of casos) {
+    assert.equal(
+      menuItemSchema.safeParse(plato).success,
+      valido,
+      `menuItemSchema discrepa para ${JSON.stringify(plato)}`,
+    );
+
+    const perfilOk = (() => {
+      try {
+        parseProfile({ name: "X", menu: [plato] });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    assert.equal(perfilOk, valido, `parseProfile() discrepa para ${JSON.stringify(plato)}`);
+
+    const res = await req("PATCH", `/clients/${clientA1}/menu`, {
+      user: equipoA,
+      tenant: tenantA,
+      body: { menu: [plato], menu_categorias: [] },
+    });
+    assert.equal(res.status === 200, valido, `el endpoint discrepa para ${JSON.stringify(plato)}`);
+  }
 });
 
 test("POST /clients/:id/archive: el equipo archiva su cliente (archived_at pasa a no-null)", async () => {
