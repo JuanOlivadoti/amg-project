@@ -92,6 +92,22 @@ describe('ClienteMenuDetallePage', () => {
     expect(el.querySelector('input[name="name"]')).toBeFalsy();
   });
 
+  it('🔴 índice no entero (solo alcanzable escribiendo la URL a mano) → "Plato no encontrado", sin reventar', async () => {
+    // `0.5` no es negativo ni mayor que `carta.menu.length` (1 en `cartaDePrueba()`), así que sin la
+    // guarda `!Number.isInteger` caía en la rama de "plato existente": `carta.menu[0.5]` es
+    // `undefined`, y `formularioDesde(undefined!)` reventaba con un TypeError al leer `.price` de
+    // `undefined` — nada que la propia app genere produce un índice así, pero es una URL válida que
+    // alguien puede escribir a mano. (Un índice como `1.5`, mayor que `menu.length`, ya caía en la
+    // rama "fuera de rango" aun sin este fix — por eso el valor de prueba tiene que estar DENTRO del
+    // rango para ejercitar la guarda nueva.)
+    const params = new BehaviorSubject(convertToParamMap({ id: 'c1', index: '0.5' }));
+    const { fixture } = crear({ params });
+    const el = await estabilizar(fixture);
+
+    expect(el.textContent).toContain('Plato no encontrado');
+    expect(el.querySelector('input[name="name"]')).toBeFalsy();
+  });
+
   it('un plato legacy con `price` suelto (sin `precios`) se migra a una fila de precios al abrirlo', async () => {
     const carta = cartaDePrueba({
       // `price` no está en el tipo `MenuItem` del portal (ver Task 4) — se simula tal como llega de

@@ -451,7 +451,7 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
       this.menuCompleto = carta.menu;
       this.categorias.set(carta.menu_categorias);
 
-      if (this.indice < 0 || this.indice > carta.menu.length || Number.isNaN(this.indice)) {
+      if (this.indice < 0 || this.indice > carta.menu.length || !Number.isInteger(this.indice)) {
         this.noEncontrado.set(true);
       } else if (this.indice === carta.menu.length) {
         this.esNuevo.set(true);
