@@ -286,6 +286,61 @@ export class PgClientes {
     });
   }
 
+  /**
+   * La carta del cliente: `menu` + `menu_categorias`, tal como viven dentro de `business_profile`.
+   * `[]` para cada uno si el perfil no los tiene (o no tiene perfil en absoluto) — nunca `null`: el
+   * portal siempre puede pintar una lista vacía, no un hueco que hay que distinguir de un error.
+   *
+   * `null` (todo el retorno, no las claves de adentro) es "cliente no encontrado o no visible" —
+   * mismo criterio que `obtenerCliente`.
+   */
+  async obtenerMenu(
+    ctx: TenantContext,
+    id: string,
+  ): Promise<{ menu: unknown[]; menu_categorias: unknown[] } | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ menu: unknown[]; menu_categorias: unknown[] }>(
+        `select coalesce(business_profile->'menu', '[]'::jsonb) as menu,
+                coalesce(business_profile->'menu_categorias', '[]'::jsonb) as menu_categorias
+         from clients where id = $1`,
+        [id],
+      );
+      return rows[0] ?? null;
+    });
+  }
+
+  /**
+   * Reemplaza `menu` y `menu_categorias` COMPLETOS dentro de `business_profile`, sin tocar ninguna
+   * otra clave del perfil (`brand`, `fotos`, etc.) ni pasar el perfil entero por `parseProfile()` —
+   * ver la sección "Por qué el PATCH reemplaza el array entero" del spec.
+   *
+   * `coalesce(business_profile, '{}'::jsonb)` cubre el cliente recién creado, cuya columna es NULL
+   * (la 0006 la agrega sin default): sin este `coalesce`, el operador `||` de jsonb sobre un operando
+   * NULL da NULL — el UPDATE "funcionaría" (afecta la fila, devuelve éxito) pero el menú no quedaría
+   * guardado, sin que nada lo avise. Hay un test que reproduce exactamente este caso.
+   *
+   * `datos.menu`/`datos.menu_categorias` llegan como `unknown[]`: ya pasaron el Zod de
+   * `menuPatchSchema` en la API antes de esta llamada (frontera 2), así que acá no se vuelve a
+   * validar — solo se serializa y se escribe. Igual que `contacto` en `actualizarCliente`.
+   */
+  async actualizarMenu(
+    ctx: TenantContext,
+    id: string,
+    datos: { menu: unknown[]; menu_categorias: unknown[] },
+  ): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update clients
+         set business_profile = coalesce(business_profile, '{}'::jsonb)
+           || jsonb_build_object('menu', $1::jsonb, 'menu_categorias', $2::jsonb)
+         where id = $3
+         returning id`,
+        [JSON.stringify(datos.menu), JSON.stringify(datos.menu_categorias), id],
+      );
+      return rows.length > 0;
+    });
+  }
+
   /** Archiva el cliente (`archived_at = now()`). `false` si el id no matchea (otro tenant o no
    *  existe) — mismo patrón de retorno que `actualizarCliente`. */
   async archivarCliente(ctx: TenantContext, id: string): Promise<boolean> {

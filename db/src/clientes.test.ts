@@ -602,3 +602,87 @@ test("equipoA (rol equipo, mismo tenant) SÍ ve todas las columnas de CRM sin ca
     notas: "cliente conflictivo, revisar antes de renovar",
   });
 });
+
+// ---------------------------------------------------------------- menú (editor del portal)
+
+test("obtenerMenu de un cliente sin business_profile devuelve arrays vacíos, no null ni excepción", async () => {
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Sin carta" });
+
+  const menu = await clientes.obtenerMenu({ tenantId: s.tenantA, userId: s.equipoA }, id);
+
+  assert.deepEqual(menu, { menu: [], menu_categorias: [] });
+});
+
+test("obtenerMenu de un cliente inexistente (o de otro tenant) devuelve null", async () => {
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Solo A" });
+
+  const menu = await clientes.obtenerMenu({ tenantId: s.tenantB, userId: s.equipoB }, id);
+
+  assert.equal(menu, null);
+});
+
+test("actualizarMenu sobre un cliente con business_profile NULL lo guarda igual (no se pierde en silencio)", async () => {
+  // `crearCliente` nunca escribe `business_profile`: la columna queda en su default, NULL. Éste es
+  // exactamente el caso que `coalesce(business_profile, '{}'::jsonb)` tiene que cubrir — sin él, el
+  // `||` de jsonb sobre NULL da NULL, el UPDATE devuelve éxito y el menú no queda guardado.
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Perfil vacío" });
+
+  const ok = await clientes.actualizarMenu({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    menu: [{ name: "Margherita", price: "9,00 €" }],
+    menu_categorias: [],
+  });
+  assert.equal(ok, true);
+
+  const menu = await clientes.obtenerMenu({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(menu, {
+    menu: [{ name: "Margherita", price: "9,00 €" }],
+    menu_categorias: [],
+  });
+});
+
+test("actualizarMenu toca SOLO menu/menu_categorias — el resto de business_profile sobrevive", async () => {
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Con perfil" });
+  // Perfil inicial con brand y fotos, escrito directo (no hay otro método de escritura de perfil
+  // completo desde este store — mismo camino que usaría el CLI de seed).
+  await db.asService(
+    "update clients set business_profile = $1::jsonb where id = $2",
+    [
+      JSON.stringify({
+        name: "Con perfil",
+        brand: { colores: { primario: "#0a7d34" } },
+        fotos: [{ src: "https://a.storyblok.com/f/1/x.jpg" }],
+      }),
+      id,
+    ],
+  );
+
+  const ok = await clientes.actualizarMenu({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    menu: [{ name: "Margherita", price: "9,00 €" }],
+    menu_categorias: [{ nombre: "Pizzas" }],
+  });
+  assert.equal(ok, true);
+
+  const [fila] = await db.asService(
+    "select business_profile from clients where id = $1",
+    [id],
+  );
+  assert.deepEqual((fila as { business_profile: Record<string, unknown> }).business_profile.brand, {
+    colores: { primario: "#0a7d34" },
+  });
+  assert.deepEqual((fila as { business_profile: Record<string, unknown> }).business_profile.fotos, [
+    { src: "https://a.storyblok.com/f/1/x.jpg" },
+  ]);
+});
+
+test("actualizarMenu de un cliente de OTRO tenant no afecta ninguna fila", async () => {
+  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Solo de A" });
+
+  const ok = await clientes.actualizarMenu({ tenantId: s.tenantB, userId: s.equipoB }, id, {
+    menu: [{ name: "Intento de fuga" }],
+    menu_categorias: [],
+  });
+  assert.equal(ok, false);
+
+  const menu = await clientes.obtenerMenu({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(menu, { menu: [], menu_categorias: [] }, "el menú de A no cambió");
+});
