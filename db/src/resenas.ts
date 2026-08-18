@@ -99,6 +99,30 @@ export class PgResenas {
   }
 
   /**
+   * Edita el borrador de respuesta de una reseña. Mismo molde exacto que `marcarVista`: `false` sin
+   * lanzar si no matchea ninguna fila (otro tenant, no existe, o `puede_escribir()` da falso para el
+   * rol `cliente` — ADR-20). A diferencia de `marcarVista`, no hay `where borrador_respuesta is
+   * null`: el staff puede editar un borrador ya generado por IA, o escribir uno desde cero si la
+   * generación había fallado — ese es justamente el camino de recuperación manual (ver la spec).
+   */
+  async editarBorrador(
+    ctx: TenantContext,
+    clientId: string,
+    resenaId: string,
+    texto: string,
+  ): Promise<boolean> {
+    return this.withTenant(ctx, async (tx: Tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update resenas_google set borrador_respuesta = $1
+         where id = $2 and client_id = $3
+         returning id`,
+        [texto, resenaId, clientId],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
    * Conecta la cuenta de Google del cliente: escribe las tres columnas de `clients` bajo RLS
    * (`app_user`). `false` si el cliente no existe, es de otro tenant, o quien pide no puede escribir
    * -- nunca lanza por eso. ADR-20 se cumple SOLO por la política: `client_write` (0001) exige

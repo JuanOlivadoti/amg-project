@@ -465,3 +465,57 @@ test("🔴 marcarVista con rol 'cliente' devuelve false: la marca la pone la age
   const resultado = await resenas.marcarVista({ tenantId: s.tenantA, userId: s.duenoA1 }, s.clientA1, id);
   assert.equal(resultado, false);
 });
+
+// ============================================================ Etapa 3 — editarBorrador (0024)
+
+test("editarBorrador guarda el texto y se puede repetir (a diferencia de marcarVista)", async () => {
+  const ctx = { tenantId: s.tenantA, userId: s.equipoA };
+  const id = await crearResena(s.clientA1, s.tenantA, { puntuacion: 5, googleReviewId: "eb-1" });
+
+  const primera = await resenas.editarBorrador(ctx, s.clientA1, id, "Primer borrador");
+  assert.equal(primera, true);
+
+  const segunda = await resenas.editarBorrador(ctx, s.clientA1, id, "Borrador corregido");
+  assert.equal(segunda, true, "a diferencia de marcarVista, editar de nuevo SÍ tiene efecto");
+
+  const [row] = await db.asService<{ borrador_respuesta: string }>(
+    "select borrador_respuesta from resenas_google where id = $1",
+    [id],
+  );
+  assert.equal(row?.borrador_respuesta, "Borrador corregido");
+});
+
+test("🔴 editarBorrador sobre una reseña de OTRO tenant no toca nada (RLS, no un 404 de aplicación)", async () => {
+  const ajena = await crearResena(s.clientB1, s.tenantB, { googleReviewId: "eb-ajena", puntuacion: 5 });
+
+  const resultado = await resenas.editarBorrador(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    s.clientA1,
+    ajena,
+    "Intento cruzado",
+  );
+  assert.equal(resultado, false);
+
+  const [row] = await db.asService<{ borrador_respuesta: string | null }>(
+    "select borrador_respuesta from resenas_google where id = $1",
+    [ajena],
+  );
+  assert.equal(row?.borrador_respuesta, null, "el intento de A no tocó la reseña de B");
+});
+
+test("🔴 editarBorrador con rol 'cliente' devuelve false (ADR-20: el cliente no escribe)", async () => {
+  const id = await crearResena(s.clientA1, s.tenantA, { puntuacion: 5, googleReviewId: "eb-cliente" });
+  const resultado = await resenas.editarBorrador(
+    { tenantId: s.tenantA, userId: s.duenoA1 },
+    s.clientA1,
+    id,
+    "Intento del rol cliente",
+  );
+  assert.equal(resultado, false);
+
+  const [row] = await db.asService<{ borrador_respuesta: string | null }>(
+    "select borrador_respuesta from resenas_google where id = $1",
+    [id],
+  );
+  assert.equal(row?.borrador_respuesta, null, "el rol cliente no pudo escribir nada");
+});
