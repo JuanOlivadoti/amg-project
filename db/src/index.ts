@@ -18,6 +18,7 @@ export type {
   DatosEntregable,
   ClienteConectadoGoogle,
   ResenaParaGuardar,
+  BorradorParaGuardar,
 } from "./store.js";
 
 export { PgSitios, MemSitios } from "./sitios.js";
