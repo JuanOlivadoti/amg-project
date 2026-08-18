@@ -276,21 +276,88 @@ describe('ClienteMenuPage', () => {
     await estabilizar(fixture);
   });
 
-  it('🔴 dos clicks SINCRÓNICOS seguidos (el `[disabled]` del DOM no llega a tiempo en un doble click real) no disparan dos guardados', async () => {
+  it('🔴 dos clicks SINCRÓNICOS seguidos (el `[disabled]` del DOM no llega a tiempo en un doble click real) no disparan dos PATCH SUPERPUESTOS', async () => {
     // Se encontró manejando la app: con `eventCoalescing`, la escritura del atributo `disabled` en
     // el DOM queda detrás de un límite de macrotarea, así que un doble click genuino puede procesar
     // el segundo `click` ANTES de que el botón se vea deshabilitado. Este test no pasa por el DOM
     // para reproducirlo (Karma no simula esa carrera de forma confiable) — llama al método del
     // componente dos veces seguidas, sin esperar entre medio, que es exactamente lo que le llega a
     // `guardar()` cuando el `[disabled]` del template todavía no corrió.
+    //
+    // El contrato NO es "solo un guardado total" (eso perdería la segunda mutación en silencio, el
+    // bug que corrige `guardarPendiente` — ver el test de abajo, con una promesa controlada a mano):
+    // es "nunca dos PATCH EN VUELO al mismo tiempo". Achá, con el spy resolviendo apenas se lo llama,
+    // el segundo guardado encolado ya salió para cuando `estabilizar()` termina, así que el total
+    // sube a 2 — lo que importa es que la comprobación INMEDIATA (antes de que la primera promesa
+    // tenga chance de resolver) siga en 1.
     const { fixture, guardarMenuSpy } = crear();
     const page = fixture.componentInstance;
     await estabilizar(fixture);
 
     page.borrarPlato(0);
     page.borrarPlato(0); // sin `await` entre medio: mismo escenario que un doble click real
+
+    // Comprobación sincrónica, antes de que corra ningún microtask: el segundo `borrarPlato` no
+    // disparó un segundo PATCH superpuesto, quedó encolado.
+    expect(guardarMenuSpy).withContext('inmediatamente después de los dos clicks').toHaveBeenCalledTimes(1);
+
     await estabilizar(fixture);
 
-    expect(guardarMenuSpy).toHaveBeenCalledTimes(1);
+    // Con el spy resolviendo solo, la mutación encolada ya se mandó: los DOS platos por defecto
+    // (Margherita y Cacio e pepe) terminan borrados, no solo el primero.
+    expect(guardarMenuSpy).withContext('tras estabilizar: la mutación encolada ya se mandó').toHaveBeenCalledTimes(2);
+    const [, cartaFinal] = guardarMenuSpy.calls.mostRecent().args as [string, MenuCarta];
+    expect(cartaFinal.menu).toEqual([]);
+  });
+
+  it('🔴 una segunda mutación mientras el primer guardado sigue en vuelo NO se pierde: se encola y se manda al terminar', async () => {
+    // El bug real que el test anterior NO cubre: bloquear el segundo `guardar()` está bien, pero
+    // las DOS mutaciones locales (`this.menu.set(...)`) ya se aplicaron ANTES de que `guardar()`
+    // devolviera nada — el `borrarPlato(0)` del segundo click borra lo que ahora es el índice 0
+    // (Cacio e pepe), porque Margherita ya salió del array en el primer click. Si el segundo
+    // `guardar()` simplemente se descarta, el servidor solo se entera de UN borrado, mientras la UI
+    // ya muestra dos platos menos — una divergencia silenciosa, no una carrera benigna.
+    const carta = cartaDePrueba({
+      menu: [
+        { name: 'Margherita', category: 'Pizzas' },
+        { name: 'Cacio e pepe', category: 'Pastas' },
+        { name: 'Tiramisú', category: 'Postres' },
+      ],
+      menu_categorias: [
+        { nombre: 'Pizzas', orden: 0 },
+        { nombre: 'Pastas', orden: 1 },
+        { nombre: 'Postres', orden: 2 },
+      ],
+    });
+
+    // La PRIMERA llamada a guardarMenu queda controlada a mano (promesa sin resolver, como en el
+    // test de arriba); las siguientes resuelven solas — así se puede observar qué le llega al
+    // guardado que se encola cuando el primero termina.
+    let resolverPrimero: (() => void) | undefined;
+    const guardarMenuSpy = jasmine.createSpy('guardarMenu').and.callFake(() => {
+      if (!resolverPrimero) return new Promise<void>((resolve) => (resolverPrimero = resolve));
+      return Promise.resolve();
+    });
+
+    const { fixture } = crear({
+      obtenerMenu: jasmine.createSpy('obtenerMenu').and.resolveTo(carta),
+      guardarMenu: guardarMenuSpy,
+    });
+    const page = fixture.componentInstance;
+    await estabilizar(fixture);
+
+    page.borrarPlato(0); // saca Margherita; dispara guardar() #1, que queda en vuelo
+    page.borrarPlato(0); // el doble click real: saca lo que ahora es el índice 0 (Cacio e pepe)
+
+    expect(guardarMenuSpy).withContext('el guard bloqueó el segundo guardado mientras el primero seguía en vuelo').toHaveBeenCalledTimes(1);
+
+    resolverPrimero!(); // termina guardar() #1: ahí debe encolarse guardar() #2 con el estado actual
+    await estabilizar(fixture);
+    await estabilizar(fixture); // un tick extra para la promesa encadenada del `finally`
+
+    expect(guardarMenuSpy).withContext('la segunda mutación tenía que mandarse al terminar la primera').toHaveBeenCalledTimes(2);
+    const [, cartaFinal] = guardarMenuSpy.calls.mostRecent().args as [string, MenuCarta];
+    // El único plato que sobrevive a los dos borrados es Tiramisú.
+    expect(cartaFinal.menu.map((p) => p.name)).toEqual(['Tiramisú']);
   });
 });

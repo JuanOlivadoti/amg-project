@@ -202,6 +202,14 @@ export class ClienteMenuPage implements OnInit, OnDestroy {
   }
 
   /**
+   * `true` si una mutación llegó MIENTRAS un `guardar()` seguía en vuelo: no alcanza con descartar
+   * esa segunda llamada (ver el comentario largo en `guardar()`), hay que mandarla apenas el primer
+   * guardado termine. Plano, no signal: nadie lo lee del template, es contabilidad interna de
+   * `guardar()`.
+   */
+  private guardarPendiente = false;
+
+  /**
    * Guarda la carta actual (`menu()` + `categorias()`) y refleja el resultado en la UI.
    *
    * **El `if` de acá abajo, no el `[disabled]` del template, es la constraint real.** Se encontró
@@ -212,24 +220,48 @@ export class ClienteMenuPage implements OnInit, OnDestroy {
    * es sincrónica y no depende de que corra un ciclo de detección de cambios: por eso el guard vive
    * acá, en el único punto por el que pasan las cuatro mutaciones, y el `[disabled]` del template
    * queda como lo que siempre fue tratado en este proyecto — UX, no la garantía.
+   *
+   * **Bloquear el segundo `guardar()` NO alcanza — hay que encolarlo.** Las cuatro mutaciones
+   * (`borrarPlato`, `borrarCategoria`, `agregarCategoria`, `actualizarCategoria`) tocan `this.menu`/
+   * `this.categorias` ANTES de llamar acá: si el `borrarPlato(0)` del segundo click corre mientras el
+   * primero sigue en vuelo, ya sacó un plato DISTINTO del array (el que quedó en el índice 0 después
+   * del primer borrado) antes de que este `if` lo frene. Descartar esa segunda llamada sin más deja
+   * el estado local con DOS platos menos y al servidor enterado de solo UNO — una divergencia
+   * silenciosa que un simple `reload` deja a la vista (encontrado por revisión de código, verificado
+   * con un test que reproduce la secuencia exacta antes de este arreglo). Por eso, si termina un
+   * guardado y quedó una mutación pendiente, se dispara OTRO `guardar()` que capture `this.menu()`/
+   * `this.categorias()` en su estado ACTUAL (ya con las dos mutaciones aplicadas) — un guardado más
+   * por el terminado, no uno por click: sigue siendo coalescing, no reintento por mutación.
    */
   private async guardar(): Promise<void> {
-    if (this.guardando()) return; // un guardado ya en vuelo: no lo dupliques
+    if (this.guardando()) {
+      this.guardarPendiente = true; // hay una mutación más nueva que la que ya está en vuelo
+      return;
+    }
     this.guardando.set(true);
     const clienteId = this.clienteId();
     const carta = { menu: this.menu(), menu_categorias: this.categorias() };
     try {
       await this.api.guardarMenu(clienteId, carta);
+      if (this.vigencia.obsoleta(clienteId)) return;
+      this.error.set('');
     } catch (e) {
       if (this.vigencia.obsoleta(clienteId)) return;
       this.error.set((e as Error).message);
       // Recargar desde el servidor: el estado local pudo quedar adelantado a lo que en verdad se
-      // guardó, y mostrar un plato "borrado" que en realidad sigue ahí sería peor que recargar.
+      // guardó, y mostrar un plato "borrado" que en realidad sigue ahí sería peor que recargar. No
+      // se reintenta la pendiente automáticamente tras un error: `cargar()` va a resincronizar
+      // `this.menu()`/`this.categorias()` con lo que el servidor tiene de verdad.
       void this.cargar(clienteId);
+      return;
     } finally {
       // Sin condicionar a `vigencia`: es el flag de "hay un guardado en vuelo de ESTA instancia",
       // no un dato que dependa de a qué cliente corresponde — a diferencia de `error`/`cargando`.
       this.guardando.set(false);
+    }
+    if (this.guardarPendiente) {
+      this.guardarPendiente = false;
+      void this.guardar(); // captura el estado ACTUAL, que ya incluye lo que se mutó mientras esperábamos
     }
   }
 
