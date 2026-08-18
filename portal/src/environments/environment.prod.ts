@@ -7,8 +7,8 @@
  *   · `supabaseUrl`    → la URL del proyecto Supabase. Ej: https://xxxx.supabase.co
  *   · `supabaseAnonKey`→ la anon key (Project Settings → API) del mismo proyecto.
  *
- * `apiBaseUrl` ya apunta a `https://api.bigballs.es` (la API en Railway con dominio propio). Si la
- * URL de la API cambia, actualizala acá. Requiere que el DNS `api.bigballs.es` apunte a Railway (§C.7).
+ * `apiBaseUrl` ya apunta a `https://api.dinamicseo.es` (la API en Railway con dominio propio). Si la
+ * URL de la API cambia, actualizala acá. Requiere que el DNS `api.dinamicseo.es` apunte a Railway (§C.7).
  *
  * **Los dos `features` estuvieron APAGADOS hasta el 2026-08-07**, y no eran placeholders: el motivo
  * escrito era "no hay orquestador detrás del botón". Ese motivo dejó de valer el día que el
@@ -17,7 +17,7 @@
  */
 export const environment = {
   production: true,
-  apiBaseUrl: 'https://api.bigballs.es',
+  apiBaseUrl: 'https://api.dinamicseo.es',
   supabaseUrl: 'https://hyrwrpmnsqkelxokwddt.supabase.co',
   supabaseAnonKey:
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5cndycG1uc3FrZWx4b2t3ZGR0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5ODkwMjUsImV4cCI6MjEwMDU2NTAyNX0.geOGbDPotg9dpJKMMGX1ctaU5ZEOjsFz5ZdfHzUpAHQ',
