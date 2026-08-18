@@ -26,8 +26,9 @@ fail() { printf "${ROJO}[FALLA]${NC} %s\n" "$1"; }
 LOG_TYPECHECK=$(mktemp -t amg-verificar-typecheck.XXXXXX)
 LOG_TEST=$(mktemp -t amg-verificar-test.XXXXXX)
 LOG_PORTAL=$(mktemp -t amg-verificar-portal.XXXXXX)
+LOG_PORTAL_TYPECHECK=$(mktemp -t amg-verificar-portal-typecheck.XXXXXX)
 LOG_SECRETOS=$(mktemp -t amg-verificar-secretos.XXXXXX)
-trap 'rm -f "$LOG_TYPECHECK" "$LOG_TEST" "$LOG_PORTAL" "$LOG_SECRETOS"' EXIT
+trap 'rm -f "$LOG_TYPECHECK" "$LOG_TEST" "$LOG_PORTAL" "$LOG_PORTAL_TYPECHECK" "$LOG_SECRETOS"' EXIT
 
 SALIDA=0
 RAPIDO=0
@@ -175,17 +176,31 @@ PORTAL_SIN_PUSHEAR=$(git diff --name-only '@{upstream}..HEAD' -- portal/ 2>/dev/
 if [ "$CON_PORTAL" = "1" ] || [ -n "$PORTAL_SIN_COMMITEAR" ] || [ -n "$PORTAL_SIN_PUSHEAR" ]; then
   if [ ! -d portal/node_modules ]; then
     fail "el portal cambió pero no tiene node_modules — 'npm --prefix portal install'"; SALIDA=1
-  elif npm --prefix portal test --silent > "$LOG_PORTAL" 2>&1; then
-    if CONTEO_PORTAL=$(contar_tests "$LOG_PORTAL"); then
-      ok "$CONTEO_PORTAL tests del portal en verde (node:test)"
+  else
+    # `ng build` (que además typechequea `src/**/*.ts`) encadenado con `tsc --noEmit -p
+    # tsconfig.test.json`: sin esto, los `*.test.ts` del portal no pasan por NINGÚN `tsc` — tsx los
+    # corre pero solo transpila. Medido: un campo requerido faltante en dos fixtures pasó
+    # desapercibido hasta que este paso se agregó (2026-08-18).
+    if npm --prefix portal run typecheck --silent > "$LOG_PORTAL_TYPECHECK" 2>&1; then
+      ok "typecheck del portal limpio (ng build + *.test.ts)"
     else
-      fail "los tests del portal pasaron, pero NO pude contarlos — así que esto no es un verde:"
-      echo "$CONTEO_PORTAL" | sed 's/^/          /'
+      fail "typecheck del portal en rojo — últimas líneas:"
+      tail -20 "$LOG_PORTAL_TYPECHECK" | sed 's/^/          /'
       SALIDA=1
     fi
-    warn "los *.spec.ts de componentes van aparte: 'npm --prefix portal run test:components' (Karma)"
-  else
-    fail "tests del portal en rojo — últimas líneas:"; tail -20 "$LOG_PORTAL" | sed 's/^/          /'; SALIDA=1
+
+    if npm --prefix portal test --silent > "$LOG_PORTAL" 2>&1; then
+      if CONTEO_PORTAL=$(contar_tests "$LOG_PORTAL"); then
+        ok "$CONTEO_PORTAL tests del portal en verde (node:test)"
+      else
+        fail "los tests del portal pasaron, pero NO pude contarlos — así que esto no es un verde:"
+        echo "$CONTEO_PORTAL" | sed 's/^/          /'
+        SALIDA=1
+      fi
+      warn "los *.spec.ts de componentes van aparte: 'npm --prefix portal run test:components' (Karma)"
+    else
+      fail "tests del portal en rojo — últimas líneas:"; tail -20 "$LOG_PORTAL" | sed 's/^/          /'; SALIDA=1
+    fi
   fi
 else
   ok "el portal no cambió ni en el árbol ni en los commits sin pushear (--con-portal los fuerza igual)"

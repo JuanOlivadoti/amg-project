@@ -7,7 +7,8 @@
     "prebuild": "tsx scripts/verificar-config-prod.ts",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "typecheck": "ng build --configuration development",
+    "typecheck": "ng build --configuration development && npm run typecheck:tests --silent",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "test:components": "ng test --watch=false --browsers=ChromeHeadless",
     "test:karma": "ng test"
@@ -44,6 +45,7 @@
     "@angular/compiler-cli": "^20.3.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/jasmine": "~5.1.0",
+    "@types/node": "^22.10.0",
     "jasmine-core": "~5.9.0",
     "karma": "~6.4.0",
     "karma-chrome-launcher": "~3.2.0",

@@ -1,0 +1,22 @@
+/* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
+/*
+ * Typechequea los `*.test.ts` (node:test + tsx), que `tsconfig.app.json` excluye a propósito (no
+ * son parte del bundle de la app) y que `tsconfig.spec.json` tampoco cubre: ese es para Karma, con
+ * `"types": ["jasmine"]`, y mezclar ahí los `.test.ts` arriesgaría que el builder de Karma
+ * (`@angular/build:karma`, que lee justo `tsconfig.spec.json`) los tratara como specs de navegador —
+ * y `node:test`/`node:fs` no existen en ese entorno. Antes de este archivo, `npm run test` (tsx)
+ * corría estos archivos sin que NINGÚN `tsc` los mirara: tsx transpila, no typechequea. Medido
+ * metiendo un error de tipos a propósito: el build pasaba igual.
+ *
+ * `"types": ["node"]` porque estos archivos importan `node:test`, `node:assert/strict`, `node:fs`,
+ * etc. — lo mismo que ya hace cada paquete del monorepo (`db/`, `api/`, …) para sus propios
+ * `*.test.ts`, todos con `@types/node` como devDependency explícita.
+ */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/test",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.test.ts"]
+}

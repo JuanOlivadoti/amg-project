@@ -13,6 +13,7 @@ import { mostrarAprobarRun } from '../../core/features';
 import { usdDeMicros } from '../../core/dinero';
 import { environment } from '../../../environments/environment';
 import { Vigencia } from '../../core/vigencia';
+import { POLL_MS } from '../../core/brief-polling';
 
 @Component({
   selector: 'app-brief',
@@ -267,8 +268,6 @@ export class BriefPage implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
-  /** Cada cuánto se repregunta por un research que sigue corriendo (ADR-21: polling, no realtime). */
-  private static readonly POLL_MS = 4000;
   private timer: ReturnType<typeof setInterval> | null = null;
 
   /** A qué run corresponde el trabajo en vuelo, y si el componente sigue vivo. Ver `vigencia.ts`. */
@@ -423,7 +422,7 @@ export class BriefPage implements OnInit, OnDestroy {
     }
     const corriendo = this.brief()?.run.status === 'running';
     if (corriendo && !this.timer) {
-      this.timer = setInterval(() => void this.refetch(), BriefPage.POLL_MS);
+      this.timer = setInterval(() => void this.refetch(), POLL_MS);
     } else if (!corriendo) {
       this.pararPolling();
     }
