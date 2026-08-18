@@ -1,5 +1,5 @@
 import { Component, computed, inject, input, output } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import type { ClienteAgencia, EstadoContrato, TipoCliente } from '../../core/models';
 import { TableDropdownComponent } from '../../shared/components/table-dropdown';
 import { MembresiaService } from '../../services/membresia';
@@ -48,7 +48,10 @@ const ETIQUETA_ESTADO: Record<EstadoContrato, string> = {
         </thead>
         <tbody>
           @for (c of clientes(); track c.id) {
-            <tr class="border-b border-borde last:border-0">
+            <tr
+              class="border-b border-borde last:border-0 cursor-pointer hover:bg-superficie-2"
+              (click)="irAFicha(c.id)"
+            >
               <td class="px-4 py-2 text-texto font-medium">
                 {{ c.nombre }}
                 @if (c.archived_at) {
@@ -65,7 +68,7 @@ const ETIQUETA_ESTADO: Record<EstadoContrato, string> = {
                 </span>
               </td>
               <td class="px-4 py-2 text-texto-medio">{{ nombreAsignado(c.asignado_a) }}</td>
-              <td class="px-4 py-2 text-right">
+              <td class="px-4 py-2 text-right" (click)="$event.stopPropagation()">
                 <app-table-dropdown>
                   <button
                     boton
@@ -127,6 +130,12 @@ const ETIQUETA_ESTADO: Record<EstadoContrato, string> = {
 export class ClientesTablaComponent {
   readonly clientes = input.required<readonly ClienteAgencia[]>();
   private readonly membresia = inject(MembresiaService);
+  private readonly router = inject(Router);
+
+  /** Click en cualquier punto de la fila navega a la ficha — misma ruta que «Abrir» del menú. */
+  irAFicha(id: string): void {
+    this.router.navigate(['/clientes', id]);
+  }
 
   /** `user_id -> nombre`, para no mostrar uuids en la tabla. Uno solo, no uno por fila. */
   private readonly porId = computed(() => {

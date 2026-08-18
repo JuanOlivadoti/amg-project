@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { ClientesPage } from './clientes';
 import { ApiService } from '../../services/api';
 import type { ClienteAgencia } from '../../core/models';
@@ -124,6 +124,37 @@ describe('ClientesPage', () => {
     // Y que «una sola acción de navegación» no se cumpla vaciando el menú: la de estado sigue ahí.
     const botones = [...menu!.querySelectorAll('button')].map((b) => b.textContent!.trim());
     expect(botones).toEqual(['Archivar']);
+  });
+
+  it('click en la fila navega a la ficha del cliente, igual que «Abrir»', async () => {
+    const { fixture, el } = await render([clienteDePrueba({ id: 'c1', nombre: 'Pizza Nonna' })]);
+    const router = TestBed.inject(Router);
+    spyOn(router, 'navigate');
+
+    const fila = el.querySelector<HTMLTableRowElement>('tbody tr');
+    expect(fila).withContext('no encontré la fila de la tabla').not.toBeNull();
+    fila!.click();
+    fixture.detectChanges();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/clientes', 'c1']);
+  });
+
+  it('click en el botón de acciones (⋮) NO dispara también la navegación de la fila', async () => {
+    /*
+     * El botón de acciones vive dentro de la fila, así que su click burbujea al `(click)` de la
+     * fila salvo que se corte la propagación en la celda — si no se corta, abrir el menú también
+     * navegaría a la ficha por debajo, y el usuario nunca vería el menú.
+     */
+    const { fixture, el } = await render([clienteDePrueba({ id: 'c1', nombre: 'Pizza Nonna' })]);
+    const router = TestBed.inject(Router);
+    spyOn(router, 'navigate');
+
+    const disparador = el.querySelector<HTMLButtonElement>('tbody button[aria-label="Acciones"]');
+    disparador!.click();
+    fixture.detectChanges();
+
+    expect(router.navigate).not.toHaveBeenCalled();
+    expect(el.querySelector('[role="menu"]')).withContext('el menú debería haberse abierto').not.toBeNull();
   });
 
   it('archivados: se ocultan por default y aparecen con "Mostrar archivados"', async () => {
