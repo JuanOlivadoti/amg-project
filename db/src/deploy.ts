@@ -84,9 +84,20 @@ export class ConexionReservada {
  */
 const REGISTRO = "app.migraciones_aplicadas";
 
-/** SHA-256 del contenido de la migración: detecta que una migración YA aplicada cambió después. */
-function checksumDe(sql: string): string {
-  return createHash("sha256").update(sql, "utf8").digest("hex");
+/**
+ * SHA-256 del contenido de la migración: detecta que una migración YA aplicada cambió después.
+ *
+ * Normaliza `\r\n` a `\n` antes de hashear. Sin esto, el mismo archivo da checksums distintos según
+ * quién lo escribió a disco: git en Windows con `core.autocrlf=true` (el default de `git clone` ahí)
+ * convierte los finales de línea a CRLF al hacer checkout, mientras que el blob en git y un checkout
+ * en Mac/Linux quedan en LF. El contenido lógico de la migración es idéntico — el guard de más abajo
+ * existe para detectar una EDICIÓN real, no una diferencia de finales de línea entre sistemas
+ * operativos. Comprobado contra producción: el checksum registrado en Supabase coincide EXACTO con
+ * el commit `bf3d1f7` de `0001_init.sql` normalizado a LF; el "cambio" que reportaba este runner en
+ * Windows era enteramente CRLF.
+ */
+export function checksumDe(sql: string): string {
+  return createHash("sha256").update(sql.replace(/\r\n/g, "\n"), "utf8").digest("hex");
 }
 
 /**

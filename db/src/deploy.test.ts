@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { migrarConRegistro, ConexionReservada } from "./deploy.js";
+import { migrarConRegistro, ConexionReservada, checksumDe } from "./deploy.js";
+import { MIGRATIONS_DIR } from "./migrate.js";
 
 /** PGlite es una sola conexión → una `ConexionReservada` válida para los tests. */
 const con = (pg: PGlite) => ConexionReservada.desdePglite(pg);
@@ -92,6 +95,48 @@ test("migrarConRegistro: aborta si una migración YA aplicada cambió (deriva de
       /0001_init\.sql.*CAMBIÓ|CAMBIÓ.*0001_init\.sql/s,
       "re-aplicar con contenido cambiado debe abortar, no correr en silencio",
     );
+  } finally {
+    await pg.close();
+  }
+});
+
+/*
+ * 🔴 El bug real, encontrado en producción: `core.autocrlf=true` (default de git en Windows) escribe
+ * los archivos de `db/migrations/` en disco con CRLF, mientras que el checksum que quedó registrado
+ * en Supabase se calculó sobre el mismo contenido en LF (el commit `bf3d1f7`, aplicado desde una
+ * máquina o un checkout sin esa conversión). El runner interpretaba eso como "alguien editó una
+ * migración ya aplicada" y abortaba el deploy — bloqueando en silencio TODAS las migraciones
+ * siguientes (la 0021, con la columna que Google Reviews necesita, entre ellas), sin que el contenido
+ * lógico de 0001 hubiera cambiado ni un carácter.
+ */
+test("checksumDe: el mismo SQL con CRLF y con LF da el mismo checksum", () => {
+  const conLf = "create table t (\n  id uuid\n);\n";
+  const conCrlf = conLf.replace(/\n/g, "\r\n");
+  assert.notEqual(conLf, conCrlf, "control positivo: las dos cadenas de entrada son distintas byte a byte");
+  assert.equal(
+    checksumDe(conLf),
+    checksumDe(conCrlf),
+    "el mismo contenido lógico, con distinto final de línea, tiene que dar el mismo checksum",
+  );
+});
+
+test("migrarConRegistro: no aborta si el checksum registrado viene del OTRO estilo de final de línea", async () => {
+  const pg = new PGlite();
+  try {
+    await migrarConRegistro(con(pg));
+
+    // Reproduce el estado real de producción: el checksum quedó registrado a partir de un checkout en
+    // LF (p. ej. Mac/Linux, o Windows sin `core.autocrlf`), y esta corrida lee el archivo tal como está
+    // en ESTE disco — que puede tener CRLF. Forzamos el registro a la variante LF explícitamente, sin
+    // depender de qué EOL tenga el checkout de quien corre el test.
+    const original = await readFile(join(MIGRATIONS_DIR, "0001_init.sql"), "utf8");
+    const enLf = original.replace(/\r\n/g, "\n");
+    await pg.query("update app.migraciones_aplicadas set checksum = $1 where nombre = '0001_init.sql'", [
+      checksumDe(enLf),
+    ]);
+
+    const segunda = await migrarConRegistro(con(pg));
+    assert.equal(segunda.length, 0, "nada nuevo que aplicar, y sobre todo: no aborta por el EOL");
   } finally {
     await pg.close();
   }
