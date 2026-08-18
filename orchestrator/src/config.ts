@@ -1,4 +1,5 @@
 import { Inngest } from "inngest";
+import type { ModoPublicacion } from "web-builder";
 
 /**
  * La configuración del orquestador, **validada al arrancar**.
@@ -117,8 +118,19 @@ export function esModoProduccion(): boolean {
   return modo.isCloud;
 }
 
-/** Lee el entorno y **falla cerrado**. Se llama una vez, al arrancar — no en la primera petición. */
-export function leerConfig(): ConfigOrquestador {
+/**
+ * Lee el entorno y **falla cerrado**. Se llama una vez, al arrancar — no en la primera petición.
+ *
+ * `obtenerModoPublicacion` viaja como parámetro y NO como `import` de `web-builder`: ese paquete hace
+ * `import "dotenv/config"` al cargarse, y `config.ts` lo importan los tests — un `web-builder/.env`
+ * en la máquina de quien corre `config.test.ts` le metería variables reales al suite (el mismo motivo
+ * por el que `server.ts` carga el `.env` del orquestador ahí y no acá). `server.ts`, el único punto
+ * real que arranca en producción, ya importa `modoPublicacion` de `web-builder` (para `/_health`) y
+ * la pasa acá — ver {@link verificarPublicacion}.
+ */
+export function leerConfig(
+  opciones: { obtenerModoPublicacion?: () => ModoPublicacion } = {},
+): ConfigOrquestador {
   const esProduccion = esModoProduccion();
   const puerto = leerPuerto();
   const resenasGoogle = leerModoResenasGoogle();
@@ -170,6 +182,7 @@ export function leerConfig(): ConfigOrquestador {
 
     const pipeline = validarModoPipeline(pipelineCrudo as string);
     verificarCoherencia(pipeline);
+    verificarPublicacion(pipeline, opciones.obtenerModoPublicacion);
 
     return {
       puerto,
@@ -204,6 +217,7 @@ export function leerConfig(): ConfigOrquestador {
     ? validarModoPipeline(process.env["PIPELINE_MODO"].trim())
     : modoDataForSeo();
   verificarCoherencia(pipeline);
+  verificarPublicacion(pipeline, opciones.obtenerModoPublicacion);
 
   const comun = {
     puerto,
@@ -276,9 +290,14 @@ function leerModoResenasGoogle(): ModoResenasGoogle {
  *
  * Por qué el contraste es contra `DATAFORSEO_MODE` y no contra el LLM o Storyblok: de las tres
  * dependencias que gastan, DataForSEO es la única cuya versión mock es **invisible en el producto**.
- * La prosa mock se lee como mock en el portal, y el publisher en dry-run reporta `published: false`
- * —la base no miente—. Pero un volumen de búsqueda inventado es un número plausible en una columna
- * que nadie puede auditar a ojo. Es además el 81% del costo (`pipeline-gasto`).
+ * La prosa mock se lee como mock en el portal. Storyblok es más sutil de lo que este comentario decía
+ * hasta el 2026-08-18: el publisher en **dry-run** reporta `published: false` a propósito —la base no
+ * miente—, pero el DEFAULT sin `WEB_PUBLISH_MODE` no es dry-run, es **mock**, y ESE sí miente
+ * (`MockPublisher` reporta `published: true` para páginas que nunca salieron del contenedor). Medido:
+ * la omisión sí mordía. Por eso existe {@link verificarPublicacion}, la misma comprobación que esta
+ * función, del lado de la publicación. Un volumen de búsqueda inventado, en cambio, es un número
+ * plausible en una columna que nadie puede auditar a ojo, y es además el 81% del costo
+ * (`pipeline-gasto`) — motivos suficientes para que DataForSEO tenga su propia función.
  *
  * Las dos direcciones fallan, y no por simetría estética:
  *
@@ -305,6 +324,58 @@ function verificarCoherencia(declarado: ModoPipeline): void {
           "  legítimo. Poné DATAFORSEO_MODE=live (exactamente `live`), o declará PIPELINE_MODO=mock."
         : "  Declaraste un despliegue GRATUITO y DataForSEO cobraría de verdad (~$0.31 por research).\n" +
           "  Quitá DATAFORSEO_MODE=live, o declará PIPELINE_MODO=live si eso es lo que querés."),
+  );
+}
+
+/**
+ * La otra mitad de `verificarCoherencia`: `PIPELINE_MODO=live` promete un research real, pero un
+ * research real que la publicación nunca deja salir de verdad es la misma mentira, solo que del otro
+ * lado del pipeline.
+ *
+ * Sin `WEB_PUBLISH_MODE`, `config.publishMode` de `web-builder` cae a `mock`
+ * (`web-builder/src/config.ts:24`) y `MockPublisher` reporta `published: true`
+ * (`web-builder/src/publish/mock-publisher.ts:31`) para páginas que nunca salieron del contenedor: la
+ * base anotaría `published_at` sobre contenido que sigue en un `out/` efímero, indistinguible de una
+ * publicación real mirando el portal. Es exactamente el fallo que `PIPELINE_MODO` existe para cerrar
+ * —un mock presentado como real— por la puerta que había quedado sin cerrar.
+ *
+ * `dry-run` NO cae acá: `StoryblokDryRunPublisher` reporta `published: false` a propósito — es un
+ * research real que decide, con honestidad, no publicar (sin token de Storyblok, o el cliente sin
+ * space todavía). Abortar por eso rompería el despliegue legítimo de "live, pero sin credenciales de
+ * Storyblok configuradas" — la confusión que un comentario viejo de `verificarCoherencia` cometía
+ * (dry-run vs. el DEFAULT sin `WEB_PUBLISH_MODE`, que es mock y sí miente).
+ *
+ * Solo se comprueba cuando `pipeline === "live"`: con `mock` no hay research real que publicar, así
+ * que la pregunta no aplica — mismo corte que ya usa `verificarCoherencia`.
+ *
+ * Corre en los DOS entornos, igual que `verificarCoherencia`: restringirla a producción dejaría la
+ * dirección cara sin guardia justo donde se prueban las cosas (mismo razonamiento, ver su docblock).
+ */
+function verificarPublicacion(
+  pipeline: ModoPipeline,
+  obtenerModoPublicacion: (() => ModoPublicacion) | undefined,
+): void {
+  if (pipeline !== "live") return;
+
+  if (!obtenerModoPublicacion) {
+    throw new Error(
+      "BUG interno: con PIPELINE_MODO=live, leerConfig() necesita que quien la llama le pase " +
+        "`obtenerModoPublicacion` (server.ts ya lo hace, con `modoPublicacion` de web-builder). Sin " +
+        "esto, la comprobación de que la publicación esté armada de verdad no puede correr — y eso " +
+        "sería exactamente el mismo olvido silencioso que PIPELINE_MODO existe para impedir.",
+    );
+  }
+
+  const real = obtenerModoPublicacion();
+  if (real === "live" || real === "dry-run") return;
+
+  throw new Error(
+    `PIPELINE_MODO=live, pero la publicación de web-builder está en "${real}": no está armada para\n` +
+      "  publicar de verdad. Sin WEB_PUBLISH_MODE, MockPublisher reporta `published: true` para\n" +
+      "  páginas que nunca salieron del contenedor — la base anotaría published_at sobre contenido\n" +
+      "  que sigue en un out/ efímero, indistinguible de una publicación real mirando el portal.\n" +
+      "  Definí WEB_PUBLISH_MODE=storyblok (con STORYBLOK_MANAGEMENT_TOKEN, o STORYBLOK_DRY_RUN=1\n" +
+      "  para un live honesto que no publica todavía), o declará PIPELINE_MODO=mock.",
   );
 }
 

@@ -332,7 +332,7 @@ test("🔴 PIPELINE_MODO=mock en producción arranca: verificar el circuito grat
 
 test("PIPELINE_MODO=live con DATAFORSEO_MODE=live arranca y queda declarado", () => {
   conEntorno({ ...PROD_COMPLETO, PIPELINE_MODO: "live", DATAFORSEO_MODE: "live" });
-  assert.equal(leerConfig().pipeline, "live");
+  assert.equal(leerConfig({ obtenerModoPublicacion: () => "live" }).pipeline, "live");
 });
 
 /**
@@ -344,7 +344,11 @@ test("fuera de producción, PIPELINE_MODO no se exige y se deriva de DATAFORSEO_
   conEntorno({});
   assert.equal(leerConfig().pipeline, "mock");
   conEntorno({ DATAFORSEO_MODE: "live" });
-  assert.equal(leerConfig().pipeline, "live", "un dev corriendo en vivo GASTA: el health lo tiene que decir");
+  assert.equal(
+    leerConfig({ obtenerModoPublicacion: () => "live" }).pipeline,
+    "live",
+    "un dev corriendo en vivo GASTA: el health lo tiene que decir",
+  );
 });
 
 /**
@@ -381,10 +385,90 @@ test("🔴 sin PIPELINE_MODO, leerConfig NUNCA aborta por coherencia (el loop si
   for (const dfs of [undefined, "", "mock", "live", "production", "LIVE", " live "]) {
     conEntorno(dfs === undefined ? {} : { DATAFORSEO_MODE: dfs });
     assert.doesNotThrow(
-      () => leerConfig(),
+      // "live" en cualquier posición: cuando el pipeline derivado da "mock" (la mayoría de las
+      // iteraciones), verificarPublicacion ni siquiera llama a esta función — se pasa igual para no
+      // reventar por el `obtenerModoPublicacion` obligatorio en las dos que sí derivan "live".
+      () => leerConfig({ obtenerModoPublicacion: () => "live" }),
       `con DATAFORSEO_MODE=${JSON.stringify(dfs)} el modo derivado tiene que ser coherente consigo mismo`,
     );
   }
+});
+
+// ------------------------- PIPELINE_MODO x publicación: la otra mitad de la coherencia (🔴 el hueco)
+
+/**
+ * 🔴 EL HUECO. `PIPELINE_MODO` solo se contrastaba contra `DATAFORSEO_MODE`. Sin `WEB_PUBLISH_MODE`,
+ * `config.publishMode` de `web-builder` cae a `mock` (`web-builder/src/config.ts:24`) y
+ * `MockPublisher` reporta `published: true` (`mock-publisher.ts:31`) para páginas que nunca salieron
+ * del contenedor: la base anotaría `published_at` sobre contenido que sigue en un `out/` efímero,
+ * indistinguible de una publicación real mirando el portal. Es el mismo fallo que
+ * `verificarCoherencia` ataja del lado de DataForSEO, por la puerta que quedó sin cerrar.
+ */
+test("🔴 en producción, PIPELINE_MODO=live con la publicación en mock aborta", () => {
+  conEntorno({ ...PROD_COMPLETO, PIPELINE_MODO: "live", DATAFORSEO_MODE: "live" });
+  assert.throws(
+    () => leerConfig({ obtenerModoPublicacion: () => "mock" }),
+    /PIPELINE_MODO=live.*publicaci[oó]n.*"mock"/is,
+  );
+});
+
+/**
+ * `dry-run` NO es la mentira: `StoryblokDryRunPublisher` reporta `published: false` a propósito — un
+ * research real que decide, con honestidad, no publicar (sin token de Storyblok, o el cliente sin
+ * space). Abortar acá rompería el despliegue legítimo de "live, pero sin credenciales de Storyblok
+ * todavía" — la confusión que el comentario viejo de `verificarCoherencia` cometía (dry-run vs. el
+ * DEFAULT sin `WEB_PUBLISH_MODE`, que es mock).
+ */
+test("PIPELINE_MODO=live con la publicación en dry-run NO aborta (published:false no miente)", () => {
+  conEntorno({ ...PROD_COMPLETO, PIPELINE_MODO: "live", DATAFORSEO_MODE: "live" });
+  const config = leerConfig({ obtenerModoPublicacion: () => "dry-run" });
+  assert.equal(config.pipeline, "live");
+});
+
+test("PIPELINE_MODO=live con la publicación armada de verdad (live) arranca", () => {
+  conEntorno({ ...PROD_COMPLETO, PIPELINE_MODO: "live", DATAFORSEO_MODE: "live" });
+  const config = leerConfig({ obtenerModoPublicacion: () => "live" });
+  assert.equal(config.pipeline, "live");
+});
+
+/**
+ * PIPELINE_MODO=mock no exige nada de la publicación — ni siquiera llama a la función: con research
+ * mock no hay research real que publicar, así que la pregunta no aplica. Mismo corte que
+ * `verificarCoherencia` (que tampoco se mete con Storyblok cuando el declarado es mock).
+ */
+test("PIPELINE_MODO=mock no comprueba la publicación (ni siquiera llama a la función)", () => {
+  conEntorno({ ...PROD_COMPLETO, PIPELINE_MODO: "mock" });
+  let llamada = false;
+  const config = leerConfig({
+    obtenerModoPublicacion: () => {
+      llamada = true;
+      return "mock";
+    },
+  });
+  assert.equal(config.pipeline, "mock");
+  assert.equal(llamada, false, "PIPELINE_MODO=mock no depende de cómo esté armada la publicación");
+});
+
+/**
+ * 🔴 Fuera de producción también — mismo razonamiento que la coherencia de DataForSEO: restringirla a
+ * producción deja la dirección cara sin guardia justo donde se prueban las cosas.
+ */
+test("🔴 fuera de producción, PIPELINE_MODO=live con la publicación en mock también aborta", () => {
+  conEntorno({ PIPELINE_MODO: "live", DATAFORSEO_MODE: "live" });
+  assert.throws(
+    () => leerConfig({ obtenerModoPublicacion: () => "mock" }),
+    /PIPELINE_MODO=live.*publicaci[oó]n.*"mock"/is,
+  );
+});
+
+/**
+ * 🔴 Sin `obtenerModoPublicacion`, `leerConfig()` no se calla: quien la llama con `PIPELINE_MODO=live`
+ * tiene que decidir esto, no dejarlo pasar. Un default de "no verifico nada" convertiría la garantía
+ * en un olvido — la misma razón por la que `PIPELINE_MODO` en sí no tiene default.
+ */
+test("🔴 PIPELINE_MODO=live sin pasar obtenerModoPublicacion no arranca (BUG interno, no un olvido silencioso)", () => {
+  conEntorno({ ...PROD_COMPLETO, PIPELINE_MODO: "live", DATAFORSEO_MODE: "live" });
+  assert.throws(() => leerConfig(), /obtenerModoPublicacion/);
 });
 
 // --------------------------------------- GOOGLE_REVIEWS_MODO: mock-first, sin exigir la variable

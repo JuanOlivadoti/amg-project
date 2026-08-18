@@ -31,8 +31,13 @@ import { crearSonda } from "./salud.js";
  * En producción (Railway) el arranque es al revés: `leerConfig()` es lo PRIMERO que corre y aborta si
  * falta algo. Antes no había nada de eso y una variable mal escrita levantaba un proceso que se
  * declaraba sano sobre una base efímera. Ver `config.ts`.
+ *
+ * `obtenerModoPublicacion` viaja acá y no como `import` dentro de `config.ts`: ese módulo lo importan
+ * los tests, y `web-builder` hace `import "dotenv/config"` al cargarse — traerlo adentro de `config.ts`
+ * le metería el `.env` de `web-builder` a `config.test.ts`. Acá, en cambio, ya está importado (línea de
+ * arriba) para `/_health`, así que pasarlo es reusar la misma lectura, no una nueva.
  */
-const config = leerConfig();
+const config = leerConfig({ obtenerModoPublicacion: modoPublicacion });
 
 const cx = await crearConexiones(config);
 const deps = crearDeps(cx);
