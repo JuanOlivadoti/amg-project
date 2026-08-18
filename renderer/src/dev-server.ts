@@ -96,22 +96,168 @@ await cliente("Trattoria Bella Napoli", "bellanapoli.es", "111", {
     { src: "https://a.storyblok.com/f/dev/bellanapoli-terraza.jpg" },
   ],
   menu_categorias: [
-    { nombre: "Pizzas", foto: { src: "https://a.storyblok.com/f/dev/cat-pizzas.jpg" }, orden: 0 },
-    { nombre: "Pastas", orden: 1 },
+    { nombre: "Antipasti", foto: { src: "https://a.storyblok.com/f/dev/cat-antipasti.jpg" }, orden: 0 },
+    { nombre: "Pizzas", foto: { src: "https://a.storyblok.com/f/dev/cat-pizzas.jpg" }, orden: 1 },
+    { nombre: "Pastas", orden: 2 },
+    { nombre: "Postres", foto: { src: "https://a.storyblok.com/f/dev/cat-postres.jpg" }, orden: 3 },
+    { nombre: "Bebidas", foto: { src: "https://a.storyblok.com/f/dev/cat-bebidas.jpg" }, orden: 4 },
   ],
+  // La carta COMPLETA: cubre los 14 alérgenos del Reglamento UE 1169/2011 y las 7 etiquetas dietéticas
+  // entre los distintos platos (ninguno los lleva todos — un plato con 14 alérgenos no es creíble), más
+  // nutrición, `precios` con `comensales` y el único plato con video. Es el perfil que se le enseña a
+  // alguien para ver el feature completo, no el que ejercita un caso puntual — para eso están los
+  // perfiles chicos de arriba y los fixtures de `web-builder`.
   menu: [
+    // ---- Antipasti — gluten, sulfitos, lácteos, frutos de cáscara, mostaza, cacahuetes, apio, crustáceos
+    {
+      category: "Antipasti",
+      name: "Burrata pugliese",
+      description: "Burrata cremosa con tomates cherry, albahaca y pesto de piñones.",
+      price: "11,50 €",
+      foto: { src: "https://a.storyblok.com/f/dev/burrata.jpg" },
+      alergenos: ["lacteos", "frutos_cascara"],
+      etiquetas: ["vegetariano", "sin_gluten"],
+      nutricion: { calorias: 320, proteinas_g: 14, carbohidratos_g: 8, grasas_g: 26 },
+    },
+    {
+      category: "Antipasti",
+      name: "Tabla de embutidos y quesos",
+      description: "Selección de curados italianos, quesos DOP y pan casero.",
+      // Sin `nutricion` a propósito: es un plato para compartir, no hay "la ración de referencia" de la
+      // que habla el tipo — mismo criterio que un plato sin foto, es un caso soportado y conviene que
+      // este perfil lo enseñe.
+      precios: [
+        { etiqueta: "Individual", importe: "14,00 €", comensales: "1 persona" },
+        { etiqueta: "Para compartir", importe: "24,00 €", comensales: "2-3 personas" },
+      ],
+      nota: "Con frutos secos y miel",
+      alergenos: ["lacteos", "gluten", "sulfitos", "frutos_cascara"],
+    },
+    {
+      category: "Antipasti",
+      name: "Ensalada de la huerta",
+      description: "Hojas de temporada, vinagreta de mostaza y cacahuetes garrapiñados.",
+      price: "9,50 €",
+      alergenos: ["mostaza", "cacahuetes", "apio"],
+      etiquetas: ["vegano", "sin_gluten", "sin_lactosa"],
+      nutricion: { calorias: 180, proteinas_g: 5, carbohidratos_g: 14, grasas_g: 12 },
+    },
+    {
+      category: "Antipasti",
+      name: "Gambas al ajillo",
+      description: "Gambón salvaje, guindilla y pan para mojar.",
+      price: "13,50 €",
+      alergenos: ["crustaceos", "gluten"],
+      etiquetas: ["picante"],
+      nutricion: { calorias: 260, proteinas_g: 22, carbohidratos_g: 4, grasas_g: 17 },
+    },
+
+    // ---- Pizzas — Margherita es el único plato con video
     {
       category: "Pizzas",
       name: "Margherita",
       description: "Tomate San Marzano, mozzarella fior di latte, albahaca.",
       precios: [
-        { etiqueta: "Media", importe: "9,00 €" },
-        { etiqueta: "Ración", importe: "14,50 €" },
+        { etiqueta: "Media", importe: "9,00 €", comensales: "1 persona" },
+        { etiqueta: "Ración", importe: "14,50 €", comensales: "1-2 personas" },
       ],
       nota: "Disponible sin gluten",
       foto: { src: "https://a.storyblok.com/f/dev/margherita.jpg" },
+      // ⚠️ VIDEO PENDIENTE DE ASSET REAL — `renderVideo` (web-builder/src/render/lib.ts) exige que TANTO
+      // el video como el poster pasen la allowlist de host (`a.storyblok.com`, `render/videos.ts`) Y que
+      // el poster cargue de verdad; si no, no emite el `<video>` y no hay error ni log que lo avise (la
+      // misma trampa silenciosa que motiva las cuatro fronteras). Los dos valores de abajo pasan el
+      // host pero el archivo no existe: subí el `.mp4` y una imagen fija a Storyblok (Assets → subir),
+      // pegá acá las dos URL públicas que devuelve, y borrá este comentario.
+      video: {
+        src: "https://a.storyblok.com/f/dev/PENDIENTE-margherita.mp4",
+        poster: {
+          src: "https://a.storyblok.com/f/dev/PENDIENTE-margherita-poster.jpg",
+          alt: "Margherita recién horneada",
+        },
+      },
+      alergenos: ["gluten", "lacteos"],
+      etiquetas: ["vegetariano"],
+      nutricion: { calorias: 620, proteinas_g: 26, carbohidratos_g: 74, grasas_g: 22 },
     },
+    {
+      category: "Pizzas",
+      name: "Diavola piccante",
+      description: "Salami picante, mozzarella y guindilla fresca.",
+      price: "13,00 €",
+      alergenos: ["gluten", "lacteos"],
+      etiquetas: ["picante"],
+      nutricion: { calorias: 850, proteinas_g: 34, carbohidratos_g: 90, grasas_g: 36 },
+    },
+    {
+      category: "Pizzas",
+      name: "Vegana ai funghi",
+      description: "Base de masa madre con harina de altramuces, setas variadas y queso vegetal.",
+      price: "13,50 €",
+      alergenos: ["gluten", "altramuces", "soja"],
+      etiquetas: ["vegano", "sin_lactosa"],
+      nutricion: { calorias: 640, proteinas_g: 18, carbohidratos_g: 88, grasas_g: 24 },
+    },
+
+    // ---- Pastas — «Cacio e pepe» queda A PROPÓSITO sin ningún campo nuevo: es el caso de
+    // compatibilidad hacia atrás, mismo criterio que `web-builder/src/fixtures.ts` con este plato.
     { category: "Pastas", name: "Cacio e pepe", description: "Pecorino romano y pimienta negra.", price: "13,00 €" },
+    {
+      category: "Pastas",
+      name: "Spaghetti alle vongole",
+      description: "Almeja fresca, ajo, perejil y un toque de vino blanco.",
+      price: "16,00 €",
+      alergenos: ["moluscos", "gluten", "sulfitos"],
+      nutricion: { calorias: 520, proteinas_g: 24, carbohidratos_g: 68, grasas_g: 14 },
+    },
+    {
+      category: "Pastas",
+      name: "Tonnarelli al tonno e sesamo",
+      description: "Tonnarelli fresco, atún rojo, salsa de soja y sésamo tostado.",
+      price: "15,50 €",
+      alergenos: ["pescado", "gluten", "sesamo", "soja"],
+      nutricion: { calorias: 560, proteinas_g: 30, carbohidratos_g: 64, grasas_g: 18 },
+    },
+
+    // ---- Postres
+    {
+      category: "Postres",
+      name: "Tiramisù della casa",
+      description: "Receta clásica con mascarpone y café espresso.",
+      price: "6,50 €",
+      alergenos: ["gluten", "huevos", "lacteos"],
+      etiquetas: ["vegetariano"],
+      nutricion: { calorias: 420, proteinas_g: 7, carbohidratos_g: 38, grasas_g: 26 },
+    },
+    {
+      category: "Postres",
+      name: "Sorbete al limón",
+      description: "Limones de Amalfi, sin lácteos ni gluten.",
+      price: "5,00 €",
+      // Las cinco etiquetas a la vez, a propósito: es el plato que enseña `MAX_ETIQUETAS_RENDER` con
+      // varias marcadas sin llegar al tope (7) — halal y kosher no salen en ningún otro ítem.
+      etiquetas: ["vegano", "sin_gluten", "sin_lactosa", "halal", "kosher"],
+      nutricion: { calorias: 140, proteinas_g: 0, carbohidratos_g: 34, grasas_g: 0 },
+    },
+
+    // ---- Bebidas
+    {
+      category: "Bebidas",
+      name: "Vino de la casa",
+      description: "Chianti DOCG, cosecha de la bodega asociada.",
+      precios: [
+        { etiqueta: "Copa", importe: "4,50 €" },
+        { etiqueta: "Botella", importe: "19,00 €", comensales: "2-3 personas" },
+      ],
+      alergenos: ["sulfitos"],
+    },
+    {
+      category: "Bebidas",
+      name: "Limonata artesanal",
+      description: "Limón exprimido, agua con gas y menta fresca.",
+      price: "3,50 €",
+      etiquetas: ["vegano", "sin_gluten", "sin_lactosa"],
+    },
   ],
   // ⚠️ **A propósito sin `bienvenida`, sin `destacados` y sin `testimonios`.** Es el estado de TODA
   // ficha de producción hoy, y es lo que hay que poder mirar en el navegador: las dos primeras
