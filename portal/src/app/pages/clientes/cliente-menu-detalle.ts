@@ -482,6 +482,7 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
 
       if (this.indice < 0 || this.indice > carta.menu.length || !Number.isInteger(this.indice)) {
         this.noEncontrado.set(true);
+        this.esNuevo.set(false); // señal vieja de una navegación anterior: no debe sobrevivir a un índice inválido
       } else if (this.indice === carta.menu.length) {
         this.esNuevo.set(true);
         this.formulario.set(formularioVacio());

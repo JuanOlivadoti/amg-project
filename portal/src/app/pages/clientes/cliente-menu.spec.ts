@@ -216,4 +216,81 @@ describe('ClienteMenuPage', () => {
     const nombres = Array.from(el.querySelectorAll('ul span')).map((s) => s.textContent!.trim());
     expect(nombres).toEqual(['Bebidas', 'Postres']);
   });
+
+  it('una categoría con foto/orden ya cargados muestra esos valores en los inputs al abrir', async () => {
+    const carta = cartaDePrueba({
+      menu_categorias: [
+        { nombre: 'Pizzas', orden: 3, foto: { src: 'https://cdn.test/pizzas.jpg' } },
+        { nombre: 'Pastas', orden: 1 },
+      ],
+    });
+    const { fixture } = crear({ obtenerMenu: jasmine.createSpy('obtenerMenu').and.resolveTo(carta) });
+    const el = await estabilizar(fixture);
+
+    // Ordenadas por `orden`: Pastas (1) queda en el índice 0 y Pizzas (3) en el índice 1.
+    const fotoInput = el.querySelector<HTMLInputElement>('input[name="cat-foto-1"]')!;
+    const ordenInput = el.querySelector<HTMLInputElement>('input[name="cat-orden-1"]')!;
+    expect(fotoInput.value).toBe('https://cdn.test/pizzas.jpg');
+    expect(ordenInput.value).toBe('3');
+  });
+
+  it('cambiar foto/orden de una categoría y click en "Guardar" aplica los dos campos juntos, sin tocar las demás', async () => {
+    const { fixture, guardarMenuSpy } = crear(); // Pizzas orden 0 (índice 0), Pastas orden 1 (índice 1)
+    const el = await estabilizar(fixture);
+
+    const fotoInput = el.querySelector<HTMLInputElement>('input[name="cat-foto-0"]')!;
+    const ordenInput = el.querySelector<HTMLInputElement>('input[name="cat-orden-0"]')!;
+    fotoInput.value = 'https://cdn.test/nueva.jpg';
+    ordenInput.value = '5';
+
+    const botonGuardarPizzas = Array.from(el.querySelectorAll('button')).find(
+      (b) => b.textContent!.trim() === 'Guardar' && b.closest('li')?.textContent?.includes('Pizzas'),
+    );
+    botonGuardarPizzas!.click();
+    await estabilizar(fixture);
+
+    expect(guardarMenuSpy).toHaveBeenCalledTimes(1);
+    const [, carta] = guardarMenuSpy.calls.mostRecent().args as [string, MenuCarta];
+    expect(carta.menu_categorias).toEqual([
+      { nombre: 'Pizzas', foto: { src: 'https://cdn.test/nueva.jpg' }, orden: 5 },
+      { nombre: 'Pastas', orden: 1 },
+    ]);
+  });
+
+  it('mientras hay un guardado en vuelo, los botones que disparan otro guardado quedan disabled', async () => {
+    let resolver: (() => void) | undefined;
+    const guardarMenuSpy = jasmine.createSpy('guardarMenu').and.callFake(
+      () => new Promise<void>((resolve) => (resolver = resolve)),
+    );
+    const { fixture } = crear({ guardarMenu: guardarMenuSpy });
+    const el = await estabilizar(fixture);
+
+    boton(el, 'Borrar')!.click(); // dispara guardar(); la promesa queda sin resolver
+    await estabilizar(fixture);
+
+    // Margherita ya se sacó de la lista; el "Borrar" que queda es el de Cacio e pepe, y debe quedar
+    // bloqueado mientras el guardado sigue en vuelo.
+    expect(boton(el, 'Borrar')?.disabled).withContext('un guardado sigue en vuelo').toBeTrue();
+
+    resolver!();
+    await estabilizar(fixture);
+  });
+
+  it('🔴 dos clicks SINCRÓNICOS seguidos (el `[disabled]` del DOM no llega a tiempo en un doble click real) no disparan dos guardados', async () => {
+    // Se encontró manejando la app: con `eventCoalescing`, la escritura del atributo `disabled` en
+    // el DOM queda detrás de un límite de macrotarea, así que un doble click genuino puede procesar
+    // el segundo `click` ANTES de que el botón se vea deshabilitado. Este test no pasa por el DOM
+    // para reproducirlo (Karma no simula esa carrera de forma confiable) — llama al método del
+    // componente dos veces seguidas, sin esperar entre medio, que es exactamente lo que le llega a
+    // `guardar()` cuando el `[disabled]` del template todavía no corrió.
+    const { fixture, guardarMenuSpy } = crear();
+    const page = fixture.componentInstance;
+    await estabilizar(fixture);
+
+    page.borrarPlato(0);
+    page.borrarPlato(0); // sin `await` entre medio: mismo escenario que un doble click real
+    await estabilizar(fixture);
+
+    expect(guardarMenuSpy).toHaveBeenCalledTimes(1);
+  });
 });

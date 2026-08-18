@@ -759,7 +759,11 @@ test('🔴 guardarMenu propaga el error del servidor (400 con campos) sin envolv
   });
   await assert.rejects(
     () => crearApi(opts(fn)).guardarMenu('c1', { menu: [{}], menu_categorias: [] } as never),
-    /El menú no es válido/,
+    (err: unknown) => {
+      assert.match((err as Error).message, /El menú no es válido/);
+      assert.deepEqual((err as { campos?: unknown }).campos, [{ ruta: 'menu.0.name', mensaje: 'Required' }]);
+      return true;
+    },
   );
 });
 
