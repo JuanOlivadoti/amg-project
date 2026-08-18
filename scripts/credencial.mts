@@ -28,6 +28,7 @@
 import { randomBytes } from "node:crypto";
 import { copyFileSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
+import { pathToFileURL } from "node:url";
 import { FUENTE, MAPA } from "./env-sync.mts";
 
 /**
@@ -383,8 +384,16 @@ ${
 }`);
 }
 
-/** Puerta de arranque: solo corre como CLI, para que el test importe sin ejecutar nada. */
-if (import.meta.url === `file://${process.argv[1]}`) {
+/**
+ * Puerta de arranque: solo corre como CLI, para que el test importe sin ejecutar nada.
+ *
+ * `pathToFileURL(...).href` y no `` `file://${process.argv[1]}` ``: en Windows `process.argv[1]`
+ * trae backslashes (`C:\...`) y `import.meta.url` siempre usa `file:///C:/...` (forward slashes,
+ * triple barra) — la concatenación cruda nunca compara igual ahí, así que `main()` no corría nunca
+ * y el script quedaba mudo (sin error, sin escribir nada). Mismo patrón que ya usan
+ * `env-sync.mts`/`secretos.mts`/`reseed-demo.mts`/`contar-tests.mts`/`auditar-railway.mts`.
+ */
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }
 

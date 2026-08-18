@@ -4,6 +4,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { CATALOGO, MAPA, construirDsn, generarSecreto, upsertEnEnv, type Familia } from "./credencial.mts";
 
 const CLAVES_DEL_MAPA = [...new Set(Object.values(MAPA).flat())] as string[];
@@ -152,4 +154,28 @@ test("cada DSN del catálogo nombra su rol de Postgres", () => {
     // separación en una coincidencia de nombres.
     assert.notEqual(e.rol, "postgres", `\`${nombre}\` apunta al DUEÑO de la base: eso rompe ADR-17`);
   }
+});
+
+/*
+ * 🔴 El bug real: en Windows, `` `file://${process.argv[1]}` `` (backslashes, dos barras) nunca es
+ * igual a `import.meta.url` (siempre `file:///C:/...`, forward slashes, tres barras) — así que la
+ * puerta de arranque nunca se abría, `main()` no corría NUNCA, y el CLI quedaba mudo: sin imprimir,
+ * sin escribir, sin fallar. Los tests de arriba importan el módulo (por eso `main()` no debe correr
+ * ahí) pero ninguno prueba lo contrario: que SÍ corra cuando el script se ejecuta de verdad como CLI.
+ * Solo un subproceso real lo prueba — mismo mecanismo que ya usa `contar-tests.test.mts` para el
+ * mismo motivo. Sin argumentos es la invocación sin efectos secundarios (imprime el catálogo y
+ * vuelve), así que no toca `docs/private/credenciales.env`.
+ */
+test("🔴 el CLI corre de verdad como proceso (no solo importado) — sin esto, main() nunca se llama", () => {
+  const r = spawnSync(process.execPath, ["--import", "tsx", "credencial.mts"], {
+    cwd: fileURLToPath(new URL(".", import.meta.url)),
+    encoding: "utf8",
+  });
+
+  assert.equal(r.status, 0, `el CLI sin argumentos no debería fallar (stderr: ${r.stderr})`);
+  assert.match(
+    r.stdout,
+    /Credenciales que ESTE script genera/,
+    "si esto no aparece, la puerta de arranque no dejó pasar a main() — exactamente el bug de Windows",
+  );
 });
