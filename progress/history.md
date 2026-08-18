@@ -11,6 +11,39 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-18 — Migración de dominio del portal: bigballs.es → app.dinamicseo.es
+
+**Lo que se pidió.** Mover el portal de Frank de `bigballs.es` a `app.dinamicseo.es`, porque
+`bigballs.es` se va a reutilizar para un cliente final real. `dinamicseo.es` tiene un WordPress en la
+raíz (dominio recién migrado a Hostinger), así que el portal va a un subdominio, no a la raíz. Mismo
+backend en los dos casos: el servicio de Railway y el proyecto de Supabase no cambiaron.
+
+**El tropiezo real, y por qué no era lo que el asistente de Hostinger sugirió.** `app.dinamicseo.es`
+se creó como hosting **PHP** normal; `bigballs.es` es una **Node.js Web App** con 152 builds
+automáticos por git (confirmado por API, comparando ambos con `hosting_listNodeJSBuildsV1`). La IA de
+Hostinger propuso GitHub Actions + FTP para compilar Angular aparte — funcionaba, pero era más
+complejo que el problema real: dar de alta `app.dinamicseo.es` como el mismo tipo de app que
+`bigballs.es`. Eso lo tuvo que hacer el usuario a mano en hPanel (no hay endpoint de la API pública de
+Hostinger para crear ese tipo de app con fuente Git), guiado por un prompt para la extensión de Claude
+en Chrome. El primer build falló con `Missing script: "build:portal"` — quedó "Application root:
+portal" con "Build command: npm run build:portal" (ese script es de la raíz del monorepo, no de
+`portal/package.json`), la combinación prohibida que ya documentaba la tabla de §C.6 del runbook.
+
+**El corte, en orden, para no romper `bigballs.es` a mitad de camino.** `CORS_ORIGINS` solapado
+(`bigballs.es` + `app.dinamicseo.es`) mientras se verificaba el subdominio nuevo sirviendo el portal
+contra la API vieja; recién con el subdominio verificado se dio de alta el Custom Domain
+`api.dinamicseo.es` en el mismo servicio de Railway, se cargó el CNAME + TXT en el DNS de Hostinger, y
+se esperó el TLS. El corte real fue un solo cambio de código (`apiBaseUrl` en
+`environment.prod.ts`) + push — el momento en el que `bigballs.es` dejó de estar en la allowlist de CORS,
+a propósito. Verificado con `curl` (CORS preflight con `Origin: bigballs.es` ya no trae
+`access-control-allow-origin`) y en el navegador por el usuario (login, research de Bella Napoli, sin
+errores de consola).
+
+**Verde el 2026-08-18:** `npm run build` del portal sin errores nuevos, `https://app.dinamicseo.es`
+sirve el portal con fallback SPA (ruta profunda + recarga da 200), `https://api.dinamicseo.es/health`
+responde `{"status":"ok"}` con TLS válido. Detalle paso a paso en
+[`docs/proyecto/14-runbook-despliegue.md` § Migración de dominio](../docs/proyecto/14-runbook-despliegue.md#migración-de-dominio-bigballses--appdinamicseoes-2026-08-18).
+
 ## 2026-08-15 — Bloque F, fase 1: reseñas de Google (monitoreo + alerta)
 
 **Lo que se pidió.** Una revisión del diseño del portal derivó en un acento de color para el tema

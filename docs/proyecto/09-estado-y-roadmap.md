@@ -7,6 +7,23 @@
 > en [**15-plan-plataforma.md**](15-plan-plataforma.md) — nueve bloques, con qué archivos toca cada
 > uno y cómo se verifica.
 >
+> 🧭 **Nuevo (2026-08-18): el portal de Frank migró de `bigballs.es` a `app.dinamicseo.es`.** Mismo
+> backend (Railway + Supabase) — cambió solo el dominio, y a un **subdominio** porque la raíz de
+> `dinamicseo.es` la ocupa un WordPress del cliente que no se toca. `api.bigballs.es` →
+> `api.dinamicseo.es`, mismo servicio de Railway con un Custom Domain nuevo. Único cambio de código:
+> `apiBaseUrl` en `portal/src/environments/environment.prod.ts`. El corte se hizo con `CORS_ORIGINS`
+> solapado (`bigballs.es` + `app.dinamicseo.es`) mientras se verificaba el dominio nuevo, y recién al
+> final se sacó `bigballs.es` — dejar de servir el portal ahí fue intencional, no un accidente.
+> Tropiezo real: `app.dinamicseo.es` se creó como hosting **PHP** en vez de **Node.js Web App**
+> (`bigballs.es` sí lo es, con 152 builds automáticos por git), así que el primer build falló con
+> `Missing script: "build:portal"` hasta corregir el campo de build command. Paso a paso completo,
+> con el orden exacto del corte, en
+> [`14-runbook-despliegue.md` § Migración de dominio](14-runbook-despliegue.md#migración-de-dominio-bigballses--appdinamicseoes-2026-08-18).
+> Verificado en el navegador: login, research de Bella Napoli, consola sin errores.
+>
+> **`bigballs.es` (el hosting Node.js viejo) queda libre — decisión de Juan: se usa para un cliente
+> final real**, no para el portal ni para una demo. No se tocó su configuración en Hostinger.
+>
 > 🧭 **Nuevo (2026-08-17): editor de carta en el portal, cerrado — el menú ya no se carga por
 > SQL/seed.** Spec ([diseño](../superpowers/specs/2026-08-17-editor-menu-portal-design.md), revisado
 > por Codex) y plan ([7 tasks](../superpowers/plans/2026-08-17-editor-menu-portal.md)) ejecutados con

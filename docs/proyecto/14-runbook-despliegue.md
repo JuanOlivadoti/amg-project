@@ -1,5 +1,12 @@
 # Runbook de despliegue — Fase 1 (el portal de Frank)
 
+> ⚠️ **Dominio vigente desde el 2026-08-18: `app.dinamicseo.es` / `api.dinamicseo.es`, no
+> `bigballs.es`.** Todo lo de abajo se escribió y se ejecutó contra `bigballs.es`, y se deja **tal
+> cual** porque el procedimiento no cambió — solo el dominio. El registro de la migración (y por qué
+> cambió) está al final, en
+> [**Migración de dominio: bigballs.es → app.dinamicseo.es**](#migración-de-dominio-bigballses--appdinamicseoes-2026-08-18).
+> Donde el texto diga `bigballs.es` / `api.bigballs.es`, leé `app.dinamicseo.es` / `api.dinamicseo.es`.
+>
 > **Qué es esto:** la versión "hacé esto, pegá aquello, verificá esto otro" del plan
 > ([12-despliegue-fase-1.md](13-despliegue-fase-1.md)). El plan dice el _qué_ y el _por qué_; esto es
 > el _cómo_, paso a paso, para ejecutar de una sentada. **Todo el código ya está listo** (Bloque A):
@@ -1152,3 +1159,74 @@ Inngest, en el stream de eventos del entorno.
 
 Cuando la Fase 1 esté arriba y estable, se encara la Fase 2 (encender los flags `features.*`,
 desplegar orquestador y renderizador). Ver [11-plan-fase-2.md](11-plan-fase-2.md).
+
+---
+
+## Migración de dominio: bigballs.es → app.dinamicseo.es (2026-08-18)
+
+**Por qué.** `bigballs.es` (raíz de dominio) pasa a usarse para un cliente final real, no para el
+portal. El portal de Frank se muda a `app.dinamicseo.es` — un **subdominio**, porque la raíz de
+`dinamicseo.es` la ocupa un WordPress del cliente que no se podía tocar. **El backend no cambió**:
+mismo servicio de Railway, mismo proyecto de Supabase — solo el dominio del portal y el de la API
+(`api.bigballs.es` → `api.dinamicseo.es`).
+
+### La diferencia real con el runbook de arriba: tipo de hosting
+
+`bigballs.es` en Hostinger es una **Node.js Web App** con la fuente en **Git** (auto-deploy en cada
+push a `main`, ver §C.6). Al crear `app.dinamicseo.es` como subdominio, Hostinger lo dio de alta como
+un sitio **PHP normal** — `Advanced → Git` ahí hace un `git pull` simple, sin pipeline de build, así
+que Angular nunca se compilaba. La solución **no** es GitHub Actions + FTP (que es lo que sugirió el
+asistente de Hostinger): es dar de alta `app.dinamicseo.es` como Node.js Web App, con **exactamente**
+la misma config que `bigballs.es`:
+
+| Campo | Valor |
+| --- | --- |
+| Node.js version | 20 |
+| Application root | `portal` |
+| Fuente | Git → repo, rama `main` |
+| Build command | `npm run build` |
+| Output directory | `dist/portal/browser` |
+| App type | Angular |
+| Auto Deploy | activado |
+
+Verificable por API (`hosting_listNodeJSBuildsV1`): compará `source_type`, `app_type`,
+`root_directory`, `build_script`, `output_directory` contra los de `bigballs.es`. Si alguno difiere,
+no va a compilar igual.
+
+### El tropiezo real: `Missing script: "build:portal"`
+
+El primer build falló así. Causa: quedó **Application root = `portal`** (correcto) pero **Build
+command = `npm run build:portal`** — ese script solo existe en el `package.json` de la **raíz del
+monorepo**; dentro de `portal/package.json` el script se llama `build` a secas. Es la combinación
+prohibida que ya documenta la tabla de §C.6 (arriba): con raíz `portal`, el comando es `npm run
+build`; con raíz `./`, es `npm run build:portal` — mezclar los dos no compila. Se corrigió el campo
+"Build command" a `npm run build` sin tocar raíz ni output, y el redeploy compiló bien.
+
+### El orden del corte (para no romper `bigballs.es` a mitad de camino)
+
+Portal y API viven en el mismo repo/rama, así que un push a `main` redespliega **los dos dominios de
+Hostinger a la vez** (mientras ambos estuvieran conectados). El corte se hizo en este orden, para que
+`bigballs.es` solo dejara de funcionar **al final y a propósito**, no en un paso intermedio:
+
+1. Conectar `app.dinamicseo.es` a Git (arriba) **sin tocar** `environment.prod.ts` todavía — el
+   subdominio nuevo sirve el portal apuntando igual a `api.bigballs.es`, para verificar que arranca.
+2. `CORS_ORIGINS` en Railway **solapado**: `https://bigballs.es,https://app.dinamicseo.es` — los dos
+   orígenes válidos a la vez, para poder verificar el subdominio nuevo sin cortar el viejo.
+3. Verificar `app.dinamicseo.es` en el navegador (login, ruta profunda + recarga).
+4. Custom Domain `api.dinamicseo.es` en el **mismo servicio** de Railway que ya sirve
+   `api.bigballs.es` (no un servicio nuevo). Railway da un CNAME + un TXT de verificación → cargarlos
+   en el DNS de Hostinger (`api` → el CNAME, `_railway-verify.api` → el TXT). El certificado TLS lo
+   emite Railway solo, minutos después de que el DNS propague — hasta entonces `https://api.…` falla
+   con error de certificado (`curl` sin `-k` da error 60), y es normal.
+5. **El corte:** `portal/src/environments/environment.prod.ts` → `apiBaseUrl:
+   'https://api.dinamicseo.es'`. Commit + push. Este es el momento exacto en que `bigballs.es` deja de
+   servir un portal funcional (sigue respondiendo, pero contra un `apiBaseUrl` que en el paso 6 deja de
+   estar en la allowlist de CORS) — intencional, no un accidente.
+6. `CORS_ORIGINS` en Railway → solo `https://app.dinamicseo.es` (se saca `bigballs.es`).
+7. Verificación de punta a punta en `app.dinamicseo.es`: login real, sin errores de consola. Y
+   confirmar que `bigballs.es` quedó **fuera** de CORS (`curl -X OPTIONS https://api.dinamicseo.es/…
+   -H "Origin: https://bigballs.es"` no debe traer `access-control-allow-origin` en la respuesta).
+
+**Estado:** ✅ hecho y verificado el 2026-08-18. `bigballs.es` (el hosting Node.js viejo) queda sin
+usar por el portal — decisión de Juan: se reutiliza para un cliente final real. No se tocó su config
+en Hostinger; queda anotado para que no se lea como abandonado.
