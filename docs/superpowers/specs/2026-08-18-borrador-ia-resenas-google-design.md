@@ -26,7 +26,7 @@ Cinco decisiones tomadas con el usuario, en orden:
 | Alcance de esta pieza | **Solo el borrador**, editable por el staff. Publicar de vuelta a Google es la próxima pieza | Construir borrador + publicar juntos repite el riesgo que fase 1 ya evitó: no se ha visto un borrador real todavía |
 | Disparador | **Automático**, dentro del mismo polling que ya detecta la reseña | Un botón "Generar" a demanda: más simple y más barato de partida, pero el usuario prefirió que el staff ya lo encuentre listo al entrar |
 | Proveedor de IA | **OpenAI**, mismo que ya redacta la prosa de las páginas (`web-builder/src/llm/content.ts`) | Anthropic (que ya usa `kr-service` para los seeds): un tercer proveedor en el mismo proceso sin necesidad — OpenAI ya está integrado y facturado en el mismo composition root |
-| Fallo de un borrador puntual | **Se guarda sin borrador**, no frena el polling ni reintenta en caliente | Reintentar 2-3 veces dentro del mismo ciclo: más resiliente a fallos transitorios, pero el próximo polling (30 min) ya vuelve a intentarlo sobre la misma reseña — reintentar en caliente es la misma discusión que `retries: 0` ya cerró para el resto de la función |
+| Fallo de un borrador puntual | **Se guarda sin borrador**, no frena el polling ni reintenta en caliente | Reintentar 2-3 veces dentro del mismo ciclo: más resiliente a fallos transitorios, pero la reseña ya insertada no vuelve a pasar por el polling (`insertada` da `false` la próxima vez), así que no hay una segunda pasada automática que aproveche el reintento — la mitigación real es que el staff completa el campo a mano (ver "El portal") |
 | Tope de gasto | **Solo se loguea el costo por ahora**, sin preflight ni límite | Un preflight tipo `kr-service` que aborte por presupuesto: más seguro, pero el volumen esperado es bajo y el eje entero corre en mock hasta que se cargue `OPENAI_API_KEY` — se agrega si el volumen real lo justifica |
 
 **Por qué NO se ataca "editar" como pieza separada de "generar":** el usuario pidió que el staff
@@ -97,6 +97,8 @@ create policy resena_actualizar_borrador_app_resenas on resenas_google
   using (true) with check (true);
 -- using(true) es seguro acá por el mismo motivo que en 0022: app_resenas no tiene login,
 -- así que solo se alcanza vía una función security definer con `execute` acotado a app_service.
+-- El aislamiento NO lo da esta policy (no hay contexto de tenant que mirar): lo da el `where`
+-- de la función de abajo, que es la superficie real.
 
 create or replace function app.guardar_borrador_resena(
   p_client_id        uuid,
@@ -114,6 +116,8 @@ begin
   update resenas_google
     set borrador_respuesta = p_borrador, borrador_generado_en = now()
     where client_id = p_client_id and tenant_id = p_tenant_id and google_review_id = p_google_review_id
+      and puntuacion between 4 and 5
+      and borrador_respuesta is null
     returning id into v_id;
   return v_id is not null;
 end;
@@ -123,6 +127,16 @@ $$;
 -- app_resenas / alter function ... owner to app_resenas / revoke execute from public / grant execute
 -- to app_service / revoke create / revoke membership. Ver 0022 líneas 197-217 para la secuencia exacta.
 ```
+
+**El `where` lleva `puntuacion between 4 and 5` y `borrador_respuesta is null`, y no es cosmético**
+(hallazgo de la revisión externa). Sin esas dos condiciones, la función acepta cualquier
+`(client_id, tenant_id, google_review_id)` que le pase quien tenga `execute` — hoy solo el
+orquestador, pero "hoy solo" es exactamente la clase de garantía que vive en un comentario y no en el
+código: un bug o una llamada repetida del lado TypeScript podría sobrescribir una edición del staff
+ya guardada, o escribir un borrador de IA sobre una reseña de 1-3★ que el PRD prohíbe tocar con IA. La
+condición la impone Postgres, no la disciplina del llamador — mismo principio que el resto del
+proyecto ya aplica en todos lados (`AGENTS.md`: "una garantía en un comentario es una intención, no
+una garantía").
 
 Identificar la fila por `(client_id, tenant_id, google_review_id)` — la misma clave natural que ya usa
 `registrar_resena_google` — evita tener que hacer viajar el `id` interno desde el `insert` hasta el
@@ -159,9 +173,10 @@ reseña 5★ con mala suerte en OpenAI dejaría sin guardar el resto de las rese
 cliente en esa misma corrida.
 
 **Nota sobre reintento:** como se decidió no reintentar en caliente, una reseña que falló su borrador
-queda con `borrador_respuesta = null` para siempre salvo que el staff lo pida a mano — no hay hoy un
-botón "generar" en el portal (ver la sección de Portal), así que por ahora la única vía es editar el
-campo vacío directamente. Queda anotado como debe conocido, no una omisión silenciosa.
+queda con `borrador_respuesta = null` hasta que alguien escribe algo — no hay botón "generar" en el
+portal (ver la sección de Portal), pero SÍ hay un textarea vacío editable para el staff, que es la vía
+real de recuperación manual. Queda anotado como deuda conocida (no hay reintento automático de IA), no
+una omisión silenciosa.
 
 ---
 
@@ -180,19 +195,42 @@ export function getBorradorProvider(modo: ModoBorrador = leerConfig().borradorRe
 }
 ```
 
-`MockBorradorProvider` devuelve un texto determinista de fixture (para tests y para correr sin
-credenciales). `OpenAIBorradorProvider` arma un prompt corto: agradece la reseña, menciona algo
-concreto si `texto` no es null, tono cercano y profesional, sin prometer nada — mismo criterio de
-"nunca un claim prohibido" que ya rige la prosa de `web-builder/src/llm/content.ts:66-72`, aplicado acá
-a un texto mucho más corto (2-3 frases, no una sección de página).
+`MockBorradorProvider` devuelve un texto determinista de fixture, con un prefijo inconfundible
+(`"[BORRADOR MOCK — no generado por IA] ..."`) — así un borrador mock nunca se puede confundir con uno
+real de OpenAI cuando alguien lo edita en el portal (hallazgo de la revisión externa: `/_health` avisa
+al operador que el proceso corre en modo mock, pero no le dice nada a quien edita el borrador en el
+portal, y el dato que esta pieza guarda es exactamente lo que la próxima pieza —publicar— mandaría a
+un cliente real de la agencia). El prefijo cierra ese hueco sin construir una máquina de coherencia
+nueva (ver la nota en "Config", abajo).
+
+`OpenAIBorradorProvider` arma un prompt corto: agradece la reseña, menciona algo concreto si `texto`
+no es null, tono cercano y profesional, con la misma instrucción "no prometas resultados garantizados
+ni hagas claims prohibidos" que ya usa la prosa de `web-builder/src/llm/content.ts:66-72` — pero, igual
+que ahí, es una instrucción al modelo, **no una garantía dura** (otro hallazgo de la revisión): la
+garantía real es que ningún borrador sale de esta pieza sin pasar antes por revisión humana — esta
+pieza no publica nada, y cualquier validación adicional del texto, si hiciera falta, es decisión de la
+pieza que sí publique.
+
+`OpenAIBorradorProvider` además loguea el costo estimado de cada llamada, a partir del `usage` que
+devuelve la respuesta de OpenAI — mismo criterio de "costo conocido, no medido" que
+`kr-service/src/lib/cost.ts` — sin cambiar la firma de `generar` (sigue siendo `Promise<string>`): es
+una línea de log, consistente con la decisión de "loguear, sin tope todavía". `MockBorradorProvider`
+no loguea costo, porque no gasta nada.
 
 ### Config (`orchestrator/src/config.ts`)
 
 Nueva variable `BORRADOR_RESENAS_MODO` (`mock` | `openai`), **opcional, con default derivado** — mismo
 criterio que `PROSE_MODE` en `web-builder/src/config.ts:40`: `openai` si hay `OPENAI_API_KEY`, si no
-`mock`. Se valida en los dos entornos (typo no cae en silencio a mock), pero **no es obligatoria en
-producción** — a diferencia de `PIPELINE_MODO`, no hay ningún despliegue donde "olvidarla" produzca un
-dato falso presentado como real: sin key, es mock, y `/_health` lo dice.
+`mock`. Se valida en los dos entornos (typo no cae en silencio a mock), y **no es obligatoria en
+producción** — a diferencia de `PIPELINE_MODO`, no hay ningún despliegue donde "olvidarla" impida
+arrancar o gaste plata sin que nadie lo haya decidido: sin key, es mock, y `/_health` lo dice.
+
+**Lo que sí podía pasar sin el ajuste de "El provider"** (hallazgo de la revisión externa): a
+diferencia de `PIPELINE_MODO`, un despliegue en modo mock acá nunca produce un research falso
+presentado como real — pero SÍ podía producir un borrador de relleno indistinguible de uno de OpenAI
+para quien lo edita en el portal. Mismo riesgo de fondo, aplicado a un dato distinto. No hace falta
+replicar `verificarCoherencia`/`verificarPublicacion` para cerrarlo: alcanza con que el texto del mock
+sea reconocible a simple vista.
 
 ```ts
 export type ModoBorrador = "mock" | "openai";
@@ -221,13 +259,20 @@ Se agrega `orchestrator` a la lista de paquetes que la reciben en `scripts/env-s
 ## La API (`api/src/app.ts`, `db/src/resenas.ts`)
 
 `PATCH /clients/:id/resenas/:resenaId` pasa de aceptar **una** forma fija a aceptar **dos**, mismo
-criterio de "forma fija, no allowlist de columnas" que ya documenta el handler:
+criterio de "forma fija, no allowlist de columnas" que ya documenta el handler — pero **exactamente
+una** de las dos, sin claves adicionales ni las dos juntas (hallazgo de la revisión externa: un
+`if/else if` dejaría que `{"vista": true, "borrador_respuesta": "..."}` ignorara el borrador en
+silencio, en vez de rechazar el body):
 
 ```ts
-if (body?.vista === true) { ... marcarVista ... }
-else if (typeof body?.borrador_respuesta === "string") { ... editarBorrador ... }
+const claves = body && typeof body === "object" ? Object.keys(body) : [];
+if (claves.length === 1 && body.vista === true) { ... marcarVista ... }
+else if (claves.length === 1 && typeof body.borrador_respuesta === "string") { ... editarBorrador ... }
 else return 400
 ```
+
+`{"vista": true, "borrador_respuesta": "..."}`, `{"vista": true, "otraCosa": 1}` y `{}` caen los tres
+en el mismo `400` que hoy ya cubre "ninguna de las formas conocidas".
 
 `PgResenas.editarBorrador(ctx, clientId, resenaId, texto)` — mismo molde exacto que `marcarVista`
 (`db/src/resenas.ts:89-99`): `update ... where id = $1 and client_id = $2 returning id`, `false` sin
@@ -242,13 +287,20 @@ explica el comentario de la línea 526.
 `ResenaGoogle` (en `portal/core/models.ts`, que espeja el de `db/src/resenas.ts` campo por campo —
 ADR-21) gana `borradorRespuesta: string | null`.
 
-En cada card de reseña con `puntuacion >= 4`:
+En cada card de reseña con `puntuacion >= 4` (dos hallazgos de la revisión externa cerrados acá: la
+UI antes solo mostraba el textarea cuando ya había borrador, dejando sin vía de recuperación manual a
+una reseña que falló; y no distinguía staff de cliente):
 
-- Si `borradorRespuesta` no es `null`: un `<textarea>` con el texto, editable, y un botón "Guardar"
-  que dispara `PATCH { borrador_respuesta: texto }` y actualiza la fila local (mismo patrón optimista
-  que `verla()` ya usa para `vistaEn`).
-- Si es `null`: un texto discreto, "sin borrador todavía" — no es un error, es el estado esperado
-  cuando la generación falló o el review todavía no pasó por un ciclo de polling completo.
+- **Staff (`membresia.esEquipo()`)** — mismo gate que ya usan "Conectar Google"/"Desconectar Google"
+  en este tab: un `<textarea>` con el texto del borrador, **vacío si `borradorRespuesta` es `null`**, y
+  un botón "Guardar" que dispara `PATCH { borrador_respuesta: texto }` y actualiza la fila local (mismo
+  patrón optimista que `verla()` ya usa para `vistaEn`). El textarea vacío es la vía real de completar
+  a mano una reseña cuya generación falló (ver "Nota sobre reintento" del polling) — sin él, "sin
+  borrador todavía" sería un callejón sin salida.
+- **Rol `cliente`**: el texto del borrador se muestra de solo lectura si existe, o "sin borrador
+  todavía" si no — nunca un control editable. RLS ya le niega la escritura (`app.puede_escribir()`
+  en `with check`), pero mostrarle un textarea que la API rechazaría en silencio sería una interfaz que
+  miente sobre lo que se puede hacer.
 
 **Sin botón "Regenerar" en esta pieza** (YAGNI): editar a mano ya cubre "no me gustó el borrador", y
 regenerar sería una segunda llamada facturada por reseña que nadie pidió todavía. Si el volumen de
@@ -265,18 +317,27 @@ editado) queda ahí, disponible para copiar a mano hasta que exista la próxima 
   1-3★, no frena el resto del cliente si el provider tira error (mutación: forzar el fallo del
   provider en la segunda de tres reseñas 5★ y confirmar que las otras dos sí guardan su borrador), y no
   vuelve a llamar al provider para una reseña que el polling ya había visto antes (`insertada = false`).
+  `OpenAIBorradorProvider` loguea una línea de costo estimado por llamada (verificado contra una
+  respuesta fixture con `usage` conocido).
 - **`db`**: `app_resenas` puede `UPDATE` `borrador_respuesta`/`borrador_generado_en` solo vía la función
   (la policy `using(true)` está bien porque el rol no tiene login — mismo test que ya existe para
   `app_barrido`/`app_resenas` sin `SET`); `app_user` de otro tenant no puede editar el borrador de un
   cliente ajeno (RLS); el rol `cliente` no puede editar (`puede_escribir()` en `with check` da falso).
+  **Elegibilidad de `app.guardar_borrador_resena`** (defensa en profundidad, hallazgo de la revisión
+  externa): llamarla sobre una reseña de 1-3★ no escribe nada (mutación: quitar
+  `puntuacion between 4 and 5` del `where` y confirmar que ESE test cae); llamarla sobre una reseña que
+  ya tiene `borrador_respuesta` no la pisa (mutación: quitar `borrador_respuesta is null` del `where` y
+  confirmar que una edición humana ya guardada se sobrescribiría).
 - **`api`**: PATCH con `{"borrador_respuesta": "..."}` guarda el texto y responde `200`; con las dos
-  llaves a la vez, o ninguna, responde `400`; sin `puede_escribir()` (rol cliente) responde `404`.
-- **`portal`**: la card muestra el textarea editable cuando hay borrador, el estado "sin borrador
-  todavía" cuando no, el botón Guardar dispara el PATCH, y una reseña de 1-3★ nunca muestra ninguno de
-  los dos estados (no aplica).
+  llaves a la vez, con una clave desconocida sumada a una válida, o sin ninguna de las dos, responde
+  `400`; sin `puede_escribir()` (rol cliente) responde `404`.
+- **`portal`**: para staff, la card muestra el textarea editable (vacío si no hay borrador todavía) y
+  el botón Guardar dispara el PATCH; para el rol `cliente`, el mismo campo se muestra de solo lectura,
+  sin textarea ni botón; una reseña de 1-3★ nunca muestra ninguno de los dos.
 - **Verificación en navegador**: sembrar una reseña 5★ sin borrador, correr el polling (mock),
-  confirmar que aparece el texto en el tab; editarlo, guardar, refrescar y confirmar que el cambio
-  persiste.
+  confirmar que aparece el texto MOCK con su prefijo en el tab; editarlo, guardar, refrescar y
+  confirmar que el cambio persiste; simular un fallo del provider y confirmar que el staff puede
+  escribir el borrador a mano desde el textarea vacío.
 
 ---
 
