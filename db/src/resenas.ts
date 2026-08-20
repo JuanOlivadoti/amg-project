@@ -10,6 +10,8 @@ export interface ResenaGoogle {
   texto: string | null;
   publicadaEn: string;
   vistaEn: string | null;
+  /** `null` = sin borrador todavía. Generado por IA (4-5★) o editado a mano por el staff. */
+  borradorRespuesta: string | null;
 }
 
 /*
@@ -22,7 +24,7 @@ export interface ResenaGoogle {
  * el tipo de TypeScript para que dos módulos no describan la misma forma de dos maneras distintas.
  */
 
-const COLS = "id, client_id, puntuacion, autor, texto, publicada_en, vista_en";
+const COLS = "id, client_id, puntuacion, autor, texto, publicada_en, vista_en, borrador_respuesta";
 
 function aResena(r: {
   id: string;
@@ -32,6 +34,7 @@ function aResena(r: {
   texto: string | null;
   publicada_en: string;
   vista_en: string | null;
+  borrador_respuesta: string | null;
 }): ResenaGoogle {
   return {
     id: r.id,
@@ -41,6 +44,7 @@ function aResena(r: {
     texto: r.texto,
     publicadaEn: r.publicada_en,
     vistaEn: r.vista_en,
+    borradorRespuesta: r.borrador_respuesta,
   };
 }
 

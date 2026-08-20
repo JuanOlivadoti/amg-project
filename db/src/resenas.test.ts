@@ -434,6 +434,32 @@ test("🔴 una reseña ya vista se ordena DESPUÉS de las sin ver, aunque tenga 
   assert.ok(idxSinVer < idxVista, "sin ver antes que vista, sin importar la puntuación");
 });
 
+test("🔴 listarResenas devuelve borradorRespuesta cuando existe, null cuando no (Fix 1)", async () => {
+  const ctx = { tenantId: s.tenantA, userId: s.equipoA };
+  const clienteId = s.clientA1;
+
+  // Caso 1: una reseña 5★ CON borrador_respuesta (escrito a mano en la base, como hace la Task 2)
+  const conBorrador = await crearResena(clienteId, s.tenantA, { puntuacion: 5, googleReviewId: "fb-1" });
+  await db.asService("update resenas_google set borrador_respuesta = $1 where id = $2", [
+    "Gracias por tu reseña, nos alegra haber complacido tu paladar.",
+    conBorrador,
+  ]);
+
+  // Caso 2: una reseña SIN borrador
+  const sinBorrador = await crearResena(clienteId, s.tenantA, { puntuacion: 5, googleReviewId: "fb-2" });
+
+  const vistas = await resenas.listarResenas(ctx, clienteId);
+  const conBorrador_row = vistas.find((r) => r.id === conBorrador);
+  const sinBorrador_row = vistas.find((r) => r.id === sinBorrador);
+
+  assert.equal(
+    conBorrador_row?.borradorRespuesta,
+    "Gracias por tu reseña, nos alegra haber complacido tu paladar.",
+    "listarResenas trae el borradorRespuesta cuando existe",
+  );
+  assert.equal(sinBorrador_row?.borradorRespuesta, null, "listarResenas devuelve null cuando no hay borrador");
+});
+
 test("marcarVista pone vista_en y no se puede repetir sobre una ya vista", async () => {
   const ctx = { tenantId: s.tenantA, userId: s.equipoA };
   const id = await crearResena(s.clientA1, s.tenantA, { googleReviewId: "r1" });
