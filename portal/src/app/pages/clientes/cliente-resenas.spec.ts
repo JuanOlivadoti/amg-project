@@ -44,6 +44,7 @@ function resenaDePrueba(overrides: Partial<ResenaGoogle> = {}): ResenaGoogle {
     texto: 'Buenísimo',
     publicadaEn: '2026-08-01T00:00:00.000Z',
     vistaEn: '2026-08-01T00:00:00.000Z',
+    borradorRespuesta: null,
     ...overrides,
   };
 }
@@ -65,6 +66,7 @@ function crear(
     cliente?: ClienteAgencia | null;
     listarResenas?: jasmine.Spy;
     marcarResenaVista?: jasmine.Spy;
+    editarBorradorResena?: jasmine.Spy;
     conectarGoogle?: jasmine.Spy;
     desconectarGoogle?: jasmine.Spy;
     verCliente?: jasmine.Spy;
@@ -75,6 +77,8 @@ function crear(
   const listarResenasSpy = opciones.listarResenas ?? jasmine.createSpy('listarResenas').and.resolveTo([]);
   const marcarResenaVistaSpy =
     opciones.marcarResenaVista ?? jasmine.createSpy('marcarResenaVista').and.resolveTo(undefined);
+  const editarBorradorResenaSpy =
+    opciones.editarBorradorResena ?? jasmine.createSpy('editarBorradorResena').and.resolveTo(undefined);
   const conectarGoogleSpy =
     opciones.conectarGoogle ??
     jasmine.createSpy('conectarGoogle').and.resolveTo({ url: 'https://accounts.google.test/consent' });
@@ -94,6 +98,7 @@ function crear(
         useValue: {
           listarResenas: listarResenasSpy,
           marcarResenaVista: marcarResenaVistaSpy,
+          editarBorradorResena: editarBorradorResenaSpy,
           conectarGoogle: conectarGoogleSpy,
           desconectarGoogle: desconectarGoogleSpy,
         },
@@ -103,7 +108,16 @@ function crear(
     ],
   });
   const fixture = TestBed.createComponent(ClienteResenasPage);
-  return { fixture, listarResenasSpy, marcarResenaVistaSpy, conectarGoogleSpy, desconectarGoogleSpy, verClienteSpy, params };
+  return {
+    fixture,
+    listarResenasSpy,
+    marcarResenaVistaSpy,
+    editarBorradorResenaSpy,
+    conectarGoogleSpy,
+    desconectarGoogleSpy,
+    verClienteSpy,
+    params,
+  };
 }
 
 async function estabilizar(fixture: ComponentFixture<ClienteResenasPage>): Promise<HTMLElement> {
@@ -289,5 +303,79 @@ describe('ClienteResenasPage', () => {
     expect(fixture.componentInstance.resenas())
       .withContext('la carga en vuelo escribió sobre un tab ya destruido')
       .toEqual([]);
+  });
+
+  it('staff: una reseña 5★ sin borrador muestra un textarea vacío editable', async () => {
+    const resena = resenaDePrueba({ puntuacion: 5, borradorRespuesta: null });
+    const { fixture } = crear({
+      listarResenas: jasmine.createSpy('listarResenas').and.resolveTo([resena]),
+      esEquipo: true,
+    });
+    const el = await estabilizar(fixture);
+
+    const textarea = el.querySelector('textarea');
+    expect(textarea).withContext('sin textarea, el staff no tiene forma de completar el borrador a mano').toBeTruthy();
+    expect(textarea!.value).toBe('');
+  });
+
+  it('staff: editar y Guardar dispara editarBorradorResena y actualiza la fila local', async () => {
+    const resena = resenaDePrueba({ id: 'r1', puntuacion: 5, borradorRespuesta: null });
+    const editarBorradorResenaSpy = jasmine.createSpy('editarBorradorResena').and.resolveTo(undefined);
+    const { fixture } = crear({
+      listarResenas: jasmine.createSpy('listarResenas').and.resolveTo([resena]),
+      esEquipo: true,
+      editarBorradorResena: editarBorradorResenaSpy,
+    });
+    let el = await estabilizar(fixture);
+
+    const textarea = el.querySelector('textarea')!;
+    textarea.value = 'Gracias por tu reseña';
+    textarea.dispatchEvent(new Event('input'));
+    el = await estabilizar(fixture);
+
+    const boton = Array.from(el.querySelectorAll('button')).find((b) => b.textContent!.trim() === 'Guardar')!;
+    boton.click();
+    el = await estabilizar(fixture);
+
+    expect(editarBorradorResenaSpy).toHaveBeenCalledWith('c1', 'r1', 'Gracias por tu reseña');
+    // NO `el.textContent`: un `<textarea>` no refleja su `.value` en el árbol de texto (eso solo pasa
+    // con `.defaultValue`, que es otra propiedad) — hay que leer el control, no el texto renderizado.
+    expect(el.querySelector('textarea')!.value).toBe('Gracias por tu reseña');
+  });
+
+  it('rol cliente: NO ve textarea ni botón Guardar, solo el texto de solo lectura si existe', async () => {
+    const resena = resenaDePrueba({ puntuacion: 5, borradorRespuesta: 'Ya generado' });
+    const { fixture } = crear({
+      listarResenas: jasmine.createSpy('listarResenas').and.resolveTo([resena]),
+      esEquipo: false,
+    });
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('textarea')).withContext('el rol cliente nunca ve un control editable').toBeNull();
+    expect(el.textContent).toContain('Ya generado');
+  });
+
+  it('rol cliente, sin borrador: muestra "sin borrador todavía", sin textarea', async () => {
+    const resena = resenaDePrueba({ puntuacion: 5, borradorRespuesta: null });
+    const { fixture } = crear({
+      listarResenas: jasmine.createSpy('listarResenas').and.resolveTo([resena]),
+      esEquipo: false,
+    });
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('textarea')).toBeNull();
+    expect(el.textContent).toContain('Sin borrador todavía');
+  });
+
+  it('una reseña de 1-3★ nunca muestra textarea ni texto de borrador', async () => {
+    const resena = resenaDePrueba({ puntuacion: 2, borradorRespuesta: null });
+    const { fixture } = crear({
+      listarResenas: jasmine.createSpy('listarResenas').and.resolveTo([resena]),
+      esEquipo: true,
+    });
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('textarea')).toBeNull();
+    expect(el.textContent).not.toContain('Sin borrador todavía');
   });
 });

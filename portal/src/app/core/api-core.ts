@@ -258,6 +258,9 @@ export interface ClienteApi {
   listarResenas(clientId: string): Promise<ResenaGoogle[]>;
   /** Marca una reseña como vista. Único cambio soportado por el endpoint (`{"vista": true}`). */
   marcarResenaVista(clientId: string, resenaId: string): Promise<void>;
+  /** Edita el borrador de respuesta de una reseña. A diferencia de `marcarResenaVista`, se puede
+   * repetir (no es de una sola vez). */
+  editarBorradorResena(clientId: string, resenaId: string, texto: string): Promise<void>;
   /**
    * Arma la URL de consentimiento de Google para este cliente. Quien llama navega ahí de verdad
    * (`window.location.href`), no es un `fetch` que se quede esperando una respuesta JSON del OAuth.
@@ -504,6 +507,13 @@ export function crearApi(opts: ApiOpts): ClienteApi {
         'PATCH',
         `/clients/${encodeURIComponent(clientId)}/resenas/${encodeURIComponent(resenaId)}`,
         { vista: true },
+      );
+    },
+    async editarBorradorResena(clientId, resenaId, texto) {
+      await pedir(
+        'PATCH',
+        `/clients/${encodeURIComponent(clientId)}/resenas/${encodeURIComponent(resenaId)}`,
+        { borrador_respuesta: texto },
       );
     },
     async conectarGoogle(clientId) {
