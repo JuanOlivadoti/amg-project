@@ -535,20 +535,33 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return c.json({ resenas });
   });
 
-  /** PATCH /clients/:id/resenas/:resenaId — marca una reseña como vista. Único cambio soportado. */
+  /**
+   * PATCH /clients/:id/resenas/:resenaId — acepta EXACTAMENTE una de dos formas fijas, nunca las dos
+   * juntas ni una clave desconocida: `{"vista": true}` (marca vista) o `{"borrador_respuesta":
+   * string}` (edita el borrador, Bloque F fase 2). No es una allowlist de columnas: cada forma se
+   * compara entera, mismo criterio que ya regía cuando solo existía la primera.
+   */
   app.patch("/clients/:id/resenas/:resenaId", async (c) => {
     const ctx = c.get("ctx");
     const clientId = c.req.param("id");
     const resenaId = c.req.param("resenaId");
     const body = await c.req.json().catch(() => null);
+    const claves = body && typeof body === "object" ? Object.keys(body) : [];
 
-    if (!body || typeof body !== "object" || body["vista"] !== true) {
-      return c.json({ error: 'El único cambio soportado es {"vista": true}.' }, 400);
+    if (claves.length === 1 && (body as Record<string, unknown>)["vista"] === true) {
+      const ok = await deps.resenas.marcarVista(ctx, clientId, resenaId);
+      if (!ok) return c.json({ error: "Reseña no encontrada, ya vista, o sin permiso." }, 404);
+      return c.json({ ok: true });
     }
 
-    const ok = await deps.resenas.marcarVista(ctx, clientId, resenaId);
-    if (!ok) return c.json({ error: "Reseña no encontrada, ya vista, o sin permiso." }, 404);
-    return c.json({ ok: true });
+    if (claves.length === 1 && typeof (body as Record<string, unknown>)["borrador_respuesta"] === "string") {
+      const texto = (body as Record<string, unknown>)["borrador_respuesta"] as string;
+      const ok = await deps.resenas.editarBorrador(ctx, clientId, resenaId, texto);
+      if (!ok) return c.json({ error: "Reseña no encontrada, o sin permiso." }, 404);
+      return c.json({ ok: true });
+    }
+
+    return c.json({ error: 'El body tiene que ser {"vista": true} o {"borrador_respuesta": string}.' }, 400);
   });
 
   /*

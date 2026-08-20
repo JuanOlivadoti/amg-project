@@ -1325,3 +1325,74 @@ test("🔴 con rol 'cliente', PATCH .../resenas/:id da 404 (ADR-20: solo lee)", 
   ]);
   assert.equal(fila!.vista_en, null, "el rol cliente no pudo escribir: la fila no cambió");
 });
+
+test("PATCH .../resenas/:id con {borrador_respuesta} guarda el texto y responde 200", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-borrador", puntuacion: 5 });
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { borrador_respuesta: "Gracias por tu reseña" },
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
+
+  const [fila] = await sql<{ borrador_respuesta: string | null }>(
+    "select borrador_respuesta from resenas_google where id = $1",
+    [r!.id],
+  );
+  assert.equal(fila!.borrador_respuesta, "Gracias por tu reseña");
+});
+
+test("PATCH .../resenas/:id se puede repetir sobre el borrador (a diferencia de vista)", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-borrador-2x", puntuacion: 5 });
+  await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA, tenant: tenantA, body: { borrador_respuesta: "Primero" },
+  });
+  const segunda = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA, tenant: tenantA, body: { borrador_respuesta: "Corregido" },
+  });
+  assert.equal(segunda.status, 200, "editar el borrador no es de una sola vez, a diferencia de vista=true");
+
+  const [fila] = await sql<{ borrador_respuesta: string | null }>(
+    "select borrador_respuesta from resenas_google where id = $1",
+    [r!.id],
+  );
+  assert.equal(fila!.borrador_respuesta, "Corregido");
+});
+
+test("🔴 PATCH .../resenas/:id con las DOS llaves a la vez → 400, no ignora una en silencio", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-body-doble", puntuacion: 5 });
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { vista: true, borrador_respuesta: "no debería aplicarse" },
+  });
+  assert.equal(res.status, 400);
+
+  const [fila] = await sql<{ vista_en: string | null; borrador_respuesta: string | null }>(
+    "select vista_en, borrador_respuesta from resenas_google where id = $1",
+    [r!.id],
+  );
+  assert.equal(fila!.vista_en, null, "el body inválido no tuvo NINGÚN efecto");
+  assert.equal(fila!.borrador_respuesta, null);
+});
+
+test("🔴 PATCH .../resenas/:id con una clave desconocida sumada a una válida → 400", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-clave-extra", puntuacion: 5 });
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { vista: true, otraCosa: 1 },
+  });
+  assert.equal(res.status, 400);
+});
+
+test("🔴 con rol 'cliente', PATCH .../resenas/:id con borrador_respuesta da 404 (ADR-20: solo lee)", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-borrador-cliente", puntuacion: 5 });
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: duenoA1,
+    tenant: tenantA,
+    body: { borrador_respuesta: "intento del rol cliente" },
+  });
+  assert.equal(res.status, 404);
+});
