@@ -66,6 +66,15 @@ export interface ConfigOrquestador {
    * ofrecer sería pedirle al desplegador un valor que no puede usar. Ver {@link leerModoResenasGoogle}.
    */
   readonly resenasGoogle: ModoResenasGoogle;
+  /**
+   * En qué modo se genera el borrador de respuesta con IA. **Opcional, con default derivado**: mismo
+   * criterio que `PROSE_MODE` en `web-builder/src/config.ts:40` — `openai` si hay `OPENAI_API_KEY`,
+   * `mock` si no. Un despliegue en modo mock nunca produce un research falso (a diferencia de
+   * `PIPELINE_MODO`), pero SÍ podía producir un borrador de relleno indistinguible de uno de OpenAI
+   * para quien lo edita en el portal — por eso `MockBorradorProvider` lleva un prefijo inconfundible
+   * (ver `borrador/mock-provider.ts`) en vez de replicar la máquina de `verificarCoherencia` acá.
+   */
+  readonly borradorResenas: ModoBorrador;
 }
 
 const PUERTO_DEFECTO = 3100;
@@ -74,6 +83,14 @@ const MODOS_PIPELINE: readonly string[] = ["mock", "live"];
 /** Igual forma que `ModoPipeline`, pero es un módulo distinto (Bloque F): ver `google/provider.ts`. */
 export type ModoResenasGoogle = "mock" | "live";
 const MODOS_RESENAS_GOOGLE: readonly string[] = ["mock", "live"];
+
+/**
+ * Igual forma que `ModoResenasGoogle`, pero un módulo distinto (Bloque F, fase 2): el borrador de
+ * respuesta con IA. `openai` es la única implementación real (a diferencia de `resenasGoogle`, cuyo
+ * `live` todavía no existe) — ver `borrador/provider.ts`.
+ */
+export type ModoBorrador = "mock" | "openai";
+const MODOS_BORRADOR: readonly string[] = ["mock", "openai"];
 
 /**
  * ¿Estamos en producción? **Se le pregunta al SDK; no se reimplementa su heurística.**
@@ -134,6 +151,7 @@ export function leerConfig(
   const esProduccion = esModoProduccion();
   const puerto = leerPuerto();
   const resenasGoogle = leerModoResenasGoogle();
+  const borradorResenas = leerModoBorrador();
 
   const urlOrquestador = process.env["DATABASE_URL_ORQUESTADOR"]?.trim();
   const urlCache = process.env["DATABASE_URL_CACHE"]?.trim();
@@ -195,6 +213,7 @@ export function leerConfig(
       inngestSigningKey: signingKey as string,
       pipeline,
       resenasGoogle,
+      borradorResenas,
     };
   }
 
@@ -224,6 +243,7 @@ export function leerConfig(
     esProduccion,
     pipeline,
     resenasGoogle,
+    borradorResenas,
     ...(signingKey ? { inngestSigningKey: signingKey } : {}),
   };
 
@@ -282,6 +302,27 @@ function validarModoResenasGoogle(crudo: string): ModoResenasGoogle {
 function leerModoResenasGoogle(): ModoResenasGoogle {
   const crudo = process.env["GOOGLE_REVIEWS_MODO"]?.trim();
   return crudo ? validarModoResenasGoogle(crudo) : "mock";
+}
+
+function validarModoBorrador(crudo: string): ModoBorrador {
+  if (!MODOS_BORRADOR.includes(crudo)) {
+    throw new Error(
+      `BORRADOR_RESENAS_MODO inválido: "${crudo}". Los únicos valores son \`mock\` y \`openai\`.`,
+    );
+  }
+  return crudo as ModoBorrador;
+}
+
+/**
+ * `BORRADOR_RESENAS_MODO`, con default DERIVADO de si hay `OPENAI_API_KEY` — a diferencia de
+ * `GOOGLE_REVIEWS_MODO` (default fijo `mock`, porque `live` ni siquiera está implementado). Acá
+ * `openai` SÍ está implementado, así que cargar la key sin declarar la variable ya empieza a gastar
+ * — mismo comportamiento, a propósito, que `PROSE_MODE` en `web-builder`.
+ */
+function leerModoBorrador(): ModoBorrador {
+  const crudo = process.env["BORRADOR_RESENAS_MODO"]?.trim();
+  if (crudo) return validarModoBorrador(crudo);
+  return process.env["OPENAI_API_KEY"]?.trim() ? "openai" : "mock";
 }
 
 /**

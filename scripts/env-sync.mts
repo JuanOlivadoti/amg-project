@@ -49,10 +49,16 @@ export const MAPA = {
    * a mano; se notaba mucho al querer correr el orquestador REAL en local, que exigía escribir el
    * archivo a mano.
    *
-   * Son las cuatro que lee `orchestrator/src/config.ts` y **no** las de `kr-service` ni las de
-   * `web-builder`, aunque en producción los tres compartan proceso: cada paquete tiene su contrato, y
-   * el conjunto de producción —más amplio que la suma de los `.env` locales— lo compara el bloque A3
-   * con un inventario propio.
+   * Son las que lee `orchestrator/src/config.ts` (u `openai-provider.ts`, vía `OPENAI_API_KEY`) y
+   * **no** las de `kr-service` ni las de `web-builder`, aunque en producción los tres compartan
+   * proceso: cada paquete tiene su contrato, y el conjunto de producción —más amplio que la suma de
+   * los `.env` locales— lo compara el bloque A3 con un inventario propio.
+   *
+   * No las cuatro de siempre: solo `DATABASE_URL_ORQUESTADOR`, `DATABASE_URL_CACHE`,
+   * `INNGEST_SIGNING_KEY` y `PIPELINE_MODO` paran el arranque (`leerConfig`'s `faltan`, en producción).
+   * `GOOGLE_REVIEWS_MODO`, `BORRADOR_RESENAS_MODO` y `OPENAI_API_KEY` viajan acá para que `env:sync`
+   * las reparta al `.env` local, pero son OPCIONALES con default — `auditar-railway.mts` las clasifica
+   * en `SEGUN_MODO`, no en `OBLIGATORIAS`, justo por eso.
    */
   orchestrator: [
     "DATABASE_URL_ORQUESTADOR",
@@ -60,6 +66,8 @@ export const MAPA = {
     "INNGEST_SIGNING_KEY",
     "PIPELINE_MODO",
     "GOOGLE_REVIEWS_MODO",
+    "BORRADOR_RESENAS_MODO",
+    "OPENAI_API_KEY",
   ],
   renderer: [
     "STORYBLOK_PUBLIC_TOKEN",

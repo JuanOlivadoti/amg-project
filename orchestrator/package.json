@@ -17,6 +17,7 @@
     "dotenv": "^16.4.5",
     "inngest": "^3.27.0",
     "kr-service": "*",
+    "openai": "^4.104.0",
     "pg": "^8.22.0",
     "web-builder": "*"
   },
