@@ -93,11 +93,27 @@ test("🔴 ninguna clave es obligatoria y `según modo` a la vez", () => {
  * 🔴 Y las obligatorias tienen que ser las que **de verdad** hacen fallar el arranque. Este test no
  * puede leer el `leerConfig` de cada paquete, pero sí puede impedir que la lista se infle: si alguien
  * mete acá una que el proceso tolera, el comando empieza a dar rojo en despliegues sanos y a la
- * tercera corrida se ignora. Las cuatro del orquestador salen del MAPA, que sí está atado a su
- * `.env.example` por otro test.
+ * tercera corrida se ignora.
+ *
+ * Ya NO es "exactamente las del MAPA" (como decía este test hasta el 2026-08-18): desde que
+ * `GOOGLE_REVIEWS_MODO`, `BORRADOR_RESENAS_MODO` y `OPENAI_API_KEY` se sumaron a `MAPA.orchestrator`
+ * —solo para que `env:sync` las reparta al `.env` local— ese array dejó de ser "las que paran el
+ * arranque" y pasó a ser "las que el orquestador puede llegar a leer". Las tres son OPCIONALES con
+ * default y viven en `SEGUN_MODO`, no acá (hay un test aparte, arriba, que exige que los dos niveles
+ * sean disjuntos). Lo que sigue atado: toda obligatoria sale del contrato del MAPA (ninguna
+ * inventada), y son EXACTAMENTE las cuatro que el `faltan` de producción de
+ * `orchestrator/src/config.ts` exige.
  */
-test("🔴 las obligatorias del orquestador son EXACTAMENTE las de su contrato", () => {
-  assert.deepEqual([...OBLIGATORIAS["amg-orchestrator"]].sort(), [...MAPA.orchestrator].sort());
+test("🔴 las obligatorias del orquestador son las que paran el arranque, y salen del MAPA", () => {
+  const deMapa = new Set<string>(MAPA.orchestrator);
+  for (const k of OBLIGATORIAS["amg-orchestrator"]) {
+    assert.ok(deMapa.has(k), `"${k}" está en OBLIGATORIAS pero no en MAPA.orchestrator`);
+  }
+  assert.deepEqual(
+    [...OBLIGATORIAS["amg-orchestrator"]].sort(),
+    ["DATABASE_URL_CACHE", "DATABASE_URL_ORQUESTADOR", "INNGEST_SIGNING_KEY", "PIPELINE_MODO"],
+    "si esto cambia, cambialo también en orchestrator/src/config.ts (el `faltan` de producción) y acá",
+  );
 });
 
 // ================================================================

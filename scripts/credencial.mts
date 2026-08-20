@@ -107,6 +107,10 @@ export const CATALOGO: Record<string, Entrada> = {
     familia: "config",
     nota: "`mock` | `live`, opcional (default `mock`): en qué modo lee reseñas de Google (Bloque F, fase 1)",
   },
+  BORRADOR_RESENAS_MODO: {
+    familia: "config",
+    nota: "`mock` | `openai`, opcional (default derivado de OPENAI_API_KEY): en qué modo se genera el borrador de respuesta con IA (Bloque F, fase 2)",
+  },
   STORYBLOK_SPACE_ID: { familia: "config" },
   STORYBLOK_REGION: { familia: "config" },
   DEMO_DOMAIN: { familia: "config" },

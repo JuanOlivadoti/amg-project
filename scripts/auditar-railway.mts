@@ -38,7 +38,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { CATALOGO } from "./credencial.mts";
-import { FUENTE, MAPA } from "./env-sync.mts";
+import { FUENTE } from "./env-sync.mts";
 
 /**
  * Los servicios desplegados, con el nombre EXACTO que tienen en Railway.
@@ -66,8 +66,20 @@ export const ROL: Record<Servicio, string> = {
 export const OBLIGATORIAS: Record<Servicio, readonly string[]> = {
   // api/src/deps.ts:51 — y `INNGEST_EVENT_KEY`, que en modo cloud hace lanzar a `send()` (deps.ts:135).
   "amg-project": ["DATABASE_URL_API", "SUPABASE_JWT_ISS", "CORS_ORIGINS", "INNGEST_EVENT_KEY"],
-  // orchestrator/src/config.ts:129 — las cuatro juntas, con `PIPELINE_MODO` sin default a propósito.
-  "amg-orchestrator": [...MAPA.orchestrator],
+  /*
+   * orchestrator/src/config.ts: las cuatro que el `faltan` de producción exige, con `PIPELINE_MODO` sin
+   * default a propósito. **Ya NO es `[...MAPA.orchestrator]`**: ese array creció con
+   * `GOOGLE_REVIEWS_MODO`, `BORRADOR_RESENAS_MODO` y `OPENAI_API_KEY` (Task 3, Bloque F fase 2) solo
+   * para que `env:sync` las reparta al `.env` local — las tres son OPCIONALES con default y no paran
+   * el arranque, así que van en `SEGUN_MODO`, no acá. Copiar el MAPA entero volvería a mentir "sin
+   * OPENAI_API_KEY no arranca", que es falso.
+   */
+  "amg-orchestrator": [
+    "DATABASE_URL_ORQUESTADOR",
+    "DATABASE_URL_CACHE",
+    "INNGEST_SIGNING_KEY",
+    "PIPELINE_MODO",
+  ],
   // renderer/src/deps.ts:39 — el webhook es obligatorio aunque podría arrancar sin él: sin invalidación
   // la cache solo caduca por TTL, y "el Visual Editor funciona" pasa a ser "casi funciona".
   "amg-renderer": ["DATABASE_URL_RENDER", "STORYBLOK_WEBHOOK_SECRET"],
@@ -97,11 +109,16 @@ export const SEGUN_MODO: Record<Servicio, Readonly<Record<string, string>>> = {
     DATAFORSEO_LOGIN: "sin credenciales de DataForSEO el research es **mock**: keywords inventadas",
     DATAFORSEO_PASSWORD: "ídem",
     LLM_PROVIDER: "qué proveedor genera el contenido",
-    OPENAI_API_KEY: "sin ella la prosa es **mock** (y con ella, publicar FACTURA: ver `modoProsa`)",
+    OPENAI_API_KEY:
+      "sin ella la prosa web es **mock** y el borrador de reseñas también (con ella, las dos generan " +
+      "de verdad y FACTURAN: ver `modoProsa` y `leerModoBorrador`)",
     ANTHROPIC_API_KEY: "alternativa a OpenAI",
     PROSE_MODE: "fuerza `openai` o `mock`. Sin ella, el default es `openai` **si hay key**",
     KR_BRIEF_PATH: "solo la usa el CLI del M1; el orquestador reconstruye el brief desde la base",
     BUSINESS_PROFILE_PATH: "ídem: el perfil sale de `clients.business_profile`, no de un archivo",
+    GOOGLE_REVIEWS_MODO: "sin ella lee reseñas de Google en **mock** (Bloque F fase 1; `live` no está implementado)",
+    BORRADOR_RESENAS_MODO:
+      "sin ella, el borrador se genera en `openai` si hay OPENAI_API_KEY, o en `mock` si no (Bloque F fase 2)",
   },
   "amg-renderer": {
     PREVIEW_SECRET: "sin él no hay enlaces firmados de preview: el Visual Editor no puede previsualizar",
