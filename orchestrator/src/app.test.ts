@@ -72,6 +72,9 @@ function depsSobreBaseCaida(): Deps {
       refrescarToken: () => Promise.reject(new Error("un health check no pollea reseñas")),
       listarResenas: () => Promise.reject(new Error("un health check no pollea reseñas")),
     },
+    borradorProvider: {
+      generar: () => Promise.reject(new Error("un health check no genera borradores")),
+    },
   };
 }
 

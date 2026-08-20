@@ -60,13 +60,24 @@ function depsDePolling(
       texto: string | null;
       publicadaEn: string;
     }) => Promise<boolean>;
+    guardarBorradorResena?: (r: {
+      clientId: string;
+      tenantId: string;
+      googleReviewId: string;
+      borrador: string;
+    }) => Promise<boolean>;
   },
   resenasProvider: {
     refrescarToken: (refreshToken: string) => Promise<string>;
     listarResenas: (accessToken: string, locationId: string) => Promise<ResenaCrudaFalsa[]>;
   },
+  borradorProvider?: { generar: (r: ResenaCrudaFalsa) => Promise<string> },
 ): DepsDePolling {
-  return { store, resenasProvider } as unknown as DepsDePolling;
+  return {
+    store: { guardarBorradorResena: async () => true, ...store },
+    resenasProvider,
+    borradorProvider: borradorProvider ?? { generar: async () => "borrador de prueba" },
+  } as unknown as DepsDePolling;
 }
 
 test("🔴 un cliente con refrescarToken que lanza no frena el polling de los demás", async () => {
@@ -184,4 +195,110 @@ test("🔴 la fábrica produce una función con id propio, distinta de las demá
 
   assert.match(fn.id(), /polling/);
   assert.match(fn.id(), /resenas/i);
+});
+
+// ---------------------------------------------------------------- borrador de IA (Bloque F, fase 2)
+
+test("🔴 genera y guarda el borrador para una reseña 5★ nueva", async () => {
+  const guardados: Array<{ googleReviewId: string; borrador: string }> = [];
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "l1", "tok")],
+      registrarResenaGoogle: async () => true,
+      guardarBorradorResena: async (r) => {
+        guardados.push({ googleReviewId: r.googleReviewId, borrador: r.borrador });
+        return true;
+      },
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [{ ...resenaCruda("r5"), puntuacion: 5 }] },
+    { generar: async () => "Gracias por tu reseña" },
+  );
+
+  await pollearResenas(deps);
+
+  assert.deepEqual(guardados, [{ googleReviewId: "r5", borrador: "Gracias por tu reseña" }]);
+});
+
+test("🔴 NO genera borrador para una reseña de 1-3★", async () => {
+  let generarLlamado = false;
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "l1", "tok")],
+      registrarResenaGoogle: async () => true,
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [{ ...resenaCruda("r2"), puntuacion: 2 }] },
+    { generar: async () => { generarLlamado = true; return "no debería pasar"; } },
+  );
+
+  await pollearResenas(deps);
+
+  assert.equal(generarLlamado, false, "🔴 el PRD prohíbe IA para 1-3★, ni siquiera se intenta");
+});
+
+test("🔴 NO genera borrador para una reseña que el polling ya había visto (insertada = false)", async () => {
+  let generarLlamado = false;
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "l1", "tok")],
+      registrarResenaGoogle: async () => false, // ya existía
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [{ ...resenaCruda("r5-vieja"), puntuacion: 5 }] },
+    { generar: async () => { generarLlamado = true; return "no debería pasar"; } },
+  );
+
+  await pollearResenas(deps);
+
+  assert.equal(generarLlamado, false, "reseña ya vista: no se re-genera un borrador");
+});
+
+test("🔴 un fallo del BorradorProvider en una reseña no frena el resto del mismo cliente", async () => {
+  const guardados: string[] = [];
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "l1", "tok")],
+      registrarResenaGoogle: async () => true,
+      guardarBorradorResena: async (r) => {
+        guardados.push(r.googleReviewId);
+        return true;
+      },
+    },
+    {
+      refrescarToken: async () => "access-ok",
+      listarResenas: async () => [
+        { ...resenaCruda("r-1"), puntuacion: 5 },
+        { ...resenaCruda("r-2"), puntuacion: 5 },
+        { ...resenaCruda("r-3"), puntuacion: 5 },
+      ],
+    },
+    {
+      generar: async (r) => {
+        if (r.googleReviewId === "r-2") throw new Error("OpenAI caído");
+        return "ok";
+      },
+    },
+  );
+
+  const resultado = await pollearResenas(deps);
+
+  assert.deepEqual(guardados, ["r-1", "r-3"], "r-2 falló, pero r-1 y r-3 igual guardaron su borrador");
+  assert.equal(resultado.fallidos, 0, "un fallo de borrador NO cuenta como cliente fallido");
+});
+
+test("🔴 un fallo del BorradorProvider se loguea con el id de la reseña y del cliente", async () => {
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c-x", "t-y", "l1", "tok")],
+      registrarResenaGoogle: async () => true,
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [{ ...resenaCruda("r-falla"), puntuacion: 5 }] },
+    { generar: async () => { throw new Error("timeout"); } },
+  );
+
+  const dicho: string[] = [];
+  await pollearResenas(deps, (m) => dicho.push(m));
+
+  assert.ok(
+    dicho.some((m) => m.includes("r-falla") && m.includes("c-x")),
+    `el log tiene que nombrar la reseña y el cliente. Logueado: ${JSON.stringify(dicho)}`,
+  );
 });
