@@ -54,6 +54,7 @@ const funciones = [crearFuncionResearch(deps), crearFuncionBarrido(deps), crearF
  */
 const publicacion = modoPublicacion();
 const prosa = modoProsa();
+const borrador = config.borradorResenas;
 
 const server = crearServidor({
   // La `signingKey` validada viaja acá dentro. Si se dejara al SDK releer el entorno, lo comprobado
@@ -66,6 +67,7 @@ const server = crearServidor({
   // `process.env` releído acá. Ver `app.ts`.
   publicacion,
   prosa,
+  borrador,
   // La sonda va por el STORE, no por el pool: así recorre el mismo `set local role app_service` que
   // hace el trabajo real, y no solo el TCP. Ver `salud.ts` y `PgStore.comprobarAcceso`.
   sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso() }),
@@ -86,6 +88,7 @@ server.listen(config.puerto, () => {
         : "";
   console.log(`  Publicación: ${publicacion}${aviso}`);
   console.log(`  Prosa: ${prosa}${prosa === "openai" ? " ⚠️  GASTA DINERO al publicar" : ""}`);
+  console.log(`  Borrador IA: ${borrador}${borrador === "openai" ? " ⚠️  GASTA DINERO al generar borradores" : ""}`);
 });
 
 const apagar = async () => {
