@@ -40,13 +40,27 @@ function pct(n: number | null): string {
  * Lo encontró la 14ª review externa, y el bug ya existía en el informe del CLI.
  */
 
+/**
+ * Los caracteres que `texto()` escapa con `\`, sin contar la propia `\` (que se maneja aparte, antes,
+ * para no escaparse a sí misma dos veces). Exportada para que `una-sola-fuente.test.ts` la ate contra
+ * `ESCAPABLES` de `portal/src/app/core/markdown.ts`: ese parser tiene que reconocer exactamente este
+ * alfabeto para desescaparlo, ni uno menos.
+ */
+export const CARACTERES_ESCAPADOS_EN_INFORME = "|`*_#[]<>";
+
 /** Texto que va en una CELDA de tabla: además del escapado, la celda no puede tener saltos. */
 function celda(v: string): string {
   return texto(v).replace(/\s*\n+\s*/g, " ");
 }
 
-/** Texto que va en cualquier otra parte del informe. */
-function texto(v: string): string {
+/**
+ * Texto que va en cualquier otra parte del informe.
+ *
+ * Exportada (además de usarse internamente) para que el test pueda atarla, carácter por carácter,
+ * contra `CARACTERES_ESCAPADOS_EN_INFORME` — la lista es solo documentación si nadie la compara con lo
+ * que este regex escapa de verdad.
+ */
+export function texto(v: string): string {
   return String(v)
     .replace(/\\/g, "\\\\") // primero la barra, o se escapan las barras que agregamos abajo
     .replace(/([|`*_#\[\]<>])/g, "\\$1")

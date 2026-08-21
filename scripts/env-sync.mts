@@ -121,6 +121,34 @@ export function repartir(fuente: Map<string, string>): Record<Paquete, Map<strin
   return out;
 }
 
+/**
+ * Claves que pueden aparecer en la fuente "sin destino" (ningún paquete del `MAPA` las pide) pero que
+ * NO son basura inerte: siguen siendo un riesgo real mientras existan, y el aviso genérico de más
+ * abajo las escondía entre lo deliberado. Cada entrada dice POR QUÉ importa, no solo que sobra.
+ *
+ * `SUPABASE_JWT_SECRET` es la primera y hoy la única confirmada: se sacó del contrato de la API el
+ * 2026-07-26 (ya no lo lee, ya no confía en HS256), pero el secreto SIGUE siendo válido en Supabase
+ * hasta que se revoque ahí, y un HS256 firmado con él puede acuñar un token `service_role` que
+ * bypassea RLS por completo — un radio de daño que no depende de si nuestra API lo acepta. Ver
+ * `docs/proyecto/12-credenciales.md` § "No revoques el secreto legacy sin migrar antes el portal": no
+ * se puede revocar todavía porque el portal firma su `apikey` de login con ese mismo secreto.
+ */
+export const SOBRANTES_DE_RIESGO: Record<string, string> = {
+  SUPABASE_JWT_SECRET:
+    "sigue siendo válido en Supabase y puede acuñar un token service_role que bypassea RLS. " +
+    "No revocarlo todavía: el portal firma su apikey de login con el mismo secreto (ver 12-credenciales.md).",
+};
+
+/** Separa lo que sobra en "riesgo real conocido" (con su motivo) de todo lo demás (deliberado o no). */
+export function clasificarSobrantes(sobrantes: readonly string[]): {
+  riesgo: string[];
+  resto: string[];
+} {
+  const riesgo = sobrantes.filter((k) => k in SOBRANTES_DE_RIESGO);
+  const resto = sobrantes.filter((k) => !(k in SOBRANTES_DE_RIESGO));
+  return { riesgo, resto };
+}
+
 const CABECERA = `# GENERADO por \`npm run env:sync\` — NO editar a mano.
 # La fuente única es docs/private/credenciales.env (gitignoreada).
 # Este archivo recibe SOLO las claves que este paquete necesita (ver MAPA en scripts/env-sync.mts).
@@ -159,7 +187,13 @@ function main(): void {
     }
   }
   const sobrantes = [...fuente.keys()].filter((k) => !conocidas.has(k));
-  if (sobrantes.length) console.log(`\n  aviso: en la fuente pero sin destino: ${sobrantes.join(", ")}`);
+  if (sobrantes.length) {
+    const { riesgo, resto } = clasificarSobrantes(sobrantes);
+    if (resto.length) console.log(`\n  aviso: en la fuente pero sin destino: ${resto.join(", ")}`);
+    for (const k of riesgo) {
+      console.log(`\n  ⚠️  ${k}: sin destino, y NO es basura inerte — ${SOBRANTES_DE_RIESGO[k]}`);
+    }
+  }
   console.log(`\n✔ Sincronizado. ${pendientes ? `${pendientes} clave(s) vacía(s).` : "Sin claves vacías."}`);
 }
 

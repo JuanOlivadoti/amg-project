@@ -6,7 +6,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MAPA, RAIZ, claveDePaquete, parsear, repartir, serializar, type Paquete } from "./env-sync.mts";
+import {
+  MAPA,
+  RAIZ,
+  SOBRANTES_DE_RIESGO,
+  claveDePaquete,
+  clasificarSobrantes,
+  parsear,
+  repartir,
+  serializar,
+  type Paquete,
+} from "./env-sync.mts";
 
 const PAQUETES = Object.keys(MAPA) as Paquete[];
 
@@ -136,4 +146,27 @@ test("el override de un paquete NO se filtra a otro", () => {
 test("claveDePaquete normaliza los guiones del nombre del paquete", () => {
   assert.equal(claveDePaquete("web-builder", "X"), "WEB_BUILDER__X");
   assert.equal(claveDePaquete("kr-service", "X"), "KR_SERVICE__X");
+});
+
+/*
+ * 🔴 El aviso genérico de "sin destino" trataba SUPABASE_JWT_SECRET igual que cualquier clave
+ * deliberadamente sin reparto — y ese secreto sigue siendo un riesgo real (puede acuñar un
+ * service_role que bypassea RLS) hasta que se revoque en Supabase, no basura inerte. Sin esta
+ * distinción, el aviso lo esconde entre lo esperado.
+ */
+test("clasificarSobrantes separa SUPABASE_JWT_SECRET del resto, con su motivo", () => {
+  const { riesgo, resto } = clasificarSobrantes([
+    "SUPABASE_JWT_SECRET",
+    "ALGO_DELIBERADO_SIN_REPARTO",
+    "OTRA_COSA",
+  ]);
+  assert.deepEqual(riesgo, ["SUPABASE_JWT_SECRET"]);
+  assert.deepEqual(resto, ["ALGO_DELIBERADO_SIN_REPARTO", "OTRA_COSA"]);
+  assert.ok(SOBRANTES_DE_RIESGO["SUPABASE_JWT_SECRET"]!.length > 0, "el motivo no puede estar vacío");
+});
+
+test("clasificarSobrantes: sin ninguna clave de riesgo, todo cae en resto", () => {
+  const { riesgo, resto } = clasificarSobrantes(["A", "B"]);
+  assert.deepEqual(riesgo, []);
+  assert.deepEqual(resto, ["A", "B"]);
 });

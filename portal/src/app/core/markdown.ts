@@ -45,7 +45,12 @@ export type Bloque =
  * `##` invente una sección, así que el parser tiene que respetarlo al buscar delimitadores —
  * un `\|` NO separa celdas, un `\_` NO abre cursiva.
  */
-const ESCAPABLES = '\\|`*_#[]<>';
+/**
+ * Exportada para que `contrato/src/una-sola-fuente.test.ts` la ate contra
+ * `CARACTERES_ESCAPADOS_EN_INFORME` de `contrato/src/informe.ts` — el generador y este parser tienen
+ * que reconocer exactamente el mismo alfabeto, o uno de los dos queda mintiendo en silencio.
+ */
+export const ESCAPABLES = '\\|`*_#[]<>';
 
 /**
  * ¿En la posición `i` empieza una secuencia `\X` que el generador escapó? Una barra seguida de
