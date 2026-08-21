@@ -1,6 +1,7 @@
 import { Component, input } from '@angular/core';
 import type { PaginaPropuesta } from '../../core/models';
 import { esRespaldada } from '../../core/evidence';
+import { etiquetaIntencion } from '../../core/intencion-labels';
 
 @Component({
   selector: 'app-cartera-tabla',
@@ -26,7 +27,7 @@ import { esRespaldada } from '../../core/evidence';
               <td class="px-4 py-2 text-texto-medio">{{ p.dificultad ?? 'n/d' }}</td>
               <td class="px-4 py-2 text-texto-medio">{{ p.opportunity_score }}</td>
               <td class="px-4 py-2 text-texto-medio">{{ p.score_confidence }}</td>
-              <td class="px-4 py-2 text-texto-medio">{{ p.intencion }}</td>
+              <td class="px-4 py-2 text-texto-medio">{{ etiquetaIntencion(p.intencion) }}</td>
               <td class="px-4 py-2">
                 <span
                   class="text-xs rounded-full px-2 py-0.5"
@@ -51,4 +52,5 @@ import { esRespaldada } from '../../core/evidence';
 export class CarteraTablaComponent {
   readonly paginas = input.required<readonly PaginaPropuesta[]>();
   readonly esRespaldada = esRespaldada;
+  readonly etiquetaIntencion = etiquetaIntencion;
 }

@@ -8,12 +8,13 @@ function paginaDePrueba(overrides: Partial<PaginaPropuesta> = {}): PaginaPropues
     id: 'p1',
     approved: false,
     cluster_id: 'c1',
-    tipo: 'comercial',
+    tipo: 'servicio',
     page_strategy: null,
     url_slug: '/x',
     keyword_principal: 'pizza a domicilio',
     keywords_secundarias: [],
-    intencion: 'comercial',
+    // Vocabulario del contrato (inglés), no el viejo del seed — ver `intencion-labels.ts`.
+    intencion: 'commercial',
     local: true,
     volumen: 100,
     dificultad: 20,
@@ -48,7 +49,7 @@ describe('CarteraTablaComponent', () => {
   });
 
   it('página sin validar: la pastilla dice ⚠️ Sin validar', () => {
-    const el = render([paginaDePrueba({ evidencia: 'sin_datos' })]);
+    const el = render([paginaDePrueba({ evidencia: 'sin_validar' })]);
     expect(el.textContent).toContain('⚠️ Sin validar');
     expect(el.querySelector('.bg-alerta-suave')).not.toBeNull();
   });
@@ -56,5 +57,13 @@ describe('CarteraTablaComponent', () => {
   it('renderiza el keyword de cada página', () => {
     const el = render([paginaDePrueba({ keyword_principal: 'sushi delivery' })]);
     expect(el.textContent).toContain('sushi delivery');
+  });
+
+  // La columna Intención tiene que mostrar la etiqueta en español, no el vocabulario crudo del
+  // contrato: `intencion-labels.test.ts` fija el mapa completo, esto fija que la plantilla lo use.
+  it('la columna Intención muestra la etiqueta en español, no el valor crudo del contrato', () => {
+    const el = render([paginaDePrueba({ intencion: 'commercial' })]);
+    expect(el.textContent).toContain('Comercial');
+    expect(el.textContent).not.toContain('commercial');
   });
 });

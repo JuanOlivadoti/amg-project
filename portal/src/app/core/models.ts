@@ -72,6 +72,25 @@ export interface Informe {
   generado_at: string | null;
 }
 
+/**
+ * Los cinco valores de `SearchIntent` que impone el contrato (`contrato/src/tipos.ts`) y que la base
+ * exige desde la migración 0017 (`intencion_del_contrato`, check de `kr_pages`): una fila con
+ * `intencion` en español (el vocabulario viejo del seed) ya no se puede escribir. El portal NO
+ * importa `contrato` (ADR-21), así que este tipo es la copia manual — mismo criterio que `Alergeno`.
+ * La etiqueta en español para mostrar en pantalla vive en `core/intencion-labels.ts`.
+ *
+ * `PaginaPropuesta.intencion` de abajo sigue tipado `string` a secas, no `Intencion`: es un DTO que
+ * espeja el JSON de la API tal cual llega, y estrecharlo exigiría que la API garantizara el enum en
+ * el tipo de respuesta, que hoy no hace. Este tipo es para quien SABE que está escribiendo un valor
+ * nuevo (`cartera-mock.ts`) y quiere que el compilador se lo discuta.
+ */
+export type Intencion =
+  | 'transactional'
+  | 'commercial'
+  | 'local'
+  | 'informational'
+  | 'navigational';
+
 /** Una página propuesta, tal como la ve el revisor: con su `id` y su estado de aprobación. */
 export interface PaginaPropuesta {
   id: string;

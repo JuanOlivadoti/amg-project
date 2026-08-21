@@ -1,4 +1,4 @@
-import type { PaginaPropuesta, RunSummary } from './models';
+import type { Intencion, PaginaPropuesta, RunSummary } from './models';
 import { EVIDENCIA_RESPALDADA } from './evidence';
 
 export interface ClienteCartera {
@@ -60,14 +60,20 @@ export const CLIENTE_REAL = {
  *
  * **Copiadas de `db/src/seed-demo.ts`**, que a su vez las leyó de Storyblok: son los slugs, keywords
  * y tipos que están publicados de verdad. `volumen: null` = sin validar (≠ 0, ver `kr.v0.4`).
- * `db/src/cartera-portal.test.ts` compara esta lista contra `PAGINAS_DEMO` campo por campo y en
+ * `db/src/cartera-portal.test.ts` compara esta lista contra la fila real campo por campo y en
  * orden — si cambia el brief sembrado y esta copia no, la suite lo dice antes que un cliente.
+ *
+ * `intencion` va en el vocabulario del CONTRATO (inglés), no en el del seed (`db/src/seed-demo.ts`
+ * guarda `comercial`/`navegacional`/`informacional` en español y los traduce recién al escribir la
+ * fila, con el mismo mapa `INTENCION_DEL_CONTRATO` que se usó acá para traducir estos 14 valores). La
+ * migración 0017 (`intencion_del_contrato`, check de `kr_pages`) hace que la base ya no pueda
+ * contener el vocabulario viejo — este archivo tampoco debería generarlo.
  */
 interface PaginaReal {
   readonly keyword: string;
   readonly slug: string;
   readonly tipo: string;
-  readonly intencion: string;
+  readonly intencion: Intencion;
   readonly local: boolean;
   readonly volumen: number | null;
   readonly dificultad: number | null;
@@ -76,20 +82,20 @@ interface PaginaReal {
 }
 
 export const PAGINAS_REALES: readonly PaginaReal[] = [
-  { keyword: 'mejor hamburguesa del mundo Madrid', slug: '/mejor-hamburguesa-del-mundo-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 2400, dificultad: 34, score: 94.5, confianza: 0.9 },
-  { keyword: 'Borcelle Burger Madrid', slug: '/borcelle-burger-madrid', tipo: 'landing_local', intencion: 'navegacional', local: true, volumen: 1900, dificultad: 8, score: 92, confianza: 0.88 },
-  { keyword: 'hamburguesería gourmet Madrid', slug: '/hamburgueseria-gourmet-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 1300, dificultad: 28, score: 86.4, confianza: 0.85 },
-  { keyword: 'hamburguesería gourmet en Madrid', slug: '/hamburgueseria-gourmet-en-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 880, dificultad: 31, score: 79.8, confianza: 0.81 },
-  { keyword: 'cervezas artesanales Madrid', slug: '/cervezas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 720, dificultad: 22, score: 77.2, confianza: 0.8 },
-  { keyword: 'cerveza Ale Ogham Madrid', slug: '/cerveza-ale-ogham-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 390, dificultad: 18, score: 74, confianza: 0.78 },
-  { keyword: 'tienda de cervezas artesanales madrid', slug: '/tienda-de-cervezas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 260, dificultad: 15, score: 71.5, confianza: 0.76 },
-  { keyword: 'patatas fritas especiales Madrid', slug: '/patatas-fritas-especiales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: 210, dificultad: 20, score: 68.3, confianza: 0.74 },
-  { keyword: 'opiniones de borcelle burger hamburguesas artesanales madrid', slug: '/opiniones-de-borcelle-burger-hamburguesas-artesanales-madrid', tipo: 'landing_local', intencion: 'comercial', local: true, volumen: null, dificultad: null, score: 57, confianza: 0.25 },
-  { keyword: 'hamburguesas con salsas de la casa', slug: '/hamburguesas-con-salsas-de-la-casa', tipo: 'servicio', intencion: 'comercial', local: false, volumen: null, dificultad: null, score: 53.5, confianza: 0.25 },
-  { keyword: 'hamburguesas de carne vacuna española', slug: '/hamburguesas-de-carne-vacuna-espanola', tipo: 'servicio', intencion: 'comercial', local: false, volumen: null, dificultad: null, score: 49, confianza: 0.25 },
-  { keyword: 'hamburguesas con pan artesanal', slug: '/hamburguesas-con-pan-artesanal', tipo: 'servicio', intencion: 'comercial', local: false, volumen: null, dificultad: null, score: 46.5, confianza: 0.25 },
-  { keyword: 'mejor hamburguesa Dubai Burger Championship', slug: '/mejor-hamburguesa-dubai-burger-championship', tipo: 'blog', intencion: 'informacional', local: false, volumen: null, dificultad: null, score: 43, confianza: 0.25 },
-  { keyword: 'People\'s Choice Award Burger Bash Miami', slug: '/people-s-choice-award-burger-bash-miami', tipo: 'blog', intencion: 'informacional', local: false, volumen: null, dificultad: null, score: 40, confianza: 0.25 },
+  { keyword: 'mejor hamburguesa del mundo Madrid', slug: '/mejor-hamburguesa-del-mundo-madrid', tipo: 'landing_local', intencion: 'commercial', local: true, volumen: 2400, dificultad: 34, score: 94.5, confianza: 0.9 },
+  { keyword: 'Borcelle Burger Madrid', slug: '/borcelle-burger-madrid', tipo: 'landing_local', intencion: 'navigational', local: true, volumen: 1900, dificultad: 8, score: 92, confianza: 0.88 },
+  { keyword: 'hamburguesería gourmet Madrid', slug: '/hamburgueseria-gourmet-madrid', tipo: 'landing_local', intencion: 'commercial', local: true, volumen: 1300, dificultad: 28, score: 86.4, confianza: 0.85 },
+  { keyword: 'hamburguesería gourmet en Madrid', slug: '/hamburgueseria-gourmet-en-madrid', tipo: 'landing_local', intencion: 'commercial', local: true, volumen: 880, dificultad: 31, score: 79.8, confianza: 0.81 },
+  { keyword: 'cervezas artesanales Madrid', slug: '/cervezas-artesanales-madrid', tipo: 'landing_local', intencion: 'commercial', local: true, volumen: 720, dificultad: 22, score: 77.2, confianza: 0.8 },
+  { keyword: 'cerveza Ale Ogham Madrid', slug: '/cerveza-ale-ogham-madrid', tipo: 'landing_local', intencion: 'commercial', local: true, volumen: 390, dificultad: 18, score: 74, confianza: 0.78 },
+  { keyword: 'tienda de cervezas artesanales madrid', slug: '/tienda-de-cervezas-artesanales-madrid', tipo: 'landing_local', intencion: 'commercial', local: true, volumen: 260, dificultad: 15, score: 71.5, confianza: 0.76 },
+  { keyword: 'patatas fritas especiales Madrid', slug: '/patatas-fritas-especiales-madrid', tipo: 'landing_local', intencion: 'commercial', local: true, volumen: 210, dificultad: 20, score: 68.3, confianza: 0.74 },
+  { keyword: 'opiniones de borcelle burger hamburguesas artesanales madrid', slug: '/opiniones-de-borcelle-burger-hamburguesas-artesanales-madrid', tipo: 'landing_local', intencion: 'commercial', local: true, volumen: null, dificultad: null, score: 57, confianza: 0.25 },
+  { keyword: 'hamburguesas con salsas de la casa', slug: '/hamburguesas-con-salsas-de-la-casa', tipo: 'servicio', intencion: 'commercial', local: false, volumen: null, dificultad: null, score: 53.5, confianza: 0.25 },
+  { keyword: 'hamburguesas de carne vacuna española', slug: '/hamburguesas-de-carne-vacuna-espanola', tipo: 'servicio', intencion: 'commercial', local: false, volumen: null, dificultad: null, score: 49, confianza: 0.25 },
+  { keyword: 'hamburguesas con pan artesanal', slug: '/hamburguesas-con-pan-artesanal', tipo: 'servicio', intencion: 'commercial', local: false, volumen: null, dificultad: null, score: 46.5, confianza: 0.25 },
+  { keyword: 'mejor hamburguesa Dubai Burger Championship', slug: '/mejor-hamburguesa-dubai-burger-championship', tipo: 'blog', intencion: 'informational', local: false, volumen: null, dificultad: null, score: 43, confianza: 0.25 },
+  { keyword: 'People\'s Choice Award Burger Bash Miami', slug: '/people-s-choice-award-burger-bash-miami', tipo: 'blog', intencion: 'informational', local: false, volumen: null, dificultad: null, score: 40, confianza: 0.25 },
 ];
 
 /** Los otros cinco: cartera de muestra, para que el panorama se lea como un panorama. */
@@ -150,7 +156,11 @@ function paginasReales(): PaginaPropuesta[] {
     // `tipo`, `intencion` y `local` salen del dato, no del índice: derivarlos de la posición hacía
     // que el dashboard contradijera al brief que muestra la pantalla de al lado.
     tipo: p.tipo,
-    page_strategy: i === 0 ? 'hub' : p.tipo === 'blog' ? 'single' : 'spoke',
+    // El seed marca la primera página `hub` y el resto `spoke` (el papel dentro del hub-and-spoke),
+    // pero el contrato no distingue el papel: los dos colapsan a `hub_spoke`
+    // (`ESTRATEGIA_DEL_CONTRATO` en `db/src/seed-demo.ts`, y el `update` de la migración 0017). Las
+    // de tipo `blog` son standalone (`single`) en el seed real — eso sí sobrevive a la traducción.
+    page_strategy: p.tipo === 'blog' ? 'single' : 'hub_spoke',
     url_slug: p.slug,
     keyword_principal: p.keyword,
     keywords_secundarias: [],
@@ -158,7 +168,9 @@ function paginasReales(): PaginaPropuesta[] {
     local: p.local,
     volumen: p.volumen,
     dificultad: p.dificultad,
-    evidencia: p.volumen === null ? 'sin_datos' : EVIDENCIA_RESPALDADA,
+    // 'sin_validar', no 'sin_datos': es el vocabulario que impone `evidencia_del_contrato` (0017) —
+    // `PageEvidence` en `contrato/src/tipos.ts` solo admite 'datos_mercado' | 'sin_validar'.
+    evidencia: p.volumen === null ? 'sin_validar' : EVIDENCIA_RESPALDADA,
     opportunity_score: p.score,
     score_confidence: p.confianza,
     seo: {},
@@ -203,16 +215,19 @@ function paginaMuestra(runId: string, pageIdx: number, semillaBase: number): Pag
     id: `${runId}-pagina-${pageIdx}`,
     approved: pageIdx % 3 !== 0,
     cluster_id: `cluster-${runId}-${pageIdx % 3}`,
-    tipo: 'comercial',
+    // 'comercial' era un valor de `intencion` colado en `tipo` (vocabulario equivocado Y campo
+    // equivocado): `tipo_del_contrato` (migración 0017) solo admite las cuatro de `PageType`.
+    tipo: 'servicio',
     page_strategy: null,
     url_slug: `/pagina-${runId}-${pageIdx}`,
     keyword_principal: `keyword ${runId} ${pageIdx}`,
     keywords_secundarias: [],
-    intencion: pageIdx % 2 === 0 ? 'comercial' : 'informacional',
+    intencion: pageIdx % 2 === 0 ? 'commercial' : 'informational',
     local: true,
     volumen: 100 + semilla * 37,
     dificultad: 10 + (semilla % 60),
-    evidencia: pageIdx % 3 === 0 ? 'sin_datos' : EVIDENCIA_RESPALDADA,
+    // 'sin_validar', no 'sin_datos' — ver el mismo comentario en `paginasReales()`.
+    evidencia: pageIdx % 3 === 0 ? 'sin_validar' : EVIDENCIA_RESPALDADA,
     opportunity_score: Math.round(((semilla * 13) % TECHO_SCORE_MUESTRA) * 10) / 10,
     score_confidence: Math.round((semilla * 17) % 100) / 100,
     seo: {},
