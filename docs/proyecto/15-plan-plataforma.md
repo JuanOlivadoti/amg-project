@@ -1132,8 +1132,8 @@ humano); **acceso a Google** — mock-first, AMG todavía no pidió acceso a la 
 **conexión** — OAuth por cliente, `refresh_token` en `clients` bajo RLS, escribible pero no legible
 para `app_user` ni `app_service`; **detección** — polling periódico, no Pub/Sub. El
 [plan de 8 tasks](../superpowers/plans/2026-08-13-modulo-resenas-google.md) se ejecutó completo con
-`superpowers:subagent-driven-development` sobre `feature/resenas-google` (todavía sin mergear a
-`main`, a la espera del merge/PR):
+`superpowers:subagent-driven-development` sobre `feature/resenas-google` (mergeada a `main` y
+desplegada — ver más abajo):
 
 | Task | Qué | Migración/commit |
 | --- | --- | --- |
@@ -1175,15 +1175,63 @@ lectura, claro y oscuro, consola limpia. `db` 352/352, `api` 211/211, `orchestra
 
 **Deuda anotada, no bloqueante:** el `nonce` del `state` no se invalida tras el primer uso — la única
 defensa contra un `state` filtrado es la ventana de 10 minutos; invalidarlo tras el primer uso exige
-una migración (una tabla o columna de nonces usados). Las migraciones `0021`/`0022` **todavía no se
-desplegaron a producción**.
+una migración (una tabla o columna de nonces usados). Las migraciones `0021`/`0022` **desplegadas a
+producción el 2026-08-18** (confirmado en `app.migraciones_aplicadas`).
 
-**Lo que sigue siendo fase 2, sin empezar:** borrador de respuesta con IA para 4-5★, publicar la
-respuesta de vuelta a Google, alertas por WhatsApp/email (hoy la alerta vive solo en el portal), el
-acceso real a la Business Profile API (`GOOGLE_REVIEWS_MODO=live`), y limpiar la conexión
-(`google_conectado_en` y las otras dos columnas) cuando el polling detecta que el refresh token fue
-revocado del lado de Google — hoy `pollearResenas` (`orchestrator/src/functions.ts`) solo cuenta el
-fallo y lo loguea.
+**Fase 2, primera pieza (borrador de respuesta con IA para 4-5★): ✅ COMPLETA el 2026-08-21.** Spec
+([diseño](../superpowers/specs/2026-08-18-borrador-ia-resenas-google-design.md), con 8 hallazgos de
+Codex aplicados) y [plan de 7 tasks](../superpowers/plans/2026-08-18-borrador-ia-resenas-google.md),
+ejecutados con `superpowers:subagent-driven-development` sobre un worktree (`worktree-borrador-ia-resenas`),
+mergeados a `main` el 2026-08-21:
+
+| Task | Qué | Migración/commit |
+| --- | --- | --- |
+| 1 | Migración `0024`: columnas `borrador_respuesta`/`borrador_generado_en` + `app.guardar_borrador_resena` (`security definer`, `where puntuacion between 4 and 5 and borrador_respuesta is null` — Postgres impone la regla, no el llamador) | `dff4a02` |
+| 2 | `PgResenas.editarBorrador` — el staff edita el borrador desde el portal | `2e35ad8` |
+| 3 | `BorradorProvider` mock/OpenAI (`BORRADOR_RESENAS_MODO`, default derivado de `OPENAI_API_KEY`, mismo patrón que `PROSE_MODE`) | `a3dc0e8` |
+| 4 | `pollearResenas` genera el borrador para reseñas 4-5★ nuevas, dentro del mismo ciclo de polling | `b72a982` |
+| 5 | `/_health` reporta el modo del borrador | `86dc467` |
+| 6 | `PATCH /clients/:id/resenas/:id` acepta editar el borrador | `a28a990` |
+| 7 | El tab del portal: textarea editable, con el borrador de IA precargado | `e1725c5` |
+
+**Un bug real de punta a punta, encontrado manejando la app en el navegador y no por ningún test:**
+`listarResenas` (`db/src/resenas.ts`) nunca devolvía `borrador_respuesta` — `COLS` y `aResena()` no se
+habían extendido cuando la Task 2 agregó el lado de escritura. El campo viajaba hasta `PgResenas` pero
+nunca llegaba a la respuesta HTTP: el portal jamás podía mostrar un borrador, sin que ningún test de
+las 7 tasks lo agarrara (ninguna brief pidió el cableado del lado de lectura). Fix con test rojo→verde
+(`b0c004e`) más un guardarraíl nuevo: un test en `db/src/resenas.test.ts` que compara
+`Object.keys()` de una fila de `listarResenas()` contra el set exacto de `ResenaGoogle` **y** que
+ningún valor sea `undefined` (la sola comparación de claves no alcanza — `aResena()` arma el objeto con
+las 8 claves siempre presentes, así que una columna que se cae de `COLS` pasa desapercibida con
+`undefined` en vez de la ausencia de la clave).
+
+La revisión final de rama (most-capable model) dio "Ready to merge: with fixes" — sin Critical, con
+varios Important/Minor: timeout (30s) y `maxRetries: 1` en el cliente de OpenAI (evita que una llamada
+colgada consuma el ciclo de 30 min del polling — la doctrina de este proyecto rechaza reintentos
+automáticos en llamadas facturables, igual que `kr-service/src/dataforseo/client.ts`), `max_tokens: 300`
+como tope duro a la respuesta, el guard de TypeScript alineado con el `check` SQL (`>=4 && <=5`, no solo
+`>=4`), un log cuando `guardar_borrador_resena` descarta un borrador ya generado, limpiar `ediciones`
+locales del portal al cambiar de cliente, y documentar la interpolación sin escapar de `autor`/`texto`
+en el prompt (decisión consciente: la garantía real es la revisión humana, esta pieza no publica nada).
+**La re-revisión de ese lote de fixes encontró un segundo bug real**, no menor: agregar `OPENAI_MODEL`
+como clave activa de `orchestrator/.env.example` (necesario para no romper el contrato
+`MAPA`/`CATALOGO` de `env-sync.mts`/`credencial.mts`) exponía a `openai-provider.ts` al mismo patrón
+que `env:sync` ya sabía que hacía falta evitar en `config.ts`: `env:sync` escribe `""` (no omite la
+clave) cuando falta en `credenciales.env`, y un `??` no cae al default ante `""` — solo ante
+`null`/`undefined`. Sin el fix, el primer `env:sync` sin `OPENAI_MODEL` declarada mandaría `model:""`
+a OpenAI en cada borrador real. Extraído a `leerModeloBorrador()` con `?.trim() || "gpt-4o-mini"`,
+verificado por mutación.
+
+Verificado en el navegador (worktree, servidor propio en :3000/:4201): conectar Google, los tres
+estados a la vista a la vez (1-3★ sin textarea — la IA nunca las toca; 4★ con textarea vacía; 5★ con
+el borrador de IA precargado), editar el borrador, guardar, y confirmar la persistencia server-side
+tras un reload. Consola limpia. `db` 381/381, `api` 226/226, `orchestrator` 117/117, `scripts` 98/98,
+portal 298 `node:test` + 192 Karma (conjunto final, con el merge a `main`).
+
+**Lo que sigue siendo fase 2, sin empezar:** publicar la respuesta de vuelta a Google, alertas por
+WhatsApp/email (hoy la alerta vive solo en el portal), el acceso real a la Business Profile API
+(`GOOGLE_REVIEWS_MODO=live`), limpiar la conexión cuando el polling detecta un refresh token revocado,
+y la migración `0024` **todavía no se desplegó a producción**.
 
 ---
 

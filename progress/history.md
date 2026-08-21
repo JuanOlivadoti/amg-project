@@ -11,6 +11,46 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-21 — Bloque F fase 2 (primera pieza): borrador de respuesta con IA, mergeado a main
+
+Retomó un worktree (`worktree-borrador-ia-resenas`) que una sesión anterior había dejado con las 7
+tasks del plan completas más un fix crítico, todos commiteados, y una revisión final de rama ("Ready
+to merge: with fixes") con hallazgos sin resolver. El trabajo de esta sesión fue cerrar esos hallazgos,
+verificar en un navegador real (paso que las sesiones anteriores habían dejado pendiente por falta de
+chrome-devtools MCP), y mergear a `main`.
+
+Los hallazgos se repartieron por área: `datos` ya había resuelto el suyo (un guardarraíl de test);
+`pipeline` (orchestrator) y `front` (portal) se dispatcharon en paralelo esta sesión para el resto —
+timeout/`max_tokens` en el cliente de OpenAI, el guard de puntuación alineado con el `check` SQL, un
+log para un descarte silencioso, y limpiar `ediciones` locales del portal al cambiar de cliente.
+
+**Un bug de acoplamiento cruzado que ningún test por paquete podía ver.** Después de que los dos
+agentes reportaran verde en sus propios paquetes, correr `npm test` desde la raíz encontró que sumar
+`OPENAI_MODEL` a `orchestrator/.env.example` rompía dos tests de otro paquete (`scripts/env-sync.test.mts`
+y `scripts/credencial.test.mts`), que exigen que toda clave nueva en un `.env.example` esté clasificada
+en `MAPA` y en `CATALOGO`. Arreglado directamente (un archivo, mecánico): sumar la clave a los dos.
+
+**Un segundo bug real, encontrado por la re-revisión del lote de fixes.** Ese mismo cambio (declarar
+`OPENAI_MODEL` como clave activa y sincronizada) exponía a `openai-provider.ts` al mismo patrón que
+`orchestrator/src/config.ts` ya sabía que hacía falta evitar: `env:sync` escribe `""` (no omite la
+clave) cuando falta en `credenciales.env`, y un `??` no cae al valor por defecto ante `""` — solo ante
+`null`/`undefined`. Sin el fix, el primer `env:sync` sin `OPENAI_MODEL` declarada mandaría `model:""`
+a OpenAI en cada borrador real, silenciosamente. Verificado el hallazgo antes de actuar (leyendo
+`env-sync.mts` y el patrón `?.trim() || ...` de `config.ts`), corregido extrayendo `leerModeloBorrador()`
+con ese mismo patrón, con test rojo→verde verificado por mutación.
+
+**La verificación manual (por fin hecha) confirmó que el feature funciona de punta a punta.** Con
+chrome-devtools MCP disponible por primera vez en este hilo, se levantaron API y portal desde el
+worktree, se conectó Google (mock), y se vieron los tres estados a la vez: 1-3★ sin textarea (la IA
+nunca las toca), 4★ con textarea vacía, 5★ con el borrador de IA precargado. Se editó y guardó un
+borrador, y se confirmó la persistencia server-side tras un reload — consola limpia en todo momento.
+
+Merge a `main` sin conflictos (`ort` automático — el único archivo que ambas ramas tocaron,
+`scripts/env-sync.mts`, cambió en secciones distintas). Suite completa post-merge: 1599 tests del
+monorepo + 298 `node:test` del portal + 192 Karma, typecheck limpio en los 7 paquetes + `scripts/` +
+portal. La migración `0024` queda **sin desplegar a producción** — decisión de Juan, mismo patrón que
+toda migración nueva.
+
 ## 2026-08-21 — Cierra el Bloque I (deuda menor): seis filas, tres subagentes en paralelo
 
 **El punto de partida:** con el editor de carta cerrado y los tres bugs de producción del 2026-08-18

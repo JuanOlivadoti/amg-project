@@ -7,31 +7,28 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-21
-**En curso:** nada. Se cerró el Bloque I (deuda menor) — seis filas más, cinco commits. Antes, el
-2026-08-18, se resolvieron tres bugs de producción encontrados persiguiendo un 404 del editor de carta
-(Windows CRLF en el checksum de migraciones, `credencial.mts` mudo en Windows, `PIPELINE_MODO` sin
-validar publicación armada). Detalle completo de las dos etapas en
-[`history.md`](history.md#2026-08-21--cierra-el-bloque-i-deuda-menor-seis-filas-tres-subagentes-en-paralelo).
-**Estado:** `verificar --con-portal` en verde entero (1563 tests monorepo + 298 `node:test` portal +
-187 Karma, typecheck limpio), y confirmado por el usuario en el sitio público que la `0023` (menú
-enriquecido) ya se ve.
+**En curso:** nada. Se cerró el Bloque F fase 2 (primera pieza) — borrador de respuesta con IA para
+reseñas de Google, mergeado a `main`. Detalle completo en
+[`history.md`](history.md#2026-08-21--bloque-f-fase-2-primera-pieza-borrador-de-respuesta-con-ia-mergeado-a-main).
+**Estado:** `verificar --con-portal` en verde entero (1599 tests monorepo + 298 `node:test` portal +
+192 Karma, typecheck limpio), verificado también en un navegador real (conectar Google, editar y
+guardar un borrador, persistencia confirmada tras reload, consola limpia).
 
 **Decisiones de esta sesión:**
-- Cerrar TODO el Bloque I que se pudiera, no solo el ítem 🔴 — decisión explícita del usuario.
-- El mapa de traducción de `intencion` (inglés del contrato → español para la UI) vive en
-  `portal/src/app/core/intencion-labels.ts`, mismo patrón que `menu-taxonomia.ts` — decidido por la
-  sesión principal antes de despachar los agentes `datos`/`front` en paralelo, para que no divergieran.
-- `verificarPublicacion()` (Bloque I, el ítem 🔴) solo guarda una dirección: `PIPELINE_MODO=live` con
-  publicación no armada aborta; la inversa no, porque no hay gasto por publicar (a diferencia de
-  DataForSEO) y bloquearía un flujo de desarrollo legítimo.
+- Retomar el worktree de una sesión anterior (`worktree-borrador-ia-resenas`) en vez de re-lanzar el
+  plan desde cero — el ledger de `subagent-driven-development` mostraba las 7 tasks + un fix crítico
+  ya commiteados, y solo faltaba cerrar los hallazgos de la revisión final de rama.
+- Los archivos de la skill de Supabase que quedaron pendientes de decisión en la sesión anterior
+  (`.agents/`, `.claude/skills/supabase-server/`, `skills-lock.json`) **ya no existen** en el
+  worktree — no hubo nada que commitear ni descartar.
+- La migración `0024` queda sin desplegar a producción, igual que toda migración nueva — es decisión
+  de Juan, no automática.
 
 **Pendiente inmediato:**
-- **Decisión del usuario, sin resolver:** con qué bloque seguir después del I — **D** (calibrar el
-  research, cuesta ~$0.31 y lo decide Juan) o **G/H** (hacia el SLA: CDN delante del renderizador,
-  invalidación multi-instancia, cerrar OBS-04).
-- **Decisión del usuario, sin resolver:** si sumar al repo `.agents/`, `.claude/skills/supabase-server/`
-  y `skills-lock.json` — instalación automática de una skill que este proyecto no usa (accede a
-  Postgres por `pg` directo, no por `@supabase/server`, ver ADR-13) — o descartarlos.
-- Quedan dos filas sin acción concreta en Bloque I: la sonda del modo del SDK duplicada
-  (`api/`+`orchestrator/`, no trivial por diseño — el único paquete compartido es `contrato/`, que solo
-  depende de `zod`) y la falta de tests de integración del camino live (riesgo aceptado, no una tarea).
+- **Decisión del usuario, sin resolver (arrastra de la sesión anterior):** con qué bloque seguir —
+  **D** (calibrar el research, cuesta ~$0.31 y lo decide Juan) o **G/H** (hacia el SLA: CDN delante
+  del renderizador, invalidación multi-instancia, cerrar OBS-04).
+- Desplegar la migración `0024` cuando Juan lo decida (mismo procedimiento que `0021`-`0023`).
+- Lo que sigue de Bloque F fase 2, sin empezar: publicar la respuesta de vuelta a Google, alertas por
+  WhatsApp/email, acceso real a la Business Profile API (`GOOGLE_REVIEWS_MODO=live`), limpiar la
+  conexión cuando el polling detecta un refresh token revocado.
