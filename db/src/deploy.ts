@@ -113,24 +113,39 @@ export async function migrarConRegistro(
   con: ConexionReservada,
   log: (msg: string) => void = () => {},
 ): Promise<string[]> {
-  // La 0012 asume que `auth.users` existe (ver migrate.ts, `asegurarAuthStandIn`). En Supabase real
-  // esto es un no-op (`if not exists`); en PGlite (deploy.test.ts) es lo único que lo crea — este
-  // runner NO pasa por `aplicarMigraciones`, así que necesita la misma garantía por su cuenta.
-  await asegurarAuthStandIn(con);
+  // Esta fase (stand-in de `auth.users`, crear el schema/registro, leer lo ya aplicado) corre ANTES
+  // del bucle de abajo, así que ninguna migración se tocó todavía. Sin envolverla, un fallo acá sale
+  // del `catch` del CLI (`db/src/cli/deploy.ts`) como el error crudo del driver de `pg` — algo como
+  // "permission denied for schema app"— sin decir en qué ETAPA del despliegue pasó, a diferencia de
+  // un fallo dentro del bucle, que ya viene envuelto con el nombre del archivo. Quien lo lee no puede
+  // distinguir "no llegó a aplicar nada" de "aplicó 3 migraciones y la 4ª rompió el esquema a medias":
+  // son dos situaciones con remedios distintos, y el mensaje crudo no las separa.
+  let yaAplicadas: Map<string, string>;
+  try {
+    // La 0012 asume que `auth.users` existe (ver migrate.ts, `asegurarAuthStandIn`). En Supabase real
+    // esto es un no-op (`if not exists`); en PGlite (deploy.test.ts) es lo único que lo crea — este
+    // runner NO pasa por `aplicarMigraciones`, así que necesita la misma garantía por su cuenta.
+    await asegurarAuthStandIn(con);
 
-  await con.exec(`
-    create schema if not exists app;
-    create table if not exists ${REGISTRO} (
-      nombre       text primary key,
-      checksum     text not null,
-      aplicada_en  timestamptz not null default now()
+    await con.exec(`
+      create schema if not exists app;
+      create table if not exists ${REGISTRO} (
+        nombre       text primary key,
+        checksum     text not null,
+        aplicada_en  timestamptz not null default now()
+      );
+    `);
+
+    const { rows } = await con.query<{ nombre: string; checksum: string }>(
+      `select nombre, checksum from ${REGISTRO}`,
     );
-  `);
-
-  const { rows } = await con.query<{ nombre: string; checksum: string }>(
-    `select nombre, checksum from ${REGISTRO}`,
-  );
-  const yaAplicadas = new Map(rows.map((r) => [r.nombre, r.checksum]));
+    yaAplicadas = new Map(rows.map((r) => [r.nombre, r.checksum]));
+  } catch (e) {
+    throw new Error(
+      `Falló preparando el registro de migraciones, antes de aplicar ninguna: ${(e as Error).message}`,
+      { cause: e },
+    );
+  }
 
   const archivos = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();
   const nuevas: string[] = [];

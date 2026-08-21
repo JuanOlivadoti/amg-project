@@ -155,3 +155,38 @@ test("migrarConRegistro: el registro NO tiene RLS (no se auto-bloquea si el rol 
     await pg.close();
   }
 });
+
+/*
+ * 🔴 El hueco real: un fallo ANTES del bucle de migraciones (en `asegurarAuthStandIn`, en el
+ * `create schema`/`create table` del registro, o en el `select` inicial — todo dentro de la fase de
+ * preparación de `migrarConRegistro`) salía del CLI (`db/src/cli/deploy.ts`) como el mensaje crudo
+ * del driver de `pg`, sin decir que pasó ANTES de tocar ninguna migración. Dentro del bucle, en
+ * cambio, un fallo YA venía envuelto con el nombre del archivo ("La migración X falló y se
+ * revirtió..."). Este test fuerza el fallo en la fase de preparación —una `ConexionReservada` cuyo
+ * primer `query`/`exec` explota— y exige que el mensaje lo diga.
+ */
+test("migrarConRegistro: un fallo ANTES del bucle (preparando el registro) se distingue de un fallo DENTRO de una migración", async () => {
+  const conRota = ConexionReservada.desdeClientePg({
+    query: async () => {
+      throw new Error("permission denied for schema auth");
+    },
+  });
+
+  await assert.rejects(
+    () => migrarConRegistro(conRota),
+    (e: Error) => {
+      assert.match(
+        e.message,
+        /preparando el registro de migraciones, antes de aplicar ninguna/,
+        "tiene que nombrar la FASE (preparación), no solo repetir el error del driver",
+      );
+      assert.match(
+        e.message,
+        /permission denied for schema auth/,
+        "conserva el mensaje original del driver, no lo reemplaza",
+      );
+      return true;
+    },
+    "un fallo en asegurarAuthStandIn / create schema / select inicial debe distinguirse de un fallo de migración",
+  );
+});
