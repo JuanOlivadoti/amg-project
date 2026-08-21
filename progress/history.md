@@ -11,7 +11,109 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
-## 2026-08-18 — Migración de dominio del portal: bigballs.es → app.dinamicseo.es
+## 2026-08-21 — Cierra el Bloque I (deuda menor): seis filas, tres subagentes en paralelo
+
+**El punto de partida:** con el editor de carta cerrado y los tres bugs de producción del 2026-08-18
+resueltos, `docs/proyecto/15-plan-plataforma.md` § Bloque I tenía 11 filas de deuda menor sin dueño.
+El usuario pidió, en dos rondas, que se cerraran: primero el único ítem marcado 🔴 (`PIPELINE_MODO` sin
+validar publicación, resuelto el mismo día — ver la entrada de abajo), después "más ítems del Bloque
+I" sin acotar cuáles, así que se despacharon tres subagentes de área en paralelo (`datos`, `front`,
+`pipeline`) más dos ítems chicos hechos en la sesión principal (`contrato/`, `scripts/`).
+
+**Lo que salió, en cinco commits separados (`5786119`, `9d124b0`, `e723470`, `1e5a109`, `25c1ca7`):**
+
+- **Un bug real, no solo deuda** (`pipeline`, `5786119`): republicar una landing (un research nuevo, un
+  reintento del orquestador) borraba en silencio la foto que el cliente hubiera subido desde el Visual
+  Editor de Storyblok — el handoff nunca pone `image`, y el `PUT` de Storyblok reemplaza `content`
+  entero, no fusiona. La fila de deuda decía "el nav/footer/menú/blog ya no [pisan imágenes]", y tenía
+  razón sobre eso pero no decía qué SEGUÍA en riesgo: las landing pages. Arreglado con
+  `preservarImagenes()`, que lee la story existente antes de cada update y conserva la imagen que la
+  nueva no trae.
+- **`datos`** (`9d124b0`): barrido general de `force row level security` sobre todo `public` (en vez
+  de un test puntual para `kr_informes`) — investigado antes de escribir: 12/12 tablas ya lo tenían, no
+  hubo que distinguir un caso deliberado. El CLI de `migrate:deploy` ahora distingue un fallo en la
+  fase de preparación (antes del bucle) de un fallo dentro de una migración — el mismo hueco que
+  complicó el diagnóstico del CRLF unos días antes. Y `cartera-portal.test.ts` reescrito para comparar
+  contra la FILA real de `kr_pages` bajo RLS, no contra la fuente en TypeScript (que ya no ve la
+  traducción de vocabulario de la 0017).
+- **`front`** (`e723470`): `cartera-mock.ts` generaba `intencion`/`page_strategy`/`tipo` que la
+  migración 0017 ya rechaza — cuatro desvíos, no los dos que mencionaba la fila. `intencion-labels.ts`
+  nuevo traduce el vocabulario del contrato a español para la UI (mismo patrón que
+  `menu-taxonomia.ts`).
+- **Sesión principal** (`1e5a109`): el alfabeto de caracteres escapados del informe (`contrato/`) y el
+  que reconoce el parser del portal eran un mirror sin atar — un segundo test cruzado, complementario
+  al de `una-sola-fuente.test.ts`. Y `env:sync` empezó a distinguir `SUPABASE_JWT_SECRET` (sigue siendo
+  un riesgo real, no basura) del resto de las claves "sin destino".
+
+**El patrón operativo:** los tres agentes de área corrieron en paralelo sobre archivos sin superposición
+real (una única coordinación explícita: dónde vive el mapa de traducción de `intencion`, decidida por
+la sesión principal antes de despachar, para que `datos` y `front` no divergieran). Cada uno devolvió
+un informe a `progress/informes/`, la sesión principal revisó el diff real (no solo el informe), corrió
+los tests de forma independiente, y commiteó en piezas separadas por área — nunca a ciegas.
+
+**Verde:** `npm run verificar --con-portal` — 1563 tests del monorepo + 298 `node:test` del portal +
+187 Karma, typecheck limpio en los 7 paquetes + portal. Quedan en Bloque I dos filas sin acción
+concreta: la sonda del SDK duplicada (api/+orchestrator, no trivial por diseño) y la falta de tests de
+integración del camino live (riesgo aceptado).
+
+**Cierre pendiente:** confirmado por el usuario en el sitio público que la `0023` (menú enriquecido:
+video/alérgenos/etiquetas/nutrición) ya se ve — `docs/proyecto/09-estado-y-roadmap.md` sincronizado
+(`de8fa1d`). Sin decidir todavía: si sumar `.agents/`/`.claude/skills/supabase-server/`/`skills-lock.json`
+(instalación automática de una skill que el proyecto no usa) al repo, y con qué bloque seguir después
+del I (D — calibrar research, cuesta ~$0.31 — o G/H — SLA/offboarding).
+
+---
+
+## 2026-08-18 — Tres bugs de producción, encontrados persiguiendo un 404: Windows CRLF, Windows CLI, y una validación que faltaba
+
+**Cómo empezó:** con el editor de carta recién cerrado (ver más abajo, entrada del 2026-08-17), el
+usuario reportó que la pestaña Menú daba 404 en producción. Ninguna de las hipótesis de código
+—bug de la app, RLS, mapeo de errores, CORS, routing, CDN— explicaba el síntoma; los logs de Railway
+que pegó el usuario mostraron la causa real: la API crasheaba en bucle por falta de `OAUTH_STATE_SECRET`,
+una variable de una feature anterior (reseñas de Google), sin relación con el editor de carta.
+
+**Bug 1 — `scripts/credencial.mts` nunca corría como CLI en Windows.** El usuario intentó generar el
+secreto faltante con `npm run credencial -- OAUTH_STATE_SECRET` y el comando no imprimía nada, sin
+error. La puerta de arranque comparaba `` `file://${process.argv[1]}` `` (con backslashes en Windows)
+contra `import.meta.url` (siempre `file:///C:/...`, forward slashes): la comparación nunca daba igual,
+así que `main()` no corría nunca. Arreglado con `pathToFileURL(process.argv[1]).href`, el mismo patrón
+que ya usaban otros cinco scripts del repo. Test de regresión con `spawnSync` (subproceso real, no un
+`import()`), verificado rojo→verde→mutación. Commit `61dbdbe`.
+
+**Bug 2 — el checksum de migraciones falseaba un "cambio" que no existía.** Con `credencial.mts` ya
+arreglado y `OAUTH_STATE_SECRET` puesta en Railway, la API volvió a arrancar — pero `/clients` daba 500:
+`column "google_conectado_en" does not exist`. La migración `0021` (y, sin saberlo todavía, la `0022` y
+la `0023`) nunca se habían aplicado a producción. Al intentar `migrate:deploy`, el runner abortaba
+diciendo que `0001_init.sql` "ya se aplicó pero cambió". Investigado con el checksum real registrado en
+Supabase: coincidía EXACTO con el commit `bf3d1f7` de `0001_init.sql` normalizado a LF — no había ningún
+cambio de esquema perdido. `git config core.autocrlf` es `true` en Windows por default, así que el
+archivo en disco tenía CRLF mientras el checksum registrado se calculó en LF. `checksumDe()` ahora
+normaliza `\r\n` a `\n` antes de hashear. Verificado por mutación. Commit `944a411`. Al volver a correr
+`migrate:deploy`, las tres migraciones represadas (`0021`/`0022`/`0023`) se aplicaron juntas — la 404
+del Menú y el 500 de `/clients` quedaron resueltos, y de paso el menú enriquecido (video/alérgenos)
+pasó a verse en el sitio público, algo que nadie había notado que seguía bloqueado.
+
+**Bug 3, encontrado sin buscarlo — `PIPELINE_MODO=live` no exigía que la publicación estuviera
+armada.** Al revisar deuda del Bloque I, apareció la única fila marcada 🔴: `verificarCoherencia()` (que
+ya contrastaba `PIPELINE_MODO` contra `DATAFORSEO_MODE`) nunca se fijaba en si Storyblok estaba
+configurado de verdad. Sin `WEB_PUBLISH_MODE`, el publisher cae a `MockPublisher`, que reporta
+`published: true` para páginas que nunca salieron del contenedor — la base anotaría `published_at`
+sobre contenido fantasma. `verificarPublicacion()` nueva cierra esa dirección (no la inversa: no hay
+gasto por publicar, a diferencia de DataForSEO, y bloquearía un flujo de desarrollo legítimo).
+Commit `bbd05e4`.
+
+**De paso:** los `*.test.ts` del portal nunca pasaban por `tsc` (solo `tsx`, que transpila sin
+typechequear) — destapó 2 bugs reales preexistentes en fixtures. Y el polling del brief (4s, puesto a
+ojo) se recalibró a 15s contra los 16m15s medidos de la única corrida real. Commit `4207f9d`. Se sumó
+también data de demo completa (video/alérgenos/nutrición) al dev-server del renderizador. Commit
+`bdb26de`.
+
+**La lección que se repite:** los tres bugs de código (no el de Railway) comparten forma — algo que
+funciona en Mac/Linux o en el checkout de quien lo escribió, y falla en silencio en otro entorno
+(Windows con `autocrlf`, o un despliegue sin una variable que nadie pensó en exigir). Ninguno tenía
+test antes de encontrarse por accidente.
+
+**Verde:** `npm run verificar` en las cuatro piezas, por separado y en conjunto.
 
 **Lo que se pidió.** Mover el portal de Frank de `bigballs.es` a `app.dinamicseo.es`, porque
 `bigballs.es` se va a reutilizar para un cliente final real. `dinamicseo.es` tiene un WordPress en la
