@@ -68,6 +68,7 @@ export const MAPA = {
     "GOOGLE_REVIEWS_MODO",
     "BORRADOR_RESENAS_MODO",
     "OPENAI_API_KEY",
+    "OPENAI_MODEL",
   ],
   renderer: [
     "STORYBLOK_PUBLIC_TOKEN",

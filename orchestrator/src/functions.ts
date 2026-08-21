@@ -222,15 +222,20 @@ export async function pollearResenas(
         // (una que el polling ya había visto no necesita un borrador nuevo). Try/catch PROPIO, no el
         // del cliente entero: un fallo de OpenAI en UNA reseña no debe impedir que se guarden las
         // demás reseñas nuevas de ese mismo cliente en esta misma corrida.
-        if (insertada && r.puntuacion >= 4) {
+        if (insertada && r.puntuacion >= 4 && r.puntuacion <= 5) {
           try {
             const borrador = await deps.borradorProvider.generar(r);
-            await deps.store.guardarBorradorResena({
+            const ok = await deps.store.guardarBorradorResena({
               clientId: cliente.clientId,
               tenantId: cliente.tenantId,
               googleReviewId: r.googleReviewId,
               borrador,
             });
+            if (!ok) {
+              log(
+                `[borrador-ia] reseña ${r.googleReviewId} (cliente ${cliente.clientId}) descartada por BD`,
+              );
+            }
           } catch (e) {
             // No incrementa `fallidos`: ese contador es de CLIENTES con el token roto, no de
             // borradores puntuales. La reseña queda guardada sin borrador; sin reintento automático

@@ -44,17 +44,28 @@ export class OpenAIBorradorProvider implements BorradorProvider {
   private readonly modelo: string;
 
   constructor() {
-    this.client = new OpenAI({ apiKey: process.env["OPENAI_API_KEY"] ?? "" });
+    // OPENAI_MODEL es compartida con kr-service/web-builder — ver .env.example
+    this.client = new OpenAI({
+      apiKey: process.env["OPENAI_API_KEY"] ?? "",
+      timeout: 30_000,
+      maxRetries: 1,
+    });
     this.modelo = process.env["OPENAI_MODEL"] ?? "gpt-4o-mini";
   }
 
   async generar(reseña: ReseñaCruda): Promise<string> {
+    // `autor`/`texto` son texto de un tercero no confiable (cualquiera deja una reseña en Google),
+    // interpolados sin escapar. Decisión consciente (ver la spec de esta pieza): la garantía real es que
+    // NINGÚN borrador sale de acá sin pasar por revisión humana en el portal -- esta pieza no publica
+    // nada. Si la próxima pieza (publicar la respuesta de vuelta a Google) toca este código, tiene que
+    // decidir esto de nuevo con la publicación en la cabeza, no heredar el supuesto en silencio.
     const contexto = reseña.texto
       ? `Reseña de ${reseña.puntuacion}★ de ${reseña.autor}: "${reseña.texto}"`
       : `Reseña de ${reseña.puntuacion}★ de ${reseña.autor}, sin comentario escrito.`;
 
     const res = await this.client.chat.completions.create({
       model: this.modelo,
+      max_tokens: 300,
       messages: [
         { role: "system", content: PROMPT_SISTEMA },
         { role: "user", content: contexto },

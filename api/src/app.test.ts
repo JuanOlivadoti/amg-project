@@ -1255,9 +1255,13 @@ test("GET /clients/:id/resenas devuelve solo las del cliente, ordenadas 1-3★ s
 
   const res = await req("GET", `/clients/${clientA1}/resenas`, { user: equipoA, tenant: tenantA });
   assert.equal(res.status, 200);
-  const body = (await res.json()) as { resenas: Array<{ id: string; puntuacion: number }> };
+  const body = (await res.json()) as { resenas: Array<{ id: string; puntuacion: number; borradorRespuesta: string | null }> };
   assert.equal(body.resenas.length, 2);
   assert.equal(body.resenas[0]?.puntuacion, 2, "la de 2★ sin ver va primero (orden ya fijado en listarResenas)");
+  assert.ok(
+    "borradorRespuesta" in body.resenas[0]!,
+    "el borrador de IA también tiene que viajar en la respuesta HTTP, no solo en PgResenas (Fix 2, #7)",
+  );
 });
 
 test("🔴 GET /clients/:id/resenas de OTRO tenant devuelve lista vacía, no un error (RLS)", async () => {

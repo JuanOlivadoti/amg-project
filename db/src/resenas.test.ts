@@ -460,6 +460,26 @@ test("🔴 listarResenas devuelve borradorRespuesta cuando existe, null cuando n
   assert.equal(sinBorrador_row?.borradorRespuesta, null, "listarResenas devuelve null cuando no hay borrador");
 });
 
+test("🔴 listarResenas devuelve EXACTAMENTE el set de campos de ResenaGoogle (guardarraíl contra el bug de COLS/aResena desincronizados)", async () => {
+  const id = await crearResena(s.clientA1, s.tenantA, {});
+  const [fila] = await resenas.listarResenas({ tenantId: s.tenantA, userId: s.equipoA }, s.clientA1);
+  assert.deepEqual(
+    Object.keys(fila!).sort(),
+    ["autor", "borradorRespuesta", "clientId", "id", "publicadaEn", "puntuacion", "texto", "vistaEn"].sort(),
+  );
+  // El check de Object.keys por sí solo NO alcanza: `aResena()` arma el objeto de retorno con las 8
+  // claves siempre presentes, así que si `COLS` deja de traer una columna, la clave sigue estando
+  // en el objeto -- solo cambia a `undefined` (nunca `null`, que es el valor real de "sin dato" que
+  // devuelve Postgres). Por eso el guardarraíl real es este: ningún campo puede ser `undefined`.
+  for (const [campo, valor] of Object.entries(fila!)) {
+    assert.notEqual(
+      valor,
+      undefined,
+      `${campo} es undefined -- probablemente falta en COLS (Postgres devuelve null, no undefined, para 'sin dato')`,
+    );
+  }
+});
+
 test("marcarVista pone vista_en y no se puede repetir sobre una ya vista", async () => {
   const ctx = { tenantId: s.tenantA, userId: s.equipoA };
   const id = await crearResena(s.clientA1, s.tenantA, { googleReviewId: "r1" });
