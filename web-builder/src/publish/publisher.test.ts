@@ -164,3 +164,94 @@ test("🔴 si el proveedor devuelve published:false, el resultado NO dice public
   const res = await pub.publish([story()], new Map([["menu", "<html></html>"]]));
   assert.equal(res[0]?.published, false, "la base no puede afirmar 'publicado' si el proveedor no lo confirma");
 });
+
+// ================================================================
+// #Bloque I — republicar NO pisa la imagen que el cliente subió desde el Visual Editor
+// ================================================================
+
+/**
+ * Simula el escenario real: la story YA existe (con una imagen en el hero que el handoff nunca puso
+ * ahí — la subió el cliente), y se vuelve a publicar la MISMA página desde un brief fresco (que,
+ * como siempre, no trae `image`). El PUT final tiene que conservar esa imagen.
+ */
+function stubStoryblokConStoryExistente(idExistente: number, imagenHero: { filename: string; alt: string }) {
+  urls = [];
+  const contenidoExistente = {
+    component: "page",
+    seo_title: "Vieja",
+    body: [
+      { component: "hero", headline: "Vieja", subhead: "Vieja", image: imagenHero },
+      { component: "section", heading: "Sobre Nosotros", body: "" },
+      { component: "section", heading: "Especialidades", body: "" },
+    ],
+  };
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = String(url);
+    const method = init?.method ?? "GET";
+    urls.push({ url: u, method, body: init?.body ? JSON.parse(String(init.body)) : null });
+
+    if (method === "GET" && u.includes("with_slug=")) {
+      // La story ya existe → fuerza un UPDATE, no un create.
+      return new Response(JSON.stringify({ stories: [{ id: idExistente }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (method === "GET" && u.includes(`/stories/${idExistente}`)) {
+      // Lo que `conImagenesPreservadas` lee ANTES de pisar la story.
+      return new Response(
+        JSON.stringify({ story: { id: idExistente, slug: "restaurante-italiano-madrid-centro", content: contenidoExistente } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    // PUT → confirma la publicación.
+    return new Response(
+      JSON.stringify({ story: { id: idExistente, published: true } }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof globalThis.fetch;
+}
+
+test("🔴 republicar preserva la imagen del hero que el cliente subió en Storyblok", async () => {
+  stubStoryblokConStoryExistente(77, { filename: "https://a.storyblok.com/f/1/hero-cliente.jpg", alt: "Subida por el cliente" });
+  const pub = new StoryblokPublisher({ spaceId: "space-A", managementToken: "tok", mapiHost: "https://mapi.storyblok.com" });
+
+  // La story que produce el pipeline (handoff fresco): SIN image, como siempre.
+  const nueva = story();
+  assert.equal((nueva.content.body[0] as { image?: unknown }).image, undefined, "fixture: el handoff no trae image");
+
+  await pub.publish([nueva], new Map([["menu", "<html></html>"]]));
+
+  const put = urls.find((u) => u.method === "PUT");
+  assert.ok(put, "hubo un PUT (update, no create)");
+  const heroEnviado = (put!.body.story.content.body as Array<Record<string, unknown>>).find(
+    (b) => b["component"] === "hero",
+  )!;
+  assert.deepEqual(
+    heroEnviado["image"],
+    { filename: "https://a.storyblok.com/f/1/hero-cliente.jpg", alt: "Subida por el cliente" },
+    "el PUT final conserva la imagen existente aunque el brief nuevo no la traiga",
+  );
+});
+
+test("republicar sin poder leer la story existente NO bloquea la publicación (se publica sin fusionar)", async () => {
+  urls = [];
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = String(url);
+    const method = init?.method ?? "GET";
+    urls.push({ url: u, method, body: init?.body ? JSON.parse(String(init.body)) : null });
+    if (method === "GET" && u.includes("with_slug=")) {
+      return new Response(JSON.stringify({ stories: [{ id: 5 }] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (method === "GET" && u.includes("/stories/5")) {
+      // 404 (no reintentable) para no alargar el test con el backoff de un 5xx: lo que importa
+      // acá es que CUALQUIER fallo de lectura no bloquee la publicación, no simular un 500 real.
+      return new Response("boom", { status: 404 });
+    }
+    return new Response(JSON.stringify({ story: { id: 5, published: true } }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof globalThis.fetch;
+
+  const pub = new StoryblokPublisher({ spaceId: "space-A", managementToken: "tok", mapiHost: "https://mapi.storyblok.com" });
+  const res = await pub.publish([story()], new Map([["menu", "<html></html>"]]));
+  assert.equal(res[0]?.published, true, "la publicación sigue adelante aunque no se pudiera leer lo previo");
+});

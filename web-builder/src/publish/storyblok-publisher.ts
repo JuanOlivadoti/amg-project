@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config.js";
 import { HttpError, fetchWithRetry } from "../lib/http.js";
-import { toStoryblokContent } from "../storyblok/content.js";
+import { fromStoryblokContent, preservarImagenes, toStoryblokContent } from "../storyblok/content.js";
 import type { Story } from "../types.js";
 import type { PublishResult, Publisher } from "./publisher.js";
 
@@ -93,8 +93,35 @@ export class StoryblokPublisher implements Publisher {
   }
 
   private async updateStory(id: number, story: Story): Promise<StoryPublicada> {
-    const res = await this.req(`/stories/${id}`, "PUT", this.cuerpo(story));
+    const fusionada = await this.conImagenesPreservadas(id, story);
+    const res = await this.req(`/stories/${id}`, "PUT", this.cuerpo(fusionada));
     return leerStory(await res.json());
+  }
+
+  /**
+   * Antes de pisar una story existente, **preserva las imágenes que el nuevo contenido no trae**
+   * (ver `preservarImagenes`). El `PUT` reemplaza `content` entero — Storyblok no fusiona — así que
+   * sin este paso una republicación (research nuevo, reintento del orquestador) borraba la foto que
+   * el cliente hubiera subido desde el Visual Editor.
+   *
+   * Si no se puede leer el contenido existente (red, formato inesperado), se publica igual sin
+   * fusionar: es el comportamiento de siempre, no un caso nuevo que bloquee la publicación.
+   */
+  private async conImagenesPreservadas(id: number, story: Story): Promise<Story> {
+    try {
+      const res = await this.req(`/stories/${id}`, "GET");
+      const json = (await res.json()) as {
+        story?: { name?: unknown; slug?: unknown; content?: Record<string, unknown> };
+      };
+      if (!json.story) return story;
+      const existente = fromStoryblokContent(json.story);
+      return preservarImagenes(story, existente);
+    } catch (e) {
+      console.warn(
+        `  [storyblok] no se pudo leer "${story.slug}" para preservar sus imágenes (${(e as Error).message}) → publico sin fusionar.`,
+      );
+      return story;
+    }
   }
 
   /**

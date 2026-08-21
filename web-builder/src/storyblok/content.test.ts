@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fromStoryblokContent, toStoryblokContent } from "./content.js";
+import { fromStoryblokContent, preservarImagenes, toStoryblokContent } from "./content.js";
 import { pageToStory } from "../handoff/adapter.js";
 import { renderStory } from "../render/html.js";
 import { validBrief, validPage } from "../fixtures.js";
+import type { HeroBlok, SectionBlok, Story } from "../types.js";
 
 function build() {
   return toStoryblokContent(pageToStory(validPage(), validBrief()));
@@ -151,4 +152,88 @@ test("fromStoryblokContent: un asset VACÍO no se vuelve una imagen rota", () =>
   });
   const hero = story.content.body[0]!;
   assert.equal((hero as { image?: unknown }).image, undefined, "un `{filename:null}` no es imagen");
+});
+
+// ---------------------------------------------------------------- preservarImagenes (Bloque I: republicar pisa imágenes)
+//
+// El handoff (`briefToStories`) NUNCA pone `image`: la sube el cliente desde el Visual Editor DESPUÉS
+// de publicar. Como `updateStory` hace un PUT que reemplaza `content` entero (Storyblok no fusiona),
+// una republicación con el body "limpio" del brief borraba esa imagen sin que nadie lo pidiera. Acá se
+// fusiona ANTES del PUT: lo nuevo manda, y lo que el nuevo no trae se completa con lo que ya había.
+
+function conImagenHero(story: Story, image: { src: string; alt: string }): Story {
+  const body = story.content.body.map((b) => (b.component === "hero" ? { ...b, image } : b));
+  return { ...story, content: { ...story.content, body } };
+}
+
+function conImagenSeccion(story: Story, heading: string, image: { src: string; alt: string }): Story {
+  const body = story.content.body.map((b) =>
+    b.component === "section" && b.heading === heading ? { ...b, image } : b,
+  );
+  return { ...story, content: { ...story.content, body } };
+}
+
+test("🔴 preservarImagenes: conserva la imagen del hero cuando la nueva story no trae ninguna", () => {
+  const nuevo = pageToStory(validPage(), validBrief()); // handoff fresco: sin image
+  const existente = conImagenHero(pageToStory(validPage(), validBrief()), {
+    src: "https://a.storyblok.com/f/1/hero-subido-por-cliente.jpg",
+    alt: "Foto que subió el cliente",
+  });
+
+  const resultado = preservarImagenes(nuevo, existente);
+  const hero = resultado.content.body.find((b): b is HeroBlok => b.component === "hero");
+  assert.deepEqual(hero?.image, {
+    src: "https://a.storyblok.com/f/1/hero-subido-por-cliente.jpg",
+    alt: "Foto que subió el cliente",
+  });
+});
+
+test("🔴 preservarImagenes: conserva la imagen de una sección con el MISMO heading", () => {
+  const nuevo = pageToStory(validPage(), validBrief());
+  const existente = conImagenSeccion(
+    pageToStory(validPage(), validBrief()),
+    "Sobre Nosotros",
+    { src: "https://a.storyblok.com/f/1/sala.jpg", alt: "La sala" },
+  );
+
+  const resultado = preservarImagenes(nuevo, existente);
+  const seccion = resultado.content.body.find(
+    (b): b is SectionBlok => b.component === "section" && b.heading === "Sobre Nosotros",
+  );
+  assert.deepEqual(seccion?.image, { src: "https://a.storyblok.com/f/1/sala.jpg", alt: "La sala" });
+});
+
+test("preservarImagenes: una sección con heading DISTINTO no hereda la imagen de otra", () => {
+  const nuevo = pageToStory(
+    validPage({
+      content_brief: { ...validPage().content_brief, secciones_sugeridas: ["Nuestra Historia", "Especialidades"] },
+    }),
+    validBrief(),
+  );
+  const existente = conImagenSeccion(
+    pageToStory(validPage(), validBrief()), // trae "Sobre Nosotros", no "Nuestra Historia"
+    "Sobre Nosotros",
+    { src: "https://a.storyblok.com/f/1/sala.jpg", alt: "La sala" },
+  );
+
+  const resultado = preservarImagenes(nuevo, existente);
+  const seccion = resultado.content.body.find(
+    (b): b is SectionBlok => b.component === "section" && b.heading === "Nuestra Historia",
+  );
+  assert.equal(seccion?.image, undefined, "es conceptualmente OTRO blok — no hay imagen que heredar");
+});
+
+test("preservarImagenes: NO pisa una imagen que la nueva story SÍ trae", () => {
+  const nuevo = conImagenHero(pageToStory(validPage(), validBrief()), {
+    src: "https://a.storyblok.com/f/1/hero-nuevo-del-pipeline.jpg",
+    alt: "Nueva",
+  });
+  const existente = conImagenHero(pageToStory(validPage(), validBrief()), {
+    src: "https://a.storyblok.com/f/1/hero-viejo.jpg",
+    alt: "Vieja",
+  });
+
+  const resultado = preservarImagenes(nuevo, existente);
+  const hero = resultado.content.body.find((b): b is HeroBlok => b.component === "hero");
+  assert.deepEqual(hero?.image, { src: "https://a.storyblok.com/f/1/hero-nuevo-del-pipeline.jpg", alt: "Nueva" });
 });

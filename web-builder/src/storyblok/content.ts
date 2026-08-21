@@ -99,6 +99,56 @@ function shapeBlok(blok: HeroBlok | SectionBlok | FaqBlok, slug: string): Record
   }
 }
 
+/**
+ * Fusiona una story recién generada con la que ya existe en Storyblok, **preservando las imágenes**
+ * que el nuevo contenido no trae.
+ *
+ * ## Por qué existe
+ *
+ * El handoff (`briefToStories`) nunca pone `image` en un `hero`/`section`: el comentario de
+ * `HeroBlok.image` ya lo decía — "la sube el cliente en el Visual Editor; el handoff la deja vacía".
+ * Y `updateStory` hace un `PUT /stories/:id` con `content` **completo**: Storyblok no fusiona el JSON,
+ * lo reemplaza entero. Sin este paso, republicar la misma página (un research nuevo, un reintento del
+ * orquestador) mandaba un body sin `image` y Storyblok se quedaba sin la foto que el cliente acababa
+ * de subir — sin error, sin log, hasta que alguien la buscaba y no estaba.
+ *
+ * ## La regla
+ *
+ * **Lo nuevo manda.** Si `nuevo` ya trae una imagen (hoy el pipeline nunca lo hace, pero el contrato no
+ * lo prohíbe), esa es la que queda — nunca se resucita una vieja por encima de una decisión explícita.
+ * Solo se copia la imagen de `existente` cuando `nuevo` la dejó vacía.
+ *
+ * La identidad de cada blok es la misma que usan los `_uid` deterministas (`lib/uid.ts`): el hero es
+ * único por página, una sección se identifica por su `heading`. Si el heading cambió, es
+ * conceptualmente OTRO blok — no hereda la imagen del que ya no está.
+ */
+export function preservarImagenes(nuevo: Story, existente: Story): Story {
+  const heroExistente = existente.content.body.find(
+    (b): b is HeroBlok => b.component === "hero",
+  );
+  const seccionesExistentes = new Map(
+    existente.content.body
+      .filter((b): b is SectionBlok => b.component === "section")
+      .map((b) => [b.heading, b] as const),
+  );
+
+  const body = nuevo.content.body.map((b): Blok => {
+    if (b.component === "hero") {
+      if (b.image || !heroExistente?.image) return b;
+      return { ...b, image: heroExistente.image };
+    }
+    if (b.component === "section") {
+      if (b.image) return b;
+      const previa = seccionesExistentes.get(b.heading);
+      if (!previa?.image) return b;
+      return { ...b, image: previa.image };
+    }
+    return b;
+  });
+
+  return { ...nuevo, content: { ...nuevo.content, body } };
+}
+
 // ---------------------------------------------------------------- el viaje de vuelta
 
 /**
