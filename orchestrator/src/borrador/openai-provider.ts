@@ -16,6 +16,15 @@ const PRECIOS_USD_POR_1M: Record<string, { input: number; output: number }> = {
   "gpt-4o": { input: 2.5, output: 10 },
 };
 
+/**
+ * `?.trim() || ...`, no `??`: env:sync escribe `""` (no `undefined`) cuando la clave falta en
+ * credenciales.env (scripts/env-sync.mts, repartir()) — mismo patrón que leerModoBorrador() en
+ * config.ts, por la misma razón. `??` dejaría pasar `""` como modelo real y OpenAI la rechazaría.
+ */
+export function leerModeloBorrador(): string {
+  return process.env["OPENAI_MODEL"]?.trim() || "gpt-4o-mini";
+}
+
 /** Costo estimado en USD a partir del `usage` que devuelve la respuesta de OpenAI. */
 export function costoEstimadoUsd(
   usage: { prompt_tokens: number; completion_tokens: number },
@@ -50,7 +59,7 @@ export class OpenAIBorradorProvider implements BorradorProvider {
       timeout: 30_000,
       maxRetries: 1,
     });
-    this.modelo = process.env["OPENAI_MODEL"] ?? "gpt-4o-mini";
+    this.modelo = leerModeloBorrador();
   }
 
   async generar(reseña: ReseñaCruda): Promise<string> {
