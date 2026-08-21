@@ -193,7 +193,7 @@ export const CRON_POLLING_RESENAS = "*/30 * * * *";
  * verdad se insertaron, `resenasNuevas` mentiría en cada corrida de más.
  */
 export async function pollearResenas(
-  deps: Pick<Deps, "store" | "resenasProvider">,
+  deps: Pick<Deps, "store" | "resenasProvider" | "borradorProvider">,
   log: (msg: string) => void = () => {},
 ): Promise<{ clientesRecorridos: number; resenasNuevas: number; fallidos: number }> {
   const clientes = await deps.store.clientesConectadosGoogle();
@@ -217,6 +217,34 @@ export async function pollearResenas(
           publicadaEn: r.publicadaEn,
         });
         if (insertada) resenasNuevas++;
+
+        // Borrador de IA (Bloque F, fase 2): solo 4-5★, solo si esta corrida insertó la reseña
+        // (una que el polling ya había visto no necesita un borrador nuevo). Try/catch PROPIO, no el
+        // del cliente entero: un fallo de OpenAI en UNA reseña no debe impedir que se guarden las
+        // demás reseñas nuevas de ese mismo cliente en esta misma corrida.
+        if (insertada && r.puntuacion >= 4 && r.puntuacion <= 5) {
+          try {
+            const borrador = await deps.borradorProvider.generar(r);
+            const ok = await deps.store.guardarBorradorResena({
+              clientId: cliente.clientId,
+              tenantId: cliente.tenantId,
+              googleReviewId: r.googleReviewId,
+              borrador,
+            });
+            if (!ok) {
+              log(
+                `[borrador-ia] reseña ${r.googleReviewId} (cliente ${cliente.clientId}) descartada por BD`,
+              );
+            }
+          } catch (e) {
+            // No incrementa `fallidos`: ese contador es de CLIENTES con el token roto, no de
+            // borradores puntuales. La reseña queda guardada sin borrador; sin reintento automático
+            // (decisión del spec) -- el staff completa el campo a mano desde el portal.
+            log(
+              `[borrador-ia] reseña ${r.googleReviewId} (cliente ${cliente.clientId}) falló: ${(e as Error).message}`,
+            );
+          }
+        }
       }
     } catch (e) {
       // Un cliente con el token revocado no frena a los demás. Se loguea con el tenant para poder

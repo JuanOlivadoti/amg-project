@@ -267,6 +267,11 @@ function depsFalsas(paginas: ProposedPage[]): Espia {
       refrescarToken: () => Promise.reject(new Error("workflowResearch no pollea reseñas")),
       listarResenas: () => Promise.reject(new Error("workflowResearch no pollea reseñas")),
     },
+    // Mismo motivo que `resenasProvider`: `workflowResearch` no genera borradores de IA -- eso
+    // también vive en `pollearResenas`. El stub existe solo para satisfacer el tipo `Deps`.
+    borradorProvider: {
+      generar: () => Promise.reject(new Error("workflowResearch no genera borradores")),
+    },
   };
 
   return espia;

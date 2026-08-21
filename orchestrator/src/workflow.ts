@@ -2,6 +2,7 @@ import { renderReport } from "contrato";
 import type { KeywordResearchBrief, ProposedPage } from "contrato";
 import type { PgStore, TenantContext, PageRow, RunSummary } from "db";
 import type { GoogleReviewsProvider } from "./google/provider.js";
+import type { BorradorProvider } from "./borrador/provider.js";
 
 /**
  * El workflow del research, de punta a punta: pipeline → persistencia → compuerta humana →
@@ -60,6 +61,9 @@ export interface Deps {
   validarContrato: (raw: unknown) => unknown;
   /** El polling de reseñas de Google (Bloque F). No lo usa `workflowResearch` -- lo usa `pollearResenas`. */
   resenasProvider: GoogleReviewsProvider;
+  /** Genera el borrador de respuesta con IA (Bloque F, fase 2). Igual que `resenasProvider`, no lo
+   * usa `workflowResearch` -- lo usa `pollearResenas`. */
+  borradorProvider: BorradorProvider;
   log?: (msg: string) => void;
 }
 

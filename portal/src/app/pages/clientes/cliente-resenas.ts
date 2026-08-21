@@ -91,6 +91,28 @@ import { Vigencia } from '../../core/vigencia';
               @if (r.texto) {
                 <p class="mt-1 text-sm text-texto-medio">{{ r.texto }}</p>
               }
+              @if (r.puntuacion >= 4) {
+                @if (membresia.esEquipo()) {
+                  <textarea
+                    class="mt-2 w-full rounded-md border border-borde bg-fondo p-2 text-sm text-texto"
+                    rows="3"
+                    placeholder="Sin borrador todavía — escribí la respuesta acá"
+                    [value]="borradorEditado(r)"
+                    (input)="editarBorradorLocal(r.id, $any($event.target).value)"
+                  ></textarea>
+                  <button
+                    type="button"
+                    (click)="guardarBorrador(r)"
+                    class="mt-2 rounded-md bg-accion text-texto-invertido px-3 py-1.5 text-xs font-medium hover:opacity-90"
+                  >
+                    Guardar
+                  </button>
+                } @else if (r.borradorRespuesta) {
+                  <p class="mt-2 text-sm text-texto-medio">{{ r.borradorRespuesta }}</p>
+                } @else {
+                  <p class="mt-2 text-xs text-texto-tenue">Sin borrador todavía.</p>
+                }
+              }
             </li>
           }
         </ul>
@@ -134,6 +156,7 @@ export class ClienteResenasPage implements OnInit, OnDestroy {
       // Las reseñas del cliente anterior no son de éste: vaciarlas antes de pedir evita mostrar
       // trabajo ajeno mientras la respuesta viaja.
       this.resenas.set([]);
+      this.ediciones.set({});
       this.error.set('');
       void this.cargar(id);
     });
@@ -193,5 +216,28 @@ export class ClienteResenasPage implements OnInit, OnDestroy {
     this.resenas.update((rs) =>
       rs.map((x) => (x.id === r.id ? { ...x, vistaEn: new Date().toISOString() } : x)),
     );
+  }
+
+  /**
+   * Texto editado localmente por reseña, antes de guardar. Sin entrada = todavía no se tocó, y el
+   * textarea muestra `r.borradorRespuesta` (o vacío si no hay). Un `Record`, no un `Map`, para que
+   * el template lo lea directo sin volver a envolver la lectura en un método aparte por cada uso.
+   */
+  private readonly ediciones = signal<Record<string, string>>({});
+
+  /** El texto que ve el textarea de esta reseña: lo editado localmente, o lo que ya trae el servidor. */
+  borradorEditado(r: ResenaGoogle): string {
+    return this.ediciones()[r.id] ?? r.borradorRespuesta ?? '';
+  }
+
+  editarBorradorLocal(resenaId: string, texto: string): void {
+    this.ediciones.update((m) => ({ ...m, [resenaId]: texto }));
+  }
+
+  /** Guarda el borrador editado y actualiza la fila local, sin volver a pedir todo el listado. */
+  async guardarBorrador(r: ResenaGoogle): Promise<void> {
+    const texto = this.borradorEditado(r);
+    await this.api.editarBorradorResena(this.clienteId(), r.id, texto);
+    this.resenas.update((rs) => rs.map((x) => (x.id === r.id ? { ...x, borradorRespuesta: texto } : x)));
   }
 }

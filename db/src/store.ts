@@ -423,6 +423,14 @@ export interface ResenaParaGuardar {
   publicadaEn: string;
 }
 
+/** Lo que hace falta para guardar un borrador de respuesta vía `app.guardar_borrador_resena()` (0024). */
+export interface BorradorParaGuardar {
+  clientId: string;
+  tenantId: string;
+  googleReviewId: string;
+  borrador: string;
+}
+
 export class PgStore {
   /**
    * @param pool  Pool ATADO a un login concreto (`amg_api` o `amg_orquestador`).
@@ -997,6 +1005,24 @@ export class PgStore {
         [r.clientId, r.tenantId, r.googleReviewId, r.puntuacion, r.autor, r.texto, r.publicadaEn],
       );
       return rows[0]?.registrar_resena_google ?? false;
+    });
+  }
+
+  /**
+   * Guarda el borrador de IA de una reseña 4-5★ que todavía no tenía uno, vía
+   * `app.guardar_borrador_resena` (0024). Cross-tenant por el mismo motivo que
+   * `registrarResenaGoogle`: el polling corre como `app_service`, sin grant directo sobre la tabla.
+   *
+   * @returns true si escribió el borrador; false si la fila no existe, ya tenía un borrador, o no es
+   *          elegible (1-3★) — el WHERE de la función decide, no este método.
+   */
+  async guardarBorradorResena(r: BorradorParaGuardar): Promise<boolean> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ guardar_borrador_resena: boolean }>(
+        "select app.guardar_borrador_resena($1, $2, $3, $4) as guardar_borrador_resena",
+        [r.clientId, r.tenantId, r.googleReviewId, r.borrador],
+      );
+      return rows[0]?.guardar_borrador_resena ?? false;
     });
   }
 

@@ -37,6 +37,8 @@ const VARS = [
   "PIPELINE_MODO",
   "DATAFORSEO_MODE",
   "GOOGLE_REVIEWS_MODO",
+  "BORRADOR_RESENAS_MODO",
+  "OPENAI_API_KEY",
 ];
 
 const GUARDADO = { ...process.env };
@@ -507,6 +509,42 @@ test("GOOGLE_REVIEWS_MODO=live en producción queda declarado (el provider lo re
   assert.equal(c.resenasGoogle, "live");
 });
 
+// --------------------------------------- BORRADOR_RESENAS_MODO: default derivado de OPENAI_API_KEY
+
+test("BORRADOR_RESENAS_MODO por defecto es 'mock' sin la variable NI la key", () => {
+  conEntorno({});
+  const c = leerConfig();
+  assert.equal(c.borradorResenas, "mock");
+});
+
+/**
+ * 🔴 El default que factura, igual que `PROSE_MODE`: con la key puesta y la variable sin declarar, el
+ * borrador se genera con OpenAI de verdad. Nadie tuvo que declarar el gasto: alcanzó con que la key
+ * estuviera.
+ */
+test("🔴 con OPENAI_API_KEY puesta y sin BORRADOR_RESENAS_MODO declarado, el default es 'openai'", () => {
+  conEntorno({ OPENAI_API_KEY: "sk-de-mentira" });
+  const c = leerConfig();
+  assert.equal(c.borradorResenas, "openai");
+});
+
+test("BORRADOR_RESENAS_MODO=mock explícito gana aunque haya key (declarar manda sobre el default)", () => {
+  conEntorno({ OPENAI_API_KEY: "sk-de-mentira", BORRADOR_RESENAS_MODO: "mock" });
+  const c = leerConfig();
+  assert.equal(c.borradorResenas, "mock");
+});
+
+test("🔴 BORRADOR_RESENAS_MODO con un valor que no es mock/openai lanza", () => {
+  conEntorno({ BORRADOR_RESENAS_MODO: "produccion" });
+  assert.throws(() => leerConfig(), /BORRADOR_RESENAS_MODO inválido/);
+});
+
+test("en producción, sin BORRADOR_RESENAS_MODO ni key arranca igual (default mock, no se exige)", () => {
+  conEntorno(PROD_COMPLETO);
+  const c = leerConfig();
+  assert.equal(c.borradorResenas, "mock");
+});
+
 // ------------------------------------------------------- fuera de producción, nada cambia
 
 /**
@@ -567,6 +605,7 @@ test("🔴 crearConexiones rechaza PGlite en memoria si la config dice producci�
         esProduccion: true,
         pipeline: "mock",
         resenasGoogle: "mock",
+        borradorResenas: "mock",
         persistencia: { tipo: "pglite-en-memoria" },
       }),
     /PGlite/,
@@ -582,6 +621,7 @@ test("crearConexiones abre PGlite en memoria fuera de producción", async () => 
     esProduccion: false,
     pipeline: "mock",
     resenasGoogle: "mock",
+    borradorResenas: "mock",
     persistencia: { tipo: "pglite-en-memoria" },
   });
   assert.ok(cx.orquestador);

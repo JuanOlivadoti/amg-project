@@ -434,6 +434,52 @@ test("🔴 una reseña ya vista se ordena DESPUÉS de las sin ver, aunque tenga 
   assert.ok(idxSinVer < idxVista, "sin ver antes que vista, sin importar la puntuación");
 });
 
+test("🔴 listarResenas devuelve borradorRespuesta cuando existe, null cuando no (Fix 1)", async () => {
+  const ctx = { tenantId: s.tenantA, userId: s.equipoA };
+  const clienteId = s.clientA1;
+
+  // Caso 1: una reseña 5★ CON borrador_respuesta (escrito a mano en la base, como hace la Task 2)
+  const conBorrador = await crearResena(clienteId, s.tenantA, { puntuacion: 5, googleReviewId: "fb-1" });
+  await db.asService("update resenas_google set borrador_respuesta = $1 where id = $2", [
+    "Gracias por tu reseña, nos alegra haber complacido tu paladar.",
+    conBorrador,
+  ]);
+
+  // Caso 2: una reseña SIN borrador
+  const sinBorrador = await crearResena(clienteId, s.tenantA, { puntuacion: 5, googleReviewId: "fb-2" });
+
+  const vistas = await resenas.listarResenas(ctx, clienteId);
+  const conBorrador_row = vistas.find((r) => r.id === conBorrador);
+  const sinBorrador_row = vistas.find((r) => r.id === sinBorrador);
+
+  assert.equal(
+    conBorrador_row?.borradorRespuesta,
+    "Gracias por tu reseña, nos alegra haber complacido tu paladar.",
+    "listarResenas trae el borradorRespuesta cuando existe",
+  );
+  assert.equal(sinBorrador_row?.borradorRespuesta, null, "listarResenas devuelve null cuando no hay borrador");
+});
+
+test("🔴 listarResenas devuelve EXACTAMENTE el set de campos de ResenaGoogle (guardarraíl contra el bug de COLS/aResena desincronizados)", async () => {
+  const id = await crearResena(s.clientA1, s.tenantA, {});
+  const [fila] = await resenas.listarResenas({ tenantId: s.tenantA, userId: s.equipoA }, s.clientA1);
+  assert.deepEqual(
+    Object.keys(fila!).sort(),
+    ["autor", "borradorRespuesta", "clientId", "id", "publicadaEn", "puntuacion", "texto", "vistaEn"].sort(),
+  );
+  // El check de Object.keys por sí solo NO alcanza: `aResena()` arma el objeto de retorno con las 8
+  // claves siempre presentes, así que si `COLS` deja de traer una columna, la clave sigue estando
+  // en el objeto -- solo cambia a `undefined` (nunca `null`, que es el valor real de "sin dato" que
+  // devuelve Postgres). Por eso el guardarraíl real es este: ningún campo puede ser `undefined`.
+  for (const [campo, valor] of Object.entries(fila!)) {
+    assert.notEqual(
+      valor,
+      undefined,
+      `${campo} es undefined -- probablemente falta en COLS (Postgres devuelve null, no undefined, para 'sin dato')`,
+    );
+  }
+});
+
 test("marcarVista pone vista_en y no se puede repetir sobre una ya vista", async () => {
   const ctx = { tenantId: s.tenantA, userId: s.equipoA };
   const id = await crearResena(s.clientA1, s.tenantA, { googleReviewId: "r1" });
@@ -464,4 +510,58 @@ test("🔴 marcarVista con rol 'cliente' devuelve false: la marca la pone la age
   const id = await crearResena(s.clientA1, s.tenantA, {});
   const resultado = await resenas.marcarVista({ tenantId: s.tenantA, userId: s.duenoA1 }, s.clientA1, id);
   assert.equal(resultado, false);
+});
+
+// ============================================================ Etapa 3 — editarBorrador (0024)
+
+test("editarBorrador guarda el texto y se puede repetir (a diferencia de marcarVista)", async () => {
+  const ctx = { tenantId: s.tenantA, userId: s.equipoA };
+  const id = await crearResena(s.clientA1, s.tenantA, { puntuacion: 5, googleReviewId: "eb-1" });
+
+  const primera = await resenas.editarBorrador(ctx, s.clientA1, id, "Primer borrador");
+  assert.equal(primera, true);
+
+  const segunda = await resenas.editarBorrador(ctx, s.clientA1, id, "Borrador corregido");
+  assert.equal(segunda, true, "a diferencia de marcarVista, editar de nuevo SÍ tiene efecto");
+
+  const [row] = await db.asService<{ borrador_respuesta: string }>(
+    "select borrador_respuesta from resenas_google where id = $1",
+    [id],
+  );
+  assert.equal(row?.borrador_respuesta, "Borrador corregido");
+});
+
+test("🔴 editarBorrador sobre una reseña de OTRO tenant no toca nada (RLS, no un 404 de aplicación)", async () => {
+  const ajena = await crearResena(s.clientB1, s.tenantB, { googleReviewId: "eb-ajena", puntuacion: 5 });
+
+  const resultado = await resenas.editarBorrador(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    s.clientA1,
+    ajena,
+    "Intento cruzado",
+  );
+  assert.equal(resultado, false);
+
+  const [row] = await db.asService<{ borrador_respuesta: string | null }>(
+    "select borrador_respuesta from resenas_google where id = $1",
+    [ajena],
+  );
+  assert.equal(row?.borrador_respuesta, null, "el intento de A no tocó la reseña de B");
+});
+
+test("🔴 editarBorrador con rol 'cliente' devuelve false (ADR-20: el cliente no escribe)", async () => {
+  const id = await crearResena(s.clientA1, s.tenantA, { puntuacion: 5, googleReviewId: "eb-cliente" });
+  const resultado = await resenas.editarBorrador(
+    { tenantId: s.tenantA, userId: s.duenoA1 },
+    s.clientA1,
+    id,
+    "Intento del rol cliente",
+  );
+  assert.equal(resultado, false);
+
+  const [row] = await db.asService<{ borrador_respuesta: string | null }>(
+    "select borrador_respuesta from resenas_google where id = $1",
+    [id],
+  );
+  assert.equal(row?.borrador_respuesta, null, "el rol cliente no pudo escribir nada");
 });

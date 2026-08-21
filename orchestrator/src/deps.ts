@@ -12,6 +12,7 @@ import {
 import type { BusinessProfile } from "web-builder";
 import { leerConfig, type ConfigOrquestador } from "./config.js";
 import { getGoogleReviewsProvider } from "./google/provider.js";
+import { getBorradorProvider } from "./borrador/provider.js";
 import type { Deps, KeywordParaGuardar } from "./workflow.js";
 
 /**
@@ -192,6 +193,10 @@ export function crearDeps(cx: Conexiones): Deps {
     // El selector lee `leerConfig().resenasGoogle` -- mismo criterio que `getPublisher`: acá NO se
     // vuelve a leer el entorno, se deja que la función resuelva su propio default (ver provider.ts).
     resenasProvider: getGoogleReviewsProvider(),
+
+    // Mismo criterio que resenasProvider: el selector lee su propio default de leerConfig(), acá NO
+    // se relee el entorno.
+    borradorProvider: getBorradorProvider(),
 
     log: (msg) => console.log(msg),
   };

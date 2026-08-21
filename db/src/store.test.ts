@@ -1909,3 +1909,165 @@ test("🔴 resenas: las dos funciones son SECURITY DEFINER de app_resenas, con s
     );
   }
 });
+
+// =============================================================================
+// Borrador de IA (migración 0024) — la tercera función security definer del módulo de reseñas.
+// La amenaza acá NO es el silencio (0018): es que la función escriba sobre una fila que no debía
+// (1-3★, o una que ya tenía borrador). Ver la spec, sección "Modelo de datos" — hallazgo de la
+// revisión externa.
+// =============================================================================
+
+test("🔴 app_user NO puede ejecutar guardar_borrador_resena (42501)", async () => {
+  await assert.rejects(
+    () =>
+      store.guardarBorradorResena({
+        clientId: clientA1,
+        tenantId: tenantA,
+        googleReviewId: "gr-intento-api",
+        borrador: "Gracias por tu reseña",
+      }),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre el guardado del borrador",
+  );
+});
+
+test("guardarBorradorResena escribe el borrador de una reseña 5★ elegible", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-borrador-1",
+    puntuacion: 5,
+    autor: "Ana",
+    texto: "Buenísimo",
+    publicadaEn: new Date().toISOString(),
+  });
+
+  const ok = await storeServicio.guardarBorradorResena({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-borrador-1",
+    borrador: "¡Gracias, Ana!",
+  });
+  assert.equal(ok, true);
+
+  const { rows } = await pg.query<{ borrador_respuesta: string; borrador_generado_en: string }>(
+    "select borrador_respuesta, borrador_generado_en from resenas_google where google_review_id = 'gr-borrador-1'",
+  );
+  assert.equal(rows[0]?.borrador_respuesta, "¡Gracias, Ana!");
+  assert.ok(rows[0]?.borrador_generado_en, "borrador_generado_en queda puesto");
+});
+
+test("🔴 guardarBorradorResena NO escribe sobre una reseña de 1-3★ (defensa en profundidad)", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-negativa",
+    puntuacion: 2,
+    autor: "Carlos",
+    texto: "Mal",
+    publicadaEn: new Date().toISOString(),
+  });
+
+  const ok = await storeServicio.guardarBorradorResena({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-negativa",
+    borrador: "IA no debería poder escribir esto",
+  });
+  assert.equal(ok, false, "🔴 el WHERE de la función rechaza puntuacion fuera de 4-5");
+
+  const { rows } = await pg.query<{ borrador_respuesta: string | null }>(
+    "select borrador_respuesta from resenas_google where google_review_id = 'gr-negativa'",
+  );
+  assert.equal(rows[0]?.borrador_respuesta, null, "la reseña negativa sigue sin ningún borrador de IA");
+});
+
+test("🔴 guardarBorradorResena NO pisa un borrador que ya existe (defensa en profundidad)", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-ya-tiene",
+    puntuacion: 5,
+    autor: "Diana",
+    texto: "Excelente",
+    publicadaEn: new Date().toISOString(),
+  });
+  const primera = await storeServicio.guardarBorradorResena({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-ya-tiene",
+    borrador: "Edición del staff, guardada primero",
+  });
+  assert.equal(primera, true);
+
+  const segunda = await storeServicio.guardarBorradorResena({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-ya-tiene",
+    borrador: "Un segundo llamado no debería pisar esto",
+  });
+  assert.equal(segunda, false, "🔴 el WHERE rechaza borrador_respuesta is null cuando ya hay uno");
+
+  const { rows } = await pg.query<{ borrador_respuesta: string | null }>(
+    "select borrador_respuesta from resenas_google where google_review_id = 'gr-ya-tiene'",
+  );
+  assert.equal(rows[0]?.borrador_respuesta, "Edición del staff, guardada primero", "no se sobrescribió");
+});
+
+test("🔴 guardarBorradorResena escribe bajo el tenant que se le pasa, no el que decida el motor", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientB1,
+    tenantId: tenantB,
+    googleReviewId: "gr-cruzado-borrador",
+    puntuacion: 5,
+    autor: "B",
+    texto: null,
+    publicadaEn: new Date().toISOString(),
+  });
+  await storeServicio.guardarBorradorResena({
+    clientId: clientB1,
+    tenantId: tenantB,
+    googleReviewId: "gr-cruzado-borrador",
+    borrador: "Gracias",
+  });
+
+  const { rows } = await pg.query<{ tenant_id: string }>(
+    "select tenant_id from resenas_google where google_review_id = 'gr-cruzado-borrador'",
+  );
+  assert.equal(rows[0]?.tenant_id, tenantB);
+});
+
+test("🔴 la función nueva es SECURITY DEFINER de app_resenas, con search_path fijado", async () => {
+  const { rows } = await pg.query<{
+    owner: string; prosecdef: boolean; proconfig: string[] | null;
+  }>(
+    `select pg_get_userbyid(p.proowner) as owner, p.prosecdef, p.proconfig
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'app' and p.proname = 'guardar_borrador_resena'`,
+  );
+  assert.equal(rows.length, 1, "la función existe (si no, el resto no comprueba nada)");
+  assert.equal(rows[0]?.owner, "app_resenas", "🔴 NO puede pertenecer a quien corre la migración");
+  assert.equal(rows[0]?.prosecdef, true, "🔴 sin security definer no hay cruce de tenants");
+  assert.ok(
+    (rows[0]?.proconfig ?? []).some((c) => c.startsWith("search_path=")),
+    "🔴 sin search_path fijado es una escalada de privilegios",
+  );
+});
+
+test("🔴 los grants de update sobre borrador_respuesta son EXACTAMENTE app_user y app_resenas", async () => {
+  const { rows } = await pg.query<Record<string, boolean>>(`
+    select
+      has_column_privilege('app_user',    'resenas_google', 'borrador_respuesta', 'update') as user_update,
+      has_column_privilege('app_resenas', 'resenas_google', 'borrador_respuesta', 'update') as resenas_update,
+      has_column_privilege('app_service', 'resenas_google', 'borrador_respuesta', 'update') as service_update,
+      has_column_privilege('app_render',  'resenas_google', 'borrador_respuesta', 'update') as render_update
+  `);
+  assert.deepEqual(rows[0], {
+    user_update: true,
+    resenas_update: true,
+    // El orquestador (app_service) sigue sin grant directo: pasa por la función security definer.
+    service_update: false,
+    // ADR-19: el renderizador anónimo, jamás.
+    render_update: false,
+  });
+});
