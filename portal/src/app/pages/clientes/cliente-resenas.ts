@@ -156,6 +156,7 @@ export class ClienteResenasPage implements OnInit, OnDestroy {
       // Las reseñas del cliente anterior no son de éste: vaciarlas antes de pedir evita mostrar
       // trabajo ajeno mientras la respuesta viaja.
       this.resenas.set([]);
+      this.ediciones.set({});
       this.error.set('');
       void this.cargar(id);
     });
