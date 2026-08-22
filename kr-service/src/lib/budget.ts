@@ -19,10 +19,17 @@ export class BudgetExceededError extends Error {
  * ESTIMACIONES para el preflight, en micros de USD. Sirven solo para decidir si arrancar una fase;
  * el costo REAL se mide aparte con el CostMeter.
  *
- * Calibradas contra la primera corrida real (2026-07-13, 52 keywords, DataForSEO producción:
- * $0.2522 en total). Las anteriores estaban ~50× por debajo ($0.005 para enriquecer CUALQUIER
- * cantidad de keywords), así que el tope no protegía: el preflight siempre daba "entra" y el gasto
- * real lo desbordaba.
+ * `dfsSearchVolume*`/`dfsBulkKd*` recalibradas contra la corrida real del 2026-08-22 (23 keywords,
+ * enriquecimiento $0.1831 — ver `datasets/keywords.json` y Bloque D en
+ * `docs/proyecto/15-plan-plataforma.md`). El valor anterior (heredado de la corrida del 2026-07-13,
+ * cuyo dataset se perdió) estimaba $0.1145 para las mismas 23 keywords: **~60% por debajo del gasto
+ * real**, la dirección peligrosa para un preflight. Los nuevos valores cubren el gasto real medido
+ * con ~17% de margen, no lo igualan exacto — la corrida es UNA sola muestra, no una distribución.
+ *
+ * `dfsSuggestions`/`dfsSerp`/`llmCall`/`llmEmbed` NO se tocaron: la corrida del 2026-08-22 no midió
+ * `dfsSuggestions` por separado, y el SERP real (~$0.0006/llamada) salió muy por debajo del estimado
+ * ($0.003) — ya sobreestima, que es el lado seguro, así que no hay urgencia de ajustarlo con una sola
+ * muestra.
  *
  * El costo de enriquecimiento ESCALA CON LA CANTIDAD DE KEYWORDS, así que la estimación también.
  * Ante la duda se sobreestima: un preflight conservador puede abortar de más (molesto pero
@@ -49,10 +56,10 @@ export interface PhaseEstimates {
 
 export const DEFAULT_ESTIMATES: PhaseEstimates = {
   dfsSuggestions: 10_000, // $0.010 por llamada
-  dfsSearchVolumeBase: 50_000, // $0.050 fijo
-  dfsSearchVolumePerKeyword: 1_000, // $0.001 por keyword
-  dfsBulkKdBase: 30_000, // $0.030 fijo
-  dfsBulkKdPerKeyword: 500, // $0.0005 por keyword
+  dfsSearchVolumeBase: 90_000, // $0.090 fijo
+  dfsSearchVolumePerKeyword: 2_000, // $0.002 por keyword
+  dfsBulkKdBase: 55_000, // $0.055 fijo
+  dfsBulkKdPerKeyword: 1_000, // $0.001 por keyword
   dfsSerp: 3_000, // $0.003 por SERP
   llmCall: 5_000, // $0.005 por llamada
   llmEmbed: 1_000,

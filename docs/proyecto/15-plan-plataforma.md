@@ -572,34 +572,46 @@ C0 eligió. La decisión se mantiene.
 
 ## Bloque D — calibrar el research (KR-1)
 
-**Depende de Juan porque gasta dinero.** ~**$0.31** y ~16 minutos contra DataForSEO en producción, y
-**hay que volver a sandbox después** (`kr-service/.env`).
+**✅ Corrida real hecha el 2026-08-22.** `MAX_COST_USD=1.00 npm run spike -w kr-service "Hamburguesería
+gourmet en Madrid, especializada en carne madurada"` contra DataForSEO en producción: **$0.2124**
+($0.1849 DFS + $0.0275 LLM), 23 keywords, 3 páginas. Dataset persistido en `datasets/keywords.json`
+(commit de esta corrida). Un intento previo corrió sin querer contra **sandbox** (el `env:sync` para
+arreglar una `OPENAI_API_KEY` vencida revirtió `DATAFORSEO_BASE_URL` a su default seguro) — quedó
+descartado, sin gasto ($0.00 DFS), antes de repetirlo bien.
 
-**Qué desbloquea, en concreto:**
+**Lo que este dataset SÍ cierra:**
 
-- Los **tres `n/d`** del informe (el desglose de coste y las dos coberturas) dejan de ser huecos.
-- **`VOLUMEN_PERCENTIL_TOPE = 0.9`** y **`PESO_CONFIANZA_ORDEN = 0.5`**: hoy son juicio, no medición.
-  Barrerlos es **gratis en cuanto exista el dataset**, igual que se barrió
-  `CLUSTER_SIM_THRESHOLD_DEFAULT = 0.75`.
-- **`TIPOS_MAP_PACK`** (`local_pack`, `map`) sin verificar contra la API real (~$0.003). Si estuviera
-  mal, `is_local` saldría `false` para todo: falla hacia el lado conservador, pero entonces KR-3 no
-  estaría arreglando nada.
-- **Las estimaciones por fase de `lib/budget.ts`.** Las tarifas de los modelos están verificadas; las
-  estimaciones **siguen a ojo**, y el `09` dice que se calibran con este mismo dataset
-  ([`09:920`](09-estado-y-roadmap.md#L920)). Estaban fuera de este bloque y no debían estarlo (15ª
-  review, H6).
-- **Las páginas cuya cabeza nadie observó.** `max_pages` vale 25 y `serpValidateTop` 15
-  ([`09:924`](09-estado-y-roadmap.md#L924)): como el mapeo reordena por evidencia, un cluster de la
-  posición ≥16 con datos de mercado puede subir a página **con la cabeza sin observar**, y recibir su
-  `schema_type` por conjetura del LLM. Con 8 páginas no muerde; con más clusters compitiendo, sí. El
-  dataset es lo que permite medir cuántas páginas caen ahí — hoy es una hipótesis sin número.
+- **`TIPOS_MAP_PACK` verificado contra la API real.** Las 3 cabezas del run mostraron `local_pack`/`map`
+  en el SERP real y corrigieron 1 `is_local` — los nombres de tipo que usa `endpoints.ts` son correctos.
+- **`lib/budget.ts` recalibrado con un dato real**, no heredado de una corrida perdida. El estimado
+  anterior ($0.1145 para 23 keywords) quedaba **~60% por debajo** del gasto real de enriquecimiento
+  ($0.1831) — la dirección peligrosa para un preflight que existe para frenar antes de gastar. Nuevos
+  valores en `DEFAULT_ESTIMATES`, con ~17% de margen sobre el dato real, fijados por test
+  (`budget.test.ts`, verificado por mutación). `dfsSerp` no se tocó: salió ~5× **por encima** del real
+  (~$0.0006/SERP vs. $0.003 estimado) — ya sobreestima, que es el lado seguro.
+- Los tres `n/d` del informe: confirmado en `out/informe.md` de esta corrida que se muestran como
+  `n/d`, nunca como `0` — ya eran correctos en código, esto solo lo verificó contra datos reales.
 
-El dataset ya no se pierde: desde el 2026-08-02 va a `datasets/`, con un test que se lo pregunta a
-`git check-ignore`.
+**Lo que este dataset NO alcanza a cerrar, y por qué no se fuerza igual:**
 
-**Ojo con lo que este bloque puede declarar de más.** Con el dataset se calibra la señal local de las
-cabezas observadas; **no** se cierra el hueco de las ≥16. Si D se da por cerrado sin decirlo, el `09`
-pasa a afirmar "señal local calibrada" mientras la mayoría de las keywords sigue decidiéndose por LLM.
+- **`VOLUMEN_PERCENTIL_TOPE` (0.9) y `PESO_CONFIANZA_ORDEN` (0.5) siguen sin recalibrar.** Solo 4 de
+  23 keywords trajeron volumen conocido (17% de cobertura, y 3 de esas 4 son nombres de competidores
+  reales, no términos genéricos) — barrer un percentil sobre una población de 4 puntos no mide nada,
+  solo inventa precisión donde no la hay. El propio código ya lo dice
+  (`scoring.ts:67-72`): esto necesita una distribución de mercado real —muchas corridas, muchos
+  rubros— no una corrida más de $0.21.
+- **La hipótesis de `max_pages`/`serpValidateTop`** (cluster ≥16 con la cabeza sin observar) sigue sin
+  un caso real: este run produjo 3 clusters, muy por debajo de los 16 que hacen falta para que el
+  escenario aparezca. Ver [`09:1220`](09-estado-y-roadmap.md#L1220).
+
+No se cierra el bloque como "calibrado" sin más — sería la misma trampa que advertía el texto
+original: con el dataset se calibra lo que se puede medir con 23 keywords (los tipos de SERP, un
+punto real de costo), no la señal de volumen ni la hipótesis de páginas.
+
+El dataset ya no se pierde: desde el 2026-08-02 va a `datasets/`, versionado, con un test que se lo
+pregunta a `git check-ignore`. Si hace falta más señal de volumen para VOLUMEN_PERCENTIL_TOPE/
+PESO_CONFIANZA_ORDEN, la vía es correr research contra negocios reales según se vayan sumando
+clientes (gratis, ya está pagado) — no un spike de calibración dedicado.
 
 ---
 

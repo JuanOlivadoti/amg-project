@@ -11,6 +11,44 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-22 — Bloque D: corrida real de calibración contra DataForSEO en producción
+
+`MAX_COST_USD=1.00 npm run spike -w kr-service "Hamburguesería gourmet en Madrid, especializada en
+carne madurada"`. Costó $0.2124 (23 keywords, 3 páginas), dataset persistido en
+`datasets/keywords.json` (commit). No puedo tocar `.env` (bloqueado por permisos), así que todo el
+manejo de credenciales y del corte sandbox/producción lo hizo el usuario a pedido, en pasos.
+
+**Un intento previo se perdió sin costo, por una interacción no obvia entre dos pasos del
+procedimiento.** El primero falló por una `OPENAI_API_KEY` vencida en `kr-service/.env`. El usuario
+la actualizó en `credenciales.env` y corrió `npm run env:sync` para propagarla — pero `env:sync`
+regenera el `.env` ENTERO desde la fuente, así que también revirtió el `DATAFORSEO_BASE_URL` (que
+alguien había cambiado a mano a producción) de vuelta a su default seguro (sandbox). El segundo
+intento corrió limpio pero contra sandbox: $0 de DataForSEO, datos ficticios, descartado. Orden
+correcto, documentado ahora en el Bloque D: `env:sync` primero (todo lo demás), después el cambio a
+mano de `DATAFORSEO_BASE_URL` — nunca al revés.
+
+**Lo que la corrida real permitió calibrar, con evidencia, no a ojo:**
+`TIPOS_MAP_PACK` (`local_pack`/`map`) se confirmó correcto contra el SERP real (3/3 cabezas, 1
+`is_local` corregido). `lib/budget.ts`'s `DEFAULT_ESTIMATES` tenía un bug real: estimaba $0.1145 de
+enriquecimiento para 23 keywords cuando el gasto real fue $0.1831 — **~60% por debajo**, la dirección
+peligrosa para un preflight que existe para frenar ANTES de gastar (el estimado viejo era el heredado
+de una corrida de 2026-07-13 cuyo dataset se había perdido, nunca recalculado). Recalibrado con
+~17% de margen sobre el dato real, fijado por un test nuevo y verificado por mutación
+(`kr-service/src/lib/budget.test.ts`). `dfsSerp` no se tocó — salió ~5× por encima del real, ya
+sobreestima, que es el lado seguro.
+
+**Lo que la corrida NO alcanzó a calibrar, a propósito.** Solo 4 de 23 keywords trajeron volumen
+conocido (17% de cobertura, y 3 de esas 4 eran nombres de competidores reales, no términos genéricos)
+— insuficiente para barrer `VOLUMEN_PERCENTIL_TOPE` o `PESO_CONFIANZA_ORDEN` sin inventar precisión
+sobre una población de 4 puntos. El propio código ya documentaba esto (`scoring.ts`): hace falta una
+distribución de mercado real, no una corrida más. La hipótesis de `max_pages`/`serpValidateTop`
+(cluster ≥16 con la cabeza sin observar) tampoco se pudo probar: este run produjo 3 clusters, muy
+lejos de los 16 que hacen falta para que el escenario aparezca. Documentado así en Bloque D — cerrar
+el bloque como "calibrado" sin este matiz habría sido la misma sobre-afirmación que el texto original
+advertía evitar.
+
+`kr-service`: 148/148 (+2), typecheck limpio.
+
 ## 2026-08-22 — Migración `0024` desplegada a producción
 
 `npm run migrate:deploy -w db`, una sola migración pendiente (la del borrador de IA para reseñas,
