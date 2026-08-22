@@ -37,11 +37,11 @@ pendientes, que se pueden hacer seguidas. El **C** es el único tramo del produc
 | **A** | Fiabilidad del despliegue | Operar sin sustos | A3 y A4 dependen de Juan |
 | **B** | Deuda de producto ya decidida | — | ya tomadas |
 | **C** | Aprobar → publicar, ejercitado | Cerrar el circuito entero | modo de publicación |
-| **D** | Calibrar el research (KR-1) | La calidad del módulo 2 | **gasta ~$0.31** |
+| **D** | Calibrar el research (KR-1) | La calidad del módulo 2 | ✅ corrida real hecha el 2026-08-22 (parcial, ver detalle) |
 | **E** | El aspecto de las webs | Vender el módulo 1 | diseño |
-| **F** | Módulo 3 — reseñas de Google | Completar el alcance base | alcance |
-| **G** | Lo que ADR-19 dejó a medias | Un SLA | infraestructura |
-| **H** | Offboarding y OBS-04 | Firmar ADR-11 | comercial |
+| **F** | Módulo 3 — reseñas de Google | Completar el alcance base | ✅ fase 1 y fase 2 (primera pieza) cerradas |
+| **G** | Lo que ADR-19 dejó a medias | Un SLA | infraestructura, sin urgencia hoy |
+| **H** | Offboarding y OBS-04 | Firmar ADR-11 | comercial (un ítem, sin decisión de negocio, ✅ resuelto el 2026-08-22) |
 | **J** | Piezas 3 y 4 del portal | Cerrar el programa del portal | ✅ cerrado el 2026-08-13 |
 | **I** | Deuda menor, sin bloqueo | — | — |
 
