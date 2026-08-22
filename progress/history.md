@@ -11,6 +11,13 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-22 — Migración `0024` desplegada a producción
+
+`npm run migrate:deploy -w db`, una sola migración pendiente (la del borrador de IA para reseñas,
+mergeada a `main` el día anterior). Aplicó limpio, sin el problema de checksum CRLF que había represado
+la `0021`-`0023` — ese bug ya estaba arreglado. Producción queda al día: 24 migraciones en `main`, las
+24 aplicadas.
+
 ## 2026-08-21 — Bloque F fase 2 (primera pieza): borrador de respuesta con IA, mergeado a main
 
 Retomó un worktree (`worktree-borrador-ia-resenas`) que una sesión anterior había dejado con las 7

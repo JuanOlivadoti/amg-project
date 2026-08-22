@@ -1231,7 +1231,7 @@ portal 298 `node:test` + 192 Karma (conjunto final, con el merge a `main`).
 **Lo que sigue siendo fase 2, sin empezar:** publicar la respuesta de vuelta a Google, alertas por
 WhatsApp/email (hoy la alerta vive solo en el portal), el acceso real a la Business Profile API
 (`GOOGLE_REVIEWS_MODO=live`), limpiar la conexión cuando el polling detecta un refresh token revocado,
-y la migración `0024` **todavía no se desplegó a producción**.
+La migración `0024` se desplegó a producción el **2026-08-22**.
 
 ---
 
