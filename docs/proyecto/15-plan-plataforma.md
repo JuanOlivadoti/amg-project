@@ -1271,9 +1271,15 @@ Nada de esto bloquea hoy; **todo bloquea un SLA**.
 - **OBS-04 está ABIERTA**: quién edita la web durante el servicio no lo gobierna nuestro RBAC. De eso
   depende qué significa "editable" en la baja.
 - **Falta verificar el snapshot estático como entregable** y ponerle precio a la "salida gestionada".
-- **El enlace de preview del Visual Editor se emite a mano**: `firmarPreview()` existe y está probado,
-  pero en producción el enlace se genera con un script fuera del repo. La firma **vence**, así que hoy
-  se compensa con un vencimiento largo.
+- ~~**El enlace de preview del Visual Editor se emite a mano**~~ ✅ **Resuelto el 2026-08-22.**
+  `npm run preview:firmar -w renderer -- <dominio> [minutos]` (`renderer/src/cli/firmar-preview.ts`,
+  5 tests, verificado por mutación) envuelve `firmarPreview()` en un comando del repo, versionado y
+  probado — antes vivía como script fuera del repo, sin test, sin historia en git. `PREVIEW_SECRET`
+  sigue sin viajar por `env:sync` a propósito (es config de producción de Railway, como
+  `DATABASE_URL_RENDER` y `STORYBLOK_WEBHOOK_SECRET`: el renderizador es la única pieza expuesta a
+  internet anónimo, sus credenciales reales no tienen por qué estar en ninguna máquina local) — hay
+  que ponerla a mano en `renderer/.env` cada vez, documentado en `renderer/.env.example`. La firma
+  sigue **venciendo** (1h por defecto), eso no cambió.
 - **El clic-para-editar del Visual Editor no funciona**: `desShapeBlok()` descarta `_editable` al
   normalizar el blok, y de ahí saca el Bridge el resaltado. Se edita desde el panel de campos. Pesa
   poco si edita la agencia y bastante si el día de mañana edita el cliente.

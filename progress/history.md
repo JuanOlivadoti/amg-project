@@ -11,6 +11,40 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-22 — Bloque H: el enlace de preview del Visual Editor ya no se emite a mano
+
+Bloque D dejó abierta la pregunta de con qué seguir. Miré G y H a fondo antes de comprometerme a
+cualquiera: **son cualitativamente distintos de D y F.** G (CDN, invalidación multi-instancia) es
+infraestructura sin urgencia hoy (el texto del propio plan dice "nada de esto bloquea"; hoy corre en
+una sola instancia, así que el problema que resolvería no existe todavía). H tiene cuatro ítems, y
+tres de ellos son decisiones de negocio (OBS-04, precio de la salida gestionada) o dependen de una
+decisión de negocio sin resolver (el clic-para-editar del Visual Editor, que solo importa si el
+cliente edita — y eso es justo lo que OBS-04 no resolvió). Se lo dije al usuario así, en vez de
+fingir que había trabajo de ingeniería listo para hacer, y pregunté. Eligió el único ítem sin
+decisión de negocio de por medio.
+
+**El trabajo:** `firmarPreview()` (`renderer/src/preview.ts`) existe y está probada desde ADR-19, pero
+en producción el enlace se generaba con un script fuera del repo — sin test, sin historia en git, la
+única copia viviendo en la máquina de quien lo escribió. Envuelto en
+`renderer/src/cli/firmar-preview.ts` + `npm run preview:firmar -w renderer -- <dominio> [minutos]`,
+con 5 tests (falla sin dominio, falla sin `PREVIEW_SECRET`, falla con duración inválida, imprime una
+URL usable sin nunca imprimir el secreto, y la URL impresa autoriza de verdad contra
+`previewAutorizado()` — no un string que solo parece válido). Verificado por mutación: invertir
+`_amg_preview`/`_amg_exp` en la URL hace caer exactamente el test de autorización real.
+
+**Una decisión que casi tomo mal, corregida antes de escribir código.** Mi primer instinto fue sumar
+`PREVIEW_SECRET` al `MAPA.renderer` de `scripts/env-sync.mts`, para que `env:sync` lo distribuyera
+como cualquier otra credencial. Antes de hacerlo miré si `DATABASE_URL_RENDER` y
+`STORYBLOK_WEBHOOK_SECRET` —las otras credenciales reales del renderizador en producción— estaban en
+ese `MAPA`, y no lo están: `renderer/.env` es explícitamente **solo para la demo local**, y las
+credenciales reales de producción viven solo en Railway, nunca en un `.env` de ninguna máquina —el
+renderizador es la única pieza expuesta a internet anónimo (ADR-19), y esa es la razón. Sumar
+`PREVIEW_SECRET` al reparto habría roto ese límite deliberado por conveniencia. Documentado en
+`renderer/.env.example` con el mismo patrón que ya usaba `DOMINIO_PREVIEW` (comentado, con
+instrucciones, sin entrar al contrato que `env-sync.test.mts` verifica).
+
+`renderer`: 162/162 (+5), typecheck limpio.
+
 ## 2026-08-22 — Bloque D: corrida real de calibración contra DataForSEO en producción
 
 `MAX_COST_USD=1.00 npm run spike -w kr-service "Hamburguesería gourmet en Madrid, especializada en
