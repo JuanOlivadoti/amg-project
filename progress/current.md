@@ -7,29 +7,50 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-23
-**En curso:** nada. Se cerró el Bloque F fase 2, segunda pieza — publicar la respuesta de vuelta a
-Google, mock-first, comando compuesto (ADR-18), ejecutado con `datos` → `pipeline` → `front` en serie
-y `APROBADO` por `revisor` con mutación propia. Antes en la misma sesión: el ítem de invalidación
-multi-instancia del Bloque G. Detalle completo en
-[`history.md`](history.md#2026-08-23--bloque-f-fase-2-segunda-pieza-publicar-la-respuesta-de-vuelta-a-google-mock-first).
-**Estado:** `npm run verificar` en verde, 1639 tests del monorepo + 298 `node:test` y 196 Karma en el
-portal. Migración `0025` desplegada a producción el **2026-08-23** (confirmado con el output real de
-`migrate:deploy -w db`, corrido por Juan). Producción al día, 25 migraciones aplicadas.
+**En curso:** alertas por Telegram para reseñas 1-3★ (Bloque F, fase 2 — cierra RF-018 del PRD).
+**Nada implementado todavía** — hay un plan completo, ya revisado por Codex y con los 8 ajustes
+aplicados, esperando que se dispatchee la Task 1 (`datos`). El plan entero, con el SQL exacto:
+[`docs/superpowers/plans/2026-08-23-alertas-telegram.md`](../docs/superpowers/plans/2026-08-23-alertas-telegram.md).
 
-**Decisiones de esta sesión (Bloque F):**
-- De los cuatro ítems que quedaban de fase 2, tres dependían de un trámite externo (acceso real a la
-  Business Profile API de Google, que Juan todavía no pidió) o de elegir proveedor de alertas — no
-  eran ingeniería lista para hacer. Se construyó el único decision-free: publicar la respuesta,
-  mock-first, mismo patrón que ya usó toda la fase 1.
-- El plan se ejecutó con los agentes de área del proyecto en vez de la skill genérica de subagentes,
-  contrato fijado por la sesión principal antes de delegar (SQL completo, firmas exactas) — misma
-  adaptación que ya se usó en la primera pieza de fase 2.
+Antes en la misma sesión, ya cerrado: el Bloque F fase 2 segunda pieza (publicar la respuesta de
+vuelta a Google, mock-first) y el ítem de invalidación multi-instancia del Bloque G. Detalle completo
+en [`history.md`](history.md#2026-08-23--bloque-f-fase-2-segunda-pieza-publicar-la-respuesta-de-vuelta-a-google-mock-first).
+
+**Estado del código:** `npm run verificar` en verde (1639 tests + 298 `node:test`/196 Karma del
+portal), sin cambios desde el cierre de la pieza anterior. Migración `0025` desplegada a producción,
+25 migraciones aplicadas.
+
+**Decisiones tomadas sobre las alertas (para no repetir la investigación si se retoma esto después):**
+- **Canal: Telegram, no WhatsApp.** Investigado: WhatsApp Business exige verificación de negocio
+  ante Meta (días), plantillas pre-aprobadas para cualquier mensaje que AMG inicie, y se paga por
+  mensaje. Telegram: bot por `@BotFather` en dos minutos, gratis, sin aprobación de nadie — y sin
+  gatekeeper externo (a diferencia de todo lo demás que queda de fase 2), así que el plan implementa
+  `live` de verdad, no mock-first.
+- **Destinatario: el CM asignado a cada cliente** (`clients.asignado_a`), no un canal/grupo único —
+  RF-018 del PRD pide la alerta "al CM", personal interno de AMG.
+- **Vinculación por polling (`getUpdates`), no webhook público** — mismo criterio que ya eligió este
+  proyecto para las reseñas de Google (menos infraestructura nueva expuesta).
+- **Retry automático de la alerta vía `alerta_telegram_enviada_en`** (columna en `resenas_google`,
+  no una cola ni un botón): si Telegram falla, el próximo ciclo de polling (30 min) reintenta solo.
+  Decidido después de que Codex encontrara que el diseño original perdía la alerta para siempre si
+  fallaba una vez.
+- **El código de vinculación y su TTL de 10 min los genera Postgres** (un trigger fuerza
+  `gen_random_uuid()` + `now() + 10 min`, ignorando lo que mande el caller) — no TypeScript. Codex
+  encontró que el diseño original solo lo garantizaba por convención, no por constraint.
+
+**Codex review (2026-08-23):** veredicto original NECESITA REDISEÑO, 8 hallazgos — 2 bugs que
+hubieran bloqueado el polling o fallado en runtime (grants incompletos de `app_telegram`;
+`CREATE OR REPLACE` no puede agregarle una columna a `clientes_conectados_google`), 1 bug de
+disponibilidad (offset de `getUpdates` se clava con un lote sin `/start`), 1 de robustez decidido
+por Juan (retry automático), 1 de cableado de config (`TELEGRAM_BOT_USERNAME` sin `env:sync`), y el
+resto validaciones/tests. Ninguno reabrió Telegram ni "por CM asignado". Los 8 ya están en el plan.
 
 **Pendiente inmediato:**
-- Del Bloque F fase 2 quedan, bloqueados en cascada por el mismo trámite externo o por una decisión de
-  proveedor: alertas por WhatsApp/email, acceso real a Google (`GOOGLE_REVIEWS_MODO=live`), limpiar la
-  conexión cuando se detecta un refresh token revocado (esto último ni siquiera se puede diseñar bien
-  sin conocer la forma real del error de revocación de Google).
+- **Dispatchear la Task 1 (`datos`) del plan de alertas por Telegram** — es lo próximo, en cuanto se
+  retome esta sesión.
+- Del Bloque F fase 2 quedan, bloqueados en cascada por un trámite externo o una decisión de
+  proveedor: alertas por email, acceso real a Google (`GOOGLE_REVIEWS_MODO=live`), limpiar la
+  conexión cuando se detecta un refresh token revocado.
 - **Fijar `CACHE_TTL_MS` en Railway** (Bloque G) al valor real que pida el SLA — sigue pendiente,
   config de despliegue, no código.
 - Del Bloque G quedan el CDN en el borde y el límite de dominios custom de Railway — decisiones de
