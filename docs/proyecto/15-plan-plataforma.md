@@ -40,7 +40,7 @@ pendientes, que se pueden hacer seguidas. El **C** es el único tramo del produc
 | **D** | Calibrar el research (KR-1) | La calidad del módulo 2 | ✅ corrida real hecha el 2026-08-22 (parcial, ver detalle) |
 | **E** | El aspecto de las webs | Vender el módulo 1 | diseño |
 | **F** | Módulo 3 — reseñas de Google | Completar el alcance base | ✅ fase 1 y fase 2 (primera pieza) cerradas |
-| **G** | Lo que ADR-19 dejó a medias | Un SLA | infraestructura, sin urgencia hoy |
+| **G** | Lo que ADR-19 dejó a medias | Un SLA | SLA real en curso — invalidación multi-instancia ✅ resuelta el 2026-08-23 (era config, no código); CDN y dominio custom quedan |
 | **H** | Offboarding y OBS-04 | Firmar ADR-11 | comercial (un ítem, sin decisión de negocio, ✅ resuelto el 2026-08-22) |
 | **J** | Piezas 3 y 4 del portal | Cerrar el programa del portal | ✅ cerrado el 2026-08-13 |
 | **I** | Deuda menor, sin bloqueo | — | — |
@@ -1253,9 +1253,17 @@ Nada de esto bloquea hoy; **todo bloquea un SLA**.
 
 - **Una CDN delante del renderizador.** ADR-19 dice "cache en el borde"; lo construido es una cache
   **en proceso**. El borde es una decisión de despliegue.
-- **Más de una instancia rompe la invalidación.** El webhook llega a UNA, las demás sirven contenido
-  viejo hasta que venza el TTL (5 min por defecto). Antes de escalar: cache compartida, o bajar el TTL
-  a sabiendas.
+- ~~**Más de una instancia rompe la invalidación.**~~ **No es una brecha de código — ya está resuelto
+  por diseño, 2026-08-23.** El webhook llega a UNA instancia, pero el TTL (`CACHE_TTL_MS`,
+  `renderer/src/deps.ts`) ya es una variable de entorno de producción, leída y propagada de punta a
+  punta (`leerConfig()` → `crearDeps()` → `CacheRender`), documentada en `renderer/README.md` y sin
+  test hasta ahora (`renderer/src/deps.test.ts`, 10 casos, verificado por mutación: apagar el guard
+  `ttl > 0` tumba exactamente el caso de `CACHE_TTL_MS=0`). Con el TTL como único mecanismo (sin
+  depender de a qué instancia le llegó el webhook), la peor propagación cruzando toda la flota queda
+  acotada por el valor de `CACHE_TTL_MS`, sin importar cuántas instancias corran. Lo único que falta
+  es **el número**: fijar `CACHE_TTL_MS` en Railway al valor que pida el SLA (el default sigue siendo
+  5 min si no se toca). La alternativa de cache compartida (Redis, invalidación casi en tiempo real)
+  se evaluó y se descartó por ahora — el SLA en curso solo pide acotar la propagación, no tiempo real.
 - **Punto único de disponibilidad.** Si el renderizador se cae, **se caen todas las webs de cliente a
   la vez**. Mitigado (health check sin dependencias, timeout de 5 s, 503 que no se cachea), pero el
   modo de fallo existe y un sitio estático no lo tenía.

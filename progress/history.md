@@ -11,6 +11,46 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-23 — Bloque G: la invalidación multi-instancia no era una brecha de código
+
+Juan confirmó que hay una conversación de SLA real en curso, así que el Bloque G ("lo que ADR-19
+dejó a medias") dejó de ser infraestructura sin urgencia. Antes de escribir código pregunté qué exige
+el SLA en tiempo de propagación (cuando el cliente publica en Storyblok, en cuánto se refleja en
+TODAS las instancias) — la respuesta fue "con bajar el TTL alcanza (30-60s)", no tiempo real
+cross-instancia.
+
+Al ir a implementarlo, la sorpresa: **no había nada que construir.** `CACHE_TTL_MS` ya está
+implementado de punta a punta desde antes de esta sesión — `leerConfig()` en `renderer/src/deps.ts`
+lo lee y lo valida (`Number.isFinite(ttl) && ttl > 0`, para que `0`/negativo/no-numérico caigan al
+default en vez de romper el arranque), `crearDeps()` lo pasa a `CacheRender`, y está documentado en
+`renderer/README.md`. Lo único que faltaba era que **nadie lo había probado**: cero tests de
+`leerConfig()` en todo el paquete. Un default de producción que decide la propagación de un SLA sin
+test es exactamente "una decisión sin dueño" (AGENTS.md).
+
+Cerrado con `renderer/src/deps.test.ts` (10 tests nuevos: las dos variables obligatorias, el mensaje
+de error con las dos si faltan las dos, `CACHE_TTL_MS` válido/ausente/cero/negativo/no-numérico,
+`PREVIEW_SECRET` vacío, `TRUST_PROXY` con su valor exacto). Verificado por mutación: relajar el guard
+a `ttl >= 0` tumba exactamente el caso de `CACHE_TTL_MS=0`.
+
+**Por qué bajar el TTL alcanza y no hace falta cache compartida.** Sin depender de a qué instancia le
+llegó el webhook, cada instancia expira sus propias entradas por su propio reloj — el peor caso de
+propagación cruzando TODA la flota queda acotado por `CACHE_TTL_MS`, sin importar cuántas instancias
+corran. El webhook pasa de ser el mecanismo a ser una optimización local. Se evaluó la alternativa
+(Redis con un timestamp de invalidación compartido por space, near-real-time) y se descartó: agrega
+un servicio nuevo, una credencial de producción nueva y un modo de fallo nuevo para resolver un
+problema que el SLA real no plantea.
+
+**Lo único que queda de este ítem, y no es código:** fijar `CACHE_TTL_MS` en Railway al valor que
+pida el SLA (sigue en el default de 5 min si no se toca). Los otros dos ítems del Bloque G (CDN en el
+borde, límite de dominios custom de Railway) son decisiones de despliegue/plan, no ingeniería, y
+quedan sin tocar — documentado en
+[15-plan-plataforma.md § Bloque G](../docs/proyecto/15-plan-plataforma.md#bloque-g--lo-que-adr-19-dejó-a-medias).
+
+`npm run verificar`: 1616 tests del monorepo (+10), typecheck limpio, sin secretos, portal sin
+cambios.
+
+---
+
 ## 2026-08-22 — Bloque H: el enlace de preview del Visual Editor ya no se emite a mano
 
 Bloque D dejó abierta la pregunta de con qué seguir. Miré G y H a fondo antes de comprometerme a
