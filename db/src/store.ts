@@ -431,6 +431,19 @@ export interface BorradorParaGuardar {
   borrador: string;
 }
 
+/**
+ * Lo que el orquestador necesita para publicar UNA reseña puntual, vía `app.resena_para_publicar()`
+ * (0025). Bloque F, fase 2, segunda pieza.
+ */
+export interface ResenaParaPublicar {
+  clientId: string;
+  tenantId: string;
+  googleReviewId: string;
+  borrador: string;
+  locationId: string;
+  refreshToken: string;
+}
+
 export class PgStore {
   /**
    * @param pool  Pool ATADO a un login concreto (`amg_api` o `amg_orquestador`).
@@ -1023,6 +1036,42 @@ export class PgStore {
         [r.clientId, r.tenantId, r.googleReviewId, r.borrador],
       );
       return rows[0]?.guardar_borrador_resena ?? false;
+    });
+  }
+
+  /**
+   * Lo que el orquestador necesita para publicar UNA reseña puntual, vía `app.resena_para_publicar`
+   * (0025). `null` si la solicitud ya no aplica (publicada, sin borrador, o no existe) -- el evento
+   * que dispara esto no porta autoridad (ADR-18), esta consulta es la que decide.
+   */
+  async resenaParaPublicar(resenaId: string): Promise<ResenaParaPublicar | null> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{
+        client_id: string; tenant_id: string; google_review_id: string;
+        borrador_respuesta: string; location_id: string; refresh_token: string;
+      }>("select * from app.resena_para_publicar($1)", [resenaId]);
+      const r = rows[0];
+      if (!r) return null;
+      return {
+        clientId: r.client_id, tenantId: r.tenant_id, googleReviewId: r.google_review_id,
+        borrador: r.borrador_respuesta, locationId: r.location_id, refreshToken: r.refresh_token,
+      };
+    });
+  }
+
+  /**
+   * Confirma que se publicó, vía `app.publicar_respuesta_resena` (0025). `false` si nadie la pidió
+   * o ya estaba publicada -- el WHERE de la función decide, no este método.
+   */
+  async marcarRespuestaPublicada(
+    r: { clientId: string; tenantId: string; googleReviewId: string },
+  ): Promise<boolean> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ publicar_respuesta_resena: boolean }>(
+        "select app.publicar_respuesta_resena($1, $2, $3) as publicar_respuesta_resena",
+        [r.clientId, r.tenantId, r.googleReviewId],
+      );
+      return rows[0]?.publicar_respuesta_resena ?? false;
     });
   }
 

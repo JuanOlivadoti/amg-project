@@ -278,3 +278,61 @@ export function crearFuncionPollingResenas(deps: Deps) {
     async ({ step }) => step.run("pollear", () => pollearResenas(deps, console.log)),
   );
 }
+
+// ---------------------------------------------------------------- publicar la respuesta (Bloque F, fase 2, segunda pieza)
+
+/**
+ * Publica la respuesta de vuelta en Google (Bloque F, fase 2, segunda pieza). Reacciona al evento
+ * `resenas/respuesta.solicitada`, que NO PORTA AUTORIDAD (ver events.ts): la fila ya quedó
+ * marcada bajo RLS por la API antes de emitirlo (ADR-18), y esta función vuelve a preguntarle a
+ * la base qué publicar (`resenaParaPublicar`) en vez de confiar en el evento. Cero filas = la
+ * solicitud ya no aplica (otra corrida ya publicó, o se borró el borrador entretanto) -- no es un
+ * error, es el resultado correcto de una carrera perdida.
+ */
+export async function publicarRespuestaResena(
+  deps: Pick<Deps, "store" | "resenasProvider">,
+  resenaId: string,
+  log: (msg: string) => void = () => {},
+): Promise<{ publicada: boolean }> {
+  const info = await deps.store.resenaParaPublicar(resenaId);
+  if (!info) {
+    log(
+      `[publicar-resena] ${resenaId}: la solicitud ya no aplica (publicada, sin borrador, o inexistente)`,
+    );
+    return { publicada: false };
+  }
+
+  const accessToken = await deps.resenasProvider.refrescarToken(info.refreshToken);
+  await deps.resenasProvider.publicarRespuesta(
+    accessToken,
+    info.locationId,
+    info.googleReviewId,
+    info.borrador,
+  );
+  const ok = await deps.store.marcarRespuestaPublicada({
+    clientId: info.clientId,
+    tenantId: info.tenantId,
+    googleReviewId: info.googleReviewId,
+  });
+  if (!ok) {
+    log(
+      `[publicar-resena] ${resenaId}: publicada en Google pero la confirmación no pisó ninguna fila`,
+    );
+  }
+  return { publicada: ok };
+}
+
+export function crearFuncionPublicarResena(deps: Deps) {
+  return inngest.createFunction(
+    {
+      id: "publicar-respuesta-resena",
+      // Sin reintentos: reintentar en caliente un publish contra Google es el mismo error que ya
+      // se descartó en `crearFuncionPollingResenas`. El reintento real es que el staff vuelva a
+      // apretar "Publicar" -- eso pisa `respuesta_solicitada_en` y remite el evento.
+      retries: 0,
+    },
+    { event: "resenas/respuesta.solicitada" },
+    async ({ event, step }) =>
+      step.run("publicar", () => publicarRespuestaResena(deps, event.data.resenaId, console.log)),
+  );
+}

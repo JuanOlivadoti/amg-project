@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CRON_BARRIDO, CRON_POLLING_RESENAS, crearFuncionPollingResenas, pollearResenas } from "./functions.js";
+import {
+  CRON_BARRIDO,
+  CRON_POLLING_RESENAS,
+  crearFuncionPollingResenas,
+  crearFuncionPublicarResena,
+  pollearResenas,
+  publicarRespuestaResena,
+} from "./functions.js";
 import type { Deps } from "./workflow.js";
 
 /**
@@ -301,4 +308,167 @@ test("🔴 un fallo del BorradorProvider se loguea con el id de la reseña y del
     dicho.some((m) => m.includes("r-falla") && m.includes("c-x")),
     `el log tiene que nombrar la reseña y el cliente. Logueado: ${JSON.stringify(dicho)}`,
   );
+});
+
+// ---------------------------------------------------------------- publicar la respuesta (Bloque F, fase 2, segunda pieza)
+
+/**
+ * `publicarRespuestaResena` — mismo criterio de test que `pollearResenas`: la lógica se prueba con un
+ * `store`/`resenasProvider` falsos, sin levantar Inngest ni PGlite. La comprobación de RLS y el WHERE
+ * que decide si la solicitud sigue vigente ya los cubrió la Task 1 (`db`); acá lo único que importa
+ * es que la función pura llame a las piezas correctas, en el orden correcto, y no se trague errores.
+ */
+
+type DepsDePublicar = Parameters<typeof publicarRespuestaResena>[0];
+
+interface ResenaParaPublicarFalsa {
+  clientId: string;
+  tenantId: string;
+  googleReviewId: string;
+  borrador: string;
+  locationId: string;
+  refreshToken: string;
+}
+
+function resenaParaPublicarFalsa(overrides: Partial<ResenaParaPublicarFalsa> = {}): ResenaParaPublicarFalsa {
+  return {
+    clientId: "c1",
+    tenantId: "t1",
+    googleReviewId: "review-1",
+    borrador: "Gracias por tu reseña",
+    locationId: "loc-1",
+    refreshToken: "refresh-tok",
+    ...overrides,
+  };
+}
+
+function depsDePublicar(
+  store: {
+    resenaParaPublicar: (resenaId: string) => Promise<ResenaParaPublicarFalsa | null>;
+    marcarRespuestaPublicada: (r: {
+      clientId: string;
+      tenantId: string;
+      googleReviewId: string;
+    }) => Promise<boolean>;
+  },
+  resenasProvider: {
+    refrescarToken: (refreshToken: string) => Promise<string>;
+    publicarRespuesta: (
+      accessToken: string,
+      locationId: string,
+      googleReviewId: string,
+      texto: string,
+    ) => Promise<void>;
+  },
+): DepsDePublicar {
+  return { store, resenasProvider } as unknown as DepsDePublicar;
+}
+
+test("publicarRespuestaResena: con info válida, refresca el token, publica con los 4 argumentos correctos y confirma", async () => {
+  const llamadas: string[] = [];
+  let publicarArgs: [string, string, string, string] | null = null;
+  let marcarArgs: { clientId: string; tenantId: string; googleReviewId: string } | null = null;
+
+  const deps = depsDePublicar(
+    {
+      resenaParaPublicar: async (resenaId) => {
+        llamadas.push(`resenaParaPublicar(${resenaId})`);
+        return resenaParaPublicarFalsa();
+      },
+      marcarRespuestaPublicada: async (r) => {
+        llamadas.push("marcarRespuestaPublicada");
+        marcarArgs = r;
+        return true;
+      },
+    },
+    {
+      refrescarToken: async (refreshToken) => {
+        llamadas.push(`refrescarToken(${refreshToken})`);
+        return "access-desde-refresh-tok";
+      },
+      publicarRespuesta: async (accessToken, locationId, googleReviewId, texto) => {
+        llamadas.push("publicarRespuesta");
+        publicarArgs = [accessToken, locationId, googleReviewId, texto];
+      },
+    },
+  );
+
+  const resultado = await publicarRespuestaResena(deps, "resena-1");
+
+  assert.deepEqual(resultado, { publicada: true });
+  assert.deepEqual(
+    llamadas,
+    ["resenaParaPublicar(resena-1)", "refrescarToken(refresh-tok)", "publicarRespuesta", "marcarRespuestaPublicada"],
+    "el orden importa: primero se relocaliza, después se refresca, después se publica, después se confirma",
+  );
+  assert.deepEqual(publicarArgs, ["access-desde-refresh-tok", "loc-1", "review-1", "Gracias por tu reseña"]);
+  assert.deepEqual(marcarArgs, { clientId: "c1", tenantId: "t1", googleReviewId: "review-1" });
+});
+
+/**
+ * 🔴 Cero filas = la solicitud ya no aplica (ADR-18: el evento no porta autoridad, la base decide).
+ * No es un error: no debe intentar refrescar token, ni publicar, ni confirmar nada.
+ */
+test("🔴 resenaParaPublicar devuelve null: no llama a NINGÚN otro método, y devuelve {publicada: false}", async () => {
+  let otroMetodoLlamado = false;
+  const deps = depsDePublicar(
+    { resenaParaPublicar: async () => null, marcarRespuestaPublicada: async () => { otroMetodoLlamado = true; return true; } },
+    {
+      refrescarToken: async () => { otroMetodoLlamado = true; return "no-deberia-pasar"; },
+      publicarRespuesta: async () => { otroMetodoLlamado = true; },
+    },
+  );
+
+  const resultado = await publicarRespuestaResena(deps, "resena-inexistente");
+
+  assert.deepEqual(resultado, { publicada: false });
+  assert.equal(otroMetodoLlamado, false, "la solicitud ya no aplica: no se toca ni el provider ni el store de nuevo");
+});
+
+test("🔴 marcarRespuestaPublicada devuelve false (carrera): no lanza, devuelve {publicada: false} y loguea", async () => {
+  const deps = depsDePublicar(
+    { resenaParaPublicar: async () => resenaParaPublicarFalsa(), marcarRespuestaPublicada: async () => false },
+    { refrescarToken: async () => "access-ok", publicarRespuesta: async () => {} },
+  );
+
+  const dicho: string[] = [];
+  const resultado = await publicarRespuestaResena(deps, "resena-1", (m) => dicho.push(m));
+
+  assert.deepEqual(resultado, { publicada: false });
+  assert.ok(
+    dicho.some((m) => m.includes("resena-1")),
+    `tiene que loguear que la confirmación no pisó nada. Logueado: ${JSON.stringify(dicho)}`,
+  );
+});
+
+test("🔴 un error de refrescarToken SE PROPAGA (no se traga, a diferencia de pollearResenas)", async () => {
+  const deps = depsDePublicar(
+    { resenaParaPublicar: async () => resenaParaPublicarFalsa(), marcarRespuestaPublicada: async () => true },
+    {
+      refrescarToken: async () => { throw new Error("refresh token revocado"); },
+      publicarRespuesta: async () => {},
+    },
+  );
+
+  await assert.rejects(() => publicarRespuestaResena(deps, "resena-1"), /refresh token revocado/);
+});
+
+test("🔴 un error de publicarRespuesta SE PROPAGA (no se traga)", async () => {
+  const deps = depsDePublicar(
+    { resenaParaPublicar: async () => resenaParaPublicarFalsa(), marcarRespuestaPublicada: async () => true },
+    {
+      refrescarToken: async () => "access-ok",
+      publicarRespuesta: async () => { throw new Error("Google devolvió 500"); },
+    },
+  );
+
+  await assert.rejects(() => publicarRespuestaResena(deps, "resena-1"), /Google devolvió 500/);
+});
+
+test("🔴 la fábrica produce una función con id propio, distinta de las demás", () => {
+  const deps = {} as Deps;
+  const fn = crearFuncionPublicarResena(deps);
+
+  assert.match(fn.id(), /publicar/);
+  assert.match(fn.id(), /resena/i);
 });

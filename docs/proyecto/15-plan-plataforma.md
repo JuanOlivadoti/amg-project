@@ -39,7 +39,7 @@ pendientes, que se pueden hacer seguidas. El **C** es el único tramo del produc
 | **C** | Aprobar → publicar, ejercitado | Cerrar el circuito entero | modo de publicación |
 | **D** | Calibrar el research (KR-1) | La calidad del módulo 2 | ✅ corrida real hecha el 2026-08-22 (parcial, ver detalle) |
 | **E** | El aspecto de las webs | Vender el módulo 1 | diseño |
-| **F** | Módulo 3 — reseñas de Google | Completar el alcance base | ✅ fase 1 y fase 2 (primera pieza) cerradas |
+| **F** | Módulo 3 — reseñas de Google | Completar el alcance base | ✅ fase 1 y fase 2 (dos piezas) cerradas; resto en cascada bloqueado por acceso real a Google |
 | **G** | Lo que ADR-19 dejó a medias | Un SLA | SLA real en curso — invalidación multi-instancia ✅ resuelta el 2026-08-23 (era config, no código); CDN y dominio custom quedan |
 | **H** | Offboarding y OBS-04 | Firmar ADR-11 | comercial (un ítem, sin decisión de negocio, ✅ resuelto el 2026-08-22) |
 | **J** | Piezas 3 y 4 del portal | Cerrar el programa del portal | ✅ cerrado el 2026-08-13 |
@@ -1240,10 +1240,43 @@ el borrador de IA precargado), editar el borrador, guardar, y confirmar la persi
 tras un reload. Consola limpia. `db` 381/381, `api` 226/226, `orchestrator` 117/117, `scripts` 98/98,
 portal 298 `node:test` + 192 Karma (conjunto final, con el merge a `main`).
 
-**Lo que sigue siendo fase 2, sin empezar:** publicar la respuesta de vuelta a Google, alertas por
-WhatsApp/email (hoy la alerta vive solo en el portal), el acceso real a la Business Profile API
-(`GOOGLE_REVIEWS_MODO=live`), limpiar la conexión cuando el polling detecta un refresh token revocado,
 La migración `0024` se desplegó a producción el **2026-08-22**.
+
+**Fase 2, segunda pieza (publicar la respuesta de vuelta a Google): ✅ COMPLETA el 2026-08-23,
+mock-first.** [Plan de 3 tasks](../superpowers/plans/2026-08-23-publicar-respuesta-resena.md),
+ejecutado con los agentes de área del proyecto (`datos` → `pipeline` → `front`, en serie porque cada
+uno consume el contrato que fija el anterior) en vez de la skill genérica de subagentes — contrato
+fijado por la sesión principal antes de delegar. Comando compuesto, mismo molde que
+`POST /runs/:id/approve` (ADR-18): la API marca `respuesta_solicitada_en` bajo RLS y SOLO SI la fila
+cambió emite `resenas/respuesta.solicitada` — el evento lleva únicamente el `id` de la reseña, nunca
+el texto ni las credenciales; el orquestador vuelve a preguntarle a la base qué publicar
+(`app.resena_para_publicar`, cross-tenant vía `app_resenas`, mismo rol que ya lee el refresh token) en
+vez de confiar en el payload.
+
+| Task | Qué | Migración/commit |
+| --- | --- | --- |
+| 1 (`datos`) | Migración `0025`: columnas `respuesta_solicitada_en`/`respuesta_publicada_en`, dos funciones `security definer` (`resena_para_publicar`, `publicar_respuesta_resena`) sin política nueva —las de 0021/0024 ya cubren cualquier UPDATE de esos roles—, `PgResenas.solicitarPublicacion`, `PgStore.resenaParaPublicar`/`marcarRespuestaPublicada`, tercera forma del `PATCH /clients/:id/resenas/:resenaId` (`{"publicar": true}`) | `0025` |
+| 2 (`pipeline`) | `GoogleReviewsProvider.publicarRespuesta` (mock determinista, `live` sigue sin implementación), evento `resenas/respuesta.solicitada` en `events.ts`, función pura `publicarRespuestaResena` + `crearFuncionPublicarResena` (Inngest, `retries: 0`, mismo criterio que el polling) | — |
+| 3 (`front`) | Botón de tres estados en el tab de reseñas (Publicar respuesta / Reintentar publicación / Publicada el ...), visible solo con borrador y solo para `esEquipo()` | — |
+
+**Sin reintento automático, a propósito** (mismo criterio que la generación del borrador de IA): si
+falla, la fila queda "solicitada, no publicada" y el staff reintenta con el mismo botón — un segundo
+click pisa el timestamp y remite el evento.
+
+Verificado en el navegador con Chrome DevTools MCP (harness descartable del agente `front`, limpiado
+al terminar — no tocó `api/` ni `orchestrator/`, solo simuló lo que Inngest haría con el
+`publicarRespuestaResena` real): ciclo completo `Publicar respuesta → Reintentar publicación →
+Publicada el ...`, guardarraíl de rol `cliente` en vivo (sin ningún botón), los dos temas. `revisor`
+verificó por mutación de primera mano los dos guardarraíles centrales (sin borrador no se puede pedir
+publicar; sin permiso o sin borrador el endpoint da 404 sin emitir evento) — veredicto **APROBADO**,
+detalle completo en `progress/informes/revision-publicar-respuesta.md`.
+
+**Lo que sigue siendo fase 2, sin empezar, y por qué:** alertas por WhatsApp/email (decisión de
+proveedor pendiente — vendor a elegir, no ingeniería lista) y el acceso real a la Business Profile
+API (`GOOGLE_REVIEWS_MODO=live`, trámite externo de Juan con Google) bloquean también, en cascada,
+"limpiar la conexión cuando el polling detecta un refresh token revocado": sin acceso real no hay
+forma de conocer la forma real del error de revocación de Google, así que construir esa detección
+ahora sería adivinar contra una API que todavía no existe en este proyecto.
 
 ---
 

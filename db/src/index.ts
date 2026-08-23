@@ -19,6 +19,7 @@ export type {
   ClienteConectadoGoogle,
   ResenaParaGuardar,
   BorradorParaGuardar,
+  ResenaParaPublicar,
 } from "./store.js";
 
 export { PgSitios, MemSitios } from "./sitios.js";

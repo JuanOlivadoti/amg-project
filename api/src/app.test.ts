@@ -1400,3 +1400,86 @@ test("🔴 con rol 'cliente', PATCH .../resenas/:id con borrador_respuesta da 40
   });
   assert.equal(res.status, 404);
 });
+
+// ============================================================== {"publicar": true} (Bloque F, fase 2, segunda pieza)
+
+test("PATCH .../resenas/:id con {publicar:true}, con borrador y sin publicar: 200 y emite EXACTAMENTE resenas/respuesta.solicitada", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-publicar-1", puntuacion: 5 });
+  await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { borrador_respuesta: "Gracias por tu reseña" },
+  });
+
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { publicar: true },
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
+
+  const [fila] = await sql<{ respuesta_solicitada_en: string | null }>(
+    "select respuesta_solicitada_en from resenas_google where id = $1",
+    [r!.id],
+  );
+  assert.ok(fila!.respuesta_solicitada_en, "la fila quedó marcada de verdad, no solo la respuesta");
+
+  assert.equal(eventos.length, 1, "se emitió exactamente un evento");
+  assert.deepEqual(eventos[0], {
+    name: "resenas/respuesta.solicitada",
+    data: { resenaId: r!.id, solicitadoPor: equipoA },
+  });
+});
+
+test("PATCH .../resenas/:id con {publicar:true} sin borrador: 404 y NINGÚN evento emitido", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-publicar-sin-borrador", puntuacion: 5 });
+
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { publicar: true },
+  });
+  assert.equal(res.status, 404);
+  assert.equal(eventos.length, 0, "un comando compuesto rechazado no puede haber emitido el evento");
+});
+
+test("🔴 con rol 'cliente', PATCH .../resenas/:id con {publicar:true} da 404 (ADR-20: solo lee), sin evento", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-publicar-cliente", puntuacion: 5 });
+  await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { borrador_respuesta: "Gracias" },
+  });
+  eventos.length = 0; // ignorar lo anterior; medimos SOLO el intento del rol cliente
+
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: duenoA1,
+    tenant: tenantA,
+    body: { publicar: true },
+  });
+  assert.equal(res.status, 404);
+  assert.equal(eventos.length, 0, "el rol cliente no pudo escribir: no se despertó al orquestador");
+});
+
+test("🔴 PATCH .../resenas/:id con {publicar: \"sí\"} (string, no boolean) → 400", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-publicar-string", puntuacion: 5 });
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { publicar: "sí" },
+  });
+  assert.equal(res.status, 400);
+  assert.equal(eventos.length, 0);
+});
+
+test("🔴 PATCH .../resenas/:id con {publicar:true, vista:true} (dos claves a la vez) → 400", async () => {
+  const [r] = await sembrarResena(clientA1, { googleReviewId: "r-publicar-doble", puntuacion: 5 });
+  const res = await req("PATCH", `/clients/${clientA1}/resenas/${r!.id}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { publicar: true, vista: true },
+  });
+  assert.equal(res.status, 400);
+  assert.equal(eventos.length, 0);
+});

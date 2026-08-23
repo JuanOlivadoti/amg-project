@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import type { Subscription } from 'rxjs';
@@ -30,6 +31,7 @@ import { Vigencia } from '../../core/vigencia';
  */
 @Component({
   selector: 'app-cliente-resenas',
+  imports: [DatePipe],
   template: `
     <div class="space-y-4">
       <div class="flex items-center justify-between gap-3">
@@ -107,6 +109,31 @@ import { Vigencia } from '../../core/vigencia';
                   >
                     Guardar
                   </button>
+                  <!-- Publicar solo tiene sentido si hay borrador: no tiene sentido publicar un
+                       borrador vacío -- "Guardar" ya existe para escribirlo primero. -->
+                  @if (r.borradorRespuesta) {
+                    @if (r.respuestaPublicadaEn) {
+                      <p class="mt-2 text-xs text-texto-tenue">
+                        Publicada el {{ r.respuestaPublicadaEn | date: 'short' }}
+                      </p>
+                    } @else if (r.respuestaSolicitadaEn) {
+                      <button
+                        type="button"
+                        (click)="publicar(r)"
+                        class="mt-2 rounded-md border border-borde text-texto px-3 py-1.5 text-xs font-medium hover:opacity-90"
+                      >
+                        Reintentar publicación
+                      </button>
+                    } @else {
+                      <button
+                        type="button"
+                        (click)="publicar(r)"
+                        class="mt-2 rounded-md bg-accion text-texto-invertido px-3 py-1.5 text-xs font-medium hover:opacity-90"
+                      >
+                        Publicar respuesta
+                      </button>
+                    }
+                  }
                 } @else if (r.borradorRespuesta) {
                   <p class="mt-2 text-sm text-texto-medio">{{ r.borradorRespuesta }}</p>
                 } @else {
@@ -215,6 +242,19 @@ export class ClienteResenasPage implements OnInit, OnDestroy {
     await this.api.marcarResenaVista(this.clienteId(), r.id);
     this.resenas.update((rs) =>
       rs.map((x) => (x.id === r.id ? { ...x, vistaEn: new Date().toISOString() } : x)),
+    );
+  }
+
+  /**
+   * Pide publicar el borrador de vuelta en Google (Bloque F, fase 2, segunda pieza) y actualiza el
+   * estado local a "solicitada" de inmediato — mismo criterio optimista que `verla()`. La
+   * confirmación real de `respuestaPublicadaEn` llega en el próximo `GET /clients/:id/resenas`
+   * completo (al volver a esta pantalla o cambiar de cliente): no hace falta agregar polling nuevo.
+   */
+  async publicar(r: ResenaGoogle): Promise<void> {
+    await this.api.publicarRespuestaResena(this.clienteId(), r.id);
+    this.resenas.update((rs) =>
+      rs.map((x) => (x.id === r.id ? { ...x, respuestaSolicitadaEn: new Date().toISOString() } : x)),
     );
   }
 

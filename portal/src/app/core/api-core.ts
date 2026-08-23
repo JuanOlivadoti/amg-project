@@ -262,6 +262,13 @@ export interface ClienteApi {
    * repetir (no es de una sola vez). */
   editarBorradorResena(clientId: string, resenaId: string, texto: string): Promise<void>;
   /**
+   * Pide publicar el borrador de vuelta en Google (Bloque F, fase 2, segunda pieza). Se puede
+   * repetir (reintenta) igual que `editarBorradorResena` — nunca es "de una sola vez" como
+   * `marcarResenaVista`. 404 si la reseña no existe, no tiene borrador, ya está publicada, o el rol
+   * no puede escribir.
+   */
+  publicarRespuestaResena(clientId: string, resenaId: string): Promise<void>;
+  /**
    * Arma la URL de consentimiento de Google para este cliente. Quien llama navega ahí de verdad
    * (`window.location.href`), no es un `fetch` que se quede esperando una respuesta JSON del OAuth.
    */
@@ -514,6 +521,13 @@ export function crearApi(opts: ApiOpts): ClienteApi {
         'PATCH',
         `/clients/${encodeURIComponent(clientId)}/resenas/${encodeURIComponent(resenaId)}`,
         { borrador_respuesta: texto },
+      );
+    },
+    async publicarRespuestaResena(clientId, resenaId) {
+      await pedir(
+        'PATCH',
+        `/clients/${encodeURIComponent(clientId)}/resenas/${encodeURIComponent(resenaId)}`,
+        { publicar: true },
       );
     },
     async conectarGoogle(clientId) {

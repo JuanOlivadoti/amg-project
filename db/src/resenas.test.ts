@@ -465,7 +465,18 @@ test("🔴 listarResenas devuelve EXACTAMENTE el set de campos de ResenaGoogle (
   const [fila] = await resenas.listarResenas({ tenantId: s.tenantA, userId: s.equipoA }, s.clientA1);
   assert.deepEqual(
     Object.keys(fila!).sort(),
-    ["autor", "borradorRespuesta", "clientId", "id", "publicadaEn", "puntuacion", "texto", "vistaEn"].sort(),
+    [
+      "autor",
+      "borradorRespuesta",
+      "clientId",
+      "id",
+      "publicadaEn",
+      "puntuacion",
+      "respuestaPublicadaEn",
+      "respuestaSolicitadaEn",
+      "texto",
+      "vistaEn",
+    ].sort(),
   );
   // El check de Object.keys por sí solo NO alcanza: `aResena()` arma el objeto de retorno con las 8
   // claves siempre presentes, así que si `COLS` deja de traer una columna, la clave sigue estando
@@ -564,4 +575,81 @@ test("🔴 editarBorrador con rol 'cliente' devuelve false (ADR-20: el cliente n
     [id],
   );
   assert.equal(row?.borrador_respuesta, null, "el rol cliente no pudo escribir nada");
+});
+
+// ======================================================= Etapa 4 — solicitarPublicacion (0025)
+
+test("solicitarPublicacion devuelve true con un borrador guardado y sin publicar, y listarResenas lo refleja", async () => {
+  const ctx = { tenantId: s.tenantA, userId: s.equipoA };
+  const id = await crearResena(s.clientA1, s.tenantA, { puntuacion: 5, googleReviewId: "sp-1" });
+  await resenas.editarBorrador(ctx, s.clientA1, id, "Gracias por tu reseña");
+
+  const resultado = await resenas.solicitarPublicacion(ctx, s.clientA1, id);
+  assert.equal(resultado, true);
+
+  const propia = (await resenas.listarResenas(ctx, s.clientA1)).find((r) => r.id === id);
+  assert.ok(propia?.respuestaSolicitadaEn, "listarResenas muestra respuestaSolicitadaEn no nulo");
+});
+
+test("🔴 solicitarPublicacion sin borrador devuelve false y no toca la fila", async () => {
+  const ctx = { tenantId: s.tenantA, userId: s.equipoA };
+  const id = await crearResena(s.clientA1, s.tenantA, { puntuacion: 5, googleReviewId: "sp-sin-borrador" });
+
+  const resultado = await resenas.solicitarPublicacion(ctx, s.clientA1, id);
+  assert.equal(resultado, false, "🔴 el WHERE rechaza borrador_respuesta is null");
+
+  const [row] = await db.asService<{ respuesta_solicitada_en: string | null }>(
+    "select respuesta_solicitada_en from resenas_google where id = $1",
+    [id],
+  );
+  assert.equal(row?.respuesta_solicitada_en, null, "no se tocó la fila sin borrador");
+});
+
+test("🔴 solicitarPublicacion sobre una reseña ya publicada devuelve false", async () => {
+  const ctx = { tenantId: s.tenantA, userId: s.equipoA };
+  const id = await crearResena(s.clientA1, s.tenantA, { puntuacion: 5, googleReviewId: "sp-ya-publicada" });
+  await resenas.editarBorrador(ctx, s.clientA1, id, "Gracias");
+  await db.asService(
+    "update resenas_google set respuesta_solicitada_en = now(), respuesta_publicada_en = now() where id = $1",
+    [id],
+  );
+
+  const resultado = await resenas.solicitarPublicacion(ctx, s.clientA1, id);
+  assert.equal(resultado, false, "🔴 el WHERE rechaza respuesta_publicada_en is not null");
+});
+
+test("🔴 solicitarPublicacion sobre una reseña de OTRO tenant no toca nada (RLS, no un 404 de aplicación)", async () => {
+  const ajena = await crearResena(s.clientB1, s.tenantB, { puntuacion: 5, googleReviewId: "sp-ajena" });
+  await resenas.editarBorrador({ tenantId: s.tenantB, userId: s.equipoB }, s.clientB1, ajena, "Gracias");
+
+  const resultado = await resenas.solicitarPublicacion(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    s.clientA1,
+    ajena,
+  );
+  assert.equal(resultado, false);
+
+  const [row] = await db.asService<{ respuesta_solicitada_en: string | null }>(
+    "select respuesta_solicitada_en from resenas_google where id = $1",
+    [ajena],
+  );
+  assert.equal(row?.respuesta_solicitada_en, null, "el intento de A no tocó la reseña de B");
+});
+
+test("🔴 solicitarPublicacion con rol 'cliente' devuelve false (ADR-20: el cliente no escribe)", async () => {
+  const id = await crearResena(s.clientA1, s.tenantA, { puntuacion: 5, googleReviewId: "sp-cliente" });
+  await resenas.editarBorrador({ tenantId: s.tenantA, userId: s.equipoA }, s.clientA1, id, "Gracias");
+
+  const resultado = await resenas.solicitarPublicacion(
+    { tenantId: s.tenantA, userId: s.duenoA1 },
+    s.clientA1,
+    id,
+  );
+  assert.equal(resultado, false);
+
+  const [row] = await db.asService<{ respuesta_solicitada_en: string | null }>(
+    "select respuesta_solicitada_en from resenas_google where id = $1",
+    [id],
+  );
+  assert.equal(row?.respuesta_solicitada_en, null, "el rol cliente no pudo escribir nada");
 });

@@ -7,29 +7,33 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** 2026-08-23
-**En curso:** nada. Se cerró el ítem de invalidación multi-instancia del Bloque G: no era una brecha
-de código, `CACHE_TTL_MS` ya estaba implementado de punta a punta y solo le faltaba test
-(`renderer/src/deps.test.ts`, 10 tests, verificado por mutación). Detalle completo en
-[`history.md`](history.md#2026-08-23--bloque-g-la-invalidación-multi-instancia-no-era-una-brecha-de-código).
-**Estado:** `renderer` 172/172 (162 + 10 nuevos), typecheck limpio, `npm run verificar` en verde
-(1616 tests del monorepo). Producción al día (24 migraciones aplicadas).
+**En curso:** nada. Se cerró el Bloque F fase 2, segunda pieza — publicar la respuesta de vuelta a
+Google, mock-first, comando compuesto (ADR-18), ejecutado con `datos` → `pipeline` → `front` en serie
+y `APROBADO` por `revisor` con mutación propia. Antes en la misma sesión: el ítem de invalidación
+multi-instancia del Bloque G. Detalle completo en
+[`history.md`](history.md#2026-08-23--bloque-f-fase-2-segunda-pieza-publicar-la-respuesta-de-vuelta-a-google-mock-first).
+**Estado:** `npm run verificar` en verde, 1639 tests del monorepo + 298 `node:test` y 196 Karma en el
+portal. **La migración `0025` está commiteada pero sin desplegar** — falta correr
+`npm run migrate:deploy -w db` contra producción, igual que se hizo a mano con la `0024`.
 
-**Decisiones de esta sesión:**
-- Juan confirmó que hay una conversación de SLA real, así que el Bloque G dejó de ser "sin urgencia
-  hoy". Antes de tocar código pregunté qué exige el SLA en tiempo de propagación — la respuesta fue
-  "con bajar el TTL alcanza (30-60s)", no tiempo real cross-instancia. Eso descartó la alternativa de
-  cache compartida (Redis) sin necesidad de construirla para después tirarla.
-- **`CACHE_TTL_MS` como único mecanismo de invalidación (sin depender del webhook) es correcto para
-  cualquier número de instancias**, no solo para una: cada instancia expira sola por su propio reloj,
-  así que el peor caso de propagación en toda la flota queda acotado por el TTL sin importar cuántas
-  instancias corran. El webhook pasa de mecanismo a optimización local.
+**Decisiones de esta sesión (Bloque F):**
+- De los cuatro ítems que quedaban de fase 2, tres dependían de un trámite externo (acceso real a la
+  Business Profile API de Google, que Juan todavía no pidió) o de elegir proveedor de alertas — no
+  eran ingeniería lista para hacer. Se construyó el único decision-free: publicar la respuesta,
+  mock-first, mismo patrón que ya usó toda la fase 1.
+- El plan se ejecutó con los agentes de área del proyecto en vez de la skill genérica de subagentes,
+  contrato fijado por la sesión principal antes de delegar (SQL completo, firmas exactas) — misma
+  adaptación que ya se usó en la primera pieza de fase 2.
 
 **Pendiente inmediato:**
-- **Fijar `CACHE_TTL_MS` en Railway** al valor real que pida el SLA (sigue en el default de 5 min).
-  Es config de despliegue, no código — no lo puedo hacer yo.
+- **Desplegar la migración `0025` a producción** (`npm run migrate:deploy -w db`) — no lo hice yo,
+  es un comando que toca producción real.
+- Del Bloque F fase 2 quedan, bloqueados en cascada por el mismo trámite externo o por una decisión de
+  proveedor: alertas por WhatsApp/email, acceso real a Google (`GOOGLE_REVIEWS_MODO=live`), limpiar la
+  conexión cuando se detecta un refresh token revocado (esto último ni siquiera se puede diseñar bien
+  sin conocer la forma real del error de revocación de Google).
+- **Fijar `CACHE_TTL_MS` en Railway** (Bloque G) al valor real que pida el SLA — sigue pendiente,
+  config de despliegue, no código.
 - Del Bloque G quedan el CDN en el borde y el límite de dominios custom de Railway — decisiones de
   despliegue/plan, no ingeniería.
 - Del Bloque H quedan OBS-04 y el precio de la salida gestionada — decisiones de negocio de Juan.
-- Lo que sigue de Bloque F fase 2, sin empezar: publicar la respuesta de vuelta a Google, alertas por
-  WhatsApp/email, acceso real a la Business Profile API (`GOOGLE_REVIEWS_MODO=live`), limpiar la
-  conexión cuando el polling detecta un refresh token revocado.

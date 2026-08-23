@@ -45,6 +45,8 @@ function resenaDePrueba(overrides: Partial<ResenaGoogle> = {}): ResenaGoogle {
     publicadaEn: '2026-08-01T00:00:00.000Z',
     vistaEn: '2026-08-01T00:00:00.000Z',
     borradorRespuesta: null,
+    respuestaSolicitadaEn: null,
+    respuestaPublicadaEn: null,
     ...overrides,
   };
 }
@@ -67,6 +69,7 @@ function crear(
     listarResenas?: jasmine.Spy;
     marcarResenaVista?: jasmine.Spy;
     editarBorradorResena?: jasmine.Spy;
+    publicarRespuestaResena?: jasmine.Spy;
     conectarGoogle?: jasmine.Spy;
     desconectarGoogle?: jasmine.Spy;
     verCliente?: jasmine.Spy;
@@ -79,6 +82,9 @@ function crear(
     opciones.marcarResenaVista ?? jasmine.createSpy('marcarResenaVista').and.resolveTo(undefined);
   const editarBorradorResenaSpy =
     opciones.editarBorradorResena ?? jasmine.createSpy('editarBorradorResena').and.resolveTo(undefined);
+  const publicarRespuestaResenaSpy =
+    opciones.publicarRespuestaResena ??
+    jasmine.createSpy('publicarRespuestaResena').and.resolveTo(undefined);
   const conectarGoogleSpy =
     opciones.conectarGoogle ??
     jasmine.createSpy('conectarGoogle').and.resolveTo({ url: 'https://accounts.google.test/consent' });
@@ -99,6 +105,7 @@ function crear(
           listarResenas: listarResenasSpy,
           marcarResenaVista: marcarResenaVistaSpy,
           editarBorradorResena: editarBorradorResenaSpy,
+          publicarRespuestaResena: publicarRespuestaResenaSpy,
           conectarGoogle: conectarGoogleSpy,
           desconectarGoogle: desconectarGoogleSpy,
         },
@@ -113,6 +120,7 @@ function crear(
     listarResenasSpy,
     marcarResenaVistaSpy,
     editarBorradorResenaSpy,
+    publicarRespuestaResenaSpy,
     conectarGoogleSpy,
     desconectarGoogleSpy,
     verClienteSpy,
@@ -377,5 +385,109 @@ describe('ClienteResenasPage', () => {
 
     expect(el.querySelector('textarea')).toBeNull();
     expect(el.textContent).not.toContain('Sin borrador todavía');
+  });
+
+  // ---------------------------------------------------------------- publicar respuesta (Bloque F, fase 2)
+
+  it('staff, con borrador y sin solicitud: "Publicar respuesta" llama publicarRespuestaResena y pasa a "Reintentar publicación"', async () => {
+    const resena = resenaDePrueba({
+      id: 'r1',
+      puntuacion: 5,
+      borradorRespuesta: 'Gracias por tu reseña',
+      respuestaSolicitadaEn: null,
+      respuestaPublicadaEn: null,
+    });
+    const publicarRespuestaResenaSpy = jasmine
+      .createSpy('publicarRespuestaResena')
+      .and.resolveTo(undefined);
+    const { fixture } = crear({
+      listarResenas: jasmine.createSpy('listarResenas').and.resolveTo([resena]),
+      esEquipo: true,
+      publicarRespuestaResena: publicarRespuestaResenaSpy,
+    });
+    let el = await estabilizar(fixture);
+
+    const boton = Array.from(el.querySelectorAll('button')).find(
+      (b) => b.textContent!.trim() === 'Publicar respuesta',
+    );
+    expect(boton).withContext('no encontré el botón "Publicar respuesta"').toBeTruthy();
+
+    boton!.click();
+    el = await estabilizar(fixture);
+
+    expect(publicarRespuestaResenaSpy).toHaveBeenCalledWith('c1', 'r1');
+    expect(el.textContent)
+      .withContext('el estado optimista debía cambiar el botón sin recargar, mismo criterio que verla()')
+      .toContain('Reintentar publicación');
+    expect(
+      Array.from(el.querySelectorAll('button')).some((b) => b.textContent!.trim() === 'Publicar respuesta'),
+    ).toBeFalse();
+  });
+
+  it('con respuestaPublicadaEn puesto: se ve el texto fijo "Publicada el ...", sin ningún botón de publicar', async () => {
+    const resena = resenaDePrueba({
+      puntuacion: 5,
+      borradorRespuesta: 'Gracias por tu reseña',
+      respuestaSolicitadaEn: '2026-08-20T00:00:00.000Z',
+      respuestaPublicadaEn: '2026-08-21T00:00:00.000Z',
+    });
+    const { fixture } = crear({
+      listarResenas: jasmine.createSpy('listarResenas').and.resolveTo([resena]),
+      esEquipo: true,
+    });
+    const el = await estabilizar(fixture);
+
+    expect(el.textContent).toContain('Publicada el');
+    expect(
+      Array.from(el.querySelectorAll('button')).some(
+        (b) => b.textContent!.trim() === 'Publicar respuesta' || b.textContent!.trim() === 'Reintentar publicación',
+      ),
+    )
+      .withContext('ya publicada: no debe quedar ningún botón de publicar/reintentar')
+      .toBeFalse();
+  });
+
+  it('🔴 sin borradorRespuesta no se ve ningún botón de publicar, ni siquiera si ya se había solicitado', async () => {
+    const resena = resenaDePrueba({
+      puntuacion: 5,
+      borradorRespuesta: null,
+      respuestaSolicitadaEn: '2026-08-20T00:00:00.000Z',
+      respuestaPublicadaEn: null,
+    });
+    const { fixture } = crear({
+      listarResenas: jasmine.createSpy('listarResenas').and.resolveTo([resena]),
+      esEquipo: true,
+    });
+    const el = await estabilizar(fixture);
+
+    expect(
+      Array.from(el.querySelectorAll('button')).some(
+        (b) => b.textContent!.trim() === 'Publicar respuesta' || b.textContent!.trim() === 'Reintentar publicación',
+      ),
+    )
+      .withContext('publicar un borrador vacío no tiene sentido: "Guardar" existe para escribirlo primero')
+      .toBeFalse();
+  });
+
+  it('🔴 rol cliente: no se ve ningún botón de publicar ni de reintentar, aun con borrador y sin solicitud', async () => {
+    const resena = resenaDePrueba({
+      puntuacion: 5,
+      borradorRespuesta: 'Ya generado',
+      respuestaSolicitadaEn: null,
+      respuestaPublicadaEn: null,
+    });
+    const { fixture } = crear({
+      listarResenas: jasmine.createSpy('listarResenas').and.resolveTo([resena]),
+      esEquipo: false,
+    });
+    const el = await estabilizar(fixture);
+
+    expect(
+      Array.from(el.querySelectorAll('button')).some(
+        (b) => b.textContent!.trim() === 'Publicar respuesta' || b.textContent!.trim() === 'Reintentar publicación',
+      ),
+    )
+      .withContext('publicar es una acción de staff: el rol cliente no la ve, mismo criterio que Guardar')
+      .toBeFalse();
   });
 });

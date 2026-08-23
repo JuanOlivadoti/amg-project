@@ -12,6 +12,10 @@ export interface ResenaGoogle {
   vistaEn: string | null;
   /** `null` = sin borrador todavía. Generado por IA (4-5★) o editado a mano por el staff. */
   borradorRespuesta: string | null;
+  /** `null` = nadie pidió publicar todavía. */
+  respuestaSolicitadaEn: string | null;
+  /** `null` = no publicado (nunca pedido, en curso, o el último intento falló). */
+  respuestaPublicadaEn: string | null;
 }
 
 /*
@@ -24,7 +28,9 @@ export interface ResenaGoogle {
  * el tipo de TypeScript para que dos módulos no describan la misma forma de dos maneras distintas.
  */
 
-const COLS = "id, client_id, puntuacion, autor, texto, publicada_en, vista_en, borrador_respuesta";
+const COLS =
+  "id, client_id, puntuacion, autor, texto, publicada_en, vista_en, borrador_respuesta, " +
+  "respuesta_solicitada_en, respuesta_publicada_en";
 
 function aResena(r: {
   id: string;
@@ -35,6 +41,8 @@ function aResena(r: {
   publicada_en: string;
   vista_en: string | null;
   borrador_respuesta: string | null;
+  respuesta_solicitada_en: string | null;
+  respuesta_publicada_en: string | null;
 }): ResenaGoogle {
   return {
     id: r.id,
@@ -45,6 +53,8 @@ function aResena(r: {
     publicadaEn: r.publicada_en,
     vistaEn: r.vista_en,
     borradorRespuesta: r.borrador_respuesta,
+    respuestaSolicitadaEn: r.respuesta_solicitada_en,
+    respuestaPublicadaEn: r.respuesta_publicada_en,
   };
 }
 
@@ -121,6 +131,26 @@ export class PgResenas {
          where id = $2 and client_id = $3
          returning id`,
         [texto, resenaId, clientId],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
+   * Pide publicar el borrador de vuelta en Google (Bloque F, fase 2, segunda pieza). `false` sin
+   * lanzar si la reseña no existe, es de otro cliente, no tiene borrador, ya está publicada, o
+   * `puede_escribir()` da falso (ADR-20) -- el WHERE decide, no este método. Un segundo llamado
+   * sobre una fila ya solicitada pero no publicada REINTENTA (pisa el timestamp de nuevo).
+   */
+  async solicitarPublicacion(ctx: TenantContext, clientId: string, resenaId: string): Promise<boolean> {
+    return this.withTenant(ctx, async (tx: Tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update resenas_google set respuesta_solicitada_en = now()
+         where id = $1 and client_id = $2
+           and borrador_respuesta is not null
+           and respuesta_publicada_en is null
+         returning id`,
+        [resenaId, clientId],
       );
       return rows.length > 0;
     });

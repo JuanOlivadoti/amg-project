@@ -11,6 +11,61 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-23 — Bloque F fase 2, segunda pieza: publicar la respuesta de vuelta a Google (mock-first)
+
+Después de cerrar el ítem del Bloque G (invalidación multi-instancia), Juan pidió continuar con lo
+que recomendara. Mirando lo que quedaba del Bloque F fase 2 ("publicar la respuesta de vuelta a
+Google", "alertas por WhatsApp/email", "acceso real a la Business Profile API", "limpiar la conexión
+cuando el polling detecta un token revocado"), tres de los cuatro ítems dependían de un trámite
+externo (que AMG pida acceso real a Google) o de elegir proveedor de alertas — ninguno era ingeniería
+lista para hacer. El único decision-free era "publicar la respuesta", construible mock-first con el
+mismo patrón que ya usó toda la fase 1 (el `GoogleReviewsProvider` mock/live).
+
+Dado el tamaño real (migración + capa de datos + endpoint + evento + función de Inngest + UI —
+comparable a la fase 1 completa o a la primera pieza de fase 2), se escribió un plan completo
+([`docs/superpowers/plans/2026-08-23-publicar-respuesta-resena.md`](../docs/superpowers/plans/2026-08-23-publicar-respuesta-resena.md))
+con el contrato exacto fijado de antemano (SQL completo, firmas de TypeScript, forma del evento) y se
+ejecutó con los **agentes de área del proyecto** (`datos` → `pipeline` → `front`, en serie porque
+cada uno consume el contrato que fija el anterior) en vez de la skill genérica de subagentes — misma
+adaptación que ya se usó para el borrador de IA de fase 2 primera pieza, consistente con la regla de
+AGENTS.md de que las convenciones del proyecto priman sobre los roles genéricos de una skill.
+
+**Qué se construyó**, comando compuesto igual que `POST /runs/:id/approve` (ADR-18): la API marca
+`respuesta_solicitada_en` en `resenas_google` bajo RLS (`app_user`, reutilizando la política
+`resena_marcar_vista` de la 0021 — sin política nueva) y SOLO SI la fila cambió emite
+`resenas/respuesta.solicitada`, un evento que lleva ÚNICAMENTE el `id` de la reseña — nunca el texto
+ni las credenciales. El orquestador, al recibirlo, vuelve a preguntarle a la base qué publicar
+(`app.resena_para_publicar`, `security definer`, cross-tenant vía `app_resenas` — el mismo rol que ya
+lee el refresh token desde la 0022), llama al provider (mock determinista; `live` sigue sin
+implementación) y confirma con `app.publicar_respuesta_resena` (también `security definer`, idempotente
+por el `where respuesta_publicada_en is null`). Migración `0025`. En el portal, el botón del tab de
+reseñas gana tres estados mutuamente excluyentes: "Publicar respuesta" → "Reintentar publicación" (si
+falló o sigue en curso) → "Publicada el ...". Sin cola de reintento automático, a propósito, mismo
+criterio que ya rige la generación del borrador de IA: si falla, el staff reintenta con el mismo
+botón.
+
+**Los tres agentes reportaron trabajo limpio, con desvíos menores y bien documentados** (agregar
+`ResenaParaPublicar` al barrel de `db`, completar dos stubs de test que quedaron incompletos al
+extender `GoogleReviewsProvider`, extender un test de conteo de funciones de Inngest de 3 a 4, y
+reexportar el método nuevo en `ApiService` del portal) — los cuatro son consecuencia mecánica de
+extender un tipo/interfaz compartida, no decisiones de producto. El agente `front` además manejó el
+ciclo completo en un navegador real con Chrome DevTools MCP, construyendo y después limpiando un
+harness descartable (vivió y murió en `dist/`, gitignoreado) que simulaba lo que Inngest haría —
+encontró y corrigió un bug propio del harness (reusar el rol `app_user` en el lado "orquestador" en
+vez de `app_service`, ADR-17) sin tocar el código real de las otras dos tareas.
+
+`revisor` dio **APROBADO**, con verificación por mutación **propia** (no solo lectura de los
+informes) sobre los dos guardarraíles más sensibles: que no se puede pedir publicar sin borrador, y
+que sin permiso/sin borrador el endpoint da 404 sin emitir ningún evento. Detalle completo en
+`progress/informes/revision-publicar-respuesta.md`.
+
+`npm run verificar`: 1639 tests del monorepo (+22: +11 `db`, +5 `api`, +7 `orchestrator`) + 298
+`node:test` y 196 Karma en el portal (+4), typecheck limpio. **La migración `0025` quedó commiteada
+pero sin desplegar** — pendiente del mismo procedimiento manual que la `0024` (`npm run
+migrate:deploy -w db`), fuera del alcance de esta sesión.
+
+---
+
 ## 2026-08-23 — Bloque G: la invalidación multi-instancia no era una brecha de código
 
 Juan confirmó que hay una conversación de SLA real en curso, así que el Bloque G ("lo que ADR-19

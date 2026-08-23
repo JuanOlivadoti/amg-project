@@ -295,6 +295,18 @@ export interface ResenaGoogle {
   vistaEn: string | null;
   /** `null` = sin borrador todavía (nunca se genera con IA para 1-3★ — ver `db/src/resenas.ts`). */
   borradorRespuesta: string | null;
+  /**
+   * El staff pidió publicar el borrador de vuelta en Google (Bloque F, fase 2, segunda pieza).
+   * `null` = nadie lo pidió todavía. Un click nuevo sobre una fila ya solicitada pero no publicada
+   * REINTENTA (pisa este timestamp) — no hay cola de reintento automático.
+   */
+  respuestaSolicitadaEn: string | null;
+  /**
+   * Confirmado publicado en Google por el orquestador. `null` = no publicado (nunca pedido, pedido y
+   * todavía en curso, o el último intento falló) — las tres causas son indistinguibles a propósito,
+   * el criterio es el mismo botón: "Publicar"/"Reintentar publicación" según haya o no solicitud.
+   */
+  respuestaPublicadaEn: string | null;
 }
 
 /**

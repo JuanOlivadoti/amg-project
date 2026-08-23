@@ -536,10 +536,11 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
   });
 
   /**
-   * PATCH /clients/:id/resenas/:resenaId — acepta EXACTAMENTE una de dos formas fijas, nunca las dos
-   * juntas ni una clave desconocida: `{"vista": true}` (marca vista) o `{"borrador_respuesta":
-   * string}` (edita el borrador, Bloque F fase 2). No es una allowlist de columnas: cada forma se
-   * compara entera, mismo criterio que ya regía cuando solo existía la primera.
+   * PATCH /clients/:id/resenas/:resenaId — acepta EXACTAMENTE una de TRES formas fijas, nunca dos
+   * juntas ni una clave desconocida: `{"vista": true}` (marca vista), `{"borrador_respuesta":
+   * string}` (edita el borrador, Bloque F fase 2 primera pieza), o `{"publicar": true}` (pide
+   * publicar de vuelta en Google, Bloque F fase 2 segunda pieza). No es una allowlist de columnas:
+   * cada forma se compara entera, mismo criterio que ya regía cuando solo existía la primera.
    */
   app.patch("/clients/:id/resenas/:resenaId", async (c) => {
     const ctx = c.get("ctx");
@@ -561,7 +562,31 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       return c.json({ ok: true });
     }
 
-    return c.json({ error: 'El body tiene que ser {"vista": true} o {"borrador_respuesta": string}.' }, 400);
+    /*
+     * `{"publicar": true}` — COMANDO COMPUESTO (ADR-18): la fila se marca bajo RLS primero, y SOLO
+     * SI cambió se emite el evento que despierta al orquestador. El evento no porta autoridad: lleva
+     * únicamente el `id` de la reseña — el orquestador vuelve a preguntarle a la base qué publicar
+     * (`resenaParaPublicar`, Task 2) en vez de confiar en nada más de acá.
+     */
+    if (claves.length === 1 && (body as Record<string, unknown>)["publicar"] === true) {
+      const ok = await deps.resenas.solicitarPublicacion(ctx, clientId, resenaId);
+      if (!ok) {
+        return c.json(
+          { error: "Reseña no encontrada, sin borrador, ya publicada, o sin permiso." },
+          404,
+        );
+      }
+      await deps.emisor.send({
+        name: "resenas/respuesta.solicitada",
+        data: ctx.userId ? { resenaId, solicitadoPor: ctx.userId } : { resenaId },
+      });
+      return c.json({ ok: true });
+    }
+
+    return c.json(
+      { error: 'El body tiene que ser {"vista": true}, {"borrador_respuesta": string} o {"publicar": true}.' },
+      400,
+    );
   });
 
   /*

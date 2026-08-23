@@ -2071,3 +2071,154 @@ test("🔴 los grants de update sobre borrador_respuesta son EXACTAMENTE app_use
     render_update: false,
   });
 });
+
+// =============================================================================
+// Publicar la respuesta de vuelta a Google (migración 0025) — Bloque F, fase 2, segunda pieza.
+// La amenaza acá es la misma familia que 0024: que la confirmación pise una fila que nadie pidió
+// publicar, o que una carrera (dos corridas del mismo evento) publique dos veces.
+// =============================================================================
+
+test("🔴 app_user NO puede ejecutar resena_para_publicar (42501)", async () => {
+  await assert.rejects(
+    () => store.resenaParaPublicar(crypto.randomUUID()),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre la lectura cross-tenant del orquestador",
+  );
+});
+
+test("🔴 app_user NO puede ejecutar publicar_respuesta_resena (42501)", async () => {
+  await assert.rejects(
+    () =>
+      store.marcarRespuestaPublicada({
+        clientId: clientA1,
+        tenantId: tenantA,
+        googleReviewId: "gr-intento-api-publicar",
+      }),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre la confirmación de publicación",
+  );
+});
+
+test("resenaParaPublicar devuelve los seis campos correctos para una fila solicitada, con borrador y sin publicar", async () => {
+  await pg.query(
+    "update clients set google_location_id = 'loc-pub-1', google_refresh_token = 'tok-pub-1' where id = $1",
+    [clientA1],
+  );
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-para-publicar",
+    puntuacion: 5,
+    autor: "Ana",
+    texto: "Buenísimo",
+    publicadaEn: new Date().toISOString(),
+  });
+  await storeServicio.guardarBorradorResena({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-para-publicar",
+    borrador: "¡Gracias, Ana!",
+  });
+  const { rows: filaRows } = await pg.query<{ id: string }>(
+    "select id from resenas_google where google_review_id = 'gr-para-publicar'",
+  );
+  const resenaId = filaRows[0]!.id;
+  await pg.query("update resenas_google set respuesta_solicitada_en = now() where id = $1", [resenaId]);
+
+  const info = await storeServicio.resenaParaPublicar(resenaId);
+  assert.deepEqual(info, {
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-para-publicar",
+    borrador: "¡Gracias, Ana!",
+    locationId: "loc-pub-1",
+    refreshToken: "tok-pub-1",
+  });
+});
+
+test("resenaParaPublicar devuelve null si nadie pidió publicar (respuesta_solicitada_en NULL)", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-no-solicitada",
+    puntuacion: 5,
+    autor: "Ana",
+    texto: null,
+    publicadaEn: new Date().toISOString(),
+  });
+  await storeServicio.guardarBorradorResena({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-no-solicitada",
+    borrador: "Gracias",
+  });
+  const { rows: filaRows } = await pg.query<{ id: string }>(
+    "select id from resenas_google where google_review_id = 'gr-no-solicitada'",
+  );
+
+  const info = await storeServicio.resenaParaPublicar(filaRows[0]!.id);
+  assert.equal(info, null, "🔴 el WHERE rechaza respuesta_solicitada_en is null");
+});
+
+test("resenaParaPublicar devuelve null si ya está publicada", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-ya-publicada-2",
+    puntuacion: 5,
+    autor: "Ana",
+    texto: null,
+    publicadaEn: new Date().toISOString(),
+  });
+  await storeServicio.guardarBorradorResena({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-ya-publicada-2",
+    borrador: "Gracias",
+  });
+  const { rows: filaRows } = await pg.query<{ id: string }>(
+    "select id from resenas_google where google_review_id = 'gr-ya-publicada-2'",
+  );
+  const resenaId = filaRows[0]!.id;
+  await pg.query(
+    "update resenas_google set respuesta_solicitada_en = now(), respuesta_publicada_en = now() where id = $1",
+    [resenaId],
+  );
+
+  const info = await storeServicio.resenaParaPublicar(resenaId);
+  assert.equal(info, null, "🔴 el WHERE rechaza respuesta_publicada_en is not null");
+});
+
+test("🔴 marcarRespuestaPublicada es idempotente: la segunda llamada da false (no publica dos veces)", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-confirmar",
+    puntuacion: 5,
+    autor: "Ana",
+    texto: null,
+    publicadaEn: new Date().toISOString(),
+  });
+  await storeServicio.guardarBorradorResena({
+    clientId: clientA1,
+    tenantId: tenantA,
+    googleReviewId: "gr-confirmar",
+    borrador: "Gracias",
+  });
+  const { rows: filaRows } = await pg.query<{ id: string }>(
+    "select id from resenas_google where google_review_id = 'gr-confirmar'",
+  );
+  await pg.query("update resenas_google set respuesta_solicitada_en = now() where id = $1", [filaRows[0]!.id]);
+
+  const args = { clientId: clientA1, tenantId: tenantA, googleReviewId: "gr-confirmar" };
+  const primera = await storeServicio.marcarRespuestaPublicada(args);
+  assert.equal(primera, true);
+
+  const segunda = await storeServicio.marcarRespuestaPublicada(args);
+  assert.equal(segunda, false, "🔴 el WHERE rechaza respuesta_publicada_en is not null en la segunda corrida");
+
+  const { rows: check } = await pg.query<{ respuesta_publicada_en: string }>(
+    "select respuesta_publicada_en from resenas_google where google_review_id = 'gr-confirmar'",
+  );
+  assert.ok(check[0]?.respuesta_publicada_en, "quedó marcada publicada por la primera llamada");
+});

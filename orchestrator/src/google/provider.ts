@@ -20,6 +20,16 @@ export interface GoogleReviewsProvider {
   refrescarToken(refreshToken: string): Promise<string>;
   /** Las reseñas de una ubicación, tal como las devuelve la Business Profile API. */
   listarResenas(accessToken: string, locationId: string): Promise<ReseñaCruda[]>;
+  /**
+   * Publica la respuesta de vuelta en la reseña, en Google (Bloque F, fase 2, segunda pieza).
+   * `live` no la implementa todavía -- ver {@link getGoogleReviewsProvider}.
+   */
+  publicarRespuesta(
+    accessToken: string,
+    locationId: string,
+    googleReviewId: string,
+    texto: string,
+  ): Promise<void>;
 }
 
 /**

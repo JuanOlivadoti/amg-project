@@ -18,6 +18,18 @@ test("🔴 refrescarToken rechaza un refresh token vacío", async () => {
   await assert.rejects(() => p.refrescarToken(""));
 });
 
+/**
+ * `publicarRespuesta` (Bloque F, fase 2, segunda pieza) — determinista, "publica" siempre con éxito
+ * sin salir a internet, mismo criterio que el resto de este mock. Se prueba con texto vacío también
+ * porque el mock no debe imponer ninguna validación que la Business Profile API real sí podría
+ * imponer -- eso es trabajo de `live`, que todavía no existe.
+ */
+test("MockGoogleReviewsProvider.publicarRespuesta resuelve sin lanzar para cualquier input, incluido texto vacío", async () => {
+  const p = new MockGoogleReviewsProvider();
+  await assert.doesNotReject(() => p.publicarRespuesta("tok", "loc-1", "review-1", "Gracias por tu reseña"));
+  await assert.doesNotReject(() => p.publicarRespuesta("tok", "loc-1", "review-1", ""));
+});
+
 // ------------------------------------------------------- el selector
 
 test("getGoogleReviewsProvider('mock') devuelve el mock", () => {

@@ -54,8 +54,23 @@ export interface ResearchRechazado {
   data: { runId: string };
 }
 
+export interface ResenaPublicacionSolicitada {
+  data: {
+    /**
+     * El `id` interno de `resenas_google`. La fila YA quedó marcada bajo RLS antes de este
+     * evento (ADR-18) -- esto solo despierta al orquestador, que vuelve a preguntarle a la base
+     * qué publicar (`resenaParaPublicar`). Nunca se confía en otro dato del evento para decidir
+     * qué escribir.
+     */
+    resenaId: string;
+    /** Solo trazabilidad -- igual que `aprobadoPor` en `ResearchAprobado`. */
+    solicitadoPor?: string;
+  };
+}
+
 export type Eventos = {
   "research/solicitado": ResearchSolicitado;
   "research/aprobado": ResearchAprobado;
   "research/rechazado": ResearchRechazado;
+  "resenas/respuesta.solicitada": ResenaPublicacionSolicitada;
 };

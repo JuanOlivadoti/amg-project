@@ -29,4 +29,14 @@ export class MockGoogleReviewsProvider implements GoogleReviewsProvider {
       },
     ];
   }
+
+  async publicarRespuesta(
+    _accessToken: string,
+    _locationId: string,
+    _googleReviewId: string,
+    _texto: string,
+  ): Promise<void> {
+    // Determinista: "publica" siempre con éxito, sin salir a internet -- mismo criterio que el
+    // resto de este mock (fixtures fijas, sin estado).
+  }
 }
