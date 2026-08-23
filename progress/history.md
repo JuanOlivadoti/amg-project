@@ -11,6 +11,14 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-23 — Migración `0025` desplegada a producción
+
+Juan corrió `npm run migrate:deploy -w db` y pegó el output real: se aplicó sola (era la única
+pendiente), las 24 anteriores ya estaban al día. Producción queda con **25 migraciones aplicadas**.
+Cierra el pendiente que había quedado abierto al terminar la pieza de abajo.
+
+---
+
 ## 2026-08-23 — Bloque F fase 2, segunda pieza: publicar la respuesta de vuelta a Google (mock-first)
 
 Después de cerrar el ítem del Bloque G (invalidación multi-instancia), Juan pidió continuar con lo

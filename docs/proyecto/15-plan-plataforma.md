@@ -1269,7 +1269,8 @@ al terminar — no tocó `api/` ni `orchestrator/`, solo simuló lo que Inngest 
 Publicada el ...`, guardarraíl de rol `cliente` en vivo (sin ningún botón), los dos temas. `revisor`
 verificó por mutación de primera mano los dos guardarraíles centrales (sin borrador no se puede pedir
 publicar; sin permiso o sin borrador el endpoint da 404 sin emitir evento) — veredicto **APROBADO**,
-detalle completo en `progress/informes/revision-publicar-respuesta.md`.
+detalle completo en `progress/informes/revision-publicar-respuesta.md`. Migración `0025` desplegada a
+producción el **2026-08-23**.
 
 **Lo que sigue siendo fase 2, sin empezar, y por qué:** alertas por WhatsApp/email (decisión de
 proveedor pendiente — vendor a elegir, no ingeniería lista) y el acceso real a la Business Profile

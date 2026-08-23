@@ -13,8 +13,8 @@ y `APROBADO` por `revisor` con mutación propia. Antes en la misma sesión: el �
 multi-instancia del Bloque G. Detalle completo en
 [`history.md`](history.md#2026-08-23--bloque-f-fase-2-segunda-pieza-publicar-la-respuesta-de-vuelta-a-google-mock-first).
 **Estado:** `npm run verificar` en verde, 1639 tests del monorepo + 298 `node:test` y 196 Karma en el
-portal. **La migración `0025` está commiteada pero sin desplegar** — falta correr
-`npm run migrate:deploy -w db` contra producción, igual que se hizo a mano con la `0024`.
+portal. Migración `0025` desplegada a producción el **2026-08-23** (confirmado con el output real de
+`migrate:deploy -w db`, corrido por Juan). Producción al día, 25 migraciones aplicadas.
 
 **Decisiones de esta sesión (Bloque F):**
 - De los cuatro ítems que quedaban de fase 2, tres dependían de un trámite externo (acceso real a la
@@ -26,8 +26,6 @@ portal. **La migración `0025` está commiteada pero sin desplegar** — falta c
   adaptación que ya se usó en la primera pieza de fase 2.
 
 **Pendiente inmediato:**
-- **Desplegar la migración `0025` a producción** (`npm run migrate:deploy -w db`) — no lo hice yo,
-  es un comando que toca producción real.
 - Del Bloque F fase 2 quedan, bloqueados en cascada por el mismo trámite externo o por una decisión de
   proveedor: alertas por WhatsApp/email, acceso real a Google (`GOOGLE_REVIEWS_MODO=live`), limpiar la
   conexión cuando se detecta un refresh token revocado (esto último ni siquiera se puede diseñar bien
