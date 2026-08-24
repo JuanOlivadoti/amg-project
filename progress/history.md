@@ -11,6 +11,16 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-24 — Migración `0026` desplegada a producción
+
+Juan corrió `npm run migrate:deploy -w db` y pegó el output real: se aplicó sola (era la única
+pendiente), las 25 anteriores ya estaban al día. Producción queda con **26 migraciones aplicadas**.
+Cierra el único pendiente de ingeniería que había quedado abierto al terminar la pieza de abajo —
+sigue faltando, y no es de ingeniería, que Juan cree el bot real con `@BotFather` y ponga
+`TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live`.
+
+---
+
 ## 2026-08-24 — Bloque F fase 2, tercera pieza: alertas por Telegram para reseñas 1-3★ (cierra RF-018)
 
 Juan pidió un plan para alertar al CM por WhatsApp cuando llega una reseña 1-3★, con la sospecha de

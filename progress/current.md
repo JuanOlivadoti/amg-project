@@ -12,7 +12,7 @@
 [`history.md`](history.md#2026-08-24--bloque-f-fase-2-tercera-pieza-alertas-por-telegram-para-reseñas-1-3-cierra-rf-018).
 
 **Pendiente, fuera de ingeniería (no bloquea ninguna otra pieza):**
-- Desplegar la migración `0026` a producción (`npm run migrate:deploy -w db`).
+- Migración `0026` desplegada a producción el 2026-08-24 (26 aplicadas).
 - Que Juan cree el bot real con `@BotFather` y ponga `TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live` donde
   corresponda — sin esto, el código está completo y probado pero ninguna alerta real le llega a un CM.
 
