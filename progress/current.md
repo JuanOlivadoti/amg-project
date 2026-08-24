@@ -6,64 +6,22 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-23/24
-**En curso:** alertas por Telegram para reseñas 1-3★ (Bloque F, fase 2 — cierra RF-018 del PRD).
-**Task 1 (`datos`, commit `19560b7`) y Task 2 (`pipeline`, commit `388ac98`) cerradas e integradas.**
-Task 1: migración `0026` (aplicada solo local vía PGlite — todavía NO desplegada a producción), capa
-de acceso en `db/`, y los tres endpoints de auto-servicio en `api/`. Task 2: provider de Telegram
-(mock/live) y las dos funciones de Inngest (polling de vinculación cada minuto, envío de alertas con
-retry automático). Las dos pasaron por el `revisor`: Task 1 tuvo un bloqueante (`GET /members` no
-exponía `telegram_vinculado`) corregido por la sesión principal antes de integrar; Task 2 salió
-APROBADA sin hallazgos. **Sigue la Task 3 (`front`: "Vincular Telegram" en el perfil del portal),
-la última.** El plan entero, con el SQL exacto:
-[`docs/superpowers/plans/2026-08-23-alertas-telegram.md`](../docs/superpowers/plans/2026-08-23-alertas-telegram.md).
-Informes: `progress/informes/{datos,pipeline}-*-alertas-telegram.md` y
-`progress/informes/revision-task{1,2}-alertas-telegram.md`.
+**Sesión:** —
+**En curso:** nada — el Bloque F fase 2, tercera pieza (alertas por Telegram) cerró completa el
+2026-08-24. Detalle en
+[`history.md`](history.md#2026-08-24--bloque-f-fase-2-tercera-pieza-alertas-por-telegram-para-reseñas-1-3-cierra-rf-018).
 
-Antes en la misma sesión, ya cerrado: el Bloque F fase 2 segunda pieza (publicar la respuesta de
-vuelta a Google, mock-first) y el ítem de invalidación multi-instancia del Bloque G. Detalle completo
-en [`history.md`](history.md#2026-08-23--bloque-f-fase-2-segunda-pieza-publicar-la-respuesta-de-vuelta-a-google-mock-first).
+**Pendiente, fuera de ingeniería (no bloquea ninguna otra pieza):**
+- Desplegar la migración `0026` a producción (`npm run migrate:deploy -w db`).
+- Que Juan cree el bot real con `@BotFather` y ponga `TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live` donde
+  corresponda — sin esto, el código está completo y probado pero ninguna alerta real le llega a un CM.
 
-**Estado del código:** `npm run verificar` en verde (1639 tests + 298 `node:test`/196 Karma del
-portal), sin cambios desde el cierre de la pieza anterior. Migración `0025` desplegada a producción,
-25 migraciones aplicadas.
-
-**Decisiones tomadas sobre las alertas (para no repetir la investigación si se retoma esto después):**
-- **Canal: Telegram, no WhatsApp.** Investigado: WhatsApp Business exige verificación de negocio
-  ante Meta (días), plantillas pre-aprobadas para cualquier mensaje que AMG inicie, y se paga por
-  mensaje. Telegram: bot por `@BotFather` en dos minutos, gratis, sin aprobación de nadie — y sin
-  gatekeeper externo (a diferencia de todo lo demás que queda de fase 2), así que el plan implementa
-  `live` de verdad, no mock-first.
-- **Destinatario: el CM asignado a cada cliente** (`clients.asignado_a`), no un canal/grupo único —
-  RF-018 del PRD pide la alerta "al CM", personal interno de AMG.
-- **Vinculación por polling (`getUpdates`), no webhook público** — mismo criterio que ya eligió este
-  proyecto para las reseñas de Google (menos infraestructura nueva expuesta).
-- **Retry automático de la alerta vía `alerta_telegram_enviada_en`** (columna en `resenas_google`,
-  no una cola ni un botón): si Telegram falla, el próximo ciclo de polling (30 min) reintenta solo.
-  Decidido después de que Codex encontrara que el diseño original perdía la alerta para siempre si
-  fallaba una vez.
-- **El código de vinculación y su TTL de 10 min los genera Postgres** (un trigger fuerza
-  `gen_random_uuid()` + `now() + 10 min`, ignorando lo que mande el caller) — no TypeScript. Codex
-  encontró que el diseño original solo lo garantizaba por convención, no por constraint.
-
-**Codex review (2026-08-23):** veredicto original NECESITA REDISEÑO, 8 hallazgos — 2 bugs que
-hubieran bloqueado el polling o fallado en runtime (grants incompletos de `app_telegram`;
-`CREATE OR REPLACE` no puede agregarle una columna a `clientes_conectados_google`), 1 bug de
-disponibilidad (offset de `getUpdates` se clava con un lote sin `/start`), 1 de robustez decidido
-por Juan (retry automático), 1 de cableado de config (`TELEGRAM_BOT_USERNAME` sin `env:sync`), y el
-resto validaciones/tests. Ninguno reabrió Telegram ni "por CM asignado". Los 8 ya están en el plan.
-
-**Pendiente inmediato:**
-- **Dispatchear la Task 3 (`front`) del plan de alertas por Telegram** — la última: "Vincular
-  Telegram" en el perfil del portal, contra los tres endpoints que ya expone la API.
-- Al cerrarla, migrar `0026` a producción (todavía no se desplegó), crear el bot real con
-  `@BotFather` y poner `TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live` donde corresponda, y actualizar
-  `09`/`15`/`history` con el cierre completo del RF-018.
-- Del Bloque F fase 2 quedan, bloqueados en cascada por un trámite externo o una decisión de
-  proveedor: alertas por email, acceso real a Google (`GOOGLE_REVIEWS_MODO=live`), limpiar la
-  conexión cuando se detecta un refresh token revocado.
-- **Fijar `CACHE_TTL_MS` en Railway** (Bloque G) al valor real que pida el SLA — sigue pendiente,
-  config de despliegue, no código.
+**Qué sigue, según `docs/proyecto/09-estado-y-roadmap.md` y `docs/proyecto/15-plan-plataforma.md`:**
+- Del Bloque F fase 2 queda, bloqueado por un trámite externo de Juan (pedir acceso a la Business
+  Profile API de Google): acceso real a Google (`GOOGLE_REVIEWS_MODO=live`) y limpiar la conexión
+  cuando el polling detecta un refresh token revocado.
+- **Fijar `CACHE_TTL_MS` en Railway** (Bloque G) al valor real que pida el SLA — config de
+  despliegue, no código.
 - Del Bloque G quedan el CDN en el borde y el límite de dominios custom de Railway — decisiones de
   despliegue/plan, no ingeniería.
 - Del Bloque H quedan OBS-04 y el precio de la salida gestionada — decisiones de negocio de Juan.

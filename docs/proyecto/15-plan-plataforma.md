@@ -1272,12 +1272,53 @@ publicar; sin permiso o sin borrador el endpoint da 404 sin emitir evento) — v
 detalle completo en `progress/informes/revision-publicar-respuesta.md`. Migración `0025` desplegada a
 producción el **2026-08-23**.
 
-**Lo que sigue siendo fase 2, sin empezar, y por qué:** alertas por WhatsApp/email (decisión de
-proveedor pendiente — vendor a elegir, no ingeniería lista) y el acceso real a la Business Profile
-API (`GOOGLE_REVIEWS_MODO=live`, trámite externo de Juan con Google) bloquean también, en cascada,
-"limpiar la conexión cuando el polling detecta un refresh token revocado": sin acceso real no hay
-forma de conocer la forma real del error de revocación de Google, así que construir esa detección
-ahora sería adivinar contra una API que todavía no existe en este proyecto.
+**Fase 2, tercera pieza (alertas por Telegram para reseñas 1-3★): ✅ COMPLETA el 2026-08-24. Cierra
+RF-018 del PRD.** Antes de escribir el plan se investigó viabilidad: WhatsApp Business exige
+verificación de negocio ante Meta (días) y que **cualquier** mensaje que AMG inicie use una plantilla
+pre-aprobada, y se paga por mensaje entregado; Telegram no tiene ese gatekeeper — un bot se crea con
+`@BotFather` en dos minutos, gratis, sin aprobación de nadie. El RF-018 pide la alerta **"al CM"**
+(personal interno de AMG, no al cliente externo), que es exactamente donde la fricción de WhatsApp
+más pesaba y menos aportaba, así que la elección fue clara. [Plan de 3 tasks](../superpowers/plans/2026-08-23-alertas-telegram.md),
+revisado por **Codex antes de escribir código** (veredicto original NECESITA REDISEÑO, 8 hallazgos —
+dos hubieran bloqueado el polling o fallado en runtime, verificados contra PGlite; el resto,
+validaciones/tests/config — los 8 incorporados al plan antes de dispatchear la Task 1), ejecutado con
+los agentes de área (`datos` → `pipeline` → `front`, en serie por el contrato compartido):
+
+| Task | Qué | Migración/commit |
+| --- | --- | --- |
+| 1 (`datos`) | Migración `0026`: vinculación self-service (`memberships.telegram_chat_id`/`telegram_link_code` + TTL de 10 min, generado por Postgres vía trigger, no por el caller), `membresias_guardia_telegram` (`BEFORE UPDATE`) como backstop de la segunda política UPDATE permisiva sobre `memberships` (evita que se cuele una escalada de rol combinada con un cambio de código en el mismo `UPDATE`), rol cross-tenant `app_telegram`, retry vía `resenas_google.alerta_telegram_enviada_en`, tres endpoints `/me/telegram/*` | `19560b7` |
+| 2 (`pipeline`) | Provider mock/live (`getUpdates`/`sendMessage` sobre `fetch` nativo), función de vinculación (cron cada minuto, procesa `/start <código>`), bloque de envío de alertas independiente por cliente — retry automático: si `enviarMensaje` falla, `marcarAlertaTelegramEnviada` nunca se llama, así que el próximo ciclo de polling (30 min) reintenta solo, sin cola ni botón | `388ac98` |
+| 3 (`front`) | Tarjeta "Vincular Telegram" en el perfil, gateada por `esPropio()` de verdad (el `GET /me/telegram` ni se dispara mirando el perfil de otra persona), `window.open` con `'_blank'` (no hay callback de vuelta) | `faa9797` |
+
+**El hallazgo central de Codex, resuelto en la Task 2:** un lote de `getUpdates` con solo updates
+sin texto útil (reacciones, ediciones) tenía que hacer avanzar igual el offset — si no, el polling se
+clava repitiendo el mismo lote para siempre. La interfaz `ResultadoActualizaciones` separa
+`maxUpdateId` (calculado sobre TODOS los updates del lote) de `mensajes` (solo los que tienen forma
+de mensaje de texto), verificado por mutación: invertir el orden hace caer exactamente los dos tests
+que ejercitan un lote 100% sin texto útil.
+
+**`revisor` pidió un cambio en la Task 1**: el informe de `datos` afirmaba que `GET /members` ya
+exponía `telegram_vinculado` "sin cambios en el handler", pero `MIEMBRO_COLS`/la interfaz `Miembro`
+en `db/src/membresias.ts` la descartaban antes de llegar a la respuesta HTTP — la vista
+`membresias_perfil` sí tenía la columna, el `select` explícito de `listarMiembros` no. Corregido por
+la sesión principal antes de integrar (con test). Las Tasks 2 y 3 salieron **APROBADAS sin
+hallazgos** — el agente `front` además manejó los cuatro estados en el navegador (MCP chrome-devtools)
+contra la API real, con consola limpia y contraste verificado en tema oscuro.
+
+`npm run verificar`: **1700 tests del monorepo** (+61: capa de acceso y endpoints en `db`/`api`,
+provider y funciones de Inngest en `orchestrator`) + **301 `node:test`** y **201 Karma** en el portal
+(+3/+5), typecheck limpio en los 7 paquetes. **La migración `0026` quedó commiteada pero sin
+desplegar** — pendiente del mismo procedimiento manual que la `0025` (`npm run migrate:deploy -w db`),
+fuera del alcance de esta sesión. También pendiente, y fuera de lo que ingeniería puede resolver:
+Juan tiene que crear el bot real con `@BotFather` y poner `TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live`
+donde corresponda antes de que una alerta real le llegue a un CM.
+
+**Lo que sigue siendo fase 2, sin empezar, y por qué:** el acceso real a la Business Profile API
+(`GOOGLE_REVIEWS_MODO=live`, trámite externo de Juan con Google) bloquea, en cascada, "limpiar la
+conexión cuando el polling detecta un refresh token revocado": sin acceso real no hay forma de
+conocer la forma real del error de revocación de Google, así que construir esa detección ahora sería
+adivinar contra una API que todavía no existe en este proyecto. Las alertas ya no son parte de este
+bloqueo — quedaron resueltas por Telegram.
 
 ---
 

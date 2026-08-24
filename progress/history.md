@@ -11,6 +11,81 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-08-24 — Bloque F fase 2, tercera pieza: alertas por Telegram para reseñas 1-3★ (cierra RF-018)
+
+Juan pidió un plan para alertar al CM por WhatsApp cuando llega una reseña 1-3★, con la sospecha de
+que WhatsApp Business iba a ser complicado por depender de Meta, y pidió evaluar Telegram como
+alternativa antes de comprometerse. La investigación (WebSearch, fuentes citadas) confirmó la
+sospecha: WhatsApp Business exige verificación de negocio ante Meta (días), un cupo de 250
+conversaciones/24h sin verificar, y que **cualquier** mensaje que AMG inicie use una plantilla
+pre-aprobada — se paga por mensaje entregado. Telegram no tiene nada de eso: un bot se crea con
+`@BotFather` en dos minutos, gratis, sin aprobación. El detalle que inclinó la decisión del todo fue
+releer el RF-018 del PRD: la alerta es **"al CM"**, personal interno de AMG, no al cliente externo —
+exactamente donde la fricción de WhatsApp pesaba más y aportaba menos. Juan confirmó Telegram y que
+el destinatario fuera el CM asignado a cada cliente (`clients.asignado_a`), no un canal/grupo único.
+
+Por el tamaño real (migración + capa de datos + endpoints + provider + dos funciones de Inngest + UI
+— comparable a la fase 1 completa), se escribió un plan completo
+([`docs/superpowers/plans/2026-08-23-alertas-telegram.md`](../docs/superpowers/plans/2026-08-23-alertas-telegram.md))
+y, a pedido de Juan, se lo mandó a **revisar por Codex antes de escribir una sola línea de código** —
+la primera vez en este proyecto que la revisión externa se usa sobre un plan y no sobre un diff.
+Veredicto original **NECESITA REDISEÑO**, 8 hallazgos: dos hubieran bloqueado el polling (`getUpdates`
+se clava si un lote no trae ningún `/start`) o fallado en runtime (`CREATE OR REPLACE` no puede
+agregarle una columna a un `RETURNS TABLE`, grants incompletos de `app_telegram` para lo que sus
+propias funciones leen en el `WHERE`/`RETURNING`) — los tres verificados por Codex contra PGlite; uno
+era una decisión de robustez que el diseño original dejaba sin resolver (si el envío de Telegram
+falla una vez, ¿se pierde la alerta para siempre?) — se le devolvió la pregunta a Juan, que eligió
+retry automático en el próximo ciclo de polling por sobre una cola o un botón; el resto,
+validaciones/tests/cableado de config. Los 8 se incorporaron al plan antes de dispatchear ninguna
+task.
+
+Ejecutado con los **agentes de área** (`datos` → `pipeline` → `front`, en serie por el contrato
+compartido, mismo criterio que las dos piezas anteriores de esta fase), cada uno seguido de una
+revisión del agente `revisor` antes de integrar:
+
+- **Task 1 (`datos`, commit `19560b7`).** Migración `0026`: columnas de vinculación en `memberships`
+  con TTL de 10 min **generado por Postgres** (un trigger fuerza `gen_random_uuid()` y
+  `now() + 10 min`, ignorando lo que mande el caller — Codex había encontrado que el diseño original
+  solo lo garantizaba por convención); el mismo trigger (`membresias_guardia_telegram`, `BEFORE
+  UPDATE`) hace de backstop de la segunda política UPDATE permisiva que se agregó sobre `memberships`
+  (evita que la combinación OR de las dos políticas deje colar una escalada de rol junto con un
+  cambio de código de vinculación en el mismo `UPDATE`); rol cross-tenant `app_telegram`; retry vía
+  `resenas_google.alerta_telegram_enviada_en`. `revisor` encontró **un bloqueante real**: el informe
+  de `datos` afirmaba que `GET /members` ya exponía `telegram_vinculado` "sin cambios en el handler",
+  pero `MIEMBRO_COLS` (la lista explícita de columnas de `listarMiembros`) la descartaba antes de
+  llegar a la respuesta HTTP — la vista sí tenía la columna, el `select` de TypeScript la filtraba. Si
+  la Task 3 hubiera arrancado confiando en esa frase, el portal se habría integrado contra un campo
+  que la API nunca mandaba. Corregido por la sesión principal antes de integrar (columna agregada +
+  test que confirma ambos valores, `true`/`false`, no `undefined`).
+- **Task 2 (`pipeline`, commit `388ac98`).** Provider mock/live sobre `fetch` nativo, la función de
+  vinculación (cron cada minuto, procesa `/start <código>`) y el bloque de envío de alertas, movido
+  fuera del loop por-reseña a un bloque independiente por cliente para que el retry automático
+  funcione de verdad: si `enviarMensaje` lanza, `marcarAlertaTelegramEnviada` nunca se llama, así que
+  el próximo ciclo de polling reintenta esa reseña sola. El hallazgo central de Codex sobre esta pieza
+  —un lote de `getUpdates` con solo updates sin texto útil (reacciones, ediciones) tenía que hacer
+  avanzar igual el offset, o el polling se clava repitiendo el mismo lote para siempre— se resolvió
+  separando `maxUpdateId` (calculado sobre TODOS los updates) de `mensajes` (solo los de texto) en la
+  interfaz del provider; verificado por mutación (invertir el orden hace caer exactamente los dos
+  tests que ejercitan un lote sin texto útil). `revisor` dio **APROBADO sin hallazgos**, confirmando
+  por lectura de código —no solo del informe— que los dos hallazgos de Codex sobre esta pieza están
+  resueltos.
+- **Task 3 (`front`, commit `faa9797`).** Tarjeta "Vincular Telegram" en el perfil del portal,
+  gateada por `esPropio()` de verdad: el `GET /me/telegram` ni se dispara mirando el perfil de otra
+  persona (no solo queda oculto en el template). `window.open(url, '_blank')`, no
+  `window.location.href` — no hay callback de vuelta a esta pestaña. El agente `front` manejó los
+  cuatro estados en el navegador real (MCP chrome-devtools) contra la API real (sin vincular,
+  vinculado, perfil ajeno, tema oscuro), con consola limpia. `revisor` dio **APROBADO sin
+  hallazgos**.
+
+`npm run verificar`: **1700 tests del monorepo** (+61: `db`/`api`/`orchestrator`) + **301
+`node:test`** y **201 Karma** en el portal (+3/+5), typecheck limpio en los 7 paquetes. **La
+migración `0026` quedó commiteada pero sin desplegar** — pendiente del mismo procedimiento manual que
+la `0025` (`npm run migrate:deploy -w db`), fuera del alcance de esta sesión. Tampoco alcanza a esta
+sesión crear el bot real con `@BotFather` ni poner `TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live` — sin
+eso, ninguna alerta real le llega a un CM todavía, aunque el código esté completo y probado.
+
+---
+
 ## 2026-08-23 — Migración `0025` desplegada a producción
 
 Juan corrió `npm run migrate:deploy -w db` y pegó el output real: se aplicó sola (era la única
