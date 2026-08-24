@@ -77,7 +77,16 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await pg.exec("delete from kr_runs; delete from memberships; delete from clients; delete from tenants;");
+  // `clients.asignado_a` (0011) es una FK compuesta a `memberships (tenant_id, user_id)` con
+  // `on delete set null` -- si un test de la 0026 (Telegram) deja un cliente con `asignado_a`
+  // apuntando a una membresía, borrar esa membresía sin limpiar antes intenta poner en NULL LAS
+  // DOS columnas de la FK compuesta, incluida `tenant_id` -- que es NOT NULL en `clients` y hace
+  // fallar el `delete from memberships` con 23502. Limpiar `asignado_a` primero deja el `delete`
+  // de abajo seguro sin importar qué haya quedado asignado.
+  await pg.exec(
+    "update clients set asignado_a = null; " +
+      "delete from kr_runs; delete from memberships; delete from clients; delete from tenants;",
+  );
   const { rows: t } = await pg.query<{ id: string }>(
     "insert into tenants (nombre, slug) values ('A', 'a'), ('B', 'b') returning id",
   );
@@ -2221,4 +2230,162 @@ test("🔴 marcarRespuestaPublicada es idempotente: la segunda llamada da false 
     "select respuesta_publicada_en from resenas_google where google_review_id = 'gr-confirmar'",
   );
   assert.ok(check[0]?.respuesta_publicada_en, "quedó marcada publicada por la primera llamada");
+});
+
+// =============================================================================
+// Alertas por Telegram (migración 0026, Bloque F fase 2) — la mitad cross-tenant que usa el
+// orquestador para el retry automático (decisión de Juan, hallazgo 4 de la revisión de Codex) y
+// para resolver el chat_id del CM asignado a cada cliente.
+// =============================================================================
+
+test("🔴 app_user NO puede ejecutar telegram_del_asignado (42501)", async () => {
+  await assert.rejects(
+    () => store.telegramDelAsignado(clientA1),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre la resolución cross-tenant del asignado",
+  );
+});
+
+test("🔴 app_user NO puede ejecutar vincular_telegram (42501)", async () => {
+  await assert.rejects(
+    () => store.vincularTelegramPorCodigo("codigo-cualquiera", "chat-cualquiera"),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre la confirmación de vinculación",
+  );
+});
+
+test("🔴 app_user NO puede leer/escribir app.telegram_polling_estado (42501)", async () => {
+  await assert.rejects(() => store.offsetTelegramActual(), /permission denied|42501/);
+  await assert.rejects(() => store.avanzarOffsetTelegram(5), /permission denied|42501/);
+});
+
+test("🔴 app_user NO puede ejecutar resenas_pendientes_alerta_telegram ni marcar_alerta_telegram_enviada (42501)", async () => {
+  await assert.rejects(
+    () => store.resenasPendientesAlertaTelegram(clientA1),
+    /permission denied for function|42501/,
+  );
+  await assert.rejects(
+    () =>
+      store.marcarAlertaTelegramEnviada({ clientId: clientA1, tenantId: tenantA, googleReviewId: "gr-x" }),
+    /permission denied for function|42501/,
+  );
+});
+
+test("clientesConectadosGoogle incluye el nombre del negocio (para el texto de la alerta)", async () => {
+  await pg.query(
+    "update clients set google_refresh_token = 'tok-nombre', google_location_id = 'loc-nombre' where id = $1",
+    [clientA1],
+  );
+  const conectados = await storeServicio.clientesConectadosGoogle();
+  const fila = conectados.find((c) => c.clientId === clientA1);
+  assert.equal(fila?.nombre, "Trattoria", "el nombre sembrado en el beforeEach para clientA1");
+});
+
+test("telegramDelAsignado devuelve el chat_id del CM asignado y vinculado", async () => {
+  await pg.query("update clients set asignado_a = $1 where id = $2", [equipoA, clientA1]);
+  await pg.query("update memberships set telegram_chat_id = $1 where user_id = $2", ["chat-cm-1", equipoA]);
+
+  const chatId = await storeServicio.telegramDelAsignado(clientA1);
+  assert.equal(chatId, "chat-cm-1");
+});
+
+test("telegramDelAsignado da null si el CM asignado NO vinculó Telegram", async () => {
+  await pg.query("update clients set asignado_a = $1 where id = $2", [equipoA, clientA1]);
+  // equipoA sigue sin telegram_chat_id acá -- el beforeEach lo siembra en NULL.
+  const chatId = await storeServicio.telegramDelAsignado(clientA1);
+  assert.equal(chatId, null);
+});
+
+test("telegramDelAsignado da null si el cliente NO tiene asignado_a", async () => {
+  const chatId = await storeServicio.telegramDelAsignado(clientA1);
+  assert.equal(chatId, null);
+});
+
+test("vincularTelegramPorCodigo: código válido vincula, y el MISMO código ya no sirve una segunda vez", async () => {
+  // El trigger `membresias_guardia_telegram` (0026) IGNORA el valor de `telegram_link_code` que
+  // mande este UPDATE y escribe el suyo (`gen_random_uuid()`) -- por eso el código real se lee de
+  // vuelta con `RETURNING` en vez de asumir el literal que se mandó (mismo motivo que
+  // `PgMembresias.generarCodigoTelegram`, que hace exactamente esto).
+  const { rows: escrito } = await pg.query<{ telegram_link_code: string }>(
+    `update memberships set telegram_link_code = 'valor-cualquiera',
+       telegram_link_code_expira = now() + interval '10 minutes'
+     where user_id = $1
+     returning telegram_link_code`,
+    [equipoA],
+  );
+  const codigo = escrito[0]!.telegram_link_code;
+
+  const primera = await storeServicio.vincularTelegramPorCodigo(codigo, "chat-1");
+  assert.equal(primera, true);
+
+  const { rows } = await pg.query<{ telegram_chat_id: string | null; telegram_link_code: string | null }>(
+    "select telegram_chat_id, telegram_link_code from memberships where user_id = $1",
+    [equipoA],
+  );
+  assert.equal(rows[0]?.telegram_chat_id, "chat-1");
+  assert.equal(rows[0]?.telegram_link_code, null, "el código se consume: queda en NULL");
+
+  const segunda = await storeServicio.vincularTelegramPorCodigo(codigo, "chat-2");
+  assert.equal(segunda, false, "🔴 el mismo código ya consumido no vuelve a vincular");
+});
+
+test("vincularTelegramPorCodigo: código VENCIDO no vincula", async () => {
+  // Igual que el test de arriba: el código real lo genera el trigger, no el literal que se manda.
+  const { rows: escrito } = await pg.query<{ telegram_link_code: string }>(
+    `update memberships set telegram_link_code = 'valor-cualquiera' where user_id = $1
+     returning telegram_link_code`,
+    [equipoA],
+  );
+  const codigo = escrito[0]!.telegram_link_code;
+  // Un SEGUNDO update, que NO toca `telegram_link_code`: el trigger solo fuerza el vencimiento
+  // cuando el CÓDIGO cambia (bloque b de `membresias_guardia_telegram`) -- dejarlo intacto acá es
+  // lo que permite backdatear la expiración sin que el trigger la vuelva a pisar a +10 minutos.
+  await pg.query(
+    "update memberships set telegram_link_code_expira = now() - interval '1 minute' where user_id = $1",
+    [equipoA],
+  );
+  const ok = await storeServicio.vincularTelegramPorCodigo(codigo, "chat-1");
+  assert.equal(ok, false, "🔴 el WHERE exige telegram_link_code_expira > now()");
+});
+
+test("offsetTelegramActual/avanzarOffsetTelegram: el offset persiste entre llamadas", async () => {
+  assert.equal(await storeServicio.offsetTelegramActual(), 0, "arranca en 0 (default de la 0026)");
+  await storeServicio.avanzarOffsetTelegram(42);
+  assert.equal(await storeServicio.offsetTelegramActual(), 42);
+  await storeServicio.avanzarOffsetTelegram(43);
+  assert.equal(await storeServicio.offsetTelegramActual(), 43, "un segundo avance sigue quedando persistido");
+});
+
+test("resenasPendientesAlertaTelegram: devuelve una 1-3★ sin alerta, no devuelve la ya confirmada ni una 4-5★", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1, tenantId: tenantA, googleReviewId: "gr-pendiente",
+    puntuacion: 2, autor: "Carlos", texto: "Mal", publicadaEn: new Date().toISOString(),
+  });
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1, tenantId: tenantA, googleReviewId: "gr-ya-confirmada",
+    puntuacion: 1, autor: "Diana", texto: "Pésimo", publicadaEn: new Date().toISOString(),
+  });
+  await pg.query(
+    "update resenas_google set alerta_telegram_enviada_en = now() where google_review_id = 'gr-ya-confirmada'",
+  );
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1, tenantId: tenantA, googleReviewId: "gr-positiva",
+    puntuacion: 5, autor: "Ana", texto: "Buenísimo", publicadaEn: new Date().toISOString(),
+  });
+
+  const pendientes = await storeServicio.resenasPendientesAlertaTelegram(clientA1);
+  const ids = pendientes.map((r) => r.googleReviewId);
+  assert.ok(ids.includes("gr-pendiente"), "la 1-3★ sin alerta SÍ aparece");
+  assert.ok(!ids.includes("gr-ya-confirmada"), "la que ya tiene alerta confirmada NO aparece (no se reintenta)");
+  assert.ok(!ids.includes("gr-positiva"), "una 4-5★ NO es candidata a alerta");
+});
+
+test("marcarAlertaTelegramEnviada: true la primera vez, false la segunda (no reenvía la confirmación)", async () => {
+  await storeServicio.registrarResenaGoogle({
+    clientId: clientA1, tenantId: tenantA, googleReviewId: "gr-marcar",
+    puntuacion: 3, autor: "Bruno", texto: "Regular", publicadaEn: new Date().toISOString(),
+  });
+  const args = { clientId: clientA1, tenantId: tenantA, googleReviewId: "gr-marcar" };
+  assert.equal(await storeServicio.marcarAlertaTelegramEnviada(args), true);
+  assert.equal(await storeServicio.marcarAlertaTelegramEnviada(args), false, "🔴 el WHERE exige que siga en NULL");
 });

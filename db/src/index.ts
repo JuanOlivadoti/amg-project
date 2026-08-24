@@ -20,6 +20,7 @@ export type {
   ResenaParaGuardar,
   BorradorParaGuardar,
   ResenaParaPublicar,
+  ResenaPendienteAlerta,
 } from "./store.js";
 
 export { PgSitios, MemSitios } from "./sitios.js";
@@ -29,7 +30,7 @@ export { PgClientes } from "./clientes.js";
 export type { ClienteCRM, NuevoCliente, CambiosCliente } from "./clientes.js";
 
 export { PgMembresias } from "./membresias.js";
-export type { Miembro, CambioRol } from "./membresias.js";
+export type { Miembro, CambioRol, CodigoTelegram } from "./membresias.js";
 
 export { PgIdeas, ESTADOS_IDEA, TRANSICIONES_IDEA, esEstadoIdea, esTransicionValida, LIMITE_IDEAS } from "./ideas.js";
 export type {

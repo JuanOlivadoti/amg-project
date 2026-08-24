@@ -53,6 +53,13 @@ export interface ConfigApi {
    * silencio (hallazgo 3 de la revisión final de `feature/resenas-google`).
    */
   modoResenasGoogle: ModoResenasGoogle;
+  /**
+   * `@username` del bot de Telegram (sin el `@`), para el deep link de `POST /me/telegram/vincular`
+   * (Bloque F, fase 2, migración 0026). **Obligatoria**, sin default -- mismo criterio que
+   * `DATABASE_URL_RENDER` en el renderizador: sin ella, el endpoint armaría en silencio una URL rota
+   * (`t.me/undefined?start=...`); mejor no arrancar.
+   */
+  telegramBotUsername: string;
 }
 
 /** Igual forma que `orchestrator/src/config.ts` (`ModoResenasGoogle`), pero es un módulo distinto. */
@@ -86,6 +93,7 @@ export function leerConfig(): ConfigApi {
   const issCrudo = process.env["SUPABASE_JWT_ISS"]?.trim();
   const corsRaw = process.env["CORS_ORIGINS"]?.trim();
   const oauthStateSecret = process.env["OAUTH_STATE_SECRET"]?.trim();
+  const telegramBotUsername = process.env["TELEGRAM_BOT_USERNAME"]?.trim();
   // CORS_ORIGINS es OBLIGATORIO acá a propósito. `createApp` defaultea a `origin: *`, y para la API
   // local (dev-server, que arma sus deps a mano) eso está bien. Pero este `leerConfig` es el arranque
   // de PRODUCCIÓN, y la API es la única pieza autenticada expuesta a internet: dejarla en `*` porque
@@ -98,6 +106,8 @@ export function leerConfig(): ConfigApi {
     !corsRaw && "CORS_ORIGINS (origen del portal; en producción no se sirve con `*`)",
     !oauthStateSecret &&
       "OAUTH_STATE_SECRET (firma el `state` del callback OAuth de Google; sin él, GET /clients/:id/google/callback no puede confiar en la identidad que trae)",
+    !telegramBotUsername &&
+      "TELEGRAM_BOT_USERNAME (el @username del bot, sin el @; sin ella, POST /me/telegram/vincular armaría una URL rota)",
   ].filter((x): x is string => Boolean(x));
   if (faltan.length > 0) {
     throw new Error(`Faltan variables de entorno de la API:\n  - ${faltan.join("\n  - ")}`);
@@ -132,6 +142,7 @@ export function leerConfig(): ConfigApi {
     emisor,
     corsOrigins,
     oauthStateSecret: oauthStateSecret as string,
+    telegramBotUsername: telegramBotUsername as string,
     modoResenasGoogle,
     ...(aud ? { jwtAudience: aud } : {}),
     ...(inngestEventKey ? { inngestEventKey } : {}),
@@ -272,6 +283,7 @@ export async function crearDeps(
       resenas,
       googleOAuth,
       oauthStateSecret: config.oauthStateSecret,
+      telegramBotUsername: config.telegramBotUsername,
       emisor,
       verificar,
       ...(config.corsOrigins ? { corsOrigins: config.corsOrigins } : {}),

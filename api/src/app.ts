@@ -75,6 +75,15 @@ export interface ApiDeps {
    * una variable de entorno conceptualmente nueva.
    */
   portalUrl: string;
+  /**
+   * `@username` del bot de Telegram (sin el `@`), para armar el deep link `t.me/<bot>?start=<código>`
+   * de `POST /me/telegram/vincular` (Bloque F, fase 2, migración 0026). Config pública, no secreta.
+   *
+   * **Obligatoria al arrancar** (`leerConfig`, mismo criterio que `DATABASE_URL_RENDER` en el
+   * renderizador): sin ella, el endpoint devolvería en silencio una URL rota
+   * (`t.me/undefined?start=...`) -- el arranque tiene que fallar antes, no el endpoint en runtime.
+   */
+  telegramBotUsername: string;
 }
 
 export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
@@ -502,6 +511,43 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     const ok = await deps.resenas.desconectarGoogle(ctx, clientId);
     if (!ok) return c.json({ error: "Cliente no encontrado o sin permiso para desconectar." }, 404);
     return c.json({ ok: true });
+  });
+
+  /*
+   * Los tres endpoints de `/me/telegram` (Bloque F, fase 2 — alertas por reseñas 1-3★, migración
+   * 0026). Auto-servicio, mismo espíritu que los dos de arriba: los tres cuelgan de `ctx.userId`
+   * (identidad ya autenticada) -- ninguno recibe un `:userId` de ruta, a propósito: no existe
+   * "vincular Telegram de OTRO", así que no hay nada que autorizar por rol acá (ADR-15 sigue
+   * intacto: no hay ningún `role` ni identidad ajena que este código decida). Quién puede escribir
+   * su propio código, y qué valor queda guardado, lo deciden la política `membership_vincular_
+   * telegram` y el trigger `membresias_guardia_telegram` (0026) -- no este handler.
+   */
+
+  /** POST /me/telegram/vincular — genera un código de un solo uso y arma el deep link de Telegram. */
+  app.post("/me/telegram/vincular", async (c) => {
+    const ctx = c.get("ctx");
+    const { codigo } = await deps.membresias.generarCodigoTelegram(ctx);
+    return c.json({ url: `https://t.me/${deps.telegramBotUsername}?start=${codigo}` });
+  });
+
+  /** GET /me/telegram — si la propia cuenta ya vinculó Telegram. */
+  app.get("/me/telegram", async (c) => {
+    const ctx = c.get("ctx");
+    const vinculado = await deps.membresias.telegramVinculado(ctx);
+    return c.json({ vinculado });
+  });
+
+  /**
+   * POST /me/telegram/desvincular — limpia la vinculación de la propia cuenta.
+   *
+   * `{ ok: boolean }`, NO `{ ok: true }` fijo: `false` es una respuesta VÁLIDA (no había nada que
+   * desvincular), no un error — mismo criterio que el resto de los comandos idempotentes de la API
+   * (`registrarResenaGoogle`, `marcarAlertaTelegramEnviada`, etc.).
+   */
+  app.post("/me/telegram/desvincular", async (c) => {
+    const ctx = c.get("ctx");
+    const ok = await deps.membresias.desvincularTelegram(ctx);
+    return c.json({ ok });
   });
 
   /*

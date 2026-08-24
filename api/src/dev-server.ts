@@ -163,6 +163,9 @@ const app = createApp({
   // OAUTH_STATE_SECRET, que `leerConfig` exige y este archivo no lee. Este valor solo firma states
   // dentro de un proceso que se reinicia con datos en memoria.
   oauthStateSecret: "dev-oauth-state-secret-inseguro-no-usar-en-produccion",
+  // FIJO a propósito, igual que oauthStateSecret arriba: en producción viene de TELEGRAM_BOT_USERNAME
+  // (que leerConfig exige), y este archivo nunca la lee.
+  telegramBotUsername: "AMGReviewsBotDev",
   emisor,
   verificar,
   corsOrigins: ["http://localhost:4200"],

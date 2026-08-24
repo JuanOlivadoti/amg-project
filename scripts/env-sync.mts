@@ -31,6 +31,7 @@ export const MAPA = {
     "INNGEST_EVENT_KEY",
     "OAUTH_STATE_SECRET",
     "GOOGLE_REVIEWS_MODO",
+    "TELEGRAM_BOT_USERNAME",
   ],
   db: ["DATABASE_URL_ADMIN", "SEED_FRANK_USER_ID", "SEED_JUAN_USER_ID"],
   "kr-service": [

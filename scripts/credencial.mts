@@ -111,6 +111,10 @@ export const CATALOGO: Record<string, Entrada> = {
     familia: "config",
     nota: "`mock` | `openai`, opcional (default derivado de OPENAI_API_KEY): en qué modo se genera el borrador de respuesta con IA (Bloque F, fase 2)",
   },
+  TELEGRAM_BOT_USERNAME: {
+    familia: "config",
+    nota: "el @username del bot (sin el @), para el deep link t.me/<bot>?start=<código> de las alertas por reseñas 1-3★ (Bloque F, fase 2). Se crea gratis con @BotFather.",
+  },
   OPENAI_MODEL: {
     familia: "config",
     nota: "COMPARTIDA con kr-service y web-builder (mismo valor, repartido por env:sync) — default gpt-4o-mini si no está declarada",

@@ -34,10 +34,13 @@ export interface Miembro {
   /** `| null`: `auth.users.email` real puede ser null (invitación pendiente, login por teléfono). */
   email: string | null;
   raw_app_meta_data: Record<string, unknown> | null;
+  /** `telegram_chat_id is not null` (0026) -- nunca el chat_id crudo, solo si está vinculado. */
+  telegram_vinculado: boolean;
 }
 
 /** Las columnas de `Miembro`. Una sola definición: el select no puede quedar desalineado. */
-const MIEMBRO_COLS = "id, tenant_id, user_id, rol, client_id, created_at, email, raw_app_meta_data";
+const MIEMBRO_COLS =
+  "id, tenant_id, user_id, rol, client_id, created_at, email, raw_app_meta_data, telegram_vinculado";
 
 /**
  * Lo que hace falta para cambiar el rol de un miembro (Etapa 2 de la pieza).
@@ -52,6 +55,12 @@ export interface CambioRol {
   rol: string;
   /** Solo tiene efecto si `rol === 'cliente'` -- ver el comentario de `cambiarRol`. */
   clientId?: string | null;
+}
+
+/** Lo que devuelve `generarCodigoTelegram`: el código de un solo uso y su vencimiento. */
+export interface CodigoTelegram {
+  codigo: string;
+  expira: string; // ISO-8601
 }
 
 export class PgMembresias {
@@ -117,6 +126,51 @@ export class PgMembresias {
         [datos.rol, clientId, userId],
       );
       return rows.length > 0;
+    });
+  }
+
+  /**
+   * Pide un código de un solo uso para vincular Telegram, y lo guarda en la PROPIA fila del que
+   * pide (RLS: `membership_vincular_telegram`, 0026 -- cualquier rol, siempre y cuando sea su
+   * fila). El VALOR real lo elige Postgres (trigger `membresias_guardia_telegram`, 0026) -- lo que
+   * este método manda en el `UPDATE` es un placeholder que el trigger reemplaza antes de que la
+   * fila se escriba; `RETURNING` es lo único confiable para saber qué quedó guardado. Pisa un
+   * código anterior sin usar, si lo había: no hace falta invalidar dos veces, un `update` nuevo ya
+   * reemplaza el viejo.
+   */
+  async generarCodigoTelegram(ctx: TenantContext): Promise<CodigoTelegram> {
+    return this.withTenant(ctx, async (tx: Tx) => {
+      const { rows } = await tx.query<{ telegram_link_code: string; telegram_link_code_expira: string }>(
+        `update memberships
+         set telegram_link_code = gen_random_uuid()::text, telegram_link_code_expira = now()
+         where user_id = $1
+         returning telegram_link_code, telegram_link_code_expira`,
+        [ctx.userId ?? ""],
+      );
+      const fila = rows[0];
+      if (!fila) throw new Error("No se encontró la membresía para generar el código de Telegram.");
+      return { codigo: fila.telegram_link_code, expira: fila.telegram_link_code_expira };
+    });
+  }
+
+  /** `true` si la propia fila tiene `telegram_chat_id` puesto. */
+  async telegramVinculado(ctx: TenantContext): Promise<boolean> {
+    return this.withTenant(ctx, async (tx: Tx) => {
+      const { rows } = await tx.query<{ telegram_vinculado: boolean }>(
+        `select telegram_vinculado from membresias_perfil where user_id = $1`,
+        [ctx.userId ?? ""],
+      );
+      return rows[0]?.telegram_vinculado ?? false;
+    });
+  }
+
+  /** Vía `app.desvincular_telegram_propio` (0026) -- `false` si no había nada vinculado. */
+  async desvincularTelegram(ctx: TenantContext): Promise<boolean> {
+    return this.withTenant(ctx, async (tx: Tx) => {
+      const { rows } = await tx.query<{ desvincular_telegram_propio: boolean }>(
+        `select app.desvincular_telegram_propio() as desvincular_telegram_propio`,
+      );
+      return rows[0]?.desvincular_telegram_propio ?? false;
     });
   }
 }

@@ -25,6 +25,7 @@ function conEntorno(vars: Record<string, string>): void {
     "SUPABASE_JWT_ISS",
     "OAUTH_STATE_SECRET",
     "GOOGLE_REVIEWS_MODO",
+    "TELEGRAM_BOT_USERNAME",
     // El SDK de Inngest infiere su modo del entorno: si la máquina que corre los tests tuviera
     // `NODE_ENV=production` o `RAILWAY_GIT_BRANCH`, la mitad de estos tests cambiaría de resultado
     // sin que nadie tocara el código. Se limpian, y cada test declara el entorno que quiere probar.
@@ -42,6 +43,7 @@ const BASE = {
   DATABASE_URL_API: "postgres://amg_api@host/db",
   SUPABASE_JWT_ISS: "https://proyecto.supabase.co/auth/v1",
   OAUTH_STATE_SECRET: "secreto-de-test-no-para-produccion",
+  TELEGRAM_BOT_USERNAME: "AMGReviewsBotTest",
   // Modo dev EXPLÍCITO. `INNGEST_DEV` gana sobre toda la inferencia del SDK (medido), así que estos
   // tests —que no van sobre Inngest— dan igual en un portátil que en un CI que se crea producción.
   // Los que SÍ van sobre el modo lo borran y ponen las variables del PaaS de verdad.
@@ -51,6 +53,14 @@ const BASE = {
 test("falla cerrado si falta CORS_ORIGINS (no arranca con `*` en algo expuesto)", () => {
   conEntorno(BASE);
   assert.throws(() => leerConfig(), /CORS_ORIGINS/);
+});
+
+test("🔴 falla cerrado si falta TELEGRAM_BOT_USERNAME: sin ella, /me/telegram/vincular armaría una URL rota", () => {
+  // Mismo criterio que OAUTH_STATE_SECRET/SUPABASE_JWT_ISS: mejor no arrancar que servir en
+  // silencio `t.me/undefined?start=...` a cada CM que pida vincular su Telegram.
+  const { TELEGRAM_BOT_USERNAME: _sinBot, ...sinEstaVar } = BASE;
+  conEntorno({ ...sinEstaVar, CORS_ORIGINS: "https://app.tudominio.com" });
+  assert.throws(() => leerConfig(), /TELEGRAM_BOT_USERNAME/);
 });
 
 test("acepta CORS_ORIGINS y lo parsea coma-separado, con trim", () => {

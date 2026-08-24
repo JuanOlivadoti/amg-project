@@ -17,6 +17,9 @@ const PORTAL_URL_TEST = "http://localhost:4200";
 /** Secreto de test para firmar/verificar el `state` de OAuth — nunca el de producción. */
 const OAUTH_STATE_SECRET_TEST = "secreto-de-test-oauth-state-no-es-el-de-produccion";
 
+/** `@username` de test para el deep link de Telegram (`POST /me/telegram/vincular`). */
+const TELEGRAM_BOT_USERNAME_TEST = "AMGReviewsBotTest";
+
 /**
  * La API entera contra Postgres REAL (PGlite), sin red y sin Supabase.
  *
@@ -85,6 +88,7 @@ beforeEach(async () => {
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
+    telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
     emisor,
     verificar,
     portalUrl: PORTAL_URL_TEST,
@@ -355,6 +359,7 @@ test("🔴 POST /runs: si el evento no se puede emitir, el run NO queda huérfan
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
+    telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
     verificar,
     emisor: emisorQueLanza(fallo),
     portalUrl: PORTAL_URL_TEST,
@@ -1054,6 +1059,7 @@ test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", 
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
+    telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
     emisor: emisorInerte,
     verificar: caido,
     portalUrl: PORTAL_URL_TEST,
@@ -1062,6 +1068,80 @@ test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", 
     headers: { authorization: "Bearer lo-que-sea", "x-amg-tenant": tenantA },
   });
   assert.equal(res.status, 503);
+});
+
+// ---------------------------------------------------------------- /me/telegram (Bloque F, fase 2 — alertas)
+//
+// Los tres cuelgan de `ctx.userId` (identidad ya autenticada): no hay ningún `:userId` de ruta que
+// comparar contra nadie, así que no hay un caso "OTRO tenant"/"OTRO usuario" que probar acá — eso
+// ya lo cubre `membresias.test.ts` (RLS: `membership_vincular_telegram`, el trigger `membresias_
+// guardia_telegram`). Lo que este bloque prueba es el CONTRATO HTTP: forma de la respuesta y que el
+// endpoint refleje lo que la base decidió, no una autorización nueva.
+
+test("POST /me/telegram/vincular sin token → 401", async () => {
+  const res = await req("POST", "/me/telegram/vincular", {});
+  assert.equal(res.status, 401);
+});
+
+test("POST /me/telegram/vincular devuelve una URL cuyo código matchea lo que quedó en la base", async () => {
+  const res = await req("POST", "/me/telegram/vincular", { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { url: string };
+  assert.ok(
+    body.url.startsWith(`https://t.me/${TELEGRAM_BOT_USERNAME_TEST}?start=`),
+    `la URL usa el bot configurado: ${body.url}`,
+  );
+  const codigo = body.url.split("?start=")[1];
+
+  const [fila] = await sql<{ telegram_link_code: string | null }>(
+    "select telegram_link_code from memberships where user_id = $1",
+    [equipoA],
+  );
+  assert.equal(fila?.telegram_link_code, codigo, "el código de la URL es el que quedó guardado");
+});
+
+test("POST /me/telegram/vincular dos veces seguidas: el segundo invalida el código del primero", async () => {
+  const primero = (await (
+    await req("POST", "/me/telegram/vincular", { user: equipoA, tenant: tenantA })
+  ).json()) as { url: string };
+  const segundo = (await (
+    await req("POST", "/me/telegram/vincular", { user: equipoA, tenant: tenantA })
+  ).json()) as { url: string };
+
+  const codigoPrimero = primero.url.split("?start=")[1];
+  const codigoSegundo = segundo.url.split("?start=")[1];
+  assert.notEqual(codigoPrimero, codigoSegundo, "cada pedido genera un código nuevo");
+
+  const [fila] = await sql<{ telegram_link_code: string | null }>(
+    "select telegram_link_code from memberships where user_id = $1",
+    [equipoA],
+  );
+  assert.equal(fila?.telegram_link_code, codigoSegundo, "solo el código del segundo pedido sigue vigente");
+});
+
+test("GET /me/telegram da {vinculado:false} antes de vincular", async () => {
+  const res = await req("GET", "/me/telegram", { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { vinculado: false });
+});
+
+test("GET /me/telegram da {vinculado:true} una vez que la fila tiene telegram_chat_id (control positivo)", async () => {
+  await sql("update memberships set telegram_chat_id = $1 where user_id = $2", ["chat-http-1", equipoA]);
+  const res = await req("GET", "/me/telegram", { user: equipoA, tenant: tenantA });
+  assert.deepEqual(await res.json(), { vinculado: true });
+});
+
+test("POST /me/telegram/desvincular: {ok:false} si no había nada, {ok:true} si había, {ok:false} de nuevo", async () => {
+  const antes = await req("POST", "/me/telegram/desvincular", { user: equipoA, tenant: tenantA });
+  assert.deepEqual(await antes.json(), { ok: false }, "false NO es un error: no había nada que desvincular");
+
+  await sql("update memberships set telegram_chat_id = $1 where user_id = $2", ["chat-http-2", equipoA]);
+
+  const primera = await req("POST", "/me/telegram/desvincular", { user: equipoA, tenant: tenantA });
+  assert.deepEqual(await primera.json(), { ok: true });
+
+  const segunda = await req("POST", "/me/telegram/desvincular", { user: equipoA, tenant: tenantA });
+  assert.deepEqual(await segunda.json(), { ok: false }, "ya no había nada que desvincular la segunda vez");
 });
 
 // ---------------------------------------------------------------- conexión OAuth con Google (Bloque F, fase 1)

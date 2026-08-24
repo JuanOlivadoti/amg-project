@@ -410,6 +410,21 @@ export interface ClienteConectadoGoogle {
   tenantId: string;
   locationId: string;
   refreshToken: string;
+  /** El nombre del negocio -- para el texto de la alerta de Telegram (0026). */
+  nombre: string;
+}
+
+/**
+ * Una reseña 1-3★ sin alerta de Telegram confirmada, vía `app.resenas_pendientes_alerta_telegram`
+ * (0026). Incluye tanto las nuevas del ciclo como las de ciclos anteriores cuyo envío falló -- es
+ * el mecanismo de retry automático (decisión de Juan, hallazgo 4 de la revisión de Codex).
+ */
+export interface ResenaPendienteAlerta {
+  googleReviewId: string;
+  tenantId: string;
+  puntuacion: number;
+  autor: string;
+  texto: string | null;
 }
 
 /** Lo que hace falta para registrar una reseña vía `app.registrar_resena_google()` (0022). */
@@ -994,12 +1009,92 @@ export class PgStore {
   async clientesConectadosGoogle(): Promise<ClienteConectadoGoogle[]> {
     return this.sinTenant(async (tx) => {
       const { rows } = await tx.query<{
-        client_id: string; tenant_id: string; location_id: string; refresh_token: string;
+        client_id: string; tenant_id: string; location_id: string; refresh_token: string; nombre: string;
       }>("select * from app.clientes_conectados_google()");
       return rows.map((r) => ({
         clientId: r.client_id, tenantId: r.tenant_id,
-        locationId: r.location_id, refreshToken: r.refresh_token,
+        locationId: r.location_id, refreshToken: r.refresh_token, nombre: r.nombre,
       }));
+    });
+  }
+
+  /**
+   * El chat_id de Telegram del CM asignado a un cliente, vía `app.telegram_del_asignado` (0026).
+   * `null` si no hay asignado o no vinculó Telegram. Cross-tenant, solo `app_service`.
+   */
+  async telegramDelAsignado(clientId: string): Promise<string | null> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ telegram_del_asignado: string | null }>(
+        "select app.telegram_del_asignado($1) as telegram_del_asignado",
+        [clientId],
+      );
+      return rows[0]?.telegram_del_asignado ?? null;
+    });
+  }
+
+  /**
+   * Confirma la vinculación de Telegram vía `app.vincular_telegram` (0026): matchea por código de
+   * un solo uso, no vencido. `false` si el código no existe o venció.
+   */
+  async vincularTelegramPorCodigo(codigo: string, chatId: string): Promise<boolean> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ vincular_telegram: boolean }>(
+        "select app.vincular_telegram($1, $2) as vincular_telegram",
+        [codigo, chatId],
+      );
+      return rows[0]?.vincular_telegram ?? false;
+    });
+  }
+
+  /**
+   * El último `update_id` de Telegram ya procesado (`app.telegram_polling_estado`, 0026). Sin esto,
+   * cada ciclo del orquestador volvería a ver los mismos `/start` ya procesados.
+   */
+  async offsetTelegramActual(): Promise<number> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ ultimo_update_id: string }>(
+        "select ultimo_update_id from app.telegram_polling_estado",
+      );
+      return Number(rows[0]?.ultimo_update_id ?? 0);
+    });
+  }
+
+  /** Avanza el offset de `getUpdates` -- se llama DESPUÉS de procesar el lote, no antes. */
+  async avanzarOffsetTelegram(nuevoOffset: number): Promise<void> {
+    return this.sinTenant(async (tx) => {
+      await tx.query("update app.telegram_polling_estado set ultimo_update_id = $1", [nuevoOffset]);
+    });
+  }
+
+  /**
+   * Reseñas 1-3★ de un cliente sin alerta de Telegram confirmada -- incluye ciclos anteriores (el
+   * retry automático). Vía `app.resenas_pendientes_alerta_telegram` (0026).
+   */
+  async resenasPendientesAlertaTelegram(clientId: string): Promise<ResenaPendienteAlerta[]> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{
+        google_review_id: string; tenant_id: string; puntuacion: number; autor: string; texto: string | null;
+      }>("select * from app.resenas_pendientes_alerta_telegram($1)", [clientId]);
+      return rows.map((r) => ({
+        googleReviewId: r.google_review_id, tenantId: r.tenant_id,
+        puntuacion: r.puntuacion, autor: r.autor, texto: r.texto,
+      }));
+    });
+  }
+
+  /**
+   * Confirma que la alerta de Telegram salió, vía `app.marcar_alerta_telegram_enviada` (0026).
+   * `false` si ya estaba confirmada -- el WHERE de la función decide, no este método.
+   */
+  async marcarAlertaTelegramEnviada(
+    r: { clientId: string; tenantId: string; googleReviewId: string },
+  ): Promise<boolean> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ marcar_alerta_telegram_enviada: boolean }>(
+        "select app.marcar_alerta_telegram_enviada($1, $2, $3) as marcar_alerta_telegram_enviada",
+        [r.clientId, r.tenantId, r.googleReviewId],
+      );
+      return rows[0]?.marcar_alerta_telegram_enviada ?? false;
     });
   }
 

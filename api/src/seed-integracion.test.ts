@@ -59,6 +59,7 @@ beforeEach(async () => {
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
     oauthStateSecret: "secreto-de-test-no-para-produccion",
+    telegramBotUsername: "AMGReviewsBotTest",
     emisor,
     verificar,
     portalUrl: "http://localhost:4200",

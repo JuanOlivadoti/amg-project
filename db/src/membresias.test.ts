@@ -96,6 +96,20 @@ test("un usuario sin ninguna membresía (intruso) no ve absolutamente nada", asy
   assert.deepEqual(filas, []);
 });
 
+test("listarMiembros expone telegram_vinculado (contrato que consume Task 3 del portal)", async () => {
+  await db.asService(
+    "update memberships set telegram_chat_id = '12345' where user_id = $1",
+    [s.equipoA],
+  );
+
+  const filas = await membresias.listarMiembros({ tenantId: s.tenantA, userId: s.equipoA });
+  const equipoA = filas.find((f) => f.user_id === s.equipoA);
+  const duenoA1 = filas.find((f) => f.user_id === s.duenoA1);
+
+  assert.equal(equipoA?.telegram_vinculado, true, "vinculó Telegram -> true");
+  assert.equal(duenoA1?.telegram_vinculado, false, "nunca vinculó -> false, no undefined");
+});
+
 // ---------------------------------------------------------------- acceso directo a auth.users
 
 test("🔴 app_user NO puede leer auth.users directamente: la vista es el ÚNICO camino", async () => {
@@ -286,7 +300,12 @@ test("🔴 un 'equipo' (no maestro) intentando cambiar el rol de otro → RLS lo
   const blanco = await mkMiembro(s.tenantA, "equipo");
   await assert.rejects(
     () => membresias.cambiarRol({ tenantId: s.tenantA, userId: s.equipoA }, blanco, { rol: "maestro" }),
-    /permission denied|row-level security|insufficient_privilege/i,
+    // Desde la 0026, el trigger `membresias_guardia_telegram` (BEFORE UPDATE) corre ANTES de que
+    // RLS evalúe el WITH CHECK de `membership_update`, y repite la misma condición de
+    // autorización con su PROPIO mensaje ("No autorizado…") -- mismo errcode 42501
+    // (insufficient_privilege), texto distinto al genérico de Postgres. La garantía (rechazo) es
+    // la misma; lo que cambia es CUÁL de las dos capas la reporta primero.
+    /permission denied|row-level security|insufficient_privilege|No autorizado/i,
   );
   const fila = await rolDe(blanco);
   assert.equal(fila.rol, "equipo", "el intento de equipoA no tuvo ningún efecto");
@@ -299,7 +318,8 @@ test("🔴 auto-degradación: un maestro cambiando SU PROPIO rol → RLS lo fren
   // cambiarRol sin pasar por ese `if`.
   await assert.rejects(
     () => membresias.cambiarRol({ tenantId: s.tenantA, userId: maestroA1 }, maestroA1, { rol: "equipo" }),
-    /permission denied|row-level security|insufficient_privilege/i,
+    // Ver el comentario del test de arriba: desde la 0026 el trigger reporta esto primero, mismo 42501.
+    /permission denied|row-level security|insufficient_privilege|No autorizado/i,
   );
   const fila = await rolDe(maestroA1);
   assert.equal(fila.rol, "maestro", "maestroA1 sigue siendo maestro: no se pudo auto-degradar");
@@ -407,4 +427,200 @@ test("🔴 el chequeo del último maestro se serializa POR TENANT antes de conta
     "select count(*)::int as n from pg_locks where locktype = 'advisory'",
   );
   assert.equal(Number(n!.n), 0, "al cerrar la transacción el lock se suelta solo");
+});
+
+// =============================================================================
+// Telegram (migración 0026, Bloque F fase 2) — auto-servicio de vinculación.
+//
+// El caso de más riesgo de esta migración es el trigger `membresias_guardia_telegram`: una
+// segunda política UPDATE permisiva sobre `memberships` (para vincular Telegram) se combina por OR
+// con `membership_update` (0012), así que sin un backstop, un UPDATE que tocara `rol` Y
+// `telegram_link_code` en la MISMA sentencia podría colarse por el `with check` más laxo de la
+// política nueva. Los dos tests marcados VERIFICACIÓN POR MUTACIÓN abajo son los que lo prueban de
+// verdad: sin ellos, "el trigger existe" y "el trigger hace algo" no son la misma afirmación.
+// =============================================================================
+
+test("generarCodigoTelegram: el segundo código reemplaza al primero (el viejo deja de servir)", async () => {
+  const miembro = await mkMiembro(s.tenantA, "equipo");
+  const primero = await membresias.generarCodigoTelegram({ tenantId: s.tenantA, userId: miembro });
+  const segundo = await membresias.generarCodigoTelegram({ tenantId: s.tenantA, userId: miembro });
+  assert.notEqual(primero.codigo, segundo.codigo, "cada pedido genera un código nuevo (gen_random_uuid)");
+
+  // app.vincular_telegram es security definer de app_telegram: db.asService (superusuario) puede
+  // llamarla igual que app_service, sin necesitar el rol -- el superusuario salta los chequeos de
+  // EXECUTE, así que esto simula exactamente lo que hace el orquestador tras leer un /start.
+  const [conElViejo] = await db.asService<{ vincular_telegram: boolean }>(
+    "select app.vincular_telegram($1, $2) as vincular_telegram",
+    [primero.codigo, "chat-viejo"],
+  );
+  assert.equal(conElViejo!.vincular_telegram, false, "el código viejo ya no sirve: el segundo pedido lo pisó");
+
+  const [conElNuevo] = await db.asService<{ vincular_telegram: boolean }>(
+    "select app.vincular_telegram($1, $2) as vincular_telegram",
+    [segundo.codigo, "chat-nuevo"],
+  );
+  assert.equal(conElNuevo!.vincular_telegram, true, "el código actual sí sirve");
+});
+
+test("telegramVinculado: false antes de vincular, true después", async () => {
+  const miembro = await mkMiembro(s.tenantA, "equipo");
+  // membresias_perfil hace un INNER JOIN con auth.users (0012) -- sin una fila ahí, la vista no
+  // devuelve NADA para este usuario, y las dos comparaciones de abajo "pasarían" por el motivo
+  // equivocado (ambas leerían `false` del default de `telegramVinculado`, no del dato real).
+  await db.asService(
+    "insert into auth.users (id, email, raw_app_meta_data) values ($1, 'telegram-test@agencia-a.test', '{}'::jsonb)",
+    [miembro],
+  );
+  assert.equal(await membresias.telegramVinculado({ tenantId: s.tenantA, userId: miembro }), false);
+
+  // Simula lo que haría app.vincular_telegram (confirmado en un test aparte de store.test.ts) sin
+  // pasar por él: acá el foco es telegramVinculado/membresias_perfil, no la función de vinculación.
+  await db.asService("update memberships set telegram_chat_id = $1 where user_id = $2", ["chat-1", miembro]);
+
+  assert.equal(await membresias.telegramVinculado({ tenantId: s.tenantA, userId: miembro }), true);
+});
+
+test("desvincularTelegram: true la primera vez, false la segunda (no había nada que desvincular)", async () => {
+  const miembro = await mkMiembro(s.tenantA, "equipo");
+  await db.asService("update memberships set telegram_chat_id = $1 where user_id = $2", ["chat-1", miembro]);
+
+  assert.equal(await membresias.desvincularTelegram({ tenantId: s.tenantA, userId: miembro }), true);
+  assert.equal(await membresias.desvincularTelegram({ tenantId: s.tenantA, userId: miembro }), false);
+});
+
+test("🔴 el trigger membresias_guardia_telegram bloquea un UPDATE que combina rol Y telegram_link_code en la misma fila", async () => {
+  // Sin este trigger, membership_vincular_telegram (0026, con check solo "¿es mi fila?") se OR-earía
+  // con membership_update (0012, con check "ser maestro Y no la propia fila") y un 'equipo' podría
+  // colarse a 'maestro' con tal de tocar también telegram_link_code en la MISMA sentencia.
+  const equipoX = await mkMiembro(s.tenantA, "equipo");
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: equipoX },
+        "update memberships set rol = 'maestro', telegram_link_code = 'x' where user_id = $1",
+        [equipoX],
+      ),
+    /No autorizado/i,
+    "un 'equipo' no puede autopromoverse combinando la columna de Telegram",
+  );
+  const fila = await rolDe(equipoX);
+  assert.equal(fila.rol, "equipo", "el intento no tuvo ningún efecto");
+});
+
+test("🔴 VERIFICACIÓN POR MUTACIÓN: sin el trigger, ese mismo UPDATE combinado SÍ se cuela", async () => {
+  const equipoY = await mkMiembro(s.tenantA, "equipo");
+  await db.exec("drop trigger membresias_guardia_telegram on memberships");
+  let filas: Array<{ rol: string }> = [];
+  try {
+    // db.asUser SIEMPRE hace rollback (éxito o no) -- lo que importa acá es si la SENTENCIA lanza o
+    // no, no si el cambio persiste. `returning` deja ver, dentro de la misma transacción, si el
+    // UPDATE afectó la fila antes del rollback.
+    filas = await db.asUser<{ rol: string }>(
+      { tenantId: s.tenantA, userId: equipoY },
+      "update memberships set rol = 'maestro', telegram_link_code = 'x' where user_id = $1 returning rol",
+      [equipoY],
+    );
+  } finally {
+    await db.exec(`
+      create trigger membresias_guardia_telegram
+        before update on memberships
+        for each row
+        execute function app.membresias_guardia_telegram();
+    `);
+  }
+  assert.equal(filas.length, 1, "sin el trigger, el UPDATE combinado SÍ afecta la fila -- exactamente el bug que el trigger cierra");
+  assert.equal(filas[0]?.rol, "maestro", "el 'equipo' se autopromovió a maestro combinando la columna de Telegram");
+});
+
+test("🔴 el código de vinculación lo genera Postgres, no el caller: un valor elegido a mano no se conserva", async () => {
+  const miembro = await mkMiembro(s.tenantA, "equipo");
+  const filas = await db.asUser<{ telegram_link_code: string; telegram_link_code_expira: string }>(
+    { tenantId: s.tenantA, userId: miembro },
+    `update memberships
+     set telegram_link_code = 'codigo-elegido-a-mano', telegram_link_code_expira = now() + interval '10 years'
+     where user_id = $1
+     returning telegram_link_code, telegram_link_code_expira`,
+    [miembro],
+  );
+  assert.equal(filas.length, 1);
+  const fila = filas[0]!;
+  assert.notEqual(fila.telegram_link_code, "codigo-elegido-a-mano", "el trigger reemplaza el valor elegido a mano");
+  const expiraEn = new Date(fila.telegram_link_code_expira).getTime() - Date.now();
+  assert.ok(expiraEn > 0 && expiraEn < 11 * 60 * 1000, "el vencimiento es ~10 minutos, NO 10 años");
+});
+
+test("🔴 VERIFICACIÓN POR MUTACIÓN: sin el guardia del código, el valor elegido a mano SÍ queda guardado", async () => {
+  const miembro = await mkMiembro(s.tenantA, "equipo");
+  // Reemplaza la función por una que SOLO tiene el guardia (a) de rol/client_id -- sin el bloque
+  // (b) que fuerza código y vencimiento. Mismo trigger, mismo nombre: no hace falta tocar el CREATE
+  // TRIGGER, solo el cuerpo de la función que ejecuta.
+  await db.exec(`
+    create or replace function app.membresias_guardia_telegram() returns trigger
+    language plpgsql as $$
+    begin
+      if (new.rol is distinct from old.rol or new.client_id is distinct from old.client_id)
+         and (app.rol_propio_sin_recursion() <> 'maestro' or new.user_id = app.current_user_id()) then
+        raise exception 'No autorizado para cambiar rol/cliente de esta membresía.'
+          using errcode = '42501';
+      end if;
+      return new;
+    end;
+    $$;
+  `);
+  let filas: Array<{ telegram_link_code: string }> = [];
+  try {
+    filas = await db.asUser<{ telegram_link_code: string }>(
+      { tenantId: s.tenantA, userId: miembro },
+      `update memberships set telegram_link_code = 'codigo-elegido-a-mano' where user_id = $1
+       returning telegram_link_code`,
+      [miembro],
+    );
+  } finally {
+    // Se repone la función COMPLETA (los dos guardias), tal como quedó la migración 0026 -- para
+    // que ningún test posterior de este archivo corra contra la versión mutilada.
+    await db.exec(`
+      create or replace function app.membresias_guardia_telegram() returns trigger
+      language plpgsql as $$
+      begin
+        if (new.rol is distinct from old.rol or new.client_id is distinct from old.client_id)
+           and (app.rol_propio_sin_recursion() <> 'maestro' or new.user_id = app.current_user_id()) then
+          raise exception 'No autorizado para cambiar rol/cliente de esta membresía.'
+            using errcode = '42501';
+        end if;
+
+        if new.telegram_link_code is distinct from old.telegram_link_code
+           and new.telegram_link_code is not null then
+          new.telegram_link_code := gen_random_uuid()::text;
+          new.telegram_link_code_expira := now() + interval '10 minutes';
+        end if;
+
+        return new;
+      end;
+      $$;
+    `);
+  }
+  assert.equal(
+    filas[0]?.telegram_link_code,
+    "codigo-elegido-a-mano",
+    "sin el guardia (b), el valor elegido a mano SÍ se guarda tal cual -- el bug que el trigger cierra",
+  );
+});
+
+test("🔴 el GRANT UPDATE de memberships para app_user NO incluye telegram_chat_id: solo app_telegram puede escribirlo", async () => {
+  // `membership_vincular_telegram` (0026) le da a app_user UPDATE sobre `telegram_link_code`/
+  // `telegram_link_code_expira`, nunca sobre `telegram_chat_id` -- si un usuario pudiera escribirlo
+  // a mano, cualquiera podría poner el chat_id de OTRA persona y robarle sus alertas sin que
+  // Telegram mediara en nada (ver el comentario de la columna en la 0026). Esto tiene que rechazarse
+  // por GRANT (42501 "permission denied for table"), no por RLS -- ni siquiera llega a evaluar una
+  // política porque el privilegio de columna no está.
+  const miembro = await mkMiembro(s.tenantA, "equipo");
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: miembro },
+        "update memberships set telegram_chat_id = 'chat-robado' where user_id = $1",
+        [miembro],
+      ),
+    /permission denied|no tiene permiso/i,
+  );
 });
