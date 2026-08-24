@@ -6,11 +6,17 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** 2026-08-23
+**Sesión:** 2026-08-23/24
 **En curso:** alertas por Telegram para reseñas 1-3★ (Bloque F, fase 2 — cierra RF-018 del PRD).
-**Nada implementado todavía** — hay un plan completo, ya revisado por Codex y con los 8 ajustes
-aplicados, esperando que se dispatchee la Task 1 (`datos`). El plan entero, con el SQL exacto:
+**Task 1 (`datos`) cerrada e integrada** (commit `19560b7`): migración `0026` (aplicada solo local vía
+PGlite — todavía NO desplegada a producción), capa de acceso en `db/`, y los tres endpoints de
+auto-servicio en `api/`. Pasó por el `revisor`: un bloqueante (`GET /members` no exponía
+`telegram_vinculado` pese a que la vista ya lo tenía) corregido por la sesión principal antes de
+integrar. **Siguen las Tasks 2 (`pipeline`: provider de Telegram + 2 funciones de Inngest) y 3
+(`front`: "Vincular Telegram" en el perfil), en serie.** El plan entero, con el SQL exacto:
 [`docs/superpowers/plans/2026-08-23-alertas-telegram.md`](../docs/superpowers/plans/2026-08-23-alertas-telegram.md).
+Informes de esta pieza: `progress/informes/datos-alertas-telegram.md` y
+`progress/informes/revision-task1-alertas-telegram.md`.
 
 Antes en la misma sesión, ya cerrado: el Bloque F fase 2 segunda pieza (publicar la respuesta de
 vuelta a Google, mock-first) y el ítem de invalidación multi-instancia del Bloque G. Detalle completo
@@ -46,8 +52,11 @@ por Juan (retry automático), 1 de cableado de config (`TELEGRAM_BOT_USERNAME` s
 resto validaciones/tests. Ninguno reabrió Telegram ni "por CM asignado". Los 8 ya están en el plan.
 
 **Pendiente inmediato:**
-- **Dispatchear la Task 1 (`datos`) del plan de alertas por Telegram** — es lo próximo, en cuanto se
-  retome esta sesión.
+- **Dispatchear la Task 2 (`pipeline`) del plan de alertas por Telegram** — provider + las dos
+  funciones de Inngest, consumiendo lo que ya entregó la Task 1.
+- Después, la Task 3 (`front`).
+- Al cerrar las tres, migrar `0026` a producción (todavía no se desplegó) y actualizar `09`/`15`/
+  `history` con el cierre completo del RF-018.
 - Del Bloque F fase 2 quedan, bloqueados en cascada por un trámite externo o una decisión de
   proveedor: alertas por email, acceso real a Google (`GOOGLE_REVIEWS_MODO=live`), limpiar la
   conexión cuando se detecta un refresh token revocado.
