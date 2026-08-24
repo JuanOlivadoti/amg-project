@@ -36,11 +36,41 @@
 > exponía `telegram_vinculado` pese a que la vista ya lo tenía — corregido antes de integrar) y aprobó
 > las Tasks 2 y 3 sin hallazgos. Detalle completo en
 > [15-plan-plataforma.md § Bloque F](15-plan-plataforma.md#bloque-f--módulo-3-respondedor-de-reseñas-de-google).
-> Migración `0026` desplegada a producción el **2026-08-24**. **Pendiente, fuera de ingeniería:** que
-> Juan cree el bot real con `@BotFather` y ponga `TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live` — sin eso
-> el código está completo y probado pero ninguna alerta real le llega todavía a un CM. El resto de la
-> fase 2 (acceso real a Google, limpieza de token revocado) sigue bloqueado por el trámite externo de
-> la Business Profile API — ya no depende de elegir proveedor de alertas, eso quedó resuelto.
+> Migración `0026` desplegada a producción el **2026-08-24**. Bot real creado con `@BotFather` y
+> `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_MODO=live` cargadas en Railway (API y
+> orquestador) — **ambos servicios levantaron bien**. La API llegó a caerse una vez en el camino: el
+> fallo cerrado de `TELEGRAM_BOT_USERNAME` obligatoria (deliberado) hizo que Railway reiniciara en
+> loop hasta que se cargó la variable — recordatorio de que `env:sync`/`docs/private/credenciales.env`
+> reparten solo a máquinas locales, **Railway necesita sus propias Variables por servicio**, cargadas
+> a mano. El resto de la fase 2 (acceso real a Google, limpieza de token revocado) sigue bloqueado por
+> el trámite externo de la Business Profile API — ya no depende de elegir proveedor de alertas, eso
+> quedó resuelto.
+>
+> 🧭 **Nuevo (2026-08-24): con esto, el alcance base de la plataforma queda completo — qué falta para
+> un beta de pruebas.** Los tres módulos del PRD (creador de webs, keyword research, reseñas de
+> Google), el aspecto visual de las webs (Bloque E + el rediseño de plantilla del Bloque K, los dos
+> cerrados) y el portal completo (CRM, Ideas, Dashboard, Usuarios/RBAC) están hechos y probados —
+> **2202 tests** (1700 monorepo + 301 `node:test` + 201 Karma), **26 migraciones aplicadas en
+> producción**. Lo que queda no es ingeniería pendiente, son decisiones/trámites de Juan, en orden de
+> importancia:
+>
+> 1. **Rotación de credenciales — riesgo de seguridad real, todavía abierto.** `docs/private.zip`
+>    quedó expuesto en el historial de git público el 2026-08-01; purgar el índice no lo des-expone,
+>    solo rotar lo hace. Pospuesto por decisión de Juan el 2026-08-04 (detalle en
+>    [15-plan-plataforma.md § Riesgo abierto](15-plan-plataforma.md#riesgo-abierto--las-credenciales-expuestas)).
+>    Antes de exponer la plataforma a gente de afuera de AMG, aunque sea en beta, conviene cerrar esto
+>    primero — es el único ítem de los cuatro con riesgo real, el resto es producto/plan.
+> 2. **Acceso real a la Business Profile API de Google** (trámite externo, `GOOGLE_REVIEWS_MODO=live`)
+>    — el módulo de reseñas funciona entero (monitoreo, borrador de IA, publicar respuesta, alertas
+>    por Telegram) pero contra datos **mock**. No bloquea probar los otros dos módulos.
+> 3. **Límite de dominios custom en el plan de Railway** (topeado en 2 hoy) — si el beta suma más de
+>    dos clientes con dominio propio, hay que subir de plan o resolver la CDN del Bloque G antes.
+> 4. **OBS-04** — quién edita la web no lo gobierna el RBAC todavía. No bloquea técnicamente, pero si
+>    en el beta alguien de fuera de AMG va a tocar contenido, conviene decidirlo antes de darle acceso.
+>
+> **Recomendación:** un beta interno o con un cliente de confianza (como ya viene siendo con Frank)
+> puede arrancar hoy — nada de esto lo bloquea. Un beta con gente nueva de afuera debería esperar a
+> que se cierre el punto 1.
 >
 > 🧭 **Nuevo (2026-08-23): Bloque G — la invalidación multi-instancia no era una brecha de código.**
 > Juan confirmó una conversación de SLA real que hace urgente este bloque. Al investigar el ítem
