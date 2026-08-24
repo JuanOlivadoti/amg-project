@@ -3,6 +3,7 @@ import type { KeywordResearchBrief, ProposedPage } from "contrato";
 import type { PgStore, TenantContext, PageRow, RunSummary } from "db";
 import type { GoogleReviewsProvider } from "./google/provider.js";
 import type { BorradorProvider } from "./borrador/provider.js";
+import type { TelegramProvider } from "./telegram/provider.js";
 
 /**
  * El workflow del research, de punta a punta: pipeline → persistencia → compuerta humana →
@@ -64,6 +65,9 @@ export interface Deps {
   /** Genera el borrador de respuesta con IA (Bloque F, fase 2). Igual que `resenasProvider`, no lo
    * usa `workflowResearch` -- lo usa `pollearResenas`. */
   borradorProvider: BorradorProvider;
+  /** Las alertas por Telegram de reseñas 1-3★ (Bloque F, fase 2). No lo usa `workflowResearch` --
+   * lo usan `vincularTelegramPendientes` y el bloque de alerta de `pollearResenas`. */
+  telegramProvider: TelegramProvider;
   log?: (msg: string) => void;
 }
 

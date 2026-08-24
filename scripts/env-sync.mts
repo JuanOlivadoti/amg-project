@@ -70,6 +70,8 @@ export const MAPA = {
     "BORRADOR_RESENAS_MODO",
     "OPENAI_API_KEY",
     "OPENAI_MODEL",
+    "TELEGRAM_MODO",
+    "TELEGRAM_BOT_TOKEN",
   ],
   renderer: [
     "STORYBLOK_PUBLIC_TOKEN",

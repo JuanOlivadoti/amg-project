@@ -192,8 +192,14 @@ export const CRON_POLLING_RESENAS = "*/30 * * * *";
  * valor de retorno -- si contara todas las reseñas devueltas por el proveedor en vez de las que de
  * verdad se insertaron, `resenasNuevas` mentiría en cada corrida de más.
  */
+const LARGO_MAXIMO_TEXTO_RESENA = 3500; // deja margen para el resto del mensaje bajo el límite de 4096 de Telegram
+
+function truncar(texto: string, maximo: number): string {
+  return texto.length > maximo ? `${texto.slice(0, maximo)}…` : texto;
+}
+
 export async function pollearResenas(
-  deps: Pick<Deps, "store" | "resenasProvider" | "borradorProvider">,
+  deps: Pick<Deps, "store" | "resenasProvider" | "borradorProvider" | "telegramProvider">,
   log: (msg: string) => void = () => {},
 ): Promise<{ clientesRecorridos: number; resenasNuevas: number; fallidos: number }> {
   const clientes = await deps.store.clientesConectadosGoogle();
@@ -254,6 +260,54 @@ export async function pollearResenas(
         `[polling-resenas] cliente ${cliente.clientId} (tenant ${cliente.tenantId}) falló: ${(e as Error).message}`,
       );
     }
+
+    /*
+     * Alerta de Telegram por reseñas 1-3★ (Bloque F, fase 2, hallazgo 4 de Codex, decisión de Juan:
+     * retry automático, no best-effort perdido).
+     *
+     * **Rediseñado respecto del plan original**: NO vive adentro del `for (const r of crudas)` de
+     * arriba -- eso solo dispararía para reseñas nuevas de ESTE ciclo, y una alerta que fallara se
+     * perdería para siempre. Es un paso INDEPENDIENTE, una vez por cliente, y SIBLING del try/catch de
+     * arriba (no anidado en su rama de éxito): así corre también para un cliente cuyo token de Google
+     * está roto en ESTE ciclo -- las reseñas pendientes de alertar ya están en la base de un ciclo
+     * anterior, y no dependen de que el refresh de Google funcione hoy. Usa
+     * `resenasPendientesAlertaTelegram`, que trae CUALQUIER reseña 1-3★ del cliente sin alerta
+     * confirmada, sea de este ciclo o de uno anterior que falló.
+     */
+    try {
+      const pendientes = await deps.store.resenasPendientesAlertaTelegram(cliente.clientId);
+      if (pendientes.length > 0) {
+        const chatId = await deps.store.telegramDelAsignado(cliente.clientId);
+        if (chatId) {
+          for (const p of pendientes) {
+            try {
+              const texto =
+                `⭐ ${p.puntuacion} reseña nueva de ${p.autor} en ${cliente.nombre}` +
+                (p.texto ? `:\n"${truncar(p.texto, LARGO_MAXIMO_TEXTO_RESENA)}"` : " (sin comentario)");
+              await deps.telegramProvider.enviarMensaje(chatId, texto);
+              await deps.store.marcarAlertaTelegramEnviada({
+                clientId: cliente.clientId,
+                tenantId: cliente.tenantId,
+                googleReviewId: p.googleReviewId,
+              });
+            } catch (e) {
+              // Un fallo en UNA reseña no impide intentar las demás pendientes del mismo cliente en
+              // esta corrida -- y, si igual falla, alerta_telegram_enviada_en queda en NULL: el
+              // PRÓXIMO ciclo (30 min) la vuelve a intentar sola, sin cola ni botón.
+              log(
+                `[alerta-telegram] reseña ${p.googleReviewId} (cliente ${cliente.clientId}) falló: ${(e as Error).message}`,
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Un fallo buscando las pendientes (ej. store caído) no debe frenar el resto del polling de
+      // este cliente ni de los demás -- mismo criterio que el resto de esta función.
+      log(
+        `[alerta-telegram] cliente ${cliente.clientId}: no se pudo resolver pendientes: ${(e as Error).message}`,
+      );
+    }
   }
 
   log(
@@ -276,6 +330,70 @@ export function crearFuncionPollingResenas(deps: Deps) {
     },
     { cron: CRON_POLLING_RESENAS },
     async ({ step }) => step.run("pollear", () => pollearResenas(deps, console.log)),
+  );
+}
+
+// ---------------------------------------------------------------- vincular Telegram (Bloque F, fase 2)
+
+const PATRON_START = /^\/start\s+([a-f0-9-]+)$/;
+
+/**
+ * Procesa los mensajes `/start <código>` pendientes del bot de Telegram, vinculando el `chat_id` al
+ * CM que generó el código desde el portal.
+ *
+ * **Actualizado para el contrato `ResultadoActualizaciones`** (hallazgo 1 de Codex, 2026-08-23): el
+ * offset avanza con `maxUpdateId` SIEMPRE que no sea `null`, sin importar si hubo o no un `/start`
+ * real en el lote -- un lote de solo reacciones/ediciones (sin ningún `/start`) igual tiene que
+ * confirmar esos `update_id`, o Telegram los vuelve a mandar para siempre.
+ *
+ * Si `obtenerActualizaciones` lanza a mitad de lote (fetch caído, o un `update_id` malformado), el
+ * `await` revienta ANTES de que exista `{ maxUpdateId, mensajes }`: no hay riesgo de avanzar el
+ * offset sin haber confirmado nada. Si en cambio `vincularTelegramPorCodigo` lanzara a mitad del
+ * `for` (no debería: solo hace un `update`), el offset NO se habría avanzado todavía (es lo último) --
+ * el próximo ciclo reprocesaría ese lote entero, lo cual es CORRECTO: `vincularTelegramPorCodigo` es
+ * idempotente por diseño (un código ya vinculado da `false` la segunda vez, no un error).
+ */
+export async function vincularTelegramPendientes(
+  deps: Pick<Deps, "store" | "telegramProvider">,
+  log: (msg: string) => void = () => {},
+): Promise<{ vinculados: number }> {
+  const offset = await deps.store.offsetTelegramActual();
+  const { maxUpdateId, mensajes } = await deps.telegramProvider.obtenerActualizaciones(offset);
+  let vinculados = 0;
+
+  for (const m of mensajes) {
+    const match = PATRON_START.exec(m.texto.trim());
+    if (!match) continue;
+    const codigo = match[1] as string;
+    const ok = await deps.store.vincularTelegramPorCodigo(codigo, m.chatId);
+    if (ok) vinculados++;
+    else log(`[telegram] código sin match (vencido, ya usado, o inexistente): ${codigo}`);
+  }
+
+  // Avanza con maxUpdateId, NO con el update_id del último mensaje ÚTIL -- ver el docblock de arriba.
+  if (maxUpdateId !== null) {
+    await deps.store.avanzarOffsetTelegram(maxUpdateId + 1);
+  }
+  return { vinculados };
+}
+
+export function crearFuncionVincularTelegram(deps: Deps) {
+  return inngest.createFunction(
+    {
+      id: "vincular-telegram",
+      // Uno a la vez: dos polleos simultáneos del mismo offset harían el mismo `getUpdates` por
+      // partida doble -- no rompe nada (`vincularTelegramPorCodigo` es idempotente), pero es trabajo
+      // tirado y llamadas de más a la API de Telegram.
+      concurrency: [{ limit: 1 }],
+      // Sin reintentos: si falla, el próximo minuto hace lo mismo -- mismo criterio que el resto de
+      // los pollings de este archivo.
+      retries: 0,
+    },
+    // Cada minuto -- vincular la cuenta es de una sola vez, no hace falta la misma cadencia que el
+    // polling de reseñas (30 min): quien acaba de tocar "Conectar Telegram" en el portal quiere ver
+    // el resultado pronto.
+    { cron: "* * * * *" },
+    async ({ step }) => step.run("vincular", () => vincularTelegramPendientes(deps, console.log)),
   );
 }
 

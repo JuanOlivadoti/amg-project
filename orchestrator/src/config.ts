@@ -75,6 +75,15 @@ export interface ConfigOrquestador {
    * (ver `borrador/mock-provider.ts`) en vez de replicar la máquina de `verificarCoherencia` acá.
    */
   readonly borradorResenas: ModoBorrador;
+  /**
+   * En qué modo se pollea `getUpdates` y se manda `sendMessage` a la API de Telegram (Bloque F, fase
+   * 2, alertas por reseñas 1-3★). Mismo criterio EXACTO que `resenasGoogle`: opcional, con default
+   * fijo `mock` (no derivado de si `TELEGRAM_BOT_TOKEN` está puesta, a diferencia de
+   * `borradorResenas`) porque enviar un mensaje de Telegram no cuesta dinero -- no hay una dirección
+   * cara que proteger con un default derivado. `live` SÍ está implementado (a diferencia de
+   * `resenasGoogle`): si falta el token, `getTelegramProvider` lanza al construir el provider, no acá.
+   */
+  readonly telegram: ModoTelegram;
 }
 
 const PUERTO_DEFECTO = 3100;
@@ -91,6 +100,13 @@ const MODOS_RESENAS_GOOGLE: readonly string[] = ["mock", "live"];
  */
 export type ModoBorrador = "mock" | "openai";
 const MODOS_BORRADOR: readonly string[] = ["mock", "openai"];
+
+/**
+ * Igual forma que `ModoResenasGoogle`: `live` SÍ tiene implementación real (a diferencia de
+ * `resenasGoogle`) — ver `telegram/provider.ts`.
+ */
+export type ModoTelegram = "mock" | "live";
+const MODOS_TELEGRAM: readonly string[] = ["mock", "live"];
 
 /**
  * ¿Estamos en producción? **Se le pregunta al SDK; no se reimplementa su heurística.**
@@ -152,6 +168,7 @@ export function leerConfig(
   const puerto = leerPuerto();
   const resenasGoogle = leerModoResenasGoogle();
   const borradorResenas = leerModoBorrador();
+  const telegram = leerModoTelegram();
 
   const urlOrquestador = process.env["DATABASE_URL_ORQUESTADOR"]?.trim();
   const urlCache = process.env["DATABASE_URL_CACHE"]?.trim();
@@ -214,6 +231,7 @@ export function leerConfig(
       pipeline,
       resenasGoogle,
       borradorResenas,
+      telegram,
     };
   }
 
@@ -244,6 +262,7 @@ export function leerConfig(
     pipeline,
     resenasGoogle,
     borradorResenas,
+    telegram,
     ...(signingKey ? { inngestSigningKey: signingKey } : {}),
   };
 
@@ -323,6 +342,26 @@ function leerModoBorrador(): ModoBorrador {
   const crudo = process.env["BORRADOR_RESENAS_MODO"]?.trim();
   if (crudo) return validarModoBorrador(crudo);
   return process.env["OPENAI_API_KEY"]?.trim() ? "openai" : "mock";
+}
+
+function validarModoTelegram(crudo: string): ModoTelegram {
+  if (!MODOS_TELEGRAM.includes(crudo)) {
+    throw new Error(`TELEGRAM_MODO inválido: "${crudo}". Los únicos valores son \`mock\` y \`live\`.`);
+  }
+  return crudo as ModoTelegram;
+}
+
+/**
+ * `TELEGRAM_MODO`, con default FIJO `mock` — a propósito distinto de `BORRADOR_RESENAS_MODO` (default
+ * derivado de si hay `OPENAI_API_KEY`): ahí un default derivado protege contra gastar sin haberlo
+ * declarado, pero enviar un mensaje de Telegram no cuesta nada, así que no hay gasto silencioso que
+ * evitar con esa derivación. Mismo criterio de FORMA que `leerModoResenasGoogle` (default fijo, se
+ * valida también fuera de producción). Si falta `TELEGRAM_BOT_TOKEN` con `live` declarado, quien
+ * revienta es `getTelegramProvider` al construir el provider -- no esta función.
+ */
+function leerModoTelegram(): ModoTelegram {
+  const crudo = process.env["TELEGRAM_MODO"]?.trim();
+  return crudo ? validarModoTelegram(crudo) : "mock";
 }
 
 /**

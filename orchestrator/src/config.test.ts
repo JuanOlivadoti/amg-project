@@ -39,6 +39,8 @@ const VARS = [
   "GOOGLE_REVIEWS_MODO",
   "BORRADOR_RESENAS_MODO",
   "OPENAI_API_KEY",
+  "TELEGRAM_MODO",
+  "TELEGRAM_BOT_TOKEN",
 ];
 
 const GUARDADO = { ...process.env };
@@ -509,6 +511,42 @@ test("GOOGLE_REVIEWS_MODO=live en producción queda declarado (el provider lo re
   assert.equal(c.resenasGoogle, "live");
 });
 
+// --------------------------------------- TELEGRAM_MODO: default fijo `mock`, sin gasto que derivar
+
+/**
+ * A diferencia de `BORRADOR_RESENAS_MODO` (default derivado de `OPENAI_API_KEY`), acá NO hay una
+ * dirección cara que proteger: enviar un mensaje de Telegram no cuesta nada, así que el default es
+ * fijo -- mismo criterio de FORMA que `GOOGLE_REVIEWS_MODO`.
+ */
+test("TELEGRAM_MODO por defecto es 'mock' si no está la variable", () => {
+  conEntorno({});
+  const c = leerConfig();
+  assert.equal(c.telegram, "mock");
+});
+
+test("🔴 TELEGRAM_MODO con un valor que no es mock/live lanza", () => {
+  conEntorno({ TELEGRAM_MODO: "produccion" });
+  assert.throws(() => leerConfig(), /TELEGRAM_MODO inválido/);
+});
+
+test("en producción, sin TELEGRAM_MODO arranca igual (default mock, no se exige)", () => {
+  conEntorno(PROD_COMPLETO);
+  const c = leerConfig();
+  assert.equal(c.telegram, "mock");
+});
+
+/**
+ * A diferencia de `GOOGLE_REVIEWS_MODO=live` (que NUNCA arranca un provider real: fase 1 no lo
+ * implementa), `TELEGRAM_MODO=live` SÍ tiene una implementación real -- `leerConfig()` la deja
+ * declarada igual, y quien revienta si falta `TELEGRAM_BOT_TOKEN` es `getTelegramProvider` al
+ * construir el provider, no `leerConfig()`.
+ */
+test("TELEGRAM_MODO=live en producción queda declarado (el provider exige el token, no la config)", () => {
+  conEntorno({ ...PROD_COMPLETO, TELEGRAM_MODO: "live" });
+  const c = leerConfig();
+  assert.equal(c.telegram, "live");
+});
+
 // --------------------------------------- BORRADOR_RESENAS_MODO: default derivado de OPENAI_API_KEY
 
 test("BORRADOR_RESENAS_MODO por defecto es 'mock' sin la variable NI la key", () => {
@@ -606,6 +644,7 @@ test("🔴 crearConexiones rechaza PGlite en memoria si la config dice producci�
         pipeline: "mock",
         resenasGoogle: "mock",
         borradorResenas: "mock",
+        telegram: "mock",
         persistencia: { tipo: "pglite-en-memoria" },
       }),
     /PGlite/,
@@ -622,6 +661,7 @@ test("crearConexiones abre PGlite en memoria fuera de producción", async () => 
     pipeline: "mock",
     resenasGoogle: "mock",
     borradorResenas: "mock",
+    telegram: "mock",
     persistencia: { tipo: "pglite-en-memoria" },
   });
   assert.ok(cx.orquestador);
@@ -803,12 +843,12 @@ test("🔴 barrido: el cron es horario y no una expresión que no dispara nunca"
 });
 
 /**
- * 🔴 Las cuatro funciones quedan registradas, y `/_health` tiene que poder decirlo.
+ * 🔴 Las cinco funciones quedan registradas, y `/_health` tiene que poder decirlo.
  *
  * `server.ts` no se puede importar en un test (arranca el proceso y lee el entorno), así que lo que
- * se fija acá es que las cuatro fábricas existan y produzcan funciones con ids distintos. El número
+ * se fija acá es que las cinco fábricas existan y produzcan funciones con ids distintos. El número
  * que reporta `/_health` sale de `funciones.length` en `server.ts`; tras desplegar esto tiene que
- * decir 4 (Bloque F, fase 2, segunda pieza sumó `crearFuncionPublicarResena`).
+ * decir 5 (Bloque F, fase 2, alertas de Telegram sumó `crearFuncionVincularTelegram`).
  */
 test("🔴 barrido: la fábrica produce una función con id propio, distinta de la del research", async () => {
   const {
@@ -816,6 +856,7 @@ test("🔴 barrido: la fábrica produce una función con id propio, distinta de 
     crearFuncionResearch,
     crearFuncionPollingResenas,
     crearFuncionPublicarResena,
+    crearFuncionVincularTelegram,
   } = await import("./functions.js");
   const deps = {} as Parameters<typeof crearFuncionBarrido>[0];
 
@@ -823,6 +864,7 @@ test("🔴 barrido: la fábrica produce una función con id propio, distinta de 
   const research = crearFuncionResearch(deps);
   const polling = crearFuncionPollingResenas(deps);
   const publicar = crearFuncionPublicarResena(deps);
+  const vincular = crearFuncionVincularTelegram(deps);
 
   assert.notEqual(barrido.id(), research.id(), "dos funciones distintas, dos ids distintos");
   assert.notEqual(polling.id(), research.id(), "el polling es una tercera función, no el research");
@@ -830,7 +872,12 @@ test("🔴 barrido: la fábrica produce una función con id propio, distinta de 
   assert.notEqual(publicar.id(), research.id(), "publicar es una cuarta función, no el research");
   assert.notEqual(publicar.id(), barrido.id(), "publicar es una cuarta función, no el barrido");
   assert.notEqual(publicar.id(), polling.id(), "publicar es una cuarta función, no el polling");
+  assert.notEqual(vincular.id(), research.id(), "vincular es una quinta función, no el research");
+  assert.notEqual(vincular.id(), barrido.id(), "vincular es una quinta función, no el barrido");
+  assert.notEqual(vincular.id(), polling.id(), "vincular es una quinta función, no el polling");
+  assert.notEqual(vincular.id(), publicar.id(), "vincular es una quinta función, no publicar");
   assert.match(barrido.id(), /barrido/);
   assert.match(polling.id(), /polling/);
   assert.match(publicar.id(), /publicar/);
+  assert.match(vincular.id(), /telegram/);
 });

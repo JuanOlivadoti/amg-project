@@ -22,6 +22,7 @@ import {
   crearFuncionPollingResenas,
   crearFuncionPublicarResena,
   crearFuncionResearch,
+  crearFuncionVincularTelegram,
   inngest,
 } from "./functions.js";
 import { crearSonda } from "./salud.js";
@@ -47,15 +48,17 @@ const config = leerConfig({ obtenerModoPublicacion: modoPublicacion });
 
 const cx = await crearConexiones(config);
 const deps = crearDeps(cx);
-// Cuatro: el workflow del research, el barrido programado, el polling de reseñas de Google y la
-// publicación de la respuesta de vuelta en Google (Bloque F, fase 2, segunda pieza). `/_health`
-// reporta el número, así que tras desplegar esto tiene que decir `funciones: 4` — y en el panel de
-// Inngest se ven cinco, porque cuenta el `onFailure` del research como una función aparte.
+// Cinco: el workflow del research, el barrido programado, el polling de reseñas de Google, la
+// publicación de la respuesta de vuelta en Google (Bloque F, fase 2, segunda pieza) y la vinculación
+// de Telegram (Bloque F, fase 2, alertas). `/_health` reporta el número, así que tras desplegar esto
+// tiene que decir `funciones: 5` — y en el panel de Inngest se ven seis, porque cuenta el `onFailure`
+// del research como una función aparte.
 const funciones = [
   crearFuncionResearch(deps),
   crearFuncionBarrido(deps),
   crearFuncionPollingResenas(deps),
   crearFuncionPublicarResena(deps),
+  crearFuncionVincularTelegram(deps),
 ];
 
 /*

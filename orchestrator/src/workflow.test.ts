@@ -273,6 +273,12 @@ function depsFalsas(paginas: ProposedPage[]): Espia {
     borradorProvider: {
       generar: () => Promise.reject(new Error("workflowResearch no genera borradores")),
     },
+    // Mismo motivo: `workflowResearch` no manda alertas de Telegram -- eso vive en
+    // `pollearResenas`/`vincularTelegramPendientes` (`functions.test.ts`).
+    telegramProvider: {
+      obtenerActualizaciones: () => Promise.reject(new Error("workflowResearch no pollea Telegram")),
+      enviarMensaje: () => Promise.reject(new Error("workflowResearch no manda alertas de Telegram")),
+    },
   };
 
   return espia;

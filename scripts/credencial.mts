@@ -90,6 +90,20 @@ export const CATALOGO: Record<string, Entrada> = {
   STORYBLOK_MANAGEMENT_TOKEN: { familia: "tercero", nota: "Storyblok → My account → Personal access tokens (ESCRITURA)" },
   STORYBLOK_PUBLIC_TOKEN: { familia: "tercero", nota: "Storyblok → Space → Access tokens (lectura pública)" },
   STORYBLOK_PREVIEW_TOKEN: { familia: "tercero", nota: "Storyblok → Space → Access tokens (preview)" },
+  /*
+   * DESVÍO respecto del plan (que pedía familia `secreto`, igual que STORYBLOK_WEBHOOK_SECRET): un
+   * bot token de Telegram lo EMITE BotFather con un formato propio (`<bot_id>:<35 chars>`), no es una
+   * cadena opaca que dos procesos nuestros se reparten. Clasificarlo `secreto` haría que
+   * `npm run credencial -- TELEGRAM_BOT_TOKEN` le generara un `randomBytes(...).toString("base64url")`
+   * -- algo que PARECE un valor válido, entra en credenciales.env sin chistar, y falla mucho después
+   * con un 401 de Telegram que nadie relaciona con esto. Es EXACTAMENTE el modo de fallo que la
+   * familia `tercero` existe para impedir (ver el docblock de arriba), así que va ahí, igual que
+   * STORYBLOK_MANAGEMENT_TOKEN u OPENAI_API_KEY.
+   */
+  TELEGRAM_BOT_TOKEN: {
+    familia: "tercero",
+    nota: "BotFather → /newbot (o /token si el bot ya existe)",
+  },
 
   // --- Configuración: no son secretos y un valor al azar no significaría nada. ---
   SUPABASE_JWT_ISS: { familia: "config", nota: "https://<ref>.supabase.co/auth/v1" },
@@ -118,6 +132,10 @@ export const CATALOGO: Record<string, Entrada> = {
   OPENAI_MODEL: {
     familia: "config",
     nota: "COMPARTIDA con kr-service y web-builder (mismo valor, repartido por env:sync) — default gpt-4o-mini si no está declarada",
+  },
+  TELEGRAM_MODO: {
+    familia: "config",
+    nota: "`mock` | `live`, opcional (default fijo `mock`, no derivado de si hay token: enviar un mensaje de Telegram no cuesta nada): en qué modo se pollea getUpdates/sendMessage (Bloque F, fase 2, alertas por reseñas 1-3★)",
   },
   STORYBLOK_SPACE_ID: { familia: "config" },
   STORYBLOK_REGION: { familia: "config" },

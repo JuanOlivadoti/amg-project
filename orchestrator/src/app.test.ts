@@ -76,6 +76,10 @@ function depsSobreBaseCaida(): Deps {
     borradorProvider: {
       generar: () => Promise.reject(new Error("un health check no genera borradores")),
     },
+    telegramProvider: {
+      obtenerActualizaciones: () => Promise.reject(new Error("un health check no pollea Telegram")),
+      enviarMensaje: () => Promise.reject(new Error("un health check no manda alertas de Telegram")),
+    },
   };
 }
 

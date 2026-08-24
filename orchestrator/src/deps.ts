@@ -13,6 +13,7 @@ import type { BusinessProfile } from "web-builder";
 import { leerConfig, type ConfigOrquestador } from "./config.js";
 import { getGoogleReviewsProvider } from "./google/provider.js";
 import { getBorradorProvider } from "./borrador/provider.js";
+import { getTelegramProvider } from "./telegram/provider.js";
 import type { Deps, KeywordParaGuardar } from "./workflow.js";
 
 /**
@@ -197,6 +198,9 @@ export function crearDeps(cx: Conexiones): Deps {
     // Mismo criterio que resenasProvider: el selector lee su propio default de leerConfig(), acá NO
     // se relee el entorno.
     borradorProvider: getBorradorProvider(),
+
+    // Mismo criterio que los dos anteriores.
+    telegramProvider: getTelegramProvider(),
 
     log: (msg) => console.log(msg),
   };

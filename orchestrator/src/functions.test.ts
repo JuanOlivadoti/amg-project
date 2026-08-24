@@ -5,8 +5,10 @@ import {
   CRON_POLLING_RESENAS,
   crearFuncionPollingResenas,
   crearFuncionPublicarResena,
+  crearFuncionVincularTelegram,
   pollearResenas,
   publicarRespuestaResena,
+  vincularTelegramPendientes,
 } from "./functions.js";
 import type { Deps } from "./workflow.js";
 
@@ -23,6 +25,7 @@ interface ClienteConectadoFalso {
   tenantId: string;
   locationId: string;
   refreshToken: string;
+  nombre: string;
 }
 
 interface ResenaCrudaFalsa {
@@ -33,9 +36,15 @@ interface ResenaCrudaFalsa {
   publicadaEn: string;
 }
 
-/** Un cliente conectado, con los cuatro campos que espera `store.clientesConectadosGoogle()`. */
-function cliente(clientId: string, tenantId: string, locationId: string, refreshToken: string): ClienteConectadoFalso {
-  return { clientId, tenantId, locationId, refreshToken };
+/** Un cliente conectado, con los cinco campos que espera `store.clientesConectadosGoogle()`. */
+function cliente(
+  clientId: string,
+  tenantId: string,
+  locationId: string,
+  refreshToken: string,
+  nombre = "Negocio de Prueba",
+): ClienteConectadoFalso {
+  return { clientId, tenantId, locationId, refreshToken, nombre };
 }
 
 /** Una reseña cruda mínima, tal como la devolvería el proveedor. */
@@ -50,10 +59,14 @@ function resenaCruda(googleReviewId: string): ResenaCrudaFalsa {
 }
 
 /**
- * Arma las `Deps` mínimas que necesita `pollearResenas` (`store` + `resenasProvider`) a partir de
- * dobles estructurales. El `PgStore` real es una clase con decenas de métodos ajenos al polling; el
- * `as unknown as` es el mismo patrón que usa `config.test.ts` para `barrerRunsColgados` -- se
- * declara el tipo mínimo acá y se cruza con lo que la función realmente consume.
+ * Arma las `Deps` mínimas que necesita `pollearResenas` (`store` + `resenasProvider` +
+ * `telegramProvider`) a partir de dobles estructurales. El `PgStore` real es una clase con decenas de
+ * métodos ajenos al polling; el `as unknown as` es el mismo patrón que usa `config.test.ts` para
+ * `barrerRunsColgados` -- se declara el tipo mínimo acá y se cruza con lo que la función realmente
+ * consume.
+ *
+ * Los tres métodos de Telegram del `store` tienen default (sin pendientes, sin CM vinculado, marca
+ * ok) para que los tests que NO ejercitan el bloque de alerta no tengan que declararlos.
  */
 function depsDePolling(
   store: {
@@ -73,17 +86,34 @@ function depsDePolling(
       googleReviewId: string;
       borrador: string;
     }) => Promise<boolean>;
+    resenasPendientesAlertaTelegram?: (clientId: string) => Promise<
+      Array<{ googleReviewId: string; tenantId: string; puntuacion: number; autor: string; texto: string | null }>
+    >;
+    telegramDelAsignado?: (clientId: string) => Promise<string | null>;
+    marcarAlertaTelegramEnviada?: (r: {
+      clientId: string;
+      tenantId: string;
+      googleReviewId: string;
+    }) => Promise<boolean>;
   },
   resenasProvider: {
     refrescarToken: (refreshToken: string) => Promise<string>;
     listarResenas: (accessToken: string, locationId: string) => Promise<ResenaCrudaFalsa[]>;
   },
   borradorProvider?: { generar: (r: ResenaCrudaFalsa) => Promise<string> },
+  telegramProvider?: { enviarMensaje: (chatId: string, texto: string) => Promise<void> },
 ): DepsDePolling {
   return {
-    store: { guardarBorradorResena: async () => true, ...store },
+    store: {
+      guardarBorradorResena: async () => true,
+      resenasPendientesAlertaTelegram: async () => [],
+      telegramDelAsignado: async () => null,
+      marcarAlertaTelegramEnviada: async () => true,
+      ...store,
+    },
     resenasProvider,
     borradorProvider: borradorProvider ?? { generar: async () => "borrador de prueba" },
+    telegramProvider: telegramProvider ?? { enviarMensaje: async () => {} },
   } as unknown as DepsDePolling;
 }
 
@@ -308,6 +338,321 @@ test("🔴 un fallo del BorradorProvider se loguea con el id de la reseña y del
     dicho.some((m) => m.includes("r-falla") && m.includes("c-x")),
     `el log tiene que nombrar la reseña y el cliente. Logueado: ${JSON.stringify(dicho)}`,
   );
+});
+
+// ---------------------------------------------------------------- alerta de Telegram (Bloque F, fase 2)
+
+/**
+ * El bloque de alerta -- rediseñado (Step 8, decisión de Juan tras el hallazgo 4 de Codex: retry
+ * automático, no best-effort perdido). Es un paso INDEPENDIENTE por cliente, así que estos tests no
+ * necesitan que `listarResenas` devuelva nada: alcanza con lo que `resenasPendientesAlertaTelegram`
+ * reporte.
+ */
+
+test("🔴 pendiente + CM con Telegram vinculado: manda el mensaje y marca la alerta enviada", async () => {
+  const enviados: Array<{ chatId: string; texto: string }> = [];
+  const marcados: Array<{ clientId: string; tenantId: string; googleReviewId: string }> = [];
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "l1", "tok", "La Trattoria")],
+      registrarResenaGoogle: async () => true,
+      resenasPendientesAlertaTelegram: async () => [
+        { googleReviewId: "gr-1", tenantId: "t1", puntuacion: 2, autor: "Cliente Molesto", texto: "Tardó mucho" },
+      ],
+      telegramDelAsignado: async () => "chat-555",
+      marcarAlertaTelegramEnviada: async (r) => {
+        marcados.push(r);
+        return true;
+      },
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [] },
+    undefined,
+    { enviarMensaje: async (chatId, texto) => void enviados.push({ chatId, texto }) },
+  );
+
+  await pollearResenas(deps);
+
+  assert.equal(enviados.length, 1);
+  assert.equal(enviados[0]!.chatId, "chat-555");
+  assert.match(enviados[0]!.texto, /2/, "el texto incluye la puntuación");
+  assert.match(enviados[0]!.texto, /Cliente Molesto/, "el texto incluye el autor");
+  assert.match(enviados[0]!.texto, /La Trattoria/, "el texto incluye el nombre del CLIENTE (negocio)");
+  assert.deepEqual(marcados, [{ clientId: "c1", tenantId: "t1", googleReviewId: "gr-1" }]);
+});
+
+test("🔴 sin pendientes, NO se consulta telegramDelAsignado (evita un lookup de más)", async () => {
+  let consultado = false;
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "l1", "tok")],
+      registrarResenaGoogle: async () => true,
+      resenasPendientesAlertaTelegram: async () => [],
+      telegramDelAsignado: async () => {
+        consultado = true;
+        return "chat-1";
+      },
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [] },
+  );
+
+  await pollearResenas(deps);
+
+  assert.equal(consultado, false);
+});
+
+test("🔴 hay pendientes pero telegramDelAsignado da null: NO manda ni marca", async () => {
+  let enviado = false;
+  let marcado = false;
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "l1", "tok")],
+      registrarResenaGoogle: async () => true,
+      resenasPendientesAlertaTelegram: async () => [
+        { googleReviewId: "gr-1", tenantId: "t1", puntuacion: 1, autor: "A", texto: null },
+      ],
+      telegramDelAsignado: async () => null,
+      marcarAlertaTelegramEnviada: async () => {
+        marcado = true;
+        return true;
+      },
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [] },
+    undefined,
+    { enviarMensaje: async () => void (enviado = true) },
+  );
+
+  await pollearResenas(deps);
+
+  assert.equal(enviado, false);
+  assert.equal(marcado, false);
+});
+
+/**
+ * 🔴 EL CASO CENTRAL del hallazgo 4 de Codex: si `enviarMensaje` lanza, `marcarAlertaTelegramEnviada`
+ * NUNCA se llama para esa reseña -- si se llamara, la próxima corrida ya no la reintentaría, que es
+ * exactamente el bug que motivó el rediseño (Step 8). El polling NO aborta: una segunda pendiente del
+ * mismo lote también se intenta.
+ *
+ * Verificación por mutación: comentar el `try/catch` interno del `for` de pendientes (dejar que
+ * `enviarMensaje` propague) hace que este test caiga con la excepción sin atrapar.
+ */
+test("🔴 enviarMensaje lanza: NUNCA marca la alerta enviada, y sigue con la próxima pendiente", async () => {
+  const marcados: string[] = [];
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "l1", "tok")],
+      registrarResenaGoogle: async () => true,
+      resenasPendientesAlertaTelegram: async () => [
+        { googleReviewId: "gr-falla", tenantId: "t1", puntuacion: 1, autor: "A", texto: null },
+        { googleReviewId: "gr-ok", tenantId: "t1", puntuacion: 2, autor: "B", texto: null },
+      ],
+      telegramDelAsignado: async () => "chat-1",
+      marcarAlertaTelegramEnviada: async (r) => {
+        marcados.push(r.googleReviewId);
+        return true;
+      },
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [] },
+    undefined,
+    {
+      enviarMensaje: async (_chatId, texto) => {
+        if (texto.includes("A")) throw new Error("Telegram caído");
+      },
+    },
+  );
+
+  await assert.doesNotReject(() => pollearResenas(deps));
+
+  assert.deepEqual(marcados, ["gr-ok"], "gr-falla NO se marca; gr-ok, la segunda del lote, sí se intenta y marca");
+});
+
+test("🔴 dos clientes, uno con resenasPendientesAlertaTelegram que lanza: el otro se sigue procesando", async () => {
+  const marcados: string[] = [];
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [
+        cliente("c-roto", "t1", "l1", "tok"),
+        cliente("c-ok", "t1", "l2", "tok"),
+      ],
+      registrarResenaGoogle: async () => true,
+      resenasPendientesAlertaTelegram: async (clientId) => {
+        if (clientId === "c-roto") throw new Error("store caído");
+        return [{ googleReviewId: "gr-1", tenantId: "t1", puntuacion: 1, autor: "A", texto: null }];
+      },
+      telegramDelAsignado: async () => "chat-1",
+      marcarAlertaTelegramEnviada: async (r) => {
+        marcados.push(r.clientId);
+        return true;
+      },
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [] },
+  );
+
+  await pollearResenas(deps);
+
+  assert.deepEqual(marcados, ["c-ok"], "el cliente roto no frena la alerta del otro");
+});
+
+test("🔴 una reseña de más de 3500 caracteres llega truncada, con '…' final", async () => {
+  const largo = "x".repeat(4000);
+  const enviados: string[] = [];
+  const deps = depsDePolling(
+    {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "l1", "tok")],
+      registrarResenaGoogle: async () => true,
+      resenasPendientesAlertaTelegram: async () => [
+        { googleReviewId: "gr-1", tenantId: "t1", puntuacion: 1, autor: "A", texto: largo },
+      ],
+      telegramDelAsignado: async () => "chat-1",
+    },
+    { refrescarToken: async () => "access-ok", listarResenas: async () => [] },
+    undefined,
+    { enviarMensaje: async (_chatId, texto) => void enviados.push(texto) },
+  );
+
+  await pollearResenas(deps);
+
+  assert.equal(enviados.length, 1);
+  const textoEnviado = enviados[0]!;
+  // El texto de la reseña dentro del mensaje: el bloque entre comillas.
+  const match = /"([^"]*)"/.exec(textoEnviado);
+  assert.ok(match, "el mensaje tiene que llevar el texto de la reseña entre comillas");
+  const textoResena = match![1]!;
+  assert.equal(textoResena.length, 3501, "3500 caracteres + el '…' final");
+  assert.ok(textoResena.endsWith("…"));
+});
+
+// ---------------------------------------------------------------- vincular Telegram (Bloque F, fase 2)
+
+type DepsDeVincular = Parameters<typeof vincularTelegramPendientes>[0];
+
+function depsDeVincular(
+  store: {
+    offsetTelegramActual: () => Promise<number>;
+    vincularTelegramPorCodigo: (codigo: string, chatId: string) => Promise<boolean>;
+    avanzarOffsetTelegram: (nuevoOffset: number) => Promise<number | void>;
+  },
+  telegramProvider: {
+    obtenerActualizaciones: (offset: number) => Promise<{
+      maxUpdateId: number | null;
+      mensajes: Array<{ updateId: number; texto: string; chatId: string }>;
+    }>;
+  },
+): DepsDeVincular {
+  return { store, telegramProvider } as unknown as DepsDeVincular;
+}
+
+test("🔴 un /start <código> válido vincula y avanza el offset a update_id + 1", async () => {
+  const vinculados: Array<{ codigo: string; chatId: string }> = [];
+  let offsetNuevo: number | null = null;
+  const deps = depsDeVincular(
+    {
+      offsetTelegramActual: async () => 5,
+      vincularTelegramPorCodigo: async (codigo, chatId) => {
+        vinculados.push({ codigo, chatId });
+        return true;
+      },
+      avanzarOffsetTelegram: async (n) => {
+        offsetNuevo = n;
+      },
+    },
+    {
+      obtenerActualizaciones: async () => ({
+        maxUpdateId: 10,
+        mensajes: [{ updateId: 10, texto: "/start abc123", chatId: "chat-1" }],
+      }),
+    },
+  );
+
+  const r = await vincularTelegramPendientes(deps);
+
+  assert.equal(r.vinculados, 1);
+  assert.deepEqual(vinculados, [{ codigo: "abc123", chatId: "chat-1" }]);
+  assert.equal(offsetNuevo, 11);
+});
+
+test("🔴 un texto que no matchea el patrón NO vincula, pero SÍ avanza el offset (no se reprocesa para siempre)", async () => {
+  let vinculadoLlamado = false;
+  let offsetNuevo: number | null = null;
+  const deps = depsDeVincular(
+    {
+      offsetTelegramActual: async () => 0,
+      vincularTelegramPorCodigo: async () => {
+        vinculadoLlamado = true;
+        return true;
+      },
+      avanzarOffsetTelegram: async (n) => {
+        offsetNuevo = n;
+      },
+    },
+    {
+      obtenerActualizaciones: async () => ({
+        maxUpdateId: 3,
+        mensajes: [
+          { updateId: 2, texto: "hola", chatId: "chat-1" },
+          { updateId: 3, texto: "/start", chatId: "chat-2" }, // sin código
+        ],
+      }),
+    },
+  );
+
+  const r = await vincularTelegramPendientes(deps);
+
+  assert.equal(r.vinculados, 0);
+  assert.equal(vinculadoLlamado, false);
+  assert.equal(offsetNuevo, 4, "el offset avanza igual: el mensaje descartado no se reprocesa para siempre");
+});
+
+test("🔴 sin actualizaciones nuevas, NO llama a avanzarOffsetTelegram (evita una escritura de más)", async () => {
+  let avanzarLlamado = false;
+  const deps = depsDeVincular(
+    {
+      offsetTelegramActual: async () => 7,
+      vincularTelegramPorCodigo: async () => true,
+      avanzarOffsetTelegram: async () => {
+        avanzarLlamado = true;
+      },
+    },
+    { obtenerActualizaciones: async () => ({ maxUpdateId: null, mensajes: [] }) },
+  );
+
+  await vincularTelegramPendientes(deps);
+
+  assert.equal(avanzarLlamado, false);
+});
+
+/**
+ * 🔴 El offset avanza al MAYOR `update_id` del lote, no al del último mensaje ÚTIL del array (si
+ * llegaran desordenados) -- y `maxUpdateId` ya lo calcula el provider, así que acá alcanza con
+ * comprobar que `vincularTelegramPendientes` USA ese valor y no el `updateId` de un mensaje puntual.
+ */
+test("🔴 el offset avanza según maxUpdateId, no según el último mensaje del array", async () => {
+  let offsetNuevo: number | null = null;
+  const deps = depsDeVincular(
+    {
+      offsetTelegramActual: async () => 0,
+      vincularTelegramPorCodigo: async () => true,
+      avanzarOffsetTelegram: async (n) => {
+        offsetNuevo = n;
+      },
+    },
+    {
+      obtenerActualizaciones: async () => ({
+        maxUpdateId: 9, // el mayor real del lote (por ejemplo, un update sin texto no listado en mensajes)
+        mensajes: [{ updateId: 4, texto: "/start x", chatId: "c1" }], // el ÚLTIMO/ÚNICO mensaje útil trae un id MENOR
+      }),
+    },
+  );
+
+  await vincularTelegramPendientes(deps);
+
+  assert.equal(offsetNuevo, 10, "10 = maxUpdateId(9) + 1, NO updateId(4) + 1 del mensaje útil");
+});
+
+test("🔴 la fábrica produce una función con id propio, con 'telegram' en el nombre", () => {
+  const deps = {} as Deps;
+  const fn = crearFuncionVincularTelegram(deps);
+  assert.match(fn.id(), /telegram/);
 });
 
 // ---------------------------------------------------------------- publicar la respuesta (Bloque F, fase 2, segunda pieza)
