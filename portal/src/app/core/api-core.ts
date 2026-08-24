@@ -277,6 +277,18 @@ export interface ClienteApi {
   desconectarGoogle(clientId: string): Promise<void>;
 
   /**
+   * Arma la URL de `https://t.me/<bot>?start=<código>` para vincular Telegram a la PROPIA cuenta
+   * (Bloque F, fase 2). A diferencia de `conectarGoogle`, no lleva `clientId`: esto es sobre quién
+   * está autenticado, no sobre un cliente de la agencia. Quien llama abre la URL en una pestaña
+   * nueva (`window.open`), no navega la propia — no hay callback que traiga de vuelta al portal.
+   */
+  vincularTelegram(): Promise<{ url: string }>;
+  /** Si la propia cuenta ya vinculó Telegram y puede recibir alertas de reseñas 1-3★. */
+  telegramVinculado(): Promise<{ vinculado: boolean }>;
+  /** Desvincula Telegram de la propia cuenta. */
+  desvincularTelegram(): Promise<{ ok: boolean }>;
+
+  /**
    * La carta completa del cliente (platos + categorías), tal como vive en `business_profile`. `[]`
    * en cada array si el cliente no tiene carta todavía — nunca `null`.
    */
@@ -535,6 +547,16 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     },
     async desconectarGoogle(clientId) {
       await pedir('POST', `/clients/${encodeURIComponent(clientId)}/google/desconectar`);
+    },
+
+    async vincularTelegram() {
+      return pedir<{ url: string }>('POST', '/me/telegram/vincular');
+    },
+    async telegramVinculado() {
+      return pedir<{ vinculado: boolean }>('GET', '/me/telegram');
+    },
+    async desvincularTelegram() {
+      return pedir<{ ok: boolean }>('POST', '/me/telegram/desvincular');
     },
 
     async obtenerMenu(clientId) {

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { MembresiaService } from '../../services/membresia';
 import { ClientesService } from '../../services/clientes';
 import { AuthService } from '../../services/auth';
+import { ApiService } from '../../services/api';
 import { PageBreadcrumbComponent } from '../../shared/components/page-breadcrumb';
 import { ComponentCardComponent } from '../../shared/components/component-card';
 import { UsuarioCapacidadesCardComponent } from './usuario-capacidades-card';
@@ -22,6 +23,10 @@ import { ROLES_ASIGNABLES, motivoParaNoGuardar, nombreDe } from '../../core/miem
  * El cambio de rol se oculta para quien no es `maestro` y para la propia fila. **Ocultar no es
  * autorizar**: quien fuerce el PATCH igual cae en `membership_update` (0012), que exige ser maestro
  * y que no sea su propia fila, y la API devuelve 403. Lo de acá es cortesía, no defensa.
+ *
+ * **La tarjeta de Telegram (Bloque F, fase 2, RF-018) va SOLO en el propio perfil** (`esPropio()`),
+ * al revés que "Cambiar el rol" (que un `maestro` ve sobre cualquier fila): nadie vincula el Telegram
+ * de otra persona. El `GET /me/telegram` ni siquiera se pide si se está mirando el perfil ajeno.
  */
 @Component({
   selector: 'app-usuario-perfil',
@@ -159,6 +164,50 @@ import { ROLES_ASIGNABLES, motivoParaNoGuardar, nombreDe } from '../../core/miem
           </app-component-card>
         }
 
+        <!-- Solo el propio perfil: nadie puede vincular el Telegram de otra persona. Ocultarla acá es
+             cortesía, no defensa -- la autorización real la impone quién puede pedir /me/telegram/*. -->
+        @if (esPropio()) {
+          <app-component-card
+            titulo="Alertas de Telegram"
+            descripcion="Recibí un aviso en Telegram cuando llegue una reseña de Google de 1 a 3 estrellas."
+          >
+            @if (cargandoTelegram()) {
+              <p class="text-sm text-texto-tenue">Cargando…</p>
+            } @else if (telegramVinculado()) {
+              <div class="flex flex-col gap-3">
+                <p class="text-sm text-texto">Telegram vinculado.</p>
+                <div>
+                  <button
+                    type="button"
+                    (click)="desvincularTelegram()"
+                    class="rounded-md border border-borde px-4 py-2 text-sm font-medium text-texto hover:bg-superficie-2"
+                  >
+                    Desvincular
+                  </button>
+                </div>
+              </div>
+            } @else {
+              <div class="flex flex-col gap-3">
+                <div>
+                  <button
+                    type="button"
+                    (click)="vincularTelegram()"
+                    class="rounded-md bg-accion text-texto-invertido px-4 py-2 text-sm font-medium hover:opacity-90"
+                  >
+                    Vincular Telegram
+                  </button>
+                </div>
+                @if (mensajeTelegram()) {
+                  <p class="text-sm text-texto-medio">{{ mensajeTelegram() }}</p>
+                }
+              </div>
+            }
+            @if (errorTelegram()) {
+              <p class="text-sm text-error">{{ errorTelegram() }}</p>
+            }
+          </app-component-card>
+        }
+
         <app-usuario-capacidades-card [rol]="miembro()!.rol" />
       }
     </div>
@@ -169,6 +218,7 @@ export class UsuarioPerfilPage implements OnInit {
   readonly clientes = inject(ClientesService);
   private readonly auth = inject(AuthService);
   private readonly ruta = inject(ActivatedRoute);
+  private readonly api = inject(ApiService);
 
   readonly rolesAsignables = ROLES_ASIGNABLES;
 
@@ -178,6 +228,12 @@ export class UsuarioPerfilPage implements OnInit {
   readonly confirmando = signal(false);
   readonly guardando = signal(false);
   readonly errorGuardar = signal('');
+
+  /** Estado de la tarjeta de Telegram (Bloque F, fase 2). Solo se pide si `esPropio()`. */
+  readonly cargandoTelegram = signal(true);
+  readonly telegramVinculado = signal(false);
+  readonly mensajeTelegram = signal('');
+  readonly errorTelegram = signal('');
 
   readonly miembro = computed(() => this.membresia.miembros().find((m) => m.user_id === this.userId()) ?? null);
   readonly nombre = computed(() => {
@@ -215,6 +271,56 @@ export class UsuarioPerfilPage implements OnInit {
     if (m) {
       this.rolElegido.set(m.rol);
       this.clienteElegido.set(m.client_id ?? '');
+    }
+    // Sin esto, mirar el perfil de otra persona dispararía un GET /me/telegram que no tiene sentido:
+    // es sobre la propia cuenta, nunca sobre la fila que se está mirando.
+    if (this.esPropio()) {
+      await this.cargarTelegram();
+    } else {
+      this.cargandoTelegram.set(false);
+    }
+  }
+
+  private async cargarTelegram(): Promise<void> {
+    this.cargandoTelegram.set(true);
+    try {
+      const { vinculado } = await this.api.telegramVinculado();
+      this.telegramVinculado.set(vinculado);
+    } catch (e) {
+      this.errorTelegram.set(e instanceof Error ? e.message : 'No se pudo consultar el estado de Telegram.');
+    } finally {
+      this.cargandoTelegram.set(false);
+    }
+  }
+
+  /**
+   * Abre la URL de `https://t.me/<bot>?start=<código>` en una pestaña NUEVA (`window.open`), no en
+   * la propia (`window.location.href` como hace `conectar()` de Google) — acá no hay callback que
+   * traiga de vuelta a esta pestaña, así que navegar afuera del todo dejaría al usuario varado. No
+   * hay forma de saber en tiempo real cuándo el orquestador procesó el `/start` (mismo límite que
+   * "Publicada el ..." en `cliente-resenas.ts`), así que se lo dice y punto: hay que recargar a mano.
+   */
+  async vincularTelegram(): Promise<void> {
+    this.errorTelegram.set('');
+    try {
+      const { url } = await this.api.vincularTelegram();
+      window.open(url, '_blank');
+      this.mensajeTelegram.set(
+        'Abrí el link, apretá Start en Telegram, y volvé a cargar esta página para confirmar.',
+      );
+    } catch (e) {
+      this.errorTelegram.set(e instanceof Error ? e.message : 'No se pudo generar el link de Telegram.');
+    }
+  }
+
+  async desvincularTelegram(): Promise<void> {
+    this.errorTelegram.set('');
+    try {
+      await this.api.desvincularTelegram();
+      this.telegramVinculado.set(false);
+      this.mensajeTelegram.set('');
+    } catch (e) {
+      this.errorTelegram.set(e instanceof Error ? e.message : 'No se pudo desvincular Telegram.');
     }
   }
 

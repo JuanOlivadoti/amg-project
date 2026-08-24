@@ -53,6 +53,10 @@ export class ApiService {
   readonly conectarGoogle = this.cliente.conectarGoogle;
   readonly desconectarGoogle = this.cliente.desconectarGoogle;
 
+  readonly vincularTelegram = this.cliente.vincularTelegram;
+  readonly telegramVinculado = this.cliente.telegramVinculado;
+  readonly desvincularTelegram = this.cliente.desvincularTelegram;
+
   readonly obtenerMenu = this.cliente.obtenerMenu;
   readonly guardarMenu = this.cliente.guardarMenu;
 }

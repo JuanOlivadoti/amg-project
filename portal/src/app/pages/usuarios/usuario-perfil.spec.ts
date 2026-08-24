@@ -5,6 +5,7 @@ import { UsuarioPerfilPage } from './usuario-perfil';
 import { MembresiaService } from '../../services/membresia';
 import { ClientesService } from '../../services/clientes';
 import { AuthService } from '../../services/auth';
+import { ApiService } from '../../services/api';
 import type { Miembro } from '../../core/models';
 
 /**
@@ -36,7 +37,26 @@ describe('UsuarioPerfilPage', () => {
     cambios = [];
   });
 
-  async function render(idEnLaRuta: string, rolPropio: string, userIdPropio = 'u1') {
+  async function render(
+    idEnLaRuta: string,
+    rolPropio: string,
+    userIdPropio = 'u1',
+    apiOverrides: {
+      telegramVinculado?: jasmine.Spy;
+      vincularTelegram?: jasmine.Spy;
+      desvincularTelegram?: jasmine.Spy;
+    } = {},
+  ) {
+    const telegramVinculadoSpy =
+      apiOverrides.telegramVinculado ??
+      jasmine.createSpy('telegramVinculado').and.resolveTo({ vinculado: false });
+    const vincularTelegramSpy =
+      apiOverrides.vincularTelegram ??
+      jasmine.createSpy('vincularTelegram').and.resolveTo({ url: 'https://t.me/amg_bot?start=abc' });
+    const desvincularTelegramSpy =
+      apiOverrides.desvincularTelegram ??
+      jasmine.createSpy('desvincularTelegram').and.resolveTo({ ok: true });
+
     TestBed.configureTestingModule({
       imports: [UsuarioPerfilPage],
       providers: [
@@ -60,13 +80,27 @@ describe('UsuarioPerfilPage', () => {
           useValue: { clientes: signal([{ id: 'c-1', nombre: 'Pizzería Roma' }]), cargar: async () => {} },
         },
         { provide: AuthService, useValue: { sesion: signal({ userId: userIdPropio }) } },
+        {
+          provide: ApiService,
+          useValue: {
+            telegramVinculado: telegramVinculadoSpy,
+            vincularTelegram: vincularTelegramSpy,
+            desvincularTelegram: desvincularTelegramSpy,
+          },
+        },
       ],
     });
     const fixture = TestBed.createComponent(UsuarioPerfilPage);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
-    return { fixture, el: fixture.nativeElement as HTMLElement };
+    return {
+      fixture,
+      el: fixture.nativeElement as HTMLElement,
+      telegramVinculadoSpy,
+      vincularTelegramSpy,
+      desvincularTelegramSpy,
+    };
   }
 
   const boton = (el: HTMLElement, texto: string): HTMLButtonElement | undefined =>
@@ -155,5 +189,72 @@ describe('UsuarioPerfilPage', () => {
     const { el } = await render('u2', 'maestro', 'u1');
     expect(el.textContent).not.toContain('Actividad');
     expect(el.textContent).not.toContain('Último acceso');
+  });
+
+  // ---------------------------------------------------------------- Telegram (Bloque F, fase 2, RF-018)
+
+  it('🔴 viendo el perfil de OTRA persona, la tarjeta de Telegram no aparece y no se pide GET /me/telegram', async () => {
+    // Nadie vincula el Telegram de otro. Al revés que "Cambiar el rol" (que un maestro ve sobre
+    // cualquier fila), esto va condicionado a esPropio() -- y sin siquiera pedir el estado.
+    const { el, telegramVinculadoSpy } = await render('u2', 'maestro', 'u1');
+    expect(el.textContent).not.toContain('Alertas de Telegram');
+    expect(telegramVinculadoSpy).not.toHaveBeenCalled();
+  });
+
+  it('perfil propio, sin vincular: se ve el botón "Vincular Telegram"', async () => {
+    const { el, telegramVinculadoSpy } = await render('u1', 'maestro', 'u1', {
+      telegramVinculado: jasmine.createSpy('telegramVinculado').and.resolveTo({ vinculado: false }),
+    });
+    expect(telegramVinculadoSpy).toHaveBeenCalled();
+    expect(el.textContent).toContain('Alertas de Telegram');
+    expect(boton(el, 'Vincular Telegram')).toBeDefined();
+    expect(boton(el, 'Desvincular')).toBeUndefined();
+  });
+
+  it('perfil propio, vinculado: se ve "Telegram vinculado." y el botón "Desvincular"', async () => {
+    const { el } = await render('u1', 'maestro', 'u1', {
+      telegramVinculado: jasmine.createSpy('telegramVinculado').and.resolveTo({ vinculado: true }),
+    });
+    expect(el.textContent).toContain('Telegram vinculado.');
+    expect(boton(el, 'Desvincular')).toBeDefined();
+    expect(boton(el, 'Vincular Telegram')).toBeUndefined();
+  });
+
+  it('el botón "Vincular Telegram" pide la URL y la abre en una pestaña nueva (no navega la propia)', async () => {
+    const abrirSpy = spyOn(window, 'open');
+    const vincularTelegramSpy = jasmine
+      .createSpy('vincularTelegram')
+      .and.resolveTo({ url: 'https://t.me/amg_bot?start=codigo123' });
+    const { fixture, el } = await render('u1', 'maestro', 'u1', {
+      telegramVinculado: jasmine.createSpy('telegramVinculado').and.resolveTo({ vinculado: false }),
+      vincularTelegram: vincularTelegramSpy,
+    });
+
+    boton(el, 'Vincular Telegram')!.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(vincularTelegramSpy).toHaveBeenCalled();
+    expect(abrirSpy).toHaveBeenCalledWith('https://t.me/amg_bot?start=codigo123', '_blank');
+    expect(el.textContent).toContain('Abrí el link');
+  });
+
+  it('el botón "Desvincular" llama desvincularTelegram y el estado local pasa a "no vinculado" sin recargar', async () => {
+    const desvincularTelegramSpy = jasmine.createSpy('desvincularTelegram').and.resolveTo({ ok: true });
+    const telegramVinculadoSpy = jasmine.createSpy('telegramVinculado').and.resolveTo({ vinculado: true });
+    const { fixture, el } = await render('u1', 'maestro', 'u1', {
+      telegramVinculado: telegramVinculadoSpy,
+      desvincularTelegram: desvincularTelegramSpy,
+    });
+
+    boton(el, 'Desvincular')!.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(desvincularTelegramSpy).toHaveBeenCalled();
+    // Sin recargar: `telegramVinculado` NO debe haberse pedido una segunda vez.
+    expect(telegramVinculadoSpy).toHaveBeenCalledTimes(1);
+    expect(el.textContent).toContain('Vincular Telegram');
+    expect(boton(el, 'Desvincular')).toBeUndefined();
   });
 });

@@ -788,3 +788,27 @@ test('🔴 conectarGoogle/desconectarGoogle propagan el 404 de RLS (rol cliente 
   const { fn } = fakeFetch({ status: 404, body: { error: 'Cliente no encontrado o sin permiso para conectar.' } });
   await assert.rejects(() => crearApi(opts(fn)).conectarGoogle('c1'), /sin permiso/);
 });
+
+test('vincularTelegram postea a /me/telegram/vincular y devuelve { url }, sin clientId (es sobre la propia cuenta)', async () => {
+  const { fn, capturado } = fakeFetch({ body: { url: 'https://t.me/amg_alertas_bot?start=abc123' } });
+  const res = await crearApi(opts(fn)).vincularTelegram();
+  assert.equal(capturado.method, 'POST');
+  assert.equal(capturado.url, 'http://api.test/me/telegram/vincular');
+  assert.deepEqual(res, { url: 'https://t.me/amg_alertas_bot?start=abc123' });
+});
+
+test('telegramVinculado pega a GET /me/telegram y devuelve { vinculado }', async () => {
+  const { fn, capturado } = fakeFetch({ body: { vinculado: true } });
+  const res = await crearApi(opts(fn)).telegramVinculado();
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/me/telegram');
+  assert.deepEqual(res, { vinculado: true });
+});
+
+test('desvincularTelegram postea a /me/telegram/desvincular y devuelve { ok }', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  const res = await crearApi(opts(fn)).desvincularTelegram();
+  assert.equal(capturado.method, 'POST');
+  assert.equal(capturado.url, 'http://api.test/me/telegram/desvincular');
+  assert.deepEqual(res, { ok: true });
+});
