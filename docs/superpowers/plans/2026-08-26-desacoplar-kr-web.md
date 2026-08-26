@@ -443,7 +443,7 @@ git commit -m "db: ClientRow y getClient exponen archived_at"
 **Interfaces:**
 - Consume: la tabla `kr_run_decisiones` de la Task 1.
 - Produce:
-  - `registrarDecision(ctx: TenantContext, runId: string, destino: "crear_web" | "solo_informe", decididoPor?: string): Promise<string | null>` — exige al menos una página aprobada SOLO si `destino === "crear_web"`.
+  - `registrarDecision(ctx: TenantContext, runId: string, destino: "crear_web" | "solo_informe" | "crear_posts", decididoPor?: string): Promise<string | null>` — exige al menos una página aprobada si `destino` es `"crear_web"` o `"crear_posts"` (no para `"solo_informe"`).
   - `type CierreDecision = { resultado: "completado" } | { resultado: "error"; detalleError: string }`
   - `cerrarDecision(ctx: TenantContext, decisionId: string, cierre: CierreDecision): Promise<boolean>`
   - `getDecision(ctx: TenantContext, decisionId: string): Promise<DecisionRow | null>`
@@ -504,6 +504,20 @@ test("registrarDecision: solo_informe SIN ninguna página aprobada SÍ califica"
   const runId = await runSinPaginasAprobadas(ctxA(), clientA1);
   const decisionId = await store.registrarDecision(ctxA(), runId, "solo_informe");
   assert.ok(decisionId, "el informe no depende de páginas aprobadas");
+});
+
+// Agregado al escribir el plan del sub-proyecto 3 (publicar posts en blog externo): mismo criterio
+// que crear_web — no tiene sentido generar posts de un run sin ninguna página aprobada.
+test("🔴 registrarDecision: crear_posts SIN ninguna página aprobada no califica", async () => {
+  const runId = await runSinPaginasAprobadas(ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_posts");
+  assert.equal(decisionId, null);
+});
+
+test("registrarDecision: crear_posts CON al menos una página aprobada califica", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_posts");
+  assert.ok(decisionId);
 });
 
 test("cerrarDecision: guard de reproceso — cerrar dos veces no pisa el resultado", async () => {
@@ -576,20 +590,26 @@ Expected: FAIL — `store.registrarDecision is not a function`.
  * tenga que coordinarse. Devuelve `null` si no calificaba — mismo estilo defensivo que `approveRun`
  * (ahora retirado, ver Task 4).
  *
- * Dos correcciones de la ronda de Codex sobre este plan, respecto de la primera versión:
+ * Tres correcciones respecto de la primera versión — las dos primeras de la ronda de Codex sobre
+ * este plan, la tercera agregada al diseñar el sub-proyecto 3 (publicar posts en blog externo):
  *  1. `on conflict (run_id) where resultado = 'pendiente' do nothing`: sin esto, dos inserts que
  *     pasan el `where` en una carrera GENUINA (ninguno vio el commit del otro) generan una
  *     excepción `23505` sin manejar — la API terminaría en 500, no en el 409 prometido. Con
  *     `do nothing`, el perdedor de la carrera simplemente no inserta nada y el método devuelve
  *     `null`, como cualquier otra transición que no calificó.
- *  2. La condición final (`$2::destino_run <> 'crear_web' or exists (...)`) exige al menos una
- *     página aprobada, pero SOLO para `crear_web` — el viejo `approveRun` lo exigía siempre; el
- *     usuario confirmó que `solo_informe` no lo necesita (el informe ya existe desde el research).
+ *  2. La condición final exige al menos una página aprobada, pero SOLO para `crear_web` y
+ *     `crear_posts` — el viejo `approveRun` lo exigía siempre; el usuario confirmó que
+ *     `solo_informe` no lo necesita (el informe ya existe desde el research).
+ *  3. `crear_posts` se agregó a la firma y a la condición de página aprobada (spec del sub-proyecto
+ *     3, `docs/superpowers/specs/2026-08-26-publicar-posts-blog-externo-design.md`, "Riesgos": no
+ *     tiene sentido generar posts de un run sin ninguna página aprobada, mismo criterio que
+ *     `crear_web`). El sub-proyecto 2 solo tipaba `crear_web | solo_informe` porque `crear_posts`
+ *     todavía no tenía un consumidor real — ahora lo tiene.
  */
 async registrarDecision(
   ctx: TenantContext,
   runId: string,
-  destino: "crear_web" | "solo_informe",
+  destino: "crear_web" | "solo_informe" | "crear_posts",
   decididoPor?: string,
 ): Promise<string | null> {
   return this.withTenant(ctx, async (tx) => {
@@ -612,7 +632,7 @@ async registrarDecision(
              )
            )
            and (
-             $2::destino_run <> 'crear_web'
+             $2::destino_run not in ('crear_web', 'crear_posts')
              or exists (
                select 1 from kr_pages p where p.run_id = r.id and p.approved and not p.retirada
              )
@@ -724,7 +744,8 @@ Agregar `CierreDecision`, `DecisionRow`, `UltimaDecision` al bloque
 - [ ] **Step 5: Correr y confirmar que todos los tests pasan**
 
 Run: `npm test -w db -- --test-name-pattern="registrarDecision|cerrarDecision"`
-Expected: PASS, los ocho (los seis originales más los dos de "página aprobada").
+Expected: PASS, los diez (los seis originales, los dos de "página aprobada" para `crear_web`, y los
+dos de "página aprobada" para `crear_posts` agregados al escribir el plan del sub-proyecto 3).
 
 - [ ] **Step 6: Verificación por mutación del índice único**
 
@@ -2309,3 +2330,17 @@ explícitamente con el usuario.
 12. [Minor] `cerrarDecision(id, resultado, detalleError?)` permitía combinaciones que el `CHECK` de
     la tabla rechazaba en runtime (`"completado"` con detalle, `"error"` sin detalle) → unión
     discriminada `CierreDecision` (Task 3), propagada a todos los call-sites (Tasks 6, 7).
+
+**Enmienda, 2026-08-26 — no es una ronda de Codex, es una dependencia del sub-proyecto 3.** Al
+escribir el spec de "publicar posts en un blog externo"
+([`docs/superpowers/specs/2026-08-26-publicar-posts-blog-externo-design.md`](../specs/2026-08-26-publicar-posts-blog-externo-design.md),
+"Riesgos"), Codex (ronda 1 sobre ese spec, hallazgo Major #7) señaló que dejar esta dependencia solo
+como flag para la revisión conjunta no era una precondición ejecutable — el plan del sub-proyecto 3
+no puede depender de un cambio acá sin que ese cambio exista. Se resolvió extendiendo el hallazgo 6
+de esta misma ronda (arriba): `registrarDecision` ahora exige "al menos una página aprobada" también
+para `destino: "crear_posts"`, no solo `crear_web` — mismo razonamiento (ADR-06, no tiene sentido
+generar contenido de un run sin ninguna página aprobada). Cambiado: la firma de `registrarDecision`
+(Task 3, agrega `"crear_posts"` a la unión), la condición SQL (`not in ('crear_web', 'crear_posts')`
+en vez de `<> 'crear_web'`), y dos tests nuevos (Task 3, Step 1). Sigue siendo edición de documento
+de diseño, no código — no adelanta la secuencia de implementación acordada para los tres
+sub-proyectos.

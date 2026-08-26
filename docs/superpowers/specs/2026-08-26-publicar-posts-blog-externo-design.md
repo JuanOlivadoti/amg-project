@@ -160,18 +160,31 @@ y el staff publicarlos de a uno, en momentos distintos (dentro del alcance de "t
 aprobar CADA borrador" — decisión #6: no hay cola, pero tampoco hay obligación de publicar los 5
 juntos).
 
+**Corrección de ruta (encontrada al escribir el plan de implementación, no en la ronda de Codex):**
+`PATCH /clients/:id/pages/:pageId` no existe hoy — la ruta real de edición de páginas es
+**`PATCH /pages/:id`** (plana, sin `/clients/:id/`, `api/src/app.ts:348-356`; `editPage` no recibe
+`clientId`, RLS ya lo resuelve por la fila). El diseño de abajo se ajusta a esa ruta real, extendida
+(no una ruta nueva) — `filtrarCambios` ya acepta múltiples campos juntos en un solo `PATCH` (no
+"una sola clave", ese patrón es solo de `resenas`), así que `post_titulo`/`post_cuerpo` entran como
+dos campos más de esa misma allowlist, en un handler que dirige por FORMA del body a un método de
+store distinto (edición de brief vs. edición de post vs. comando de publicar — nunca mezclados en
+el mismo request).
+
 ```ts
-// api/src/app.ts — PATCH /clients/:id/pages/:pageId
-// { post_titulo?, post_cuerpo? } (al menos una) → editarPost (bajo RLS normal, app_user).
+// api/src/app.ts — PATCH /pages/:id, extendido
+// { url_slug?, keyword_principal?, seo?, content_brief?, preguntas_frecuentes? } (uno o más) →
+//   editPage, sin cambios (revoca approved, ADR-06 — comportamiento ya existente).
+// { post_titulo?, post_cuerpo? } (al menos una) → editarPost (bajo RLS normal, app_user). NO revoca
+//   approved — editar el TEXTO del post no es editar el BRIEF que la página aprobó.
 //   A diferencia de resenas (una clave estricta), acá las dos viven en el mismo formulario del
 //   portal y se editan juntas — Codex, ronda 1, hallazgo Minor: la versión anterior del spec decía
 //   "una sola clave" en un lugar y las dos juntas en otro; queda resuelto a favor de "las dos juntas,
-//   ninguna otra combinación".
+//   ninguna otra combinación" (mismo criterio que ya usa editPage con sus cinco campos).
 //   editarPost RECHAZA la escritura (retorna false, sin lanzar) si post_solicitado_en is not null
 //   and post_publicado_en is null — hay una publicación en curso, no autorizada todavía por lo que
 //   se está por escribir. Cierra el hallazgo Critical de Codex (versión no ligada a lo aprobado): la
 //   ventana de bloqueo es la vida de un solo step de Inngest, no algo que el staff perciba.
-// { publicar_post: true } → comando compuesto:
+// { publicar_post: true } (única clave) → comando compuesto:
 //   1. store.solicitarPublicacionPost(ctx, pageId) marca post_solicitado_en = now() bajo RLS,
 //      SOLO si post_titulo/post_cuerpo no son null, la página sigue approved y not retirada, y
 //      post_publicado_en is null. Un segundo llamado sobre una fila ya solicitada pero no publicada
@@ -319,14 +332,18 @@ El plan tiene que agregar, mirror exacto del patrón que ya protege `google_refr
 
 ## API
 
-- **`GET /clients/:id/pages/:pageId/post`** — ver el borrador (título, cuerpo, estado derivado de
-  las columnas). Staff y cliente (solo lectura), mismo patrón RLS que reseñas.
-- **`PATCH /clients/:id/pages/:pageId`** — cuerpo aceptado, exactamente una de estas formas (ver
-  "Arquitectura" para el detalle del bloqueo de edición durante una publicación en curso):
-  - `{ post_titulo?, post_cuerpo? }` (al menos una presente) → edición bajo RLS normal (`app_user`,
-    `puede_escribir()`).
+- **`GET /pages/:id/post`** — ver el borrador (título, cuerpo, estado derivado de las columnas).
+  Staff y cliente (solo lectura), mismo patrón RLS que reseñas. Ruta plana, igual que `PATCH
+  /pages/:id` (ver "Arquitectura" — corrección de ruta encontrada al escribir el plan).
+- **`PATCH /pages/:id`** (extendida, no una ruta nueva) — dirige por FORMA del body, sin mezclar
+  formas en un mismo request:
+  - Campos del brief (`url_slug`, `keyword_principal`, `seo`, `content_brief`,
+    `preguntas_frecuentes`) → `editPage`, comportamiento ya existente.
+  - `{ post_titulo?, post_cuerpo? }` (al menos una presente) → `editarPost`, bajo RLS normal
+    (`app_user`, `puede_escribir()`).
   - `{ publicar_post: true }` → comando compuesto (ADR-18), como se describe en "Arquitectura".
-  - Cualquier otra combinación → `400`, mismo criterio que `PATCH .../resenas/:id`.
+  - Mezclar campos de brief con campos de post en el mismo request, o cualquier combinación no
+    reconocida → `400`.
 
 ## Portal
 
@@ -359,18 +376,15 @@ El plan tiene que agregar, mirror exacto del patrón que ya protege `google_refr
 
 ## Riesgos
 
-- **`registrarDecision` (sub-proyecto 2) no exige página aprobada para `crear_posts`. SIGUE
-  ABIERTO — decisión de proceso pendiente, no de diseño.** El sub-proyecto 2 confirmó con el usuario
-  que el chequeo "al menos una página aprobada" (ADR-06) aplica SOLO a `crear_web`, antes de que
-  `crear_posts` existiera de verdad. Este sub-proyecto necesita el MISMO chequeo para `crear_posts`
-  — es un cambio al `WHERE` de `registrarDecision` que pertenece al plan del sub-proyecto 2. Codex
-  (ronda 1, hallazgo Major) señaló que dejarlo como flag para la revisión conjunta no es una
-  precondición ejecutable — el plan de este sub-proyecto no puede tener una dependencia sin tarea que
-  la resuelva (disciplina de `writing-plans`: cero placeholders). **Queda resuelto así:** al escribir
-  el plan de implementación de este sub-proyecto, su primera tarea va a ser una modificación explícita
-  al plan del sub-proyecto 2 (`registrarDecision`, Task 3) — sigue siendo un cambio de documento de
-  diseño, no de código, así que no adelanta la secuencia de implementación acordada (los tres se
-  diseñan antes de tocar código).
+- **`registrarDecision` (sub-proyecto 2) no exigía página aprobada para `crear_posts` — RESUELTO
+  (2026-08-26), antes de escribir el plan de este sub-proyecto.** El sub-proyecto 2 había confirmado
+  con el usuario que el chequeo "al menos una página aprobada" (ADR-06) aplicaba SOLO a `crear_web`,
+  antes de que `crear_posts` existiera de verdad. Codex (ronda 1 sobre este spec, hallazgo Major)
+  señaló que dejarlo como flag para la revisión conjunta no era una precondición ejecutable. Se
+  resolvió enmendando directamente el plan del sub-proyecto 2 (`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`,
+  Task 3 y su "Historial de revisión") — la firma de `registrarDecision` ahora acepta `"crear_posts"`
+  y el `WHERE` exige página aprobada para ese destino también. Edición de documento de diseño, no de
+  código: no adelantó la secuencia de implementación acordada.
 - **`kr_run_decisiones.resultado = 'completado'` significa cosas distintas según el destino**:
   para `crear_web` significa "publicado"; para `crear_posts` significa "hay al menos un borrador
   esperando revisión" — nunca "publicado", y ahora (ver "Arquitectura") tampoco significa "todos los
@@ -440,3 +454,13 @@ a ciegas. Reporte completo: [`progress/informes/codex-publicar-posts-spec.md`](.
 Ninguno de los 10 hallazgos contradice las 6 decisiones de producto ya fijadas (publisher genérico,
 completar `crear_posts`, IA genera, revisión humana previa, un post por página aprobada, publicación
 inmediata) — todos son de mecanismo.
+
+### Correcciones encontradas al escribir el plan de implementación (no son hallazgos de Codex)
+
+- **Ruta real de edición de páginas**: `PATCH /clients/:id/pages/:pageId` (como decía la primera
+  versión de "API"/"Arquitectura") no existe — la ruta real es `PATCH /pages/:id` (plana,
+  `api/src/app.ts:348-356`). Corregido en ambas secciones; ver la nota explícita en "Arquitectura".
+- **Dependencia con el sub-proyecto 2 (hallazgo #7 de la tabla de arriba), resuelta de verdad**: se
+  enmendó directamente `docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md` (Task 3 y su
+  "Historial de revisión") — `registrarDecision` ya exige página aprobada para `crear_posts`. Ver el
+  bullet actualizado en "Riesgos".
