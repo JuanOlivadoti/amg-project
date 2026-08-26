@@ -62,6 +62,12 @@ los tests de seguridad, Inngest para orquestación durable, Angular/Karma para e
 
 ### Task 1: Migración `0027_kr_run_decisiones.sql`
 
+> **Confirmado en la revisión conjunta de los tres sub-proyectos (2026-08-26): este sub-proyecto se
+> implementa PRIMERO** — tanto el sub-proyecto 1 (multi-vertical) como el 3 (posts en blog externo)
+> dependen de código que este plan introduce (`workflowDecision`). `0027` es el número real siempre que
+> se respete ese orden — igual, correr `ls db/migrations | tail -3` antes de crear el archivo, por las
+> dudas.
+
 **Files:**
 - Create: `db/migrations/0027_kr_run_decisiones.sql`
 - Create: `db/src/kr-decisiones.test.ts`

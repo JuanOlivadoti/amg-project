@@ -19,9 +19,13 @@
 > Minor en el spec, 1 Critical + 8 Major + 3 Minor en el plan; sub-proyecto 3 — publicar posts en
 > blog externo: 12 tasks, 3 Critical + 5 Major + 1 Minor + 1 Nit en el spec, 2 Critical + 4 Major + 4
 > Minor en el plan; todos corregidos en los tres) — **cero código tocado todavía en ninguno de los
-> tres**. **Los tres sub-proyectos están "aterrizados"** (spec+plan completos, revisados por Codex);
-> el paso siguiente es la revisión exhaustiva conjunta de los tres antes de implementar cualquiera.
-> Detalle completo y qué sigue en [`progress/current.md`](../../progress/current.md).
+> tres**. **Revisión exhaustiva conjunta en curso**: encontró una dependencia real entre los
+> sub-proyectos 1 y 2 que ninguna revisión individual había visto (la Task 9 del sub-proyecto 1
+> editaba código que el sub-proyecto 2 retira y traslada a `workflowDecision`) y una colisión de
+> numeración de migraciones entre los tres — **orden de implementación fijado: sub-proyecto 2
+> primero, 1 y 3 después en cualquier orden**, ambos corregidos en los planes. Falta la ronda de
+> Codex sobre la revisión conjunta. Detalle completo y qué sigue en
+> [`progress/current.md`](../../progress/current.md).
 >
 > 🧭 **Nuevo (2026-08-23): Bloque F fase 2, segunda pieza — publicar la respuesta de vuelta a Google,
 > mock-first, COMPLETA.** [Plan de 3 tasks](../superpowers/plans/2026-08-23-publicar-respuesta-resena.md)

@@ -12,11 +12,12 @@ independientes**, cada uno con su propio spec → plan → revisión externa (Co
 (uno se implementa antes de arrancar el diseño del siguiente — decisión explícita, no en paralelo):
 
 1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **diseño y plan
-   completos, sin implementar todavía.**
-2. **Desacoplar keyword research de creación de webs** — **diseño y plan completos, sin
-   implementar todavía.**
-3. Publicar posts a un blog ya existente en otra plataforma — **spec y plan completos; el plan
-   todavía no pasó su ronda de Codex.**
+   completos.**
+2. **Desacoplar keyword research de creación de webs** — **diseño y plan completos.**
+3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos.**
+
+Los tres, con spec+plan revisados por Codex, sin implementar todavía. **En curso: la revisión
+exhaustiva conjunta de los tres** (ver más abajo).
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -24,6 +25,21 @@ uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar
 los tres a la vez, y después arranca la implementación. El motivo: los tres tocan superficies
 superpuestas (perfil de cliente, catálogo, portal), y revisarlos juntos antes de tocar código evita
 descubrir una incompatibilidad entre sub-proyectos recién al implementar el tercero.
+
+**Orden de implementación (fijado durante la revisión conjunta, 2026-08-26): sub-proyecto 2 primero,
+1 y 3 después (en cualquier orden entre ellos, o en paralelo).** No es una preferencia — lo exige una
+dependencia real que ninguna de las dos revisiones individuales había detectado: la Task 9 del
+sub-proyecto 1 y la Task 8 del sub-proyecto 3 modifican código que solo existe una vez que
+`workflowDecision` (introducido por el sub-proyecto 2) está implementado. El sub-proyecto 2 retira el
+mecanismo viejo de aprobación-y-publicación-inline de `workflowResearch` (donde vive hoy el código que
+la Task 9 del sub-proyecto 1 pensaba editar) y lo traslada, con otra forma, a `workflowDecision`. 1 y 3
+no dependen entre sí — tocan ramas distintas de esa misma función (`crear_web` y `crear_posts`).
+
+**Migraciones: los tres planes numeraban 0027/0028 sin cruzarse** (sub-proyecto 1: `0027_clientes_vertical.sql`
++ `0028_nap_publico_vertical.sql`; sub-proyecto 2: `0027_kr_run_decisiones.sql`; sub-proyecto 3:
+`0028_posts_blog_externo.sql`, ya con el hedge de verificar el número real). Los tres planes ahora
+llevan la misma advertencia: verificar `ls db/migrations` antes de crear el archivo — el número real
+depende del orden de implementación de arriba, no está fijo en el documento.
 
 ## Sub-proyecto 1 — Multi-vertical de clientes: estado detallado
 
@@ -105,15 +121,51 @@ descubrir una incompatibilidad entre sub-proyectos recién al implementar el ter
   confirmado. **Ninguna task se ejecutó todavía.**
 - **Informe de Codex de esta ronda**, guardado tal cual llegó:
   [`progress/informes/codex-publicar-posts-plan.md`](informes/codex-publicar-posts-plan.md).
-- **Qué falta:** nada de diseño — los tres sub-proyectos de la iniciativa tienen spec+plan completos,
-  cada uno con sus rondas de Codex procesadas.
+- **Qué falta:** nada de diseño individual — los tres sub-proyectos de la iniciativa tienen spec+plan
+  completos, cada uno con sus rondas de Codex procesadas.
+
+## Revisión exhaustiva conjunta de los tres sub-proyectos (2026-08-26) — en curso
+
+Mi propia pasada (antes de la ronda de Codex) encontró dos hallazgos reales que ninguna revisión
+individual podía ver — cada plan se había revisado contra el código de HOY, y el conflicto solo
+existe *entre* dos planes:
+
+1. **[Serio] El sub-proyecto 1 dependía, sin saberlo, del sub-proyecto 2.** La Task 9 del plan
+   multi-vertical (`docs/superpowers/plans/2026-08-26-multivertical-clientes.md`) editaba
+   `orchestrator/src/workflow.ts:342-346` — la construcción de `deps.publicar(...)` dentro de
+   `workflowResearch`. El plan del sub-proyecto 2 **retira ese bloque entero** de `workflowResearch`
+   (el mecanismo de aprobación-y-publicación-inline) y traslada el mismo `deps.publicar(...)`, sin
+   `vertical`, a la rama `crear_web` de la función nueva `workflowDecision`. **Corregido:** la Task 9
+   se reescribió apuntando a la ubicación nueva (buscada por contenido, no por línea), con una
+   precondición ejecutable al principio, mismo criterio que ya llevaba la Task 8 del sub-proyecto 3.
+2. **[Serio] Colisión de numeración de migraciones.** Los tres planes numeraban `0027`/`0028` sin
+   cruzarse entre sí (sub-proyecto 1: dos migraciones, `0027` y `0028`; sub-proyecto 2: `0027`;
+   sub-proyecto 3: `0028`, tentativo). **Corregido:** los tres llevan ahora la misma advertencia de
+   verificar `ls db/migrations` antes de crear el archivo, y el número real queda atado al orden de
+   implementación (ver abajo).
+3. **[Menor, corregido igual]** El prompt de `OpenAIPostProvider` (sub-proyecto 3) decía "negocio
+   gastronómico" sin condición — lenguaje incorrecto para un cliente de correduría de seguros
+   (sub-proyecto 1). Se hizo `vertical` un parámetro OPCIONAL de `PostProvider.generar`, con una base
+   de prompt genérica y un contexto por vertical que se agrega solo si `vertical` está disponible —
+   deliberadamente opcional, para no atar el sub-proyecto 3 al orden de implementación del 1.
+4. Notado, sin acción necesaria: los sub-proyectos 1 y 2 tocan los mismos archivos "core" del portal
+   (`api-core.ts`, `models.ts`) — no es un defecto, solo algo para tener presente al integrar en
+   serie (leer el archivo real, no fiarse de los números de línea del plan que va segundo).
+
+**Orden de implementación fijado, consecuencia directa del hallazgo 1:** sub-proyecto 2 primero — el
+1 y el 3 dependen de código que ese sub-proyecto introduce (`workflowDecision`). 1 y 3 no dependen
+entre sí (tocan ramas distintas de esa misma función) y pueden ir en cualquier orden, o en paralelo,
+después del 2.
+
+Documentos tocados por esta ronda: los tres planes (Task 1 de multi-vertical y de desacoplar-kr-web
+con el hedge de migración; Task 9 de multi-vertical reescrita; Tasks 4 y 8 de publicar-posts con
+`vertical` opcional), más este archivo y el `09`.
 
 ## Qué sigue
 
-**Los tres sub-proyectos están "aterrizados"** (spec+plan, revisados por Codex). Según la decisión de
-secuencia del 2026-08-26, el paso siguiente es **una ronda de revisión exhaustiva y general** (esta
-sesión + Codex) sobre los tres a la vez — recién después de esa revisión conjunta arranca cualquier
-implementación.
+**Falta la ronda de Codex sobre esta revisión conjunta** — mismo proceso que las rondas individuales
+de cada sub-proyecto: armar el prompt, procesar los hallazgos, aplicar lo que corresponda. Recién
+después de esa ronda arranca cualquier implementación.
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 

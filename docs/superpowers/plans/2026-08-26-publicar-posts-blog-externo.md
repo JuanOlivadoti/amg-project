@@ -1020,7 +1020,7 @@ git commit -m "db: guardarPost/editarPost/solicitarPublicacionPost/postParaPubli
 **Interfaces:**
 - Produce:
   - `interface PostBlogGenerado { titulo: string; cuerpo: string }`
-  - `interface PostProvider { generar(args: { contentBrief: Record<string, unknown>; keywordPrincipal: string; perfilCliente: Record<string, unknown> | null }): Promise<PostBlogGenerado> }`
+  - `interface PostProvider { generar(args: { contentBrief: Record<string, unknown>; keywordPrincipal: string; perfilCliente: Record<string, unknown> | null; vertical?: "restauracion" | "correduria_seguros" | null }): Promise<PostBlogGenerado> }` — `vertical` opcional, ver Task 4 (revisión conjunta)
   - `getPostProvider(modo?: ModoPostBlog): PostProvider`
 - Las Tasks 8 y 9 consumen `PostProvider`/`getPostProvider`.
 
@@ -1126,6 +1126,13 @@ export interface PostProvider {
     contentBrief: Record<string, unknown>;
     keywordPrincipal: string;
     perfilCliente: Record<string, unknown> | null;
+    // Opcional y a propósito (revisión conjunta de los tres sub-proyectos, 2026-08-26): el
+    // sub-proyecto 1 (multi-vertical) agrega `clients.vertical`, pero este sub-proyecto NO depende de
+    // que ese esté implementado primero — el orden fijado solo obliga a "sub-proyecto 2 antes que
+    // este", no a "sub-proyecto 1 antes que este". Si `vertical` está disponible (cliente.vertical,
+    // una vez que el sub-proyecto 1 exista), el prompt lo usa; si no, genera con lenguaje neutro. Ver
+    // OpenAIPostProvider más abajo.
+    vertical?: "restauracion" | "correduria_seguros" | null;
   }): Promise<PostBlogGenerado>;
 }
 
@@ -1188,12 +1195,31 @@ import type { PostBlogGenerado, PostProvider } from "./provider.js";
 // nombre del archivo, ver su propio docblock.
 import { costoEstimadoUsd, leerModeloBorrador } from "../borrador/openai-provider.js";
 
-const PROMPT_SISTEMA =
-  "Sos un redactor SEO para un negocio gastronómico. Te doy una keyword principal, un brief de " +
-  "contenido (JSON) y el perfil del negocio. Escribís un post de blog en español, HTML simple " +
-  "(<p>, <h2>, <h3>, <ul>, <li>, <strong>, <em>, <a href>), 400-600 palabras, que desarrolle el " +
-  "brief para esa keyword. Devolvé SOLO un objeto JSON con dos claves: \"titulo\" (string, sin " +
-  "HTML) y \"cuerpo\" (string, HTML). Nada de texto fuera del JSON.";
+// Base genérica — sin mención de rubro. Corregido en la revisión conjunta de los tres sub-proyectos
+// (2026-08-26): la versión anterior decía "negocio gastronómico" a secas, lenguaje incorrecto para
+// un cliente de correduría de seguros (sub-proyecto 1). Ninguno de los tres sub-proyectos se
+// implementó todavía, así que se corrige acá en vez de arrastrar la deuda.
+const PROMPT_SISTEMA_BASE =
+  "Sos un redactor SEO para un negocio local. Te doy una keyword principal, un brief de contenido " +
+  "(JSON) y el perfil del negocio. Escribís un post de blog en español, HTML simple (<p>, <h2>, " +
+  "<h3>, <ul>, <li>, <strong>, <em>, <a href>), 400-600 palabras, que desarrolle el brief para esa " +
+  "keyword. Devolvé SOLO un objeto JSON con dos claves: \"titulo\" (string, sin HTML) y \"cuerpo\" " +
+  "(string, HTML). Nada de texto fuera del JSON.";
+
+// Una línea de más contexto por vertical, agregada solo cuando `vertical` viaja en `args` (sub-proyecto
+// 1 implementado). Sin `vertical`, el prompt queda en la base genérica de arriba — no asume rubro.
+const CONTEXTO_POR_VERTICAL: Record<"restauracion" | "correduria_seguros", string> = {
+  restauracion: " El negocio es gastronómico (restaurante, bar, cafetería): mencioná platos, " +
+    "ingredientes o la experiencia gastronómica cuando el brief lo permita.",
+  correduria_seguros: " El negocio es una correduría de seguros: mencioná coberturas, pólizas o " +
+    "asesoramiento cuando el brief lo permita — nunca prometas cobertura o condiciones específicas " +
+    "que el negocio no haya confirmado.",
+};
+
+// Exportada (no interna) para poder testearla sin pegarle a OpenAI — es una función pura.
+export function armarPromptSistema(vertical: "restauracion" | "correduria_seguros" | null | undefined): string {
+  return vertical ? PROMPT_SISTEMA_BASE + CONTEXTO_POR_VERTICAL[vertical] : PROMPT_SISTEMA_BASE;
+}
 
 /**
  * Genera el post llamando a OpenAI de verdad. El cuerpo sale de acá SIN sanitizar — la garantía real
@@ -1217,6 +1243,7 @@ export class OpenAIPostProvider implements PostProvider {
     contentBrief: Record<string, unknown>;
     keywordPrincipal: string;
     perfilCliente: Record<string, unknown> | null;
+    vertical?: "restauracion" | "correduria_seguros" | null;
   }): Promise<PostBlogGenerado> {
     const contexto = JSON.stringify({
       keyword_principal: args.keywordPrincipal,
@@ -1229,7 +1256,7 @@ export class OpenAIPostProvider implements PostProvider {
       max_tokens: 1500,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: PROMPT_SISTEMA },
+        { role: "system", content: armarPromptSistema(args.vertical) },
         { role: "user", content: contexto },
       ],
     });
@@ -1260,6 +1287,33 @@ export class OpenAIPostProvider implements PostProvider {
   }
 }
 ```
+
+- [ ] **Step 7.1: Test de `armarPromptSistema`** (pura, sin pegarle a OpenAI — a diferencia del resto
+  del provider, esto sí se puede probar en el harness normal)
+
+```ts
+// orchestrator/src/post-blog/openai-provider.test.ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { armarPromptSistema } from "./openai-provider.js";
+
+test("armarPromptSistema: sin vertical, queda en la base genérica (sin mencionar rubro)", () => {
+  const prompt = armarPromptSistema(undefined);
+  assert.ok(!prompt.includes("gastronómico"));
+  assert.ok(!prompt.includes("correduría"));
+});
+
+test("armarPromptSistema: con vertical 'restauracion', agrega el contexto gastronómico", () => {
+  assert.ok(armarPromptSistema("restauracion").includes("gastronómico"));
+});
+
+test("armarPromptSistema: con vertical 'correduria_seguros', agrega el contexto de seguros", () => {
+  assert.ok(armarPromptSistema("correduria_seguros").includes("correduría"));
+});
+```
+
+Run: `npm test -w orchestrator -- --test-name-pattern="armarPromptSistema"`
+Expected: PASS.
 
 - [ ] **Step 8: `npm run typecheck -w orchestrator`**
 
@@ -1813,6 +1867,12 @@ if (decision.destino === "crear_posts") {
         contentBrief: pagina.content_brief,
         keywordPrincipal: pagina.keyword_principal,
         perfilCliente: cliente?.business_profile ?? null,
+        // Opcional (revisión conjunta, ver Task 4 de este plan): si el sub-proyecto 1 (multi-vertical)
+        // ya está implementado, `cliente` trae `.vertical` y el prompt lo usa; si no, `undefined` cae
+        // a la base genérica sin mencionar rubro. `as` porque `ClientRow` puede o no tener el campo
+        // según qué sub-proyectos estén implementados — confirmá contra el `ClientRow` real antes de
+        // ejecutar esta task, y quitá el cast si ya está tipado.
+        vertical: (cliente as { vertical?: "restauracion" | "correduria_seguros" } | null)?.vertical,
       });
       // Codex, ronda 1 sobre el plan, hallazgo Major: la primera versión descartaba el booleano de
       // guardarPost e incrementaba `generados` incondicionalmente — un UPDATE que no afecta ninguna
@@ -2502,3 +2562,17 @@ refutado, ninguno aplicado a ciegas. Reporte completo:
 
 Ninguno de los 10 hallazgos contradice las 6 decisiones de producto ya fijadas — todos son de
 ejecutabilidad/mecanismo del plan.
+
+### Nota de la revisión conjunta de los tres sub-proyectos (2026-08-26)
+
+Dos cambios, encontrados al revisar este plan junto con los otros dos de la iniciativa:
+
+- **Orden de implementación fijado**: sub-proyecto 2 primero (ya lo exigía la Task 8 de este plan);
+  el sub-proyecto 1 (multi-vertical) y este pueden ir en cualquier orden entre sí — no dependen uno
+  del otro.
+- **`PostProvider.generar` gana un `vertical` OPCIONAL** (Task 4): el prompt de `OpenAIPostProvider`
+  decía "negocio gastronómico" sin condición — lenguaje incorrecto para un cliente de correduría de
+  seguros que el sub-proyecto 1 puede agregar. Se corrigió a una base genérica + un contexto por
+  vertical que solo se agrega si `vertical` viaja (y viaja solo si el sub-proyecto 1 ya está
+  implementado) — deliberadamente OPCIONAL, no una precondición dura, para no atar este plan al orden
+  de implementación del sub-proyecto 1.

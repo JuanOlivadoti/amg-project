@@ -64,8 +64,15 @@ decisión de implementación, ver "Global Constraints").
 
 ## Task 1: Migración `clients.vertical`
 
+> ⚠️ **Número de migración a verificar en ejecución, no asumir `0027`.** Agregado durante la revisión
+> conjunta de los tres sub-proyectos de esta iniciativa (2026-08-26): el orden de implementación fijado
+> es **sub-proyecto 2 primero** (introduce `0027_kr_run_decisiones.sql`), después este sub-proyecto y el
+> 3 (en cualquier orden). Si ese orden se respetó, esta Task es en realidad `0028` y la siguiente
+> (`nap_publico`) `0029` — correr `ls db/migrations | tail -3` antes de crear el archivo y ajustar TODAS
+> las referencias a `0027`/`0028` de este plan al número real.
+
 **Files:**
-- Create: `db/migrations/0027_clientes_vertical.sql`
+- Create: `db/migrations/0027_clientes_vertical.sql` (número tentativo — ver la nota de arriba)
 - Test: `db/src/clientes.test.ts` (agregar casos, el archivo ya existe)
 - Modify: **todos** los sitios que hacen `insert into clients` o llaman `crearCliente(` sin `vertical` —
   la columna `not null` sin default los rompe a todos, no solo a uno. `rg -n "insert\s+into\s+clients|
@@ -239,7 +246,8 @@ git commit -m "feat(db): agrega clients.vertical (restauracion | correduria_segu
 ## Task 2: `app.nap_publico` gana un segundo parámetro y una extensión de seguros
 
 **Files:**
-- Create: `db/migrations/0028_nap_publico_vertical.sql`
+- Create: `db/migrations/0028_nap_publico_vertical.sql` (número tentativo — el siguiente libre después
+  de la Task 1; ver la nota de esa Task sobre el orden de implementación de los tres sub-proyectos)
 - Test: `db/src/nap-publico.test.ts` (nuevo — el test específico por vertical que pidió la revisión de
   Codex; si ya existe un test de la allowlist en otro archivo, agregar ahí en vez de duplicar)
 
@@ -1547,27 +1555,47 @@ git commit -m "feat(web-builder): cartaCategorias varia su copy por vertical (me
 
 ## Task 9: Propagar `vertical` en los call sites de producción
 
+> ⚠️ **Depende del sub-proyecto 2 ya implementado.** Reescrita entera durante la revisión conjunta de
+> los tres sub-proyectos (2026-08-26): la versión anterior apuntaba a
+> `orchestrator/src/workflow.ts:342-346`, la construcción de `deps.publicar(...)` dentro de
+> `workflowResearch` — **código que el plan del sub-proyecto 2 retira por completo** (el mecanismo de
+> aprobación-y-publicación-inline se reemplaza por `workflowDecision`, disparada por un evento
+> separado). Ese mismo `deps.publicar(briefValidado, { clientId, storyblokSpaceId, perfil })` sigue
+> existiendo, pero se mudó — casi textual, SIN `vertical` — a la rama `decision.destino === "crear_web"`
+> de `workflowDecision`
+> (`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md:1118-1123` en el plan de ese sub-proyecto).
+> Esta task ahora edita esa rama, buscándola por CONTENIDO — no por número de línea, porque el archivo
+> real después de implementar el sub-proyecto 2 no tiene el mismo aspecto que tiene hoy.
+>
+> Antes de empezar, confirmá la precondición:
+> ```bash
+> grep -n "export async function workflowDecision" orchestrator/src/workflow.ts
+> grep -n 'decision.destino === "crear_web"' orchestrator/src/workflow.ts
+> ```
+> Si ninguna de las dos aparece, PARÁ ACÁ — el sub-proyecto 2 todavía no está implementado.
+
 **Files:**
 - Modify: `renderer/src/app.ts:305-438` (el resolver — slug dinámico, `renderHome`/`renderCatalogo`/
   `renderBlogIndex` con `vertical`)
-- Modify: `orchestrator/src/workflow.ts:128-132` (`DestinoPublicacion` gana `vertical`), `:342-346` (su
-  construcción)
+- Modify: `orchestrator/src/workflow.ts` — la interfaz `DestinoPublicacion` (buscarla por nombre, no por
+  línea: puede haberse corrido unas pocas líneas por los cambios del sub-proyecto 2, pero el sub-proyecto
+  2 no la toca, así que sigue existiendo con su forma actual) gana `vertical`; y la rama
+  `decision.destino === "crear_web"` de `workflowDecision` (introducida por el sub-proyecto 2 — NO
+  existe en el archivo hasta que ese sub-proyecto se implementa), donde ahora vive la construcción del
+  objeto que recibe `deps.publicar`.
 - Modify: `orchestrator/src/deps.ts:183-191` (`renderStory` con `destino.vertical`, ahora que existe)
 - Modify: `web-builder/src/cli/build.ts:90-100` (`renderStory` con `vertical` — el CLI necesita pedirlo
   por flag, validado contra el enum)
-- Test: `renderer/src/app.test.ts`, `orchestrator/src/workflow.test.ts`, y los tests existentes de
+- Test: `renderer/src/app.test.ts`, `orchestrator/src/workflow.test.ts` (la rama `crear_web` de
+  `workflowDecision`, con el setup que el sub-proyecto 2 ya haya dejado ahí — mismo criterio que usa la
+  Task 8 del plan del sub-proyecto 3 para su propia rama `crear_posts`), y los tests existentes de
   `web-builder/cli` que cubran estos call sites
 
 **Interfaces:**
 - Consume: `Sitio.vertical` (Task 5), `ClientRow.vertical` (Task 4), `renderStory`/`renderHome`/
-  `renderCatalogo`/`renderBlogIndex` con `vertical` (Task 7).
+  `renderCatalogo`/`renderBlogIndex` con `vertical` (Task 7), `workflowDecision` y su rama `crear_web`
+  (sub-proyecto 2, ya implementado — ver la precondición arriba).
 - Produce: `DestinoPublicacion.vertical: "restauracion" | "correduria_seguros"`.
-
-**Corrección tras la revisión:** la versión anterior de esta task asumía que `destino` en
-`orchestrator/src/deps.ts` ERA `ClientRow` (Task 4), y que por lo tanto `destino.vertical` ya existía.
-Es falso: `destino` es `DestinoPublicacion`, un tipo intermedio propio de `workflow.ts` con solo
-`clientId`/`storyblokSpaceId`/`perfil` — nunca tuvo `vertical`, y agregarlo a `ClientRow` (Task 4) no
-lo propaga solo. Esta task ahora incluye el archivo que faltaba.
 
 - [ ] **Step 1: `renderer/src/app.ts` — el resolver usa `sitio.vertical`**
 
@@ -1596,10 +1624,11 @@ Actualizar el import de `renderMenu` → `renderCatalogo`, y sumar `catalogoSlug
 de tipo story) y sumarle `sitio!.vertical`.
 
 - [ ] **Step 2: `orchestrator/src/workflow.ts` — `DestinoPublicacion` gana `vertical`, y su construcción
-  la propaga desde el cliente**
+  (ahora dentro de `workflowDecision`, sub-proyecto 2) la propaga desde el cliente**
 
 ```ts
-// orchestrator/src/workflow.ts:128-132
+// orchestrator/src/workflow.ts — buscar `export interface DestinoPublicacion` (el sub-proyecto 2 no
+// la toca, sigue teniendo esta forma con las tres propiedades de abajo; agregarle `vertical`):
 export interface DestinoPublicacion {
   clientId: string;
   vertical: "restauracion" | "correduria_seguros";
@@ -1609,9 +1638,10 @@ export interface DestinoPublicacion {
 ```
 
 ```ts
-// orchestrator/src/workflow.ts:342-346 — la construcción, dentro de la función que llama a
-// deps.publicar. `cliente` en este punto es el ClientRow que devolvió getClient (Task 4), que ya
-// tiene `vertical` desde ahí.
+// orchestrator/src/workflow.ts — buscar `if (decision.destino === "crear_web")` dentro de
+// `workflowDecision` (la introduce el sub-proyecto 2 — no existe hasta que ese plan se ejecuta). La
+// construcción del objeto que recibe `deps.publicar` queda así (ver el plan del sub-proyecto 2,
+// Task de workflowDecision, líneas ~1118-1123, para el resto de la rama sin tocar):
 const resultados = await deps.publicar(briefValidado, {
   clientId: cliente.id,
   vertical: cliente.vertical,
@@ -1620,11 +1650,18 @@ const resultados = await deps.publicar(briefValidado, {
 });
 ```
 
+`cliente` en ese punto es el `ClientRow` que devolvió `deps.store.getClient(ctx, decision.client_id)`
+— ya tiene `vertical` desde la Task 4 de este mismo plan, así que agregarlo a la llamada es el único
+cambio; nada más de la rama `crear_web` se toca.
+
 Test — rojo primero:
 
 ```ts
-// orchestrator/src/workflow.test.ts, junto al test existente que arma DestinoPublicacion
-test("el destino de publicación incluye la vertical del cliente", async () => {
+// orchestrator/src/workflow.test.ts — junto a los tests existentes de la rama crear_web de
+// workflowDecision (sub-proyecto 2 ya los dejó ahí, con su propio patrón de setup —
+// crearRunConPaginaAprobada + store.registrarDecision + workflowDecision(new MotorPasos(), {...},
+// deps) — seguilo, no inventes un helper nuevo)
+test("workflowDecision: crear_web propaga la vertical del cliente a deps.publicar", async () => {
   // seguir el setup existente del archivo, con un cliente de vertical: 'correduria_seguros'
   // verificar que deps.publicar recibe { ..., vertical: 'correduria_seguros' } — con un spy/mock de
   // deps.publicar, mismo patrón que ya use el resto de este archivo para espiar la llamada.
@@ -1635,8 +1672,12 @@ Run: `npm test -w orchestrator`
 
 - [ ] **Step 3: `orchestrator/src/deps.ts` — `renderStory` con `destino.vertical`, que ahora sí existe**
 
+`deps.ts` (a diferencia de `workflow.ts`) no lo toca el sub-proyecto 2 — la función `publicar:` que
+arma `crearDeps()` sigue en el mismo lugar, solo cambia QUIÉN la llama. Las líneas de referencia
+(~183-191) siguen siendo válidas, pero confirmá contra el archivo real antes de editar, no asumas.
+
 ```ts
-// orchestrator/src/deps.ts:183-191
+// orchestrator/src/deps.ts — dentro de la función publicar: que arma crearDeps()
 const perfil = perfilDelCliente(destino.perfil);
 
 await applyProse(stories, brief, perfil);
@@ -2538,3 +2579,22 @@ git add docs/proyecto/09-estado-y-roadmap.md docs/proyecto/15-plan-plataforma.md
 git commit -m "Doc: cierra multi-vertical de clientes (restauracion + correduria de seguros)"
 git push
 ```
+
+---
+
+## Nota de la revisión conjunta (2026-08-26)
+
+Al revisar los tres sub-proyectos de la iniciativa juntos (después de que cada uno pasara su propia
+ronda de Codex por separado), se encontró que la Task 9 de este plan editaba código
+(`orchestrator/src/workflow.ts:342-346`, dentro de `workflowResearch`) que el plan del sub-proyecto 2
+(`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`) retira por completo, trasladando el mismo
+`deps.publicar(...)` a la rama `crear_web` de una función nueva (`workflowDecision`). Ninguna de las
+dos revisiones individuales lo había detectado — cada plan se revisó contra el código de HOY, y ese
+conflicto solo existe entre los dos planes, no en el repo real.
+
+**Resuelto:** la Task 9 se reescribió para apuntar a la ubicación nueva (buscada por contenido, no por
+línea) y se fijó el orden de implementación de los tres sub-proyectos: **sub-proyecto 2 primero**, este
+y el 3 después (no dependen entre sí). También se corrigió la numeración de migración de las Tasks 1 y
+2 (`0027`/`0028` eran tentativos, chocaban con los que asumían los otros dos planes) a "verificar antes
+de crear el archivo". Ver `progress/current.md`, sección de la iniciativa, para el detalle completo de
+la decisión de orden.
