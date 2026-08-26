@@ -46,6 +46,14 @@ el proyecto).
   criterio que el resto del proyecto.
 - Todo corre sin credenciales: PGlite en memoria + providers mock. Si una task necesita OpenAI real
   para probarse manualmente, se prueba con el mock primero.
+- **Estado de fallo durable, agregado tras la ronda de Codex sobre este plan** (hallazgo Major
+  "publicación fallida bloquea el post para siempre"): `kr_pages.post_error_en` (Task 1) + la función
+  `marcar_post_fallido` (Task 1/3), llamada desde TODOS los caminos de fallo de `publicarPost` (Task
+  7) — sin esto, un intento que falla deja `post_solicitado_en` atascado, indistinguible de "en
+  curso", y bloquea edición y reintento para siempre.
+- **Configurar el blog externo del cliente no tenía ningún camino API** en la primera versión de este
+  plan (Codex, ronda 1, hallazgo Major) — Task 10, Step 0, extiende `PATCH /clients/:id` para
+  `blog_externo_tipo`/`url`/`credencial`. Sin ese Step, Task 12 (verificación) no se puede completar.
 
 ---
 
@@ -59,10 +67,11 @@ el proyecto).
 
 **Interfaces:**
 - Produce: columnas `kr_pages.post_titulo/post_cuerpo/post_generado_en/post_solicitado_en/
-  post_publicado_en/post_url_externa`; columnas `clients.blog_externo_tipo/blog_externo_url/
-  blog_externo_credencial`; rol `app_posts`; funciones `app.post_para_publicar(uuid)` y
-  `app.marcar_post_publicado(uuid, text)`, con `execute` concedido a `app_service`.
-- Las Tasks 2 y 3 consumen las columnas. La Task 3 consume las dos funciones.
+  post_publicado_en/post_url_externa/post_error_en`; columnas `clients.blog_externo_tipo/
+  blog_externo_url/blog_externo_credencial`; rol `app_posts`; funciones
+  `app.post_para_publicar(uuid)`, `app.marcar_post_publicado(uuid, text)` y
+  `app.marcar_post_fallido(uuid)`, con `execute` concedido a `app_service` en las tres.
+- Las Tasks 2 y 3 consumen las columnas. La Task 3 consume las tres funciones.
 
 - [ ] **Step 1: Escribir el archivo de migración**
 
@@ -76,7 +85,8 @@ el proyecto).
 -- no necesita un rol cross-tenant: corre dentro de workflowDecision, que ya tiene contexto de
 -- tenant (el polling de reseñas es cross-tenant desde el arranque, esto no). Solo la PUBLICACIÓN
 -- es cross-tenant (el evento solo trae pageId, ADR-18) -- por eso el rol confinado nuevo (app_posts)
--- y las dos funciones security definer están acá, no un tercer par para "generar" o "editar".
+-- y las tres funciones security definer (leer, confirmar, marcar fallo) están acá, no un cuarto par
+-- para "generar" o "editar".
 --
 -- Spec: docs/superpowers/specs/2026-08-26-publicar-posts-blog-externo-design.md
 -- =============================================================================
@@ -92,7 +102,8 @@ alter table kr_pages
   add column if not exists post_generado_en     timestamptz,
   add column if not exists post_solicitado_en   timestamptz,
   add column if not exists post_publicado_en    timestamptz,
-  add column if not exists post_url_externa     text;
+  add column if not exists post_url_externa     text,
+  add column if not exists post_error_en        timestamptz;
 
 comment on column kr_pages.post_titulo is
   'Título del post generado por IA para el blog externo del cliente. NULL = sin generar.';
@@ -102,14 +113,21 @@ comment on column kr_pages.post_cuerpo is
 comment on column kr_pages.post_generado_en is
   'Cuando la IA generó el post. NULL = todavía no, o falló la generación para esta página.';
 comment on column kr_pages.post_solicitado_en is
-  'Cuando se pidió publicar. Un segundo pedido sobre una fila ya solicitada pero no publicada '
-  'REINTENTA (pisa este timestamp de nuevo) -- mismo criterio que respuesta_solicitada_en en '
-  'resenas_google (0025).';
+  'Cuando HAY UN INTENTO DE PUBLICACIÓN EN CURSO sin confirmar todavía. Un pedido nuevo la pisa '
+  '(reintento, mismo criterio que respuesta_solicitada_en en resenas_google/0025); un intento que '
+  'FALLA la vuelve a NULL (marcar_post_fallido, 0028) -- por eso "solicitada" siempre significa "en '
+  'curso ahora mismo", nunca "se intentó alguna vez y no se sabe cómo terminó". Ver post_error_en.';
 comment on column kr_pages.post_publicado_en is
   'Cuando el BlogPublisher CONFIRMÓ la publicación externa. NULL = no publicado (nunca pedido, en '
   'curso, o el último intento falló).';
 comment on column kr_pages.post_url_externa is
   'La URL del post publicado, tal como la devolvió el BlogPublisher. NULL hasta la confirmación.';
+comment on column kr_pages.post_error_en is
+  'Cuando el ÚLTIMO intento de publicación falló (excepción del publisher, `publicado: false`, o '
+  'credenciales del blog incompletas). Se limpia al pedir de nuevo (solicitarPublicacionPost) o al '
+  'confirmarse la publicación. Codex, ronda 1 sobre el plan, hallazgo Major: sin esta columna, un '
+  'intento fallido dejaba post_solicitado_en atascado para siempre -- indistinguible de "publicando '
+  'ahora mismo" y sin forma de reintentar ni editar.';
 
 -- -----------------------------------------------------------------------------
 -- Las credenciales del blog externo: columnas nuevas en `clients`.
@@ -159,11 +177,11 @@ grant usage on schema public, app to app_posts;
 grant select (id, tenant_id, client_id, url_slug, post_titulo, post_cuerpo, post_solicitado_en,
   post_publicado_en) on kr_pages to app_posts;
 grant select (id, blog_externo_tipo, blog_externo_url, blog_externo_credencial) on clients to app_posts;
-grant update (post_publicado_en, post_url_externa) on kr_pages to app_posts;
+grant update (post_publicado_en, post_url_externa, post_solicitado_en, post_error_en) on kr_pages to app_posts;
 
 -- RLS sigue en pie: un grant de columna es necesario pero no suficiente (mismo comentario que deja
 -- la 0022 sobre esto). `using (true)` es seguro por el mismo motivo que ahí: app_posts no tiene
--- login, nada puede asumirlo, y es inalcanzable salvo llamando a las dos funciones de abajo -- cuyo
+-- login, nada puede asumirlo, y es inalcanzable salvo llamando a las tres funciones de abajo -- cuyo
 -- cuerpo entero queda fijo en esta misma migración.
 create policy kr_pages_ve_app_posts on kr_pages
   for select to app_posts
@@ -206,14 +224,24 @@ as $$
     and p.post_solicitado_en is not null
     and p.post_publicado_en is null
     and p.post_titulo is not null
-    and p.post_cuerpo is not null;
+    and p.post_cuerpo is not null
+    -- Codex, ronda 1 sobre el plan, hallazgo Major: sin este filtro, un cliente sin blog configurado
+    -- (columnas nullable, ver arriba) hacía que el orquestador recibiera tipo/url/credencial en
+    -- null y reventara adentro de BlogPublisher.publicar (ej. `null.replace(...)`). Acá se decide
+    -- que credenciales incompletas es EXACTAMENTE el mismo caso que "la solicitud ya no aplica":
+    -- cero filas, publicarPost lo trata como tal (y limpia post_solicitado_en vía
+    -- marcar_post_fallido -- ver Task 7).
+    and c.blog_externo_tipo is not null
+    and c.blog_externo_url is not null
+    and c.blog_externo_credencial is not null;
 $$;
 
 comment on function app.post_para_publicar(uuid) is
   'Lo que el orquestador necesita para publicar UNA página, incluida la credencial del blog. Cero '
-  'filas = la solicitud ya no aplica (publicada, sin post, o inexistente) -- el evento que dispara '
-  'esto no porta autoridad (ADR-18), esta consulta es la que decide. security definer, propiedad de '
-  'app_posts -- app_service solo puede EJECUTARLA, nunca leer blog_externo_credencial por SQL directo.';
+  'filas = la solicitud ya no aplica (publicada, sin post, credenciales incompletas, o inexistente) '
+  '-- el evento que dispara esto no porta autoridad (ADR-18), esta consulta es la que decide. '
+  'security definer, propiedad de app_posts -- app_service solo puede EJECUTARLA, nunca leer '
+  'blog_externo_credencial por SQL directo.';
 
 -- -----------------------------------------------------------------------------
 -- Función 2: confirmar que se publicó. Solo lo que el BlogPublisher CONFIRMA se marca.
@@ -229,7 +257,7 @@ declare
   v_id uuid;
 begin
   update kr_pages
-    set post_publicado_en = now(), post_url_externa = p_url_externa
+    set post_publicado_en = now(), post_url_externa = p_url_externa, post_error_en = null
     where id = p_page_id
       and post_solicitado_en is not null
       and post_publicado_en is null
@@ -243,6 +271,40 @@ comment on function app.marcar_post_publicado(uuid, text) is
   'quien llama. security definer, propiedad de app_posts.';
 
 -- -----------------------------------------------------------------------------
+-- Función 3: cerrar un intento FALLIDO (Codex, ronda 1 sobre el plan, hallazgo Major). Deja la fila
+-- lista para reintentar (post_solicitado_en vuelve a NULL, así que editarPost/solicitarPublicacionPost
+-- dejan de estar bloqueados) y con un rastro de que el último intento no salió (post_error_en).
+-- Idempotente por el mismo WHERE que las otras dos: llamarla sobre una fila que ya no está "en
+-- curso" (porque otra corrida ya la publicó, o ya se limpió) no hace nada -- false, sin lanzar.
+-- -----------------------------------------------------------------------------
+create or replace function app.marcar_post_fallido(p_page_id uuid)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_id uuid;
+begin
+  update kr_pages
+    set post_solicitado_en = null, post_error_en = now()
+    where id = p_page_id
+      and post_solicitado_en is not null
+      and post_publicado_en is null
+    returning id into v_id;
+  return v_id is not null;
+end;
+$$;
+
+comment on function app.marcar_post_fallido(uuid) is
+  'Cierra un intento de publicación que falló (excepción, publicado:false, o credenciales '
+  'incompletas -- ver post_para_publicar). Limpia post_solicitado_en (desbloquea edición y permite '
+  'reintentar) y marca post_error_en (rastro para el portal). security definer, propiedad de '
+  'app_posts. Llamado por publicarPost (Task 7) en TODOS los caminos de fallo, incluido el best-effort '
+  'cuando post_para_publicar devuelve cero filas -- ver el comentario de esa función más arriba.';
+
+-- -----------------------------------------------------------------------------
 -- El cambio de dueño, mismo patrón que 0022/0024/0025: dos permisos temporales, revocados al final.
 -- -----------------------------------------------------------------------------
 grant app_posts to current_user;
@@ -250,11 +312,14 @@ grant create on schema app to app_posts;
 
 alter function app.post_para_publicar(uuid) owner to app_posts;
 alter function app.marcar_post_publicado(uuid, text) owner to app_posts;
+alter function app.marcar_post_fallido(uuid) owner to app_posts;
 
 revoke execute on function app.post_para_publicar(uuid) from public;
 revoke execute on function app.marcar_post_publicado(uuid, text) from public;
+revoke execute on function app.marcar_post_fallido(uuid) from public;
 grant execute on function app.post_para_publicar(uuid) to app_service;
 grant execute on function app.marcar_post_publicado(uuid, text) to app_service;
+grant execute on function app.marcar_post_fallido(uuid) to app_service;
 
 revoke create on schema app from app_posts;
 revoke app_posts from current_user;
@@ -298,6 +363,41 @@ test("app.post_para_publicar devuelve cero filas si ya está publicado", async (
   const pageId = await sembrarPaginaConPostPublicado(clientA1, tenantA); // helper
   const rows = await db.asService("select * from app.post_para_publicar($1)", [pageId]);
   assert.equal(rows.length, 0);
+});
+
+test("🔴 app.post_para_publicar devuelve cero filas si al cliente le falta blog_externo_credencial", async () => {
+  const pageId = await sembrarPaginaConPostSolicitado(clientA1, tenantA); // mismo helper de arriba
+  await db.asService("update clients set blog_externo_credencial = null where id = $1", [clientA1]);
+  const rows = await db.asService("select * from app.post_para_publicar($1)", [pageId]);
+  assert.equal(rows.length, 0, "🔴 credenciales incompletas es 'ya no aplica', no un crash más adelante");
+});
+
+test("app.marcar_post_fallido limpia post_solicitado_en y marca post_error_en", async () => {
+  const pageId = await sembrarPaginaConPostSolicitado(clientA1, tenantA);
+  const [resultado] = await db.asService<{ marcar_post_fallido: boolean }>(
+    "select app.marcar_post_fallido($1) as marcar_post_fallido", [pageId],
+  );
+  assert.equal(resultado?.marcar_post_fallido, true);
+  const [row] = await db.asService<{ post_solicitado_en: string | null; post_error_en: string | null }>(
+    "select post_solicitado_en, post_error_en from kr_pages where id = $1", [pageId],
+  );
+  assert.equal(row!.post_solicitado_en, null, "queda libre para reintentar/editar");
+  assert.ok(row!.post_error_en, "queda el rastro del fallo");
+});
+
+test("🔴 app.marcar_post_fallido sobre una fila ya publicada no toca nada (idempotente)", async () => {
+  const pageId = await sembrarPaginaConPostPublicado(clientA1, tenantA);
+  const [antes] = await db.asService<{ post_publicado_en: string }>(
+    "select post_publicado_en from kr_pages where id = $1", [pageId],
+  );
+  const [resultado] = await db.asService<{ marcar_post_fallido: boolean }>(
+    "select app.marcar_post_fallido($1) as marcar_post_fallido", [pageId],
+  );
+  assert.equal(resultado?.marcar_post_fallido, false, "🔴 el WHERE rechaza post_publicado_en not null");
+  const [despues] = await db.asService<{ post_publicado_en: string }>(
+    "select post_publicado_en from kr_pages where id = $1", [pageId],
+  );
+  assert.equal(despues!.post_publicado_en, antes!.post_publicado_en, "no se tocó nada");
 });
 ```
 
@@ -386,6 +486,22 @@ test("🔴 descarta un tag fuera de la allowlist (ej. <img>) pero conserva el te
   assert.ok(salida.includes("antes"));
   assert.ok(salida.includes("después"));
 });
+
+// Codex, ronda 1 sobre el plan, hallazgo Minor: `allowedSchemes` solo filtra esquemas EXPLÍCITOS
+// (http:, https:, javascript:) — por defecto, `sanitize-html` conserva enlaces relativos
+// (`href="/ruta"`) porque no tienen esquema que filtrar. Un link relativo dentro del post ("leé
+// también /otro-post-del-mismo-blog") es contenido legítimo, así que se decide permitirlo
+// explícitamente. Lo que SÍ hay que cerrar aparte son los protocol-relative (`href="//evil.com"`,
+// que el navegador resuelve con el protocolo de la página actual): `allowProtocolRelative: false`.
+test("permite un href relativo (sin esquema)", () => {
+  const entrada = '<p>Mirá <a href="/otro-post">este</a>.</p>';
+  assert.equal(sanitizarHtml(entrada), entrada);
+});
+
+test("🔴 descarta un href protocol-relative (//host)", () => {
+  const salida = sanitizarHtml('<a href="//evil.com/x">click</a>');
+  assert.ok(!salida.includes("//evil.com"), "protocol-relative no es lo mismo que 'enlaces http(s)'");
+});
 ```
 
 Run: `npm test -w db -- --test-name-pattern="sanitizarHtml"`
@@ -405,7 +521,11 @@ import sanitizeHtml from "sanitize-html";
 const OPCIONES: sanitizeHtml.IOptions = {
   allowedTags: ["p", "br", "strong", "em", "b", "i", "u", "h2", "h3", "h4", "ul", "ol", "li", "blockquote", "a"],
   allowedAttributes: { a: ["href"] },
+  // Enlaces http(s) y relativos (sin esquema) permitidos; protocol-relative (`//host`) rechazados
+  // explícitamente -- `allowedSchemes` por sí solo NO cubre eso (Codex, ronda 1 sobre el plan,
+  // hallazgo Minor: "enlaces http(s)" era más estricto que lo que esta config imponía de verdad).
   allowedSchemes: ["http", "https"],
+  allowProtocolRelative: false,
 };
 
 /**
@@ -421,7 +541,7 @@ export function sanitizarHtml(html: string): string {
 - [ ] **Step 4: Correr y confirmar**
 
 Run: `npm test -w db -- --test-name-pattern="sanitizarHtml"`
-Expected: PASS, los seis tests.
+Expected: PASS, los ocho tests.
 
 - [ ] **Step 5: Exportar desde `db/src/index.ts`** (por si algún consumidor externo al paquete
   necesita sanitizar HTML con el mismo criterio más adelante — hoy solo lo usa `store.ts`, adentro
@@ -452,13 +572,19 @@ git commit -m "db: sanitizarHtml — allowlist para el cuerpo de un post antes d
 - Produce:
   - `interface PostBlog { titulo: string; cuerpo: string }`
   - `interface PostParaPublicar { pageId: string; clientId: string; tenantId: string; titulo: string; cuerpo: string; slug: string; blogTipo: string; blogUrl: string; blogCredencial: string }`
+  - `interface PostDePagina { titulo: string | null; cuerpo: string | null; generadoEn: string | null; solicitadoEn: string | null; publicadoEn: string | null; urlExterna: string | null; errorEn: string | null }`
   - `guardarPost(ctx: TenantContext, pageId: string, post: PostBlog): Promise<boolean>`
   - `editarPost(ctx: TenantContext, pageId: string, cambios: { postTitulo?: string; postCuerpo?: string }): Promise<boolean>`
-  - `solicitarPublicacionPost(ctx: TenantContext, pageId: string): Promise<boolean>`
+  - `solicitarPublicacionPost(ctx: TenantContext, pageId: string): Promise<boolean>` — también exige que el cliente tenga `blog_externo_tipo`/`blog_externo_url` configurados (las dos columnas que `app_user` puede leer, Task 1) y limpia `post_error_en` al reintentar.
   - `postParaPublicar(pageId: string): Promise<PostParaPublicar | null>`
   - `marcarPostPublicado(pageId: string, urlExterna: string): Promise<boolean>`
+  - `marcarPostFallido(pageId: string): Promise<boolean>` — nuevo (Codex, ronda 1 sobre el plan,
+    hallazgo Major "publicación fallida bloquea el post para siempre").
+  - `getPost(ctx: TenantContext, pageId: string): Promise<PostDePagina | null>` — `null` si la página
+    no existe O si nunca se generó un post (antes vivía suelto en la Task 10, se mueve acá: es un
+    método de `db/`, no de `api/`).
 
-  Las Tasks 7, 8 y 10 consumen estos cinco métodos.
+  Las Tasks 7, 8 y 10 consumen estos siete métodos.
 
 - [ ] **Step 1: Escribir los tests que fallan**
 
@@ -518,18 +644,34 @@ test("🔴 solicitarPublicacionPost rechaza una página NO aprobada", async () =
   assert.equal(ok, false, "🔴 el WHERE rechaza approved = false");
 });
 
-test("solicitarPublicacionPost REINTENTA sobre una fila ya solicitada pero no publicada", async () => {
+test("🔴 solicitarPublicacionPost rechaza si el cliente no tiene blog_externo_tipo/url configurados", async () => {
+  // Codex, ronda 1 sobre el plan, hallazgo Major: sin este chequeo, no había ningún camino que
+  // impidiera "solicitar" la publicación de un cliente que nunca configuró su blog externo.
   const pageId = await crearPaginaAprobada(clientA1, tenantA);
   await store.guardarPost({ tenantId: tenantA, userId: equipoA }, pageId, { titulo: "T", cuerpo: "<p>C</p>" });
+  const ok = await store.solicitarPublicacionPost({ tenantId: tenantA, userId: equipoA }, pageId);
+  assert.equal(ok, false, "🔴 blog_externo_tipo/url siguen NULL — clientA1 nunca configuró su blog");
+});
+
+test("solicitarPublicacionPost REINTENTA sobre una fila ya solicitada pero no publicada, y limpia post_error_en", async () => {
+  const pageId = await crearPaginaAprobada(clientA1, tenantA);
+  await store.guardarPost({ tenantId: tenantA, userId: equipoA }, pageId, { titulo: "T", cuerpo: "<p>C</p>" });
+  await configurarBlogExterno(clientA1); // helper: setea blog_externo_tipo/url/credencial vía db.asService
   const primera = await store.solicitarPublicacionPost({ tenantId: tenantA, userId: equipoA }, pageId);
+  await db.asService("update kr_pages set post_error_en = now() where id = $1", [pageId]); // simula un fallo previo
   const segunda = await store.solicitarPublicacionPost({ tenantId: tenantA, userId: equipoA }, pageId);
   assert.equal(primera, true);
   assert.equal(segunda, true, "un segundo pedido sobre 'ya solicitada, no publicada' vuelve a calificar");
+  const [row] = await db.asService<{ post_error_en: string | null }>(
+    "select post_error_en from kr_pages where id = $1", [pageId],
+  );
+  assert.equal(row!.post_error_en, null, "reintentar limpia el error del intento anterior");
 });
 
 test("🔴 solicitarPublicacionPost rechaza una página YA publicada", async () => {
   const pageId = await crearPaginaAprobada(clientA1, tenantA);
   await store.guardarPost({ tenantId: tenantA, userId: equipoA }, pageId, { titulo: "T", cuerpo: "<p>C</p>" });
+  await configurarBlogExterno(clientA1);
   await store.solicitarPublicacionPost({ tenantId: tenantA, userId: equipoA }, pageId);
   await db.asService("update kr_pages set post_publicado_en = now() where id = $1", [pageId]);
   const ok = await store.solicitarPublicacionPost({ tenantId: tenantA, userId: equipoA }, pageId);
@@ -539,6 +681,7 @@ test("🔴 solicitarPublicacionPost rechaza una página YA publicada", async () 
 test("🔴 solicitarPublicacionPost con rol 'cliente' devuelve false (ADR-20)", async () => {
   const pageId = await crearPaginaAprobada(clientA1, tenantA);
   await store.guardarPost({ tenantId: tenantA, userId: equipoA }, pageId, { titulo: "T", cuerpo: "<p>C</p>" });
+  await configurarBlogExterno(clientA1);
   const ok = await store.solicitarPublicacionPost({ tenantId: tenantA, userId: duenoA1 }, pageId);
   assert.equal(ok, false);
 });
@@ -546,11 +689,8 @@ test("🔴 solicitarPublicacionPost con rol 'cliente' devuelve false (ADR-20)", 
 test("postParaPublicar (rol app_service, sinTenant) trae lo necesario para publicar", async () => {
   const pageId = await crearPaginaAprobada(clientA1, tenantA);
   await store.guardarPost({ tenantId: tenantA, userId: equipoA }, pageId, { titulo: "T", cuerpo: "<p>C</p>" });
+  await configurarBlogExterno(clientA1, { credencial: "sek" });
   await store.solicitarPublicacionPost({ tenantId: tenantA, userId: equipoA }, pageId);
-  await db.asService(
-    "update clients set blog_externo_tipo = 'wordpress', blog_externo_url = 'https://x.com', blog_externo_credencial = 'sek' where id = $1",
-    [clientA1],
-  );
   const storeServicio = new PgStore(pool, "app_service"); // mismo patrón que el orquestador
   const info = await storeServicio.postParaPublicar(pageId);
   assert.equal(info?.titulo, "T");
@@ -563,9 +703,10 @@ test("postParaPublicar devuelve null si la solicitud ya no aplica", async () => 
   assert.equal(info, null);
 });
 
-test("marcarPostPublicado confirma y NO deja reconfirmar", async () => {
+test("marcarPostPublicado confirma, limpia post_error_en, y NO deja reconfirmar", async () => {
   const pageId = await crearPaginaAprobada(clientA1, tenantA);
   await store.guardarPost({ tenantId: tenantA, userId: equipoA }, pageId, { titulo: "T", cuerpo: "<p>C</p>" });
+  await configurarBlogExterno(clientA1);
   await store.solicitarPublicacionPost({ tenantId: tenantA, userId: equipoA }, pageId);
   const storeServicio = new PgStore(pool, "app_service");
   const primera = await storeServicio.marcarPostPublicado(pageId, "https://x.com/t");
@@ -573,13 +714,51 @@ test("marcarPostPublicado confirma y NO deja reconfirmar", async () => {
   assert.equal(primera, true);
   assert.equal(segunda, false, "🔴 el WHERE rechaza post_publicado_en not null — no se puede repisar la URL");
 });
+
+test("marcarPostFallido limpia post_solicitado_en (desbloquea editarPost) y marca post_error_en", async () => {
+  const pageId = await crearPaginaAprobada(clientA1, tenantA);
+  await store.guardarPost({ tenantId: tenantA, userId: equipoA }, pageId, { titulo: "T", cuerpo: "<p>C</p>" });
+  await configurarBlogExterno(clientA1);
+  await store.solicitarPublicacionPost({ tenantId: tenantA, userId: equipoA }, pageId);
+  const storeServicio = new PgStore(pool, "app_service");
+  const ok = await storeServicio.marcarPostFallido(pageId);
+  assert.equal(ok, true);
+
+  const puedeEditar = await store.editarPost({ tenantId: tenantA, userId: equipoA }, pageId, { postTitulo: "T corregido" });
+  assert.equal(puedeEditar, true, "editarPost ya no está bloqueado tras el fallo");
+});
+
+test("getPost devuelve null si la página no existe O si nunca se generó un post", async () => {
+  const paginaSinPost = await crearPaginaAprobada(clientA1, tenantA);
+  const resultado = await store.getPost({ tenantId: tenantA, userId: equipoA }, paginaSinPost);
+  assert.equal(resultado, null, "🔴 página real pero sin post: getPost trata esto igual que 'no existe'");
+
+  const resultadoInexistente = await store.getPost(
+    { tenantId: tenantA, userId: equipoA }, "00000000-0000-0000-0000-000000000000",
+  );
+  assert.equal(resultadoInexistente, null);
+});
+
+test("getPost trae el post una vez generado, incluido errorEn tras un fallo", async () => {
+  const pageId = await crearPaginaAprobada(clientA1, tenantA);
+  await store.guardarPost({ tenantId: tenantA, userId: equipoA }, pageId, { titulo: "T", cuerpo: "<p>C</p>" });
+  await configurarBlogExterno(clientA1);
+  await store.solicitarPublicacionPost({ tenantId: tenantA, userId: equipoA }, pageId);
+  await new PgStore(pool, "app_service").marcarPostFallido(pageId);
+
+  const resultado = await store.getPost({ tenantId: tenantA, userId: equipoA }, pageId);
+  assert.equal(resultado?.titulo, "T");
+  assert.ok(resultado?.errorEn, "el portal necesita esto para mostrar 'Reintentar' en vez de 'Publicando…'");
+  assert.equal(resultado?.solicitadoEn, null, "el fallo ya limpió el intento en curso");
+});
 ```
 
 > Nota sobre los helpers: `crearPaginaAprobada`/`crearPaginaSinAprobar` son helpers nuevos —
 > insertan un `kr_run` + una `kr_page` con `approved`/`retirada` según corresponda, mismo patrón que
-> `crearResena` en `resenas.test.ts`.
+> `crearResena` en `resenas.test.ts`. `configurarBlogExterno(clientId, opciones?)` es otro helper
+> nuevo — `db.asService("update clients set blog_externo_tipo='wordpress', blog_externo_url=$2, blog_externo_credencial=$3 where id=$1", [clientId, opciones?.url ?? "https://x.com", opciones?.credencial ?? "sek-test"])`.
 
-Run: `npm test -w db -- --test-name-pattern="guardarPost|editarPost|solicitarPublicacionPost|postParaPublicar|marcarPostPublicado"`
+Run: `npm test -w db -- --test-name-pattern="guardarPost|editarPost|solicitarPublicacionPost|postParaPublicar|marcarPostPublicado|marcarPostFallido|getPost"`
 Expected: FAIL — ninguno de los métodos existe todavía.
 
 - [ ] **Step 2: Implementar los tipos**
@@ -604,6 +783,18 @@ export interface PostParaPublicar {
   blogTipo: string;
   blogUrl: string;
   blogCredencial: string;
+}
+
+/** El post de una página, tal como lo ve el portal (`GET /pages/:id/post`). */
+export interface PostDePagina {
+  titulo: string | null;
+  cuerpo: string | null;
+  generadoEn: string | null;
+  solicitadoEn: string | null;
+  publicadoEn: string | null;
+  urlExterna: string | null;
+  /** Cuando el ÚLTIMO intento de publicación falló. Ver el comentario de la columna, migración 0028. */
+  errorEn: string | null;
 }
 ```
 
@@ -673,21 +864,32 @@ async editarPost(
 /**
  * Pide publicar el post en el blog externo — comando compuesto (ADR-18). `false` sin lanzar si la
  * página no existe, no es de este tenant, no tiene post, no está aprobada, está retirada, ya está
- * publicada, o `puede_escribir()` da falso — el WHERE decide. Un segundo llamado sobre una fila ya
- * solicitada pero no publicada REINTENTA (pisa el timestamp de nuevo) — mismo criterio que
- * `solicitarPublicacion` en `resenas.ts`.
+ * publicada, el cliente no configuró su blog, o `puede_escribir()` da falso — el WHERE decide. Un
+ * segundo llamado sobre una fila ya solicitada pero no publicada REINTENTA (pisa el timestamp de
+ * nuevo) — mismo criterio que `solicitarPublicacion` en `resenas.ts`. Limpia `post_error_en`: un
+ * reintento explícito borra el rastro del intento anterior (Codex, ronda 1 sobre el plan, hallazgo
+ * Major "publicación fallida bloquea el post para siempre").
+ *
+ * El `join` con `clients` exige `blog_externo_tipo`/`blog_externo_url` — las DOS columnas que
+ * `app_user` puede leer (Task 1, `grant select`). NO se puede exigir `blog_externo_credencial` acá
+ * (no seleccionable por `app_user`, a propósito): esa validación completa vive en
+ * `app.post_para_publicar` (0028), que sí puede leerla porque corre como `app_posts`.
  */
 async solicitarPublicacionPost(ctx: TenantContext, pageId: string): Promise<boolean> {
   return this.withTenant(ctx, async (tx) => {
     const { rows } = await tx.query<{ id: string }>(
-      `update kr_pages set post_solicitado_en = now()
-       where id = $1
-         and approved
-         and not retirada
-         and post_titulo is not null
-         and post_cuerpo is not null
-         and post_publicado_en is null
-       returning id`,
+      `update kr_pages p set post_solicitado_en = now(), post_error_en = null
+       from clients c
+       where p.id = $1
+         and c.id = p.client_id
+         and p.approved
+         and not p.retirada
+         and p.post_titulo is not null
+         and p.post_cuerpo is not null
+         and p.post_publicado_en is null
+         and c.blog_externo_tipo is not null
+         and c.blog_externo_url is not null
+       returning p.id`,
       [pageId],
     );
     return rows.length > 0;
@@ -731,16 +933,61 @@ async marcarPostPublicado(pageId: string, urlExterna: string): Promise<boolean> 
     return rows[0]?.marcar_post_publicado ?? false;
   });
 }
+
+/**
+ * Cierra un intento de publicación que falló (excepción del publisher, `publicado: false`, o
+ * credenciales incompletas — ver `postParaPublicar`), vía `app.marcar_post_fallido` (0028). Limpia
+ * `post_solicitado_en` (desbloquea `editarPost` y un nuevo intento) y marca `post_error_en` (rastro
+ * para el portal). `false` si la fila ya no estaba "en curso" — no lanza. Cross-tenant, mismo motivo
+ * que `postParaPublicar`/`marcarPostPublicado`.
+ */
+async marcarPostFallido(pageId: string): Promise<boolean> {
+  return this.sinTenant(async (tx) => {
+    const { rows } = await tx.query<{ marcar_post_fallido: boolean }>(
+      "select app.marcar_post_fallido($1) as marcar_post_fallido",
+      [pageId],
+    );
+    return rows[0]?.marcar_post_fallido ?? false;
+  });
+}
+
+/**
+ * El post de una página, para `GET /pages/:id/post`. `null` si la página no existe O si nunca se
+ * generó un post — las dos cosas dan el mismo 404 en la API: "sin post generado" no distingue "no
+ * hay página" de "hay página pero no se generó nada todavía" (movido acá desde la Task 10 original:
+ * es un método de lectura de `db/`, no de `api/`).
+ */
+async getPost(ctx: TenantContext, pageId: string): Promise<PostDePagina | null> {
+  return this.withTenant(ctx, async (tx) => {
+    const { rows } = await tx.query<{
+      post_titulo: string | null; post_cuerpo: string | null; post_generado_en: string | null;
+      post_solicitado_en: string | null; post_publicado_en: string | null; post_url_externa: string | null;
+      post_error_en: string | null;
+    }>(
+      `select post_titulo, post_cuerpo, post_generado_en, post_solicitado_en, post_publicado_en,
+              post_url_externa, post_error_en
+       from kr_pages where id = $1`,
+      [pageId],
+    );
+    const r = rows[0];
+    if (!r || r.post_titulo === null) return null;
+    return {
+      titulo: r.post_titulo, cuerpo: r.post_cuerpo, generadoEn: r.post_generado_en,
+      solicitadoEn: r.post_solicitado_en, publicadoEn: r.post_publicado_en,
+      urlExterna: r.post_url_externa, errorEn: r.post_error_en,
+    };
+  });
+}
 ```
 
 - [ ] **Step 4: Exportar los tipos nuevos desde `db/src/index.ts`**
 
-Agregar `PostBlog`, `PostParaPublicar` al bloque `export type { ... }`.
+Agregar `PostBlog`, `PostParaPublicar`, `PostDePagina` al bloque `export type { ... }`.
 
 - [ ] **Step 5: Correr y confirmar que todos los tests pasan**
 
-Run: `npm test -w db -- --test-name-pattern="guardarPost|editarPost|solicitarPublicacionPost|postParaPublicar|marcarPostPublicado"`
-Expected: PASS, los trece.
+Run: `npm test -w db -- --test-name-pattern="guardarPost|editarPost|solicitarPublicacionPost|postParaPublicar|marcarPostPublicado|marcarPostFallido|getPost"`
+Expected: PASS, los dieciséis.
 
 - [ ] **Step 6: Correr toda la suite de `db/`**
 
@@ -751,7 +998,7 @@ Expected: PASS.
 
 ```bash
 git add db/src/store.ts db/src/index.ts db/src/posts-blog.test.ts
-git commit -m "db: guardarPost/editarPost/solicitarPublicacionPost/postParaPublicar/marcarPostPublicado"
+git commit -m "db: guardarPost/editarPost/solicitarPublicacionPost/postParaPublicar/marcarPostPublicado/marcarPostFallido/getPost"
 ```
 
 ---
@@ -1059,6 +1306,19 @@ test("MockBlogPublisher confirma publicado y arma la URL a partir del slug", asy
   assert.equal(resultado.publicado, true);
   assert.equal(resultado.url, "https://blog.cliente.com/mejores-tacos");
 });
+
+// Codex, ronda 1 sobre el plan, hallazgo Minor: los slugs REALES de kr_pages empiezan con "/"
+// (`url_slug`, ver db/src/store.test.ts y api/src/dev-server.ts) — el test de arriba usaba
+// "mejores-tacos" sin la barra inicial, que ocultaba el doble "/" que se produce con un slug real.
+test("MockBlogPublisher no duplica la barra con un slug real (que empieza con /)", async () => {
+  const publisher = new MockBlogPublisher();
+  const resultado = await publisher.publicar(
+    { titulo: "T", cuerpo: "<p>C</p>", slug: "/mejores-tacos" },
+    "page-id-1",
+    { tipo: "wordpress", url: "https://blog.cliente.com/", credencial: "sek" },
+  );
+  assert.equal(resultado.url, "https://blog.cliente.com/mejores-tacos", "🔴 sin el fix daría //mejores-tacos");
+});
 ```
 
 Run: `npm test -w orchestrator -- --test-name-pattern="MockBlogPublisher"`
@@ -1101,7 +1361,12 @@ export class MockBlogPublisher implements BlogPublisher {
     _identificadorExterno: string,
     credenciales: CredencialesBlogExterno,
   ): Promise<{ url: string; publicado: boolean }> {
-    return { url: `${credenciales.url.replace(/\/$/, "")}/${post.slug}`, publicado: true };
+    // Normaliza LOS DOS bordes: la barra final de la URL base y la barra inicial del slug (los
+    // slugs reales de kr_pages empiezan con "/", ver url_slug) -- sin esto, el resultado real
+    // hubiera sido "https://blog.cliente.com//mejores-tacos".
+    const base = credenciales.url.replace(/\/$/, "");
+    const slug = post.slug.replace(/^\//, "");
+    return { url: `${base}/${slug}`, publicado: true };
   }
 }
 ```
@@ -1182,10 +1447,10 @@ git commit -m "orchestrator: evento posts/publicacion.solicitada — solo el pag
   `publicarRespuestaResena` (líneas 712-799 del archivo).
 
 **Interfaces:**
-- Consume: `Deps.store.postParaPublicar`/`marcarPostPublicado` (Task 3), `Deps.postPublisher`
-  (Task 5, wireado en Task 9), evento `PostPublicacionSolicitada` (Task 6).
+- Consume: `Deps.store.postParaPublicar`/`marcarPostPublicado`/`marcarPostFallido` (Task 3),
+  `Deps.postPublisher` (Task 5, wireado en Task 9), evento `PostPublicacionSolicitada` (Task 6).
 - Produce: `publicarPost(deps, pageId, log?): Promise<{ publicada: boolean }>`,
-  `crearFuncionPublicarPost(deps): InngestFunction`.
+  `crearFuncionPublicarPost(deps): InngestFunction`, `REINTENTOS_PUBLICAR_POST: number`.
 
 - [ ] **Step 1: Test que falla**
 
@@ -1209,6 +1474,7 @@ test("publicarPost: con info válida, llama al publisher con los argumentos corr
         llamadas.push(`marcarPostPublicado(${pageId}, ${url})`);
         return true;
       },
+      marcarPostFallido: async () => { llamadas.push("marcarPostFallido"); return true; },
     },
     postPublisher: {
       publicar: async (...args: unknown[]) => {
@@ -1230,33 +1496,64 @@ test("publicarPost: con info válida, llama al publisher con los argumentos corr
   ]);
 });
 
-test("publicarPost: postParaPublicar devuelve null → no llama al publisher", async () => {
+test("publicarPost: postParaPublicar devuelve null → no llama al publisher, pero SÍ intenta limpiar (best-effort)", async () => {
+  // Codex, ronda 1 sobre el plan, hallazgo Major "publicación fallida bloquea el post para siempre":
+  // `null` puede ser una carrera legítima (post_solicitado_en ya en null, marcarPostFallido no
+  // matchea nada) O credenciales incompletas (post_solicitado_en SIGUE en null desde antes... no,
+  // sigue en NOT null porque solicitarPublicacionPost sí lo marcó -- ver Task 1, post_para_publicar
+  // ahora exige credenciales completas). En ese segundo caso, sin este best-effort la fila quedaba
+  // atascada para siempre. Llamar a marcarPostFallido acá es seguro en los dos casos: si no hay nada
+  // que limpiar, su propio WHERE (0028) no toca nada.
   const llamadas: string[] = [];
   const deps = {
-    store: { postParaPublicar: async () => { llamadas.push("postParaPublicar"); return null; }, marcarPostPublicado: async () => { llamadas.push("marcarPostPublicado"); return true; } },
+    store: {
+      postParaPublicar: async () => { llamadas.push("postParaPublicar"); return null; },
+      marcarPostPublicado: async () => { llamadas.push("marcarPostPublicado"); return true; },
+      marcarPostFallido: async () => { llamadas.push("marcarPostFallido"); return false; },
+    },
     postPublisher: { publicar: async () => { llamadas.push("publicar"); return { url: "", publicado: true }; } },
   };
   const resultado = await publicarPost(deps as never, "page-1");
   assert.deepEqual(resultado, { publicada: false });
-  assert.deepEqual(llamadas, ["postParaPublicar"]);
+  assert.deepEqual(llamadas, ["postParaPublicar", "marcarPostFallido"]);
 });
 
-test("🔴 publicarPost: el publisher no confirma (publicado: false) → NO llama a marcarPostPublicado", async () => {
+test("🔴 publicarPost: el publisher no confirma (publicado: false) → NO llama a marcarPostPublicado, SÍ a marcarPostFallido", async () => {
   const llamadas: string[] = [];
   const deps = {
     store: {
       postParaPublicar: async () => ({ pageId: "p1", clientId: "c1", tenantId: "t1", titulo: "T", cuerpo: "C", slug: "s", blogTipo: "wordpress" as const, blogUrl: "u", blogCredencial: "k" }),
       marcarPostPublicado: async () => { llamadas.push("marcarPostPublicado"); return true; },
+      marcarPostFallido: async () => { llamadas.push("marcarPostFallido"); return true; },
     },
     postPublisher: { publicar: async () => ({ url: "", publicado: false }) },
   };
   const resultado = await publicarPost(deps as never, "page-1");
   assert.deepEqual(resultado, { publicada: false });
-  assert.deepEqual(llamadas, [], "🔴 solo lo que el publisher CONFIRMA se marca — 'se mandó' no alcanza");
+  assert.deepEqual(llamadas, ["marcarPostFallido"], "🔴 solo lo que el publisher CONFIRMA se marca — 'se mandó' no alcanza, y el fallo queda registrado");
+});
+
+test("🔴 publicarPost: el publisher LANZA → captura, llama a marcarPostFallido, no propaga la excepción", async () => {
+  const llamadas: string[] = [];
+  const deps = {
+    store: {
+      postParaPublicar: async () => ({ pageId: "p1", clientId: "c1", tenantId: "t1", titulo: "T", cuerpo: "C", slug: "s", blogTipo: "wordpress" as const, blogUrl: "u", blogCredencial: "k" }),
+      marcarPostPublicado: async () => { llamadas.push("marcarPostPublicado"); return true; },
+      marcarPostFallido: async () => { llamadas.push("marcarPostFallido"); return true; },
+    },
+    postPublisher: { publicar: async () => { throw new Error("WordPress caído"); } },
+  };
+  const resultado = await publicarPost(deps as never, "page-1");
+  assert.deepEqual(resultado, { publicada: false });
+  assert.deepEqual(llamadas, ["marcarPostFallido"]);
+});
+
+test("REINTENTOS_PUBLICAR_POST es 0 — el reintento real es 'Publicar' de nuevo, no Inngest", () => {
+  assert.equal(REINTENTOS_PUBLICAR_POST, 0);
 });
 ```
 
-Run: `npm test -w orchestrator -- --test-name-pattern="publicarPost"`
+Run: `npm test -w orchestrator -- --test-name-pattern="publicarPost|REINTENTOS_PUBLICAR_POST"`
 Expected: FAIL — `publicarPost is not a function`.
 
 - [ ] **Step 2: Implementar**
@@ -1265,11 +1562,24 @@ Expected: FAIL — `publicarPost is not a function`.
 // orchestrator/src/functions.ts — al final del archivo, después de crearFuncionPublicarResena
 
 /**
+ * Sin reintentos de Inngest: mismo criterio que `publicar-respuesta-resena` — el reintento real es
+ * que el staff vuelva a apretar "Publicar", que pisa `post_solicitado_en` y remite el evento.
+ * Exportada como constante (Codex, ronda 1 sobre el plan, hallazgo Minor: el default vivía inline,
+ * sin ningún test que lo ejerciera — cambiarlo a `5` no hacía caer nada) para que el test de abajo
+ * la pueda fijar sin inspeccionar el objeto interno que arma `inngest.createFunction`.
+ */
+export const REINTENTOS_PUBLICAR_POST = 0;
+
+/**
  * Publica el post en el blog externo. Reacciona a `posts/publicacion.solicitada`, que NO PORTA
  * AUTORIDAD (ver events.ts): la fila ya quedó marcada bajo RLS por la API antes de emitirlo
  * (ADR-18), y esta función vuelve a preguntarle a la base qué publicar (`postParaPublicar`) en vez
- * de confiar en el evento. Cero filas = la solicitud ya no aplica — no es un error, es una carrera
- * perdida (u otra corrida ya publicó).
+ * de confiar en el evento.
+ *
+ * Todo camino de fallo llama a `marcarPostFallido` (Task 3/1) para que la fila NUNCA quede
+ * "solicitada" sin que nadie sepa si sigue en curso o ya reventó (Codex, ronda 1 sobre el plan,
+ * hallazgo Major "publicación fallida bloquea el post para siempre") — incluido el caso `!info`
+ * (best-effort: si no había nada que limpiar, el WHERE de `marcarPostFallido` no toca nada).
  */
 export async function publicarPost(
   deps: Pick<Deps, "store" | "postPublisher">,
@@ -1278,18 +1588,27 @@ export async function publicarPost(
 ): Promise<{ publicada: boolean }> {
   const info = await deps.store.postParaPublicar(pageId);
   if (!info) {
-    log(`[publicar-post] ${pageId}: la solicitud ya no aplica (publicada, sin post, o inexistente)`);
+    log(`[publicar-post] ${pageId}: la solicitud ya no aplica (publicada, sin post, credenciales incompletas, o inexistente)`);
+    await deps.store.marcarPostFallido(pageId);
     return { publicada: false };
   }
 
-  const resultado = await deps.postPublisher.publicar(
-    { titulo: info.titulo, cuerpo: info.cuerpo, slug: info.slug },
-    info.pageId,
-    { tipo: info.blogTipo as "wordpress", url: info.blogUrl, credencial: info.blogCredencial },
-  );
+  let resultado: { url: string; publicado: boolean };
+  try {
+    resultado = await deps.postPublisher.publicar(
+      { titulo: info.titulo, cuerpo: info.cuerpo, slug: info.slug },
+      info.pageId,
+      { tipo: info.blogTipo as "wordpress", url: info.blogUrl, credencial: info.blogCredencial },
+    );
+  } catch (e) {
+    log(`[publicar-post] ${pageId}: el publisher lanzó: ${(e as Error).message}`);
+    await deps.store.marcarPostFallido(pageId);
+    return { publicada: false };
+  }
 
   if (!resultado.publicado) {
     log(`[publicar-post] ${pageId}: el publisher no confirmó la publicación`);
+    await deps.store.marcarPostFallido(pageId);
     return { publicada: false };
   }
 
@@ -1304,9 +1623,7 @@ export function crearFuncionPublicarPost(deps: Deps) {
   return inngest.createFunction(
     {
       id: "publicar-post-blog",
-      // Sin reintentos: mismo criterio que publicar-respuesta-resena — el reintento real es que el
-      // staff vuelva a apretar "Publicar", que pisa post_solicitado_en y remite el evento.
-      retries: 0,
+      retries: REINTENTOS_PUBLICAR_POST,
     },
     { event: "posts/publicacion.solicitada" },
     async ({ event, step }) =>
@@ -1336,87 +1653,131 @@ git commit -m "orchestrator: publicarPost/crearFuncionPublicarPost — publica e
 > ⚠️ **Depende del sub-proyecto 2 ya implementado** (ver "Global Constraints"). Esta task busca
 > código por su CONTENIDO, no por número de línea — el stub lo introduce la Task 6 del plan
 > `2026-08-26-desacoplar-kr-web.md`, y no existe todavía en el repo al momento de escribir este plan.
+>
+> **Reescrita entera tras la ronda de Codex sobre este plan (2 hallazgos Critical).** La primera
+> versión inventaba una firma de `workflowDecision(deps, decision)` y dos helpers
+> (`depsDeDecision`/`decisionCrearPosts`) que no existen en ningún lado — ni en el repo, ni en el
+> plan del sub-proyecto 2. La firma REAL, confirmada leyendo
+> `docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md:1037-1041` y sus tests
+> (líneas 1450-1516), es `workflowDecision(paso: Pasos, entrada: EntradaDecision, deps: Deps)`, y los
+> tests reales PERSISTEN una decisión de verdad contra PGlite (`store.registrarDecision(...)`) en vez
+> de mockear `getRunPages`/`getClient` con funciones inline.
+
+- [ ] **Step 0: Precondición ejecutable — confirmar que el sub-proyecto 2 está implementado**
+
+Antes de tocar nada:
+
+```bash
+grep -n 'crear_posts' orchestrator/src/workflow.ts
+ls db/migrations | grep 0027
+grep -n 'export async function workflowDecision' orchestrator/src/workflow.ts
+```
+
+Si alguno de los tres no aparece (el stub `if (decision.destino === "crear_posts")`, la migración
+`0027_kr_run_decisiones.sql`, o la función `workflowDecision`), **PARÁ ACÁ** — el sub-proyecto 2
+todavía no está implementado y esta task no es ejecutable todavía. Volvé cuando lo esté.
 
 **Files:**
 - Modify: `orchestrator/src/workflow.ts` — buscar el bloque `if (decision.destino === "crear_posts")`
   (el stub que cierra en `error`, introducido por el sub-proyecto 2) y reemplazarlo.
 - Test: `orchestrator/src/workflow.test.ts` — agregar los tests de la rama `crear_posts` (reemplazan
-  el test del stub, que probaba que cerraba en `error` con un mensaje fijo).
+  el test del stub `"🔴 workflowDecision: crear_posts persistido a mano cierra en error, nunca en
+  completado"`, que probaba el estado ANTERIOR a esta task — ahora esa rama SÍ hace algo real).
 
 **Interfaces:**
 - Consume: `Deps.store.getRunPages`, `Deps.store.getClient`, `Deps.store.guardarPost`,
   `Deps.store.cerrarDecision` (ya existentes, sub-proyecto 2 y anteriores), `Deps.postProvider`
-  (Task 4, wireado en Task 9).
+  (Task 4, agregado a `Deps` por la Task 9 — **NO** por esta task).
+- Reusa, del archivo real de tests del sub-proyecto 2 (`orchestrator/src/workflow.test.ts`):
+  `store.registrarDecision`, `workflowDecision(new MotorPasos(), entrada, deps)`,
+  `crearRunConPaginaAprobada`, `ctxA()`/`tenantA`, `humano(tenantId)`, `sql`, y el objeto `deps` base
+  que ya usan los tests de `crear_web`/`solo_informe`. **Leé ese archivo antes de escribir esta task
+  de verdad** — los nombres de arriba están confirmados contra el plan, pero el `deps` base
+  (probablemente construido por un helper tipo `depsFalsas`) puede necesitar extenderse con
+  `postProvider`; confirmá su forma exacta en el archivo real, no la asumas de memoria (es
+  exactamente el error que causó la reescritura de esta task).
 
 - [ ] **Step 1: Escribir los tests que fallan**
 
 ```ts
-// orchestrator/src/workflow.test.ts — reemplaza el test del stub de crear_posts
+// orchestrator/src/workflow.test.ts — reemplaza el test del stub de crear_posts. Usa el MISMO
+// patrón que los tests de crear_web/solo_informe ya en este archivo: persiste una decisión de
+// verdad contra la base de test (PGlite) y llama a workflowDecision con new MotorPasos().
+//
+// `deps` acá es el objeto base que ya usan esos tests (revisalo — probablemente construido por un
+// helper tipo `depsFalsas`), extendido con `postProvider`. Si `deps` no lo trae por default,
+// agregalo en esta misma task: `postProvider: { generar: async () => ({ titulo: "T", cuerpo: "<p>C</p>" }) }`.
 
 test("workflowDecision: crear_posts genera un post por cada página aprobada y cierra 'completado'", async () => {
-  const guardados: Array<{ pageId: string; post: { titulo: string; cuerpo: string } }> = [];
-  const deps = depsDeDecision({
-    getRunPages: async () => [
-      { id: "p1", approved: true, url_slug: "a", keyword_principal: "kw-a", content_brief: {}, /* ...resto de PaginaPropuesta */ },
-      { id: "p2", approved: false, url_slug: "b", keyword_principal: "kw-b", content_brief: {}, /* ... */ },
-    ],
-    getClient: async () => ({ id: "c1", nombre: "Cliente", storyblok_space_id: null, business_profile: null }),
-    guardarPost: async (ctx, pageId, post) => { guardados.push({ pageId, post }); return true; },
-    cerrarDecision: async () => true,
-  });
-  const resultado = await workflowDecision(deps, decisionCrearPosts());
+  const runId = await crearRunConPaginaAprobada(store, ctxA(), clientA1, { urlSlug: "/a" });
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_posts");
+  assert.ok(decisionId, "registrarDecision (sub-proyecto 2, enmendado) exige página aprobada para crear_posts");
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, deps);
   assert.equal(resultado.resultado, "completado");
-  assert.equal(guardados.length, 1, "solo la página aprobada (p1) genera post");
-  assert.equal(guardados[0]!.pageId, "p1");
+
+  const [pagina] = await sql<{ post_titulo: string | null }>(
+    "select post_titulo from kr_pages where run_id = $1 and approved", [runId],
+  );
+  assert.ok(pagina?.post_titulo, "la página aprobada tiene un post guardado");
 });
 
 test("workflowDecision: crear_posts con fallo puntual — 1 de 2 páginas falla, la otra se genera y cierra 'completado'", async () => {
+  const runId = await crearRunConPaginaAprobada(store, ctxA(), clientA1, { urlSlug: "/a" });
+  // Segunda página aprobada sobre el MISMO run — si `crearRunConPaginaAprobada` no soporta agregar
+  // una segunda página a un run existente, aprobala directo por SQL: insertar en kr_pages con el
+  // mismo run_id/tenant_id/client_id y approved=true, mismo criterio que el resto de este archivo.
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_posts");
+
   let intento = 0;
-  const deps = depsDeDecision({
-    getRunPages: async () => [
-      { id: "p1", approved: true, url_slug: "a", keyword_principal: "kw-a", content_brief: {} },
-      { id: "p2", approved: true, url_slug: "b", keyword_principal: "kw-b", content_brief: {} },
-    ],
-    postProviderGenerar: async () => {
-      intento++;
-      if (intento === 1) throw new Error("OpenAI caído");
-      return { titulo: "T", cuerpo: "<p>C</p>" };
+  const depsConFalloPuntual = {
+    ...deps,
+    postProvider: {
+      generar: async () => {
+        intento++;
+        if (intento === 1) throw new Error("OpenAI caído");
+        return { titulo: "T", cuerpo: "<p>C</p>" };
+      },
     },
-    guardarPost: async () => true,
-    cerrarDecision: async () => true,
-  });
-  const resultado = await workflowDecision(deps, decisionCrearPosts());
+  };
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, depsConFalloPuntual);
   assert.equal(resultado.resultado, "completado", "1 de 2 generado igual cierra completado");
 });
 
 test("🔴 workflowDecision: crear_posts con TODAS las páginas fallando cierra 'error'", async () => {
-  let detalleCerrado: string | undefined;
-  const deps = depsDeDecision({
-    getRunPages: async () => [{ id: "p1", approved: true, url_slug: "a", keyword_principal: "kw-a", content_brief: {} }],
-    postProviderGenerar: async () => { throw new Error("OpenAI caído"); },
-    cerrarDecision: async (ctx, id, cierre) => { if (cierre.resultado === "error") detalleCerrado = cierre.detalleError; return true; },
-  });
-  const resultado = await workflowDecision(deps, decisionCrearPosts());
+  const runId = await crearRunConPaginaAprobada(store, ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_posts");
+  const depsFallando = { ...deps, postProvider: { generar: async () => { throw new Error("OpenAI caído"); } } };
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, depsFallando);
   assert.equal(resultado.resultado, "error", "🔴 cero posts generados no puede cerrar 'completado'");
-  assert.ok(detalleCerrado?.includes("Falló la generación"));
+
+  const [decision] = await sql<{ detalle_error: string | null }>(
+    "select detalle_error from kr_run_decisiones where id = $1", [decisionId],
+  );
+  assert.ok(decision!.detalle_error?.includes("Falló la generación"));
 });
 
-test("🔴 workflowDecision: crear_posts sin ninguna página aprobada cierra 'error' sin llamar al provider", async () => {
-  let provierLlamado = false;
-  const deps = depsDeDecision({
-    getRunPages: async () => [{ id: "p1", approved: false, url_slug: "a", keyword_principal: "kw-a", content_brief: {} }],
-    postProviderGenerar: async () => { provierLlamado = true; return { titulo: "T", cuerpo: "C" }; },
-  });
-  const resultado = await workflowDecision(deps, decisionCrearPosts());
+test("🔴 workflowDecision: crear_posts con la página desaprobada DESPUÉS de registrar la decisión cierra 'error' (defensa en profundidad)", async () => {
+  // Mismo escenario que el test ya existente "🔴 editar una página aprobada REVOCA su aprobación..."
+  // (crear_web) — registrarDecision (sub-proyecto 2) ya exige página aprobada al momento de
+  // registrar, así que "sin ninguna aprobada" en el camino normal no puede pasar. Esto prueba la
+  // defensa en profundidad: una página puede desaprobarse editándola DESPUÉS.
+  const runId = await crearRunConPaginaAprobada(store, ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_posts");
+  assert.ok(decisionId);
+
+  const { rows } = await sql<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.editPage(humano(tenantA), rows[0]!.id, { url_slug: "/otro-slug" }); // revoca approved
+
+  let generarLlamado = false;
+  const depsEspia = { ...deps, postProvider: { generar: async () => { generarLlamado = true; return { titulo: "T", cuerpo: "C" }; } } };
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, depsEspia);
+
   assert.equal(resultado.resultado, "error");
-  assert.equal(provierLlamado, false, "🔴 sin páginas aprobadas no se llama al provider ni una vez");
+  assert.equal(generarLlamado, false, "🔴 sin páginas aprobadas no se llama al provider ni una vez");
 });
 ```
-
-> Nota: `depsDeDecision`/`decisionCrearPosts` son helpers que ya existen en el archivo (el sub-proyecto
-> 2 los introduce para probar `crear_web`/`solo_informe`) — extendé el objeto de deps que ya arman
-> con `postProvider: { generar: opciones.postProviderGenerar ?? (async () => ({ titulo: "T", cuerpo: "<p>C</p>" })) }`
-> y `guardarPost`.
 
 Run: `npm test -w orchestrator -- --test-name-pattern="crear_posts"`
 Expected: FAIL — el stub actual cierra siempre en `error` con un mensaje fijo distinto al esperado.
@@ -1453,8 +1814,14 @@ if (decision.destino === "crear_posts") {
         keywordPrincipal: pagina.keyword_principal,
         perfilCliente: cliente?.business_profile ?? null,
       });
-      await deps.store.guardarPost(ctx, pagina.id, post); // sanitiza antes de persistir
-      generados++;
+      // Codex, ronda 1 sobre el plan, hallazgo Major: la primera versión descartaba el booleano de
+      // guardarPost e incrementaba `generados` incondicionalmente — un UPDATE que no afecta ninguna
+      // fila (la página desapareció entre leerla y escribirle) contaba igual como éxito.
+      if (await deps.store.guardarPost(ctx, pagina.id, post)) {
+        generados++;
+      } else {
+        log(`[decision ${decisionId}] guardarPost no encontró la página ${pagina.url_slug} — no cuenta como generado`);
+      }
     } catch (e) {
       log(`[decision ${decisionId}] falló la generación del post para ${pagina.url_slug}: ${(e as Error).message}`);
     }
@@ -1482,7 +1849,7 @@ Expected: PASS.
 - [ ] **Step 4: `npm run typecheck -w orchestrator`**
 
 Expected: PASS (con `Deps.postProvider` ya agregado por la Task 9 — si no, es esperado que falle,
-mismo criterio que la nota de la Task 7 Step 4).
+mismo criterio que la nota de la Task 7).
 
 - [ ] **Step 5: Commit**
 
@@ -1495,23 +1862,41 @@ git commit -m "orchestrator: workflowDecision — crear_posts genera un post por
 
 ### Task 9: `orchestrator/src/deps.ts` — wiring de `postProvider`/`postPublisher`
 
+> **Reescrita entera tras la ronda de Codex sobre este plan (hallazgo Critical).** La primera versión
+> se contradecía con la Task 7 (`Pick<Deps, "store" | "postPublisher">` exige que `postPublisher` SEA
+> parte de `Deps`, y esta task decía explícitamente que no lo fuera — no compila), pasaba `postBlog` a
+> `crearServidor` sin extender `OpcionesServidor` (verificado: no lo acepta,
+> `orchestrator/src/app.ts:54-96`), y el array de funciones que proponía tenía SEIS elementos sin
+> `crearFuncionDecision` — la sexta función que el sub-proyecto 2 ya registra
+> (`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md:1177-1301`). Ejecutar la versión anterior
+> tal cual hubiera desregistrado el procesamiento de decisiones en producción.
+
 **Files:**
-- Modify: `orchestrator/src/deps.ts` — import de `getPostProvider` (línea ~15, junto a
-  `getBorradorProvider`), import de `MockBlogPublisher` (no hay selector — solo mock, ver "Global
-  Constraints"), y las dos propiedades nuevas en el objeto que devuelve `crearDeps` (línea ~194-203,
-  junto a `resenasProvider`/`borradorProvider`).
-- Modify: `orchestrator/src/workflow.ts` — agregar `postProvider: PostProvider` y (si `Deps` no las
-  trae ya de otra parte) `guardarPost`/`getRunPages`/`getClient` a la interfaz `Deps`/`Store` — estos
-  últimos tres probablemente ya están si el sub-proyecto 2 los usa; confirmá antes de duplicar.
+- Modify: `orchestrator/src/deps.ts` — import de `getPostProvider` (línea 15, junto a
+  `getBorradorProvider`), import de `MockBlogPublisher`, y las dos propiedades nuevas en el objeto
+  que devuelve `crearDeps` (línea ~194-203, junto a `resenasProvider`/`borradorProvider`).
+- Modify: `orchestrator/src/workflow.ts` — extender `interface Deps` con **las dos** propiedades
+  nuevas (`postProvider` Y `postPublisher` — es la MISMA interfaz que usan tanto `workflowDecision`
+  como `functions.ts` vía `Pick<Deps, ...>`, no hay una `Deps` separada por archivo; confirmalo
+  releyendo cómo `resenasProvider`/`borradorProvider` ya conviven ahí sin que `workflowDecision` los
+  use directamente).
+- Modify: `orchestrator/src/app.ts` — extender `OpcionesServidor` (línea 54) con `postBlog:
+  ModoPostBlog`, el destructuring de `crearServidor` (línea 101) y el cuerpo JSON de `/_health`
+  (línea ~126-143).
+- Modify: `orchestrator/src/app.test.ts` — **todos** los `crearServidor({ ... })` existentes
+  (al menos 6 apariciones: líneas 93, 131, 210, 230, 285, 327) necesitan `postBlog: "mock"` agregado
+  al objeto de opciones, o dejan de compilar en cuanto `postBlog` sea obligatorio en
+  `OpcionesServidor`.
 - Modify: `orchestrator/src/server.ts` — importar `crearFuncionPublicarPost` (Task 7) y sumarlo al
-  array `funciones` (línea 56-62, actualizar el comentario "Cinco" → "Seis"), y agregar
-  `postBlog: config.postBlog` al log de arranque (mismo patrón que `borrador: config.borradorResenas`,
-  líneas 72, 85, 106).
+  array `funciones` que el sub-proyecto 2 ya deja en SEIS elementos (con `crearFuncionDecision`,
+  `docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md:1261-1272`) — el total queda en SIETE, no
+  seis. Agregar `postBlog: config.postBlog` al log de arranque y al objeto que arma `crearServidor`.
 
 **Interfaces:**
 - Consume: `getPostProvider` (Task 4), `MockBlogPublisher` (Task 5), `crearFuncionPublicarPost`
-  (Task 7).
-- Produce: `Deps.postProvider: PostProvider`, `Deps.postPublisher: BlogPublisher`.
+  (Task 7), `crearFuncionDecision` (sub-proyecto 2, ya en el array — NO se retira).
+- Produce: `Deps.postProvider: PostProvider`, `Deps.postPublisher: BlogPublisher`,
+  `OpcionesServidor.postBlog: ModoPostBlog`.
 
 - [ ] **Step 1: Editar `deps.ts`**
 
@@ -1531,79 +1916,222 @@ import { MockBlogPublisher } from "./post-blog/mock-publisher.js";
     postPublisher: new MockBlogPublisher(),
 ```
 
-- [ ] **Step 2: Confirmar/extender la interfaz `Deps` en `workflow.ts`**
+- [ ] **Step 2: Extender `interface Deps` en `workflow.ts`**
 
 Buscá la definición de `interface Deps` en `orchestrator/src/workflow.ts` (la usan `research`,
-`validarContrato`, `publicar`, `resenasProvider`, etc. — ya visibles en `deps.ts`). Si el
-sub-proyecto 2 no la extendió ya con `getRunPages`/`getClient`/`guardarPost` (revisá su plan, Tasks
-6-7), agregalas junto con:
+`validarContrato`, `publicar`, `resenasProvider`, `borradorProvider`, etc. — ya visibles en
+`deps.ts`). Agregá LAS DOS:
 
 ```ts
-postProvider: PostProvider; // import type { PostProvider } from "./post-blog/provider.js";
+postProvider: PostProvider;   // import type { PostProvider } from "./post-blog/provider.js";
+postPublisher: BlogPublisher; // import type { BlogPublisher } from "./post-blog/publisher.js";
 ```
 
-`postPublisher` NO va en esta interfaz — solo lo usa `functions.ts` (`publicarPost`), no
-`workflowDecision`. Mantenerla afuera de `Deps` de workflow evita pasarle a la lógica de generación
-una dependencia que no usa.
+Es una interfaz ÚNICA compartida por todo el orquestador — `workflowDecision` (Task 8) solo usa
+`postProvider` vía `Pick<Deps, "store" | "postProvider" | ...>`, y `publicarPost` (Task 7) solo usa
+`postPublisher` vía `Pick<Deps, "store" | "postPublisher">`; ninguno de los dos necesita el `Deps`
+completo, pero AMBAS propiedades tienen que existir en la interfaz para que esos `Pick<>` compilen.
+Si el sub-proyecto 2 no extendió ya `Deps` con `getRunPages`/`getClient`/`guardarPost`, agregalas acá
+también (revisá su plan, Tasks 6-7, antes de asumir que ya están).
 
-- [ ] **Step 3: Editar `server.ts`**
+- [ ] **Step 3: Extender `OpcionesServidor` en `app.ts`**
 
 ```ts
-// orchestrator/src/server.ts — imports (línea ~20-27): agregar crearFuncionPublicarPost
+// orchestrator/src/app.ts:54-96 — agregar a la interfaz, junto a `borrador`:
+/**
+ * Con qué se genera el post de blog con IA (sub-proyecto 3). Mismo motivo que `borrador`: es un
+ * tercer eje que puede facturar sin que `pipeline`/`publicacion`/`prosa` lo digan.
+ */
+postBlog: ModoPostBlog; // import type { ModoPostBlog } from "./config.js";
 
-// línea 56-62:
+// orchestrator/src/app.ts:100-101 — destructuring de crearServidor:
+export function crearServidor(opciones: OpcionesServidor): Server {
+  const { manejadorInngest, funciones, modo, pipeline, publicacion, prosa, borrador, postBlog, sonda } = opciones;
+  // ...
+
+// orchestrator/src/app.ts:126-143 — cuerpo JSON de /_health, junto a `borrador`:
+          borrador,
+          postBlog,
+```
+
+- [ ] **Step 4: Actualizar los `crearServidor({...})` de `app.test.ts`**
+
+Agregar `postBlog: "mock"` a cada uno de los `crearServidor({ ... })` existentes en
+`orchestrator/src/app.test.ts` (al menos las 6 líneas listadas en "Files" arriba — buscá todas con
+`grep -n "crearServidor({" orchestrator/src/app.test.ts` para no dejar ninguna sin actualizar). Y
+sumar UN test nuevo que confirme que `/_health` expone el campo:
+
+```ts
+test("/_health incluye postBlog", async () => {
+  const server = crearServidor({
+    manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock",
+    publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "openai",
+  });
+  try {
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const base = `http://localhost:${(server.address() as { port: number }).port}`;
+    const cuerpo = (await (await fetch(`${base}/_health`)).json()) as Record<string, unknown>;
+    assert.equal(cuerpo["postBlog"], "openai");
+  } finally {
+    server.close();
+  }
+});
+```
+
+Run: `npm test -w orchestrator -- --test-name-pattern="_health"`
+Expected: FAIL hasta completar el Step 3 (falta `postBlog` en `OpcionesServidor`) y este Step (falta
+en las llamadas existentes).
+
+- [ ] **Step 5: Editar `server.ts`**
+
+```ts
+// orchestrator/src/server.ts — imports: agregar crearFuncionPublicarPost, junto a los otros
+// crearFuncionX que ya importa de "./functions.js" (incluido crearFuncionDecision, que el
+// sub-proyecto 2 ya agregó ahí).
+
+// El array de funciones — el sub-proyecto 2 (su Task 7) ya lo dejó en SEIS elementos, con
+// crearFuncionDecision agregado. Esta task suma la SÉPTIMA, sin retirar ninguna de las seis:
 const funciones = [
   crearFuncionResearch(deps),
   crearFuncionBarrido(deps),
   crearFuncionPollingResenas(deps),
   crearFuncionPublicarResena(deps),
   crearFuncionVincularTelegram(deps),
+  crearFuncionDecision(deps),
   crearFuncionPublicarPost(deps),
 ];
-// actualizar el comentario de la línea 51-55: "Cinco" → "Seis: ... y la publicación de posts en el
-// blog externo del cliente (sub-proyecto 3)".
+// actualizar el comentario que cuenta las funciones (el sub-proyecto 2 ya lo dejó en "Seis" — pasa
+// a "Siete: ... y la publicación de posts en el blog externo del cliente, sub-proyecto 3").
 
-const postBlog = config.postBlog; // junto a `const borrador = config.borradorResenas;`, línea ~72
+const postBlog = config.postBlog; // junto a `const borrador = config.borradorResenas;`
 
-// pasar `postBlog` al objeto de crearServidor, junto a `borrador` (línea ~85)
+// pasar postBlog al objeto que arma crearServidor, junto a `borrador`
 
-// en el log de arranque (línea ~106), agregar:
+// en el log de arranque, agregar:
 console.log(`  Post-blog IA: ${postBlog}${postBlog === "openai" ? " ⚠️  GASTA DINERO al generar posts" : ""}`);
 ```
 
-- [ ] **Step 4: `npm run typecheck -w orchestrator && npm test -w orchestrator`**
+- [ ] **Step 6: `npm run typecheck -w orchestrator && npm test -w orchestrator`**
 
 Expected: PASS — este es el punto donde las Tasks 4, 5, 6, 7, 8 y 9 quedan integradas y compilando
-juntas.
+juntas, con las siete funciones registradas.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add orchestrator/src/deps.ts orchestrator/src/workflow.ts orchestrator/src/server.ts
-git commit -m "orchestrator: wiring de postProvider/postPublisher, servidor expone la sexta función"
+git add orchestrator/src/deps.ts orchestrator/src/workflow.ts orchestrator/src/app.ts orchestrator/src/app.test.ts orchestrator/src/server.ts
+git commit -m "orchestrator: wiring de postProvider/postPublisher — el servidor expone la séptima función"
 ```
 
 ---
 
 ### Task 10: `api/src/app.ts` — extender `PATCH /pages/:id`, agregar `GET /pages/:id/post`
 
+> **Dispatch reescrito tras la ronda de Codex sobre este plan (hallazgo Major).** La primera versión
+> decidía la rama por "¿tiene AL MENOS un campo de esta familia?", no por "¿el body es EXACTAMENTE
+> esta forma?" — cuatro combos colaban silenciosamente: `{post_titulo, publicar_post:true}` editaba
+> e ignoraba la publicación; `{post_titulo, claveDesconocida}` devolvía 200 ignorando la clave;
+> `{post_titulo: 7}` (tipo inválido) terminaba en 404 en vez de 400; `{publicar_post:false,
+> post_titulo}` editaba igual. Ahora cada rama exige el CONJUNTO EXACTO de claves (y sus tipos).
+
 **Files:**
-- Modify: `api/src/app.ts` — extender el handler de `PATCH /pages/:id` (línea 348-356) y agregar
-  `GET /pages/:id/post` cerca de él.
+- Modify: `api/src/app.ts` — extender `filtrarCamposCliente` (línea 923-947, Step 0), y el handler de
+  `PATCH /pages/:id` (línea 348-356, Step 1+) + agregar `GET /pages/:id/post` cerca de él.
+- Modify: `db/src/clientes.ts` (o donde viva `CambiosCliente`/`PgClientes`) — sumar los tres campos
+  nuevos al tipo y al `UPDATE` dinámico (Step 0).
 - Modify: `api/src/deps.ts` (o donde se resuelva `deps.store`) — sin cambios si `PgStore` ya expone
   los métodos nuevos (Task 3) a través de la misma instancia que usa `editPage`/`approvePage`.
 - Test: `api/src/app.test.ts` — agregar sección nueva, mismo patrón que los tests de
   `PATCH /clients/:id/resenas/:resenaId` (líneas 1486-1565).
 
 **Interfaces:**
-- Consume: `deps.store.editPage` (ya existente), `deps.store.editarPost`/`solicitarPublicacionPost`
-  (Task 3), `deps.emisor.send` (ya existente, interfaz `EmisorEventos`), evento
+- Consume: `deps.store.editPage` (ya existente), `deps.store.editarPost`/`solicitarPublicacionPost`/
+  `getPost` (Task 3), `deps.emisor.send` (ya existente, interfaz `EmisorEventos`), evento
   `posts/publicacion.solicitada` (Task 6).
+
+- [ ] **Step 0: `PATCH /clients/:id` — camino para configurar el blog externo (faltaba por completo)**
+
+Codex, ronda 1 sobre el plan, hallazgo Major: sin este Step, no había NINGUNA forma de escribir
+`blog_externo_tipo`/`url`/`credencial` — ni siquiera para el mock de Task 12. `filtrarCamposCliente`
+(`api/src/app.ts:923-947`) es la allowlist real de `PATCH /clients/:id`, y no incluye estas tres
+columnas; `CambiosCliente` (`db/`, junto a `PgClientes`) tampoco. Extender los dos:
+
+`filtrarCamposCliente` es una función pura (sin acceso a `c`, sin poder devolver un 400 por su
+cuenta) — la validación de forma de `blog_externo_tipo` tiene que vivir en el HANDLER de
+`PATCH /clients/:id` (que sí tiene `c`), no adentro del filtro. Mirá cómo ese handler ya devuelve
+400 hoy (por ejemplo ante un body inválido) y replicá el mismo mecanismo, algo en la línea de:
+
+```ts
+// api/src/app.ts:923-947 — sumar a filtrarCamposCliente, mismo patrón que el resto de la función
+// (sin validar el valor de "tipo" acá -- eso es responsabilidad del handler, ver abajo)
+if (typeof body["blog_externo_tipo"] === "string" || body["blog_externo_tipo"] === null) {
+  campos.blog_externo_tipo = body["blog_externo_tipo"] as string | null;
+}
+if (typeof body["blog_externo_url"] === "string" || body["blog_externo_url"] === null) {
+  campos.blog_externo_url = body["blog_externo_url"] as string | null;
+}
+if (typeof body["blog_externo_credencial"] === "string" || body["blog_externo_credencial"] === null) {
+  campos.blog_externo_credencial = body["blog_externo_credencial"] as string | null;
+}
+```
+
+```ts
+// api/src/app.ts — en el handler de PATCH /clients/:id, ANTES de llamar a filtrarCamposCliente:
+// el único valor soportado hoy es "wordpress" (spec, decisión #1: genérico en el diseño, sin una
+// segunda plataforma construida) -- un typo no debe llegar a la base como un "tipo" que ninguna
+// función security definer (post_para_publicar, 0028) va a reconocer nunca.
+const tipoBlog = (await c.req.json().catch(() => ({})))["blog_externo_tipo"];
+if (tipoBlog !== undefined && tipoBlog !== null && tipoBlog !== "wordpress") {
+  return c.json({ error: 'blog_externo_tipo solo admite "wordpress" o null.' }, 400);
+}
+// (si el handler ya parseó el body una vez más arriba, reusá esa variable en vez de volver a leer
+// c.req.json() -- Hono cachea el body parseado, pero confirmalo en vez de asumirlo)
+```
+
+Extender `CambiosCliente` (busca su definición junto a `PgClientes`) con los tres campos
+`blog_externo_tipo?: string | null`, `blog_externo_url?: string | null`,
+`blog_externo_credencial?: string | null`, y el método que arma el `UPDATE` dinámico de
+`PATCH /clients/:id` (mismo patrón de allowlist dinámica que `editPage`) para incluirlos en su SET
+cuando estén presentes. Los grants ya existen (Task 1: `app_user` tiene `update` sobre las tres
+columnas) — no hace falta migración nueva para este Step.
+
+⚠️ La query que arma `GET /clients/:id` (y cualquier `select` de `PgClientes` sobre `clients`) tiene
+que seguir sin nombrar `blog_externo_credencial` en su lista de columnas — mismo cuidado que ya
+existe con `google_refresh_token` (`ClientRow`, `db/src/store.ts:191-198`, la excluye a propósito).
+`app_user` no tiene `select` sobre esa columna (Task 1): si la query la nombra explícitamente,
+revienta con `permission denied for column blog_externo_credencial` en vez de omitirla en silencio
+— confirmá con el test de abajo que el `GET` responde 200 y sin la clave, no que explota.
+
+Test rojo→verde a agregar en `api/src/app.test.ts`:
+
+```ts
+test("PATCH /clients/:id con blog_externo_tipo/url/credencial: 200, credencial NO vuelve en el GET", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA, tenant: tenantA,
+    body: { blog_externo_tipo: "wordpress", blog_externo_url: "https://blog.cliente.com", blog_externo_credencial: "sek" },
+  });
+  assert.equal(res.status, 200);
+
+  const getRes = await req("GET", `/clients/${clientA1}`, { user: equipoA, tenant: tenantA });
+  const cuerpo = await getRes.json();
+  assert.equal(cuerpo.blog_externo_tipo, "wordpress");
+  assert.equal("blog_externo_credencial" in cuerpo, false, "la credencial nunca vuelve por GET — app_user no puede leerla (Task 1)");
+});
+
+test("🔴 PATCH /clients/:id con blog_externo_tipo inválido: 400", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA, tenant: tenantA, body: { blog_externo_tipo: "wix" },
+  });
+  assert.equal(res.status, 400);
+});
+```
 
 - [ ] **Step 1: Tests que fallan**
 
 ```ts
-// api/src/app.test.ts — sección nueva
+// api/src/app.test.ts — sección nueva. `sembrarClienteConBlog(clientId)` es un helper nuevo:
+// configura blog_externo_tipo/url/credencial vía SQL directo (necesario para que
+// solicitarPublicacionPost — Task 3 — califique).
 
 test("PATCH /pages/:id con {post_titulo, post_cuerpo}: edita el post, NO revoca approved", async () => {
   const pageId = await sembrarPaginaAprobadaConPost(clientA1); // helper: página approved=true con post ya generado
@@ -1621,6 +2149,7 @@ test("PATCH /pages/:id con {post_titulo, post_cuerpo}: edita el post, NO revoca 
 
 test("PATCH /pages/:id con {publicar_post: true}: marca post_solicitado_en y emite EXACTAMENTE posts/publicacion.solicitada", async () => {
   const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  await sembrarClienteConBlog(clientA1);
   const res = await req("PATCH", `/pages/${pageId}`, { user: equipoA, tenant: tenantA, body: { publicar_post: true } });
   assert.equal(res.status, 200);
   const [fila] = await sql<{ post_solicitado_en: string | null }>(
@@ -1633,6 +2162,7 @@ test("PATCH /pages/:id con {publicar_post: true}: marca post_solicitado_en y emi
 
 test("🔴 PATCH /pages/:id con {publicar_post: true} sobre página SIN post: 404, sin evento", async () => {
   const pageId = await sembrarPaginaAprobadaSinPost(clientA1);
+  await sembrarClienteConBlog(clientA1);
   const res = await req("PATCH", `/pages/${pageId}`, { user: equipoA, tenant: tenantA, body: { publicar_post: true } });
   assert.equal(res.status, 404);
   assert.equal(eventos.length, 0, "🔴 sin fila marcada, no se emite nada");
@@ -1646,12 +2176,58 @@ test("🔴 PATCH /pages/:id mezclando un campo de brief con uno de post: 400", a
   assert.equal(res.status, 400);
 });
 
+// Los cuatro combos que colaban en la primera versión de este dispatch (Codex, ronda 1 sobre el
+// plan, hallazgo Major) — cada uno tiene que dar 400 ahora.
+test("🔴 PATCH /pages/:id con {post_titulo, publicar_post:true} (mezcla edición+comando): 400", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA, tenant: tenantA, body: { post_titulo: "T", publicar_post: true },
+  });
+  assert.equal(res.status, 400, "🔴 antes: editaba e ignoraba silenciosamente la publicación");
+});
+
+test("🔴 PATCH /pages/:id con {post_titulo, claveDesconocida}: 400", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA, tenant: tenantA, body: { post_titulo: "T", claveDesconocida: 1 },
+  });
+  assert.equal(res.status, 400, "🔴 antes: devolvía 200 e ignoraba la clave desconocida");
+});
+
+test("🔴 PATCH /pages/:id con {post_titulo: 7} (tipo inválido): 400, no 404", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA, tenant: tenantA, body: { post_titulo: 7 },
+  });
+  assert.equal(res.status, 400, "🔴 antes: cambios vacíos → editarPost devolvía false → 404 engañoso");
+});
+
+test("🔴 PATCH /pages/:id con {publicar_post: false, post_titulo}: 400", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA, tenant: tenantA, body: { publicar_post: false, post_titulo: "T" },
+  });
+  assert.equal(res.status, 400, "🔴 antes: editaba el post ignorando el publicar_post:false presente");
+});
+
+test("🔴 PATCH /pages/:id con body vacío {}: 400", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, { user: equipoA, tenant: tenantA, body: {} });
+  assert.equal(res.status, 400);
+});
+
 test("GET /pages/:id/post — staff ve el post, cliente también (solo lectura)", async () => {
   const pageId = await sembrarPaginaAprobadaConPost(clientA1);
   const resStaff = await req("GET", `/pages/${pageId}/post`, { user: equipoA, tenant: tenantA });
   assert.equal(resStaff.status, 200);
   const resCliente = await req("GET", `/pages/${pageId}/post`, { user: duenoA1, tenant: tenantA });
   assert.equal(resCliente.status, 200);
+});
+
+test("🔴 GET /pages/:id/post sobre una página SIN post generado todavía: 404", async () => {
+  const pageId = await sembrarPaginaAprobadaSinPost(clientA1);
+  const res = await req("GET", `/pages/${pageId}/post`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 404, "🔴 antes: getPost devolvía un objeto con todo null, y eso es truthy → 200");
 });
 
 test("🔴 PATCH /pages/:id con {post_titulo} desde rol cliente: 404 (ADR-20, no un 403 que confirme la fila)", async () => {
@@ -1670,35 +2246,43 @@ Expected: FAIL — la ruta no distingue las formas nuevas todavía.
 // api/src/app.ts — reemplaza el handler actual de PATCH /pages/:id (línea 348-356)
 
 /**
- * PATCH /pages/:id — dirige por FORMA del body, sin mezclar formas en un mismo request:
- *  - Campos del brief (url_slug, keyword_principal, seo, content_brief, preguntas_frecuentes) →
- *    editPage (comportamiento ya existente, revoca approved).
- *  - { post_titulo?, post_cuerpo? } (al menos una) → editarPost (NO revoca approved).
- *  - { publicar_post: true } → comando compuesto (ADR-18).
- * Mezclar campos de brief con campos de post, o cualquier combinación no reconocida → 400.
+ * PATCH /pages/:id — dirige por FORMA EXACTA del body (conjunto de claves Y tipos), nunca por
+ * "¿tiene al menos un campo de esta familia?": un body que no calza con NINGUNA de las tres formas
+ * exactas de abajo es 400, no se "adivina" la intención (Codex, ronda 1 sobre el plan, hallazgo
+ * Major: la versión anterior dejaba pasar combinaciones mezcladas o con tipos inválidos).
+ *  - Subconjunto no vacío de {url_slug, keyword_principal, seo, content_brief,
+ *    preguntas_frecuentes}, SIN ninguna otra clave → editPage (revoca approved).
+ *  - Subconjunto no vacío de {post_titulo, post_cuerpo} (ambos string si están), SIN ninguna otra
+ *    clave → editarPost (NO revoca approved).
+ *  - Exactamente {publicar_post: true} → comando compuesto (ADR-18).
  */
 app.patch("/pages/:id", async (c) => {
   const ctx = c.get("ctx");
   const pageId = c.req.param("id");
   const body = await c.req.json().catch(() => null);
-  if (!body || typeof body !== "object") return c.json({ error: "Body inválido." }, 400);
+  if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body inválido." }, 400);
   const b = body as Record<string, unknown>;
+  const claves = Object.keys(b);
 
-  const clavesBrief = ["url_slug", "keyword_principal", "seo", "content_brief", "preguntas_frecuentes"];
-  const clavesPost = ["post_titulo", "post_cuerpo"];
-  const tieneBrief = clavesBrief.some((k) => b[k] !== undefined);
-  const tienePost = clavesPost.some((k) => b[k] !== undefined);
-  const esPublicar = Object.keys(b).length === 1 && b["publicar_post"] === true;
+  const CLAVES_BRIEF = new Set(["url_slug", "keyword_principal", "seo", "content_brief", "preguntas_frecuentes"]);
+  const CLAVES_POST = new Set(["post_titulo", "post_cuerpo"]);
 
-  if (tieneBrief && tienePost) {
-    return c.json({ error: "No se puede editar el brief y el post en el mismo PATCH." }, 400);
-  }
+  const esPublicar = claves.length === 1 && b["publicar_post"] === true;
+  const esBrief = claves.length > 0 && claves.every((k) => CLAVES_BRIEF.has(k));
+  const esPost =
+    claves.length > 0 &&
+    claves.every((k) => CLAVES_POST.has(k)) &&
+    claves.every((k) => typeof b[k] === "string");
 
   if (esPublicar) {
     const ok = await deps.store.solicitarPublicacionPost(ctx, pageId);
     if (!ok) {
       return c.json(
-        { error: "Página no encontrada, no aprobada, retirada, sin post, ya publicada, o sin permiso." },
+        {
+          error:
+            "Página no encontrada, no aprobada, retirada, sin post, ya publicada, el cliente no " +
+            "configuró su blog, o sin permiso.",
+        },
         404,
       );
     }
@@ -1709,7 +2293,7 @@ app.patch("/pages/:id", async (c) => {
     return c.json({ ok: true });
   }
 
-  if (tienePost) {
+  if (esPost) {
     const cambios: { postTitulo?: string; postCuerpo?: string } = {};
     if (typeof b["post_titulo"] === "string") cambios.postTitulo = b["post_titulo"];
     if (typeof b["post_cuerpo"] === "string") cambios.postCuerpo = b["post_cuerpo"];
@@ -1719,63 +2303,31 @@ app.patch("/pages/:id", async (c) => {
       : c.json({ error: "Página no encontrada, sin permiso, o con una publicación en curso." }, 404);
   }
 
-  if (tieneBrief) {
+  if (esBrief) {
     const ok = await deps.store.editPage(ctx, pageId, filtrarCambios(b));
     return ok
       ? c.json({ ok: true })
       : c.json({ error: "Página no encontrada, retirada, o sin cambios válidos." }, 404);
   }
 
-  return c.json({ error: "El body no reconoce ningún campo válido." }, 400);
+  return c.json(
+    { error: "El body no coincide con ninguna combinación válida de campos (brief, post, o publicar_post)." },
+    400,
+  );
 });
 
-/** GET /pages/:id/post — ver el borrador del post (staff y cliente, solo lectura para cliente). */
+/**
+ * GET /pages/:id/post — ver el borrador del post (staff y cliente, solo lectura para cliente).
+ * `getPost` (Task 3) devuelve `null` tanto si la página no existe como si nunca se generó un post
+ * — las dos dan el mismo 404 acá, a propósito (Codex, ronda 1 sobre el plan, hallazgo Minor: la
+ * versión anterior devolvía 200 con un objeto de puros `null` para una página sin post).
+ */
 app.get("/pages/:id/post", async (c) => {
   const ctx = c.get("ctx");
-  const post = await deps.store.getPost(ctx, c.req.param("id")); // ver Step 2.1, método nuevo simple
+  const post = await deps.store.getPost(ctx, c.req.param("id"));
   return post ? c.json({ post }) : c.json({ error: "Página no encontrada, o sin post generado." }, 404);
 });
 ```
-
-- [ ] **Step 2.1: Agregar `getPost` a `db/src/store.ts`** (faltaba en la Task 3 — es un `SELECT`
-  simple bajo RLS normal, no necesita comando compuesto ni sanitización de nuevo — lo que está en la
-  base ya está sanitizado)
-
-```ts
-// db/src/store.ts — junto a los otros métodos de la Task 3
-
-export interface PostDePagina {
-  titulo: string | null;
-  cuerpo: string | null;
-  generadoEn: string | null;
-  solicitadoEn: string | null;
-  publicadoEn: string | null;
-  urlExterna: string | null;
-}
-
-async getPost(ctx: TenantContext, pageId: string): Promise<PostDePagina | null> {
-  return this.withTenant(ctx, async (tx) => {
-    const { rows } = await tx.query<{
-      post_titulo: string | null; post_cuerpo: string | null; post_generado_en: string | null;
-      post_solicitado_en: string | null; post_publicado_en: string | null; post_url_externa: string | null;
-    }>(
-      `select post_titulo, post_cuerpo, post_generado_en, post_solicitado_en, post_publicado_en, post_url_externa
-       from kr_pages where id = $1`,
-      [pageId],
-    );
-    const r = rows[0];
-    if (!r) return null;
-    return {
-      titulo: r.post_titulo, cuerpo: r.post_cuerpo, generadoEn: r.post_generado_en,
-      solicitadoEn: r.post_solicitado_en, publicadoEn: r.post_publicado_en, urlExterna: r.post_url_externa,
-    };
-  });
-}
-```
-
-Agregá un test rojo→verde para `getPost` en `db/src/posts-blog.test.ts` (Task 3) antes de seguir acá
-— mismo ritual, aunque sea un método simple: el caso "página de otro tenant devuelve null, no lanza"
-es el que vale la pena fijar.
 
 - [ ] **Step 3: Correr y confirmar**
 
@@ -1790,8 +2342,8 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add api/src/app.ts db/src/store.ts db/src/posts-blog.test.ts api/src/app.test.ts
-git commit -m "api: PATCH /pages/:id extendido (post, publicar) + GET /pages/:id/post"
+git add api/src/app.ts api/src/app.test.ts db/src/clientes.ts
+git commit -m "api: configurar blog externo (PATCH /clients/:id) + PATCH /pages/:id extendido + GET /pages/:id/post"
 ```
 
 ---
@@ -1813,24 +2365,34 @@ git commit -m "api: PATCH /pages/:id extendido (post, publicar) + GET /pages/:id
 - Test: `*.spec.ts` correspondiente, vía Karma (`npm --prefix portal run test:components`).
 
 **Interfaces:**
-- Consume: `GET /pages/:id/post`, `PATCH /pages/:id` (con `post_titulo`/`post_cuerpo` o
-  `publicar_post: true`) — Task 10.
+- Consume: `GET /pages/:id/post` (devuelve `PostDePagina`: `titulo`, `cuerpo`, `generadoEn`,
+  `solicitadoEn`, `publicadoEn`, `urlExterna`, `errorEn` — Task 3), `PATCH /pages/:id` (con
+  `post_titulo`/`post_cuerpo` o `publicar_post: true`) — Task 10.
 
-- [ ] **Step 1: Listar los posts de un run `crear_posts`**
+- [ ] **Step 1: Listar los posts de un run `crear_posts`, con la máquina de estados corregida**
 
-Lista título editable, cuerpo editable (textarea o editor simple), y estado derivado de las
-columnas: sin post → "generando…" (o vacío si falló, ver más abajo); generado sin publicar →
-editable + botón "Publicar"; solicitado sin confirmar → botón deshabilitado ("Publicando…"); ya
-publicado → "Publicada — [link a `postUrlExterna`]" + botón "Reintentar publicación" (habilitado
-mientras `publicadoEn` sea `null` — que ahora SÍ es un estado alcanzable de nuevo tras un reintento,
-a diferencia de la primera versión del spec).
+> **Corregido tras la ronda de Codex sobre este plan** (hallazgo Major "publicación fallida bloquea
+> el post para siempre"): la primera versión de este Step no distinguía "publicando ahora mismo" de
+> "el último intento falló" — las dos se veían igual (`solicitadoEn` seteado) y el botón quedaba
+> deshabilitado para siempre en el segundo caso. Ahora `errorEn` (Task 1/3) es la señal explícita.
+
+Estado derivado de `PostDePagina`, en este orden de prioridad:
+
+| Condición | Estado en el portal |
+|---|---|
+| `404` de `GET /pages/:id/post` | "Generando…" (o vacío) — la página está aprobada pero `workflowDecision` todavía no le escribió un post, o falló por completo para esta página |
+| `publicadoEn !== null` | "Publicada — [link a `urlExterna`]". Sin botón activo: `solicitarPublicacionPost` (Task 3) ya no califica una vez publicado — republicar tras editar es fuera de alcance (spec, "Fuera de alcance") |
+| `solicitadoEn !== null` (y `publicadoEn === null`) | "Publicando…" — intento EN CURSO. Título/cuerpo deshabilitados (ver Step 2). Sin botón — todavía no hay nada que reintentar |
+| `errorEn !== null` (y `solicitadoEn === null`, `publicadoEn === null`) | "Falló la publicación — Reintentar" (mostrar que el último intento no salió). Título/cuerpo editables, botón "Reintentar publicación" habilitado |
+| Ninguna de las anteriores (`titulo` presente, nunca solicitado) | Editable, botón "Publicar" |
 
 - [ ] **Step 2: Edición**
 
 Título y cuerpo en un único formulario, un solo `PATCH /pages/:id` con `{post_titulo, post_cuerpo}`
-al guardar — no dos requests separados. Mientras `post_solicitado_en` esté seteado y
-`post_publicado_en` no, deshabilitar los campos de edición en la UI (el `PATCH` los rechazaría
-igual — esto es solo UX, no la garantía real).
+al guardar — no dos requests separados. Deshabilitar los campos de edición en la UI SOLO en el
+estado "Publicando…" (`solicitadoEn !== null && publicadoEn === null`, tabla de arriba) — el `PATCH`
+los rechazaría igual (Task 3, `editarPost`), esto es solo UX. En el estado "Falló la publicación" la
+edición SÍ está habilitada (`solicitadoEn` ya volvió a `null` — ver `marcarPostFallido`, Task 1/3).
 
 - [ ] **Step 3: Rol `cliente`**
 
@@ -1839,8 +2401,9 @@ control que la API rechazaría en silencio (mismo criterio que `cliente-resenas.
 
 - [ ] **Step 4: Tests de componente**
 
-Cubrir como mínimo: la lista renderiza los tres estados (sin publicar / publicando / publicado), el
-botón "Publicar" llama al `PATCH` correcto, el rol `cliente` no ve el botón.
+Cubrir como mínimo: la lista renderiza los CUATRO estados de la tabla de arriba (sin publicar /
+publicando / falló-reintentar / publicado), el botón "Publicar" (y "Reintentar publicación") llama
+al `PATCH` correcto, el rol `cliente` no ve ningún botón.
 
 Run: `npm --prefix portal run test:components -- --include='**/cliente-posts*.spec.ts'` (o el
 patrón real que uses)
@@ -1848,8 +2411,10 @@ Expected: PASS.
 
 - [ ] **Step 5: Manejar en el navegador** (ritual de AGENTS.md — encuentra lo que los tests no ven)
 
-`npm run dev:server -w api`, aprobar un run con `crear_posts`, ver los borradores generados
-(mock), editar uno, publicarlo con `MockBlogPublisher`, confirmar que el link aparece.
+`npm run dev:server -w api`, configurar `blog_externo_tipo`/`url`/`credencial` del cliente de prueba
+(Task 10, Step 0 — sin esto `solicitarPublicacionPost` rechaza cualquier intento de publicar),
+aprobar un run con `crear_posts`, ver los borradores generados (mock), editar uno, publicarlo con
+`MockBlogPublisher`, confirmar que el link aparece.
 
 - [ ] **Step 6: Commit**
 
@@ -1878,15 +2443,22 @@ Expected: PASS.
 - [ ] **Step 3: Flujo completo en el navegador** (ya cubierto parcialmente en la Task 11, Step 5 —
   repetir de punta a punta con los tres sub-sistemas integrados)
 
-1. Aprobar un run con `crear_posts` (requiere que la UI de aprobación del sub-proyecto 2 lo ofrezca
+1. Configurar `blog_externo_tipo`/`url`/`credencial` del cliente de prueba (Task 10, Step 0) — sin
+   esto, ningún intento de publicar califica.
+2. Aprobar un run con `crear_posts` (requiere que la UI de aprobación del sub-proyecto 2 lo ofrezca
    — si esa pieza del portal no está implementada todavía, aprobar directo contra la API con
    `curl`/`httpie`).
-2. Confirmar que se generaron los posts (mock) — `GET /pages/:id/post` por cada página aprobada.
-3. Editar uno desde el portal.
-4. Publicarlo — confirmar `post_publicado_en`/`post_url_externa` en la base y el link en el portal.
-5. Reintentar publicar una página YA publicada desde la API directamente (`{"publicar_post": true}`)
+3. Confirmar que se generaron los posts (mock) — `GET /pages/:id/post` por cada página aprobada.
+4. Editar uno desde el portal.
+5. Publicarlo — confirmar `post_publicado_en`/`post_url_externa` en la base y el link en el portal.
+6. Reintentar publicar una página YA publicada desde la API directamente (`{"publicar_post": true}`)
    y confirmar que `solicitarPublicacionPost` lo rechaza (`404`) — es el caso que el mock no puede
    mostrar visualmente (el botón ya está oculto), pero el contrato tiene que sostenerlo igual.
+7. Simular un fallo de publicación: desconfigurar `blog_externo_url` del cliente (`update clients set
+   blog_externo_url = null where id = ...`) sobre una página con post generado, pedir "Publicar",
+   confirmar que `post_error_en` queda seteado y `post_solicitado_en` vuelve a `null` (Task 1/3/7) —
+   y que el portal muestra "Falló la publicación — Reintentar", no "Publicando…" para siempre (Task
+   11). Reconfigurar la URL y confirmar que "Reintentar" sí publica.
 
 - [ ] **Step 4: Documentación** (ritual de `AGENTS.md`, paso 3)
 
@@ -1901,3 +2473,32 @@ confirma o ajusta algo de la compuerta humana doble que no estuviera ya document
 git add -A
 git commit -m "Cierra el sub-proyecto 3: publicar posts en blog externo, de punta a punta"
 ```
+
+---
+
+## Historial de revisión
+
+### Ronda 1 — Codex, sobre este plan (2026-08-26)
+
+Veredicto de Codex: NECESITA REDISEÑO. 10 hallazgos (2 Critical, 4 Major, 4 Minor). Verificados todos
+independientemente contra el código real antes de aplicar (leyendo `orchestrator/src/app.ts`,
+`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md` completo, `api/src/app.ts:923-947`,
+trazando el dispatch de `PATCH /pages/:id` línea por línea contra cada combo reportado) — ninguno
+refutado, ninguno aplicado a ciegas. Reporte completo:
+[`progress/informes/codex-publicar-posts-plan.md`](../../../progress/informes/codex-publicar-posts-plan.md).
+
+| # | Hallazgo | Estado | Qué cambió |
+|---|---|---|---|
+| 1 | [Critical] wiring de Task 9 no compila, podía desregistrar `crearFuncionDecision` | Verificado — confirmado leyendo `orchestrator/src/app.ts:54-96` (sin `postBlog`) y el plan del sub-proyecto 2 (array ya en seis funciones) | Task 9 reescrita entera: `postProvider`/`postPublisher` los DOS en `Deps`, `OpcionesServidor` extendida, array de funciones a siete sin retirar `crearFuncionDecision` |
+| 2 | [Critical] firma y helpers de Task 8 no existen | Verificado contra `docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md:1037-1041` (firma real de tres argumentos) y sus tests (patrón real con `store.registrarDecision` + `MotorPasos`) | Task 8 reescrita entera contra el contrato real, con una precondición ejecutable (Step 0) |
+| 3 | [Major] `guardarPost(false)` cuenta como generado | Verificado contra el propio código committeado | `if (await deps.store.guardarPost(...)) generados++;` |
+| 4 | [Major] publicación fallida bloquea el post para siempre | Verificado | Columna `post_error_en` + función `marcar_post_fallido` (Task 1/3), llamada desde todos los caminos de fallo de `publicarPost` (Task 7); estados del portal corregidos (Task 11) |
+| 5 | [Major] sin camino para configurar credenciales del blog | Verificado contra `api/src/app.ts:923-947` (`filtrarCamposCliente` no las incluye) | Task 10, Step 0 nuevo: extiende `PATCH /clients/:id` |
+| 6 | [Major] dispatch de `PATCH /pages/:id` acepta combos que promete rechazar | Verificados los cuatro casos trazando el código línea por línea | Dispatch reescrito: forma EXACTA de claves (y tipos), no "al menos un campo de la familia" |
+| 7 | [Minor] `GET /pages/:id/post` 200 para página sin post | Verificado | `getPost` (Task 3) devuelve `null` si `post_titulo` es `null`, no solo si la página no existe |
+| 8 | [Minor] mock genera doble `/` con slugs reales | Verificado (slugs reales empiezan con `/`) | `MockBlogPublisher` normaliza los dos bordes |
+| 9 | [Minor] `retries: 0` sin test | Verificado | Extraído a `REINTENTOS_PUBLICAR_POST`, testeado como constante |
+| 10 | [Minor] `allowedSchemes` no cubre protocol-relative | Aceptado (inferencia razonable, dependencia no instalable en la revisión) | `allowProtocolRelative: false` + dos tests (relativo permitido, protocol-relative rechazado) |
+
+Ninguno de los 10 hallazgos contradice las 6 decisiones de producto ya fijadas — todos son de
+ejecutabilidad/mecanismo del plan.

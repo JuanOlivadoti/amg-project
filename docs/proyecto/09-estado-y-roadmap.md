@@ -16,11 +16,12 @@
 > dos rondas de Codex procesadas (sub-proyecto 1 — multi-vertical, agrega correduría de seguros: 15
 > tasks, 1 Critical + 6 Major + 2 Minor en el spec, 1 Critical + 8 Major + 4 Minor en el plan;
 > sub-proyecto 2 — desacoplar keyword research de creación de webs: 12 tasks, 3 Critical + 7 Major + 2
-> Minor en el spec, 1 Critical + 8 Major + 3 Minor en el plan; todos corregidos en ambos) — **cero
-> código tocado todavía en ninguno de los dos**. **El sub-proyecto 3 (publicar posts a un blog
-> externo) tiene spec (una ronda de Codex, 3 Critical + 5 Major + 1 Minor + 1 Nit, corregidos) y plan
-> (12 tasks) completos** — falta la ronda de Codex sobre el plan. Detalle completo y qué sigue en
-> [`progress/current.md`](../../progress/current.md).
+> Minor en el spec, 1 Critical + 8 Major + 3 Minor en el plan; sub-proyecto 3 — publicar posts en
+> blog externo: 12 tasks, 3 Critical + 5 Major + 1 Minor + 1 Nit en el spec, 2 Critical + 4 Major + 4
+> Minor en el plan; todos corregidos en los tres) — **cero código tocado todavía en ninguno de los
+> tres**. **Los tres sub-proyectos están "aterrizados"** (spec+plan completos, revisados por Codex);
+> el paso siguiente es la revisión exhaustiva conjunta de los tres antes de implementar cualquiera.
+> Detalle completo y qué sigue en [`progress/current.md`](../../progress/current.md).
 >
 > 🧭 **Nuevo (2026-08-23): Bloque F fase 2, segunda pieza — publicar la respuesta de vuelta a Google,
 > mock-first, COMPLETA.** [Plan de 3 tasks](../superpowers/plans/2026-08-23-publicar-respuesta-resena.md)

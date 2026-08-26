@@ -91,19 +91,29 @@ descubrir una incompatibilidad entre sub-proyectos recién al implementar el ter
   de edición de páginas es `PATCH /pages/:id` (plana), no `/clients/:id/pages/:pageId` como decía la
   primera versión del spec — corregido en ambos documentos.
 - **Plan:** [`docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md`](../docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md).
-  12 tasks (migración → `db` → `orchestrator` → `api` → portal → verificación), autorevisado.
+  12 tasks (migración → `db` → `orchestrator` → `api` → portal → verificación), autorevisado,
+  revisado por Codex una vez (veredicto NECESITA REDISEÑO → 2 Critical + 4 Major + 4 Minor, los 10
+  corregidos e incorporados — sección "Historial de revisión" con la tabla completa). Los más caros:
+  las Tasks 8 y 9 originales no eran ejecutables (firma inventada de `workflowDecision`, helpers de
+  test que no existen, un wiring que hubiera desregistrado `crearFuncionDecision` del sub-proyecto 2
+  en producción) — reescritas enteras contra el contrato real de
+  `docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`; y una publicación fallida dejaba el post
+  bloqueado para siempre (agregada la columna `post_error_en` + `marcar_post_fallido`).
   **Depende de que el sub-proyecto 2 esté implementado antes de la Task 8 en adelante** — las Tasks
   1-7 (migración, capa de datos, piezas aisladas del orquestador) no dependen de eso. Solo
   `MockBlogPublisher` en este plan — ninguna plataforma real (WordPress u otra) sin cliente
   confirmado. **Ninguna task se ejecutó todavía.**
-- **Qué falta:** una ronda de Codex sobre el plan (todavía no pedida) — mismo proceso que los
-  sub-proyectos 1 y 2.
+- **Informe de Codex de esta ronda**, guardado tal cual llegó:
+  [`progress/informes/codex-publicar-posts-plan.md`](informes/codex-publicar-posts-plan.md).
+- **Qué falta:** nada de diseño — los tres sub-proyectos de la iniciativa tienen spec+plan completos,
+  cada uno con sus rondas de Codex procesadas.
 
 ## Qué sigue
 
-**Ronda de Codex sobre el plan del sub-proyecto 3**, cuando el usuario la pida — mismo proceso que
-los dos anteriores. **No implementar nada de los tres sub-proyectos hasta que estén los tres
-diseñados (spec+plan) y pasada la revisión exhaustiva conjunta.**
+**Los tres sub-proyectos están "aterrizados"** (spec+plan, revisados por Codex). Según la decisión de
+secuencia del 2026-08-26, el paso siguiente es **una ronda de revisión exhaustiva y general** (esta
+sesión + Codex) sobre los tres a la vez — recién después de esa revisión conjunta arranca cualquier
+implementación.
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 
