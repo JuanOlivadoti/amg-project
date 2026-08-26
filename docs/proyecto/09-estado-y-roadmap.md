@@ -7,6 +7,17 @@
 > en [**15-plan-plataforma.md**](15-plan-plataforma.md) — nueve bloques, con qué archivos toca cada
 > uno y cómo se verifica.
 >
+> 🧭 **Nuevo (2026-08-26): arrancó una iniciativa nueva, todavía en diseño — generalizar AMG OS a
+> cualquier tipo de cliente, no solo restauración.** Partida en **tres sub-proyectos independientes**
+> (multi-vertical de clientes, desacoplar keyword research de creación de webs, publicar posts a un
+> blog externo ya existente), cada uno con su propio spec → plan → revisión de Codex, diseñados en
+> serie **sin implementar** hasta tener los tres listos — recién ahí una revisión exhaustiva conjunta y
+> arranca la implementación. El sub-proyecto 1 (multi-vertical, agrega correduría de seguros) tiene
+> spec y plan de 15 tasks completos, cada uno con su propia ronda de Codex ya procesada (1 Critical + 6
+> Major + 2 Minor en el spec, 1 Critical + 8 Major + 4 Minor en el plan, todos corregidos) — **cero
+> código tocado todavía**. Detalle completo y qué sigue en
+> [`progress/current.md`](../../progress/current.md).
+>
 > 🧭 **Nuevo (2026-08-23): Bloque F fase 2, segunda pieza — publicar la respuesta de vuelta a Google,
 > mock-first, COMPLETA.** [Plan de 3 tasks](../superpowers/plans/2026-08-23-publicar-respuesta-resena.md)
 > ejecutado con los agentes de área del proyecto (`datos` → `pipeline` → `front`, en serie por el
