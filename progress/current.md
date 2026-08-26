@@ -15,7 +15,8 @@ independientes**, cada uno con su propio spec → plan → revisión externa (Co
    completos, sin implementar todavía.**
 2. **Desacoplar keyword research de creación de webs** — **diseño y plan completos, sin
    implementar todavía.**
-3. Publicar posts a un blog ya existente en otra plataforma — **en diseño.**
+3. Publicar posts a un blog ya existente en otra plataforma — **spec completo, revisado por Codex
+   una vez; falta el plan de implementación.**
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -69,13 +70,32 @@ descubrir una incompatibilidad entre sub-proyectos recién al implementar el ter
   el turno, después de que el sub-proyecto 3 tenga su spec+plan y pase la revisión exhaustiva
   conjunta de los tres.
 
+## Sub-proyecto 3 — Publicar posts a un blog externo: estado detallado
+
+- **Spec:** [`docs/superpowers/specs/2026-08-26-publicar-posts-blog-externo-design.md`](../docs/superpowers/specs/2026-08-26-publicar-posts-blog-externo-design.md).
+  Escrita, autorevisada, revisada por Codex una vez (veredicto NECESITA REDISEÑO → 3 Critical + 5
+  Major + 1 Minor + 1 Nit, los 10 corregidos e incorporados al documento — sección "Historial de
+  revisión" con la tabla completa). Los más caros: el reintento de publicación era simultáneamente
+  imposible (el propio spec lo bloqueaba) y capaz de duplicar posts (la analogía con el borrador de
+  reseñas se rompe: responder una reseña es idempotente por naturaleza, crear un post no); y los
+  grants de `clients` NO cubren columnas nuevas automáticamente (a diferencia de `kr_pages`) — la
+  0021/0022 angostaron `clients` a grants por columna para `app_user` y `app_service` por igual.
+- **Informe de Codex**, guardado tal cual llegó:
+  [`progress/informes/codex-publicar-posts-spec.md`](informes/codex-publicar-posts-spec.md).
+- **Decisión de proceso pendiente, no de diseño:** el hallazgo #7 de esta ronda (la extensión del
+  chequeo "al menos una página aprobada" a `crear_posts` en `registrarDecision`, sub-proyecto 2, no
+  es una precondición ejecutable todavía) se resuelve así: la primera tarea del plan de este
+  sub-proyecto va a ser una modificación explícita al plan del sub-proyecto 2 — sigue siendo edición
+  de documentos de diseño, no adelanta la secuencia de implementación.
+- **Qué falta:** escribir el plan de implementación (`writing-plans`), autorevisión, una ronda de
+  Codex sobre el plan — mismo proceso que los sub-proyectos 1 y 2.
+
 ## Qué sigue
 
-**Diseñar el sub-proyecto 3** (publicar posts a un blog ya existente en otra plataforma) con la
-skill `brainstorming`, mismo proceso que los dos anteriores: explorar contexto, preguntas una por
-una, propuesta de diseño, spec escrita, autorevisión, revisión de Codex, plan de implementación,
-otra revisión de Codex. **No implementar nada de los tres sub-proyectos hasta que estén los tres
-diseñados y pasada la revisión exhaustiva conjunta.**
+**Escribir el plan de implementación del sub-proyecto 3** con la skill `writing-plans`, mismo
+proceso que los dos anteriores: autorevisión, revisión de Codex, aplicar hallazgos. **No implementar
+nada de los tres sub-proyectos hasta que estén los tres diseñados (spec+plan) y pasada la revisión
+exhaustiva conjunta.**
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 
