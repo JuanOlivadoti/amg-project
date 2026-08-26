@@ -12,11 +12,13 @@
 > (multi-vertical de clientes, desacoplar keyword research de creación de webs, publicar posts a un
 > blog externo ya existente), cada uno con su propio spec → plan → revisión de Codex, diseñados en
 > serie **sin implementar** hasta tener los tres listos — recién ahí una revisión exhaustiva conjunta y
-> arranca la implementación. El sub-proyecto 1 (multi-vertical, agrega correduría de seguros) tiene
-> spec y plan de 15 tasks completos, cada uno con su propia ronda de Codex ya procesada (1 Critical + 6
-> Major + 2 Minor en el spec, 1 Critical + 8 Major + 4 Minor en el plan, todos corregidos) — **cero
-> código tocado todavía**. Detalle completo y qué sigue en
-> [`progress/current.md`](../../progress/current.md).
+> arranca la implementación. **Los sub-proyectos 1 y 2 ya tienen spec+plan completos**, cada uno con
+> dos rondas de Codex procesadas (sub-proyecto 1 — multi-vertical, agrega correduría de seguros: 15
+> tasks, 1 Critical + 6 Major + 2 Minor en el spec, 1 Critical + 8 Major + 4 Minor en el plan;
+> sub-proyecto 2 — desacoplar keyword research de creación de webs: 12 tasks, 3 Critical + 7 Major + 2
+> Minor en el spec, 1 Critical + 8 Major + 3 Minor en el plan; todos corregidos en ambos) — **cero
+> código tocado todavía en ninguno de los dos**. El sub-proyecto 3 está en diseño. Detalle completo y
+> qué sigue en [`progress/current.md`](../../progress/current.md).
 >
 > 🧭 **Nuevo (2026-08-23): Bloque F fase 2, segunda pieza — publicar la respuesta de vuelta a Google,
 > mock-first, COMPLETA.** [Plan de 3 tasks](../superpowers/plans/2026-08-23-publicar-respuesta-resena.md)

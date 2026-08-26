@@ -13,8 +13,9 @@ independientes**, cada uno con su propio spec → plan → revisión externa (Co
 
 1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **diseño y plan
    completos, sin implementar todavía.**
-2. Desacoplar keyword research de creación de webs — sin empezar.
-3. Publicar posts a un blog ya existente en otra plataforma — sin empezar.
+2. **Desacoplar keyword research de creación de webs** — **diseño y plan completos, sin
+   implementar todavía.**
+3. Publicar posts a un blog ya existente en otra plataforma — **en diseño.**
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -48,13 +49,33 @@ descubrir una incompatibilidad entre sub-proyectos recién al implementar el ter
   adelantar la implementación de este antes de diseñar los otros dos, es un cambio de secuencia
   explícito a confirmar con el usuario, no algo que se pueda asumir leyendo este archivo solo.
 
+## Sub-proyecto 2 — Desacoplar keyword research de creación de webs: estado detallado
+
+- **Spec:** [`docs/superpowers/specs/2026-08-26-desacoplar-kr-web-design.md`](../docs/superpowers/specs/2026-08-26-desacoplar-kr-web-design.md).
+  Revisada por Codex una vez (veredicto NECESITA REDISEÑO → 3 Critical + 7 Major + 2 Minor, los 12
+  corregidos e incorporados — el más caro: un evento llevaba el `destino` como autoridad, violando
+  el principio ya documentado en `orchestrator/src/events.ts`).
+- **Plan:** [`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`](../docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md).
+  12 tasks (db → orchestrator → api → portal → verificación). Revisado por Codex una vez (veredicto
+  NECESITA REDISEÑO → 1 Critical + 8 Major + 3 Minor, los 12 corregidos). **Ninguna task se ejecutó
+  todavía** — cero código tocado, cero migración aplicada.
+- **Informes de las dos rondas de Codex**, guardados tal cual llegaron:
+  [`progress/informes/codex-desacoplar-kr-spec.md`](informes/codex-desacoplar-kr-spec.md) y
+  [`progress/informes/codex-desacoplar-kr-plan.md`](informes/codex-desacoplar-kr-plan.md).
+- **Decisión de producto confirmada durante el procesamiento del plan, no estaba en el spec
+  original:** el chequeo "al menos una página aprobada" (ADR-06) aplica solo a `crear_web`, no a
+  `solo_informe` — ver "Global Constraints" del plan.
+- **Qué falta para este sub-proyecto:** nada de diseño — listo para implementación cuando le toque
+  el turno, después de que el sub-proyecto 3 tenga su spec+plan y pase la revisión exhaustiva
+  conjunta de los tres.
+
 ## Qué sigue
 
-Arrancar el **spec del sub-proyecto 2 o 3** (el usuario todavía no eligió cuál de los dos va segundo —
-confirmarlo al retomar) con la skill `brainstorming`, mismo proceso que el sub-proyecto 1: explorar
-contexto, preguntas una por una, propuesta de diseño, spec escrita, autorevisión, revisión de Codex,
-plan de implementación, otra revisión de Codex. **No implementar nada de los tres sub-proyectos hasta
-que estén los tres diseñados y pasada la revisión exhaustiva conjunta.**
+**Diseñar el sub-proyecto 3** (publicar posts a un blog ya existente en otra plataforma) con la
+skill `brainstorming`, mismo proceso que los dos anteriores: explorar contexto, preguntas una por
+una, propuesta de diseño, spec escrita, autorevisión, revisión de Codex, plan de implementación,
+otra revisión de Codex. **No implementar nada de los tres sub-proyectos hasta que estén los tres
+diseñados y pasada la revisión exhaustiva conjunta.**
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 
