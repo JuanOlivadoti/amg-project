@@ -18,8 +18,8 @@
 > sub-proyecto 2 — desacoplar keyword research de creación de webs: 12 tasks, 3 Critical + 7 Major + 2
 > Minor en el spec, 1 Critical + 8 Major + 3 Minor en el plan; todos corregidos en ambos) — **cero
 > código tocado todavía en ninguno de los dos**. **El sub-proyecto 3 (publicar posts a un blog
-> externo) tiene spec completo con una ronda de Codex procesada** (3 Critical + 5 Major + 1 Minor + 1
-> Nit, los 10 corregidos) — falta escribir su plan de implementación. Detalle completo y qué sigue en
+> externo) tiene spec (una ronda de Codex, 3 Critical + 5 Major + 1 Minor + 1 Nit, corregidos) y plan
+> (12 tasks) completos** — falta la ronda de Codex sobre el plan. Detalle completo y qué sigue en
 > [`progress/current.md`](../../progress/current.md).
 >
 > 🧭 **Nuevo (2026-08-23): Bloque F fase 2, segunda pieza — publicar la respuesta de vuelta a Google,

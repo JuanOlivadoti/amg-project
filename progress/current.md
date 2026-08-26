@@ -15,8 +15,8 @@ independientes**, cada uno con su propio spec → plan → revisión externa (Co
    completos, sin implementar todavía.**
 2. **Desacoplar keyword research de creación de webs** — **diseño y plan completos, sin
    implementar todavía.**
-3. Publicar posts a un blog ya existente en otra plataforma — **spec completo, revisado por Codex
-   una vez; falta el plan de implementación.**
+3. Publicar posts a un blog ya existente en otra plataforma — **spec y plan completos; el plan
+   todavía no pasó su ronda de Codex.**
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -82,20 +82,28 @@ descubrir una incompatibilidad entre sub-proyectos recién al implementar el ter
   0021/0022 angostaron `clients` a grants por columna para `app_user` y `app_service` por igual.
 - **Informe de Codex**, guardado tal cual llegó:
   [`progress/informes/codex-publicar-posts-spec.md`](informes/codex-publicar-posts-spec.md).
-- **Decisión de proceso pendiente, no de diseño:** el hallazgo #7 de esta ronda (la extensión del
-  chequeo "al menos una página aprobada" a `crear_posts` en `registrarDecision`, sub-proyecto 2, no
-  es una precondición ejecutable todavía) se resuelve así: la primera tarea del plan de este
-  sub-proyecto va a ser una modificación explícita al plan del sub-proyecto 2 — sigue siendo edición
-  de documentos de diseño, no adelanta la secuencia de implementación.
-- **Qué falta:** escribir el plan de implementación (`writing-plans`), autorevisión, una ronda de
-  Codex sobre el plan — mismo proceso que los sub-proyectos 1 y 2.
+- **La dependencia con `registrarDecision` (hallazgo #7 de la ronda de Codex sobre el spec) ya está
+  resuelta, no solo flaggeada:** se enmendó directamente el plan del sub-proyecto 2
+  (`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`, Task 3 y su "Historial de revisión") —
+  `registrarDecision` ya exige página aprobada también para `crear_posts`, con sus tests. Edición de
+  documento de diseño, no de código.
+- **Corrección de ruta encontrada al escribir el plan (no fue un hallazgo de Codex):** la ruta real
+  de edición de páginas es `PATCH /pages/:id` (plana), no `/clients/:id/pages/:pageId` como decía la
+  primera versión del spec — corregido en ambos documentos.
+- **Plan:** [`docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md`](../docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md).
+  12 tasks (migración → `db` → `orchestrator` → `api` → portal → verificación), autorevisado.
+  **Depende de que el sub-proyecto 2 esté implementado antes de la Task 8 en adelante** — las Tasks
+  1-7 (migración, capa de datos, piezas aisladas del orquestador) no dependen de eso. Solo
+  `MockBlogPublisher` en este plan — ninguna plataforma real (WordPress u otra) sin cliente
+  confirmado. **Ninguna task se ejecutó todavía.**
+- **Qué falta:** una ronda de Codex sobre el plan (todavía no pedida) — mismo proceso que los
+  sub-proyectos 1 y 2.
 
 ## Qué sigue
 
-**Escribir el plan de implementación del sub-proyecto 3** con la skill `writing-plans`, mismo
-proceso que los dos anteriores: autorevisión, revisión de Codex, aplicar hallazgos. **No implementar
-nada de los tres sub-proyectos hasta que estén los tres diseñados (spec+plan) y pasada la revisión
-exhaustiva conjunta.**
+**Ronda de Codex sobre el plan del sub-proyecto 3**, cuando el usuario la pida — mismo proceso que
+los dos anteriores. **No implementar nada de los tres sub-proyectos hasta que estén los tres
+diseñados (spec+plan) y pasada la revisión exhaustiva conjunta.**
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 
