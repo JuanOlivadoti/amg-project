@@ -9,7 +9,7 @@ import { renderReport } from "contrato";
 import type { ProposedPage } from "contrato";
 import { PgStore, PglitePool, aplicarMigraciones } from "db";
 import type { DbPool, TenantContext } from "db";
-import { workflowResearch } from "./workflow.js";
+import { workflowResearch, workflowDecision } from "./workflow.js";
 import type { BriefDelPipeline, Deps, DestinoPublicacion, Pasos } from "./workflow.js";
 
 /**
@@ -39,29 +39,19 @@ let equipoB: string;
 
 // ---------------------------------------------------------------- dobles
 
-/** Señal de que el workflow se durmió en la compuerta. Inngest suspende; no devuelve. */
-class Suspendido extends Error {
-  constructor() {
-    super("suspendido en la compuerta humana");
-  }
-}
-
 /**
  * Motor de steps que MEMOIZA, como Inngest.
  *
- * No es un detalle de fidelidad: sin memoización, el replay que despierta tras la aprobación
- * volvería a correr `cerrar-run`, que devuelve el run a `pending_approval` — y entonces la
- * publicación no encontraría nada aprobado. Un doble que ejecuta todo de nuevo haría pasar los
- * tests de seguridad POR LA RAZÓN EQUIVOCADA: no se publicaría nunca, ni siquiera cuando se debe.
+ * No es un detalle de fidelidad: sin memoización, un reintento de step volvería a correr
+ * `research`, que cuesta dinero, o `cerrar-run`, que devolvería el run a `pending_approval` en
+ * medio de un replay. Un doble que ejecuta todo de nuevo haría pasar los tests de idempotencia POR
+ * LA RAZÓN EQUIVOCADA.
  *
- * Se reusa la MISMA instancia entre pasadas: eso es exactamente un replay.
+ * Se reusa la MISMA instancia entre pasadas: eso es exactamente un replay de step.
  */
 class MotorPasos implements Pasos {
   private readonly memo = new Map<string, unknown>();
   readonly corridos: string[] = [];
-
-  /** `null` = se duerme (aún nadie aprobó). `"timeout"` = venció el plazo. */
-  aprobacion: { data: unknown } | null | "timeout" = null;
 
   async run<T>(id: string, fn: () => Promise<T>): Promise<T> {
     if (this.memo.has(id)) return this.memo.get(id) as T;
@@ -80,12 +70,15 @@ class MotorPasos implements Pasos {
     if (!this.memo.delete(id)) throw new Error(`El step "${id}" nunca corrió: no hay nada que olvidar.`);
   }
 
-  async esperarEvento(id: string): Promise<{ data: unknown } | null> {
-    if (this.memo.has(id)) return this.memo.get(id) as { data: unknown } | null;
-    if (this.aprobacion === null) throw new Suspendido(); // el workflow se duerme acá
-    const res = this.aprobacion === "timeout" ? null : this.aprobacion;
-    this.memo.set(id, res);
-    return res;
+  /**
+   * `Pasos` todavía la declara, pero ni `workflowResearch` ni `workflowDecision` la llaman más: la
+   * compuerta humana dejó de estar embebida en un `esperarEvento` (ver `docs/decisiones-arquitectura.md`,
+   * este sub-proyecto) — ahora es una fila en `kr_run_decisiones` que un evento aparte dispara. Se deja
+   * una implementación trivial solo para satisfacer el tipo; si algún workflow la llamara de verdad, este
+   * error avisaría en el acto.
+   */
+  async esperarEvento(): Promise<{ data: unknown } | null> {
+    throw new Error("esperarEvento: ningún workflow vigente lo usa (la compuerta ya no está embebida)");
   }
 }
 
@@ -261,19 +254,19 @@ function depsFalsas(paginas: ProposedPage[]): Espia {
         published: !espia.simularDraft,
       }));
     },
-    // `workflowResearch` no toca el polling de reseñas -- eso vive en `pollearResenas`
-    // (`functions.test.ts`). El stub existe solo para satisfacer el tipo `Deps`.
+    // `workflowResearch`/`workflowDecision` no tocan el polling de reseñas -- eso vive en
+    // `pollearResenas` (`functions.test.ts`). El stub existe solo para satisfacer el tipo `Deps`.
     resenasProvider: {
       refrescarToken: () => Promise.reject(new Error("workflowResearch no pollea reseñas")),
       listarResenas: () => Promise.reject(new Error("workflowResearch no pollea reseñas")),
       publicarRespuesta: () => Promise.reject(new Error("workflowResearch no publica respuestas")),
     },
-    // Mismo motivo que `resenasProvider`: `workflowResearch` no genera borradores de IA -- eso
-    // también vive en `pollearResenas`. El stub existe solo para satisfacer el tipo `Deps`.
+    // Mismo motivo que `resenasProvider`: no generan borradores de IA -- eso también vive en
+    // `pollearResenas`. El stub existe solo para satisfacer el tipo `Deps`.
     borradorProvider: {
       generar: () => Promise.reject(new Error("workflowResearch no genera borradores")),
     },
-    // Mismo motivo: `workflowResearch` no manda alertas de Telegram -- eso vive en
+    // Mismo motivo: no mandan alertas de Telegram -- eso vive en
     // `pollearResenas`/`vincularTelegramPendientes` (`functions.test.ts`).
     telegramProvider: {
       obtenerActualizaciones: () => Promise.reject(new Error("workflowResearch no pollea Telegram")),
@@ -294,10 +287,10 @@ const entrada = (runId: string, tenantId: string) => ({ runId, tenantId });
  * el insert y no se emite ningún evento — o sea que el orquestador nunca llega a gastar.
  *
  * **La marca no es decorado del fixture** (C0, migración `0019`): `solicitarResearch` la escribe
- * después de que `send()` tenga éxito, y `approveRun` la exige. Sin ella estos tests estarían
- * ejercitando un run que en producción **no se puede aprobar** — un run insertado directo en la base,
- * sin nadie esperando su aprobación—, y el workflow que despierta con `research/aprobado` no existiría.
- * El orden acá reproduce el de la API: fila → (evento) → marca.
+ * después de que `send()` tenga éxito, y el paso a `pending_approval` la exige. Sin ella estos tests
+ * estarían ejercitando un run que en producción **no se puede decidir** — un run insertado directo en
+ * la base, sin nadie esperando su research—, y el workflow que despierta con `research/solicitado` no
+ * existiría. El orden acá reproduce el de la API: fila → (evento) → marca.
  */
 async function crearRunComoHumano(tenantId: string, clientId: string, userId: string): Promise<string> {
   const runId = randomUUID();
@@ -313,14 +306,31 @@ async function crearRunComoHumano(tenantId: string, clientId: string, userId: st
   return runId;
 }
 
-/** El humano del portal (equipo), no el orquestador. Es quien tiene permiso de aprobar. */
+/** El humano del portal (equipo), no el orquestador. Es quien tiene permiso de aprobar/decidir. */
 const humano = (tenantId: string): TenantContext => ({ tenantId, userId: tenantId === tenantA ? equipoA : equipoB });
 
-/** Pasa la compuerta DOBLE (ADR-06): primero las páginas, después el run. */
-async function aprobarTodo(ctx: TenantContext, runId: string): Promise<void> {
+/**
+ * Corre el research (deja el run en `pending_approval`, con UNA página) y aprueba esa página — lista
+ * para que un test la lleve a `registrarDecision`. Reemplaza lo que antes hacía `runConWorkflow` +
+ * `approvePage` + `approveRun`: ya no hace falta aprobar el RUN, `registrarDecision` promueve el
+ * estado por sí mismo (Task 3/6).
+ *
+ * El research corre con un espía DESCARTABLE: lo único que le importa a este helper es que la página
+ * quede en la base con el `url_slug` pedido, no lo que ese espía observe.
+ */
+async function crearRunConPaginaAprobada(
+  tenantId: string,
+  clientId: string,
+  userId: string,
+  opts: { urlSlug?: string } = {},
+): Promise<string> {
+  const runId = await crearRunComoHumano(tenantId, clientId, userId);
+  const espiaSetup = depsFalsas([paginaFalsa(opts.urlSlug !== undefined ? { url_slug: opts.urlSlug } : {})]);
+  await workflowResearch(new MotorPasos(), entrada(runId, tenantId), espiaSetup.deps);
+
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
-  for (const r of rows) await store.approvePage(ctx, r.id);
-  await store.approveRun(ctx, runId);
+  await store.approvePage({ tenantId, userId }, rows[0]!.id);
+  return runId;
 }
 
 // ---------------------------------------------------------------- setup
@@ -369,83 +379,18 @@ beforeEach(async () => {
   equipoB = await mkMiembro(tenantB);
 });
 
-/**
- * Corre el research y deja el run en `pending_approval`, dormido en la compuerta — como en la vida
- * real. Devuelve el motor: reusarlo para la segunda pasada ES el replay de Inngest.
- */
-async function correrHastaLaCompuerta(
-  espia: Espia,
-  runId: string,
-  tenant = tenantA,
-  client = clientA,
-): Promise<MotorPasos> {
-  const motor = new MotorPasos(); // aprobacion = null → se duerme en la compuerta
-  await assert.rejects(
-    () => workflowResearch(motor, entrada(runId, tenant), espia.deps),
-    Suspendido,
-    "el workflow tiene que dormirse esperando al humano, no seguir de largo",
-  );
-  return motor;
-}
-
-/** Despierta al workflow con el evento de aprobación. Replay: los steps previos NO se re-ejecutan. */
-function despertar(motor: MotorPasos, espia: Espia, runId: string) {
-  motor.aprobacion = { data: { runId } };
-  return workflowResearch(motor, entrada(runId, tenantA), espia.deps);
-}
-
 // ================================================================
-// El ciclo
+// workflowResearch: research → informe → pending_approval
 // ================================================================
 
-test("el run queda en pending_approval y NO se publica nada hasta que un humano aprueba", async () => {
+test("el run queda en pending_approval tras el research, sin publicar nada (workflowResearch ya no publica)", async () => {
   const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
+  const resultado = await workflowResearch(new MotorPasos(), entrada(runId, tenantA), espia.deps);
 
-  await correrHastaLaCompuerta(espia, runId);
-
+  assert.equal(resultado.estado, "pending_approval");
   const run = await store.getRun(humano(tenantA), runId);
   assert.equal(run?.status, "pending_approval");
-  assert.equal(espia.publicadas.length, 0, "no se publicó nada sin aprobación");
-});
-
-test("aprobado en la base + evento → se publica", async () => {
-  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const espia = depsFalsas([paginaFalsa()]);
-  const motor = await correrHastaLaCompuerta(espia, runId);
-
-  // El humano aprueba de verdad: la página Y el run (compuerta doble, ADR-06).
-  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
-  await store.approvePage(humano(tenantA), rows[0]!.id);
-  await store.approveRun(humano(tenantA), runId);
-
-  const res = await despertar(motor, espia, runId);
-
-  assert.equal(res.estado, "publicado");
-  assert.equal(res.paginasPublicadas, 1);
-  assert.deepEqual(espia.publicadas[0], ["/pizza-napolitana-madrid"]);
-  assert.equal(espia.researchCorrido, 1, "el replay NO vuelve a correr el research (ni a pagarlo)");
-});
-
-test("solo se publican las páginas que el humano aprobó, no todas las del run", async () => {
-  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const espia = depsFalsas([
-    paginaFalsa(),
-    paginaFalsa({ url_slug: "/menu-del-dia", keyword_principal: "menú del día", evidencia: "sin_validar" }),
-  ]);
-  const motor = await correrHastaLaCompuerta(espia, runId);
-
-  // Aprueba SOLO la respaldada por datos. La `sin_validar` se queda fuera.
-  const { rows } = await pg.query<{ id: string }>(
-    "select id from kr_pages where run_id = $1 and url_slug = '/pizza-napolitana-madrid'",
-    [runId],
-  );
-  await store.approvePage(humano(tenantA), rows[0]!.id);
-  await store.approveRun(humano(tenantA), runId);
-
-  await despertar(motor, espia, runId);
-
-  assert.deepEqual(espia.publicadas[0], ["/pizza-napolitana-madrid"], "la página sin validar NO se publica");
 });
 
 // ================================================================
@@ -486,7 +431,7 @@ test("los 16 campos de la página llegan a la base sin cruzarse (`aFilaDePagina`
   const pagina = paginaFalsa({ url_slug: "/pizza-napolitana-en-el-centro", approved: true });
   const espia = depsFalsas([pagina]);
 
-  await correrHastaLaCompuerta(espia, runId);
+  await workflowResearch(new MotorPasos(), entrada(runId, tenantA), espia.deps);
 
   const filas = await store.getRunPages(humano(tenantA), runId);
   assert.equal(filas.length, 1);
@@ -568,7 +513,7 @@ test("🔴 un run que llega a `pending_approval` SIEMPRE tiene informe", async (
   const paginas = [paginaFalsa()];
   const espia = depsFalsas(paginas);
 
-  await correrHastaLaCompuerta(espia, runId);
+  await workflowResearch(new MotorPasos(), entrada(runId, tenantA), espia.deps);
 
   assert.deepEqual(
     espia.store.orden,
@@ -606,18 +551,21 @@ test("🔴 un run que llega a `pending_approval` SIEMPRE tiene informe", async (
  *    fallar con 23505.
  *
  * Se simula como Inngest reintenta un step: se descarta el resultado memoizado de ESE step y se vuelve a
- * correr el workflow con el mismo motor. Si el motor no olvidara nada no habría reintento que probar.
+ * correr el workflow con el mismo motor. Como `cargar-run` y `research` siguen memoizados, el segundo
+ * paso NO vuelve a leer la fila (que ya cambió a `pending_approval`) ni a pagar el research — solo
+ * re-ejecuta `guardar-informe`, que es lo que se olvidó.
  */
 test("un reintento de `guardar-informe` reescribe y no vuelve a pagar el research", async () => {
   const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const paginas = [paginaFalsa()];
   const espia = depsFalsas(paginas);
 
-  const motor = await correrHastaLaCompuerta(espia, runId);
+  const motor = new MotorPasos();
+  await workflowResearch(motor, entrada(runId, tenantA), espia.deps);
   const primero = await store.getInforme(humano(tenantA), runId);
 
   motor.olvidar("guardar-informe");
-  await assert.rejects(() => workflowResearch(motor, entrada(runId, tenantA), espia.deps), Suspendido);
+  await workflowResearch(motor, entrada(runId, tenantA), espia.deps);
 
   assert.equal(espia.researchCorrido, 1, "el reintento NO volvió a correr el research (ni a pagarlo)");
   assert.equal(espia.store.informes.length, 2, "el step corrió dos veces");
@@ -631,93 +579,9 @@ test("un reintento de `guardar-informe` reescribe y no vuelve a pagar el researc
 });
 
 // ================================================================
-// El evento es un DISPARADOR, no una autoridad
+// El evento es un DISPARADOR, no una autoridad (workflowResearch)
 // ================================================================
 
-/**
- * El escenario que importa: alguien consigue emitir `research/aprobado` (un webhook mal protegido,
- * un bug, un job vecino). Si el evento fuera la autoridad, se publicaría contenido que NADIE miró.
- *
- * Acá el evento solo despierta al workflow; lo que se publica lo decide la base.
- */
-test("🔴 un evento de aprobación NO publica nada si en la base nadie aprobó", async () => {
-  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const espia = depsFalsas([paginaFalsa()]);
-  const motor = await correrHastaLaCompuerta(espia, runId);
-
-  // Llega el evento, pero NADIE tocó la compuerta en la base.
-  const res = await despertar(motor, espia, runId);
-
-  assert.equal(res.estado, "nada_que_publicar");
-  assert.equal(espia.publicadas.length, 0, "no se llamó al publicador");
-});
-
-/**
- * La otra mitad de la compuerta: las páginas aprobadas pero con el run SIN aprobar tampoco salen.
- * Aprobar una página no es aprobar la web.
- */
-test("🔴 con las páginas aprobadas pero el run sin aprobar, no se publica nada", async () => {
-  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const espia = depsFalsas([paginaFalsa()]);
-  const motor = await correrHastaLaCompuerta(espia, runId);
-
-  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
-  await store.approvePage(humano(tenantA), rows[0]!.id);
-  // …pero NO se aprueba el run.
-
-  const res = await despertar(motor, espia, runId);
-
-  assert.equal(res.estado, "nada_que_publicar");
-  assert.equal(espia.publicadas.length, 0);
-});
-
-/**
- * Un tenant no puede aprobar —ni publicar— el research de otro. El workflow opera SIEMPRE con el
- * contexto del evento original (`research/solicitado`), nunca con el del evento de aprobación: un
- * evento forjado con el runId ajeno se encuentra con que RLS no le devuelve nada.
- */
-test("🔴 el tenant B no puede hacer que se publique el research del tenant A", async () => {
-  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const espia = depsFalsas([paginaFalsa()]);
-  const motor = await correrHastaLaCompuerta(espia, runId);
-
-  // B intenta aprobar el run de A. RLS lo frena en seco: no ve ni la página ni el run.
-  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
-  const aprobo = await store.approvePage(humano(tenantB), rows[0]!.id);
-  assert.equal(aprobo, false, "B no puede aprobar una página de A");
-  await assert.rejects(() => store.approveRun(humano(tenantB), runId), /ninguna página aprobada/i);
-
-  // Y aunque B logre emitir el evento con el runId de A, no se publica nada.
-  const res = await despertar(motor, espia, runId);
-
-  assert.equal(res.estado, "nada_que_publicar");
-  assert.equal(espia.publicadas.length, 0);
-});
-
-// ================================================================
-// Silencio, fallos e idempotencia
-// ================================================================
-
-/** El silencio no es un "sí". Vencido el plazo, el run se queda esperando, no se auto-publica. */
-test("🔴 si nadie responde en el plazo, NO se publica (el silencio no aprueba)", async () => {
-  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const espia = depsFalsas([paginaFalsa()]);
-  const motor = await correrHastaLaCompuerta(espia, runId);
-
-  motor.aprobacion = "timeout"; // vencieron los 7 días
-  const res = await workflowResearch(motor, entrada(runId, tenantA), espia.deps);
-
-  assert.equal(res.estado, "sin_respuesta");
-  assert.equal(espia.publicadas.length, 0);
-  const run = await store.getRun(humano(tenantA), runId);
-  assert.equal(run?.status, "pending_approval", "queda esperando a un humano, no se pierde");
-});
-
-/**
- * Idempotencia: reprocesar el mismo evento (reintento, doble entrega, replay con memoria perdida)
- * NO puede abrir un segundo run ni volver a pagarle a DataForSEO. Por eso el `runId` viaja EN EL
- * EVENTO. Acá el motor es NUEVO a propósito: es el caso feo, el del reproceso desde cero.
- */
 /**
  * 🔴 EL EVENTO NO PUEDE HACER GASTAR. Es la crítica #2 de la 4ª review.
  *
@@ -752,9 +616,10 @@ test("🔴 un evento con el runId de OTRO tenant no gasta un centavo", async () 
 });
 
 /**
- * 🔴 La idempotencia de Inngest dura 24 h; la compuerta espera 7 DÍAS. Pasadas las 24 h, un evento
- * duplicado arranca una ejecución NUEVA con los steps en blanco. Sin esta comprobación, volvía a
- * pagar el LLM y reescribía las páginas sobre un run ya cerrado.
+ * 🔴 La idempotencia de Inngest dura 24 h; la compuerta (hoy: la decisión pendiente) puede esperar
+ * mucho más. Pasadas las 24 h, un evento duplicado arranca una ejecución NUEVA con los steps en
+ * blanco. Sin esta comprobación, volvía a pagar el LLM y reescribía las páginas sobre un run ya
+ * cerrado.
  *
  * La fase durable vive en la BASE, no en la memoria de Inngest.
  */
@@ -762,19 +627,23 @@ test("🔴 un evento duplicado (motor NUEVO) no vuelve a hacer el research", asy
   const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
 
-  await correrHastaLaCompuerta(espia, runId);
+  await workflowResearch(new MotorPasos(), entrada(runId, tenantA), espia.deps);
   assert.equal(espia.researchCorrido, 1);
 
   // 25 h después: Inngest ya no deduplica y llega el mismo evento. Motor NUEVO, steps en blanco.
   const espia2 = depsFalsas([paginaFalsa()]);
   const motor2 = new MotorPasos();
-  await assert.rejects(() => workflowResearch(motor2, entrada(runId, tenantA), espia2.deps), Suspendido);
+  const resultado2 = await workflowResearch(motor2, entrada(runId, tenantA), espia2.deps);
 
+  assert.equal(
+    resultado2.estado,
+    "sin_cambio",
+    "el run ya no está 'running': el evento duplicado no vuelve a hacer nada",
+  );
   assert.equal(espia2.researchCorrido, 0, "el run ya no está 'running': NO se vuelve a pagar");
   const { rows } = await pg.query<{ n: number }>("select count(*)::int as n from kr_runs");
   assert.equal(rows[0]!.n, 1);
 });
-
 
 /**
  * El checkpoint del dataset: las keywords se guardan DENTRO del step de research, apenas existen.
@@ -816,8 +685,90 @@ test("las keywords pagas se persisten aunque el research reviente DESPUÉS", asy
 });
 
 // ================================================================
-// El destino de publicación (review 5, HIGH #1 y #2)
+// workflowDecision: la decisión NO es una autoridad prestada por el evento
 // ================================================================
+
+/**
+ * El escenario que importa: alguien consigue emitir `research/aprobado` (un webhook mal protegido,
+ * un bug, un job vecino) con un `decisionId` que no existe. Si el evento fuera la autoridad, se
+ * publicaría contenido que NADIE decidió.
+ *
+ * En la arquitectura nueva no hay camino donde `research/aprobado` se emita sin que
+ * `registrarDecision` haya calificado antes — la API los ata (Task 10). El equivalente real de "el
+ * evento no es autoridad" es un `decisionId` FALSO/inventado.
+ */
+test("🔴 workflowDecision con un decisionId INVENTADO no publica nada", async () => {
+  const espia = depsFalsas([]);
+
+  await assert.rejects(
+    () => workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: randomUUID() }, espia.deps),
+    /no existe/i,
+  );
+
+  assert.equal(espia.publicadas.length, 0);
+});
+
+/**
+ * Un tenant no puede leer —ni publicar— la decisión de otro. `workflowDecision` opera SIEMPRE con el
+ * `tenantId` del evento: un evento forjado con el `decisionId` ajeno se encuentra con que RLS no le
+ * devuelve nada.
+ */
+test("🔴 el tenant B no puede leer ni publicar una decisión creada por el tenant A", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  await assert.rejects(
+    () => workflowDecision(new MotorPasos(), { tenantId: tenantB, decisionId: decisionId! }, espia.deps),
+    /no existe/i,
+    "RLS: la fila de A es invisible bajo el contexto de B",
+  );
+  assert.equal(espia.publicadas.length, 0);
+});
+
+// ================================================================
+// workflowDecision: publicar
+// ================================================================
+
+test("workflowDecision: aprobado con destino crear_web → se publica", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
+
+  assert.equal(resultado.resultado, "completado");
+  assert.equal(resultado.destino, "crear_web");
+  assert.equal(resultado.paginasPublicadas, 1);
+  assert.deepEqual(espia.publicadas[0], ["/pizza-napolitana-madrid"]);
+});
+
+test("workflowDecision: solo se publican las páginas que el humano aprobó, no todas las del run", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const espiaSetup = depsFalsas([
+    paginaFalsa(),
+    paginaFalsa({ url_slug: "/menu-del-dia", keyword_principal: "menú del día", evidencia: "sin_validar" }),
+  ]);
+  await workflowResearch(new MotorPasos(), entrada(runId, tenantA), espiaSetup.deps);
+
+  // Aprueba SOLO la respaldada por datos. La `sin_validar` se queda fuera.
+  const { rows } = await pg.query<{ id: string }>(
+    "select id from kr_pages where run_id = $1 and url_slug = '/pizza-napolitana-madrid'",
+    [runId],
+  );
+  await store.approvePage(humano(tenantA), rows[0]!.id);
+
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
+
+  assert.equal(resultado.resultado, "completado");
+  assert.deepEqual(espia.publicadas[0], ["/pizza-napolitana-madrid"], "la página sin validar NO se publica");
+});
 
 /**
  * EL TEST QUE FALTABA. Es el que cae si alguien vuelve a publicar en un space global.
@@ -829,24 +780,20 @@ test("las keywords pagas se persisten aunque el research reviente DESPUÉS", asy
  * El aislamiento entre tenants era impecable DENTRO de Postgres y se perdía al salir por la puerta.
  */
 test("🔴 cada cliente publica en SU space: dos tenants, el mismo slug, y no se pisan", async () => {
-  const runA = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const runB = await crearRunComoHumano(tenantB, clientB, equipoB);
-
   // La MISMA página, con el MISMO slug, para los dos clientes. Es el caso real: `/menu` lo tienen
   // todos los restaurantes.
-  const espiaA = depsFalsas([paginaFalsa({ url_slug: "/menu" })]);
-  const espiaB = depsFalsas([paginaFalsa({ url_slug: "/menu" })]);
+  const runA = await crearRunConPaginaAprobada(tenantA, clientA, equipoA, { urlSlug: "/menu" });
+  const runB = await crearRunConPaginaAprobada(tenantB, clientB, equipoB, { urlSlug: "/menu" });
 
-  const motorA = await correrHastaLaCompuerta(espiaA, runA, tenantA, clientA);
-  const motorB = await correrHastaLaCompuerta(espiaB, runB, tenantB, clientB);
+  const decisionA = await store.registrarDecision(humano(tenantA), runA, "crear_web");
+  const decisionB = await store.registrarDecision(humano(tenantB), runB, "crear_web");
+  assert.ok(decisionA);
+  assert.ok(decisionB);
 
-  await aprobarTodo(humano(tenantA), runA);
-  await aprobarTodo(humano(tenantB), runB);
-
-  motorA.aprobacion = { data: { runId: runA } };
-  await workflowResearch(motorA, entrada(runA, tenantA), espiaA.deps);
-  motorB.aprobacion = { data: { runId: runB } };
-  await workflowResearch(motorB, entrada(runB, tenantB), espiaB.deps);
+  const espiaA = depsFalsas([]);
+  const espiaB = depsFalsas([]);
+  await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionA! }, espiaA.deps);
+  await workflowDecision(new MotorPasos(), { tenantId: tenantB, decisionId: decisionB! }, espiaB.deps);
 
   assert.equal(espiaA.destinos[0]?.storyblokSpaceId, "space-A");
   assert.equal(espiaB.destinos[0]?.storyblokSpaceId, "space-B");
@@ -867,16 +814,16 @@ test("🔴 cada cliente publica en SU space: dos tenants, el mismo slug, y no se
  * porque nadie la va a comprobar.
  */
 test("🔴 si la story queda en DRAFT, la base NO dice que está publicada", async () => {
-  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const espia = depsFalsas([paginaFalsa()]);
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
   espia.simularDraft = true; // el proveedor NO confirma la publicación
 
-  const motor = await correrHastaLaCompuerta(espia, runId);
-  await aprobarTodo(humano(tenantA), runId);
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
 
-  const res = await despertar(motor, espia, runId);
-
-  assert.equal(res.paginasPublicadas, 0, "nada quedó publicado: el proveedor no lo confirmó");
+  assert.equal(resultado.paginasPublicadas, 0, "nada quedó publicado: el proveedor no lo confirmó");
 
   const { rows } = await pg.query<{ n: number }>(
     "select count(*)::int as n from kr_pages where run_id = $1 and published_at is not null",
@@ -894,44 +841,31 @@ test("🔴 si la story queda en DRAFT, la base NO dice que está publicada", asy
  * rechazar. Si una página estaba casi bien, la única salida era tirarla y volver a pagar.
  *
  * Y editar REVOCA la aprobación: la compuerta certifica que un humano miró ESTO. Si `esto` cambió
- * después de que lo mirara, la certificación no vale nada.
+ * después de que lo mirara, la certificación no vale nada. Con `workflowDecision`, ese caso ya no
+ * cierra en `"nada_que_publicar"` (`ResultadoDecision` no tiene ese valor) — colapsa en
+ * `resultado: "error"`, como defensa en profundidad: `registrarDecision` ya exige una página
+ * aprobada para calificar, así que en el camino normal esto no debería pasar; solo pasa si la edición
+ * ocurre DESPUÉS de que la decisión ya calificó.
  */
-test("🔴 editar una página aprobada REVOCA su aprobación (si no, se publica lo que nadie miró)", async () => {
-  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const espia = depsFalsas([paginaFalsa({ url_slug: "/pizza" })]);
-  const motor = await correrHastaLaCompuerta(espia, runId);
+test("🔴 editar una página aprobada REVOCA su aprobación — workflowDecision cierra en error, no publica", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA, { urlSlug: "/pizza" });
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
 
-  const ctx = humano(tenantA);
-  const { rows } = await pg.query<{ id: string }>(
-    "select id from kr_pages where run_id = $1",
-    [runId],
-  );
-  const pageId = rows[0]!.id;
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.editPage(humano(tenantA), rows[0]!.id, { url_slug: "/pizza-napolitana" });
 
-  await store.approvePage(ctx, pageId);
-  await store.approveRun(ctx, runId);
+  const espia = depsFalsas([]);
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
 
-  // El humano aprueba… y DESPUÉS reescribe la página.
-  const editada = await store.editPage(ctx, pageId, { url_slug: "/pizza-napolitana" });
-  assert.equal(editada, true);
-
-  const publicables = await storeServicio.getPublishablePages({ tenantId: tenantA }, runId);
-  assert.equal(
-    publicables.length,
-    0,
-    "la edición revocó la aprobación: no se publica algo que cambió después de que lo miraran",
-  );
-
-  // Y al publicar de verdad: nada sale.
-  motor.aprobacion = { data: { runId } };
-  const res = await workflowResearch(motor, entrada(runId, tenantA), espia.deps);
-  assert.equal(res.estado, "nada_que_publicar");
+  assert.equal(resultado.resultado, "error", "editar revocó la aprobación: no queda nada publicable");
+  assert.equal(espia.publicadas.length, 0);
 });
 
-test("editar y volver a aprobar sí publica — con el contenido nuevo", async () => {
+test("workflowDecision: editar y volver a aprobar sí publica — con el contenido nuevo", async () => {
   const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
-  const espia = depsFalsas([paginaFalsa({ url_slug: "/pizza" })]);
-  const motor = await correrHastaLaCompuerta(espia, runId);
+  const espiaSetup = depsFalsas([paginaFalsa({ url_slug: "/pizza" })]);
+  await workflowResearch(new MotorPasos(), entrada(runId, tenantA), espiaSetup.deps);
 
   const ctx = humano(tenantA);
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
@@ -939,19 +873,21 @@ test("editar y volver a aprobar sí publica — con el contenido nuevo", async (
 
   await store.editPage(ctx, pageId, { url_slug: "/pizza-napolitana" });
   await store.approvePage(ctx, pageId);
-  await store.approveRun(ctx, runId);
 
-  motor.aprobacion = { data: { runId } };
-  const res = await workflowResearch(motor, entrada(runId, tenantA), espia.deps);
+  const decisionId = await store.registrarDecision(ctx, runId, "crear_web");
+  assert.ok(decisionId);
 
-  assert.equal(res.paginasPublicadas, 1);
+  const espia = depsFalsas([]);
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
+
+  assert.equal(resultado.paginasPublicadas, 1);
   assert.deepEqual(espia.publicadas[0], ["/pizza-napolitana"], "se publicó lo EDITADO");
 });
 
 test("🔴 un tenant NO puede editar la página de otro", async () => {
   const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
   const espia = depsFalsas([paginaFalsa()]);
-  await correrHastaLaCompuerta(espia, runId);
+  await workflowResearch(new MotorPasos(), entrada(runId, tenantA), espia.deps);
 
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
   const pageId = rows[0]!.id;
@@ -965,4 +901,107 @@ test("🔴 un tenant NO puede editar la página de otro", async () => {
     [pageId],
   );
   assert.notEqual(r2[0]!.url_slug, "/hackeada");
+});
+
+// ================================================================
+// workflowDecision: retomable, guard de reproceso, y los caminos de error nuevos
+// ================================================================
+
+/**
+ * Retomable: un run puede pasar por `solo_informe` primero (el humano solo quería el informe) y
+ * después, sin volver a pagar el research, decidir `crear_web`. `registrarDecision` ya lo permite
+ * (Task 3): la segunda decisión promueve el run de `approved` otra vez, siempre que la ÚLTIMA
+ * decisión completada haya sido `solo_informe`.
+ */
+test("workflowDecision: retomable — solo_informe completado, después crear_web publica", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const ctx = humano(tenantA);
+
+  const d1 = await store.registrarDecision(ctx, runId, "solo_informe");
+  assert.ok(d1);
+  const espia1 = depsFalsas([]);
+  const primero = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: d1! }, espia1.deps);
+  assert.equal(primero.resultado, "completado");
+
+  const d2 = await store.registrarDecision(ctx, runId, "crear_web");
+  assert.ok(d2);
+  const espia2 = depsFalsas([]);
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: d2! }, espia2.deps);
+
+  assert.equal(resultado.resultado, "completado");
+  assert.equal(resultado.paginasPublicadas, 1);
+});
+
+/**
+ * Guard de reproceso (Major #7 de la ronda de Codex): la idempotencia de Inngest dura 24h, no una
+ * garantía. Un replay después de esa ventana encuentra la fila ya cerrada y NO vuelve a llamar a
+ * `publicar()` — `workflowDecision` devuelve el resultado ya cerrado en vez de repetir el efecto.
+ */
+test("workflowDecision: guard de reproceso — llamar dos veces sobre la misma decisión completada no publica dos veces", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
+
+  let publicarLlamadas = 0;
+  const publicarOriginal = espia.deps.publicar;
+  const depsContando: Deps = {
+    ...espia.deps,
+    publicar: async (...args: Parameters<typeof publicarOriginal>) => {
+      publicarLlamadas++;
+      return publicarOriginal(...args);
+    },
+  };
+  const segunda = await workflowDecision(
+    new MotorPasos(),
+    { tenantId: tenantA, decisionId: decisionId! },
+    depsContando,
+  );
+
+  assert.equal(segunda.resultado, "completado", "informa el resultado ya cerrado, no lo repite");
+  assert.equal(publicarLlamadas, 0, "no se llamó a publicar() la segunda vez");
+});
+
+/**
+ * `crear_posts` no tiene ningún camino que lo emita hoy: la API lo rechaza con 501 antes de
+ * `registrarDecision` (Task 10, sub-proyecto 3 sin implementar). Este test simula el bug/evento a
+ * mano — una fila insertada directo, sin pasar por la API — y confirma que `workflowDecision` falla
+ * CERRADO en vez de intentar publicar algo que no sabe generar.
+ */
+test("🔴 workflowDecision: crear_posts persistido a mano cierra en error, nunca en completado", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+
+  const { rows } = await pg.query<{ id: string }>(
+    `insert into kr_run_decisiones (run_id, tenant_id, client_id, destino)
+     values ($1, $2, $3, 'crear_posts') returning id`,
+    [runId, tenantA, clientA],
+  );
+
+  const espia = depsFalsas([]);
+  const resultado = await workflowDecision(
+    new MotorPasos(),
+    { tenantId: tenantA, decisionId: rows[0]!.id },
+    espia.deps,
+  );
+  assert.equal(resultado.resultado, "error");
+});
+
+/**
+ * Major #10 de la ronda de Codex: un cliente archivado entre la aprobación y la ejecución del step
+ * no se publica. La ventana es real —`registrarDecision` y `workflowDecision` corren en pasos
+ * distintos, en momentos distintos—, así que `getClient` se vuelve a consultar en el momento de
+ * publicar, no se confía en lo que era cierto cuando se decidió.
+ */
+test("🔴 workflowDecision: cliente archivado a mitad de camino no publica", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  await pg.query("update clients set archived_at = now() where id = $1", [clientA]);
+
+  const espia = depsFalsas([]);
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
+  assert.equal(resultado.resultado, "error");
 });
