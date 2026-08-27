@@ -282,11 +282,11 @@ test("RLS: FORCE está activo — ni el dueño de la tabla salta las políticas"
   const rows = await db.asService<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(
     `select relname, relrowsecurity, relforcerowsecurity from pg_class
      where relname in ('tenants','memberships','clients','kr_runs','kr_keywords','kr_pages',
-                       'kr_metrics_cache','kr_serp_cache','kr_provider_tasks')
+                       'kr_metrics_cache','kr_serp_cache','kr_provider_tasks','kr_run_decisiones')
      order by relname`,
   );
 
-  assert.equal(rows.length, 9);
+  assert.equal(rows.length, 10);
   for (const r of rows) {
     assert.equal(r.relrowsecurity, true, `${r.relname}: RLS no está habilitado`);
     assert.equal(r.relforcerowsecurity, true, `${r.relname}: falta FORCE (el owner saltaría RLS)`);

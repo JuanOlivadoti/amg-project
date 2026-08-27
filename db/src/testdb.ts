@@ -242,3 +242,19 @@ export async function seed(db: TestDb): Promise<Seed> {
     intruso,
   };
 }
+
+/**
+ * Un PGlite simple para tests que no necesitan TestDb completo: solo migrations + raw sql.
+ * Devuelve { sql, close } para compatibilidad con tests simples de estructura.
+ */
+export async function newDb() {
+  const pg = new PGlite();
+  await aplicarMigraciones(pg);
+  return {
+    sql: async <T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> => {
+      const res = await pg.query<T>(sql, params);
+      return res.rows;
+    },
+    close: () => pg.close(),
+  };
+}
