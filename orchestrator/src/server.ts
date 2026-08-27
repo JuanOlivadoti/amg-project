@@ -19,6 +19,7 @@ import { leerConfig } from "./config.js";
 import { crearDeps, crearConexiones } from "./deps.js";
 import {
   crearFuncionBarrido,
+  crearFuncionDecision,
   crearFuncionPollingResenas,
   crearFuncionPublicarResena,
   crearFuncionResearch,
@@ -48,13 +49,15 @@ const config = leerConfig({ obtenerModoPublicacion: modoPublicacion });
 
 const cx = await crearConexiones(config);
 const deps = crearDeps(cx);
-// Cinco: el workflow del research, el barrido programado, el polling de reseñas de Google, la
-// publicación de la respuesta de vuelta en Google (Bloque F, fase 2, segunda pieza) y la vinculación
-// de Telegram (Bloque F, fase 2, alertas). `/_health` reporta el número, así que tras desplegar esto
-// tiene que decir `funciones: 5` — y en el panel de Inngest se ven seis, porque cuenta el `onFailure`
-// del research como una función aparte.
+// Seis: el workflow del research, el workflow de la decisión (aprobar y bifurcar por destino), el
+// barrido programado, el polling de reseñas de Google, la publicación de la respuesta de vuelta en
+// Google (Bloque F, fase 2, segunda pieza) y la vinculación de Telegram (Bloque F, fase 2, alertas).
+// `/_health` reporta el número, así que tras desplegar esto tiene que decir `funciones: 6` — y en el
+// panel de Inngest se ven ocho, porque cuenta el `onFailure` de research y el de decision, cada uno,
+// como una función aparte.
 const funciones = [
   crearFuncionResearch(deps),
+  crearFuncionDecision(deps),
   crearFuncionBarrido(deps),
   crearFuncionPollingResenas(deps),
   crearFuncionPublicarResena(deps),

@@ -1,9 +1,10 @@
 import { Inngest } from "inngest";
 import type { GetStepTools } from "inngest";
 import { PLAZO_RUN_COLGADO } from "db";
+import type { TenantContext } from "db";
 import type { Eventos } from "./events.js";
 import type { Deps, Pasos } from "./workflow.js";
-import { workflowResearch } from "./workflow.js";
+import { workflowResearch, workflowDecision } from "./workflow.js";
 
 export const inngest = new Inngest({ id: "amg-os", schemas: undefined as never });
 
@@ -91,6 +92,32 @@ export function crearFuncionResearch(deps: Deps) {
         { runId: d.runId, tenantId: d.tenantId },
         deps,
       );
+    },
+  );
+}
+
+export function crearFuncionDecision(deps: Deps) {
+  return inngest.createFunction(
+    {
+      id: "research-decision-workflow",
+      concurrency: [...CONCURRENCIA], // sigue siendo por tenantId — el evento lo sigue trayendo
+      retries: 1,
+      // Comodidad, NO la garantía (mismo principio que crearFuncionResearch, líneas 65-70 de este
+      // archivo): un replay después de 24h todavía tiene que encontrar la decisión ya cerrada y no
+      // repetirla. Eso lo impone el guard de kr_run_decisiones.resultado en workflowDecision, no
+      // esta key.
+      idempotency: "event.data.decisionId",
+      onFailure: async ({ event, error }) => {
+        const d = event.data.event.data as Eventos["research/aprobado"]["data"];
+        const ctx: TenantContext = { tenantId: d.tenantId };
+        await deps.store.cerrarDecision(ctx, d.decisionId, { resultado: "error", detalleError: error.message });
+      },
+    },
+    { event: "research/aprobado" },
+    async ({ event, step }) => {
+      const d = event.data as Eventos["research/aprobado"]["data"];
+      const ctx: TenantContext = { tenantId: d.tenantId };
+      return workflowDecision(adaptarPasos(step as StepTools), { tenantId: ctx.tenantId, decisionId: d.decisionId }, deps);
     },
   );
 }

@@ -843,16 +843,17 @@ test("🔴 barrido: el cron es horario y no una expresión que no dispara nunca"
 });
 
 /**
- * 🔴 Las cinco funciones quedan registradas, y `/_health` tiene que poder decirlo.
+ * 🔴 Las seis funciones quedan registradas, y `/_health` tiene que poder decirlo.
  *
  * `server.ts` no se puede importar en un test (arranca el proceso y lee el entorno), así que lo que
- * se fija acá es que las cinco fábricas existan y produzcan funciones con ids distintos. El número
+ * se fija acá es que las seis fábricas existan y produzcan funciones con ids distintos. El número
  * que reporta `/_health` sale de `funciones.length` en `server.ts`; tras desplegar esto tiene que
- * decir 5 (Bloque F, fase 2, alertas de Telegram sumó `crearFuncionVincularTelegram`).
+ * decir 6 (desacople del research/web, 2026-08-26, sumó `crearFuncionDecision`).
  */
 test("🔴 barrido: la fábrica produce una función con id propio, distinta de la del research", async () => {
   const {
     crearFuncionBarrido,
+    crearFuncionDecision,
     crearFuncionResearch,
     crearFuncionPollingResenas,
     crearFuncionPublicarResena,
@@ -861,6 +862,7 @@ test("🔴 barrido: la fábrica produce una función con id propio, distinta de 
   const deps = {} as Parameters<typeof crearFuncionBarrido>[0];
 
   const barrido = crearFuncionBarrido(deps);
+  const decision = crearFuncionDecision(deps);
   const research = crearFuncionResearch(deps);
   const polling = crearFuncionPollingResenas(deps);
   const publicar = crearFuncionPublicarResena(deps);
@@ -876,8 +878,14 @@ test("🔴 barrido: la fábrica produce una función con id propio, distinta de 
   assert.notEqual(vincular.id(), barrido.id(), "vincular es una quinta función, no el barrido");
   assert.notEqual(vincular.id(), polling.id(), "vincular es una quinta función, no el polling");
   assert.notEqual(vincular.id(), publicar.id(), "vincular es una quinta función, no publicar");
+  assert.notEqual(decision.id(), research.id(), "decision es una sexta función, no el research");
+  assert.notEqual(decision.id(), barrido.id(), "decision es una sexta función, no el barrido");
+  assert.notEqual(decision.id(), polling.id(), "decision es una sexta función, no el polling");
+  assert.notEqual(decision.id(), publicar.id(), "decision es una sexta función, no publicar");
+  assert.notEqual(decision.id(), vincular.id(), "decision es una sexta función, no vincular");
   assert.match(barrido.id(), /barrido/);
   assert.match(polling.id(), /polling/);
   assert.match(publicar.id(), /publicar/);
   assert.match(vincular.id(), /telegram/);
+  assert.match(decision.id(), /decision/);
 });
