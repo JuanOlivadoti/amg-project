@@ -255,7 +255,7 @@ export async function workflowResearch(
      * e Inngest **persiste el resultado de cada step**: sería una mentira guardada, en el único sitio
      * donde se mira cuando algo salió raro.
      */
-    await paso.run("cerrar-run", async () => {
+    const estadoCierre = await paso.run("cerrar-run", async () => {
       const movio = await deps.store.finishRun(ctx, runId, {
         costeMicros: brief.meta_run.coste_micros_usd,
         costeBreakdown: brief.meta_run.coste_breakdown,
@@ -271,15 +271,20 @@ export async function workflowResearch(
         // El coste quedó anotado igual (`finishRun` lo escribe pase lo que pase): el dinero se gastó.
         // Lo que no se sabe desde acá es QUIÉN lo sacó de `running`, así que se dice el hecho y ya.
         log(`[run ${runId}] el research terminó pero el run YA NO estaba en 'running': el estado no se tocó`);
-        return "sin_cambio";
+        return "sin_cambio" as const;
       }
-      return "pending_approval";
+      return "pending_approval" as const;
     });
-  } else {
-    log(`[run ${runId}] el research ya estaba hecho (${run.status}) → no se vuelve a pagar`);
+
+    // El return FINAL de la función tiene que ser tan honesto como el del step: reusar el resultado
+    // YA COMPUTADO de "cerrar-run" (que sabe si `finishRun` realmente movió la fila), no volver a
+    // preguntarle a `run.status` — esa es la foto de ANTES del research, y para cuando llegamos acá
+    // puede estar stale (un barrido u otro proceso pudo sacar el run de 'running' mientras corría).
+    return { runId, estado: estadoCierre };
   }
 
-  return { runId, estado: run.status === "running" ? "pending_approval" : "sin_cambio" };
+  log(`[run ${runId}] el research ya estaba hecho (${run.status}) → no se vuelve a pagar`);
+  return { runId, estado: "sin_cambio" };
 }
 
 /** Lo que el evento trae. Solo coordenadas: la decisión YA EXISTE, la creó la API bajo RLS. */
