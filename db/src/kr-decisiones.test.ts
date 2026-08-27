@@ -3,6 +3,35 @@ import assert from "node:assert/strict";
 import { newDb, TestDb, seed } from "./testdb.js";
 import type { Seed } from "./testdb.js";
 
+/**
+ * Crea un tenant, cliente y run de prueba en la base de datos pasada.
+ * Usado en tests que no necesitan el seed completo pero sí datos válidos para inserciones.
+ */
+async function crearRunDePrueba(
+  sql: (sqlStr: string, params?: unknown[]) => Promise<Array<Record<string, unknown>>>,
+): Promise<{ tenantId: string; clientId: string; runId: string }> {
+  const [tenantRow] = await sql<{ id: string }>(
+    "insert into tenants (nombre, slug) values ('Test', 'test') returning id",
+  );
+  const tenantId = tenantRow!.id;
+
+  const [clientRow] = await sql<{ id: string }>(
+    "insert into clients (tenant_id, nombre) values ($1, 'Test Client') returning id",
+    [tenantId],
+  );
+  const clientId = clientRow!.id;
+
+  const [run] = await sql<{ id: string }>(
+    `insert into kr_runs (tenant_id, client_id, schema_version, status, prompt, market_country,
+      market_language, market_location_code)
+     values ($1, $2, 'kr.v0.5', 'pending_approval', 'x', 'ES', 'es', 1) returning id`,
+    [tenantId, clientId],
+  );
+  const runId = run!.id;
+
+  return { tenantId, clientId, runId };
+}
+
 test("kr_run_decisiones: existe con las columnas del spec", async () => {
   const { sql, close } = await newDb();
   try {
@@ -22,29 +51,12 @@ test("kr_run_decisiones: existe con las columnas del spec", async () => {
 test("🔴 el check de coherencia rechaza 'completado' sin completado_en", async () => {
   const { sql, close } = await newDb();
   try {
-    // Create minimal test data in the same database instance
-    const [tenantRow] = await sql<{ id: string }>(
-      "insert into tenants (nombre, slug) values ('Test', 'test') returning id",
-    );
-    const tenantId = tenantRow!.id;
-
-    const [clientRow] = await sql<{ id: string }>(
-      "insert into clients (tenant_id, nombre) values ($1, 'Test Client') returning id",
-      [tenantId],
-    );
-    const clientId = clientRow!.id;
-
-    const [run] = await sql<{ id: string }>(
-      `insert into kr_runs (tenant_id, client_id, schema_version, status, prompt, market_country,
-        market_language, market_location_code)
-       values ($1, $2, 'kr.v0.5', 'pending_approval', 'x', 'ES', 'es', 1) returning id`,
-      [tenantId, clientId],
-    );
+    const { tenantId, clientId, runId } = await crearRunDePrueba(sql);
     await assert.rejects(
       () => sql(
         `insert into kr_run_decisiones (run_id, tenant_id, client_id, destino, resultado)
          values ($1, $2, $3, 'solo_informe', 'completado')`,
-        [run!.id, tenantId, clientId],
+        [runId, tenantId, clientId],
       ),
       /check/i,
     );
@@ -56,32 +68,15 @@ test("🔴 el check de coherencia rechaza 'completado' sin completado_en", async
 test("🔴 el índice único parcial rechaza una segunda decisión 'pendiente' para el mismo run", async () => {
   const { sql, close } = await newDb();
   try {
-    // Create minimal test data in the same database instance
-    const [tenantRow] = await sql<{ id: string }>(
-      "insert into tenants (nombre, slug) values ('Test', 'test') returning id",
-    );
-    const tenantId = tenantRow!.id;
-
-    const [clientRow] = await sql<{ id: string }>(
-      "insert into clients (tenant_id, nombre) values ($1, 'Test Client') returning id",
-      [tenantId],
-    );
-    const clientId = clientRow!.id;
-
-    const [run] = await sql<{ id: string }>(
-      `insert into kr_runs (tenant_id, client_id, schema_version, status, prompt, market_country,
-        market_language, market_location_code)
-       values ($1, $2, 'kr.v0.5', 'pending_approval', 'x', 'ES', 'es', 1) returning id`,
-      [tenantId, clientId],
-    );
+    const { tenantId, clientId, runId } = await crearRunDePrueba(sql);
     await sql(
       `insert into kr_run_decisiones (run_id, tenant_id, client_id, destino) values ($1, $2, $3, 'solo_informe')`,
-      [run!.id, tenantId, clientId],
+      [runId, tenantId, clientId],
     );
     await assert.rejects(
       () => sql(
         `insert into kr_run_decisiones (run_id, tenant_id, client_id, destino) values ($1, $2, $3, 'crear_web')`,
-        [run!.id, tenantId, clientId],
+        [runId, tenantId, clientId],
       ),
       /duplicate key|unique/i,
     );
