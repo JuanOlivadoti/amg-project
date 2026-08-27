@@ -36,3 +36,14 @@ export function mostrarLanzarResearch(esEquipo: boolean, lanzarHabilitado: boole
 export function mostrarAprobarRun(esEquipo: boolean, aprobarHabilitado: boolean): boolean {
   return esEquipo && aprobarHabilitado;
 }
+
+/**
+ * ¿Se muestra la opción "crear_posts" del selector de destino, aunque deshabilitada?
+ *
+ * Sub-proyecto 3 (publicar en un blog externo) todavía no existe: este flag queda en `false` hasta
+ * que lo haya. Mismo patrón que `mostrarAprobarRun`/`mostrarLanzarResearch` — equipo + flag propio,
+ * porque es una capacidad distinta de las otras dos.
+ */
+export function mostrarDestinoPosts(esEquipo: boolean, destinoPostsHabilitado: boolean): boolean {
+  return esEquipo && destinoPostsHabilitado;
+}

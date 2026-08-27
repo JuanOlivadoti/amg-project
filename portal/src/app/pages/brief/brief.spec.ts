@@ -6,15 +6,16 @@ import { BriefPage } from './brief';
 import { ApiService } from '../../services/api';
 import { MembresiaService } from '../../services/membresia';
 import { environment } from '../../../environments/environment';
-import type { Brief } from '../../core/models';
-import { MOTIVO_SIN_PAGINAS, MOTIVO_SIN_WORKFLOW } from '../../core/aprobar-run';
-import { RUN_SIN_WORKFLOW, SIN_PAGINAS_APROBADAS } from '../../core/codigos';
+import type { Brief, UltimaDecision } from '../../core/models';
+import { MOTIVO_SIN_PAGINAS } from '../../core/aprobar-run';
+import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from '../../core/codigos';
 import type { ApiError } from '../../core/api-core';
 
 /**
- * Guarda el gate del botón "Aprobar el run y publicar" (§A.5 / 10ª review #2), igual que el spec de
- * `ClienteResearchPage` guarda el de "lanzar research". En Fase 1 el botón NO se renderiza —aprobar
- * el run emitiría un evento sin orquestador—, pero la aprobación de PÁGINAS sí sigue disponible.
+ * Guarda el gate del selector de destino (§A.5 / 10ª review #2, y el retiro del gate
+ * `tiene_workflow` de este sub-proyecto), igual que el spec de `ClienteResearchPage` guarda el de
+ * "lanzar research". En Fase 1 el selector NO se renderiza —aprobar el run emitiría un evento sin
+ * orquestador—, pero la aprobación de PÁGINAS sí sigue disponible.
  */
 const BRIEF: Brief = {
   run: {
@@ -31,9 +32,10 @@ const BRIEF: Brief = {
     config: {},
     created_at: new Date().toISOString(),
     finished_at: null,
-    // El caso NORMAL: el run lo lanzó el pipeline y hay una ejecución durable esperando su
-    // aprobación. El run sembrado —el que NO la tiene— es el caso especial, y va en `sinWorkflow()`.
     tiene_workflow: true,
+    // El caso NORMAL: nadie decidió nada todavía sobre este run. El caso con una decisión previa
+    // —el que habilita "Construir la web ahora"— va en `conUltimaDecision()`.
+    ultimaDecision: null,
   },
   pages: [
     {
@@ -59,18 +61,22 @@ const BRIEF: Brief = {
   ],
 };
 
-describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)', () => {
-  const flagOriginal = environment.features.aprobarRun;
+describe('BriefPage — selector de destino y retiro del gate tiene_workflow', () => {
+  const flagAprobarOriginal = environment.features.aprobarRun;
+  const flagDestinoPostsOriginal = environment.features.destinoPosts;
 
   afterEach(() => {
-    environment.features.aprobarRun = flagOriginal;
+    environment.features.aprobarRun = flagAprobarOriginal;
+    environment.features.destinoPosts = flagDestinoPostsOriginal;
   });
 
   /**
    * El doble de `ApiService`: la interfaz que el componente consume, y nada más. `aprobarRun` solo se
    * pasa en los tests que pulsan el botón — el resto ni lo llama.
    */
-  type ApiDoble = { aprobarRun?: (id: string) => Promise<void> };
+  type ApiDoble = {
+    aprobarRun?: (id: string, destino: 'crear_web' | 'solo_informe') => Promise<void>;
+  };
 
   /**
    * El fixture **sin el primer `detectChanges`**, que es el ciclo donde corre `ngOnInit`.
@@ -126,9 +132,20 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     return (await renderFixture(esEquipo, aprobarHabilitado, brief)).nativeElement as HTMLElement;
   }
 
-  /** `header button` y no `button` a secas: las tarjetas de página tienen los suyos («Aprobar», «Editar»). */
-  const botonDelRun = (el: HTMLElement): HTMLButtonElement =>
+  /**
+   * El botón "Confirmar" del selector — `header button` y no `button` a secas: las tarjetas de
+   * página tienen los suyos («Aprobar», «Editar»). Es siempre el PRIMER botón del header: "Construir
+   * la web ahora" (cuando aparece) va después en el DOM, y `puedeRetomarUI()` solo puede ser `true`
+   * si `puedeAprobarRunUI()` también lo es — así que el selector con "Confirmar" ya está montado.
+   */
+  const botonConfirmar = (el: HTMLElement): HTMLButtonElement =>
     el.querySelector<HTMLButtonElement>('header button')!;
+
+  const botonRetomar = (el: HTMLElement): HTMLButtonElement | null =>
+    el.querySelector<HTMLButtonElement>('[data-test="retomar-web"]');
+
+  const selectDestino = (el: HTMLElement): HTMLSelectElement | null =>
+    el.querySelector<HTMLSelectElement>('select#destino-run');
 
   /**
    * El «← Volver», buscado por su TEXTO y no por posición.
@@ -156,26 +173,102 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
   });
 
   /**
-   * El run que NO lanzó el pipeline: el sembrado de la demo, una importación. `tiene_workflow: false`
-   * significa que no hay ninguna ejecución durable esperando su aprobación (bloque C0).
+   * El mismo brief (con su página aprobada, para que el selector esté habilitado) con la ÚLTIMA
+   * DECISIÓN que se le pida — lo que sostiene "Construir la web ahora".
    */
-  const sinWorkflow = (brief: Brief = BRIEF): Brief => ({
-    ...brief,
-    run: { ...brief.run, tiene_workflow: false },
+  const conUltimaDecision = (
+    destino: UltimaDecision['destino'],
+    resultado: UltimaDecision['resultado'],
+  ): Brief => ({
+    ...conPaginaAprobada(),
+    run: {
+      ...conPaginaAprobada().run,
+      ultimaDecision: { destino, resultado, decididoEn: new Date().toISOString() },
+    },
   });
 
   /** Un error de la API tal como lo construye `crearApi`: mensaje para el humano, código para el programa. */
   const error409 = (codigo: string): ApiError =>
     Object.assign(new Error('El run no admite aprobación.'), { status: 409, codigo }) as ApiError;
 
-  it('Fase 1 (equipo, flag apagado): el botón de aprobar-run NO se renderiza', async () => {
+  // -------------------------------------------------------------------------- el gate equipo + flag
+
+  it('Fase 1 (equipo, flag apagado): el selector de destino NO se renderiza', async () => {
     const el = await render(true, false);
-    expect(el.textContent).not.toContain('Aprobar el run y publicar');
+    expect(selectDestino(el)).toBeNull();
+    expect(el.textContent).not.toContain('Confirmar');
   });
 
-  it('dev/Fase 2 (equipo, flag encendido): el botón SÍ se renderiza', async () => {
+  it('dev/Fase 2 (equipo, flag encendido): el selector de destino SÍ se renderiza', async () => {
     const el = await render(true, true);
-    expect(el.textContent).toContain('Aprobar el run y publicar');
+    expect(selectDestino(el)).not.toBeNull();
+    expect(el.textContent).toContain('¿Qué hacemos con este research?');
+    expect(el.textContent).toContain('Confirmar');
+  });
+
+  // ------------------------------------------------------------------------ las dos opciones fijas
+
+  it('el selector siempre ofrece "Crear la web" y "Solo quedarme con el informe"', async () => {
+    const el = await render(true, true);
+    const valores = Array.from(selectDestino(el)!.querySelectorAll('option')).map((o) => o.value);
+    expect(valores).toContain('crear_web');
+    expect(valores).toContain('solo_informe');
+  });
+
+  // ---------------------------------------------------------------------- "crear_posts", con su flag
+
+  it('🔴 "crear_posts" aparece DESHABILITADA cuando el flag destinoPosts está encendido', async () => {
+    environment.features.destinoPosts = true;
+    const el = await render(true, true);
+    const opcion = selectDestino(el)!.querySelector<HTMLOptionElement>('option[value="crear_posts"]');
+    expect(opcion).withContext('la opción crear_posts no está en el selector').not.toBeNull();
+    expect(opcion!.disabled)
+      .withContext('el sub-proyecto que la habilita todavía no existe: no puede parecer usable')
+      .toBe(true);
+  });
+
+  it('"crear_posts" NO aparece con el flag apagado (default de este sub-proyecto)', async () => {
+    // `environment.ts`/`environment.prod.ts` la dejan en `false`: ningún despliegue de este
+    // sub-proyecto la enciende. Sin este test, un flag que se prende solo (o un typo) pasaría en verde.
+    const el = await render(true, true);
+    expect(selectDestino(el)!.querySelector('option[value="crear_posts"]')).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------------- el destino elegido
+
+  it('🔴 "Confirmar" manda el destino elegido en el selector, no siempre crear_web', async () => {
+    let destinoRecibido: string | undefined;
+    const fixture = await renderFixture(true, true, conPaginaAprobada(), {
+      aprobarRun: async (_id, destino) => {
+        destinoRecibido = destino;
+      },
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    const select = selectDestino(el)!;
+    select.value = 'solo_informe';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    botonConfirmar(el).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(destinoRecibido).toBe('solo_informe');
+  });
+
+  it('"Confirmar" manda crear_web por defecto, sin tocar el selector', async () => {
+    let destinoRecibido: string | undefined;
+    const fixture = await renderFixture(true, true, conPaginaAprobada(), {
+      aprobarRun: async (_id, destino) => {
+        destinoRecibido = destino;
+      },
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    botonConfirmar(el).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(destinoRecibido).toBe('crear_web');
   });
 
   /**
@@ -258,8 +351,8 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     // existe una hoja para el restaurante, ni qué le falta para poder generarla.
     const el = await render(true, false);
     // Se busca por el tooltip y no por la etiqueta HTML: lo que el usuario tiene que recibir es el
-    // MOTIVO, y de qué elemento cuelgue es implementación. `span[title]` y no `[title]` a secas desde
-    // C0: el botón de aprobar el run también lleva `title` cuando está apagado, y el suyo es otro.
+    // MOTIVO, y de qué elemento cuelgue es implementación. `span[title]` y no `[title]` a secas: el
+    // botón "Confirmar" también lleva `title` cuando está apagado, y el suyo es otro.
     const apagado = el.querySelector<HTMLElement>('span[title]');
     expect(apagado).withContext('el entregable se apagó sin decir por qué').not.toBeNull();
     expect(apagado!.textContent)
@@ -268,7 +361,7 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     expect(apagado!.title).toContain('página aprobada');
   });
 
-  it('🔴 el entregable y el botón de aprobar el run se apagan JUNTOS: es la misma condición', async () => {
+  it('🔴 el entregable y el botón "Confirmar" se apagan JUNTOS: es la misma condición', async () => {
     /*
      * «Hay algo que entregar» y «hay algo que aprobar» son la MISMA pregunta (`puedeAprobarseRun`), y
      * este test existe para que sigan siéndolo. Dos definiciones separadas no fallan el día que se
@@ -276,107 +369,112 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
      * atrás, y entonces el portal ofrece generar un entregable que la API va a rechazar con un 409.
      */
     const sinAprobar = await render(true, true);
-    expect(botonDelRun(sinAprobar).disabled).toBe(true);
+    expect(botonConfirmar(sinAprobar).disabled).toBe(true);
     expect(sinAprobar.querySelector('a[href="/clientes/c1/research/run-1/entregable"]')).toBeNull();
 
     const conAprobada = await render(true, true, conPaginaAprobada());
-    expect(botonDelRun(conAprobada).disabled).toBe(false);
+    expect(botonConfirmar(conAprobada).disabled).toBe(false);
     expect(conAprobada.querySelector('a[href="/clientes/c1/research/run-1/entregable"]')).not.toBeNull();
   });
 
+  it('sin ninguna página aprobada, el motivo bajo "Confirmar" es MOTIVO_SIN_PAGINAS', async () => {
+    const el = await render(true, true);
+    expect(el.textContent).toContain(MOTIVO_SIN_PAGINAS);
+    expect(botonConfirmar(el).title).toBe(MOTIVO_SIN_PAGINAS);
+  });
+
+  // -------------------------------------------------------------------- "Construir la web ahora"
+
+  it('🔴 "Construir la web ahora" aparece cuando la última decisión fue solo_informe/completado', async () => {
+    const el = await render(true, true, conUltimaDecision('solo_informe', 'completado'));
+    expect(botonRetomar(el)).not.toBeNull();
+  });
+
+  it('"Construir la web ahora" NO aparece si el destino de la última decisión no es solo_informe', async () => {
+    const el = await render(true, true, conUltimaDecision('crear_web', 'completado'));
+    expect(botonRetomar(el)).toBeNull();
+  });
+
+  it('"Construir la web ahora" NO aparece con una decisión pendiente: correría dos workflows a la vez', async () => {
+    const el = await render(true, true, conUltimaDecision('solo_informe', 'pendiente'));
+    expect(botonRetomar(el)).toBeNull();
+  });
+
+  it('"Construir la web ahora" NO aparece con una decisión en error', async () => {
+    const el = await render(true, true, conUltimaDecision('solo_informe', 'error'));
+    expect(botonRetomar(el)).toBeNull();
+  });
+
+  it('"Construir la web ahora" NO aparece sin ninguna decisión previa (ultimaDecision: null)', async () => {
+    const el = await render(true, true, conPaginaAprobada());
+    expect(botonRetomar(el)).toBeNull();
+  });
+
   /*
-   * ------------------------------------------------------------------ bloque C0
-   * Un run que NO lanzó el pipeline no se puede aprobar (15ª review, H1; migración 0019).
-   *
-   * Hasta el 2026-08-07 esto no mordía porque el flag estaba apagado. Se encendió, y el run sembrado
-   * de la demo quedó en `pending_approval` **en producción**: el botón se veía normal, la API
-   * respondía 200, se emitía un evento que nadie consumía y no se publicaba nada.
+   * Los dos negativos que pide la ronda de Codex: `puedeRetomarUI()` tiene que combinar el gate de
+   * equipo+flag con la decisión, no mirar solo la decisión. Sin combinarlos, un rol `cliente` —o un
+   * despliegue con `aprobarRun` apagado— vería el botón igual y el backend lo rechazaría recién al
+   * hacer clic (Corrección Major de la ronda de Codex sobre el plan de este sub-proyecto).
    */
-  it('🔴 un run que no lanzó el pipeline: el botón está, pero apagado y diciendo por qué', async () => {
-    // CON una página aprobada a propósito: prueba que la condición es INDEPENDIENTE de las páginas.
-    // Antes de C0 este mismo run pintaba el botón encendido.
-    const el = await render(true, true, sinWorkflow(conPaginaAprobada()));
-
-    const boton = botonDelRun(el);
-    expect(boton)
-      .withContext('el botón no puede desaparecer: quien mira tiene que enterarse de por qué no puede')
-      .not.toBeNull();
-    expect(boton.textContent).toContain('Aprobar el run y publicar');
-    expect(boton.disabled)
-      .withContext('el botón responde a un run que nadie va a publicar')
-      .toBe(true);
-
-    // El motivo, en las dos superficies y con el MISMO texto: la línea visible y el tooltip del botón.
-    expect(el.textContent).toContain(MOTIVO_SIN_WORKFLOW);
-    expect(boton.title).toBe(MOTIVO_SIN_WORKFLOW);
+  it('🔴 no muestra "Construir la web ahora" para un rol cliente, aunque la decisión califique', async () => {
+    const el = await render(false, true, conUltimaDecision('solo_informe', 'completado'));
+    expect(botonRetomar(el)).toBeNull();
   });
 
-  it('🔴 con los dos motivos a la vez se muestra UNO, y no el que promete algo falso', async () => {
-    /*
-     * El run sembrado de la demo, tal como está hoy en producción: sin workflow Y sin ninguna página
-     * aprobada. Los dos avisos juntos se contradicen —«aprobá al menos una página» promete que
-     * aprobando una se destraba, y no se destraba—, así que quien lo lee aprueba páginas, vuelve al
-     * botón y lo encuentra igual de muerto.
-     */
-    const el = await render(true, true, sinWorkflow());
-
-    expect(botonDelRun(el).disabled).toBe(true);
-    expect(el.textContent).toContain(MOTIVO_SIN_WORKFLOW);
-    expect(el.textContent)
-      .withContext('se está mandando a aprobar páginas a alguien a quien aprobar páginas no le sirve')
-      .not.toContain(MOTIVO_SIN_PAGINAS);
+  it('🔴 no muestra "Construir la web ahora" con el flag aprobarRun apagado, aunque la decisión califique', async () => {
+    const el = await render(true, false, conUltimaDecision('solo_informe', 'completado'));
+    expect(botonRetomar(el)).toBeNull();
   });
 
-  it('🔴 el entregable NO se apaga por falta de workflow: son preguntas distintas', async () => {
-    /*
-     * La mitad simétrica del test de «se apagan juntos». Un run sembrado con páginas aprobadas no se
-     * puede publicar, pero SÍ tiene una hoja que mandarle al restaurante: el entregable se genera de
-     * las páginas aprobadas. Copiar la condición del botón acá —la tentación obvia— le quitaría a la
-     * agencia el entregable de la demo, que es justo el run que se le enseña a Frank.
-     */
-    const el = await render(true, true, sinWorkflow(conPaginaAprobada()));
-    expect(botonDelRun(el).disabled).toBe(true);
-    expect(el.querySelector('a[href="/clientes/c1/research/run-1/entregable"]'))
-      .withContext('el entregable se apagó por un motivo que no es suyo')
-      .not.toBeNull();
-  });
-
-  it('🔴 el 409 al pulsar apaga el botón y explica, SIN borrar la pantalla', async () => {
-    /*
-     * El botón se apaga por adelantado con `run.tiene_workflow`, así que llegar al 409 significa que
-     * la pantalla y la base no coincidían (otra pestaña, el endpoint a mano). La UI es un atajo y el
-     * backend la autoridad: cuando se contradicen, gana el backend.
-     *
-     * Y el aviso va AL LADO del botón, no en la rama de error: esa rama reemplaza la pantalla entera,
-     * y quien leyera el mensaje se quedaría sin el brief y sin el botón al que el mensaje se refiere.
-     */
-    const fixture = await renderFixture(true, true, conPaginaAprobada(), {
-      aprobarRun: () => Promise.reject(error409(RUN_SIN_WORKFLOW)),
+  it('🔴 "Construir la web ahora" llama a aprobarRun con destino crear_web', async () => {
+    let destinoRecibido: string | undefined;
+    const fixture = await renderFixture(true, true, conUltimaDecision('solo_informe', 'completado'), {
+      aprobarRun: async (_id, destino) => {
+        destinoRecibido = destino;
+      },
     });
     const el = fixture.nativeElement as HTMLElement;
-    expect(botonDelRun(el).disabled).withContext('el arranque de este test no es el que cree').toBe(false);
-
-    botonDelRun(el).click();
+    botonRetomar(el)!.click();
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(botonDelRun(el))
-      .withContext('la pantalla se fue a la rama de error y se llevó el brief por delante')
-      .not.toBeNull();
-    expect(botonDelRun(el).disabled).toBe(true);
-    expect(el.textContent).toContain(MOTIVO_SIN_WORKFLOW);
-    // El brief sigue ahí: el prompt del run y las secciones de páginas.
-    expect(el.textContent).toContain('Restaurante italiano');
-    expect(el.textContent).toContain('Respaldadas por datos');
+    expect(destinoRecibido).toBe('crear_web');
   });
 
-  it('🔴 el rechazo del servidor es de SU run: al navegar a otro, el botón vuelve a la vida', async () => {
+  // --------------------------------------------------------- el 409 TRANSICION_INVALIDA (retiro C0)
+
+  it('🔴 el 409 TRANSICION_INVALIDA muestra el mensaje SIN borrar la pantalla', async () => {
+    /*
+     * El selector ya intenta acotar lo que se puede pedir, así que llegar al 409 significa que la
+     * pantalla y la base no coincidían (otra pestaña, el endpoint a mano). La UI es un atajo y el
+     * backend la autoridad: cuando se contradicen, gana el backend.
+     *
+     * Y el aviso va AL LADO del selector, no en la rama de error: esa rama reemplaza la pantalla
+     * entera, y quien leyera el mensaje se quedaría sin el brief y sin el selector al que se refiere.
+     */
+    const fixture = await renderFixture(true, true, conPaginaAprobada(), {
+      aprobarRun: () => Promise.reject(error409(TRANSICION_INVALIDA)),
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    expect(botonConfirmar(el).disabled).withContext('el arranque de este test no es el que cree').toBe(false);
+
+    botonConfirmar(el).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(el.textContent).toContain('Este run ya no admite esa transición.');
+    // El brief sigue ahí: el prompt del run, el selector y las secciones de páginas.
+    expect(el.textContent).toContain('Restaurante italiano');
+    expect(el.textContent).toContain('Respaldadas por datos');
+    expect(selectDestino(el)).not.toBeNull();
+  });
+
+  it('🔴 el error de destino es del run ANTERIOR: al navegar a otro, desaparece', async () => {
     /*
      * Angular **reutiliza la instancia** al navegar del run A al B del mismo cliente (mismo
-     * `routeConfig`, solo cambia el `:runId`): no hay
-     * `ngOnInit` de nuevo, solo una emisión más del `paramMap`. Sin limpiar el rechazo ahí, el 409 de
-     * A dejaría el botón de B apagado para siempre contándole a alguien un motivo que no es el suyo —
-     * y como el rechazo gana sobre `tiene_workflow`, ni recargar el brief lo destrabaría.
+     * `routeConfig`, solo cambia el `:runId`): no hay `ngOnInit` de nuevo, solo una emisión más del
+     * `paramMap`. Sin limpiar el error ahí, el 409 de A seguiría mostrándose en la pantalla de B,
+     * contando un motivo que no es el suyo.
      *
      * Un `BehaviorSubject` y no `of(...)`: hace falta emitir DOS veces, que es justo lo que un
      * `of()` de una sola emisión no puede reproducir.
@@ -384,7 +482,7 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     const params = new BehaviorSubject(convertToParamMap({ id: 'c1', runId: 'run-1' }));
     const briefs: Record<string, Brief> = {
       'run-1': conPaginaAprobada(),
-      'run-2': { ...conPaginaAprobada(), run: { ...BRIEF.run, id: 'run-2' } },
+      'run-2': { ...conPaginaAprobada(), run: { ...conPaginaAprobada().run, id: 'run-2' } },
     };
     environment.features.aprobarRun = true;
     TestBed.resetTestingModule();
@@ -397,7 +495,7 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
           provide: ApiService,
           useValue: {
             verBrief: async (id: string) => briefs[id]!,
-            aprobarRun: () => Promise.reject(error409(RUN_SIN_WORKFLOW)),
+            aprobarRun: () => Promise.reject(error409(TRANSICION_INVALIDA)),
           },
         },
         { provide: MembresiaService, useValue: { esEquipo: () => true } },
@@ -409,41 +507,42 @@ describe('BriefPage — gate del botón "Aprobar el run y publicar" (§A.5 / #2)
     fixture.detectChanges();
     const el = fixture.nativeElement as HTMLElement;
 
-    botonDelRun(el).click();
+    botonConfirmar(el).click();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(botonDelRun(el).disabled).withContext('el 409 no apagó el botón de run-1').toBe(true);
+    expect(el.textContent)
+      .withContext('el 409 no se mostró en run-1')
+      .toContain('Este run ya no admite esa transición.');
 
     // La MISMA instancia, otro run del MISMO cliente: solo cambia el `:runId`.
     params.next(convertToParamMap({ id: 'c1', runId: 'run-2' }));
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(botonDelRun(el).disabled)
-      .withContext('run-2 heredó el rechazo de run-1: el botón quedó muerto sin motivo propio')
-      .toBe(false);
-    expect(el.textContent).not.toContain(MOTIVO_SIN_WORKFLOW);
+    expect(el.textContent)
+      .withContext('run-2 heredó el error de run-1: le está contando un motivo que no es suyo')
+      .not.toContain('Este run ya no admite esa transición.');
   });
 
-  it('🔴 cualquier OTRO error de aprobar sigue yendo a la rama de error, no al aviso del botón', async () => {
+  it('🔴 cualquier OTRO error de aprobar sigue yendo a la rama de error, no al aviso del selector', async () => {
     /*
-     * La mitad que impide que el `catch` se trague todo. Con un `catch` que marcara «sin workflow»
-     * ante cualquier fallo, un 500 o una caída de red apagarían el botón para siempre contando un
-     * motivo falso — y el test de arriba seguiría verde. Se prueba con el OTRO 409 del endpoint, que
-     * es el vecino más fácil de confundir.
+     * La mitad que impide que el `catch` se trague todo. Con un `catch` que marcara «transición
+     * inválida» ante cualquier fallo, un 500 o una caída de red mostrarían ese mensaje sin que fuera
+     * cierto — y el test de arriba seguiría verde. Se prueba con el OTRO 409 del endpoint, que es el
+     * vecino más fácil de confundir.
      */
     const fixture = await renderFixture(true, true, conPaginaAprobada(), {
       aprobarRun: () => Promise.reject(error409(SIN_PAGINAS_APROBADAS)),
     });
     const el = fixture.nativeElement as HTMLElement;
 
-    botonDelRun(el).click();
+    botonConfirmar(el).click();
     await fixture.whenStable();
     fixture.detectChanges();
 
     expect(el.textContent)
-      .withContext('un error que no es el de C0 no puede contar el motivo de C0')
-      .not.toContain(MOTIVO_SIN_WORKFLOW);
+      .withContext('un error que no es TRANSICION_INVALIDA no puede contar su motivo')
+      .not.toContain('Este run ya no admite esa transición.');
     expect(el.textContent).toContain('El run no admite aprobación.');
   });
 

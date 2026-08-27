@@ -8,8 +8,8 @@ import { MembresiaService } from '../../services/membresia';
 import type { Brief, PaginaPropuesta } from '../../core/models';
 import { separarPorEvidencia, puedeAprobarseRun } from '../../core/evidence';
 import { motivoNoAprobable } from '../../core/aprobar-run';
-import { esRunSinWorkflow } from '../../core/api-core';
-import { mostrarAprobarRun } from '../../core/features';
+import { esTransicionInvalida } from '../../core/api-core';
+import { mostrarAprobarRun, mostrarDestinoPosts } from '../../core/features';
 import { usdDeMicros } from '../../core/dinero';
 import { environment } from '../../../environments/environment';
 import { Vigencia } from '../../core/vigencia';
@@ -129,34 +129,84 @@ import { POLL_MS } from '../../core/brief-polling';
             }
           }
           <!--
-            El botón, y UN SOLO motivo cuando está apagado (bloque C0).
+            El selector de destino y el botón de confirmar — reemplaza el botón único "Aprobar el
+            run y publicar". Retiro del gate «tiene_workflow» (bloque C0 se cerró de otra forma: con
+            RunSinWorkflowError fuera, cualquier run en pending_approval admite una decisión, nacido
+            del pipeline o sembrado).
 
-            · POR QUÉ disabled Y NO UN <span>, al revés que el entregable de arriba: acá el elemento
-              ya es un <button>, y un botón deshabilitado no navega, no recibe el clic y no se activa
-              con Enter — el navegador lo impone. El <span> hizo falta allá porque un <a href> apagado
-              con una clase sigue navegando de tres maneras distintas.
-            · POR QUÉ NO SE ESCONDE: quien mira tiene que poder enterarse de por qué no puede. Un
-              botón que desaparece deja a alguien preguntándose si la función existe.
-            · POR QUÉ EL MOTIVO SALE DE UNA FUNCIÓN Y NO DE DOS @if: los dos motivos pueden darse a la
-              vez (un run sembrado sin páginas aprobadas) y pintados juntos se contradicen. Cuál gana
-              lo decide motivoNoAprobable() (core/aprobar-run.ts), donde se prueba sin navegador.
-            · POR QUÉ EL MISMO TEXTO EN EL <p> Y EN EL title: el <p> es lo que se lee sin hacer nada;
-              el title es lo que aparece donde la persona está mirando cuando descubre que el botón no
-              responde. Salen de la MISMA señal, así que no pueden decir cosas distintas.
+            · POR QUÉ UN <select> Y NO EL BOTÓN DE ANTES: "aprobar" dejó de ser una sola acción — el
+              servidor exige «destino» en el body (POST /runs/:id/approve, Task 10), así que la
+              pantalla tiene que preguntarlo. «crear_posts» se muestra DESHABILITADA y no escondida:
+              avisa que la opción existe sin prometer que funciona (el sub-proyecto que la habilita
+              todavía no existe — mostrarDestinoPostsUI()).
+            · [ngModel]/(ngModelChange) y no [(ngModel)]: destinoElegido es un signal, no una
+              propiedad de dos vías — mismo patrón que edKeyword/edSlug más abajo.
+            · POR QUÉ EL MOTIVO SALE DE UNA FUNCIÓN: motivoNoAprobar() (core/aprobar-run.ts) ahora
+              depende SOLO de que haya una página aprobada — el otro motivo que existía (el run no
+              lanzó el pipeline) se fue con el gate retirado. El <p> y el title comparten la misma
+              señal a propósito, igual que antes.
+            · errorAprobar() es el 409 TRANSICION_INVALIDA del SERVIDOR (la pantalla y la base no
+              coincidían: otra pestaña, el endpoint a mano, una decisión que se resolvió mientras esto
+              seguía abierto). Se pinta ACÁ, al lado del selector, y NO por error() general: esa rama
+              reemplaza la pantalla entera (ver el @else if de arriba), y quien la leyera se quedaría
+              sin el brief y sin el selector al que el mensaje se refiere — mismo criterio que antes
+              sostenía rechazadoSinWorkflow. Cualquier OTRO error de esta acción sí va a error()
+              general, igual que en conTrabajo().
           -->
           @if (puedeAprobarRunUI()) {
+            <div class="mt-4 space-y-2">
+              <label for="destino-run" class="block text-sm font-medium text-texto">
+                ¿Qué hacemos con este research?
+              </label>
+              <select
+                id="destino-run"
+                [ngModel]="destinoElegido()"
+                (ngModelChange)="destinoElegido.set($event)"
+                class="rounded-md border border-borde-fuerte bg-superficie text-texto text-sm px-2 py-1"
+              >
+                <option value="crear_web">Crear la web</option>
+                <option value="solo_informe">Solo quedarme con el informe</option>
+                @if (mostrarDestinoPostsUI()) {
+                  <option value="crear_posts" disabled>Crear posts (próximamente)</option>
+                }
+              </select>
+              <div>
+                <button
+                  (click)="aprobarRun()"
+                  [disabled]="motivoNoAprobar() !== null || trabajando()"
+                  [attr.title]="motivoNoAprobar()"
+                  [attr.aria-describedby]="motivoNoAprobar() ? 'motivo-aprobar-run' : null"
+                  class="rounded-md bg-respaldo text-texto-invertido px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-40"
+                >
+                  Confirmar
+                </button>
+              </div>
+              @if (motivoNoAprobar(); as motivo) {
+                <p id="motivo-aprobar-run" class="text-xs text-texto-tenue">{{ motivo }}</p>
+              }
+              @if (errorAprobar(); as errAprobar) {
+                <p class="text-xs text-error">{{ errAprobar }}</p>
+              }
+            </div>
+          }
+          <!--
+            "Construir la web ahora" — el retomo que este sub-proyecto existe para habilitar. Solo
+            aparece cuando la ÚLTIMA decisión de este run fue «solo_informe» y TERMINÓ
+            (resultado: 'completado'): una decisión «pendiente» correría dos workflows a la vez, y
+            una «error» no se resuelve reintentando el mismo destino desde acá. puedeRetomarUI()
+            combina esto con el MISMO gate equipo+flag que el selector de arriba (corrección Major de
+            la ronda de Codex: sin combinarlo, un rol «cliente» —o un despliegue con aprobarRun
+            apagado— veía el botón igual y el backend lo rechazaba recién al hacer clic).
+          -->
+          @if (puedeRetomarUI()) {
             <button
-              (click)="aprobarRun()"
-              [disabled]="motivoNoAprobar() !== null || trabajando()"
-              [attr.title]="motivoNoAprobar()"
-              [attr.aria-describedby]="motivoNoAprobar() ? 'motivo-aprobar-run' : null"
-              class="mt-4 rounded-md bg-respaldo text-texto-invertido px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-40"
+              data-test="retomar-web"
+              (click)="retomarConWeb()"
+              [disabled]="trabajando()"
+              class="mt-4 rounded-md border border-borde px-4 py-2 text-sm text-texto hover:bg-superficie-2 disabled:opacity-40"
             >
-              Aprobar el run y publicar
+              Construir la web ahora
             </button>
-            @if (motivoNoAprobar(); as motivo) {
-              <p id="motivo-aprobar-run" class="mt-2 text-xs text-texto-tenue">{{ motivo }}</p>
-            }
           }
         </header>
 
@@ -302,45 +352,51 @@ export class BriefPage implements OnInit, OnDestroy {
   readonly puedeAprobar = computed(() => (this.brief() ? puedeAprobarseRun(this.brief()!.pages) : false));
 
   /**
-   * Lo que dijo el SERVIDOR al rechazar una aprobación con 409 `RUN_SIN_WORKFLOW`, y **gana** sobre
-   * lo que traía el brief.
-   *
-   * Se conserva puesto hasta que se cambie de run: un `refetch` que volviera a traer
-   * `tiene_workflow: true` estaría contradiciendo al único que puede saberlo de verdad, y volver a
-   * encender el botón después de que la API lo rechazó es exactamente el bucle que C0 vino a cerrar.
+   * Por qué no se puede aprobar, o `null` si se puede. Depende SOLO de que haya una página aprobada
+   * (`core/aprobar-run.ts`) — el gate `tiene_workflow` se retiró: con `RunSinWorkflowError` fuera,
+   * cualquier run en `pending_approval` admite una decisión de destino.
    */
-  private readonly rechazadoSinWorkflow = signal(false);
+  readonly motivoNoAprobar = computed(() => motivoNoAprobable({ hayPaginaAprobada: this.puedeAprobar() }));
 
   /**
-   * ¿Hay una ejecución durable esperando la aprobación de ESTE run? (bloque C0, migración 0019).
-   *
-   * Falla cerrado en los dos casos en que no se sabe: sin brief cargado, y con un `tiene_workflow`
-   * que no llegue —una API vieja, un mock incompleto—. Ofrecer una acción que no hace nada es peor
-   * que no ofrecerla.
-   */
-  private readonly tieneWorkflow = computed(
-    () => !this.rechazadoSinWorkflow() && (this.brief()?.run.tiene_workflow ?? false),
-  );
-
-  /**
-   * Por qué no se puede aprobar, o `null` si se puede. **Una sola frase**: cuál gana cuando se dan
-   * los dos motivos lo decide `core/aprobar-run.ts`, con su test.
-   */
-  readonly motivoNoAprobar = computed(() =>
-    motivoNoAprobable({
-      tieneWorkflow: this.tieneWorkflow(),
-      hayPaginaAprobada: this.puedeAprobar(),
-    }),
-  );
-
-  /**
-   * ¿Se muestra el botón "Aprobar el run y publicar"? Equipo + flag de Fase 1. En Fase 1 está
-   * apagado: aprobar el run emite un evento sin orquestador detrás (ver `features.ts`). La aprobación
-   * de PÁGINAS —abajo, en cada tarjeta— sigue visible: es lo que demuestra la compuerta.
+   * ¿Se muestra el selector de destino? Equipo + flag de Fase 1. En Fase 1 está apagado: aprobar el
+   * run emite un evento sin orquestador detrás (ver `features.ts`). La aprobación de PÁGINAS —abajo,
+   * en cada tarjeta— sigue visible: es lo que demuestra la compuerta.
    */
   readonly puedeAprobarRunUI = computed(() =>
     mostrarAprobarRun(this.membresia.esEquipo(), environment.features.aprobarRun),
   );
+
+  /** Qué destino va a pedir el botón "Confirmar". `crear_web` por defecto: es el camino más común. */
+  readonly destinoElegido = signal<'crear_web' | 'solo_informe'>('crear_web');
+
+  /** ¿Se muestra la opción "crear_posts", deshabilitada? Sub-proyecto de blog externo, todavía no existe. */
+  readonly mostrarDestinoPostsUI = computed(() =>
+    mostrarDestinoPosts(this.membresia.esEquipo(), environment.features.destinoPosts),
+  );
+
+  /**
+   * ¿Se puede "Construir la web ahora" — retomar un run cuya última decisión fue `solo_informe` y
+   * terminó? La razón de ser de este sub-proyecto entero.
+   *
+   * Corrección Major de la ronda de Codex: la primera versión de este computed solo miraba la
+   * decisión, sin combinar el gate de rol/flag — un usuario `cliente`, o un despliegue con
+   * `aprobarRun` apagado, veía el botón igual y el backend lo rechazaba recién al hacer clic.
+   */
+  readonly puedeRetomarUI = computed(() => {
+    if (!this.puedeAprobarRunUI()) return false; // mismo gate de equipo+flag que el selector de arriba
+    const u = this.brief()?.run.ultimaDecision;
+    return u?.destino === 'solo_informe' && u.resultado === 'completado';
+  });
+
+  /**
+   * Lo que dijo el SERVIDOR al rechazar la última decisión con 409 `TRANSICION_INVALIDA`. Separado
+   * de `error()` general a propósito — el porqué está en el comentario de `aprobarRun()`.
+   *
+   * Se limpia al cambiar de run (`ngOnInit`): un error de A no puede seguir contándole a alguien un
+   * motivo que no es el de B.
+   */
+  readonly errorAprobar = signal('');
 
   private sub: Subscription | null = null;
 
@@ -368,10 +424,10 @@ export class BriefPage implements OnInit, OnDestroy {
       this.brief.set(null);
       this.editando.set(null);
       this.error.set('');
-      // El rechazo era del run ANTERIOR. Sin esto, Angular reutiliza la instancia al navegar del run
-      // A al B (mismo cliente, mismo `routeConfig`) y el botón de B quedaría apagado por un 409 que
-      // no era suyo.
-      this.rechazadoSinWorkflow.set(false);
+      // El error era del run ANTERIOR. Sin esto, Angular reutiliza la instancia al navegar del run
+      // A al B (mismo cliente, mismo `routeConfig`) y el selector de B mostraría un 409 que no era
+      // suyo.
+      this.errorAprobar.set('');
       void this.cargar();
     });
   }
@@ -477,35 +533,46 @@ export class BriefPage implements OnInit, OnDestroy {
   }
 
   /**
-   * No usa `conTrabajo` porque necesita tratar UN error distinto del resto (bloque C0).
+   * No usa `conTrabajo` porque necesita tratar UN error distinto del resto: el 409
+   * `TRANSICION_INVALIDA`.
    *
-   * El 409 `RUN_SIN_WORKFLOW` no es un fallo: es el estado del run, y tiene su propio sitio en la
-   * pantalla —la línea bajo el botón—. Mandarlo a `error` lo pintaría en la rama de error del
-   * template, que **reemplaza la pantalla entera**: quien lo lee se quedaría sin el brief y sin el
-   * botón al que el mensaje se refiere. Es el mismo criterio que la pantalla del entregable con su
-   * propio 409, con una diferencia: allá el 409 llega al cargar y acá al actuar, así que el aviso va
-   * al lado de la acción y no en lugar del contenido.
+   * No es un fallo cualquiera: es la base contradiciendo lo que esta pantalla asumía (otra pestaña,
+   * el endpoint a mano, una decisión que se resolvió mientras esto seguía abierto), y tiene su
+   * propio sitio en la pantalla —al lado del selector—. Mandarlo a `error` lo pintaría en la rama de
+   * error del template, que **reemplaza la pantalla entera**: quien lo lee se quedaría sin el brief
+   * y sin el selector al que el mensaje se refiere. Mismo criterio que la pantalla del entregable con
+   * su propio 409: el aviso va al lado de la acción, no en lugar del contenido.
    *
-   * Llegar acá significa que la pantalla y la base no coincidían (otra pestaña, el endpoint a mano):
-   * el botón ya se apaga por adelantado con `run.tiene_workflow`. Se ramifica por el **código** y
-   * nunca por la frase — ver `core/codigos.ts`.
+   * Cualquier OTRO error (red, 500, etc.) sigue yendo a `error()` general — mismo criterio que
+   * `conTrabajo()`. Se ramifica por el **código** y nunca por la frase — ver `core/codigos.ts`.
    */
   async aprobarRun(): Promise<void> {
     const pedido = this.runId; // a qué run corresponde ESTA aprobación
     this.trabajando.set(true);
     this.error.set('');
+    this.errorAprobar.set('');
     try {
-      await this.api.aprobarRun(pedido);
+      await this.api.aprobarRun(pedido, this.destinoElegido());
       await this.refetch(); // recarga SIN el spinner de página (la acción ya terminó)
     } catch (e) {
-      // Si ya nos fuimos a otro run, el resultado de éste no puede pintar nada: apagaría el botón de
-      // una pantalla que no es la suya.
+      // Si ya nos fuimos a otro run, el resultado de éste no puede pintar nada: apagaría el
+      // selector de una pantalla que no es la suya.
       if (this.vigencia.obsoleta(pedido)) return;
-      if (esRunSinWorkflow(e)) this.rechazadoSinWorkflow.set(true);
+      if (esTransicionInvalida(e)) this.errorAprobar.set('Este run ya no admite esa transición.');
       else this.error.set((e as Error).message);
     } finally {
       if (!this.vigencia.obsoleta(pedido)) this.trabajando.set(false);
     }
+  }
+
+  /**
+   * Retoma un run con última decisión `solo_informe`/`completado` hacia `crear_web` — el "más tarde"
+   * que este sub-proyecto existe para habilitar. Fuerza el selector a `crear_web` antes de reusar
+   * `aprobarRun()`: es la MISMA llamada que hace el botón "Confirmar", con el destino ya decidido.
+   */
+  async retomarConWeb(): Promise<void> {
+    this.destinoElegido.set('crear_web');
+    await this.aprobarRun();
   }
 
   /** `null` = no hay coste que mostrar, y entonces la línea no se pinta. Ver `core/dinero.ts`. */

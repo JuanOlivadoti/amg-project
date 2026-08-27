@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mostrarLanzarResearch, mostrarAprobarRun } from './features';
+import { mostrarLanzarResearch, mostrarAprobarRun, mostrarDestinoPosts } from './features';
 
 /**
  * El botón "lanzar research" (§A.5). La regla de Fase 1: aunque seas equipo, si el flag está
@@ -35,4 +35,22 @@ test('aprobar run: equipo + flag apagado (Fase 1) → NO se muestra', () => {
 
 test('aprobar run: no-equipo → no se muestra ni con el flag encendido', () => {
   assert.equal(mostrarAprobarRun(false, true), false);
+});
+
+/**
+ * La opción "crear_posts" del selector de destino (sub-proyecto 3, todavía no existe). Mismo patrón
+ * equipo + flag que las dos de arriba — el flag queda en `false` en los dos environments de este
+ * sub-proyecto (`environment.prod.test.ts` lo fija para producción).
+ */
+
+test('destino posts: equipo + flag encendido → se muestra', () => {
+  assert.equal(mostrarDestinoPosts(true, true), true);
+});
+
+test('destino posts: equipo + flag apagado (sub-proyecto 3 no existe) → NO se muestra', () => {
+  assert.equal(mostrarDestinoPosts(true, false), false);
+});
+
+test('destino posts: no-equipo → no se muestra ni con el flag encendido', () => {
+  assert.equal(mostrarDestinoPosts(false, true), false);
 });

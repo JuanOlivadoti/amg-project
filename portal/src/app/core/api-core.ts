@@ -15,7 +15,7 @@ import type {
   ResenaGoogle,
   RunSummary,
 } from './models';
-import { RUN_SIN_WORKFLOW, SIN_PAGINAS_APROBADAS } from './codigos';
+import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from './codigos';
 
 /**
  * Error de la API con el status HTTP, para que la UI distinga 401 (relogin) de 403/409/500.
@@ -50,17 +50,19 @@ export function esSinPaginasAprobadas(e: unknown): boolean {
 }
 
 /**
- * ¿Este error es el 409 de «nadie está esperando la aprobación de este run»? (bloque C0).
+ * ¿Este error es el 409 de «esta transición de destino no califica»?
  *
- * El portal apaga el botón por adelantado leyendo `run.tiene_workflow`, así que llegar acá significa
- * que la pantalla y la base **no coincidían**: otra pestaña, el endpoint llamado a mano, o un dato
- * pintado desde algo que no era la base. La UI es un atajo, la autoridad es el backend — y cuando se
- * contradicen, gana el backend y hay que contarlo con palabras.
+ * `POST /runs/:id/approve` la devuelve cuando el `destino` pedido no es ni la primera decisión de un
+ * run en `pending_approval` ni el único camino retomable (última decisión completada
+ * `solo_informe` → un destino distinto). El selector de esta pantalla ya intenta acotar lo que se
+ * puede pedir (`puedeAprobarRunUI`/`puedeRetomarUI`), así que llegar acá significa que la pantalla y
+ * la base **no coincidían**: otra pestaña, el endpoint llamado a mano, o una decisión que se resolvió
+ * mientras esta pantalla seguía abierta. La UI es un atajo, la autoridad es el backend.
  *
  * Mismo criterio que arriba: el **código**, nunca la frase ni el status.
  */
-export function esRunSinWorkflow(e: unknown): boolean {
-  return typeof e === 'object' && e !== null && (e as ApiError).codigo === RUN_SIN_WORKFLOW;
+export function esTransicionInvalida(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as ApiError).codigo === TRANSICION_INVALIDA;
 }
 
 /** Un archivo bajado de la API: el contenido y con qué nombre guardarlo. */
@@ -234,7 +236,16 @@ export interface ClienteApi {
   verEntregableMd(runId: string): Promise<string>;
   aprobarPagina(pageId: string): Promise<void>;
   editarPagina(pageId: string, cambios: CambiosPagina): Promise<void>;
-  aprobarRun(runId: string): Promise<void>;
+  /**
+   * Decide el destino de un run en `pending_approval` (o retoma uno con última decisión
+   * `solo_informe`/`completado` hacia otro destino). `destino` es OBLIGATORIO — a diferencia del
+   * viejo "Aprobar" sin argumentos, el servidor ya no tiene un único camino que asumir.
+   *
+   * TEMPORAL: solo dos valores en este sub-proyecto (`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`,
+   * Task 11). El sub-proyecto de publicación en blog externo amplía este tipo a incluir
+   * `'crear_posts'` cuando exista.
+   */
+  aprobarRun(runId: string, destino: 'crear_web' | 'solo_informe'): Promise<void>;
 
   listarClientes(): Promise<ClienteAgencia[]>;
   verCliente(id: string): Promise<ClienteAgencia>;
@@ -469,8 +480,8 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     async editarPagina(pageId, cambios) {
       await pedir('PATCH', `/pages/${encodeURIComponent(pageId)}`, cambios);
     },
-    async aprobarRun(runId) {
-      await pedir('POST', `/runs/${encodeURIComponent(runId)}/approve`);
+    async aprobarRun(runId, destino) {
+      await pedir('POST', `/runs/${encodeURIComponent(runId)}/approve`, { destino });
     },
 
     async listarClientes() {

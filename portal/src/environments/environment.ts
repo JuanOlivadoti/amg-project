@@ -20,5 +20,8 @@ export const environment = {
     /** Aprobar el run (emite el evento de publicación). En dev hay orquestador de mentira; en Fase 1
      *  prod se apaga porque no hay consumidor y "publicar" no publicaría. Ver §A.5 / 10ª review #2. */
     aprobarRun: true,
+    /** La opción "crear_posts" del selector de destino. `false` hasta que exista el sub-proyecto de
+     *  publicación en blog externo — ese sub-proyecto la enciende acá, en DEV. */
+    destinoPosts: false,
   },
 };

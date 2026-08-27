@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   crearApi,
-  esRunSinWorkflow,
   esSinPaginasAprobadas,
+  esTransicionInvalida,
   nombreDeDescarga,
   type ApiError,
 } from './api-core';
-import { RUN_SIN_WORKFLOW, SIN_PAGINAS_APROBADAS } from './codigos';
+import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from './codigos';
 
 /**
  * Captura la última request y devuelve lo que se le configure. Sin red.
@@ -227,9 +227,10 @@ test('aprobarPagina / editarPagina / aprobarRun usan el método y la ruta correc
   }
   {
     const { fn, capturado } = fakeFetch({ body: { ok: true } });
-    await crearApi(opts(fn)).aprobarRun('run-9');
+    await crearApi(opts(fn)).aprobarRun('run-9', 'crear_web');
     assert.equal(capturado.method, 'POST');
     assert.equal(capturado.url, 'http://api.test/runs/run-9/approve');
+    assert.deepEqual(JSON.parse(capturado.body!), { destino: 'crear_web' });
   }
 });
 
@@ -428,30 +429,30 @@ test('🔴 esSinPaginasAprobadas mira el CÓDIGO y nunca la frase', () => {
   assert.equal(esSinPaginasAprobadas('SIN_PAGINAS_APROBADAS'), false);
 });
 
-test('🔴 esRunSinWorkflow mira el CÓDIGO, y no se confunde con el OTRO 409', () => {
+test('🔴 esTransicionInvalida mira el CÓDIGO, y no se confunde con el OTRO 409', () => {
   /*
    * Los dos 409 del portal viven en endpoints distintos hoy, así que ramificar por status parecería
    * alcanzar — y ése es justo el atajo que hay que impedir. `aprobarRun` ya puede devolver dos 409
-   * distintos (`SIN_PAGINAS_APROBADAS` y `RUN_SIN_WORKFLOW`), y confundirlos manda a alguien a
+   * distintos (`SIN_PAGINAS_APROBADAS` y `TRANSICION_INVALIDA`), y confundirlos manda a alguien a
    * aprobar páginas de un run que aprobando páginas no se destraba.
    */
   const conCodigo = Object.assign(new Error('cualquier redacción'), {
     status: 409,
-    codigo: RUN_SIN_WORKFLOW,
+    codigo: TRANSICION_INVALIDA,
   }) as ApiError;
-  assert.equal(esRunSinWorkflow(conCodigo), true);
+  assert.equal(esTransicionInvalida(conCodigo), true);
   assert.equal(esSinPaginasAprobadas(conCodigo), false, 'los dos 409 no se pueden confundir');
 
   const elOtro409 = Object.assign(new Error('cualquier redacción'), {
     status: 409,
     codigo: SIN_PAGINAS_APROBADAS,
   }) as ApiError;
-  assert.equal(esRunSinWorkflow(elOtro409), false);
+  assert.equal(esTransicionInvalida(elOtro409), false);
 
   // Sin código no hay caso, aunque el status coincida.
-  assert.equal(esRunSinWorkflow(Object.assign(new Error('x'), { status: 409 })), false);
-  assert.equal(esRunSinWorkflow(null), false);
-  assert.equal(esRunSinWorkflow('RUN_SIN_WORKFLOW'), false);
+  assert.equal(esTransicionInvalida(Object.assign(new Error('x'), { status: 409 })), false);
+  assert.equal(esTransicionInvalida(null), false);
+  assert.equal(esTransicionInvalida('TRANSICION_INVALIDA'), false);
 });
 
 test('nombreDeDescarga: usa el filename del header cuando viene', () => {
@@ -489,7 +490,7 @@ test('🔴 nombreDeDescarga sanea el header Y el fallback con la misma allowlist
 test('un error de la API se propaga con status y el mensaje del body', async () => {
   const { fn } = fakeFetch({ status: 403, body: { error: 'No autorizado para esta operación.' } });
   await assert.rejects(
-    () => crearApi(opts(fn)).aprobarRun('run-9'),
+    () => crearApi(opts(fn)).aprobarRun('run-9', 'crear_web'),
     (e: ApiError) => {
       assert.equal(e.status, 403);
       assert.equal(e.message, 'No autorizado para esta operación.');

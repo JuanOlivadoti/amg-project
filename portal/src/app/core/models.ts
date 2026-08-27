@@ -53,6 +53,21 @@ export interface RunSummary {
 }
 
 /**
+ * La última decisión de destino tomada sobre un run (`kr_run_decisiones`, Task 1-10 de este
+ * sub-proyecto). `null` = todavía no se decidió nada — un run recién salido de `pending_approval`.
+ *
+ * Es lo que sostiene "Construir la web ahora" (retomar): solo tiene sentido ofrecerlo cuando la
+ * ÚLTIMA decisión fue `solo_informe` y **terminó** (`resultado: 'completado'`). Una decisión
+ * `pendiente` o `error` no habilita el retomo — retomar sobre un `pendiente` correría dos workflows
+ * a la vez, y sobre un `error` el usuario todavía no sabe qué falló.
+ */
+export interface UltimaDecision {
+  destino: 'crear_web' | 'solo_informe' | 'crear_posts';
+  resultado: 'pendiente' | 'completado' | 'error';
+  decididoEn: string;
+}
+
+/**
  * El informe del research ya renderizado, tal como lo devuelve `GET /runs/:id/informe` (KR-2b).
  *
  * Los dos campos son `| null` **juntos**: `null` significa «no hay informe para vos», y son DOS causas
@@ -114,8 +129,14 @@ export interface PaginaPropuesta {
   preguntas_frecuentes: string[];
 }
 
+/**
+ * `ultimaDecision` va acá y NO en `RunSummary`: `Brief` es el único consumidor que la necesita.
+ * `RunSummary` la usan otros 12 archivos del portal (`cartera-mock.ts`, `metricas.ts`, `inicio.ts`,
+ * `cliente-research.ts`, `dinero.ts`, `codigos.ts`, `api-core.ts`, y sus tests) que este sub-proyecto
+ * no tocó — agregarle un campo obligatorio nuevo ahí les rompería el typecheck a todos.
+ */
 export interface Brief {
-  run: RunSummary;
+  run: RunSummary & { ultimaDecision: UltimaDecision | null };
   pages: PaginaPropuesta[];
 }
 

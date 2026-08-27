@@ -36,5 +36,10 @@ export const environment = {
      * responde bien y no se publica nada.
      */
     aprobarRun: true,
+    /** La opción "crear_posts" del selector de destino. `false` a propósito: el sub-proyecto de
+     *  publicación en blog externo todavía no existe, así que no hay a dónde publicar un post. Es
+     *  una decisión de LANZAMIENTO separada de encenderla en dev — se queda en `false` acá aunque
+     *  ese sub-proyecto la encienda en `environment.ts`. */
+    destinoPosts: false,
   },
 };
