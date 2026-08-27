@@ -96,12 +96,15 @@ const crearRun = async (prompt: string, status: string): Promise<string> =>
 const runAprobado = await crearRun("Hamburguesería gourmet en Madrid (corrida anterior)", "approved");
 
 /*
- * Un run **APROBABLE**, y hace falta uno a propósito (bloque C0, migración 0019).
+ * Un run **APROBABLE**, y hace falta uno a propósito.
  *
  * Todo lo que este archivo siembra —incluido el run de `sembrarDemo`— se inserta DIRECTO en la base,
- * así que no tiene `solicitud_emitida_at` y `approveRun` lo rechaza con 409 `RUN_SIN_WORKFLOW`. Eso
- * es correcto y es lo que hay que poder ver en el navegador… pero si fuera lo ÚNICO que hay, el botón
- * de aprobar estaría apagado en las cuatro pantallas y no habría forma de manejar el camino feliz.
+ * así que no tiene `solicitud_emitida_at`. Eso es correcto y es lo que hay que poder ver en el
+ * navegador… pero si fuera lo ÚNICO que hay, el botón de aprobar estaría apagado en las cuatro
+ * pantallas y no habría forma de manejar el camino feliz. (`solicitud_emitida_at` es dato histórico
+ * desde el retiro de `approveRun`/`RunSinWorkflowError` — sub-proyecto de 2026-08-26, Task 4 —, así
+ * que ya no CONDICIONA si `registrarDecision` acepta el run; sigue siendo el hecho real que decide
+ * `tiene_workflow`, y este seed lo respeta.)
  *
  * Se escribe la marca a mano (y no pasando por `POST /runs`) porque acá no hay ningún Inngest ni
  * ningún workflow: lo que se está montando es el ESTADO que deja el camino real, no el camino.
@@ -188,7 +191,7 @@ serve({ fetch: app.fetch, port: 3000 }, () => {
   };
   console.log("\n▶ API de desarrollo en http://localhost:3000  (PGlite en memoria, token falso)\n");
   console.log(`  Borcelle Burger — el brief de la demo (14 páginas, 8✅/6⚠️): ${r.runId}`);
-  console.log(`     ↑ SIN workflow: aprobar da 409 RUN_SIN_WORKFLOW (0019). El botón va apagado.`);
+  console.log(`     ↑ SIN workflow (solicitud_emitida_at es histórico, ya no condiciona la aprobación).`);
   console.log(`  lista para aprobar (1 página, CON workflow):             ${runAprobable}`);
   console.log(`  corrida anterior (aprobada):                            ${runAprobado}`);
   console.log(`  corrida en curso (dispara el polling):                  ${runCorriendo}\n`);

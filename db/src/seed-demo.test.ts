@@ -97,8 +97,9 @@ test("el brief tiene 14 páginas, TODAS sin aprobar (la compuerta certifica que 
  * 🔴 El run de la demo NO es publicable, y eso es la VERDAD sobre él, no un defecto del seed.
  *
  * `sembrarDemo` inserta el run directo en la base: nunca hubo un `research/solicitado`, así que no
- * hay ninguna ejecución durable esperando el `research/aprobado`. Aprobarlo devolvía 200 y no
- * publicaba nada (bloque C0; migración 0019 + `PgStore.approveRun`).
+ * hay ninguna ejecución durable esperando el `research/aprobado`. Con el mecanismo viejo (bloque C0;
+ * migración 0019 + `PgStore.approveRun`, retirado en el sub-proyecto de 2026-08-26), aprobarlo
+ * devolvía 200 y no publicaba nada.
  *
  * Este test existe para que a nadie se le ocurra "arreglarlo" poniéndole la marca al seed: eso
  * volvería a fabricar el 200 falso, ahora con una columna que lo respalda. El portal muestra el botón

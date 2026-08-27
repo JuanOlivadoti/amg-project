@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { PgStore, PLAZO_RUN_COLGADO, RunSinWorkflowError } from "./store.js";
+import { PgStore, PLAZO_RUN_COLGADO } from "./store.js";
 import { PglitePool } from "./pool.js";
 import { aplicarMigraciones, MIGRATIONS_DIR, asegurarAuthStandIn } from "./migrate.js";
 import { leerKeywordsCrudo, leerPaginasCrudo, sqlCrudo } from "./testing.js";
@@ -125,20 +125,6 @@ const nuevoRun = (clientId: string) => ({
   market: { country: "ES", language_code: "es", location_code: 2724 },
 });
 
-/**
- * Un run como los que NACEN DEL PIPELINE: creado bajo RLS **y** con la marca de que la API consiguió
- * emitir `research/solicitado` (migración 0019). Es lo que hace `solicitarResearch` en dos pasos.
- *
- * Existe porque `createRun` a secas produce un run **no aprobable**, que es correcto y es lo que
- * prueban los tests de la 0019 más abajo. Los tests de la compuerta quieren ejercitar la compuerta,
- * no esa precondición, así que parten de un run completo — igual que en producción.
- */
-async function runConWorkflow(ctx: TenantContext, clientId: string): Promise<string> {
-  const runId = await store.createRun(ctx, nuevoRun(clientId));
-  await store.marcarSolicitudEmitida(ctx, runId);
-  return runId;
-}
-
 const META_FINISH_RUN = {
   costeMicros: 310_800,
   costeBreakdown: { dataforseo_micros: 252_200 },
@@ -147,9 +133,24 @@ const META_FINISH_RUN = {
 };
 
 /**
+ * Un run como los que NACEN DEL PIPELINE: creado bajo RLS, con la marca de que la API consiguió
+ * emitir `research/solicitado` (migración 0019, dato histórico) **y** en `pending_approval` —
+ * la precondición real que hoy exige `registrarDecision`. Antes de este sub-proyecto bastaba con
+ * la marca, porque el `approveRun` retirado no comprobaba el `status`; `registrarDecision` sí, así
+ * que este helper suma el `finishRun` que le faltaba (si no, `registrarDecision` devuelve `null`
+ * por el `status` y el test de la compuerta que se apoya en él prueba lo que no dice probar).
+ */
+async function runConWorkflow(ctx: TenantContext, clientId: string): Promise<string> {
+  const runId = await store.createRun(ctx, nuevoRun(clientId));
+  await store.marcarSolicitudEmitida(ctx, runId);
+  await store.finishRun(ctx, runId, META_FINISH_RUN);
+  return runId;
+}
+
+/**
  * Un run en `pending_approval` con UNA página aprobada — el punto de partida de `registrarDecision`.
  * Más simple que `runConWorkflow`: no marca `solicitud_emitida_at` porque `registrarDecision` no la
- * comprueba (a diferencia de `approveRun`, que la exige vía `RunSinWorkflowError`).
+ * comprueba (el mecanismo viejo sí la exigía; se retiró en este sub-proyecto, ver Task 4).
  */
 async function runPendienteDeAprobacion(ctx: TenantContext, clientId: string): Promise<string> {
   const runId = await store.createRun(ctx, nuevoRun(clientId));
@@ -310,7 +311,8 @@ test("compuerta: no se puede aprobar un run si NINGUNA página fue aprobada", as
   const runId = await runConWorkflow(ctxA(), clientA1);
   await store.savePages(ctxA(), runId, clientA1, [page()]);
 
-  await assert.rejects(() => store.approveRun(ctxA(), runId), /ninguna página aprobada/i);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.equal(decisionId, null, "ninguna página aprobada: no califica");
 });
 
 test("compuerta: aprobar el run NO aprueba sus páginas (la compuerta es doble)", async () => {
@@ -319,7 +321,8 @@ test("compuerta: aprobar el run NO aprueba sus páginas (la compuerta es doble)"
 
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where url_slug = '/pizza-napolitana-madrid'");
   await store.approvePage(ctxA(), rows[0]!.id);
-  await store.approveRun(ctxA(), runId);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.ok(decisionId, "setup: la decisión tiene que calificar");
 
   const publicables = await store.getPublishablePages(ctxA(), runId);
 
@@ -339,47 +342,19 @@ test("compuerta: con el run SIN aprobar, ninguna página es publicable aunque es
   assert.equal(publicables.length, 0);
 });
 
-// ------------------------------------------- la marca de solicitud emitida (0019, bloque C0)
+// ------------------------------------------- la marca de solicitud emitida (0019)
 
 /*
- * La compuerta humana es un `esperarEvento("research/aprobado")` DENTRO del workflow, y no hay
- * ningún listener suelto de ese evento. Sobre un run insertado directo en la base —el seed de la
- * demo, una importación— nadie está durmiendo: aprobarlo dejaba el estado en `approved` para
- * siempre y emitía un evento que nadie consumía. 200 y nada publicado.
- *
- * La condición es durable y NUESTRA (`kr_runs.solicitud_emitida_at`): preguntarle a Inngest en el
- * momento de aprobar metería un tercero en el camino, y su caída impediría aprobar algo que ya está
- * en nuestra base.
+ * `marcarSolicitudEmitida` sigue existiendo y la API la sigue llamando sin cambios
+ * (`api/src/solicitar.ts`): la marca es un hecho real ("¿la API ya emitió `research/solicitado`
+ * para este run?") y `tiene_workflow` la sigue exponiendo como dato histórico. Lo que se retiró en
+ * este sub-proyecto es el GATE que leía la marca para decidir si el run era aprobable
+ * (`approveRun`/`RunSinWorkflowError`, ver Task 4 de
+ * `docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`) — `registrarDecision` no la comprueba,
+ * así que los tests que ejercitaban ese gate (y el de no-filtración de la marca a otro tenant, que
+ * dependía de él) ya no tienen sujeto y se borraron con él. Este test sigue vigente: prueba
+ * `marcarSolicitudEmitida` en sí, no el gate retirado.
  */
-
-test("🔴 un run insertado DIRECTO en la base no se puede aprobar: nadie espera esa aprobación", async () => {
-  // `createRun` a secas es exactamente lo que hace el seed: la fila, sin el evento y sin la marca.
-  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
-  await store.savePages(ctxA(), runId, clientA1, [page()]);
-  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
-  await store.approvePage(ctxA(), rows[0]!.id); // la compuerta de página SÍ pasa: no es lo que falta
-
-  await assert.rejects(
-    () => store.approveRun(ctxA(), runId),
-    (e: unknown) => e instanceof RunSinWorkflowError && e.runId === runId,
-    "tiene que ser el error tipado, que es sobre lo que la API responde 409 RUN_SIN_WORKFLOW",
-  );
-
-  // Y no basta con que lance: el estado NO puede haberse movido.
-  assert.equal((await store.getRun(ctxA(), runId))?.status, "running", "el run no quedó aprobado");
-});
-
-test("con la marca escrita, el MISMO run se aprueba (control positivo de la 0019)", async () => {
-  // Sin este test, una condición que bloqueara TODA aprobación dejaría verde al de arriba.
-  const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
-  await store.savePages(ctxA(), runId, clientA1, [page()]);
-  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
-  await store.approvePage(ctxA(), rows[0]!.id);
-
-  assert.equal(await store.marcarSolicitudEmitida(ctxA(), runId), true, "la marca se escribió");
-  assert.equal(await store.approveRun(ctxA(), runId), true);
-  assert.equal((await store.getRun(ctxA(), runId))?.status, "approved");
-});
 
 test("marcarSolicitudEmitida es idempotente y conserva la PRIMERA emisión", async () => {
   const runId = await store.createRun(ctxA(), nuevoRun(clientA1));
@@ -396,24 +371,6 @@ test("marcarSolicitudEmitida es idempotente y conserva la PRIMERA emisión", asy
     [runId],
   );
   assert.deepEqual(segunda[0]!.t, primera[0]!.t, "el hecho es cuándo EMPEZÓ a haber alguien escuchando");
-});
-
-/**
- * 🔴 "No lo veo" NO es lo mismo que "no tiene marca".
- *
- * Bajo RLS, el run de otro tenant devuelve cero filas. Contestarle a B que *ese run no tiene
- * workflow* sería afirmarle algo sobre una fila que no le corresponde. Cuando no hay fila se sigue
- * de largo y cae en la precondición de ADR-06, que es lo que respondía antes de la 0019: el
- * contrato de un run invisible no cambia.
- */
-test("🔴 un run de OTRO tenant no revela si tiene marca: sigue dando el error de ADR-06", async () => {
-  const runId = await runConWorkflow(ctxA(), clientA1); // el de A SÍ tiene marca
-  await store.savePages(ctxA(), runId, clientA1, [page()]);
-  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
-  await store.approvePage(ctxA(), rows[0]!.id);
-
-  await assert.rejects(() => store.approveRun(ctxB(), runId), /ninguna página aprobada/i);
-  assert.equal((await store.getRun(ctxA(), runId))?.status, "running", "B no movió nada");
 });
 
 test("🔴 `tiene_workflow` viaja por los TRES lectores de runs (es UNA definición de columnas)", async () => {
@@ -858,7 +815,8 @@ test("🔴 una página que desaparece del research deja de ser publicable (se re
   // El humano aprueba las dos, y el run.
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
   for (const r of rows) await store.approvePage(ctxA(), r.id);
-  await store.approveRun(ctxA(), runId);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.ok(decisionId, "setup: la decisión tiene que calificar");
 
   // Recalibración: el research ya NO propone /menu-del-dia.
   await store.savePages(ctxA(), runId, clientA1, [page()]);
@@ -875,7 +833,8 @@ test("🔴 un research sin páginas RETIRA las anteriores (no las deja aprobadas
   await store.savePages(ctxA(), runId, clientA1, [page()]);
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
   await store.approvePage(ctxA(), rows[0]!.id);
-  await store.approveRun(ctxA(), runId);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.ok(decisionId, "setup: la decisión tiene que calificar");
 
   await store.savePages(ctxA(), runId, clientA1, []); // el research ya no propone nada
 
@@ -915,7 +874,8 @@ test("🔴 failRun NO pisa un run ya aprobado (el fallo no deshace lo publicado)
   await store.savePages(ctxA(), runId, clientA1, [page()]);
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
   await store.approvePage(ctxA(), rows[0]!.id);
-  await store.approveRun(ctxA(), runId);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.ok(decisionId, "setup: la decisión tiene que calificar");
 
   const cambio = await store.failRun(ctxA(), runId, "Storyblok devolvió 500 al reintentar");
 
@@ -998,7 +958,8 @@ test("🔴 getPublishablePages también publica en el orden del brief", async ()
   await store.savePages(ctxA(), runId, clientA1, briefDosNiveles());
   const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
   for (const r of rows) await store.approvePage(ctxA(), r.id);
-  await store.approveRun(ctxA(), runId);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.ok(decisionId, "setup: la decisión tiene que calificar");
 
   const publicables = await store.getPublishablePages(ctxA(), runId);
 

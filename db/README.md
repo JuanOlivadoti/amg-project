@@ -148,7 +148,9 @@ siguiente ve datos ajenos. Es el bug clásico de multi-tenancy, y hay un test qu
 ### La compuerta (ADR-06) vive en la base
 
 - Las páginas nacen `approved = false`. **Siempre.**
-- `approveRun()` **se niega** si ninguna página fue aprobada.
+- `registrarDecision()` **se niega** (devuelve `null`) si ninguna página fue aprobada — para
+  `crear_web`/`crear_posts`; `solo_informe` no lo exige. (Reemplaza a `approveRun()`, retirado en el
+  sub-proyecto de 2026-08-26.)
 - `getPublishablePages()` exige **las dos** condiciones: run `approved` **y** página `approved`.
 
 Que sea página por página no es burocracia: en la corrida real, **5 de 8 páginas no tenían datos de

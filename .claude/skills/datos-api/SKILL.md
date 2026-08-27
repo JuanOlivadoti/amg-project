@@ -91,10 +91,14 @@ gastar un viaje a la base.
 `POST /runs/:id/approve`):
 
 ```ts
-const ok = await deps.store.approveRun(ctx, runId);   // 1. la base autoriza (RLS)
-if (!ok) return c.json({ error: "No autorizado…" }, 403);
-await deps.emisor.send({ name: "research/aprobado", … });  // 2. solo si no lanzó
+const decisionId = await deps.store.registrarDecision(ctx, runId, destino);  // 1. la base autoriza (RLS)
+if (!decisionId) return c.json({ error: "No autorizado…" }, 403);
+await deps.emisor.send({ name: "research/aprobado", data: { tenantId, decisionId } });  // 2. solo si no lanzó
 ```
+
+> `PgStore.approveRun` (el método que usaba este ejemplo) se retiró en el sub-proyecto de
+> 2026-08-26 — `registrarDecision` es su reemplazo, con la misma forma defensiva (fila primero,
+> evento después) pero devolviendo el id de la decisión en vez de un booleano.
 
 Si RLS rechaza, no se emite nada: el orquestador nunca arranca a nombre de un run que la base no
 autorizó. Y del otro lado, el orquestador **vuelve a preguntarle a la base** qué publicar

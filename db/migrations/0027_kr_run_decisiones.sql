@@ -73,3 +73,13 @@ grant select, insert, update on kr_run_decisiones to app_service;
 -- app_render: sin grant, igual que sobre kr_runs (0007_render_publico.sql:35-36).
 -- app_barrido: sin grant — no hay barrido de expiración que la necesite (ver el spec, sección
 -- "No hay timeout automático nuevo").
+
+-- Este sub-proyecto (2026-08-26, Task 4) retira el mecanismo que leía esta columna para decidir si
+-- un run era aprobable (`PgStore.approveRun`/`RunSinWorkflowError`, migración 0019 ya desplegada —
+-- no se edita). `registrarDecision` no la comprueba: la columna queda como dato histórico ("¿la API
+-- llegó a emitir research/solicitado para este run?"), que `RunSummary.tiene_workflow` sigue
+-- exponiendo. No se toca la 0019 porque ya está desplegada; el comentario se actualiza acá.
+comment on column kr_runs.solicitud_emitida_at is
+  'Desde el sub-proyecto de 2026-08-26 (Task 4): dato histórico. Ya NO condiciona si un run es '
+  'aprobable — eso lo decidía approveRun/RunSinWorkflowError (retirados), y registrarDecision no '
+  'la comprueba. Se sigue escribiendo (marcarSolicitudEmitida) y expone tiene_workflow.';

@@ -334,6 +334,12 @@ no, porque **escribe en el espacio real de Storyblok del cliente**.
 
 ### C0. El botón no puede devolver 200 sobre un run que nadie va a publicar — ✅ **hecho el 2026-08-08**
 
+> ⚠️ **Retirado el 2026-08-26** (sub-proyecto "desacoplar keyword research de creación de webs",
+> Task 4): `approveRun`/`RunSinWorkflowError` se borraron de `db/`. `solicitud_emitida_at` sigue
+> escribiéndose y `tiene_workflow` sigue viajando (dato histórico), pero ya no condicionan la
+> aprobación — eso lo decide `registrarDecision`. Lo de abajo queda como registro de lo que se hizo
+> en su momento, no como descripción del mecanismo vigente.
+>
 > **Hecho, y con esto cae el único hallazgo que le dio a la 15ª review el veredicto NO LISTO.**
 > Migración **`0019`**: `kr_runs.solicitud_emitida_at`, nullable, **sin relleno** —los runs que ya
 > existen quedan nulos, que es la verdad sobre ellos—. `solicitarResearch` la escribe **después** del

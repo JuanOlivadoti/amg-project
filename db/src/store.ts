@@ -254,9 +254,11 @@ export interface RunSummary {
    * ¿Hay una ejecución durable esperando el `research/aprobado` de este run? (migración 0019)
    *
    * `false` = el run se insertó directo en la base (el seed de la demo, una importación) y nadie está
-   * durmiendo sobre él: `approveRun` se niega y la API responde 409 `RUN_SIN_WORKFLOW`. **El portal lo
-   * necesita para deshabilitar el botón** — sin este campo, la única forma de enterarse sería
-   * apretarlo y recibir el 409, que es justo la experiencia que C0 existe para evitar.
+   * durmiendo sobre él. Es dato histórico: en este sub-proyecto dejó de condicionar la aprobación
+   * (retiro del mecanismo viejo, ver Task 4 de
+   * `docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`) — `registrarDecision` no lo comprueba.
+   * Se conserva porque sigue siendo un hecho real sobre el run y `marcarSolicitudEmitida` lo sigue
+   * escribiendo.
    *
    * Es un booleano y no el `timestamptz`: la fecha exacta en que la API emitió el evento no es un
    * dato del producto, y exponerla invita a hacer aritmética con ella. Lo que el consumidor necesita
@@ -388,34 +390,6 @@ const RUN_SUMMARY_COLS = `id, client_id, status, prompt, schema_version,
        case when app.es_staff() then coste_micros_usd::int end as coste_micros_usd,
        calidad_datos, config, created_at, finished_at,
        solicitud_emitida_at is not null as tiene_workflow`;
-
-/**
- * `approveRun` sobre un run que **nadie va a publicar**: no tiene la marca de `solicitud_emitida_at`,
- * o sea que la API nunca emitió `research/solicitado` por él y no hay ninguna ejecución durable
- * esperando el `research/aprobado` (ver `0019_marca_solicitud_emitida.sql`).
- *
- * ## Por qué una CLASE y no un mensaje que la API reconozca por texto
- *
- * La otra precondición de la compuerta (ADR-06, "ninguna página aprobada") la distingue el `onError`
- * de la API mirando dentro del mensaje. Eso funciona porque el mensaje es nuestro y está en un solo
- * idioma, pero es la misma forma que la 9ª review ya cazó con los errores de Postgres: **una
- * corrección de redacción se convierte en un cambio de código HTTP**, y `tsc` no dice nada. Acá el
- * portal ramifica sobre el 409 (deshabilita el botón y pinta el motivo), así que la distinción es
- * parte del contrato y no puede depender de una frase.
- *
- * Con una clase, renombrarla o dejar de exportarla rompe la compilación de `api/`, que es el aviso
- * que un `includes()` no da.
- */
-export class RunSinWorkflowError extends Error {
-  constructor(readonly runId: string) {
-    super(
-      `No se puede aprobar el run ${runId}: no hay ninguna ejecución esperando la aprobación. ` +
-        `Este run no lo creó el pipeline (se insertó directo en la base), así que aprobarlo no ` +
-        `publicaría nada. Lanzá un research nuevo desde el portal.`,
-    );
-    this.name = "RunSinWorkflowError";
-  }
-}
 
 /**
  * Un cliente con Google conectado, tal como lo devuelve `app.clientes_conectados_google()`
@@ -1371,61 +1345,6 @@ export class PgStore {
     });
   }
 
-  /**
-   * Aprueba el run. NO aprueba sus páginas: es la mitad global de la compuerta doble.
-   *
-   * Se niega en DOS casos, y son de naturaleza distinta:
-   *
-   * 1. **Nadie está esperando la aprobación** (`solicitud_emitida_at` nula, migración 0019). La
-   *    compuerta humana es un `esperarEvento` DENTRO del workflow, y no hay ningún listener suelto de
-   *    `research/aprobado`: sobre un run insertado directo en la base, aprobar dejaba el estado en
-   *    `approved` para siempre y emitía un evento que nadie consumía. 200 y nada publicado.
-   * 2. **Ninguna página aprobada** (ADR-06) — publicar "todo" cuando el revisor no aceptó nada sería
-   *    justo el accidente que la compuerta existe para evitar.
-   *
-   * ## Por qué la marca se comprueba PRIMERO, y solo si el run se ve
-   *
-   * Primero porque es una propiedad del run y no de su contenido: al que aprueba le sirve más
-   * enterarse de que este run no se puede publicar **antes** de ponerse a aprobar páginas que no
-   * servirían de nada.
-   *
-   * Y solo si el run se ve porque **"no lo veo" no es lo mismo que "no tiene marca"**. Bajo RLS, un
-   * run de otro tenant devuelve cero filas acá; afirmarle a quien pregunta que "este run no tiene
-   * workflow" sería contarle algo sobre una fila que no le corresponde. Cuando no hay fila se sigue
-   * de largo y cae en el caso 2, que es exactamente lo que respondía antes de la 0019 — el contrato
-   * de un run invisible no cambia.
-   *
-   * Devuelve `false` si el `update` no tocó ninguna fila. **Esto importa para un lector-no-escritor**
-   * (el rol `cliente`): RLS lo deja VER el run —así que pasa las dos condiciones de arriba— pero no
-   * ACTUALIZARLO, con lo que el update afecta 0 filas **en silencio**. Sin este booleano, la API
-   * creería que aprobó, devolvería 200 y **despertaría al workflow** por algo que la base no cambió.
-   */
-  async approveRun(ctx: TenantContext, runId: string): Promise<boolean> {
-    return this.withTenant(ctx, async (tx) => {
-      const { rows: propio } = await tx.query<{ emitida: boolean }>(
-        "select solicitud_emitida_at is not null as emitida from kr_runs where id = $1",
-        [runId],
-      );
-      if (propio[0] && !propio[0].emitida) throw new RunSinWorkflowError(runId);
-
-      const { rows } = await tx.query<{ n: string }>(
-        "select count(*)::text as n from kr_pages where run_id = $1 and approved and not retirada",
-        [runId],
-      );
-      if (Number(rows[0]?.n ?? 0) === 0) {
-        throw new Error(
-          `No se puede aprobar el run ${runId}: no tiene ninguna página aprobada. ` +
-            `La compuerta es doble (ADR-06): primero se aprueban las páginas, después el run.`,
-        );
-      }
-      const { rows: upd } = await tx.query<{ id: string }>(
-        "update kr_runs set status = 'approved' where id = $1 returning id",
-        [runId],
-      );
-      return upd.length > 0;
-    });
-  }
-
   async rejectRun(ctx: TenantContext, runId: string): Promise<void> {
     await this.withTenant(ctx, async (tx) => {
       await tx.query("update kr_runs set status = 'rejected' where id = $1", [runId]);
@@ -1439,8 +1358,9 @@ export class PgStore {
    *
    * La regla de qué transición califica vive en el WHERE del insert, no en TypeScript: así el índice
    * único parcial (`kr_run_decisiones_una_pendiente`) puede cerrar la carrera sin que la aplicación
-   * tenga que coordinarse. Devuelve `null` si no calificaba — mismo estilo defensivo que `approveRun`
-   * (ahora retirado, ver Task 4).
+   * tenga que coordinarse. Devuelve `null` si no calificaba — mismo estilo defensivo que el método
+   * viejo que hacía esta comprobación (retirado en este sub-proyecto, ver Task 4 de
+   * `docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`).
    *
    * Tres correcciones respecto de la primera versión — las dos primeras de la ronda de Codex sobre
    * este plan, la tercera agregada al diseñar el sub-proyecto 3 (publicar posts en blog externo):
@@ -1450,7 +1370,7 @@ export class PgStore {
    *     `do nothing`, el perdedor de la carrera simplemente no inserta nada y el método devuelve
    *     `null`, como cualquier otra transición que no calificó.
    *  2. La condición final exige al menos una página aprobada, pero SOLO para `crear_web` y
-   *     `crear_posts` — el viejo `approveRun` lo exigía siempre; el usuario confirmó que
+   *     `crear_posts` — el mecanismo viejo lo exigía siempre; el usuario confirmó que
    *     `solo_informe` no lo necesita (el informe ya existe desde el research).
    *  3. `crear_posts` se agregó a la firma y a la condición de página aprobada (spec del sub-proyecto
    *     3, `docs/superpowers/specs/2026-08-26-publicar-posts-blog-externo-design.md`, "Riesgos": no

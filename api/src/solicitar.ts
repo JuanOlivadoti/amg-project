@@ -105,9 +105,10 @@ export async function solicitarResearch(
    * TERCER paso, y va DESPUÉS del `send()` a propósito: **fila → evento → marca** (ADR-18 extendido).
    *
    * Es la única prueba, y nuestra, de que hay una ejecución durable esperando el `research/aprobado`
-   * de este run. Sin ella, `approveRun` se niega (`RunSinWorkflowError` → 409 `RUN_SIN_WORKFLOW`),
-   * que es lo que impide aprobar un run insertado directo en la base — el bug del bloque C0. Ver
-   * `db/migrations/0019_marca_solicitud_emitida.sql`.
+   * de este run. Se sigue escribiendo sin cambios en este sub-proyecto (2026-08-26): queda como dato
+   * histórico que `tiene_workflow` expone, pero ya no condiciona la aprobación — el mecanismo que la
+   * comprobaba (`approveRun`/`RunSinWorkflowError`) se retiró (Task 4, reemplazado por
+   * `registrarDecision`). Ver `db/migrations/0019_marca_solicitud_emitida.sql`.
    *
    * Escribirla ANTES del `send()` la volvería una mentira en cuanto el envío fallara: el `catch` de
    * arriba marca el run `failed`, pero un `failed` con marca es un run que alguien podría aprobar si
