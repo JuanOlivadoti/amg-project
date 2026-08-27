@@ -5,6 +5,15 @@
 > El plan de la fase anterior, cerrado, es [`11-plan-fase-2.md`](11-plan-fase-2.md).
 >
 > Escrito el **2026-08-07**, el día que se cerró Fase 2.
+>
+> 🧭 **Nuevo (2026-08-26): además de los bloques de abajo (mayormente hechos), hay una iniciativa
+> nueva en marcha — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.** Partida
+> en tres sub-proyectos independientes (multi-vertical de clientes, desacoplar keyword research de
+> creación de webs, publicar posts en blog externo), con spec+plan completos y dos rondas de revisión
+> conjunta (Codex incluido) ya procesadas — **listos para implementar, en el orden fijado (sub-proyecto
+> 2 primero)**. El detalle de orden/dependencias vive en `progress/current.md`, no acá — este archivo
+> no se reestructura para la iniciativa nueva porque los "bloques" de abajo son trabajo previo, casi
+> todo cerrado.
 
 ---
 

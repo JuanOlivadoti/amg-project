@@ -2610,9 +2610,10 @@ git push
 
 ## Nota de la revisión conjunta (2026-08-26)
 
-Al revisar los tres sub-proyectos de la iniciativa juntos (después de que cada uno pasara su propia
-ronda de Codex por separado), se encontró que la Task 9 de este plan editaba código
-(`orchestrator/src/workflow.ts:342-346`, dentro de `workflowResearch`) que el plan del sub-proyecto 2
+**Ronda 1 (mi propia pasada, antes de Codex):** al revisar los tres sub-proyectos de la iniciativa
+juntos (después de que cada uno pasara su propia ronda de Codex por separado), se encontró que la
+Task 9 de este plan editaba código (`orchestrator/src/workflow.ts:342-346`, dentro de
+`workflowResearch`) que el plan del sub-proyecto 2
 (`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`) retira por completo, trasladando el mismo
 `deps.publicar(...)` a la rama `crear_web` de una función nueva (`workflowDecision`). Ninguna de las
 dos revisiones individuales lo había detectado — cada plan se revisó contra el código de HOY, y ese
@@ -2620,7 +2621,19 @@ conflicto solo existe entre los dos planes, no en el repo real.
 
 **Resuelto:** la Task 9 se reescribió para apuntar a la ubicación nueva (buscada por contenido, no por
 línea) y se fijó el orden de implementación de los tres sub-proyectos: **sub-proyecto 2 primero**, este
-y el 3 después (no dependen entre sí). También se corrigió la numeración de migración de las Tasks 1 y
-2 (`0027`/`0028` eran tentativos, chocaban con los que asumían los otros dos planes) a "verificar antes
-de crear el archivo". Ver `progress/current.md`, sección de la iniciativa, para el detalle completo de
-la decisión de orden.
+y el 3 después, en serie. También se corrigió la numeración de migración de las Tasks 1 y 2
+(`0027`/`0028` eran tentativos, chocaban con los que asumían los otros dos planes) a "verificar antes
+de crear el archivo".
+
+**Ronda 2 (Codex sobre la revisión conjunta), 1 Critical + 3 Major** — reporte completo:
+[`progress/informes/codex-revision-conjunta.md`](../../../progress/informes/codex-revision-conjunta.md).
+Un hallazgo Major toca este plan directamente: **la Task 4 daba un bloque de reemplazo completo de
+`ClientRow`/`getClient` que omitía `archived_at`** — columna que el sub-proyecto 2 ya había agregado
+a esos mismos dos lugares, y que `workflowDecision` (rama `crear_web`) lee para no publicar sobre un
+cliente archivado. Pegar ese bloque tal cual, después de implementado el sub-proyecto 2, borraba la
+columna y rompía esa protección en runtime. **Resuelto:** la Task 4 se reescribió como edición
+aditiva (agregar `vertical` a lo que YA tiene `archived_at`, no reemplazar el bloque entero), con
+precondición ejecutable. Los otros tres hallazgos de la Ronda 2 tocan los otros dos documentos de la
+iniciativa — ver `docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md` y
+`progress/current.md` para el detalle completo de la decisión de orden y de la advertencia
+"en serie, nunca en paralelo" entre este sub-proyecto y el 3.

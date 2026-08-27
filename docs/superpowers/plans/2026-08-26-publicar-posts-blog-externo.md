@@ -2736,14 +2736,35 @@ ejecutabilidad/mecanismo del plan.
 
 ### Nota de la revisión conjunta de los tres sub-proyectos (2026-08-26)
 
-Dos cambios, encontrados al revisar este plan junto con los otros dos de la iniciativa:
+**Ronda 1 (mi propia pasada, antes de Codex):**
 
 - **Orden de implementación fijado**: sub-proyecto 2 primero (ya lo exigía la Task 8 de este plan);
-  el sub-proyecto 1 (multi-vertical) y este pueden ir en cualquier orden entre sí — no dependen uno
-  del otro.
+  el sub-proyecto 1 (multi-vertical) y este van después, en serie entre sí (no dependen lógicamente
+  uno del otro, pero comparten archivos — ver la Ronda 2, hallazgo 4).
 - **`PostProvider.generar` gana un `vertical` OPCIONAL** (Task 4): el prompt de `OpenAIPostProvider`
   decía "negocio gastronómico" sin condición — lenguaje incorrecto para un cliente de correduría de
   seguros que el sub-proyecto 1 puede agregar. Se corrigió a una base genérica + un contexto por
   vertical que solo se agrega si `vertical` viaja (y viaja solo si el sub-proyecto 1 ya está
   implementado) — deliberadamente OPCIONAL, no una precondición dura, para no atar este plan al orden
   de implementación del sub-proyecto 1.
+
+**Ronda 2 (Codex sobre la revisión conjunta), 1 Critical + 3 Major, los cuatro verificados y
+aplicados** — reporte completo:
+[`progress/informes/codex-revision-conjunta.md`](../../../progress/informes/codex-revision-conjunta.md).
+
+1. **[Critical] `crear_posts` seguía inalcanzable pese a que este plan implementaba el mecanismo
+   entero.** El sub-proyecto 2 deja `POST /runs/:id/approve` con un `501` explícito para
+   `crear_posts`, `aprobarRun` tipado sin ese valor, y el selector del portal deshabilitado tras un
+   feature flag — y aunque el spec de ESTE sub-proyecto promete "retira ese rechazo", ninguna task
+   del plan lo hacía. **Corregido:** Task 10, Step 0.1 (retira el `501`, amplía el `400` de
+   `POST /runs/:id/approve`) y Task 11, Step 0 (`aprobarRun` acepta `crear_posts`, la opción del
+   selector deja de estar `disabled`, `destinoPosts: true` **solo en `environment.ts` de dev** —
+   `environment.prod.ts` queda en `false` a propósito, decisión de lanzamiento separada confirmada
+   con el usuario, no algo que este sub-proyecto encienda solo al cerrarse).
+2. **[Major] `crear_posts` no heredaba la protección contra clientes archivados** que sí tiene la
+   rama `crear_web` del sub-proyecto 2 (un cliente puede archivarse entre que se registra la
+   decisión y que `workflowDecision` la procesa). **Corregido:** Task 8, mismo chequeo
+   (`cliente.archived_at !== null` → error), confirmado con el usuario.
+3. Los otros dos hallazgos de la Ronda 2 (Task 4 del sub-proyecto 1 pisando `archived_at`; la
+   redacción "en paralelo" corregida a "en serie") tocan los OTROS documentos de la iniciativa — ver
+   `docs/superpowers/plans/2026-08-26-multivertical-clientes.md` y `progress/current.md`.

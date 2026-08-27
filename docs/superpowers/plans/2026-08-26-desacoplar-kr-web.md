@@ -1865,6 +1865,12 @@ app.post("/runs/:id/approve", async (c) => {
   const runId = c.req.param("id");
   const { destino } = await c.req.json<{ destino?: string }>();
 
+  // TEMPORAL — retirado por el sub-proyecto 3 (docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md,
+  // Task 10 Step 0.1), agregado durante la revisión conjunta de los tres sub-proyectos (2026-08-26):
+  // sin ese Step, crear_posts queda inalcanzable para siempre pese a que el sub-proyecto 3 implementa
+  // el resto del mecanismo (hallazgo Critical de Codex sobre esa revisión). Si estás implementando
+  // ESTE sub-proyecto (el 2) en aislamiento, dejalo así — el bloque se retira cuando le toque el
+  // turno al sub-proyecto 3, no antes.
   if (destino === "crear_posts") {
     return c.json(
       { error: "Destino 'crear_posts' todavía no está implementado.", codigo: "NO_IMPLEMENTADO" },
@@ -2023,6 +2029,12 @@ export interface Brief {
 
 - [ ] **Step 2: `api-core.ts` — `aprobarRun` recibe destino, se retira `esRunSinWorkflow`**
 
+> TEMPORAL — el sub-proyecto 3 amplía este tipo a `'crear_web' | 'solo_informe' | 'crear_posts'`
+> (`docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md`, Task 11 Step 0), agregado
+> durante la revisión conjunta de los tres sub-proyectos (2026-08-26). Si estás implementando ESTE
+> sub-proyecto en aislamiento, los dos valores de acá son correctos — se amplía cuando le toque el
+> turno al sub-proyecto 3.
+
 ```ts
 // api-core.ts:237 (interfaz ClienteApi) — antes
 aprobarRun(runId: string): Promise<void>;
@@ -2054,6 +2066,11 @@ export function esTransicionInvalida(e: unknown): boolean {
   `esTransicionInvalida`** (mismo patrón, mirror del test que se borra)
 
 - [ ] **Step 4: `features.ts` — `mostrarDestinoPosts`**
+
+> TEMPORAL — el sub-proyecto 3 quita el `disabled` de la opción y prende `destinoPosts: true` en
+> `environment.ts` de DEV (`environment.prod.ts` queda en `false` a propósito — decisión de
+> lanzamiento separada, ver `docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md`, Task
+> 11 Step 0). Agregado durante la revisión conjunta de los tres sub-proyectos (2026-08-26).
 
 ```ts
 /**
@@ -2350,3 +2367,17 @@ generar contenido de un run sin ninguna página aprobada). Cambiado: la firma de
 en vez de `<> 'crear_web'`), y dos tests nuevos (Task 3, Step 1). Sigue siendo edición de documento
 de diseño, no código — no adelanta la secuencia de implementación acordada para los tres
 sub-proyectos.
+
+**Segunda enmienda, 2026-08-26 — revisión exhaustiva conjunta de los tres sub-proyectos, ronda 2
+(Codex, 1 Critical + 3 Major).** Reporte completo:
+[`progress/informes/codex-revision-conjunta.md`](../../../progress/informes/codex-revision-conjunta.md).
+El hallazgo Critical de esa ronda es sobre ESTE plan y el del sub-proyecto 3 juntos: el `501` de
+`POST /runs/:id/approve` (Task de la API), el tipo angosto de `aprobarRun` y el `disabled`/flag
+`destinoPosts` del selector (Task del portal) quedaban PERMANENTES — el sub-proyecto 3 nunca los
+retiraba en su propio plan, pese a que su spec prometía hacerlo. No se tocó ningún comportamiento de
+ESTE plan: se agregaron tres comentarios `TEMPORAL` marcando exactamente dónde y por qué el
+sub-proyecto 3 va a completar cada uno cuando le toque su turno (ver Task del `POST /runs/:id/approve`,
+Step 2 de `api-core.ts`, y Step 4 de `features.ts`). El arreglo real —retirar el `501`, ampliar el
+tipo, sacar el `disabled`— vive en
+[`docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md`](../plans/2026-08-26-publicar-posts-blog-externo.md),
+Task 10 Step 0.1 y Task 11 Step 0.
