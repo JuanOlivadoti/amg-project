@@ -23,7 +23,9 @@
  *
  * Lo mismo vale para `research/aprobado`: solo DESPIERTA al workflow. Lo que se publica se vuelve a
  * preguntar a la base (`getPublishablePages`, compuerta doble, bajo RLS). Si el evento fuera la
- * autoridad, cualquiera capaz de emitirlo publicaría contenido que ningún humano miró.
+ * autoridad, cualquiera capaz de emitirlo publicaría contenido que ningún humano miró. Desde el
+ * desacople (2026-08-26), tampoco lleva el destino: `workflowDecision` lo relee de
+ * `kr_run_decisiones` por `decisionId`.
  */
 
 export interface ResearchSolicitado {
@@ -44,8 +46,14 @@ export interface ResearchSolicitado {
 
 export interface ResearchAprobado {
   data: {
-    runId: string;
-    /** Solo trazabilidad. La aprobación REAL está en la base (`kr_runs` + `kr_pages`). */
+    /** Coordenada para localizar la decisión bajo RLS. NO es autoridad — igual que tenantId en
+     *  ResearchSolicitado (líneas 19-21 de este archivo). */
+    tenantId: string;
+    /** El evento solo señala QUÉ decisión revisar. El destino real se lee de la fila
+     *  (`kr_run_decisiones`, bajo RLS) — nunca del evento. Ver el comentario de cabecera de este
+     *  archivo: "UN EVENTO NO PORTA AUTORIDAD. NUNCA." */
+    decisionId: string;
+    /** Solo trazabilidad, igual que antes. */
     aprobadoPor?: string;
   };
 }
