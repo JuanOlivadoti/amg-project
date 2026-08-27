@@ -139,6 +139,35 @@ async function runConWorkflow(ctx: TenantContext, clientId: string): Promise<str
   return runId;
 }
 
+const META_FINISH_RUN = {
+  costeMicros: 310_800,
+  costeBreakdown: { dataforseo_micros: 252_200 },
+  calidadDatos: { cobertura_volumen: 0.71, endpoints_degradados: [] },
+  modelosSinPrecio: [],
+};
+
+/**
+ * Un run en `pending_approval` con UNA página aprobada — el punto de partida de `registrarDecision`.
+ * Más simple que `runConWorkflow`: no marca `solicitud_emitida_at` porque `registrarDecision` no la
+ * comprueba (a diferencia de `approveRun`, que la exige vía `RunSinWorkflowError`).
+ */
+async function runPendienteDeAprobacion(ctx: TenantContext, clientId: string): Promise<string> {
+  const runId = await store.createRun(ctx, nuevoRun(clientId));
+  await store.finishRun(ctx, runId, META_FINISH_RUN);
+  await store.savePages(ctx, runId, clientId, [page()]);
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.approvePage(ctx, rows[0]!.id);
+  return runId;
+}
+
+/** Igual que `runPendienteDeAprobacion`, pero sin aprobar ninguna página. */
+async function runSinPaginasAprobadas(ctx: TenantContext, clientId: string): Promise<string> {
+  const runId = await store.createRun(ctx, nuevoRun(clientId));
+  await store.finishRun(ctx, runId, META_FINISH_RUN);
+  await store.savePages(ctx, runId, clientId, [page()]);
+  return runId;
+}
+
 // ---------------------------------------------------------------- ciclo de vida
 
 test("store: un run nace en 'running' (si el proceso muere, se ve que quedó a medias)", async () => {
@@ -2396,4 +2425,113 @@ test("marcarAlertaTelegramEnviada: true la primera vez, false la segunda (no ree
   const args = { clientId: clientA1, tenantId: tenantA, googleReviewId: "gr-marcar" };
   assert.equal(await storeServicio.marcarAlertaTelegramEnviada(args), true);
   assert.equal(await storeServicio.marcarAlertaTelegramEnviada(args), false, "🔴 el WHERE exige que siga en NULL");
+});
+
+// ---------------------------------------------------------------- registrarDecision / cerrarDecision (0027)
+
+test("registrarDecision: primera decisión sobre un run pending_approval califica", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "solo_informe");
+  assert.ok(decisionId);
+  const { rows } = await pg.query<{ status: string }>("select status from kr_runs where id = $1", [runId]);
+  assert.equal(rows[0]!.status, "approved", "la primera decisión promueve el run");
+});
+
+test("registrarDecision: repetir el mismo destino no califica", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+  const primera = await store.registrarDecision(ctxA(), runId, "solo_informe");
+  assert.ok(primera);
+  await store.cerrarDecision(ctxA(), primera!, { resultado: "completado" });
+  const segunda = await store.registrarDecision(ctxA(), runId, "solo_informe");
+  assert.equal(segunda, null);
+});
+
+test("registrarDecision: retomable — solo_informe completado → crear_web califica", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+  const d1 = await store.registrarDecision(ctxA(), runId, "solo_informe");
+  await store.cerrarDecision(ctxA(), d1!, { resultado: "completado" });
+  const d2 = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.ok(d2);
+  assert.notEqual(d2, d1);
+});
+
+test("🔴 registrarDecision: retomar DESPUÉS de crear_web no califica", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+  const d1 = await store.registrarDecision(ctxA(), runId, "crear_web");
+  await store.cerrarDecision(ctxA(), d1!, { resultado: "completado" });
+  const d2 = await store.registrarDecision(ctxA(), runId, "solo_informe");
+  assert.equal(d2, null, "crear_web ya publicado no es retomable hacia solo_informe");
+});
+
+// Hallazgo de la ronda de Codex sobre el plan (Major #6, ver "Historial de revisión"): el viejo
+// approveRun exigía "al menos una página aprobada" (ADR-06, compuerta doble) y registrarDecision no
+// había heredado ese chequeo. Confirmado con el usuario: se aplica SOLO a crear_web — solo_informe
+// no lo necesita, porque el informe ya existe desde el research sin depender de páginas aprobadas.
+test("🔴 registrarDecision: crear_web SIN ninguna página aprobada no califica", async () => {
+  const runId = await runSinPaginasAprobadas(ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.equal(decisionId, null);
+});
+
+test("registrarDecision: solo_informe SIN ninguna página aprobada SÍ califica", async () => {
+  const runId = await runSinPaginasAprobadas(ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "solo_informe");
+  assert.ok(decisionId, "el informe no depende de páginas aprobadas");
+});
+
+// Agregado al escribir el plan del sub-proyecto 3 (publicar posts en blog externo): mismo criterio
+// que crear_web — no tiene sentido generar posts de un run sin ninguna página aprobada.
+test("🔴 registrarDecision: crear_posts SIN ninguna página aprobada no califica", async () => {
+  const runId = await runSinPaginasAprobadas(ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_posts");
+  assert.equal(decisionId, null);
+});
+
+test("registrarDecision: crear_posts CON al menos una página aprobada califica", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_posts");
+  assert.ok(decisionId);
+});
+
+test("cerrarDecision: guard de reproceso — cerrar dos veces no pisa el resultado", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "solo_informe");
+  const primera = await store.cerrarDecision(ctxA(), decisionId!, { resultado: "completado" });
+  const segunda = await store.cerrarDecision(ctxA(), decisionId!, {
+    resultado: "error",
+    detalleError: "no debería aplicar",
+  });
+  assert.equal(primera, true);
+  assert.equal(segunda, false, "ya no está 'pendiente': el segundo cierre es un no-op");
+  const decision = await store.getDecision(ctxA(), decisionId!);
+  assert.equal(decision!.resultado, "completado", "el resultado de la primera NO se pisó");
+});
+
+/*
+ * Hallazgo Major de la ronda de Codex: PGlite serializa TODAS sus transacciones sobre una única
+ * conexión (`db/src/pool.ts:69-71`, `PglitePool.transaction()` es exclusiva) — dos llamadas por
+ * `Promise.all` NUNCA se solapan de verdad ahí adentro, así que un test así puede quedar verde sin
+ * haber ejercitado la colisión del índice. Este test es DETERMINISTA en su lugar: fuerza la
+ * colisión insertando directo (sin pasar por `registrarDecision`) una segunda fila 'pendiente' para
+ * el mismo run, y confirma que el índice la rechaza con `ON CONFLICT ... DO NOTHING` (0 filas) en
+ * vez de una excepción 23505 sin manejar.
+ *
+ * La concurrencia REAL (dos conexiones Postgres solapadas de verdad) queda fuera de lo que este
+ * arnés puede probar — no se afirma que este test la cubra.
+ */
+test("🔴 dos decisiones 'pendiente' para el mismo run: el índice único parcial bloquea la segunda", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+  const primera = await store.registrarDecision(ctxA(), runId, "solo_informe");
+  assert.ok(primera);
+  // Segunda decisión "pendiente" simulando la carrera SIN pasar por registrarDecision (que ya
+  // bloquearía por status='approved' tras la primera) — ejercita directamente el índice, no el
+  // WHERE de más arriba.
+  const { rows } = await pg.query<{ id: string }>(
+    `insert into kr_run_decisiones (run_id, tenant_id, client_id, destino)
+     values ($1, $2, $3, 'crear_web')
+     on conflict (run_id) where resultado = 'pendiente' do nothing
+     returning id`,
+    [runId, tenantA, clientA1],
+  );
+  assert.equal(rows.length, 0, "la segunda 'pendiente' no se insertó — el índice la bloqueó en silencio, no con una excepción");
 });

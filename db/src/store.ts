@@ -199,6 +199,20 @@ export interface ClientRow {
   archived_at: string | null;
 }
 
+export interface DecisionRow {
+  id: string;
+  run_id: string;
+  client_id: string;
+  destino: "crear_web" | "solo_informe" | "crear_posts";
+  resultado: "pendiente" | "completado" | "error";
+}
+
+export interface UltimaDecision {
+  destino: "crear_web" | "solo_informe" | "crear_posts";
+  resultado: "pendiente" | "completado" | "error";
+  decididoEn: string;
+}
+
 /** Lo que un humano puede corregir de una página propuesta antes de aprobarla (ADR-06). */
 export interface CambiosPagina {
   url_slug?: string;
@@ -460,6 +474,16 @@ export interface ResenaParaPublicar {
   locationId: string;
   refreshToken: string;
 }
+
+/**
+ * Lo que se le puede pasar a `cerrarDecision` — unión discriminada, no dos parámetros sueltos.
+ *
+ * Hallazgo Minor de la ronda de Codex: `resultado: "error" | "completado"` + `detalleError?:
+ * string` independientes permitían `{ resultado: "completado", detalleError: "..." }` o `{
+ * resultado: "error" }` sin detalle — las dos violan el `CHECK` de la tabla (0027), pero recién en
+ * tiempo de ejecución. La unión lo hace un error de tipos, no un 500 sorpresa.
+ */
+export type CierreDecision = { resultado: "completado" } | { resultado: "error"; detalleError: string };
 
 export class PgStore {
   /**
@@ -1408,6 +1432,99 @@ export class PgStore {
     });
   }
 
+  /**
+   * Registra una decisión sobre un run (destino elegido al aprobar) y, si corresponde, promueve
+   * `kr_runs.status` a 'approved' — las dos cosas en la MISMA sentencia (CTE encadenado), para que
+   * ninguna carrera deje una sin la otra.
+   *
+   * La regla de qué transición califica vive en el WHERE del insert, no en TypeScript: así el índice
+   * único parcial (`kr_run_decisiones_una_pendiente`) puede cerrar la carrera sin que la aplicación
+   * tenga que coordinarse. Devuelve `null` si no calificaba — mismo estilo defensivo que `approveRun`
+   * (ahora retirado, ver Task 4).
+   *
+   * Tres correcciones respecto de la primera versión — las dos primeras de la ronda de Codex sobre
+   * este plan, la tercera agregada al diseñar el sub-proyecto 3 (publicar posts en blog externo):
+   *  1. `on conflict (run_id) where resultado = 'pendiente' do nothing`: sin esto, dos inserts que
+   *     pasan el `where` en una carrera GENUINA (ninguno vio el commit del otro) generan una
+   *     excepción `23505` sin manejar — la API terminaría en 500, no en el 409 prometido. Con
+   *     `do nothing`, el perdedor de la carrera simplemente no inserta nada y el método devuelve
+   *     `null`, como cualquier otra transición que no calificó.
+   *  2. La condición final exige al menos una página aprobada, pero SOLO para `crear_web` y
+   *     `crear_posts` — el viejo `approveRun` lo exigía siempre; el usuario confirmó que
+   *     `solo_informe` no lo necesita (el informe ya existe desde el research).
+   *  3. `crear_posts` se agregó a la firma y a la condición de página aprobada (spec del sub-proyecto
+   *     3, `docs/superpowers/specs/2026-08-26-publicar-posts-blog-externo-design.md`, "Riesgos": no
+   *     tiene sentido generar posts de un run sin ninguna página aprobada, mismo criterio que
+   *     `crear_web`). El sub-proyecto 2 solo tipaba `crear_web | solo_informe` porque `crear_posts`
+   *     todavía no tenía un consumidor real — ahora lo tiene.
+   */
+  async registrarDecision(
+    ctx: TenantContext,
+    runId: string,
+    destino: "crear_web" | "solo_informe" | "crear_posts",
+    decididoPor?: string,
+  ): Promise<string | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ decision_id: string }>(
+        `with decision as (
+           insert into kr_run_decisiones (run_id, tenant_id, client_id, destino, decidido_por)
+           select r.id, r.tenant_id, r.client_id, $2::destino_run, $3
+           from kr_runs r
+           where r.id = $1
+             and (
+               r.status = 'pending_approval'
+               or (
+                 r.status = 'approved'
+                 and $2::destino_run <> 'solo_informe'
+                 and (
+                   select d.destino from kr_run_decisiones d
+                   where d.run_id = r.id and d.resultado = 'completado'
+                   order by d.decidido_en desc limit 1
+                 ) = 'solo_informe'
+               )
+             )
+             and (
+               $2::destino_run not in ('crear_web', 'crear_posts')
+               or exists (
+                 select 1 from kr_pages p where p.run_id = r.id and p.approved and not p.retirada
+               )
+             )
+           on conflict (run_id) where resultado = 'pendiente' do nothing
+           returning id, run_id
+         ),
+         promocion as (
+           update kr_runs
+           set status = 'approved'
+           from decision
+           where kr_runs.id = decision.run_id and kr_runs.status = 'pending_approval'
+           returning kr_runs.id
+         )
+         select id as decision_id from decision`,
+        [runId, destino, decididoPor ?? null],
+      );
+      return rows[0]?.decision_id ?? null;
+    });
+  }
+
+  /**
+   * Cierra una decisión `pendiente`. El guard `where resultado = 'pendiente'` es lo que hace el
+   * cierre idempotente ante un replay de Inngest después de la ventana de idempotencia de 24h
+   * (Major #7 de la ronda de Codex): una segunda ejecución no encuentra fila `pendiente` y no pisa
+   * el resultado de la primera. Devuelve `false` si ya estaba cerrada — no lanza.
+   */
+  async cerrarDecision(ctx: TenantContext, decisionId: string, cierre: CierreDecision): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update kr_run_decisiones
+         set resultado = $2, detalle_error = $3, completado_en = now()
+         where id = $1 and resultado = 'pendiente'
+         returning id`,
+        [decisionId, cierre.resultado, cierre.resultado === "error" ? cierre.detalleError : null],
+      );
+      return rows.length > 0;
+    });
+  }
+
   // -------------------------------------------------------------- lectura
 
   /*
@@ -1432,6 +1549,35 @@ export class PgStore {
         [clientId],
       );
       return rows[0] ?? null;
+    });
+  }
+
+  /** La decisión que `workflowDecision` tiene que cerrar — la autoridad real, releída bajo RLS. */
+  async getDecision(ctx: TenantContext, decisionId: string): Promise<DecisionRow | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<DecisionRow>(
+        "select id, run_id, client_id, destino, resultado from kr_run_decisiones where id = $1",
+        [decisionId],
+      );
+      return rows[0] ?? null;
+    });
+  }
+
+  /** La última decisión de un run — lo que el portal necesita para ofrecer "construir la web ahora". */
+  async getUltimaDecision(ctx: TenantContext, runId: string): Promise<UltimaDecision | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ destino: string; resultado: string; decidido_en: string }>(
+        `select destino, resultado, decidido_en from kr_run_decisiones
+         where run_id = $1 order by decidido_en desc limit 1`,
+        [runId],
+      );
+      const r = rows[0];
+      if (!r) return null;
+      return {
+        destino: r.destino as UltimaDecision["destino"],
+        resultado: r.resultado as UltimaDecision["resultado"],
+        decididoEn: r.decidido_en,
+      };
     });
   }
 

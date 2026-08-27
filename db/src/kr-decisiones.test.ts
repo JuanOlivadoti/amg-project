@@ -8,7 +8,7 @@ import type { Seed } from "./testdb.js";
  * Usado en tests que no necesitan el seed completo pero sí datos válidos para inserciones.
  */
 async function crearRunDePrueba(
-  sql: (sqlStr: string, params?: unknown[]) => Promise<Array<Record<string, unknown>>>,
+  sql: <T = Record<string, unknown>>(sqlStr: string, params?: unknown[]) => Promise<T[]>,
 ): Promise<{ tenantId: string; clientId: string; runId: string }> {
   const [tenantRow] = await sql<{ id: string }>(
     "insert into tenants (nombre, slug) values ('Test', 'test') returning id",
