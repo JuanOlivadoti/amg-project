@@ -1831,6 +1831,23 @@ test("🔴 workflowDecision: crear_posts con la página desaprobada DESPUÉS de 
   assert.equal(resultado.resultado, "error");
   assert.equal(generarLlamado, false, "🔴 sin páginas aprobadas no se llama al provider ni una vez");
 });
+
+test("🔴 workflowDecision: crear_posts con el cliente archivado DESPUÉS de registrar la decisión cierra 'error' (defensa en profundidad)", async () => {
+  // Revisión conjunta de los tres sub-proyectos (2026-08-26, hallazgo Major de Codex): mismo criterio
+  // que ya prueba crear_web (sub-proyecto 2) contra un cliente archivado a mitad de camino.
+  const runId = await crearRunConPaginaAprobada(store, ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_posts");
+  assert.ok(decisionId);
+
+  await sql("update clients set archived_at = now() where id = $1", [clientA1]);
+
+  let generarLlamado = false;
+  const depsEspia = { ...deps, postProvider: { generar: async () => { generarLlamado = true; return { titulo: "T", cuerpo: "C" }; } } };
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, depsEspia);
+
+  assert.equal(resultado.resultado, "error");
+  assert.equal(generarLlamado, false, "🔴 cliente archivado: no se llama al provider ni una vez");
+});
 ```
 
 Run: `npm test -w orchestrator -- --test-name-pattern="crear_posts"`
@@ -1858,6 +1875,18 @@ if (decision.destino === "crear_posts") {
   }
 
   const cliente = await deps.store.getClient(ctx, decision.client_id);
+  // Revisión conjunta de los tres sub-proyectos (2026-08-26, hallazgo Major de Codex): mismo criterio
+  // de defensa en profundidad que ya usa la rama crear_web (sub-proyecto 2) — un cliente puede
+  // archivarse entre que la decisión se registró y que esta rama corre. Sin este chequeo, crear_posts
+  // seguía generando (y gastando OpenAI) para un cliente ya archivado.
+  if (!cliente || cliente.archived_at !== null) {
+    await deps.store.cerrarDecision(ctx, decisionId, {
+      resultado: "error",
+      detalleError: "El cliente fue archivado o ya no es visible: no se generan posts.",
+    });
+    return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
+  }
+
   let generados = 0;
   for (const pagina of paginas) {
     // Falla puntual: si el LLM revienta en UNA página, las demás se generan igual — mismo criterio
@@ -1866,13 +1895,13 @@ if (decision.destino === "crear_posts") {
       const post = await deps.postProvider.generar({
         contentBrief: pagina.content_brief,
         keywordPrincipal: pagina.keyword_principal,
-        perfilCliente: cliente?.business_profile ?? null,
+        perfilCliente: cliente.business_profile, // `cliente` ya no puede ser null acá, ver el chequeo de arriba
         // Opcional (revisión conjunta, ver Task 4 de este plan): si el sub-proyecto 1 (multi-vertical)
         // ya está implementado, `cliente` trae `.vertical` y el prompt lo usa; si no, `undefined` cae
         // a la base genérica sin mencionar rubro. `as` porque `ClientRow` puede o no tener el campo
         // según qué sub-proyectos estén implementados — confirmá contra el `ClientRow` real antes de
         // ejecutar esta task, y quitá el cast si ya está tipado.
-        vertical: (cliente as { vertical?: "restauracion" | "correduria_seguros" } | null)?.vertical,
+        vertical: (cliente as { vertical?: "restauracion" | "correduria_seguros" }).vertical,
       });
       // Codex, ronda 1 sobre el plan, hallazgo Major: la primera versión descartaba el booleano de
       // guardarPost e incrementaba `generados` incondicionalmente — un UPDATE que no afecta ninguna
@@ -2186,6 +2215,79 @@ test("🔴 PATCH /clients/:id con blog_externo_tipo inválido: 400", async () =>
 });
 ```
 
+- [ ] **Step 0.1: `POST /runs/:id/approve` — retirar el rechazo `501` de `crear_posts`**
+
+> **Agregado en la revisión conjunta de los tres sub-proyectos (2026-08-26, hallazgo Critical de
+> Codex).** El spec de este sub-proyecto (`docs/superpowers/specs/2026-08-26-publicar-posts-blog-externo-design.md:20-23`)
+> prometía "este sub-proyecto retira ese rechazo" — pero ninguna task del plan lo hacía. Sin este
+> Step, `crear_posts` queda con TODO el mecanismo implementado (Tasks 1-9) y sin ningún camino real
+> para activarlo: la API sigue devolviendo `501` antes de llegar a `registrarDecision`.
+
+**Files:**
+- Modify: `api/src/app.ts` — el handler `POST /runs/:id/approve` (sub-proyecto 2, Task de la API — buscá
+  `if (destino === "crear_posts")` seguido de un `501`).
+- Test: `api/src/app.test.ts` — el test `"🔴 aprobar con destino crear_posts → 501..."` (sub-proyecto 2)
+  ya no prueba el comportamiento correcto una vez que este sub-proyecto se implementa — se reemplaza,
+  no se deja al lado del nuevo.
+
+Precondición (mismo criterio que el resto de las tasks de este plan que dependen del sub-proyecto 2):
+
+```bash
+grep -n 'destino === "crear_posts"' api/src/app.ts
+```
+
+Si no aparece nada, el sub-proyecto 2 no está implementado — PARÁ ACÁ.
+
+- [ ] **Test rojo primero**
+
+```ts
+// api/src/app.test.ts — reemplaza "🔴 aprobar con destino crear_posts → 501, sin tocar la base ni emitir evento"
+test("aprobar con destino crear_posts registra la decisión y emite research/aprobado (ya no 501)", async () => {
+  const runId = await /* helper existente del archivo: run pending_approval + página aprobada + post generable */;
+  const res = await req("POST", `/runs/${runId}/approve`, {
+    user: equipoA, tenant: tenantA, body: { destino: "crear_posts" },
+  });
+  assert.equal(res.status, 200);
+  assert.ok((await res.json()).decisionId);
+
+  const [decision] = await sql<{ destino: string }>(
+    "select destino from kr_run_decisiones where run_id = $1", [runId],
+  );
+  assert.equal(decision!.destino, "crear_posts");
+});
+```
+
+Run: `npm test -w api -- --test-name-pattern="crear_posts"`
+Expected: FAIL — el `501` sigue ahí.
+
+- [ ] **Implementar**
+
+```ts
+// api/src/app.ts — dentro de POST /runs/:id/approve, RETIRAR este bloque entero:
+//   if (destino === "crear_posts") {
+//     return c.json({ error: "...", codigo: "NO_IMPLEMENTADO" }, 501);
+//   }
+// Y ampliar el chequeo de forma que sigue (sub-proyecto 2 lo dejó así):
+//   if (destino !== "crear_web" && destino !== "solo_informe") { ... 400 ... }
+// a:
+if (destino !== "crear_web" && destino !== "solo_informe" && destino !== "crear_posts") {
+  return c.json({ error: "destino tiene que ser 'crear_web', 'solo_informe' o 'crear_posts'." }, 400);
+}
+```
+
+El resto del handler (`registrarDecision`, el `try/catch` alrededor de `emisor.send`) no cambia — ya
+acepta `"crear_posts"` en su tipo desde el sub-proyecto 2 (enmendado el 2026-08-26).
+
+Run: `npm test -w api -- --test-name-pattern="crear_posts"`
+Expected: PASS.
+
+- [ ] **Commit**
+
+```bash
+git add api/src/app.ts api/src/app.test.ts
+git commit -m "api: retira el 501 de crear_posts — POST /runs/:id/approve lo acepta de verdad"
+```
+
 - [ ] **Step 1: Tests que fallan**
 
 ```ts
@@ -2417,6 +2519,12 @@ git commit -m "api: configurar blog externo (PATCH /clients/:id) + PATCH /pages/
 > de estado: lista + edición + botón con tres estados).
 
 **Files:**
+- Modify: `portal/src/app/core/api-core.ts` — `aprobarRun` (sub-proyecto 2 lo tipó `destino:
+  'crear_web' | 'solo_informe'`, sin `crear_posts`).
+- Modify: `portal/src/app/pages/.../brief.ts` (sub-proyecto 2 — buscar `mostrarDestinoPostsUI`/
+  `<option value="crear_posts" disabled>`).
+- Modify: `portal/src/environments/environment.ts` (**NO** `environment.prod.ts` — ver Step 0, la
+  producción queda apagada a propósito hasta una decisión de lanzamiento separada).
 - Create (o extender, a decidir mirando `cliente-research.ts`/`brief.ts` — si ya hay una pantalla de
   "brief de un run", un tab nuevo ahí es más consistente que una ruta separada):
   `portal/src/app/pages/clientes/cliente-posts.ts` (o el nombre que el agente `front` decida al
@@ -2427,7 +2535,70 @@ git commit -m "api: configurar blog externo (PATCH /clients/:id) + PATCH /pages/
 **Interfaces:**
 - Consume: `GET /pages/:id/post` (devuelve `PostDePagina`: `titulo`, `cuerpo`, `generadoEn`,
   `solicitadoEn`, `publicadoEn`, `urlExterna`, `errorEn` — Task 3), `PATCH /pages/:id` (con
-  `post_titulo`/`post_cuerpo` o `publicar_post: true`) — Task 10.
+  `post_titulo`/`post_cuerpo` o `publicar_post: true`) — Task 10, `POST /runs/:id/approve` con
+  `destino: "crear_posts"` (Task 10, Step 0.1).
+
+- [ ] **Step 0: Habilitar `crear_posts` en el selector de destino — SOLO en `environment.ts` (dev)**
+
+> **Agregado en la revisión conjunta de los tres sub-proyectos (2026-08-26, hallazgo Critical de
+> Codex).** Mismo motivo que el Step 0.1 de la Task 10: el sub-proyecto 2 dejó la opción reservada
+> pero deshabilitada (`disabled`) y el flag `destinoPosts: false`; sin este Step, la pantalla de
+> posts que el resto de esta task construye no tiene ninguna forma real de dispararse desde el
+> portal — solo por API directa.
+
+**Decisión ya tomada (confirmada con el usuario, 2026-08-26): `environment.prod.ts` se queda en
+`destinoPosts: false`.** Encender la función para clientes reales en producción es una decisión de
+lanzamiento separada, no algo que este sub-proyecto dispare solo al cerrarse. `environment.ts` (dev)
+sí se enciende — es lo que permite probar el flujo completo en el navegador (Task 12).
+
+```ts
+// portal/src/app/core/api-core.ts — ClienteApi.aprobarRun, ampliar el tipo (sub-proyecto 2 lo dejó
+// en dos valores):
+aprobarRun(runId: string, destino: 'crear_web' | 'solo_informe' | 'crear_posts'): Promise<void>;
+```
+
+```ts
+// portal/.../brief.ts — quitar `disabled` de la opción que el sub-proyecto 2 dejó reservada:
+// antes: <option value="crear_posts" disabled>Crear posts (próximamente)</option>
+// después:
+<option value="crear_posts">Crear posts</option>
+```
+
+```ts
+// portal/src/environments/environment.ts (SOLO este archivo, no environment.prod.ts):
+features: {
+  lanzarResearch: true,
+  aprobarRun: true,
+  destinoPosts: true, // encendido en dev — producción queda en false, decisión de lanzamiento aparte
+},
+```
+
+Test — rojo primero:
+
+```ts
+// portal/src/app/core/api-core.test.ts (o donde esté el test de aprobarRun)
+test("aprobarRun acepta destino 'crear_posts'", async () => {
+  // seguir el patrón existente del archivo para 'crear_web'/'solo_informe', con destino: 'crear_posts'
+});
+```
+
+```ts
+// brief.spec.ts (o donde esté el test del selector)
+test("con destinoPosts=true, la opción crear_posts NO está deshabilitada", () => {
+  // seguir el patrón existente del archivo — mismo componente, mismo helper de setup
+});
+```
+
+Run: `npm --prefix portal run test:components -- --include='**/api-core.test.ts' --include='**/brief.spec.ts'`
+Expected: PASS.
+
+- [ ] **Step 0.1: Commit**
+
+```bash
+git add portal/src/app/core/api-core.ts portal/src/app/core/api-core.test.ts \
+        portal/src/environments/environment.ts
+git commit -m "portal: habilita crear_posts en dev — producción queda apagada, decisión de lanzamiento aparte"
+```
 
 - [ ] **Step 1: Listar los posts de un run `crear_posts`, con la máquina de estados corregida**
 
@@ -2505,9 +2676,9 @@ Expected: PASS.
 
 1. Configurar `blog_externo_tipo`/`url`/`credencial` del cliente de prueba (Task 10, Step 0) — sin
    esto, ningún intento de publicar califica.
-2. Aprobar un run con `crear_posts` (requiere que la UI de aprobación del sub-proyecto 2 lo ofrezca
-   — si esa pieza del portal no está implementada todavía, aprobar directo contra la API con
-   `curl`/`httpie`).
+2. Aprobar un run con `crear_posts` **desde el selector del portal** (Task 11, Step 0 — el flag
+   `destinoPosts` está encendido en `environment.ts` de dev, así que la opción ya no aparece
+   deshabilitada).
 3. Confirmar que se generaron los posts (mock) — `GET /pages/:id/post` por cada página aprobada.
 4. Editar uno desde el portal.
 5. Publicarlo — confirmar `post_publicado_en`/`post_url_externa` en la base y el link en el portal.

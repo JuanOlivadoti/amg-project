@@ -27,13 +27,17 @@ superpuestas (perfil de cliente, catálogo, portal), y revisarlos juntos antes d
 descubrir una incompatibilidad entre sub-proyectos recién al implementar el tercero.
 
 **Orden de implementación (fijado durante la revisión conjunta, 2026-08-26): sub-proyecto 2 primero,
-1 y 3 después (en cualquier orden entre ellos, o en paralelo).** No es una preferencia — lo exige una
-dependencia real que ninguna de las dos revisiones individuales había detectado: la Task 9 del
-sub-proyecto 1 y la Task 8 del sub-proyecto 3 modifican código que solo existe una vez que
-`workflowDecision` (introducido por el sub-proyecto 2) está implementado. El sub-proyecto 2 retira el
-mecanismo viejo de aprobación-y-publicación-inline de `workflowResearch` (donde vive hoy el código que
-la Task 9 del sub-proyecto 1 pensaba editar) y lo traslada, con otra forma, a `workflowDecision`. 1 y 3
-no dependen entre sí — tocan ramas distintas de esa misma función (`crear_web` y `crear_posts`).
+1 y 3 después — en cualquier orden entre ellos, pero SIEMPRE en serie, nunca en paralelo.** No es
+una preferencia — lo exige una dependencia real que ninguna de las dos revisiones individuales había
+detectado: la Task 9 del sub-proyecto 1 y la Task 8 del sub-proyecto 3 modifican código que solo
+existe una vez que `workflowDecision` (introducido por el sub-proyecto 2) está implementado. El
+sub-proyecto 2 retira el mecanismo viejo de aprobación-y-publicación-inline de `workflowResearch`
+(donde vive hoy el código que la Task 9 del sub-proyecto 1 pensaba editar) y lo traslada, con otra
+forma, a `workflowDecision`. 1 y 3 no dependen LÓGICAMENTE entre sí (tocan ramas distintas de esa
+misma función: `crear_web` y `crear_posts`), **pero sí comparten archivos** (`db/src/store.ts`,
+`api/src/app.ts`, `orchestrator/src/workflow.ts` y sus tests, ronda 2 de la revisión conjunta,
+hallazgo Major) — ejecutarlos con dos agentes a la vez sobre el mismo working tree arriesga que se
+pisen las ediciones. Serializar, no paralelizar.
 
 **Migraciones: los tres planes numeraban 0027/0028 sin cruzarse** (sub-proyecto 1: `0027_clientes_vertical.sql`
 + `0028_nap_publico_vertical.sql`; sub-proyecto 2: `0027_kr_run_decisiones.sql`; sub-proyecto 3:
@@ -154,18 +158,44 @@ existe *entre* dos planes:
 
 **Orden de implementación fijado, consecuencia directa del hallazgo 1:** sub-proyecto 2 primero — el
 1 y el 3 dependen de código que ese sub-proyecto introduce (`workflowDecision`). 1 y 3 no dependen
-entre sí (tocan ramas distintas de esa misma función) y pueden ir en cualquier orden, o en paralelo,
-después del 2.
+LÓGICAMENTE entre sí (tocan ramas distintas de esa misma función), pero SÍ en serie — ver la
+corrección de la ronda 2, abajo.
 
-Documentos tocados por esta ronda: los tres planes (Task 1 de multi-vertical y de desacoplar-kr-web
-con el hedge de migración; Task 9 de multi-vertical reescrita; Tasks 4 y 8 de publicar-posts con
-`vertical` opcional), más este archivo y el `09`.
+Documentos tocados por mi pasada (ronda 1, antes de Codex): los tres planes (Task 1 de multi-vertical
+y de desacoplar-kr-web con el hedge de migración; Task 9 de multi-vertical reescrita; Tasks 4 y 8 de
+publicar-posts con `vertical` opcional), más este archivo y el `09`.
+
+### Ronda 2 — Codex sobre la revisión conjunta (2026-08-26)
+
+Veredicto: NECESITA REDISEÑO. 4 hallazgos (1 Critical, 3 Major), los cuatro verificados y aplicados:
+
+1. **[Critical] `crear_posts` seguía inalcanzable después de los tres planes.** El sub-proyecto 2
+   deja `POST /runs/:id/approve` con un `501` explícito, `aprobarRun` tipado sin `crear_posts`, y el
+   selector del portal con la opción deshabilitada tras un feature flag — y el plan del sub-proyecto
+   3, pese a que su spec promete "retira ese rechazo", nunca lo hacía. Agregados: Task 10 Step 0.1
+   (retira el `501`, amplía el `400`) y Task 11 Step 0 (`aprobarRun` acepta `crear_posts`, la opción
+   del selector deja de estar `disabled`, `destinoPosts: true` **solo en `environment.ts` de dev** —
+   `environment.prod.ts` queda en `false` a propósito, decisión de lanzamiento separada, confirmada
+   con el usuario).
+2. **[Major] La Task 4 del sub-proyecto 1 pisaba `archived_at`.** Daba un bloque de reemplazo
+   completo de `ClientRow`/`getClient` con `vertical` que omitía la columna `archived_at` que el
+   sub-proyecto 2 ya había agregado ahí — reescrita como edición aditiva, con precondición ejecutable.
+3. **[Major] `crear_posts` no heredaba la protección contra clientes archivados** que sí tiene
+   `crear_web` — agregado el mismo chequeo (`cliente.archived_at !== null` → error) a la Task 8 del
+   sub-proyecto 3, confirmado con el usuario.
+4. **[Major] 1 y 3 no son seguros en paralelo literal** — comparten archivos (`db/src/store.ts`,
+   `api/src/app.ts`, `orchestrator/src/workflow.ts` y sus tests) aunque no dependan lógicamente entre
+   sí. Corregida la redacción de "en cualquier orden, o en paralelo" a "en cualquier orden, pero
+   siempre en serie" en las dos menciones de este archivo.
+
+Informe completo: [`progress/informes/codex-revision-conjunta.md`](informes/codex-revision-conjunta.md).
 
 ## Qué sigue
 
-**Falta la ronda de Codex sobre esta revisión conjunta** — mismo proceso que las rondas individuales
-de cada sub-proyecto: armar el prompt, procesar los hallazgos, aplicar lo que corresponda. Recién
-después de esa ronda arranca cualquier implementación.
+**Los tres sub-proyectos están listos para implementar.** Spec+plan completos, cada uno con dos
+rondas de Codex, más las dos rondas de la revisión conjunta (mi pasada + Codex) ya procesadas y
+aplicadas. **Arrancar por el sub-proyecto 2** (desacoplar keyword research de creación de webs) —
+es el que el orden de implementación fijado exige primero.
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 

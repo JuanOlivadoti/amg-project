@@ -774,38 +774,64 @@ git commit -m "feat(db): clients.vertical en alta, inmutable, visible al rol cli
 
 ## Task 4: `db/src/store.ts` — `ClientRow`/`getClient` ganan `vertical`
 
+> ⚠️ **Depende del sub-proyecto 2 ya implementado, y esta task es ADITIVA, no un reemplazo.**
+> Corregido durante la revisión conjunta de los tres sub-proyectos (2026-08-26, hallazgo Major de
+> Codex): la versión anterior de este Step 1 daba un bloque de reemplazo completo de `ClientRow` y
+> `getClient` que **no incluía `archived_at`** — una columna que el sub-proyecto 2 agrega a esos
+> mismos dos lugares (`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md:390-417`, su Task 2) y
+> que `workflowDecision` (sub-proyecto 2, rama `crear_web`) lee para no publicar sobre un cliente
+> archivado. Pegar el bloque original tal cual, después de que el sub-proyecto 2 ya esté
+> implementado, borraba esa columna del tipo y del `SELECT` — rompía esa protección en runtime.
+>
+> Antes de empezar, confirmá la precondición:
+> ```bash
+> grep -n "archived_at" db/src/store.ts
+> ```
+> Si no aparece nada, el sub-proyecto 2 todavía no está implementado — PARÁ ACÁ.
+
 **Files:**
-- Modify: `db/src/store.ts:191-197` (`ClientRow`), `:1426-1433` (`getClient`)
+- Modify: `db/src/store.ts` — buscar `export interface ClientRow` y el método `getClient` por NOMBRE,
+  no por línea (el sub-proyecto 2 ya les agregó `archived_at`, así que las líneas de hoy no son las
+  reales).
 - Test: el test existente de `getClient` en `db/src/store.test.ts` (agregar el caso, no duplicar setup)
 
 **Interfaces:**
-- Consume: `clients.vertical` (Task 1).
+- Consume: `clients.vertical` (Task 1), `ClientRow.archived_at` (sub-proyecto 2 — ya tiene que estar
+  ahí antes de este Step).
 - Produce: `ClientRow.vertical: "restauracion" | "correduria_seguros"` — lo necesita `renderStory` (Task
-  9) para elegir la receta al publicar.
+  9) para elegir la receta al publicar. `ClientRow.archived_at` NO se toca, sigue como lo dejó el
+  sub-proyecto 2.
 
-- [ ] **Step 1: Agregar el campo y la columna al select**
+- [ ] **Step 1: Agregar el campo `vertical` — SUMAR, no reemplazar la interfaz ni el select entero**
 
 ```ts
-// db/src/store.ts:191-197
+// db/src/store.ts — dentro de `export interface ClientRow` (ya tiene `archived_at` del
+// sub-proyecto 2): agregar UNA línea, no reescribir el bloque entero.
+  vertical: "restauracion" | "correduria_seguros";
+```
+
+```ts
+// db/src/store.ts — dentro de `getClient`, el `select` YA lista `archived_at` (sub-proyecto 2):
+// agregar `vertical` a esa MISMA lista de columnas, no reemplazar la sentencia entera.
+// Antes (post sub-proyecto 2): "select id, nombre, storyblok_space_id, business_profile, archived_at from clients where id = $1"
+// Después: agregar `vertical` a la lista — el orden de las columnas no importa, `rows[0]` mapea por nombre.
+```
+
+El punto completo, para verificar contra el archivo real después de editar (NO para pegar encima de
+lo que ya esté — es la forma final esperada, no un reemplazo):
+
+```ts
 export interface ClientRow {
   id: string;
   nombre: string;
   vertical: "restauracion" | "correduria_seguros";
+  /** Space de Storyblok de ESTE cliente. **Sin él no se publica** (ADR-04: uno por cliente). */
   storyblok_space_id: string | null;
+  /** Perfil NAP del negocio → JSON-LD. Antes era un archivo global: el mismo para todos. */
   business_profile: Record<string, unknown> | null;
-}
-```
-
-```ts
-// db/src/store.ts:1426-1433
-async getClient(ctx: TenantContext, clientId: string): Promise<ClientRow | null> {
-  return this.withTenant(ctx, async (tx) => {
-    const { rows } = await tx.query<ClientRow>(
-      "select id, nombre, vertical, storyblok_space_id, business_profile from clients where id = $1",
-      [clientId],
-    );
-    return rows[0] ?? null;
-  });
+  /** NULL = activo. No null = archivado — workflowDecision no publica sobre un cliente archivado
+   *  (sub-proyecto 2). */
+  archived_at: string | null;
 }
 ```
 

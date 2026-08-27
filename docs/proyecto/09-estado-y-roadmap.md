@@ -19,12 +19,16 @@
 > Minor en el spec, 1 Critical + 8 Major + 3 Minor en el plan; sub-proyecto 3 — publicar posts en
 > blog externo: 12 tasks, 3 Critical + 5 Major + 1 Minor + 1 Nit en el spec, 2 Critical + 4 Major + 4
 > Minor en el plan; todos corregidos en los tres) — **cero código tocado todavía en ninguno de los
-> tres**. **Revisión exhaustiva conjunta en curso**: encontró una dependencia real entre los
-> sub-proyectos 1 y 2 que ninguna revisión individual había visto (la Task 9 del sub-proyecto 1
-> editaba código que el sub-proyecto 2 retira y traslada a `workflowDecision`) y una colisión de
-> numeración de migraciones entre los tres — **orden de implementación fijado: sub-proyecto 2
-> primero, 1 y 3 después en cualquier orden**, ambos corregidos en los planes. Falta la ronda de
-> Codex sobre la revisión conjunta. Detalle completo y qué sigue en
+> tres**. **Revisión exhaustiva conjunta con dos rondas de Codex procesadas.** La primera (mi propia
+> pasada) encontró que la Task 9 del sub-proyecto 1 editaba código que el sub-proyecto 2 retira y
+> traslada a `workflowDecision`, y una colisión de numeración de migraciones entre los tres — fijado
+> el orden de implementación: **sub-proyecto 2 primero, 1 y 3 después, en serie**. La segunda (Codex,
+> 1 Critical + 3 Major) encontró que `crear_posts` seguía inalcanzable pese a que los tres planes
+> juntos lo implementaban (el `501`/el tipo de `aprobarRun`/el flag del selector nunca se retiraban),
+> una Task del sub-proyecto 1 que pisaba la columna `archived_at` del sub-proyecto 2, y que
+> `crear_posts` no heredaba la protección contra clientes archivados que sí tiene `crear_web` — los
+> tres corregidos, confirmados con el usuario donde tocaban una decisión. **Los tres sub-proyectos
+> quedan listos para implementar, en el orden fijado.** Detalle completo y qué sigue en
 > [`progress/current.md`](../../progress/current.md).
 >
 > 🧭 **Nuevo (2026-08-23): Bloque F fase 2, segunda pieza — publicar la respuesta de vuelta a Google,
