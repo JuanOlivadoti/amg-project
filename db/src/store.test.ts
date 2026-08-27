@@ -2469,6 +2469,61 @@ test("cerrarDecision: guard de reproceso — cerrar dos veces no pisa el resulta
   assert.equal(decision!.resultado, "completado", "el resultado de la primera NO se pisó");
 });
 
+// -------------------------------------------------------- compensarAprobacionFallida (Task 10)
+
+test("compensarAprobacionFallida: cierra la decisión en 'error' y revierte el run a pending_approval", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+  const decisionId = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.ok(decisionId, "la primera decisión promueve el run a 'approved'");
+
+  const cerro = await store.compensarAprobacionFallida(ctxA(), decisionId!, "el evento no se pudo emitir");
+  assert.equal(cerro, true);
+
+  const decision = await store.getDecision(ctxA(), decisionId!);
+  assert.equal(decision!.resultado, "error");
+
+  const { rows } = await pg.query<{ status: string }>("select status from kr_runs where id = $1", [runId]);
+  assert.equal(rows[0]!.status, "pending_approval", "sin decisión completada de por medio, la promoción se revierte");
+});
+
+/*
+ * Hallazgo Important de la revisión del task 10: el guard `not exists (... resultado = 'completado')`
+ * de `compensarAprobacionFallida` (`db/src/store.ts`) no tenía NINGÚN test — ni éste ni el de arriba
+ * lo ejercitan, porque en el de arriba no existe ninguna decisión completada. Sin este test, borrar
+ * el `and not exists (...)` no hacía caer nada: exactamente lo que "un default sin test es una
+ * decisión sin dueño" (AGENTS.md) describe.
+ *
+ * El escenario es el camino RETOMABLE (`registrarDecision: retomable`, arriba): `solo_informe` ya se
+ * completó —el run está `'approved'` LEGÍTIMAMENTE, por una publicación real, no por un error de
+ * infraestructura— y después se aprueba `crear_web` sobre el mismo run. Si esa segunda aprobación
+ * falla al emitir el evento, compensar NO puede revertir el run a `pending_approval`: eso "desaprobaría"
+ * en silencio un run que ya tiene un `solo_informe` publicado, y el humano que mira la pantalla vería
+ * un run pidiendo aprobación de nuevo cuando en realidad ya hay un informe entregado.
+ */
+test("🔴 compensarAprobacionFallida: con una decisión previa completada (retomable), NO revierte el status", async () => {
+  const runId = await runPendienteDeAprobacion(ctxA(), clientA1);
+
+  const d1 = await store.registrarDecision(ctxA(), runId, "solo_informe");
+  assert.ok(d1);
+  await store.cerrarDecision(ctxA(), d1!, { resultado: "completado" });
+
+  const d2 = await store.registrarDecision(ctxA(), runId, "crear_web");
+  assert.ok(d2, "retomable: solo_informe completado habilita crear_web");
+
+  const cerro = await store.compensarAprobacionFallida(ctxA(), d2!, "el evento no se pudo emitir");
+  assert.equal(cerro, true, "la decisión SÍ se cierra en 'error' — lo que no debe pasar es el revert del status");
+
+  const decision = await store.getDecision(ctxA(), d2!);
+  assert.equal(decision!.resultado, "error");
+
+  const { rows } = await pg.query<{ status: string }>("select status from kr_runs where id = $1", [runId]);
+  assert.equal(
+    rows[0]!.status,
+    "approved",
+    "el run sigue 'approved' por el solo_informe YA completado — revertirlo desaprobaría una publicación real",
+  );
+});
+
 /*
  * Hallazgo Major de la ronda de Codex: PGlite serializa TODAS sus transacciones sobre una única
  * conexión (`db/src/pool.ts:69-71`, `PglitePool.transaction()` es exclusiva) — dos llamadas por
