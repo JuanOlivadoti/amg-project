@@ -133,12 +133,10 @@ export interface DestinoPublicacion {
 
 export interface ResultadoWorkflow {
   runId: string;
-  estado: "publicado" | "rechazado" | "sin_respuesta" | "nada_que_publicar";
-  paginasPublicadas: number;
+  /** 'pending_approval': el research (si hacía falta) terminó y el run quedó esperando decisión.
+   *  'sin_cambio': el run ya estaba más allá de 'running' — un replay que no vuelve a pagar nada. */
+  estado: "pending_approval" | "sin_cambio";
 }
-
-/** Cuánto se espera al humano. Vencido el plazo NO se publica: se deja donde está. */
-export const PLAZO_APROBACION = "7d";
 
 /**
  * El workflow, disparado por `research/solicitado`.
@@ -281,63 +279,110 @@ export async function workflowResearch(
     log(`[run ${runId}] el research ya estaba hecho (${run.status}) → no se vuelve a pagar`);
   }
 
-  log(`[run ${runId}] esperando aprobación humana (hasta ${PLAZO_APROBACION})`);
+  return { runId, estado: run.status === "running" ? "pending_approval" : "sin_cambio" };
+}
 
-  // ---- 4. La compuerta humana (ADR-06) -------------------------------------
-  //
-  // Acá el workflow se DUERME. No hay proceso esperando siete días: Inngest lo revive cuando llega
-  // el evento. Es la razón principal por la que esto es un orquestador durable y no un script.
-  const aprobacion = await paso.esperarEvento("esperar-aprobacion", {
-    evento: "research/aprobado",
-    timeout: PLAZO_APROBACION,
-    runId,
-  });
+/** Lo que el evento trae. Solo coordenadas: la decisión YA EXISTE, la creó la API bajo RLS. */
+export interface EntradaDecision {
+  tenantId: string;
+  decisionId: string;
+}
 
-  if (!aprobacion) {
-    // Venció el plazo. NO se publica: el silencio no es un "sí". El run se queda en
-    // `pending_approval`, visible en el portal, y alguien lo retoma cuando quiera.
-    log(`[run ${runId}] nadie aprobó en ${PLAZO_APROBACION} → no se publica nada`);
-    return { runId, estado: "sin_respuesta", paginasPublicadas: 0 };
-  }
+export interface ResultadoDecision {
+  decisionId: string;
+  runId: string;
+  destino: "crear_web" | "solo_informe" | "crear_posts";
+  resultado: "completado" | "error";
+  paginasPublicadas?: number;
+}
 
-  // ---- 5. Publicar ---------------------------------------------------------
-  return paso.run("publicar", async () => {
-    /*
-     * LA BASE ES LA AUTORIDAD, NO EL EVENTO.
-     *
-     * El evento de aprobación solo DESPIERTA al workflow. Lo que se publica se vuelve a preguntar
-     * bajo RLS, con el contexto del tenant que PIDIÓ el research (nunca el del evento), y a través
-     * de `getPublishablePages`, que exige las DOS condiciones de la compuerta: el run aprobado Y la
-     * página aprobada.
-     *
-     * Si el evento fuera la autoridad, cualquiera capaz de emitirlo publicaría contenido que ningún
-     * humano miró — y, con el `runId` de otro tenant, contenido ajeno.
-     */
-    const paginas = await deps.store.getPublishablePages(ctx, runId);
-    if (paginas.length === 0) {
-      log(`[run ${runId}] llegó la aprobación pero la base no tiene NADA publicable → no publico`);
-      return { runId, estado: "nada_que_publicar" as const, paginasPublicadas: 0 };
-    }
+/**
+ * El workflow de la DECISIÓN, disparado por `research/aprobado`.
+ *
+ * La autoridad se relee siempre de la base, nunca del evento (ver el comentario de cabecera de
+ * `events.ts`). El evento solo señala qué decisión revisar.
+ */
+export async function workflowDecision(
+  paso: Pasos,
+  entrada: EntradaDecision,
+  deps: Deps,
+): Promise<ResultadoDecision> {
+  const log = deps.log ?? (() => {});
+  const { decisionId } = entrada;
+  const ctx: TenantContext = { tenantId: entrada.tenantId };
 
-    const actual = await deps.store.getRun(ctx, runId);
-    if (!actual) throw new Error(`El run ${runId} no es visible para este tenant.`);
-
-    /*
-     * EL DESTINO SALE DE LA BASE, BAJO RLS. No de una variable de entorno.
-     *
-     * `clients.storyblok_space_id` existía desde el día uno y no lo leía nadie: se publicaba todo en
-     * el space global del proceso, así que la `/menu` de un cliente PISABA la del otro. Leerlo acá,
-     * bajo el contexto del tenant, es lo que impide que un tenant nombre el destino de otro.
-     */
-    const cliente = await deps.store.getClient(ctx, actual.client_id);
-    if (!cliente) {
+  const decision = await paso.run("cargar-decision", async () => {
+    const d = await deps.store.getDecision(ctx, decisionId);
+    if (!d) {
       throw new Error(
-        `El cliente ${actual.client_id} del run ${runId} no es visible para este tenant. No se publica.`,
+        `La decisión ${decisionId} no existe para el tenant ${entrada.tenantId}. El evento no crea ` +
+          `decisiones: las crea la API bajo RLS. No se gasta nada ni se publica nada.`,
       );
     }
+    return d;
+  });
 
-    // Reconstruir el brief DESDE LA BASE y volver a validarlo contra el contrato del M1 (ADR-06/07).
-    // El M1 no confía en que el M2 le mande algo bien formado, y el orquestador tampoco.
+  // Guard de reproceso (Major #7 de la ronda de Codex): la idempotencia de Inngest es de 24h, no
+  // una garantía. Un replay después de esa ventana encuentra la fila ya cerrada.
+  if (decision.resultado !== "pendiente") {
+    log(`[decision ${decisionId}] ya está '${decision.resultado}' — no se reprocesa`);
+    return {
+      decisionId,
+      runId: decision.run_id,
+      destino: decision.destino,
+      resultado: decision.resultado as "completado" | "error",
+    };
+  }
+
+  if (decision.destino === "crear_posts") {
+    // Nunca debería llegar acá — la API lo rechaza con 501 antes de emitir el evento (Task 10). Si
+    // llega igual (evento emitido a mano, bug), falla cerrado y explícito.
+    await paso.run("cerrar-no-implementado", () =>
+      deps.store.cerrarDecision(ctx, decisionId, {
+        resultado: "error",
+        detalleError: "Destino 'crear_posts' todavía no está implementado (sub-proyecto 3).",
+      }),
+    );
+    return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" };
+  }
+
+  if (decision.destino === "solo_informe") {
+    // No hace nada más — el informe ya existe desde el paso 1 de workflowResearch.
+    await paso.run("cerrar-solo-informe", () =>
+      deps.store.cerrarDecision(ctx, decisionId, { resultado: "completado" }),
+    );
+    return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "completado" };
+  }
+
+  // decision.destino === "crear_web"
+  return paso.run("publicar", async () => {
+    const cliente = await deps.store.getClient(ctx, decision.client_id);
+    if (!cliente || cliente.archived_at !== null) {
+      // Major #10 de la ronda de Codex: un cliente archivado entre la aprobación y la ejecución no
+      // se publica.
+      await deps.store.cerrarDecision(ctx, decisionId, {
+        resultado: "error",
+        detalleError: "El cliente fue archivado o ya no es visible: no se publica.",
+      });
+      return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
+    }
+
+    // Nota: registrarDecision (Task 3) ya exige al menos una página aprobada para calificar
+    // crear_web, así que este caso no debería darse en el camino normal — se mantiene como defensa
+    // en profundidad (una página puede desaprobarse editándola DESPUÉS de que la decisión ya
+    // calificó, ver workflow.test.ts "editar revoca la aprobación").
+    const paginas = await deps.store.getPublishablePages(ctx, decision.run_id);
+    if (paginas.length === 0) {
+      await deps.store.cerrarDecision(ctx, decisionId, {
+        resultado: "error",
+        detalleError: "El run no tiene páginas publicables.",
+      });
+      return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
+    }
+
+    const actual = await deps.store.getRun(ctx, decision.run_id);
+    if (!actual) throw new Error(`El run ${decision.run_id} no es visible para este tenant.`);
+
     const briefValidado = deps.validarContrato(briefDesdeLaBase(actual, paginas));
     const resultados = await deps.publicar(briefValidado, {
       clientId: cliente.id,
@@ -345,38 +390,31 @@ export async function workflowResearch(
       perfil: cliente.business_profile,
     });
 
-    /*
-     * Solo se marca lo que el proveedor CONFIRMA publicado.
-     *
-     * El publisher mandaba las stories como **draft** (le faltaba `publish: 1`) y acá se escribía
-     * `published_at` igual: el run terminaba en `publicado` con **nada publicado**. La base afirmaba
-     * un hecho del mundo exterior que no había ocurrido — que es la peor clase de mentira, porque
-     * nadie la va a comprobar.
-     *
-     * Registrarlo sigue siendo imprescindible al revés: Storyblok ya creó las stories y eso es
-     * irreversible. Sin la marca, un fallo en el camino de vuelta dejaba el run en `failed` con las
-     * páginas publicadas y visibles.
-     */
     const publicadas = resultados.filter((p) => p.published);
     const enDraft = resultados.length - publicadas.length;
 
     if (publicadas.length > 0) {
       await deps.store.marcarPublicadas(
         ctx,
-        runId,
+        decision.run_id,
         publicadas.map((p) => ({ slug: p.slug, storyId: p.location })),
       );
     }
-
     if (enDraft > 0) {
       log(
-        `[run ${runId}] ⚠️ ${enDraft} página(s) NO quedaron publicadas (draft o dry-run). ` +
-          `No se marcan como publicadas: la base no puede afirmar algo que el proveedor no confirma.`,
+        `[decision ${decisionId}] ⚠️ ${enDraft} página(s) NO quedaron publicadas (draft o dry-run).`,
       );
     }
 
-    log(`[run ${runId}] publicadas ${publicadas.length} de ${resultados.length} página(s)`);
-    return { runId, estado: "publicado" as const, paginasPublicadas: publicadas.length };
+    await deps.store.cerrarDecision(ctx, decisionId, { resultado: "completado" });
+    log(`[decision ${decisionId}] publicadas ${publicadas.length} de ${resultados.length} página(s)`);
+    return {
+      decisionId,
+      runId: decision.run_id,
+      destino: decision.destino,
+      resultado: "completado" as const,
+      paginasPublicadas: publicadas.length,
+    };
   });
 }
 

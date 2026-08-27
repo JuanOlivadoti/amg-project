@@ -1318,7 +1318,8 @@ test("barrido: un run 'running' RECIENTE no se toca", async () => {
 
 /*
  * Un estado terminal NO es un run colgado. `pending_approval` es un run que TERMINÓ y espera a un
- * humano (hasta `PLAZO_APROBACION`, 7 días): expirarlo por antigüedad borraría la compuerta humana.
+ * humano, sin plazo fijo (el desacople de 2026-08-26 quitó la espera embebida): expirarlo por
+ * antigüedad borraría la compuerta humana.
  */
 test("barrido: los estados que NO son 'running' quedan intactos aunque sean viejísimos", async () => {
   const esperando = await storeServicio.createRun(ctxServicio(), nuevoRun(clientA1));
@@ -1557,8 +1558,8 @@ test("🔴 PLAZO_RUN_COLGADO: el default de producción son 3 horas, ~11x el res
     segundos >= 10 * RESEARCH_MEDIDO_SEG,
     `el umbral (${segundos}s) tiene que dejar margen de sobra sobre ${RESEARCH_MEDIDO_SEG}s`,
   );
-  // Y NO puede ser el plazo de la espera posterior (PLAZO_APROBACION = 7d): un run colgado una
-  // semana es una semana sin que nadie se entere.
+  // Y NO puede ser un plazo de días: ya no hay ningún timer de aprobación embebido con el que
+  // confundirse, pero un run colgado una semana sigue siendo una semana sin que nadie se entere.
   assert.ok(segundos < 24 * 3600, "un run colgado se detecta el mismo día, no a los 7");
 });
 

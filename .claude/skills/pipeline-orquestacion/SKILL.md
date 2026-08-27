@@ -106,21 +106,29 @@ retries: 1
 
 Los dos son **defaults de producción**: cambiarlos sin un test que los fije es una decisión sin dueño.
 
-## La compuerta humana
+## La compuerta humana — histórico, desacoplado el 2026-08-26
 
+Hasta el desacople del sub-proyecto 2, la compuerta humana vivía DENTRO del workflow:
 `paso.esperarEvento("esperar-aprobacion", { evento: "research/aprobado", timeout: PLAZO_APROBACION,
-runId })` — acá el workflow **se duerme**. No hay proceso esperando siete días: Inngest lo revive
-cuando llega el evento. Es la razón principal de que esto sea un orquestador durable y no un script.
+runId })` dormía el workflow hasta siete días esperando la aprobación, y al despertar publicaba en el
+mismo step. Ese diseño acoplaba dos cosas de vida útil distinta — el research (minutos) y la espera de
+un humano (días o semanas) — bajo el mismo `runId` de Inngest, y `PLAZO_APROBACION` era el único plazo
+del sistema.
 
-El `if: 'async.data.runId == "…"'` **no es opcional**: sin el match, la aprobación de un run
-despertaría a todos los que estén esperando.
+**Hoy son dos funciones, sin sleep embebido.** `workflowResearch` termina apenas el run llega a
+`pending_approval` (o confirma que ya estaba ahí) — no espera nada. La decisión del humano la crea la
+API bajo RLS (`registrarDecision`) como una fila en `kr_run_decisiones`, y **eso** es lo que dispara
+`workflowDecision` vía el evento `research/aprobado` (reshaped: `{tenantId, decisionId, aprobadoPor?}`,
+ya no `{runId, destino}`). `workflowDecision` relee la decisión de la base — nunca confía en el evento
+— y branchea sobre `destino`: `crear_web` publica de verdad, `solo_informe` solo cierra la decisión,
+`crear_posts` es una rama defensiva que la API bloquea antes de emitir el evento.
 
-**El silencio no es un sí.** Vencido el plazo **no se publica**: el run se queda en
-`pending_approval`, visible en el portal, y alguien lo retoma cuando quiera
-(`estado: "sin_respuesta"`).
+**El silencio ya no tiene plazo fijo.** Sin timeout embebido, un run en `pending_approval` espera
+indefinidamente, visible en el portal, hasta que alguien decida.
 
-Y al volver del sueño se vuelve a comprobar todo: `getPublishablePages` puede devolver cero (→
-`nada_que_publicar`), el cliente puede no ser visible para ese tenant (→ error, no se publica).
+Al ejecutar la publicación se vuelve a comprobar todo: `getPublishablePages` puede devolver cero
+(→ error, se cierra la decisión con `resultado: "error"`), el cliente puede estar archivado o no ser
+visible para ese tenant (→ mismo desenlace).
 
 ## `onFailure`: cerrar el run sin deshacer el mundo
 

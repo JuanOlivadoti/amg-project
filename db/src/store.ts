@@ -73,10 +73,8 @@ export type RunStatus = "running" | "pending_approval" | "approved" | "rejected"
  * Tres horas es ~11x eso: no puede matar trabajo legítimo ni con reintentos y backoff encima, y un
  * run parado tres horas está muerto de verdad.
  *
- * **NO se deriva de `PLAZO_APROBACION`** (`"7d"`, en `orchestrator/src/workflow.ts`), y la confusión
- * es fácil: ése es el plazo de la espera POSTERIOR, cuando el run ya llegó a `pending_approval` y
- * espera a un humano. Éste mide la fase de research, que dura minutos. Atarlos dejaría un run colgado
- * una semana antes de que nadie se enterara.
+ * Ya no existe un timer de aprobación con el que confundirse — el desacople de 2026-08-26 quitó
+ * la espera embebida. Éste sigue midiendo solo la fase de research, que dura minutos.
  *
  * Es un **default de producción**, así que tiene test propio (`store.test.ts`): el que lo consume es
  * la función programada del orquestador, y si el test eligiera el valor no estaría fijando nada.
@@ -964,9 +962,9 @@ export class PgStore {
    * `failRun` lo llama el `onFailure` del workflow, y su única acción es escribir en Postgres. Cuando
    * el workflow muere porque no alcanza la base, el manejador muere por lo mismo: **la red de
    * seguridad comparte su punto de fallo con lo que protege** (medido en producción el 2026-08-07). Y
-   * si nadie llega a consumir el evento del run, el workflow ni siquiera arranca — el único plazo del
-   * sistema (`PLAZO_APROBACION`) vive dentro del workflow, así que no hay reloj. Éste es el reloj de
-   * afuera.
+   * si nadie llega a consumir el evento del run, el workflow ni siquiera arranca — ya no hay ningún
+   * plazo de aprobación embebido — la única espera que existe hoy es la de esta fase, y por eso hace
+   * falta este reloj de afuera.
    *
    * ## Por qué no lleva `TenantContext`
    *

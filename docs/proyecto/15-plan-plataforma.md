@@ -124,8 +124,8 @@ alcanza la base, el manejador muere por lo mismo. **La red de seguridad comparte
 lo que protege.** Confirmado por el stack del 2026-08-07: `functions.ts:81`.
 
 La compensación de ADR-18 cubre que `send()` **lance**; no cubre que el envío tenga éxito y nadie
-consuma el evento. El único plazo del sistema es `PLAZO_APROBACION`, y vive **dentro** del workflow: si
-el workflow no arranca, no hay reloj.
+consuma el evento. Ya no existe ningún plazo de aprobación embebido dentro del workflow (el desacople
+de 2026-08-26 quitó la espera): si el workflow no arranca, no hay reloj.
 
 **Qué hacer.** Hay dos caminos y conviene elegir con criterio, no por gusto:
 
@@ -149,11 +149,12 @@ Codex advirtió (H2) que el barrido podría matar un workflow lento y que el wor
   encima con `finished_at` reescrito. Hoy no muerde porque nada más escribe ese estado; **el barrido
   sería justo eso**.
 
-**El umbral no puede salir de `PLAZO_APROBACION`.** Esa constante vale `"7d"`
-([`orchestrator/src/workflow.ts:130`](../../orchestrator/src/workflow.ts#L130)) y gobierna la espera
-**posterior**, cuando el run ya está en `pending_approval`. Lo que el barrido tiene que superar es la
-duración de la **fase de research**: medida una sola vez, **16m15s**. El umbral se deriva de ahí con
-margen, y se escribe de dónde sale.
+**El umbral se elige independientemente, ya no hay un timer compartido del que derivarlo.** El
+desacople de 2026-08-26 retiró `PLAZO_APROBACION` (la espera **posterior**, cuando el run ya está en
+`pending_approval`, ahora no tiene plazo fijo — la gobierna `workflowDecision`, disparado por el evento
+de decisión). Lo que el barrido tiene que superar es la duración de la **fase de research**: medida una
+sola vez, **16m15s**. El umbral se deriva de ahí con margen, y se escribe de dónde sale — separar las
+dos fases de gasto es el motivo, no un timer compartido.
 
 - **Archivos:** `db/src/store.ts` (la guarda de `finishRun` y el barrido),
   `orchestrator/src/functions.ts`, migración si hace falta un índice por `(status, started_at)`.

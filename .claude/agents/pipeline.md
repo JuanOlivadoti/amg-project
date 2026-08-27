@@ -113,7 +113,7 @@ Y lo que este proyecto aprendió a los golpes, aplicado a tu área:
   puesto.
 - **Un default de producción sin test es una decisión sin dueño.** Si el test elige el parámetro, no
   está fijando el que corre en prod. `DEFAULT_ESTIMATES`, `CLUSTER_SIM_THRESHOLD_DEFAULT`,
-  `MAX_INTENTOS`, `LEASE_MS`, `CONCURRENCIA`, `PLAZO_APROBACION`: todos son ese caso.
+  `MAX_INTENTOS`, `LEASE_MS`, `CONCURRENCIA`: todos son ese caso.
 
 Reportá el verde **con el output a la vista**. "Los tests pasan" sin la salida es una afirmación sin
 respaldo, y en este proyecto ya costó caro.
