@@ -195,6 +195,8 @@ export interface ClientRow {
   storyblok_space_id: string | null;
   /** Perfil NAP del negocio → JSON-LD. Antes era un archivo global: el mismo para todos. */
   business_profile: Record<string, unknown> | null;
+  /** NULL = activo. No null = archivado — workflowDecision no publica sobre un cliente archivado. */
+  archived_at: string | null;
 }
 
 /** Lo que un humano puede corregir de una página propuesta antes de aprobarla (ADR-06). */
@@ -1426,7 +1428,7 @@ export class PgStore {
   async getClient(ctx: TenantContext, clientId: string): Promise<ClientRow | null> {
     return this.withTenant(ctx, async (tx) => {
       const { rows } = await tx.query<ClientRow>(
-        "select id, nombre, storyblok_space_id, business_profile from clients where id = $1",
+        "select id, nombre, storyblok_space_id, business_profile, archived_at from clients where id = $1",
         [clientId],
       );
       return rows[0] ?? null;

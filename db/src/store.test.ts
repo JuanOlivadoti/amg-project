@@ -1860,6 +1860,14 @@ test("app_service SÍ puede leer las columnas de clients que getClient() usa en 
   );
 });
 
+test("getClient incluye archived_at", async () => {
+  await sqlCrudo(pool, ctxA(), "update clients set archived_at = now() where id = $1", [clientA1]);
+  const cliente = await store.getClient(ctxA(), clientA1);
+  assert.ok(cliente);
+  assert.ok(cliente!.archived_at !== undefined, "archived_at tiene que venir en la fila, aunque sea null");
+  assert.notEqual(cliente!.archived_at, null);
+});
+
 /**
  * La lectura es la garantía nueva de esta migración: NINGÚN rol con login lee el token, ni de
  * tabla ni de columna.
