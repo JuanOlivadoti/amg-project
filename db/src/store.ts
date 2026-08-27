@@ -1443,6 +1443,58 @@ export class PgStore {
     });
   }
 
+  /**
+   * Compensa un `registrarDecision` cuyo `emisor.send()` falló DESPUÉS del insert (`POST
+   * /runs/:id/approve`, `api/src/app.ts`). Dos cosas, en la MISMA sentencia — no dos `update`
+   * sueltos, por el mismo motivo que `registrarDecision` encadena su propio CTE (Step 3 de este
+   * plan: dos escrituras separadas dejan una ventana donde un crash a mitad de camino deja la mitad
+   * aplicada):
+   *
+   *  1. Cierra la decisión en 'error' (mismo guard `where resultado = 'pendiente'` que `cerrarDecision`,
+   *     así que un replay tras la ventana de idempotencia no pisa un cierre anterior).
+   *  2. Revierte `kr_runs.status` de 'approved' a 'pending_approval' — SOLO si esta decisión fue la
+   *     que lo promovió. Sin esto, el índice único parcial deja de bloquear (Task 1), pero
+   *     `registrarDecision` sigue sin recalificar: su `where` exige `pending_approval`, o `approved`
+   *     con una decisión previa YA `completada` (el camino retomable, solo_informe → crear_web). Un
+   *     run que nunca tuvo ninguna decisión completada no es "retomable": está `approved` por error de
+   *     infraestructura, no por una publicación real, así que revertirlo es lo correcto.
+   *
+   * El `not exists (... resultado = 'completado')` es la guarda que distingue los dos casos: si YA
+   * existe una decisión completada sobre este run (el escenario retomable), el `status = 'approved'`
+   * es legítimo y NO se toca — solo esta compensación revierte una promoción que nunca se cumplió.
+   */
+  async compensarAprobacionFallida(
+    ctx: TenantContext,
+    decisionId: string,
+    detalleError: string,
+  ): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `with cierre as (
+           update kr_run_decisiones
+           set resultado = 'error', detalle_error = $2, completado_en = now()
+           where id = $1 and resultado = 'pendiente'
+           returning id, run_id
+         ),
+         reversion as (
+           update kr_runs
+           set status = 'pending_approval'
+           from cierre
+           where kr_runs.id = cierre.run_id
+             and kr_runs.status = 'approved'
+             and not exists (
+               select 1 from kr_run_decisiones d
+               where d.run_id = cierre.run_id and d.resultado = 'completado'
+             )
+           returning kr_runs.id
+         )
+         select id from cierre`,
+        [decisionId, detalleError],
+      );
+      return rows.length > 0;
+    });
+  }
+
   // -------------------------------------------------------------- lectura
 
   /*
@@ -1629,6 +1681,52 @@ export class PgStore {
         [runId],
       );
       return rows[0] ?? null;
+    });
+  }
+
+  /**
+   * `getRun` + su última decisión, en una sola sentencia — Major #9 de la ronda de Codex: dos
+   * lecturas separadas podían mostrar un `status` y una `ultimaDecision` de momentos distintos si una
+   * aprobación ocurría justo entre las dos. No toca `RUN_SUMMARY_COLS` (la usan `listRuns`/
+   * `listAllRuns`, que no necesitan este dato) — es un método aparte, solo para `GET /runs/:id`.
+   */
+  async getRunConUltimaDecision(
+    ctx: TenantContext,
+    runId: string,
+  ): Promise<(RunSummary & { ultimaDecision: UltimaDecision | null }) | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<
+        RunSummary & {
+          decision_destino: string | null;
+          decision_resultado: string | null;
+          decision_decidido_en: string | null;
+        }
+      >(
+        `select ${RUN_SUMMARY_COLS},
+                d.destino as decision_destino,
+                d.resultado as decision_resultado,
+                d.decidido_en as decision_decidido_en
+         from kr_runs
+         left join lateral (
+           select destino, resultado, decidido_en from kr_run_decisiones
+           where run_id = kr_runs.id order by decidido_en desc limit 1
+         ) d on true
+         where kr_runs.id = $1`,
+        [runId],
+      );
+      const r = rows[0];
+      if (!r) return null;
+      const { decision_destino, decision_resultado, decision_decidido_en, ...run } = r;
+      return {
+        ...run,
+        ultimaDecision: decision_destino
+          ? {
+              destino: decision_destino as UltimaDecision["destino"],
+              resultado: decision_resultado as UltimaDecision["resultado"],
+              decididoEn: decision_decidido_en!,
+            }
+          : null,
+      };
     });
   }
 

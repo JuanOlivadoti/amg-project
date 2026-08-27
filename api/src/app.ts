@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { renderReport } from "contrato";
-import { RunSinWorkflowError, esEstadoIdea, ESTADOS_IDEA } from "db";
+import { esEstadoIdea, ESTADOS_IDEA } from "db";
 import type {
   PgStore,
   CambiosPagina,
@@ -21,7 +21,7 @@ import type { GoogleOAuthProvider } from "./google-oauth.js";
 import { firmarEstado, verificarEstado, type EstadoOAuth } from "./oauth-state.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
-import { SIN_PAGINAS_APROBADAS, RUN_SIN_WORKFLOW } from "./codigos.js";
+import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from "./codigos.js";
 
 /**
  * Todo lo que la API necesita, INYECTADO. Ni el store, ni el emisor, ni la verificación del token se
@@ -208,11 +208,11 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return c.json({ runs });
   });
 
-  /** GET /runs/:id — el brief: el run + sus páginas propuestas (con evidencia y estado de aprobación). */
+  /** GET /runs/:id — el run + sus páginas propuestas, y la última decisión (si hay), en UN snapshot. */
   app.get("/runs/:id", async (c) => {
     const ctx = c.get("ctx");
     const id = c.req.param("id");
-    const run = await deps.store.getRun(ctx, id);
+    const run = await deps.store.getRunConUltimaDecision(ctx, id);
     if (!run) return c.json({ error: "Run no encontrado." }, 404);
     const pages = await deps.store.getRunPages(ctx, id);
     return c.json({ run, pages });
@@ -358,23 +358,70 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
   /*
    * POST /runs/:id/approve — la otra mitad, y también COMANDO COMPUESTO.
    *
-   * `approveRun` aprueba bajo RLS (y se niega si ninguna página está aprobada, ADR-06). Solo si no
-   * lanzó, se despierta al workflow. El evento NO porta autoridad: el orquestador vuelve a preguntar
-   * a la base qué publicar (`getPublishablePages`, compuerta doble). Ver ADR-12/18.
+   * `registrarDecision` inserta la decisión Y promueve el run a 'approved' en la misma sentencia,
+   * bajo RLS (Tx). Solo si calificó y devolvió un id, se emite el evento — que no lleva el destino:
+   * `workflowDecision` lo relee de la fila (ADR-12/18, y el comentario de cabecera de `events.ts`).
+   *
+   * Corrección Critical de la ronda de Codex: si `send()` falla DESPUÉS de que `registrarDecision` ya
+   * insertó la fila, sin compensación esa decisión queda 'pendiente' PARA SIEMPRE — el índice único
+   * parcial (Task 1) bloquearía cualquier otra decisión sobre el mismo run. Mismo patrón que
+   * `solicitar.ts:83-95` (fila → evento → si el evento falla, marcar y relanzar).
    */
   app.post("/runs/:id/approve", async (c) => {
     const ctx = c.get("ctx");
     const runId = c.req.param("id");
-    // Solo si la base REALMENTE lo aprobó se despierta al workflow. Un lector-no-escritor (rol
-    // `cliente`) puede pasar el conteo de páginas pero no actualizar el run: ahí `ok` es false y no
-    // se emite nada (si no, el cliente despertaría el workflow con un 200 falso). Ver `approveRun`.
-    const ok = await deps.store.approveRun(ctx, runId);
-    if (!ok) return c.json({ error: "No autorizado para aprobar este run." }, 403);
-    await deps.emisor.send({
-      name: "research/aprobado",
-      data: ctx.userId ? { runId, aprobadoPor: ctx.userId } : { runId },
-    });
-    return c.json({ ok: true });
+    // `.catch(() => null)`, mismo criterio que el resto de los POST/PATCH del archivo: un body
+    // ausente o que no es JSON válido es un 400 del cliente, no un 500 — sin esto, `c.req.json()`
+    // lanza un `SyntaxError` sin `.code` que el `onError` no sabe mapear y cae al 500 genérico.
+    const body = await c.req.json<{ destino?: string }>().catch(() => null);
+    const destino = body?.destino;
+
+    // TEMPORAL — retirado por el sub-proyecto 3 (docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md,
+    // Task 10 Step 0.1), agregado durante la revisión conjunta de los tres sub-proyectos (2026-08-26):
+    // sin ese Step, crear_posts queda inalcanzable para siempre pese a que el sub-proyecto 3 implementa
+    // el resto del mecanismo (hallazgo Critical de Codex sobre esa revisión). Si estás implementando
+    // ESTE sub-proyecto (el 2) en aislamiento, dejalo así — el bloque se retira cuando le toque el
+    // turno al sub-proyecto 3, no antes.
+    if (destino === "crear_posts") {
+      return c.json(
+        { error: "Destino 'crear_posts' todavía no está implementado.", codigo: "NO_IMPLEMENTADO" },
+        501,
+      );
+    }
+    if (destino !== "crear_web" && destino !== "solo_informe") {
+      return c.json({ error: "destino tiene que ser 'crear_web' o 'solo_informe'." }, 400);
+    }
+
+    const decisionId = await deps.store.registrarDecision(ctx, runId, destino, ctx.userId ?? undefined);
+    if (!decisionId) {
+      return c.json(
+        { error: "Esta transición no está permitida para el estado actual del run.", codigo: TRANSICION_INVALIDA },
+        409,
+      );
+    }
+
+    try {
+      await deps.emisor.send({
+        name: "research/aprobado",
+        data: { tenantId: ctx.tenantId, decisionId, ...(ctx.userId ? { aprobadoPor: ctx.userId } : {}) },
+      });
+    } catch (fallo) {
+      try {
+        // `compensarAprobacionFallida` y no `cerrarDecision`: además de cerrar la decisión en
+        // 'error', revierte la promoción del run a 'pending_approval' cuando corresponde — sin eso
+        // el índice único deja de bloquear pero `registrarDecision` seguiría sin recalificar (ver el
+        // comentario de cabecera del método, `db/src/store.ts`).
+        await deps.store.compensarAprobacionFallida(
+          ctx,
+          decisionId,
+          `No se pudo emitir research/aprobado: ${(fallo as Error).message}`,
+        );
+      } catch (fallaElCierre) {
+        console.error("[api] no se pudo cerrar la decisión tras el fallo de send():", fallaElCierre);
+      }
+      throw fallo;
+    }
+    return c.json({ ok: true, decisionId });
   });
 
   /*
@@ -836,21 +883,6 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     // cliente, no del servidor. Se mapea a 400 en vez de un 500 que mentiría sobre de quién es la culpa.
     if (code && ["22P02", "23502", "23503", "23514"].includes(code)) {
       return c.json({ error: "Petición inválida: revisá clientId, market y los campos obligatorios." }, 400);
-    }
-    /*
-     * `POST /runs/:id/approve` sobre un run que nadie va a publicar (bloque C0, migración 0019).
-     *
-     * **409 y no 500**: el run existe, quien pregunta puede verlo y la petición es legítima — lo que
-     * falla es el estado del recurso, igual que el 409 del entregable. Y **no 403**: no es una
-     * cuestión de permisos; el `maestro` del tenant tampoco puede aprobarlo, porque no hay nada que
-     * despertar.
-     *
-     * Se distingue por CLASE y no por el texto del mensaje (ver `RunSinWorkflowError`): el portal
-     * ramifica sobre el `codigo`, así que la distinción es contrato y no puede depender de una frase.
-     * Va antes que la de "ninguna página aprobada" nada más porque es la más específica de las dos.
-     */
-    if (err instanceof RunSinWorkflowError) {
-      return c.json({ error: err.message, codigo: RUN_SIN_WORKFLOW }, 409);
     }
     // Reglas de negocio del store que no son un 500: son estados, no fallas.
     if (err.message.includes("ninguna página aprobada")) return c.json({ error: err.message }, 409);

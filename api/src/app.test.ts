@@ -6,7 +6,7 @@ import type { TenantContext } from "db";
 import { createApp } from "./app.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
-import { RUN_SIN_WORKFLOW } from "./codigos.js";
+import { TRANSICION_INVALIDA } from "./codigos.js";
 import { MockGoogleOAuthProvider } from "./google-oauth.js";
 import { firmarEstado, type EstadoOAuth } from "./oauth-state.js";
 import { menuItemSchema, parseProfile } from "web-builder/contract";
@@ -185,16 +185,18 @@ const ctxServicio = (): TenantContext => ({ tenantId: tenantA });
 
 /**
  * Un run **nacido del pipeline**: creado por `POST /runs`, o sea con el `send()` de
- * `research/solicitado` cumplido y la marca `solicitud_emitida_at` escrita (migración 0019). Es lo
- * ÚNICO que se puede aprobar.
+ * `research/solicitado` cumplido y la marca `solicitud_emitida_at` escrita (migración 0019), y
+ * después llevado a `pending_approval` — el estado que `registrarDecision` (Task 3) exige en su
+ * `where` para calificar cualquier transición. Es lo ÚNICO que se puede aprobar.
  *
  * Se pasa por el endpoint a propósito y no por `store.marcarSolicitudEmitida`: lo que hay que fijar
  * es que **el camino real** deja el run aprobable. Escribiendo la marca a mano, el test seguiría
  * verde aunque `solicitarResearch` se olvidara de escribirla — que es justo el fallo que dejaría el
  * botón muerto en producción.
  *
- * La página se inserta con el superusuario porque el research de verdad lo escribe el orquestador
- * (`app_service`), que acá no corre. Lo que este helper monta es el ESTADO, no el camino.
+ * La página y el paso a `pending_approval` se insertan con el superusuario porque el research de
+ * verdad los escribe el orquestador (`app_service`, `finishRun`), que acá no corre. Lo que este
+ * helper monta es el ESTADO, no el camino — mismo criterio para las dos cosas.
  */
 async function runNacidoDelPipeline(): Promise<{ runId: string; pageId: string }> {
   const res = await req("POST", "/runs", {
@@ -219,6 +221,10 @@ async function runNacidoDelPipeline(): Promise<{ runId: string; pageId: string }
       [tenantA, runId, clientA1],
     )
   )[0]!.id;
+
+  // El research "terminó": mismo efecto que `finishRun` (db/src/store.ts), que acá no corre porque
+  // el orquestador no está presente en este harness.
+  await sql("update kr_runs set status = 'pending_approval', finished_at = now() where id = $1", [runId]);
 
   return { runId, pageId };
 }
@@ -472,8 +478,12 @@ test("el cliente SÍ puede leer su propio brief (ADR-20: lee, no escribe)", asyn
 // ---------------------------------------------------------------- compuerta (ADR-06)
 
 test("POST /runs/:id/approve sin ninguna página aprobada → 409 y NO despierta al workflow", async () => {
-  const res = await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA });
+  const res = await req("POST", `/runs/${runA1}/approve`, {
+    user: equipoA, tenant: tenantA, body: { destino: "crear_web" },
+  });
   assert.equal(res.status, 409);
+  const cuerpo = (await res.json()) as { codigo: string };
+  assert.equal(cuerpo.codigo, TRANSICION_INVALIDA, "sin página aprobada, crear_web no calificó en registrarDecision (Task 3)");
   assert.equal(eventos.length, 0, "no se emite research/aprobado si la compuerta no se cumplió");
 });
 
@@ -489,11 +499,14 @@ test("aprobar página y run: recién ahí se emite research/aprobado", async () 
   const a = await req("POST", `/pages/${pageId}/approve`, { user: equipoA, tenant: tenantA });
   assert.equal(a.status, 200);
 
-  const b = await req("POST", `/runs/${runId}/approve`, { user: equipoA, tenant: tenantA });
+  const b = await req("POST", `/runs/${runId}/approve`, {
+    user: equipoA, tenant: tenantA, body: { destino: "crear_web" },
+  });
   assert.equal(b.status, 200);
+  const cuerpo = (await b.json()) as { decisionId: string };
   assert.equal(eventos.length, 1);
   assert.equal(eventos[0]!.name, "research/aprobado");
-  assert.deepEqual(eventos[0]!.data, { runId, aprobadoPor: equipoA });
+  assert.deepEqual(eventos[0]!.data, { tenantId: tenantA, decisionId: cuerpo.decisionId, aprobadoPor: equipoA });
 });
 
 test("🔴 PATCH /pages/:id REVOCA la aprobación (ADR-06)", async () => {
@@ -519,48 +532,141 @@ test("🔴 PATCH /pages/:id REVOCA la aprobación (ADR-06)", async () => {
 
 test("🔴 un CLIENTE no puede aprobar el RUN aunque vea una página aprobada → 403, sin evento", async () => {
   // El equipo aprueba una página; el cliente ve el run (RLS de lectura) pero NO puede actualizarlo.
-  // Sin el booleano de approveRun, esto daría 200 y despertaría al workflow con un update de 0 filas.
-  //
-  // El run tiene que ser uno NACIDO DEL PIPELINE: sobre el run sembrado, el 409 de la 0019 saltaría
-  // antes y este test dejaría de medir lo que su nombre promete (un 403 por RLS).
+  // `registrarDecision` corre bajo RLS (`decision_write`, 0027): un rol `cliente` no cumple
+  // `app.puede_escribir()`, así que el `insert` viola el `with check` y Postgres LANZA 42501 — el
+  // `onError` ya lo mapea a 403 (nota del Step 4 del brief: "registrarDecision puede lanzar por RLS").
   const { runId, pageId } = await runNacidoDelPipeline();
   await req("POST", `/pages/${pageId}/approve`, { user: equipoA, tenant: tenantA });
   eventos.length = 0; // ignorar lo anterior; medimos SOLO el approve-run del cliente
 
-  const res = await req("POST", `/runs/${runId}/approve`, { user: duenoA1, tenant: tenantA });
+  const res = await req("POST", `/runs/${runId}/approve`, {
+    user: duenoA1, tenant: tenantA, body: { destino: "crear_web" },
+  });
   assert.equal(res.status, 403);
   assert.equal(eventos.length, 0, "el cliente no puede despertar el workflow");
 
   const [r] = await sql<{ status: string }>("select status from kr_runs where id = $1", [runId]);
-  assert.equal(r!.status, "running", "el run NO quedó aprobado");
+  assert.equal(r!.status, "pending_approval", "el run NO quedó aprobado");
 });
 
 /**
- * 🔴 EL BUG DEL BLOQUE C0, en el borde HTTP.
- *
- * `runA1` es el run que el `beforeEach` inserta DIRECTO en la base — igual que `sembrarDemo` en
- * producción. No hubo `research/solicitado`, así que no hay ningún `esperarEvento` durmiendo: antes
- * de la 0019 esto devolvía **200**, dejaba el run en `approved` para siempre y emitía un evento que
- * nadie consumía. Un botón que parece funcionar y no hace nada.
- *
- * **409 y no 403**: no es una cuestión de permisos —`equipoA` puede aprobar de sobra—, es el estado
- * del recurso. Y el `codigo` es lo que el portal lee: ramificar sobre la frase en español convertiría
- * una corrección de redacción en un bug de comportamiento.
+ * El bug histórico del bloque C0 (un run sembrado directo en la base, sin `research/solicitado`,
+ * quedaba inaprobable con un 409 `RUN_SIN_WORKFLOW`) se cerró retirando el mecanismo viejo
+ * (`approveRun`/`RunSinWorkflowError`, Task 4): `registrarDecision` ya no comprueba `tiene_workflow`,
+ * así que un run sembrado directo SÍ califica ahora, igual que uno nacido del pipeline.
  */
-test("🔴 aprobar un run insertado DIRECTO en la base → 409 RUN_SIN_WORKFLOW, sin evento", async () => {
+test("aprobar un run insertado DIRECTO en la base (sin solicitud_emitida_at) SÍ califica ahora", async () => {
   await req("POST", `/pages/${pageA1}/approve`, { user: equipoA, tenant: tenantA });
-  eventos.length = 0; // medimos SOLO el approve-run
+  eventos.length = 0;
+  const res = await req("POST", `/runs/${runA1}/approve`, {
+    user: equipoA, tenant: tenantA, body: { destino: "solo_informe" },
+  });
+  assert.equal(res.status, 200);
+  const cuerpo = (await res.json()) as { ok: boolean; decisionId: string };
+  assert.ok(cuerpo.decisionId);
+  assert.equal(eventos.length, 1);
+  assert.deepEqual(eventos[0]!.data, { tenantId: tenantA, decisionId: cuerpo.decisionId, aprobadoPor: equipoA });
+});
 
-  const res = await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA });
-
+test("🔴 aprobar con un destino que no califica → 409 TRANSICION_INVALIDA", async () => {
+  await req("POST", `/pages/${pageA1}/approve`, { user: equipoA, tenant: tenantA });
+  await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA, body: { destino: "crear_web" } });
+  eventos.length = 0;
+  const res = await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA, body: { destino: "solo_informe" } });
   assert.equal(res.status, 409);
-  const cuerpo = (await res.json()) as { error: string; codigo: string };
-  assert.equal(cuerpo.codigo, RUN_SIN_WORKFLOW, "el portal ramifica sobre el CÓDIGO, no sobre la frase");
-  assert.match(cuerpo.error, /esperando la aprobación/i, "y el humano lee QUÉ pasa");
+  const cuerpo = (await res.json()) as { codigo: string };
+  assert.equal(cuerpo.codigo, TRANSICION_INVALIDA);
+  assert.equal(eventos.length, 0);
+});
 
-  assert.equal(eventos.length, 0, "no se despierta a nadie: no hay nadie a quien despertar");
-  const [r] = await sql<{ status: string }>("select status from kr_runs where id = $1", [runA1]);
-  assert.equal(r!.status, "pending_approval", "el estado NO se movió");
+test("🔴 aprobar con destino crear_posts → 501, sin tocar la base ni emitir evento", async () => {
+  await req("POST", `/pages/${pageA1}/approve`, { user: equipoA, tenant: tenantA });
+  eventos.length = 0;
+  const res = await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA, body: { destino: "crear_posts" } });
+  assert.equal(res.status, 501);
+  assert.equal(eventos.length, 0);
+  const [row] = await sql<{ n: string }>("select count(*)::text as n from kr_run_decisiones where run_id = $1", [runA1]);
+  assert.equal(row!.n, "0");
+});
+
+// Hallazgo Minor de la ronda de Codex: agregar cobertura de body ausente/malformado.
+test("🔴 aprobar sin body → 400, sin tocar la base", async () => {
+  const res = await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 400);
+  const [row] = await sql<{ n: string }>("select count(*)::text as n from kr_run_decisiones where run_id = $1", [runA1]);
+  assert.equal(row!.n, "0");
+});
+
+test("🔴 aprobar con destino inválido → 400", async () => {
+  const res = await req("POST", `/runs/${runA1}/approve`, {
+    user: equipoA, tenant: tenantA, body: { destino: "publicar_ya" },
+  });
+  assert.equal(res.status, 400);
+});
+
+/*
+ * Hallazgo Critical de la ronda de Codex: si `emisor.send()` falla DESPUÉS de que `registrarDecision`
+ * ya insertó la fila, sin compensación esa decisión queda 'pendiente' PARA SIEMPRE — el índice único
+ * parcial (Task 1) impide registrar cualquier otra decisión sobre el mismo run.
+ *
+ * El mecanismo para simular el fallo es el mismo que ya usa el bloque de "POST /runs" más arriba
+ * (`emisorQueLanza` + un `createApp` propio, en vez de un flag mutable sobre el emisor compartido del
+ * `beforeEach`): así el resto de los tests de este archivo, que SÍ dependen del emisor que empuja a
+ * `eventos`, no corren el riesgo de heredar un fallo que quedó prendido.
+ */
+test("🔴 si emisor.send() falla, la decisión se cierra en 'error' — no queda bloqueada", async () => {
+  await req("POST", `/pages/${pageA1}/approve`, { user: equipoA, tenant: tenantA });
+
+  const fallo = new Error("Failed to send event: we couldn't find an event key");
+  const appSinInngest = createApp({
+    store,
+    clientes,
+    membresias,
+    ideas,
+    resenas,
+    googleOAuth: new MockGoogleOAuthProvider(),
+    oauthStateSecret: OAUTH_STATE_SECRET_TEST,
+    telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
+    verificar,
+    emisor: emisorQueLanza(fallo),
+    portalUrl: PORTAL_URL_TEST,
+  });
+
+  const res = await appSinInngest.request(`/runs/${runA1}/approve`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer valid:${equipoA}`,
+      "x-amg-tenant": tenantA,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ destino: "crear_web" }),
+  });
+  assert.equal(res.status, 500);
+
+  const [row] = await sql<{ resultado: string }>(
+    "select resultado from kr_run_decisiones where run_id = $1", [runA1],
+  );
+  assert.equal(row!.resultado, "error", "la fila NO queda 'pendiente' — el índice único la liberó");
+
+  // Y una segunda aprobación normal, después del fallo, SÍ puede calificar:
+  const segundo = await req("POST", `/runs/${runA1}/approve`, {
+    user: equipoA, tenant: tenantA, body: { destino: "crear_web" },
+  });
+  assert.equal(segundo.status, 200, "el índice único ya no bloquea: la primera decisión quedó 'error', no 'pendiente'");
+});
+
+test("GET /runs/:id devuelve ultimaDecision null cuando todavía no se aprobó", async () => {
+  const res = await req("GET", `/runs/${runA1}`, { user: equipoA, tenant: tenantA });
+  const cuerpo = (await res.json()) as { run: { ultimaDecision: unknown } };
+  assert.equal(cuerpo.run.ultimaDecision, null);
+});
+
+test("GET /runs/:id devuelve ultimaDecision con destino y resultado tras aprobar", async () => {
+  await req("POST", `/pages/${pageA1}/approve`, { user: equipoA, tenant: tenantA });
+  await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA, body: { destino: "solo_informe" } });
+  const res = await req("GET", `/runs/${runA1}`, { user: equipoA, tenant: tenantA });
+  const cuerpo = (await res.json()) as { run: { ultimaDecision: { destino: string } | null } };
+  assert.equal(cuerpo.run.ultimaDecision?.destino, "solo_informe");
 });
 
 test("🔴 GET /runs/:id dice si el run es aprobable (`tiene_workflow`), para el botón del portal", async () => {
