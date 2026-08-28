@@ -7,17 +7,21 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** iniciativa nueva — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.
-**En curso:** ninguna implementación todavía. Se decidió partir el pedido en **tres sub-proyectos
-independientes**, cada uno con su propio spec → plan → revisión externa (Codex), ejecutados en serie
-(uno se implementa antes de arrancar el diseño del siguiente — decisión explícita, no en paralelo):
+**En curso (2026-08-28): el sub-proyecto 2 quedó IMPLEMENTADO Y CERRADO.** Se decidió partir el
+pedido en **tres sub-proyectos independientes**, cada uno con su propio spec → plan → revisión
+externa (Codex), ejecutados en serie (uno se implementa antes de arrancar el diseño del
+siguiente — decisión explícita, no en paralelo):
 
 1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **diseño y plan
-   completos.**
-2. **Desacoplar keyword research de creación de webs** — **diseño y plan completos.**
-3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos.**
+   completos, sin implementar.**
+2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28).**
+3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos, sin
+   implementar.**
 
-Los tres, con spec+plan revisados por Codex, sin implementar todavía. **En curso: la revisión
-exhaustiva conjunta de los tres** (ver más abajo).
+Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
+ya cerrada). El sub-proyecto 2, que el orden fijado exigía primero, ya tiene código real. **Qué
+sigue:** implementar el 1 o el 3 (en cualquier orden entre ellos, pero siempre en serie) — ver la
+sección "Qué sigue" al final de este archivo para el detalle.
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -70,25 +74,35 @@ depende del orden de implementación de arriba, no está fijo en el documento.
   adelantar la implementación de este antes de diseñar los otros dos, es un cambio de secuencia
   explícito a confirmar con el usuario, no algo que se pueda asumir leyendo este archivo solo.
 
-## Sub-proyecto 2 — Desacoplar keyword research de creación de webs: estado detallado
+## Sub-proyecto 2 — Desacoplar keyword research de creación de webs: IMPLEMENTADO (2026-08-28)
 
-- **Spec:** [`docs/superpowers/specs/2026-08-26-desacoplar-kr-web-design.md`](../docs/superpowers/specs/2026-08-26-desacoplar-kr-web-design.md).
-  Revisada por Codex una vez (veredicto NECESITA REDISEÑO → 3 Critical + 7 Major + 2 Minor, los 12
-  corregidos e incorporados — el más caro: un evento llevaba el `destino` como autoridad, violando
-  el principio ya documentado en `orchestrator/src/events.ts`).
-- **Plan:** [`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`](../docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md).
-  12 tasks (db → orchestrator → api → portal → verificación). Revisado por Codex una vez (veredicto
-  NECESITA REDISEÑO → 1 Critical + 8 Major + 3 Minor, los 12 corregidos). **Ninguna task se ejecutó
-  todavía** — cero código tocado, cero migración aplicada.
-- **Informes de las dos rondas de Codex**, guardados tal cual llegaron:
-  [`progress/informes/codex-desacoplar-kr-spec.md`](informes/codex-desacoplar-kr-spec.md) y
-  [`progress/informes/codex-desacoplar-kr-plan.md`](informes/codex-desacoplar-kr-plan.md).
-- **Decisión de producto confirmada durante el procesamiento del plan, no estaba en el spec
-  original:** el chequeo "al menos una página aprobada" (ADR-06) aplica solo a `crear_web`, no a
-  `solo_informe` — ver "Global Constraints" del plan.
-- **Qué falta para este sub-proyecto:** nada de diseño — listo para implementación cuando le toque
-  el turno, después de que el sub-proyecto 3 tenga su spec+plan y pase la revisión exhaustiva
-  conjunta de los tres.
+- **Spec:** [`docs/superpowers/specs/2026-08-26-desacoplar-kr-web-design.md`](../docs/superpowers/specs/2026-08-26-desacoplar-kr-web-design.md)
+  y **plan:** [`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`](../docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md)
+  (12 tasks), ambos revisados por Codex — ver el historial de revisión de cada documento para el
+  detalle de hallazgos.
+- **Las 12 tasks ejecutadas con `superpowers:subagent-driven-development`** — implementador y
+  revisor independiente por task, con fix rounds donde hizo falta. Retiró `RunSinWorkflowError`/
+  `approveRun`/`RUN_SIN_WORKFLOW` de punta a punta (`db`, `orchestrator`, `api`, `portal`),
+  introdujo `kr_run_decisiones` (migración `0027`, sin desplegar todavía a propósito — ver `09`) y
+  partió `workflowResearch` en investigación (sin publicar) + `workflowDecision` (bifurca por
+  destino, releído siempre bajo RLS, nunca del evento).
+- **Hallazgo real encontrado al implementar, no anticipado por ninguna de las dos rondas de Codex
+  sobre el plan:** un fallo de `emisor.send()` después de que `registrarDecision` ya insertó la fila
+  dejaba la decisión `pendiente` para siempre (el índice único parcial bloqueaba cualquier otra sobre
+  el mismo run). Cerrado con `PgStore.compensarAprobacionFallida` — revierte el run a
+  `pending_approval` SOLO si no hay una decisión previa ya completada (protege el camino retomable).
+- **Tropiezo real de esta etapa:** el plan se implementó DOS VECES en paralelo, en dos worktrees
+  distintos, sin que ninguna sesión supiera de la otra (`EnterWorktree` ramificó desde `origin/main`,
+  9 commits detrás del `main` local, en vez de desde el `main` local real). Detectado a mitad de
+  camino, comparadas ambas implementaciones (mismo diff, mismos hallazgos independientes), se adoptó
+  la más completa y se descartó la otra — sin pérdida real, ninguna había llegado a `main`. Detalle
+  completo en la entrada del `09` de esta fecha.
+- **Qué falta para este sub-proyecto:** nada — cerrado. `npm run verificar --con-portal`: 1725 tests
+  del monorepo + 300 `node:test` y 213 Karma del portal, todos en verde. Un hueco explícito y
+  documentado (no oculto): el camino positivo de "Construir la web ahora" no se verificó end-to-end
+  en un navegador real (requiere Postgres real compartido entre API y orquestador) — cubierto en
+  cambio por 7 tests de Karma contra datos mockeados. El resto del flujo sí se verificó contra la API
+  real en un navegador.
 
 ## Sub-proyecto 3 — Publicar posts a un blog externo: estado detallado
 
@@ -192,10 +206,14 @@ Informe completo: [`progress/informes/codex-revision-conjunta.md`](informes/code
 
 ## Qué sigue
 
-**Los tres sub-proyectos están listos para implementar.** Spec+plan completos, cada uno con dos
-rondas de Codex, más las dos rondas de la revisión conjunta (mi pasada + Codex) ya procesadas y
-aplicadas. **Arrancar por el sub-proyecto 2** (desacoplar keyword research de creación de webs) —
-es el que el orden de implementación fijado exige primero.
+**El sub-proyecto 2 está cerrado.** Quedan el 1 (multi-vertical de clientes) y el 3 (publicar posts
+en blog externo), ambos con spec+plan completos y ya pasados por la revisión exhaustiva conjunta —
+nada de diseño pendiente en ninguno de los dos. **Implementar en cualquier orden entre ellos, pero
+SIEMPRE en serie, nunca en paralelo** (comparten archivos con éste y entre sí: `db/src/store.ts`,
+`api/src/app.ts`, `orchestrator/src/workflow.ts` y sus tests). Antes de arrancar cualquiera de los
+dos: correr `migrate:deploy` para la `0027` (o confirmar si conviene desplegarla junto con la
+migración del siguiente sub-proyecto), y verificar `ls db/migrations` para el número real que le
+toque — los tres planes numeraban `0027`/`0028` sin cruzarse entre sí.
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 
