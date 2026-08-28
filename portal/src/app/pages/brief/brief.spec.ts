@@ -524,6 +524,84 @@ describe('BriefPage — selector de destino y retiro del gate tiene_workflow', (
       .not.toContain('Este run ya no admite esa transición.');
   });
 
+  it('🔴 el destino elegido es del run ANTERIOR: al navegar a otro, vuelve a crear_web', async () => {
+    /*
+     * Mismo motivo que el test de arriba con `errorAprobar`, y mismo mecanismo: Angular **reutiliza
+     * la instancia** al navegar del run A al B del mismo cliente (mismo `routeConfig`, solo cambia
+     * el `:runId`). Sin resetear `destinoElegido`, quien cambió el selector en A a "Solo quedarme
+     * con el informe" SIN confirmar, y navega a B, se lo encuentra ya en esa posición — una elección
+     * que nunca hizo sobre un run que no es el que la originó.
+     *
+     * Se afirma sobre lo que `aprobarRun()` REALMENTE MANDA al hacer clic en "Confirmar" en B —no
+     * sobre `select.value`— por un motivo concreto y medido: entre `brief.set(null)` (al entrar a
+     * `ngOnInit`) y que `cargar()` vuelva a poner un brief, el `<select>` pasa por un tramo en el que
+     * `@else if (brief(); as b)` no está montado, y Angular puede reconstruir el nodo antes de que el
+     * test llame a `detectChanges()` — cuando eso pasa, el DOM del `<select>` recién creado arranca en
+     * su primera opción ("Crear la web") **más allá de si el signal se reseteó o no**, así que leer
+     * `select.value` ahí no distingue el bug de este archivo del arreglo (los dos muestran
+     * "Crear la web" en el DOM, por motivos distintos). `aprobarRun()`, en cambio, lee el signal
+     * DIRECTAMENTE (`this.destinoElegido()`) sin pasar por esa reconstrucción del DOM, así que sí
+     * distingue los dos casos — y es además lo que de verdad le importa a quien usa la pantalla: qué
+     * destino se manda.
+     *
+     * Un `BehaviorSubject` y no `of(...)`: hace falta emitir DOS veces, que es justo lo que un
+     * `of()` de una sola emisión no puede reproducir.
+     */
+    const params = new BehaviorSubject(convertToParamMap({ id: 'c1', runId: 'run-1' }));
+    const briefs: Record<string, Brief> = {
+      'run-1': conPaginaAprobada(),
+      'run-2': { ...conPaginaAprobada(), run: { ...conPaginaAprobada().run, id: 'run-2' } },
+    };
+    let destinoRecibido: string | undefined;
+    environment.features.aprobarRun = true;
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [BriefPage],
+      providers: [
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { paramMap: params.asObservable() } },
+        {
+          provide: ApiService,
+          useValue: {
+            verBrief: async (id: string) => briefs[id]!,
+            aprobarRun: async (_id: string, destino: string) => {
+              destinoRecibido = destino;
+            },
+          },
+        },
+        { provide: MembresiaService, useValue: { esEquipo: () => true } },
+      ],
+    });
+    const fixture = TestBed.createComponent(BriefPage);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+
+    // Cambia el selector en run-1, SIN confirmar.
+    const select = selectDestino(el)!;
+    select.value = 'solo_informe';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.destinoElegido())
+      .withContext('el arranque de este test no es el que cree')
+      .toBe('solo_informe');
+
+    // La MISMA instancia, otro run del MISMO cliente: solo cambia el `:runId`.
+    params.next(convertToParamMap({ id: 'c1', runId: 'run-2' }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // Sin tocar el selector de nuevo: si el reset no corrió, esto sigue en 'solo_informe'.
+    botonConfirmar(el).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(destinoRecibido)
+      .withContext('run-2 heredó la elección de run-1: se mandó un destino que nadie eligió ahí')
+      .toBe('crear_web');
+  });
+
   it('🔴 cualquier OTRO error de aprobar sigue yendo a la rama de error, no al aviso del selector', async () => {
     /*
      * La mitad que impide que el `catch` se trague todo. Con un `catch` que marcara «transición

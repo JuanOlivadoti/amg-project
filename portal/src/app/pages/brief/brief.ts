@@ -428,6 +428,10 @@ export class BriefPage implements OnInit, OnDestroy {
       // A al B (mismo cliente, mismo `routeConfig`) y el selector de B mostraría un 409 que no era
       // suyo.
       this.errorAprobar.set('');
+      // Mismo motivo que `errorAprobar`: la elección del selector era de A. Sin este reset, quien
+      // cambió el destino en A sin confirmar y navega a B se encuentra el selector de B ya movido —
+      // una elección que nunca hizo, sobre un run que no es el que la originó.
+      this.destinoElegido.set('crear_web');
       void this.cargar();
     });
   }
