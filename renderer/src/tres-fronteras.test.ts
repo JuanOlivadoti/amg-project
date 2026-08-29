@@ -45,8 +45,8 @@ describe("las tres fronteras encadenadas: Zod → allowlist de Postgres → perf
   async function recorrer(perfilCrudo: unknown, dominio: string): Promise<unknown> {
     const validado = parseProfile(perfilCrudo);
     await db.query(
-      `insert into clients (tenant_id, nombre, domain, business_profile)
-       values ('11111111-1111-1111-1111-111111111111', $1, $1, $2::jsonb)`,
+      `insert into clients (tenant_id, nombre, domain, business_profile, vertical)
+       values ('11111111-1111-1111-1111-111111111111', $1, $1, $2::jsonb, 'restauracion')`,
       [dominio, JSON.stringify(validado)],
     );
     const { rows } = await db.query<{ publico: unknown }>(
@@ -76,8 +76,8 @@ describe("las tres fronteras encadenadas: Zod → allowlist de Postgres → perf
     // Se inserta SALTEANDO el Zod: en producción `business_profile` es una columna `jsonb` que nadie
     // valida al escribir, así que este es el caso real, no uno inventado.
     await db.query(
-      `insert into clients (tenant_id, nombre, domain, business_profile)
-       values ('11111111-1111-1111-1111-111111111111', 'x', 'colada.es', $1::jsonb)`,
+      `insert into clients (tenant_id, nombre, domain, business_profile, vertical)
+       values ('11111111-1111-1111-1111-111111111111', 'x', 'colada.es', $1::jsonb, 'restauracion')`,
       [JSON.stringify({ name: "X", notas_internas: "no publicar", portada_grande: { src: "https://a.storyblok.com/f/1/x.jpg" } })],
     );
     const { rows } = await db.query<{ publico: unknown }>(

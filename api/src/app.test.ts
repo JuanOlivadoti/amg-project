@@ -103,9 +103,10 @@ beforeEach(async () => {
   ).map((r) => r.id) as [string, string];
 
   [clientA1] = (
-    await sql<{ id: string }>("insert into clients (tenant_id, nombre) values ($1,'Bella Napoli') returning id", [
-      tenantA,
-    ])
+    await sql<{ id: string }>(
+      "insert into clients (tenant_id, nombre, vertical) values ($1,'Bella Napoli','restauracion') returning id",
+      [tenantA],
+    )
   ).map((r) => r.id) as [string];
 
   const mkMembresia = async (tenantId: string, rol: string, clientId: string | null) =>
@@ -1117,9 +1118,10 @@ test("🔴 PATCH /members/:userId: un rol 'cliente' intentando cambiar un rol �
 });
 
 test("🔴 PATCH /members/:userId: client_id de OTRO tenant → 400 (FK compuesta), sin efecto", async () => {
-  const [clientB1] = await sql<{ id: string }>("insert into clients (tenant_id, nombre) values ($1,'Sushi Zen') returning id", [
-    tenantB,
-  ]);
+  const [clientB1] = await sql<{ id: string }>(
+    "insert into clients (tenant_id, nombre, vertical) values ($1,'Sushi Zen','restauracion') returning id",
+    [tenantB],
+  );
   const res = await req("PATCH", `/members/${equipoA}`, {
     user: maestroA,
     tenant: tenantA,
@@ -1452,7 +1454,7 @@ test("GET /clients/:id/resenas devuelve solo las del cliente, ordenadas 1-3★ s
 
 test("🔴 GET /clients/:id/resenas de OTRO tenant devuelve lista vacía, no un error (RLS)", async () => {
   const [clientB1] = await sql<{ id: string }>(
-    "insert into clients (tenant_id, nombre) values ($1,'Sushi Zen') returning id",
+    "insert into clients (tenant_id, nombre, vertical) values ($1,'Sushi Zen','restauracion') returning id",
     [tenantB],
   );
   await sembrarResena(clientB1!.id, { googleReviewId: "de-otro-tenant" });

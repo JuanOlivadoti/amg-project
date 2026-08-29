@@ -188,8 +188,10 @@ export async function seed(db: TestDb): Promise<Seed> {
   const tenantB = t!.b;
 
   const mkClient = async (tenantId: string, nombre: string) => {
+    // 'restauracion': el seed genérico de dos tenants no representa ningún caso de multi-vertical —
+    // eso lo cubren los tests de `0029_clientes_vertical.sql` con sus propios clientes.
     const [c] = await db.asService<{ id: string }>(
-      "insert into clients (tenant_id, nombre) values ($1, $2) returning id",
+      "insert into clients (tenant_id, nombre, vertical) values ($1, $2, 'restauracion') returning id",
       [tenantId, nombre],
     );
     return c!.id;

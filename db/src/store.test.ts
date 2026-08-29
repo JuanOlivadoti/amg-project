@@ -95,7 +95,7 @@ beforeEach(async () => {
 
   const mk = async (tid: string, n: string) => {
     const { rows } = await pg.query<{ id: string }>(
-      "insert into clients (tenant_id, nombre) values ($1, $2) returning id",
+      "insert into clients (tenant_id, nombre, vertical) values ($1, $2, 'restauracion') returning id",
       [tid, n],
     );
     return rows[0]!.id;

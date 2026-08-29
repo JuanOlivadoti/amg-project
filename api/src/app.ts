@@ -449,7 +449,17 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     if (typeof campos.nombre !== "string") {
       return c.json({ error: "Se requiere nombre (string)." }, 400);
     }
-    const id = await deps.clientes.crearCliente(ctx, { ...campos, nombre: campos.nombre });
+    // 'restauracion' fijo: `vertical` (0029_clientes_vertical.sql) es NOT NULL sin default y
+    // deliberadamente INMUTABLE tras el alta (no vive en `CambiosCliente`/`filtrarCamposCliente`),
+    // así que este endpoint todavía no tiene forma de recibirlo del body — eso es trabajo de una
+    // etapa posterior de este mismo plan. Hasta entonces, todo alta real es un restaurante, la misma
+    // decisión que ya tomaban los tres caminos de datos de demo/dev (seed-demo.ts, dev-server.ts,
+    // demo-server.ts).
+    const id = await deps.clientes.crearCliente(ctx, {
+      ...campos,
+      nombre: campos.nombre,
+      vertical: "restauracion",
+    });
     return c.json({ id }, 201);
   });
 

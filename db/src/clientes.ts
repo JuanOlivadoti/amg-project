@@ -68,6 +68,19 @@ export interface ClienteCRM {
  */
 export interface NuevoCliente {
   nombre: string;
+  /**
+   * El rubro del cliente (`0029_clientes_vertical.sql`). REQUERIDO y no `?`: la columna es `not null`
+   * SIN default (mismo criterio que `PIPELINE_MODO`), así que el compilador tiene que obligar a
+   * elegirlo en cada alta — ningún caller puede "olvidarse" y dejar que un default lo decida por él,
+   * porque no hay ningún default que lo decida.
+   *
+   * INMUTABLE tras el alta: a propósito NO está en `CambiosCliente` ni en `COLUMNAS_EDITABLES` más
+   * abajo. La API todavía no expone una forma de elegirlo al crear un cliente real —eso es trabajo de
+   * otra etapa de este plan—; hasta entonces, `api/src/app.ts` fija `'restauracion'` explícitamente en
+   * el POST /clients de producción, la misma decisión que ya tomaban los tres caminos de datos de
+   * DEMO/DEV.
+   */
+  vertical: "restauracion" | "correduria_seguros";
   tipo?: string | null;
   industria?: string | null;
   etiquetas?: string[];
@@ -224,8 +237,11 @@ export class PgClientes {
    */
   async crearCliente(ctx: TenantContext, datos: NuevoCliente): Promise<string> {
     return this.withTenant(ctx, async (tx) => {
-      const columnas: string[] = ["tenant_id", "nombre"];
-      const valores: unknown[] = [ctx.tenantId, datos.nombre];
+      // `vertical` va junto a `tenant_id`/`nombre` como columna SIEMPRE insertada, no en la lista de
+      // `opcionales` de abajo: es `not null` sin default (0029), así que omitirla no es "dejarla en su
+      // default" (no hay ninguno) — es un insert que Postgres va a rechazar.
+      const columnas: string[] = ["tenant_id", "nombre", "vertical"];
+      const valores: unknown[] = [ctx.tenantId, datos.nombre, datos.vertical];
 
       const opcionales: Array<[string, unknown]> = [
         ["tipo", datos.tipo],

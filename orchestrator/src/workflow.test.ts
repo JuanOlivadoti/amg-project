@@ -359,7 +359,7 @@ beforeEach(async () => {
   // publicaba todo en el space global del proceso y la `/menu` de uno pisaba la del otro.
   const mk = async (tid: string, n: string, space: string) => {
     const { rows } = await pg.query<{ id: string }>(
-      "insert into clients (tenant_id, nombre, storyblok_space_id) values ($1, $2, $3) returning id",
+      "insert into clients (tenant_id, nombre, storyblok_space_id, vertical) values ($1, $2, $3, 'restauracion') returning id",
       [tid, n, space],
     );
     return rows[0]!.id;

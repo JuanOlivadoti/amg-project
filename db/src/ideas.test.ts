@@ -677,7 +677,7 @@ test("🔴 listarIdeas devuelve un RESUMEN: nunca transcripción ni análisis, n
 
 test("listarIdeas filtra por estado y por cliente", async () => {
   const [c] = await db.asService<{ id: string }>(
-    "insert into clients (tenant_id, nombre) values ($1, 'Otro negocio de B') returning id",
+    "insert into clients (tenant_id, nombre, vertical) values ($1, 'Otro negocio de B', 'restauracion') returning id",
     [s.tenantB],
   );
   const otroCliente = c!.id;
@@ -1125,11 +1125,11 @@ async function baseParaTrasladoDeTenant() {
     select a.id as a, b.id as b from a, b
   `);
   const { id: cA } = await uno<{ id: string }>(
-    "insert into clients (tenant_id, nombre) values ($1, 'Cliente A') returning id",
+    "insert into clients (tenant_id, nombre, vertical) values ($1, 'Cliente A', 'restauracion') returning id",
     [tA],
   );
   const { id: cB } = await uno<{ id: string }>(
-    "insert into clients (tenant_id, nombre) values ($1, 'Cliente B') returning id",
+    "insert into clients (tenant_id, nombre, vertical) values ($1, 'Cliente B', 'restauracion') returning id",
     [tB],
   );
   const { user_id: equipo } = await uno<{ user_id: string }>(
