@@ -1847,7 +1847,7 @@ test("app_service SÍ puede leer las columnas de clients que getClient() usa en 
   assert.deepEqual(
     viaOrquestador,
     viaApiUser,
-    "app_service sigue leyendo exactamente las cuatro columnas de ClientRow",
+    "app_service sigue leyendo exactamente las cinco columnas de ClientRow",
   );
 });
 

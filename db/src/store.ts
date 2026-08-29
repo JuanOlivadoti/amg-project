@@ -383,11 +383,16 @@ const ORDEN_DEL_BRIEF = `order by p.orden_brief asc nulls last, p.opportunity_sc
  * es su run) y lo que se recorta es una celda. El caso en que la columna entera es el secreto —el
  * informe con su desglose— sí se llevó una tabla propia con su política (`kr_informes`, 0016).
  */
-const RUN_SUMMARY_COLS = `id, client_id, status, prompt, schema_version,
-       market_country, market_language, market_location_code,
-       case when app.es_staff() then coste_micros_usd::int end as coste_micros_usd,
-       calidad_datos, config, created_at, finished_at,
-       solicitud_emitida_at is not null as tiene_workflow`;
+// Prefijadas con `kr_runs.`: las cuatro consultas que usan esta constante seleccionan de la tabla
+// `kr_runs` sin alias, así que el prefijo es gratis acá — y evita que `getRunConUltimaDecision`
+// (más abajo), que las junta con un `left join lateral` sobre `kr_run_decisiones`, se rompa con un
+// "column reference is ambiguous" el día que ese lateral gane una columna con el mismo nombre que
+// una de estas (hoy no colisiona con ninguna, pero nada lo impone).
+const RUN_SUMMARY_COLS = `kr_runs.id, kr_runs.client_id, kr_runs.status, kr_runs.prompt, kr_runs.schema_version,
+       kr_runs.market_country, kr_runs.market_language, kr_runs.market_location_code,
+       case when app.es_staff() then kr_runs.coste_micros_usd::int end as coste_micros_usd,
+       kr_runs.calidad_datos, kr_runs.config, kr_runs.created_at, kr_runs.finished_at,
+       kr_runs.solicitud_emitida_at is not null as tiene_workflow`;
 
 /**
  * Un cliente con Google conectado, tal como lo devuelve `app.clientes_conectados_google()`
@@ -1395,9 +1400,18 @@ export class PgStore {
                  r.status = 'approved'
                  and $2::destino_run <> 'solo_informe'
                  and (
+                   -- Si NO hay ninguna decisión 'completado' previa, esta subquery devuelve NULL, y
+                   -- NULL = 'solo_informe' evalúa a NULL (falsy) — el 'and' entero descarta la fila,
+                   -- así que un run 'approved' SIN decisión completada nunca calificaría acá. Por eso
+                   -- Finding 1 de la revisión final del sub-proyecto 2 era alcanzable: los tres cierres
+                   -- en error de workflowDecision que NO revertían kr_runs.status (ver
+                   -- compensarAprobacionFallida, más abajo en este archivo) dejaban exactamente esa
+                   -- combinación — 'approved' sin ninguna decisión 'completado' — y el run quedaba
+                   -- bricked para siempre. compensarAprobacionFallida es lo que ahora evita llegar acá
+                   -- en ese estado.
                    select d.destino from kr_run_decisiones d
                    where d.run_id = r.id and d.resultado = 'completado'
-                   order by d.decidido_en desc limit 1
+                   order by d.decidido_en desc, d.id desc limit 1
                  ) = 'solo_informe'
                )
              )
@@ -1537,8 +1551,13 @@ export class PgStore {
   async getUltimaDecision(ctx: TenantContext, runId: string): Promise<UltimaDecision | null> {
     return this.withTenant(ctx, async (tx) => {
       const { rows } = await tx.query<{ destino: string; resultado: string; decidido_en: string }>(
+        // `, id desc` como desempate: sin él, dos decisiones con el mismo `decidido_en` (dos filas
+        // en la misma transacción, o un reloj sin suficiente resolución) dejarían la fila "última"
+        // sin definir. No es alcanzable hoy, pero es la misma columna que pivotea todo el mecanismo
+        // retomable de `registrarDecision` (ver el comentario de esa subquery, más arriba) — barato
+        // de blindar.
         `select destino, resultado, decidido_en from kr_run_decisiones
-         where run_id = $1 order by decidido_en desc limit 1`,
+         where run_id = $1 order by decidido_en desc, id desc limit 1`,
         [runId],
       );
       const r = rows[0];

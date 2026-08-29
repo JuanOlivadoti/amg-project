@@ -365,10 +365,18 @@ export async function workflowDecision(
     if (!cliente || cliente.archived_at !== null) {
       // Major #10 de la ronda de Codex: un cliente archivado entre la aprobación y la ejecución no
       // se publica.
-      await deps.store.cerrarDecision(ctx, decisionId, {
-        resultado: "error",
-        detalleError: "El cliente fue archivado o ya no es visible: no se publica.",
-      });
+      //
+      // `compensarAprobacionFallida` y no `cerrarDecision`: si ESTA es la primera decisión del run,
+      // cerrarla en 'error' sin revertir `kr_runs.status` lo deja 'approved' sin ninguna decisión
+      // 'completado' — y `registrarDecision` nunca vuelve a calificarlo (bricked, ver el comentario
+      // de cabecera del método en `db/src/store.ts`). El guard interno del método no toca el status
+      // si ya existe una decisión 'completado' previa (el caso retomable), así que es seguro llamarlo
+      // siempre acá.
+      await deps.store.compensarAprobacionFallida(
+        ctx,
+        decisionId,
+        "El cliente fue archivado o ya no es visible: no se publica.",
+      );
       return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
     }
 
@@ -378,10 +386,14 @@ export async function workflowDecision(
     // calificó, ver workflow.test.ts "editar revoca la aprobación").
     const paginas = await deps.store.getPublishablePages(ctx, decision.run_id);
     if (paginas.length === 0) {
-      await deps.store.cerrarDecision(ctx, decisionId, {
-        resultado: "error",
-        detalleError: "El run no tiene páginas publicables.",
-      });
+      // `compensarAprobacionFallida` y no `cerrarDecision` — mismo motivo que la rama del cliente
+      // archivado, unas líneas arriba: sin la reversión, un run cuya PRIMERA decisión cae acá queda
+      // 'approved' sin ninguna decisión 'completado' y nunca vuelve a ser decidible.
+      await deps.store.compensarAprobacionFallida(
+        ctx,
+        decisionId,
+        "El run no tiene páginas publicables.",
+      );
       return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
     }
 

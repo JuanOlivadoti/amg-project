@@ -110,7 +110,13 @@ export function crearFuncionDecision(deps: Deps) {
       onFailure: async ({ event, error }) => {
         const d = event.data.event.data as Eventos["research/aprobado"]["data"];
         const ctx: TenantContext = { tenantId: d.tenantId };
-        await deps.store.cerrarDecision(ctx, d.decisionId, { resultado: "error", detalleError: error.message });
+        // `compensarAprobacionFallida` y no `cerrarDecision`: agotados los reintentos de
+        // `workflowDecision`, la decisión queda en 'error' pero además hay que revertir la
+        // promoción de `kr_runs.status` a 'pending_approval' cuando corresponde — si no, un run
+        // cuya PRIMERA decisión falló acá queda 'approved' sin ninguna decisión 'completado', y
+        // `registrarDecision` nunca vuelve a calificarlo (ver el comentario de cabecera del
+        // método, `db/src/store.ts`). Mismo patrón que `api/src/app.ts`, POST /runs/:id/approve.
+        await deps.store.compensarAprobacionFallida(ctx, d.decisionId, error.message);
       },
     },
     { event: "research/aprobado" },

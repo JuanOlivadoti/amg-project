@@ -860,6 +860,15 @@ test("🔴 editar una página aprobada REVOCA su aprobación — workflowDecisio
 
   assert.equal(resultado.resultado, "error", "editar revocó la aprobación: no queda nada publicable");
   assert.equal(espia.publicadas.length, 0);
+
+  // Hallazgo Critical de la revisión final del sub-proyecto 2: este error lo cierra
+  // `compensarAprobacionFallida`, no `cerrarDecision` — así el run vuelve a `pending_approval` y
+  // NO queda bricked (sin esa reversión, `registrarDecision` nunca vuelve a calificarlo: ver el
+  // comentario de cabecera de `compensarAprobacionFallida` en `db/src/store.ts`). Se usa
+  // `solo_informe`, no `crear_web`: la edición dejó la página sin aprobar, y `crear_web` exige al
+  // menos una página aprobada — `solo_informe` no la necesita.
+  const decisionRetomada = await store.registrarDecision(humano(tenantA), runId, "solo_informe");
+  assert.ok(decisionRetomada, "el run vuelve a ser decidible tras el error — no queda bricked");
 });
 
 test("workflowDecision: editar y volver a aprobar sí publica — con el contenido nuevo", async () => {
@@ -1004,4 +1013,11 @@ test("🔴 workflowDecision: cliente archivado a mitad de camino no publica", as
   const espia = depsFalsas([]);
   const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
   assert.equal(resultado.resultado, "error");
+
+  // Mismo hallazgo que el test "editar revoca la aprobación": el cierre en error de esta rama pasa
+  // por `compensarAprobacionFallida`, que revierte `kr_runs.status` a `pending_approval` cuando esta
+  // era la primera decisión del run. La página sigue aprobada (archivar el cliente no la toca), así
+  // que `crear_web` vuelve a calificar.
+  const decisionRetomada = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionRetomada, "el run vuelve a ser decidible tras el error — no queda bricked");
 });
