@@ -152,8 +152,13 @@ import { POLL_MS } from '../../core/brief-polling';
               sin el brief y sin el selector al que el mensaje se refiere — mismo criterio que antes
               sostenía rechazadoSinWorkflow. Cualquier OTRO error de esta acción sí va a error()
               general, igual que en conTrabajo().
+            · puedeDecidirseRunUI() es el gate agregado en la revisión final del sub-proyecto 2: sin
+              él, este bloque se mostraba (y "Confirmar" quedaba habilitado) en CUALQUIER estado del
+              run, incluido «approved» sin decisión retomable — el caso común tras la primera
+              decisión exitosa —, y confirmar ahí siempre devolvía 409. Ver el comentario del
+              computed en la clase.
           -->
-          @if (puedeAprobarRunUI()) {
+          @if (puedeAprobarRunUI() && puedeDecidirseRunUI()) {
             <div class="mt-4 space-y-2">
               <label for="destino-run" class="block text-sm font-medium text-texto">
                 ¿Qué hacemos con este research?
@@ -197,12 +202,19 @@ import { POLL_MS } from '../../core/brief-polling';
             combina esto con el MISMO gate equipo+flag que el selector de arriba (corrección Major de
             la ronda de Codex: sin combinarlo, un rol «cliente» —o un despliegue con aprobarRun
             apagado— veía el botón igual y el backend lo rechazaba recién al hacer clic).
+
+            [disabled] también mira motivoNoAprobar(), igual que "Confirmar" (hallazgo Important de
+            la revisión final del sub-proyecto 2): puedeRetomarUI() solo mira la ÚLTIMA DECISIÓN, no
+            el estado ACTUAL de las páginas — si alguien desaprueba la única página aprobada después
+            de que el «solo_informe» terminó, el botón seguía habilitado y «crear_web» volvía a
+            exigir una página aprobada que ya no existe: otro 409 evitable.
           -->
           @if (puedeRetomarUI()) {
             <button
               data-test="retomar-web"
               (click)="retomarConWeb()"
-              [disabled]="trabajando()"
+              [disabled]="motivoNoAprobar() !== null || trabajando()"
+              [attr.title]="motivoNoAprobar()"
               class="mt-4 rounded-md border border-borde px-4 py-2 text-sm text-texto hover:bg-superficie-2 disabled:opacity-40"
             >
               Construir la web ahora
@@ -376,6 +388,38 @@ export class BriefPage implements OnInit, OnDestroy {
   );
 
   /**
+   * ¿La última decisión de este run fue `solo_informe` y TERMINÓ? El único camino "retomable" que
+   * `registrarDecision` admite para un run que ya está `approved` (ver la cabecera del método en
+   * `db/src/store.ts`). Extraído a su propio computed para que `puedeRetomarUI` y
+   * `puedeDecidirseRunUI` compartan la MISMA definición — dos cálculos separados de "es retomable"
+   * son exactamente el error que el comentario de la línea ~106 de este archivo ya advertía sobre
+   * `puedeAprobar()`/el botón de aprobar: divergen el día que alguien cambia uno y no el otro.
+   */
+  readonly esRetomable = computed(() => {
+    const u = this.brief()?.run.ultimaDecision;
+    return u?.destino === 'solo_informe' && u.resultado === 'completado';
+  });
+
+  /**
+   * ¿El run está en un estado donde `registrarDecision` PODRÍA calificar una decisión nueva?
+   * `pending_approval` siempre calza; `approved` solo en el camino retomable (`esRetomable()`).
+   * Cualquier otro estado —`running`, `rejected`, `failed`, o `approved` sin decisión completada
+   * `solo_informe`— no admite ninguna decisión nueva y el servidor respondería 409
+   * `TRANSICION_INVALIDA` si se lo pidiera.
+   *
+   * Hallazgo Important de la revisión final del sub-proyecto 2: sin este gate, el selector de
+   * destino y "Confirmar" se mostraban (y el botón quedaba habilitado) en CUALQUIER estado del run
+   * —incluido `approved` sin decisión retomable, que es el caso común tras la primera decisión
+   * exitosa—, y confirmar ahí siempre devolvía 409: exactamente la confusión que el retiro del gate
+   * viejo (`tiene_workflow`) debía eliminar, no reintroducir de otra forma.
+   */
+  readonly puedeDecidirseRunUI = computed(() => {
+    const run = this.brief()?.run;
+    if (!run) return false;
+    return run.status === 'pending_approval' || (run.status === 'approved' && this.esRetomable());
+  });
+
+  /**
    * ¿Se puede "Construir la web ahora" — retomar un run cuya última decisión fue `solo_informe` y
    * terminó? La razón de ser de este sub-proyecto entero.
    *
@@ -385,8 +429,7 @@ export class BriefPage implements OnInit, OnDestroy {
    */
   readonly puedeRetomarUI = computed(() => {
     if (!this.puedeAprobarRunUI()) return false; // mismo gate de equipo+flag que el selector de arriba
-    const u = this.brief()?.run.ultimaDecision;
-    return u?.destino === 'solo_informe' && u.resultado === 'completado';
+    return this.esRetomable();
   });
 
   /**

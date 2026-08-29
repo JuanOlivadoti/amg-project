@@ -174,16 +174,38 @@ describe('BriefPage — selector de destino y retiro del gate tiene_workflow', (
 
   /**
    * El mismo brief (con su página aprobada, para que el selector esté habilitado) con la ÚLTIMA
-   * DECISIÓN que se le pida — lo que sostiene "Construir la web ahora".
+   * DECISIÓN que se le pida — lo que sostiene "Construir la web ahora". `status` es opcional y
+   * default `'pending_approval'` (el estado con el que ya venían todos los tests que usaban esto
+   * antes de `puedeDecidirseRunUI`): pasarlo en `'approved'` es lo que ejercita el gate nuevo de la
+   * revisión final del sub-proyecto 2 (Finding 3) — un run `approved` es el caso común tras la
+   * primera decisión, y es justo el que antes mostraba el selector sin poder calificar nunca.
    */
   const conUltimaDecision = (
     destino: UltimaDecision['destino'],
     resultado: UltimaDecision['resultado'],
+    status: Brief['run']['status'] = 'pending_approval',
   ): Brief => ({
     ...conPaginaAprobada(),
     run: {
       ...conPaginaAprobada().run,
+      status,
       ultimaDecision: { destino, resultado, decididoEn: new Date().toISOString() },
+    },
+  });
+
+  /**
+   * Un run `approved` cuya última decisión SÍ es retomable (`solo_informe`/`completado`) pero cuya
+   * única página YA NO está aprobada — el "bug relacionado" de Finding 3: `puedeRetomarUI()` solo
+   * mira la ÚLTIMA DECISIÓN, no el estado actual de las páginas, así que sin el guard de
+   * `motivoNoAprobar()` en el `[disabled]` de "Construir la web ahora", este escenario mostraba el
+   * botón HABILITADO y el clic caía en el mismo 409 que el retiro del gate viejo debía eliminar.
+   */
+  const conDecisionRetomableSinPaginaAprobada = (): Brief => ({
+    ...BRIEF,
+    run: {
+      ...BRIEF.run,
+      status: 'approved',
+      ultimaDecision: { destino: 'solo_informe', resultado: 'completado', decididoEn: new Date().toISOString() },
     },
   });
 
@@ -439,6 +461,46 @@ describe('BriefPage — selector de destino y retiro del gate tiene_workflow', (
     fixture.detectChanges();
 
     expect(destinoRecibido).toBe('crear_web');
+  });
+
+  // ------------------------------------------------------- puedeDecidirseRunUI (Finding 3, revisión final)
+
+  /*
+   * Hallazgo Important de la revisión final del sub-proyecto 2: sin `puedeDecidirseRunUI()`, el
+   * selector de destino se mostraba (y "Confirmar" quedaba habilitado) en CUALQUIER estado del run
+   * — incluido `approved` sin decisión retomable, que es el caso común tras la primera decisión
+   * exitosa —, y confirmar ahí siempre devolvía 409 `TRANSICION_INVALIDA`. Estos tests exigen que el
+   * selector solo se muestre cuando `registrarDecision` podría realmente calificar algo.
+   */
+  it('🔴 el selector de destino NO se muestra en un run approved sin decisión retomable', async () => {
+    const el = await render(true, true, conUltimaDecision('crear_web', 'completado', 'approved'));
+    expect(selectDestino(el)).toBeNull();
+    expect(el.textContent).not.toContain('Confirmar');
+  });
+
+  it('🔴 el selector de destino NO se muestra en un run approved sin ninguna decisión (ultimaDecision null)', async () => {
+    const el = await render(true, true, { ...conPaginaAprobada(), run: { ...conPaginaAprobada().run, status: 'approved' } });
+    expect(selectDestino(el)).toBeNull();
+  });
+
+  it('el selector de destino SÍ se muestra en un run approved con decisión retomable (solo_informe/completado)', async () => {
+    // El camino retomable no se rompe: un run approved cuya última decisión calificante es
+    // solo_informe/completado sigue pudiendo recibir crear_web vía registrarDecision.
+    const el = await render(true, true, conUltimaDecision('solo_informe', 'completado', 'approved'));
+    expect(selectDestino(el)).not.toBeNull();
+  });
+
+  it('el selector de destino se muestra normalmente en pending_approval (sin cambios)', async () => {
+    const el = await render(true, true, conPaginaAprobada());
+    expect(selectDestino(el)).not.toBeNull();
+  });
+
+  it('🔴 "Construir la web ahora" queda deshabilitado si la página ya no está aprobada, aunque la decisión sea retomable', async () => {
+    const el = await render(true, true, conDecisionRetomableSinPaginaAprobada());
+    const boton = botonRetomar(el);
+    expect(boton).not.toBeNull();
+    expect(boton!.disabled).withContext('sin página aprobada, crear_web volvería a devolver 409').toBe(true);
+    expect(boton!.title).toBe(MOTIVO_SIN_PAGINAS);
   });
 
   // --------------------------------------------------------- el 409 TRANSICION_INVALIDA (retiro C0)
