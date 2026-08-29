@@ -1860,6 +1860,19 @@ test("getClient incluye archived_at", async () => {
 });
 
 /**
+ * `renderStory` (Task 9) necesita `ClientRow.vertical` para elegir la receta al publicar, y quien
+ * llama a `getClient` en producción es el orquestador, bajo `app_service` -- no `app_user`. El grant
+ * de columna de la Task 1 (`grant select (vertical) on clients to app_user, app_service, app_render`,
+ * 0029_clientes_vertical.sql) solo se ejercita de verdad corriendo bajo `storeServicio`: bajo `store`
+ * (app_user) este test pasaría igual aunque el grant de app_service no existiera.
+ */
+test("getClient incluye vertical, bajo el rol real app_service", async () => {
+  const cliente = await storeServicio.getClient(ctxA(), clientA1);
+  assert.ok(cliente);
+  assert.equal(cliente!.vertical, "restauracion");
+});
+
+/**
  * La lectura es la garantía nueva de esta migración: NINGÚN rol con login lee el token, ni de
  * tabla ni de columna.
  *

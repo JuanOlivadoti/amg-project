@@ -189,6 +189,7 @@ export interface PaginaPropuesta extends PageRow {
 export interface ClientRow {
   id: string;
   nombre: string;
+  vertical: "restauracion" | "correduria_seguros";
   /** Space de Storyblok de ESTE cliente. **Sin él no se publica** (ADR-04: uno por cliente). */
   storyblok_space_id: string | null;
   /** Perfil NAP del negocio → JSON-LD. Antes era un archivo global: el mismo para todos. */
@@ -1529,7 +1530,7 @@ export class PgStore {
   async getClient(ctx: TenantContext, clientId: string): Promise<ClientRow | null> {
     return this.withTenant(ctx, async (tx) => {
       const { rows } = await tx.query<ClientRow>(
-        "select id, nombre, storyblok_space_id, business_profile, archived_at from clients where id = $1",
+        "select id, nombre, vertical, storyblok_space_id, business_profile, archived_at from clients where id = $1",
         [clientId],
       );
       return rows[0] ?? null;
