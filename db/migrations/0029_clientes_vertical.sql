@@ -34,12 +34,19 @@ update clients set vertical = 'restauracion' where vertical is null;
 
 alter table clients alter column vertical set not null;
 
--- app_service (orquestador) y app_render (renderizador público) tienen grants de columna CERRADOS
--- desde 0022/0007 — agregar una columna a la tabla no la suma a un grant ya angosto. Sin esto, Task 4
--- (ClientRow.vertical bajo app_service) y Task 5 (Sitio.vertical bajo app_render) fallan en runtime
--- con "permission denied for table clients", un error que PGlite con rol superusuario NO reproduce —
--- por eso el test del Step 2 corre explícitamente `set local role`.
-grant select (vertical) on clients to app_service, app_render;
+-- app_user (la API), app_service (orquestador) y app_render (renderizador público) tienen grants de
+-- columna CERRADOS sobre `clients` desde 0021/0022/0007 — agregar una columna a la tabla no la suma
+-- a un grant ya angosto, y ESO incluye a app_user: la 0021 revocó su SELECT de tabla completo y lo
+-- reemplazó por una lista explícita de columnas (comentario de esa migración, línea ~94-110), así que
+-- el `grant select ... on clients ... to app_user` de la 0001 —que el resto de este archivo cita como
+-- si todavía rigiera (ver más abajo)— dejó de aplicar en la 0021, tres migraciones antes de que
+-- naciera `vertical`. Sin esta línea, Task 3 (db/src/clientes.ts exponiendo `vertical` sin enmascarar
+-- en `ClienteCRM`/`CLIENTE_CRM_COLS` para app_user) falla en runtime con "permission denied for table
+-- clients" para CUALQUIER lectura del CRM — no solo la de `vertical` — porque el select entero se
+-- arma en una sola sentencia. Extendida acá (0029 no está desplegada en ningún lado) en vez de una
+-- migración nueva, por ser el mismo grant de columna que ya escribe esta migración para los otros dos
+-- roles, dos líneas más abajo.
+grant select (vertical) on clients to app_user, app_service, app_render;
 
 -- -----------------------------------------------------------------------------
 -- La inmutabilidad, impuesta en Postgres, no solo por ausencia en TypeScript

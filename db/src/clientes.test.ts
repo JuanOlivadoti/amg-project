@@ -621,6 +621,22 @@ test("equipoA (rol equipo, mismo tenant) SÍ ve todas las columnas de CRM sin ca
   });
 });
 
+test("🔴 duenoA1 (rol cliente) SÍ ve `vertical` sin enmascarar — es un atributo de producto, no una nota de CRM", async () => {
+  // A diferencia de las 10 columnas de arriba, `vertical` no pasa por `app.es_staff()`: el propio
+  // portal del cliente lo necesita (para saber qué formulario/secciones mostrarle), así que va en el
+  // grupo SIN enmascarar de CLIENTE_CRM_COLS (junto a id/nombre/google_conectado_en).
+  const comoDueno = await clientes.obtenerCliente({ tenantId: s.tenantA, userId: s.duenoA1 }, s.clientA1);
+
+  assert.ok(comoDueno, "duenoA1 sigue viendo su propia fila");
+  assert.equal(comoDueno?.vertical, "restauracion", "vertical NO se enmascara para el rol cliente");
+  assert.equal(comoDueno?.tipo, null, "tipo CRM sigue enmascarado — solo vertical cambia");
+
+  const viaListar = (
+    await clientes.listarClientes({ tenantId: s.tenantA, userId: s.duenoA1 })
+  ).find((c) => c.id === s.clientA1);
+  assert.equal(viaListar?.vertical, "restauracion", "listarClientes tampoco enmascara vertical");
+});
+
 // ---------------------------------------------------------------- menú (editor del portal)
 
 test("obtenerMenu de un cliente sin business_profile devuelve arrays vacíos, no null ni excepción", async () => {
@@ -792,6 +808,18 @@ test("🔴 clients.vertical es NOT NULL sin default — un insert que la omite f
         "insert into clients (tenant_id, nombre) values ($1, 'Sin vertical')",
         [s.tenantA],
       ),
+    /null value in column "vertical"/,
+  );
+});
+
+test("🔴 crearCliente exige vertical: TypeScript lo rechaza en compilación, y si se cuela por un cast, Postgres también", async () => {
+  // El tipo `NuevoCliente.vertical` es obligatorio (sin `?`): esto no compilaría sin el cast. El cast
+  // simula el mismo caso que ya cubren los otros tests de fuga de este archivo — un handler HTTP real
+  // parsea JSON sin tipos, así que la garantía de runtime (la columna es NOT NULL sin default) tiene
+  // que sostenerse aunque el compilador no esté mirando.
+  const datosSinVertical = { nombre: "Sin vertical vía crearCliente" } as unknown as NuevoCliente;
+  await assert.rejects(
+    () => clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, datosSinVertical),
     /null value in column "vertical"/,
   );
 });

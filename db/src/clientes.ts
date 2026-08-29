@@ -26,6 +26,9 @@ import type { RolConexion, TenantContext } from "./store.js";
  * tiene DOS lecturas con DOS tipos: `ClientRow` y `ClienteCRM`, cada una con su propio alcance.
  */
 
+/** El rubro del cliente (0029). Dos valores hoy; agregar un tercero es un ADR, no un `if`. */
+export type Vertical = "restauracion" | "correduria_seguros";
+
 /**
  * La fila completa del CRM: lo que ve la agencia de UN cliente en el portal. Todo esto es interno —
  * ninguna de estas columnas tiene grant a `app_render` (ADR-19, ver 0011).
@@ -33,6 +36,11 @@ import type { RolConexion, TenantContext } from "./store.js";
 export interface ClienteCRM {
   id: string;
   nombre: string;
+  /** NO enmascarada, a diferencia de `tipo`/`industria` (clasificación interna de la agencia):
+   *  `vertical` es un atributo de PRODUCTO — el propio portal del cliente lo necesita para saber qué
+   *  formulario y qué secciones mostrarle — no una nota del CRM. Nunca `| null`: la columna es `not
+   *  null` (0029) y esta lectura no la enmascara para ningún rol. */
+  vertical: Vertical;
   tipo: string | null;
   industria: string | null;
   /** `| null`: además del array vacío del default, un rol `cliente` la ve enmascarada (ver
@@ -80,7 +88,7 @@ export interface NuevoCliente {
    * el POST /clients de producción, la misma decisión que ya tomaban los tres caminos de datos de
    * DEMO/DEV.
    */
-  vertical: "restauracion" | "correduria_seguros";
+  vertical: Vertical;
   tipo?: string | null;
   industria?: string | null;
   etiquetas?: string[];
@@ -159,6 +167,8 @@ const CLIENTE_CRM_MASKED_COLS: Record<string, string> = {
 const CLIENTE_CRM_COLS = [
   "id",
   "nombre",
+  // Sin enmascarar (ver el docblock de ClienteCRM.vertical): atributo de producto, no nota de CRM.
+  "vertical",
   ...Object.entries(CLIENTE_CRM_MASKED_COLS).map(
     ([alias, expr]) => `case when app.es_staff() then ${expr} else null end as ${alias}`,
   ),
