@@ -21,7 +21,7 @@ import type { GoogleOAuthProvider } from "./google-oauth.js";
 import { firmarEstado, verificarEstado, type EstadoOAuth } from "./oauth-state.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
-import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from "./codigos.js";
+import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA, NO_IMPLEMENTADO } from "./codigos.js";
 
 /**
  * Todo lo que la API necesita, INYECTADO. Ni el store, ni el emisor, ni la verificación del token se
@@ -384,7 +384,7 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     // turno al sub-proyecto 3, no antes.
     if (destino === "crear_posts") {
       return c.json(
-        { error: "Destino 'crear_posts' todavía no está implementado.", codigo: "NO_IMPLEMENTADO" },
+        { error: "Destino 'crear_posts' todavía no está implementado.", codigo: NO_IMPLEMENTADO },
         501,
       );
     }
@@ -885,7 +885,12 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       return c.json({ error: "Petición inválida: revisá clientId, market y los campos obligatorios." }, 400);
     }
     // Reglas de negocio del store que no son un 500: son estados, no fallas.
-    if (err.message.includes("ninguna página aprobada")) return c.json({ error: err.message }, 409);
+    //
+    // El branch de "ninguna página aprobada" que vivía acá se retiró (revisión final del
+    // sub-proyecto 2, Finding 5 menor): `registrarDecision` devuelve `null` en vez de lanzar esa
+    // cadena desde que el guard de páginas aprobadas se movió al `where` del insert (Task 3) — nada
+    // en el repo la tira ya (confirmado por grep). El único caso de esta lista con un `throw` real
+    // sigue siendo el de abajo.
     if (err.message.includes("ya existe y no pertenece")) return c.json({ error: err.message }, 409);
     console.error("[api] error no manejado:", err);
     return c.json({ error: "Error interno." }, 500);

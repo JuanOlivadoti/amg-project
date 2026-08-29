@@ -29,5 +29,8 @@ export const SIN_PAGINAS_APROBADAS = 'SIN_PAGINAS_APROBADAS';
  */
 export const TRANSICION_INVALIDA = 'TRANSICION_INVALIDA';
 
+/** `POST /runs/:id/approve` con `destino: 'crear_posts'` — el sub-proyecto 3 todavía no lo implementa. */
+export const NO_IMPLEMENTADO = 'NO_IMPLEMENTADO';
+
 /** Todos los códigos, para el test que ata esta copia a la de la API. */
-export const CODIGOS = { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } as const;
+export const CODIGOS = { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA, NO_IMPLEMENTADO } as const;

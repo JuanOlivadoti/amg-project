@@ -11,9 +11,10 @@
  *
  * ## Alcance, para no prometer de más
  *
- * **Solo los 409 los llevan.** Los 400/403/404 que ya existían siguen respondiendo `{ error }` a
- * secas: agregarles código sería un refactor de toda la superficie, y ninguno lo necesita todavía —
- * el portal no ramifica sobre ellos. Cuando alguno lo necesite, se agrega ahí y esta nota se corrige.
+ * **Solo los 409 y el 501 de `crear_posts` los llevan.** Los 400/403/404 que ya existían siguen
+ * respondiendo `{ error }` a secas: agregarles código sería un refactor de toda la superficie, y
+ * ninguno lo necesita todavía — el portal no ramifica sobre ellos. Cuando alguno lo necesite, se
+ * agrega ahí y esta nota se corrige.
  *
  * Los valores son `SCREAMING_SNAKE` y **estables**: son parte del contrato HTTP, así que renombrar
  * uno rompe al portal aunque `tsc` no diga nada (el portal no importa este archivo — está fuera del
@@ -31,5 +32,8 @@ export const SIN_PAGINAS_APROBADAS = "SIN_PAGINAS_APROBADAS";
  */
 export const TRANSICION_INVALIDA = "TRANSICION_INVALIDA";
 
+/** `POST /runs/:id/approve` con `destino: 'crear_posts'` — el sub-proyecto 3 todavía no lo implementa. */
+export const NO_IMPLEMENTADO = "NO_IMPLEMENTADO";
+
 /** Todos los códigos, para el test que los ata a la copia del portal. */
-export const CODIGOS = { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } as const;
+export const CODIGOS = { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA, NO_IMPLEMENTADO } as const;
