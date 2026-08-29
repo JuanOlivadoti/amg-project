@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { TestDb, seed } from "./testdb.js";
 import type { Seed } from "./testdb.js";
 import { PgClientes } from "./clientes.js";
-import type { NuevoCliente } from "./clientes.js";
+import type { NuevoCliente, CambiosCliente } from "./clientes.js";
 import { PglitePool } from "./pool.js";
 import { aplicarMigracion, aplicarMigracionesHasta } from "./migrate.js";
 
@@ -846,4 +846,60 @@ test("🔴 app_render puede leer vertical bajo su propio rol", async () => {
     [id],
   );
   assert.equal(rows[0]?.vertical, "restauracion");
+});
+
+test("🔴 clients.vertical es inmutable en la BASE: un UPDATE directo por SQL (fuera de actualizarCliente) también se rechaza", async () => {
+  // `CambiosCliente`/`COLUMNAS_EDITABLES` (clientes.ts) nunca mencionan `vertical` — pero ESO no es
+  // la garantía completa: `clients` tiene un grant de UPDATE de TABLA para `app_user`, sin angostar
+  // por columna (0001_init.sql), así que este UPDATE directo —el mismo camino que tomaría un
+  // endpoint nuevo, un script, o un bug en otra feature— se saltearía esa capa de TypeScript por
+  // completo si no fuera por el trigger `clients_vertical_inmutable` (0029).
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: s.equipoA },
+        "update clients set vertical = 'correduria_seguros' where id = $1",
+        [s.clientA1],
+      ),
+    /inmutable/i,
+  );
+
+  // Y la fila no cambió: el trigger raise abortó la sentencia entera, no solo esa columna.
+  const [cruda] = await db.asService<{ vertical: string }>(
+    "select vertical from clients where id = $1",
+    [s.clientA1],
+  );
+  assert.equal(cruda?.vertical, "restauracion", "vertical sigue en su valor original");
+});
+
+test("🔴 actualizarCliente ignora `vertical` aunque se lo cuelen en `cambios` (no está en CambiosCliente, y el trigger la respalda)", async () => {
+  // Mismo criterio que el test de `crearCliente usa el tenant_id del CONTEXTO...` más arriba: un
+  // handler HTTP real parsea JSON sin tipos, así que un `cambios` real podría traer una clave extra
+  // aunque `CambiosCliente` no la declare. El cast simula justo eso — la garantía tiene que ser de
+  // RUNTIME (qué columnas arma el `set`), no solo del compilador negándose a compilar el objeto.
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Vertical fija", vertical: "restauracion" },
+  );
+
+  const cambiosConFuga = { vertical: "correduria_seguros" } as unknown as CambiosCliente;
+
+  const ok = await clientes.actualizarCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    id,
+    cambiosConFuga,
+  );
+  // `actualizarCliente` recorre COLUMNAS_EDITABLES, que no incluye `vertical`: la clave colada nunca
+  // llega a formar parte del `set`. Con `cambiosConFuga` sin ninguna otra columna editable, `sets`
+  // queda vacío y el método devuelve `false` ANTES de tocar la base — ni siquiera llega a intentar
+  // un UPDATE (que de todos modos el trigger rechazaría si `vertical` estuviera en la lista).
+  assert.equal(ok, false, "cambiosConFuga no tiene ninguna columna editable: no hay nada que aplicar");
+
+  // No hay forma de leer `vertical` desde `ClienteCRM` todavía (no está en CLIENTE_CRM_COLS — ver el
+  // informe de esta task), así que se confirma por SQL crudo con el superusuario de infraestructura.
+  const [cruda] = await db.asService<{ vertical: string }>(
+    "select vertical from clients where id = $1",
+    [id],
+  );
+  assert.equal(cruda?.vertical, "restauracion", "vertical no cambió: la fuga no tuvo ningún efecto");
 });
