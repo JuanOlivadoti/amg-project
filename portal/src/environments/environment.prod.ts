@@ -26,14 +26,17 @@ export const environment = {
     // función real y el run avanza. Antes de esta fecha el botón habría dejado un run huérfano.
     lanzarResearch: true,
     /*
-     * Encendido el 2026-08-07, con una advertencia que hay que conocer antes de usarlo en una demo:
-     * SOLO hace algo en un run que NACIÓ DEL PIPELINE.
+     * Encendido el 2026-08-07. Actualizado tras el sub-proyecto 2 (desacoplar keyword research de
+     * creación de webs, 2026-08-26): el mecanismo de aprobación ya NO es un `paso.esperarEvento`
+     * dentro de un único workflow — son DOS funciones de Inngest separadas
+     * (`orchestrator/src/functions.ts`): `crearFuncionResearch`, disparada por `research/solicitado`,
+     * que deja el run en `pending_approval`; y `crearFuncionDecision`, disparada por
+     * `research/aprobado`, que SÍ es el listener que faltaba antes — relee la decisión bajo RLS
+     * (`kr_run_decisiones`) y la procesa (`workflowDecision`, `orchestrator/src/workflow.ts`).
      *
-     * La compuerta humana es un `paso.esperarEvento` DENTRO del workflow (`orchestrator/workflow.ts`),
-     * y el orquestador registra una única función, disparada por `research/solicitado`. No hay ningún
-     * listener suelto de `research/aprobado`. O sea que aprobar un run que se insertó directo en la
-     * base —el de `sembrarDemo`, sin ir más lejos— emite un evento que NO ESPERA NADIE: la API
-     * responde bien y no se publica nada.
+     * `POST /runs/:id/approve` ya no exige que el run "naciera del pipeline": cualquier run en
+     * `pending_approval` puede recibir una decisión, nacido del pipeline o sembrado a mano (ver
+     * `environment.prod.test.ts`, y el retiro de `RunSinWorkflowError` / el gate `tiene_workflow`).
      */
     aprobarRun: true,
     /** La opción "crear_posts" del selector de destino. `false` a propósito: el sub-proyecto de

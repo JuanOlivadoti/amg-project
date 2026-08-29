@@ -27,11 +27,15 @@ export function mostrarLanzarResearch(esEquipo: boolean, lanzarHabilitado: boole
  * orquestador detrás, y el texto "y publicar" prometía algo imposible— y se **encendió el
  * 2026-08-07**, cuando el orquestador se desplegó.
  *
- * **Lo que el flag encendido NO garantiza:** que el botón publique. Publica si el run **nació del
- * pipeline**, porque la compuerta es un `paso.esperarEvento` dentro del workflow y hay que tener un
- * workflow dormido que despertar. Sobre un run insertado directo en la base (el de `sembrarDemo`), el
- * evento no lo espera nadie y no se publica nada. Frank cruza la compuerta aprobando **páginas**, que
- * es solo escritura en la base y no depende de esto.
+ * **Actualizado tras el sub-proyecto 2** (desacoplar keyword research de creación de webs,
+ * 2026-08-26): el mecanismo ya NO es un único workflow con un `paso.esperarEvento` esperando un
+ * evento que un run sembrado nunca disparaba. Ahora son DOS funciones de Inngest
+ * (`orchestrator/src/functions.ts`): `crearFuncionResearch` deja el run en `pending_approval`, y
+ * `crearFuncionDecision` **escucha `research/aprobado`** — el listener que antes faltaba — y lo
+ * procesa releyendo la decisión bajo RLS (`workflowDecision`). Por eso el botón publica sobre
+ * CUALQUIER run en `pending_approval`, nacido del pipeline o sembrado a mano: ya no hace falta un
+ * workflow dormido esperando. Frank cruza la compuerta aprobando **páginas**, que sigue siendo solo
+ * escritura en la base y no depende de esto.
  */
 export function mostrarAprobarRun(esEquipo: boolean, aprobarHabilitado: boolean): boolean {
   return esEquipo && aprobarHabilitado;
