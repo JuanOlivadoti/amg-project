@@ -7,21 +7,54 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** iniciativa nueva — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.
-**En curso (2026-08-28): el sub-proyecto 2 quedó IMPLEMENTADO Y CERRADO.** Se decidió partir el
-pedido en **tres sub-proyectos independientes**, cada uno con su propio spec → plan → revisión
-externa (Codex), ejecutados en serie (uno se implementa antes de arrancar el diseño del
-siguiente — decisión explícita, no en paralelo):
+**En curso (2026-08-29): sub-proyecto 2 CERRADO y mergeado a `main` local. Sub-proyecto 1
+(multi-vertical de clientes) EN IMPLEMENTACIÓN, worktree `multivertical-clientes`.**
 
-1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **diseño y plan
-   completos, sin implementar.**
-2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28).**
+1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **en implementación, ver
+   detalle abajo.** Worktree: `C:\Users\oliva\Documents\projects\AMG\.claude\worktrees\multivertical-clientes`,
+   rama `worktree-multivertical-clientes`, rebasada sobre el `main` local real (no `origin/main`).
+2. **Desacoplar keyword research de creación de webs** — **implementado, cerrado y mergeado a `main`
+   local (2026-08-28/29).** `main` local queda 20 commits adelante de `origin/main` — el `git push`
+   está BLOQUEADO por el clasificador de auto mode del harness (pidió confirmación explícita del
+   usuario y la dio, pero el clasificador lo frena igual) — pendiente: el usuario agrega una regla de
+   permiso de Bash, o pushea él mismo desde la terminal.
 3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos, sin
    implementar.**
 
-Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
-ya cerrada). El sub-proyecto 2, que el orden fijado exigía primero, ya tiene código real. **Qué
-sigue:** implementar el 1 o el 3 (en cualquier orden entre ellos, pero siempre en serie) — ver la
-sección "Qué sigue" al final de este archivo para el detalle.
+**⚠️ Si esta sesión se compactó y estás retomando desde acá:** el ledger vivo de la skill
+`subagent-driven-development` para el sub-proyecto 1 está en
+`.superpowers/sdd/progress.md` **dentro del worktree** `multivertical-clientes` — ese archivo NO está
+en git (gitignoreado a propósito, es scratch de la skill), así que solo existe en el disco de esta
+máquina. Leelo primero, tiene el detalle task-por-task con hallazgos y commits. Este archivo
+(`progress/current.md`) da el resumen de alto nivel; el ledger da el detalle de ejecución.
+
+### Estado exacto del sub-proyecto 1 al momento de este checkpoint (2026-08-29)
+
+- **Task 1 (migración `clients.vertical`): COMPLETA.** Migración real `0029_clientes_vertical.sql`
+  (no `0027` — ya ocupados por el sub-proyecto 2). Incluye, tras un fix round del reviewer, un trigger
+  `clients_vertical_inmutable` (before update, Postgres) que hace la inmutabilidad real, no solo de
+  tipos — antes solo la garantizaba la ausencia de `vertical` en `CambiosCliente`/`COLUMNAS_EDITABLES`.
+  Commits `b1ed4d3..104d663`. Revisado, review clean tras 1 fix round.
+- **Task 2 (`app.nap_publico` por vertical): EN CURSO, sin commitear todavía.** El implementador
+  (`datos`) encontró que `db/src/fotos-publicas.test.ts:462` llama a `app.nap_publico($1::jsonb)` con
+  la firma vieja de 1 parámetro — fuera del alcance que le di originalmente, así que frenó (NEEDS_CONTEXT)
+  en vez de tocarlo sin permiso. Le amplié el alcance para ese archivo puntual (una línea, agregar el
+  segundo argumento `'restauracion'::app.vertical_cliente`) y quedé esperando su confirmación y commit
+  cuando se cortó esta sesión. **Próximo paso al retomar: revisar la respuesta del agente `a9fe2ec786c0e3bc0`
+  (si sigue vivo) o redespachar la Task 2 si no — generar el brief con
+  `task-brief docs/superpowers/plans/2026-08-26-multivertical-clientes.md 2`, ya existe en
+  `.superpowers/sdd/task-2-brief.md`.**
+- **Tasks 3-15: sin empezar.** Delegación por área ya fijada (ver nota del propio plan y el ledger):
+  Tasks 1-5 → `datos`; Tasks 6-10 → `render` (Task 9 también toca `orchestrator/`, coordinar con
+  `pipeline`); Task 11 → `datos`; Tasks 12-14 → `front`; Task 15 (verificación final + docs + commit) →
+  sesión principal, nunca un subagente.
+
+**Lección de esta sesión, aplicada esta vez desde el arranque:** `EnterWorktree(name=...)` ramifica
+desde `origin/main`, no desde el `main` local — antes de instalar/verificar en un worktree nuevo,
+comparar `git log -1 origin/main` contra `main` y `git rebase main` si divergen. También: revisar
+`git worktree list` al arrancar cualquier tarea larga, por si ya hay otra sesión trabajando el mismo
+plan en paralelo (pasó una vez con el sub-proyecto 2 — dos worktrees implementando lo mismo sin
+saberlo).
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
