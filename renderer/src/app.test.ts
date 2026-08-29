@@ -55,6 +55,7 @@ function story(titular = "La carta", over: Partial<Story> = {}): Story {
 const sitioA: Sitio = {
   clientId: "c-a",
   domain: "bellanapoli.es",
+  vertical: "restauracion",
   spaceId: "111",
   publicToken: "pub-111",
   previewToken: "prv-111",
@@ -65,6 +66,7 @@ const sitioA: Sitio = {
 const sitioB: Sitio = {
   clientId: "c-b",
   domain: "sushizen.es",
+  vertical: "restauracion",
   spaceId: "222",
   publicToken: "pub-222",
   previewToken: "prv-222",

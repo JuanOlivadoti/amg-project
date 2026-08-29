@@ -58,6 +58,27 @@ describe("PgSitios — el dominio como autorización (ADR-19)", () => {
     assert.equal(sitio?.clientId, s.clientB1);
   });
 
+  it("porDominio incluye vertical del cliente (bajo app_render, grant de columna real)", async () => {
+    // `porDominio` corre bajo `set local role app_render` (línea ~102 de sitios.ts), así que este
+    // test SÍ ejercita el grant de columna de la 0029 (`grant select (vertical) ... to app_render`)
+    // sin nada extra que instanciar: a diferencia de un test de PgClientes/store, acá no hace falta
+    // construir el resolver con otro rol — `sitios` ya es el mismo que usan los tests de arriba.
+    //
+    // INSERT, no UPDATE: `vertical` es inmutable tras el alta (trigger `clients_vertical_inmutable`,
+    // 0029) — un `update ... set vertical = 'correduria_seguros'` sobre un cliente ya sembrado
+    // rebotaría (ver el test homónimo en clientes.test.ts).
+    const [nuevo] = await db.asService<{ id: string }>(
+      `insert into clients (tenant_id, nombre, vertical, domain, storyblok_space_id)
+       values ($1, 'Correduria de prueba', 'correduria_seguros', 'segurospepe.es', '333')
+       returning id`,
+      [s.tenantA],
+    );
+
+    const sitio = await sitios.porDominio("segurospepe.es");
+    assert.equal(sitio?.clientId, nuevo?.id);
+    assert.equal(sitio?.vertical, "correduria_seguros");
+  });
+
   it("normaliza el host: el `Host` de un navegador no viene en forma canónica", async () => {
     const sitio = await sitios.porDominio("BellaNapoli.ES");
     assert.equal(sitio?.clientId, s.clientA1);
@@ -401,6 +422,7 @@ describe("MemSitios", () => {
       {
         clientId: "c1",
         domain: "bellanapoli.es",
+        vertical: "restauracion",
         spaceId: "111",
         publicToken: null,
         previewToken: null,
