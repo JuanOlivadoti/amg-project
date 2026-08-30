@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { SitioResolver, Sitio } from "db";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { renderBlogIndex, renderHome, renderMenu, renderStory } from "web-builder";
+import { catalogoSlug, renderBlogIndex, renderCatalogo, renderHome, renderStory } from "web-builder";
 import type { NavItem } from "web-builder";
 import { ErrorCda, type Cda } from "./cda.js";
 import { CacheRender } from "./cache.js";
@@ -60,8 +60,12 @@ export interface RendererDeps {
 /** El slug que se sirve cuando alguien entra a la raíz del dominio. */
 const SLUG_HOME = "home";
 
-/** Los otros dos slugs que el renderizador sabe sintetizar. Una story real con ese slug siempre gana. */
-const SLUG_MENU = "menu";
+/**
+ * El otro slug fijo que el renderizador sabe sintetizar. Una story real con ese slug siempre gana.
+ *
+ * El de catálogo NO es fijo: varía por vertical (`catalogoSlug(sitio.vertical)` — "menu" para
+ * restauración, "polizas" para correduría de seguros), así que no tiene una constante acá.
+ */
 const SLUG_BLOG = "blog";
 
 /**
@@ -376,25 +380,28 @@ export function createApp(deps: RendererDeps) {
           // solo cubrió `renderBlogIndex` (la síntesis) — una story REAL con ese slug se sirve por
           // acá, y sin este chequeo no sabía que el slug activo ya es el destino del enlace.
           const blogAquí = slug === SLUG_BLOG;
-          return conBridge(renderStory(story, perfil, sitio!.languageCode, hayBlog && !blogAquí));
+          return conBridge(
+            renderStory(story, perfil, sitio!.vertical, sitio!.languageCode, hayBlog && !blogAquí),
+          );
         }
 
         // Sin story: las tres páginas que el renderizador sabe sintetizar. Cualquier otro slug
         // ausente es un 404 legítimo.
+        const slugCatalogo = catalogoSlug(sitio!.vertical);
         if (slug === SLUG_HOME) {
           // El índice de la home son las landings de research: la home no se lista a sí misma, y los
           // artículos viven en /blog (si estuvieran también acá, cada post aparecería dos veces).
           const slugsBlog = new Set(blog.map((b) => b.slug));
           const indice = nav.filter(
-            (n) => n.slug !== SLUG_HOME && n.slug !== SLUG_BLOG && n.slug !== SLUG_MENU && !slugsBlog.has(n.slug),
+            (n) => n.slug !== SLUG_HOME && n.slug !== SLUG_BLOG && n.slug !== slugCatalogo && !slugsBlog.has(n.slug),
           );
-          return conBridge(renderHome(perfil, indice, sitio!.languageCode, hayBlog));
+          return conBridge(renderHome(perfil, indice, sitio!.vertical, sitio!.languageCode, hayBlog));
         }
-        if (slug === SLUG_MENU && perfil?.menu?.length) {
-          return conBridge(renderMenu(perfil, sitio!.languageCode, hayBlog));
+        if (slug === slugCatalogo && perfil?.menu?.length) {
+          return conBridge(renderCatalogo(perfil, sitio!.vertical, sitio!.languageCode, hayBlog));
         }
         if (slug === SLUG_BLOG && hayBlog) {
-          return conBridge(renderBlogIndex(perfil, blog, sitio!.languageCode));
+          return conBridge(renderBlogIndex(perfil, blog, sitio!.vertical, sitio!.languageCode));
         }
         return null;
       }

@@ -127,6 +127,7 @@ export interface EntradaResearch {
  */
 export interface DestinoPublicacion {
   clientId: string;
+  vertical: "restauracion" | "correduria_seguros";
   storyblokSpaceId: string | null;
   perfil: Record<string, unknown> | null;
 }
@@ -403,6 +404,7 @@ export async function workflowDecision(
     const briefValidado = deps.validarContrato(briefDesdeLaBase(actual, paginas));
     const resultados = await deps.publicar(briefValidado, {
       clientId: cliente.id,
+      vertical: cliente.vertical,
       storyblokSpaceId: cliente.storyblok_space_id,
       perfil: cliente.business_profile,
     });

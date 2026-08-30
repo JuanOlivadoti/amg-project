@@ -558,6 +558,40 @@ describe("renderizador — /menu y /blog", () => {
     assert.equal((await pedir(app, "/menu", "bellanapoli.es")).status, 404);
   });
 
+  it("resolver sirve /polizas (no /menu) para un cliente de vertical correduria_seguros", async () => {
+    // Task 9: el slug de catálogo lo decide `sitio.vertical`, no una constante fija. Un cliente de
+    // correduría sirve /polizas — y /menu, el slug de restauración, no debería resolver nada suyo.
+    const sitioSeguros: Sitio = {
+      ...sitioA,
+      vertical: "correduria_seguros",
+      businessProfile: {
+        name: "Correduría Segura",
+        menu: [{ name: "Seguro de hogar", price: "12 €/mes" }],
+      },
+    };
+    const { app } = montar({ sitios: new MemSitios([sitioSeguros]) });
+
+    const res = await pedir(app, "/polizas", "bellanapoli.es");
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /Pólizas y coberturas/);
+
+    assert.equal((await pedir(app, "/menu", "bellanapoli.es")).status, 404, "/menu no es SU slug de catálogo");
+  });
+
+  it("resolver sirve /menu (no /polizas) para un cliente de vertical restauracion — sin regresión", async () => {
+    const { app } = montar();
+
+    const res = await pedir(app, "/menu", "bellanapoli.es");
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /Golden Burger/);
+
+    assert.equal(
+      (await pedir(app, "/polizas", "bellanapoli.es")).status,
+      404,
+      "/polizas no es el slug de catálogo de un restaurante",
+    );
+  });
+
   it("🔴 sirve /blog con los artículos del space", async () => {
     const { app, cda } = montar();
     cda.ponerBlog("pub-111", "published", [{ slug: "miami", name: "Premiados en Miami" }]);

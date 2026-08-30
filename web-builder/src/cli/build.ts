@@ -6,11 +6,33 @@ import { renderStory } from "../render/html.js";
 import { getPublisher } from "../publish/publisher.js";
 import { applyProse, loadProfile } from "../enrich.js";
 import { parseBrief } from "../contract.js";
-import type { KrBrief } from "../types.js";
+import type { KrBrief, Vertical } from "../types.js";
+
+/** Los valores válidos del flag `--vertical`. Un valor fuera de acá no puede llegar a `juegoDe` sin control. */
+const VERTICALES_VALIDAS = new Set<Vertical>(["restauracion", "correduria_seguros"]);
+
+/**
+ * Lee y valida el flag `--vertical=<valor>`.
+ *
+ * El CLI arma `profile` desde un JSON en disco (no desde la base) — no tiene ningún `ClientRow`, así
+ * que la vertical no puede salir de ahí. Sumarla como campo del `business-profile.json` mezclaría un
+ * atributo de `clients` con el perfil, así que se lee de un flag propio.
+ *
+ * Recibe `argv` como parámetro (no lee `process.argv` directamente) para ser testeable, mismo criterio
+ * que cualquier función pura del proyecto.
+ */
+export function leerVertical(argv: string[]): Vertical {
+  const raw = argv.find((a) => a.startsWith("--vertical="))?.split("=")[1];
+  if (raw === undefined) return "restauracion"; // default explícito, herramienta de dev local
+  if (!VERTICALES_VALIDAS.has(raw as Vertical)) {
+    throw new Error(`--vertical inválida: "${raw}". Valores válidos: ${[...VERTICALES_VALIDAS].join(", ")}`);
+  }
+  return raw as Vertical;
+}
 
 /**
  * PoC del Módulo 1: brief SEO (M2) → stories de Storyblok + preview HTML.
- * Uso: npm run build:web [ruta/al/brief.json]
+ * Uso: npm run build:web [ruta/al/brief.json] [--vertical=restauracion|correduria_seguros]
  */
 async function main() {
   const briefPath = resolve(process.argv[2] ?? config.briefPath);
@@ -92,14 +114,17 @@ async function main() {
   const profile = await loadProfile(config.businessProfilePath);
   console.log(`  [perfil] ${profile ? `cargado: ${profile.name}` : "sin perfil de negocio (JSON-LD básico)"}`);
 
+  // El brief del M2 no lleva `vertical` (es una propiedad del cliente/sitio, no del research): esta
+  // CLI es el PoC de un solo módulo y no tiene acceso a esa tabla, así que se lee de un flag propio,
+  // validado (`leerVertical`) — nunca casteado a ciegas desde `process.argv`.
+  const vertical = leerVertical(process.argv);
+  console.log(`  [vertical] ${vertical}`);
+
   const filled = await applyProse(stories, brief, profile);
   console.log(`  [prose] ${filled}/${stories.length} página(s) redactada(s) (${config.prose.mode})`);
 
-  // El brief del M2 no lleva `vertical` (es una propiedad del cliente/sitio, no del research): esta
-  // CLI es el PoC de un solo módulo y no tiene acceso a esa tabla, así que usa "restauracion", el
-  // vertical de todo cliente hasta esta entrega — igual criterio que los fixtures de test.
   const html = new Map(
-    stories.map((s) => [s.slug, renderStory(s, profile, "restauracion", brief.market.language_code)]),
+    stories.map((s) => [s.slug, renderStory(s, profile, vertical, brief.market.language_code)]),
   );
 
   const results = await getPublisher().publish(stories, html);
@@ -161,7 +186,12 @@ function escAttr(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 }
 
-main().catch((e) => {
-  console.error(`\n✖ ${(e as Error).message}`);
-  process.exit(1);
-});
+// Solo corre cuando este archivo ES el entrypoint (`tsx src/cli/build.ts`), no cuando un test lo
+// importa para ejercitar `leerVertical` — mismo criterio que `render/paridad/capturar.ts`.
+const esEntrada = process.argv[1]?.endsWith("build.ts") ?? false;
+if (esEntrada) {
+  main().catch((e) => {
+    console.error(`\n✖ ${(e as Error).message}`);
+    process.exit(1);
+  });
+}
