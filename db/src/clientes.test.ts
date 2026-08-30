@@ -760,6 +760,73 @@ test("🔴 actualizarMenu con rol cliente (duenoA1) no escribe — client_write/
   assert.deepEqual(menu, { menu: [{ name: "Margherita" }], menu_categorias: [] }, "el menú no cambió");
 });
 
+// ---------------------------------------------------------------- perfil de seguros (editor del portal)
+//
+// Mismo mecanismo que `menu`/`menu_categorias` arriba (`obtenerPerfilSeguros`/`actualizarPerfilSeguros`
+// leen/escriben SOLO la clave `seguros` de `business_profile`), agregado junto con `vertical` (0029)
+// porque hasta esta etapa no existía ningún camino de ESCRITURA para `business_profile.seguros` en
+// todo el repo — el editor del portal (Task 14) lo necesita para poder guardar algo.
+
+test("obtenerPerfilSeguros devuelve null si el cliente no tiene la clave cargada", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Sin seguros", vertical: "correduria_seguros" },
+  );
+
+  const seguros = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
+
+  assert.equal(seguros, null);
+});
+
+test("actualizarPerfilSeguros reemplaza SOLO seguros, preserva el resto de business_profile", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Corredores X", vertical: "correduria_seguros" },
+  );
+  // Precondición: el cliente ya tiene otro campo de perfil (name) que no debe perderse.
+  await db.asService("update clients set business_profile = $1::jsonb where id = $2", [
+    JSON.stringify({ name: "Corredores X" }),
+    id,
+  ]);
+
+  const ok = await clientes.actualizarPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    numeroLicencia: "J-1479",
+    anosExperiencia: 35,
+    redAfiliacion: "E2K",
+  });
+  assert.equal(ok, true);
+
+  const [fila] = await db.asService<{ business_profile: Record<string, unknown> }>(
+    "select business_profile from clients where id = $1",
+    [id],
+  );
+  assert.equal(fila?.business_profile["name"], "Corredores X", "el resto del perfil sobrevive");
+  assert.deepEqual(fila?.business_profile["seguros"], {
+    numeroLicencia: "J-1479",
+    anosExperiencia: 35,
+    redAfiliacion: "E2K",
+  });
+
+  // Y el propio método lo lee de vuelta igual (round-trip completo, no solo la fila cruda).
+  const seguros = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(seguros, { numeroLicencia: "J-1479", anosExperiencia: 35, redAfiliacion: "E2K" });
+});
+
+test("actualizarPerfilSeguros de un cliente de OTRO tenant no afecta ninguna fila", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo de A (seguros)", vertical: "correduria_seguros" },
+  );
+
+  const ok = await clientes.actualizarPerfilSeguros({ tenantId: s.tenantB, userId: s.equipoB }, id, {
+    numeroLicencia: "Intento de fuga",
+  });
+  assert.equal(ok, false);
+
+  const seguros = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.equal(seguros, null, "el cliente de A no cambió");
+});
+
 // ================================================================== 0029: clients.vertical
 //
 // El rubro del cliente (restauración | correduría de seguros). NOT NULL sin default, backfill

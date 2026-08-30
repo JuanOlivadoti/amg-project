@@ -367,6 +367,54 @@ export class PgClientes {
     });
   }
 
+  /**
+   * La extensión de perfil de seguros (`numeroLicencia`/`anosExperiencia`/`redAfiliacion`), tal como
+   * vive dentro de `business_profile.seguros` (validada por `perfilSegurosSchema` en
+   * `web-builder/contract` ANTES de llegar acá — mismo criterio que `actualizarMenu` con
+   * `menuPatchSchema`: acá no se vuelve a validar, solo se lee/escribe).
+   *
+   * `null` si el cliente no tiene la clave cargada — nunca un objeto vacío a medias, mismo criterio
+   * que `obtenerCliente`/`obtenerMenu` (fila inexistente/ajena también da `null`, no hay forma de
+   * distinguir los dos casos desde acá, y no hace falta: los dos son "no hay nada que mostrar").
+   */
+  async obtenerPerfilSeguros(
+    ctx: TenantContext,
+    id: string,
+  ): Promise<Record<string, unknown> | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ seguros: Record<string, unknown> | null }>(
+        `select business_profile -> 'seguros' as seguros from clients where id = $1`,
+        [id],
+      );
+      if (rows.length === 0) return null;
+      return rows[0]!.seguros ?? null;
+    });
+  }
+
+  /**
+   * Reemplaza SOLO la clave `seguros` dentro de `business_profile`, sin tocar ninguna otra clave del
+   * perfil (`menu`, `brand`, `fotos`, etc.) — mismo mecanismo que `actualizarMenu`, incluido el
+   * `coalesce` para el cliente recién creado cuya columna `business_profile` es NULL (sin él, el `||`
+   * de jsonb sobre NULL da NULL y el UPDATE "funcionaría" sin guardar nada).
+   */
+  async actualizarPerfilSeguros(
+    ctx: TenantContext,
+    id: string,
+    datos: Record<string, unknown>,
+  ): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update clients
+         set business_profile = coalesce(business_profile, '{}'::jsonb)
+           || jsonb_build_object('seguros', $1::jsonb)
+         where id = $2
+         returning id`,
+        [JSON.stringify(datos), id],
+      );
+      return rows.length > 0;
+    });
+  }
+
   /** Archiva el cliente (`archived_at = now()`). `false` si el id no matchea (otro tenant o no
    *  existe) — mismo patrón de retorno que `actualizarCliente`. */
   async archivarCliente(ctx: TenantContext, id: string): Promise<boolean> {
