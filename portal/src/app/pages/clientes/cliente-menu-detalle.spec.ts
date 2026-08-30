@@ -1,9 +1,34 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
-import { ClienteMenuDetallePage } from './cliente-menu-detalle';
+import { signal } from '@angular/core';
+import { ClienteMenuDetallePage, platoDesdeFormulario } from './cliente-menu-detalle';
+import type { FormularioPlato } from './cliente-menu-detalle';
 import { ApiService } from '../../services/api';
-import type { MenuCarta } from '../../core/models';
+import { ClientesService } from '../../services/clientes';
+import type { Alergeno, ClienteAgencia, EtiquetaDietetica, MenuCarta, Vertical } from '../../core/models';
+
+function clienteDePrueba(overrides: Partial<ClienteAgencia> = {}): ClienteAgencia {
+  return {
+    id: 'c1',
+    nombre: 'Pizza Nonna',
+    vertical: 'restauracion',
+    tipo: 'empresa',
+    industria: 'restauración',
+    etiquetas: null,
+    nivel_actividad: null,
+    estado_contrato: null,
+    contrato_vence_en: null,
+    score: null,
+    asignado_a: null,
+    contacto: null,
+    origen: null,
+    google_conectado_en: null,
+    archived_at: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 function cartaDePrueba(overrides: Partial<MenuCarta> = {}): MenuCarta {
   return {
@@ -33,11 +58,18 @@ function crear(
     obtenerMenu?: jasmine.Spy;
     guardarMenu?: jasmine.Spy;
     params?: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+    /** `undefined` = `clientesService.cliente()` queda en `null`, como cuando la ficha todavía no
+     *  terminó de cargar. Por defecto un cliente de restauración, para no cambiar el comportamiento
+     *  de ningún test escrito antes de esta task. */
+    vertical?: Vertical;
   } = {},
 ) {
   const obtenerMenuSpy = opciones.obtenerMenu ?? jasmine.createSpy('obtenerMenu').and.resolveTo(cartaDePrueba());
   const guardarMenuSpy = opciones.guardarMenu ?? jasmine.createSpy('guardarMenu').and.resolveTo(undefined);
   const params = opciones.params ?? new BehaviorSubject(convertToParamMap({ id: 'c1', index: '0' }));
+  const clienteActual = signal<ClienteAgencia | null>(
+    opciones.vertical === undefined ? clienteDePrueba() : clienteDePrueba({ vertical: opciones.vertical }),
+  );
 
   TestBed.configureTestingModule({
     imports: [ClienteMenuDetallePage],
@@ -45,10 +77,11 @@ function crear(
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { paramMap: params.asObservable() } },
       { provide: ApiService, useValue: { obtenerMenu: obtenerMenuSpy, guardarMenu: guardarMenuSpy } },
+      { provide: ClientesService, useValue: { cliente: clienteActual } },
     ],
   });
   const fixture = TestBed.createComponent(ClienteMenuDetallePage);
-  return { fixture, obtenerMenuSpy, guardarMenuSpy, params };
+  return { fixture, obtenerMenuSpy, guardarMenuSpy, params, clienteActual };
 }
 
 async function estabilizar(fixture: ComponentFixture<ClienteMenuDetallePage>): Promise<HTMLElement> {
@@ -255,5 +288,89 @@ describe('ClienteMenuDetallePage', () => {
     await estabilizar(fixture);
 
     expect(el.textContent).toContain('menu.0.name: Requerido');
+  });
+
+  it('oculta los controles de video/alergenos/nutricion para un cliente de seguros', async () => {
+    const { fixture, clienteActual } = crear({ vertical: 'restauracion' });
+    const el = await estabilizar(fixture);
+    // Nace visible para restauración (chequeo previo, no es el foco de este test): confirma que el
+    // `set` de más abajo de verdad cambia algo, en vez de pasar en verde porque nunca estuvo.
+    expect(el.querySelector('[data-testid="campo-alergenos"]')).toBeTruthy();
+
+    clienteActual.set(clienteDePrueba({ vertical: 'correduria_seguros' }));
+    await estabilizar(fixture);
+
+    expect(el.querySelector('[data-testid="campo-alergenos"]')).toBeFalsy();
+    expect(el.querySelector('[data-testid="campo-video"]')).toBeFalsy();
+    expect(el.querySelector('[data-testid="campo-etiquetas"]')).toBeFalsy();
+    expect(el.querySelector('[data-testid="campo-nutricion"]')).toBeFalsy();
+  });
+
+  it('muestra los controles de restauración para un cliente de restauración — sin regresión', async () => {
+    const { fixture } = crear({ vertical: 'restauracion' });
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('[data-testid="campo-alergenos"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="campo-video"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="campo-etiquetas"]')).toBeTruthy();
+    expect(el.querySelector('[data-testid="campo-nutricion"]')).toBeTruthy();
+  });
+});
+
+/** Un `FormularioPlato` con TODOS los campos de restauración cargados — simula un ítem que se guardó
+ *  cuando el cliente todavía no era de seguros (o que llegó por otra vía) y ahora se reabre. Es
+ *  justo el escenario que `platoDesdeFormulario` tiene que defender: los datos siguen en el
+ *  formulario aunque el template ya no muestre los controles que los cargaron. */
+function formularioConTodosLosCampos(): FormularioPlato {
+  return {
+    name: 'Margherita',
+    description: 'Tomate San Marzano, mozzarella, albahaca.',
+    category: 'Pizzas',
+    nota: 'Recomendado',
+    precios: [{ etiqueta: 'Media', importe: '9,00 €', comensales: '1 persona' }],
+    fotoSrc: 'https://a.storyblok.com/f/1/margherita.jpg',
+    fotoAlt: 'Margherita',
+    videoSrc: 'https://a.storyblok.com/f/1/margherita.mp4',
+    videoPosterSrc: 'https://a.storyblok.com/f/1/poster.jpg',
+    videoPosterAlt: 'Margherita',
+    alergenos: new Set<Alergeno>(['gluten', 'lacteos']),
+    etiquetas: new Set<EtiquetaDietetica>(['vegetariano']),
+    calorias: '620',
+    proteinasG: '26',
+    carbohidratosG: '80',
+    grasasG: '18',
+  };
+}
+
+describe('platoDesdeFormulario', () => {
+  it('🔴 no incluye campos de restauracion para un cliente de seguros, aunque el formulario los traiga cargados', () => {
+    // El formulario trae TODOS los campos de restauración, simulando datos viejos — es la trampa que
+    // este test defiende: sin el `if (esSeguros) return plato;` de `platoDesdeFormulario`, un plato
+    // legacy o un formulario que sobrevivió un cambio de vertical se guardaría con video/alérgenos/
+    // etiquetas/nutrición aunque el cliente ya sea de seguros.
+    const form = formularioConTodosLosCampos();
+    const plato = platoDesdeFormulario(form, true);
+
+    expect(plato.video).toBeUndefined();
+    expect(plato.alergenos).toBeUndefined();
+    expect(plato.etiquetas).toBeUndefined();
+    expect(plato.nutricion).toBeUndefined();
+    // Los campos base (los que sí aplican a una póliza) sobreviven: `esSeguros` no vacía el plato.
+    expect(plato.name).toBe('Margherita');
+    expect(plato.description).toBe('Tomate San Marzano, mozzarella, albahaca.');
+    expect(plato.precios).toEqual([{ etiqueta: 'Media', importe: '9,00 €', comensales: '1 persona' }]);
+  });
+
+  it('sin regresión: SÍ incluye video/alergenos/etiquetas/nutricion para un cliente de restauración', () => {
+    const form = formularioConTodosLosCampos();
+    const plato = platoDesdeFormulario(form, false);
+
+    expect(plato.video).toEqual({
+      src: 'https://a.storyblok.com/f/1/margherita.mp4',
+      poster: { src: 'https://a.storyblok.com/f/1/poster.jpg', alt: 'Margherita' },
+    });
+    expect(plato.alergenos).toEqual(['gluten', 'lacteos']);
+    expect(plato.etiquetas).toEqual(['vegetariano']);
+    expect(plato.nutricion).toEqual({ calorias: 620, proteinas_g: 26, carbohidratos_g: 80, grasas_g: 18 });
   });
 });

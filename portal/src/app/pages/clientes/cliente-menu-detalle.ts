@@ -1,8 +1,9 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
+import { ClientesService } from '../../services/clientes';
 import type { ApiError } from '../../core/api-core';
 import type { Alergeno, EtiquetaDietetica, MenuCategoria, MenuItem, PrecioMenu } from '../../core/models';
 import { ALERGENOS, ETIQUETA_ALERGENO, ETIQUETAS_DIETETICAS, ETIQUETA_DIETETICA_LABEL } from '../../core/menu-taxonomia';
@@ -18,8 +19,9 @@ interface PrecioForm {
 }
 
 /** El formulario completo de un plato. Todo string/boolean: la conversión a `MenuItem` (recorte de
- *  vacíos, parseo de números) pasa por `platoDesdeFormulario()` recién al guardar. */
-interface FormularioPlato {
+ *  vacíos, parseo de números) pasa por `platoDesdeFormulario()` recién al guardar. Exportado para que
+ *  el test pueda construir un formulario "con datos viejos" sin pasar por el componente entero. */
+export interface FormularioPlato {
   name: string;
   description: string;
   category: string;
@@ -97,9 +99,19 @@ function formularioDesde(item: MenuItem): FormularioPlato {
   };
 }
 
-/** El inverso de `formularioDesde`: recorta filas de precio vacías y campos opcionales sin valor —
- *  nunca manda `foto`/`video`/`nutricion` con todas sus claves vacías. */
-function platoDesdeFormulario(f: FormularioPlato): MenuItem {
+/**
+ * El inverso de `formularioDesde`: recorta filas de precio vacías y campos opcionales sin valor —
+ * nunca manda `foto`/`video`/`nutricion` con todas sus claves vacías.
+ *
+ * **`esSeguros` no es cosmético.** No alcanza con ocultar los controles de video/alérgenos/
+ * etiquetas/nutrición en el template (más abajo, `@if (!esSeguros())`): un `FormularioPlato` puede
+ * traer esos campos cargados de ANTES —el mismo objeto no se limpia solo al ocultar sus inputs, y
+ * nada impide que llegue por otra vía (un `formularioDesde` sobre un plato que ya los tenía guardados
+ * de cuando el cliente todavía no era de seguros, por ejemplo)— así que la fuente de verdad de qué
+ * persiste es este `if`, no el DOM. Mismo criterio de defensa en profundidad que Task 8 aplicó del
+ * lado del render (`cartaCategorias` en `web-builder`).
+ */
+export function platoDesdeFormulario(f: FormularioPlato, esSeguros: boolean): MenuItem {
   const precios: PrecioMenu[] = f.precios
     .filter((p) => p.etiqueta.trim() !== '' && p.importe.trim() !== '')
     .map((p) => ({
@@ -107,6 +119,30 @@ function platoDesdeFormulario(f: FormularioPlato): MenuItem {
       importe: p.importe.trim(),
       ...(p.comensales.trim() ? { comensales: p.comensales.trim() } : {}),
     }));
+
+  const plato: MenuItem = { name: f.name.trim() };
+  if (f.description.trim()) plato.description = f.description.trim();
+  if (f.category.trim()) plato.category = f.category.trim();
+  if (f.nota.trim()) plato.nota = f.nota.trim();
+  if (precios.length > 0) plato.precios = precios;
+  if (f.fotoSrc.trim()) {
+    plato.foto = { src: f.fotoSrc.trim(), ...(f.fotoAlt.trim() ? { alt: f.fotoAlt.trim() } : {}) };
+  }
+
+  // Sin esto, cualquiera sea el formulario: para un cliente de seguros una "póliza" no tiene video,
+  // alérgenos, etiquetas dietéticas ni nutrición — no son campos que tenga sentido persistir.
+  if (esSeguros) return plato;
+
+  if (f.videoSrc.trim()) {
+    plato.video = {
+      src: f.videoSrc.trim(),
+      ...(f.videoPosterSrc.trim()
+        ? { poster: { src: f.videoPosterSrc.trim(), ...(f.videoPosterAlt.trim() ? { alt: f.videoPosterAlt.trim() } : {}) } }
+        : {}),
+    };
+  }
+  if (f.alergenos.size > 0) plato.alergenos = [...f.alergenos];
+  if (f.etiquetas.size > 0) plato.etiquetas = [...f.etiquetas];
 
   const numero = (s: string): number | undefined => {
     const n = Number(s);
@@ -119,25 +155,6 @@ function platoDesdeFormulario(f: FormularioPlato): MenuItem {
     grasas_g: numero(f.grasasG),
   };
   const hayNutricion = Object.values(nutricion).some((v) => v !== undefined);
-
-  const plato: MenuItem = { name: f.name.trim() };
-  if (f.description.trim()) plato.description = f.description.trim();
-  if (f.category.trim()) plato.category = f.category.trim();
-  if (f.nota.trim()) plato.nota = f.nota.trim();
-  if (precios.length > 0) plato.precios = precios;
-  if (f.fotoSrc.trim()) {
-    plato.foto = { src: f.fotoSrc.trim(), ...(f.fotoAlt.trim() ? { alt: f.fotoAlt.trim() } : {}) };
-  }
-  if (f.videoSrc.trim()) {
-    plato.video = {
-      src: f.videoSrc.trim(),
-      ...(f.videoPosterSrc.trim()
-        ? { poster: { src: f.videoPosterSrc.trim(), ...(f.videoPosterAlt.trim() ? { alt: f.videoPosterAlt.trim() } : {}) } }
-        : {}),
-    };
-  }
-  if (f.alergenos.size > 0) plato.alergenos = [...f.alergenos];
-  if (f.etiquetas.size > 0) plato.etiquetas = [...f.etiquetas];
   if (hayNutricion) plato.nutricion = nutricion;
 
   return plato;
@@ -285,130 +302,137 @@ function platoDesdeFormulario(f: FormularioPlato): MenuItem {
             </div>
           </div>
 
-          <div>
-            <label for="videoSrc" class="block text-xs text-texto-tenue">Video (URL)</label>
-            <input
-              id="videoSrc"
-              name="videoSrc"
-              [ngModel]="formulario().videoSrc"
-              (ngModelChange)="actualizar({ videoSrc: $event })"
-              class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
-            />
-          </div>
-
-          @if (formulario().videoSrc.trim()) {
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label for="videoPosterSrc" class="block text-xs text-texto-tenue">Poster del video (URL)</label>
-                <input
-                  id="videoPosterSrc"
-                  name="videoPosterSrc"
-                  [ngModel]="formulario().videoPosterSrc"
-                  (ngModelChange)="actualizar({ videoPosterSrc: $event })"
-                  class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label for="videoPosterAlt" class="block text-xs text-texto-tenue">Texto alternativo del poster</label>
-                <input
-                  id="videoPosterAlt"
-                  name="videoPosterAlt"
-                  [ngModel]="formulario().videoPosterAlt"
-                  (ngModelChange)="actualizar({ videoPosterAlt: $event })"
-                  class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
-                />
-              </div>
+          <!--
+            Video/alérgenos/etiquetas/nutrición no aplican a una "póliza" de correduría de seguros —
+            son campos del menú de un restaurante. Ocultarlos acá es UX (Task 13); la garantía real de
+            que no sobreviven un guardado la impone platoDesdeFormulario(), no este bloque.
+          -->
+          @if (!esSeguros()) {
+            <div data-testid="campo-video">
+              <label for="videoSrc" class="block text-xs text-texto-tenue">Video (URL)</label>
+              <input
+                id="videoSrc"
+                name="videoSrc"
+                [ngModel]="formulario().videoSrc"
+                (ngModelChange)="actualizar({ videoSrc: $event })"
+                class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+              />
             </div>
-            @if (!formulario().videoPosterSrc.trim()) {
-              <p class="text-xs text-texto-tenue">
-                Advertencia: sin imagen de portada, el video no se va a mostrar en el sitio público.
-              </p>
+
+            @if (formulario().videoSrc.trim()) {
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label for="videoPosterSrc" class="block text-xs text-texto-tenue">Poster del video (URL)</label>
+                  <input
+                    id="videoPosterSrc"
+                    name="videoPosterSrc"
+                    [ngModel]="formulario().videoPosterSrc"
+                    (ngModelChange)="actualizar({ videoPosterSrc: $event })"
+                    class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label for="videoPosterAlt" class="block text-xs text-texto-tenue">Texto alternativo del poster</label>
+                  <input
+                    id="videoPosterAlt"
+                    name="videoPosterAlt"
+                    [ngModel]="formulario().videoPosterAlt"
+                    (ngModelChange)="actualizar({ videoPosterAlt: $event })"
+                    class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              @if (!formulario().videoPosterSrc.trim()) {
+                <p class="text-xs text-texto-tenue">
+                  Advertencia: sin imagen de portada, el video no se va a mostrar en el sitio público.
+                </p>
+              }
             }
+
+            <fieldset class="space-y-2" data-testid="campo-alergenos">
+              <legend class="text-xs text-texto-tenue">Alérgenos</legend>
+              <div class="grid grid-cols-3 gap-2">
+                @for (a of ALERGENOS; track a) {
+                  <label class="flex items-center gap-2 text-sm text-texto">
+                    <input
+                      type="checkbox"
+                      [name]="'alergeno-' + a"
+                      [attr.name]="'alergeno-' + a"
+                      [ngModel]="formulario().alergenos.has(a)"
+                      (ngModelChange)="alternarAlergeno(a, $event)"
+                    />
+                    {{ ETIQUETA_ALERGENO[a] }}
+                  </label>
+                }
+              </div>
+            </fieldset>
+
+            <fieldset class="space-y-2" data-testid="campo-etiquetas">
+              <legend class="text-xs text-texto-tenue">Etiquetas dietéticas</legend>
+              <div class="grid grid-cols-3 gap-2">
+                @for (e of ETIQUETAS_DIETETICAS; track e) {
+                  <label class="flex items-center gap-2 text-sm text-texto">
+                    <input
+                      type="checkbox"
+                      [name]="'etiqueta-' + e"
+                      [attr.name]="'etiqueta-' + e"
+                      [ngModel]="formulario().etiquetas.has(e)"
+                      (ngModelChange)="alternarEtiqueta(e, $event)"
+                    />
+                    {{ ETIQUETA_DIETETICA_LABEL[e] }}
+                  </label>
+                }
+              </div>
+            </fieldset>
+
+            <fieldset class="grid grid-cols-4 gap-2" data-testid="campo-nutricion">
+              <legend class="text-xs text-texto-tenue col-span-4">Nutrición (ración de referencia)</legend>
+              <div>
+                <label for="nutricionCalorias" class="block text-xs text-texto-tenue">Calorías</label>
+                <input
+                  id="nutricionCalorias"
+                  name="nutricionCalorias"
+                  type="number"
+                  [ngModel]="formulario().calorias"
+                  (ngModelChange)="actualizarNumero('calorias', $event)"
+                  class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label for="nutricionProteinas" class="block text-xs text-texto-tenue">Proteínas (g)</label>
+                <input
+                  id="nutricionProteinas"
+                  name="nutricionProteinas"
+                  type="number"
+                  [ngModel]="formulario().proteinasG"
+                  (ngModelChange)="actualizarNumero('proteinasG', $event)"
+                  class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label for="nutricionCarbohidratos" class="block text-xs text-texto-tenue">Carbohidratos (g)</label>
+                <input
+                  id="nutricionCarbohidratos"
+                  name="nutricionCarbohidratos"
+                  type="number"
+                  [ngModel]="formulario().carbohidratosG"
+                  (ngModelChange)="actualizarNumero('carbohidratosG', $event)"
+                  class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label for="nutricionGrasas" class="block text-xs text-texto-tenue">Grasas (g)</label>
+                <input
+                  id="nutricionGrasas"
+                  name="nutricionGrasas"
+                  type="number"
+                  [ngModel]="formulario().grasasG"
+                  (ngModelChange)="actualizarNumero('grasasG', $event)"
+                  class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+                />
+              </div>
+            </fieldset>
           }
-
-          <fieldset class="space-y-2">
-            <legend class="text-xs text-texto-tenue">Alérgenos</legend>
-            <div class="grid grid-cols-3 gap-2">
-              @for (a of ALERGENOS; track a) {
-                <label class="flex items-center gap-2 text-sm text-texto">
-                  <input
-                    type="checkbox"
-                    [name]="'alergeno-' + a"
-                    [attr.name]="'alergeno-' + a"
-                    [ngModel]="formulario().alergenos.has(a)"
-                    (ngModelChange)="alternarAlergeno(a, $event)"
-                  />
-                  {{ ETIQUETA_ALERGENO[a] }}
-                </label>
-              }
-            </div>
-          </fieldset>
-
-          <fieldset class="space-y-2">
-            <legend class="text-xs text-texto-tenue">Etiquetas dietéticas</legend>
-            <div class="grid grid-cols-3 gap-2">
-              @for (e of ETIQUETAS_DIETETICAS; track e) {
-                <label class="flex items-center gap-2 text-sm text-texto">
-                  <input
-                    type="checkbox"
-                    [name]="'etiqueta-' + e"
-                    [attr.name]="'etiqueta-' + e"
-                    [ngModel]="formulario().etiquetas.has(e)"
-                    (ngModelChange)="alternarEtiqueta(e, $event)"
-                  />
-                  {{ ETIQUETA_DIETETICA_LABEL[e] }}
-                </label>
-              }
-            </div>
-          </fieldset>
-
-          <fieldset class="grid grid-cols-4 gap-2">
-            <legend class="text-xs text-texto-tenue col-span-4">Nutrición (ración de referencia)</legend>
-            <div>
-              <label for="nutricionCalorias" class="block text-xs text-texto-tenue">Calorías</label>
-              <input
-                id="nutricionCalorias"
-                name="nutricionCalorias"
-                type="number"
-                [ngModel]="formulario().calorias"
-                (ngModelChange)="actualizarNumero('calorias', $event)"
-                class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label for="nutricionProteinas" class="block text-xs text-texto-tenue">Proteínas (g)</label>
-              <input
-                id="nutricionProteinas"
-                name="nutricionProteinas"
-                type="number"
-                [ngModel]="formulario().proteinasG"
-                (ngModelChange)="actualizarNumero('proteinasG', $event)"
-                class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label for="nutricionCarbohidratos" class="block text-xs text-texto-tenue">Carbohidratos (g)</label>
-              <input
-                id="nutricionCarbohidratos"
-                name="nutricionCarbohidratos"
-                type="number"
-                [ngModel]="formulario().carbohidratosG"
-                (ngModelChange)="actualizarNumero('carbohidratosG', $event)"
-                class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label for="nutricionGrasas" class="block text-xs text-texto-tenue">Grasas (g)</label>
-              <input
-                id="nutricionGrasas"
-                name="nutricionGrasas"
-                type="number"
-                [ngModel]="formulario().grasasG"
-                (ngModelChange)="actualizarNumero('grasasG', $event)"
-                class="w-full rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
-              />
-            </div>
-          </fieldset>
 
           <button type="submit" class="cta" [disabled]="guardando()">
             {{ guardando() ? 'Guardando…' : 'Guardar' }}
@@ -422,6 +446,7 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly clientesService = inject(ClientesService);
 
   private readonly vigencia = new Vigencia();
 
@@ -430,6 +455,15 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
   readonly ETIQUETAS_DIETETICAS = ETIQUETAS_DIETETICAS;
   readonly ETIQUETA_DIETETICA_LABEL = ETIQUETA_DIETETICA_LABEL;
   readonly maxPrecios = MAX_PRECIOS;
+
+  /** `true` para un cliente de correduría de seguros: oculta video/alérgenos/etiquetas/nutrición en
+   *  el template (más abajo) Y evita que `guardar()` los persista — ver el docblock de
+   *  `platoDesdeFormulario()`. Lee del mismo `ClientesService` que ya popula `ClienteFichaComponent`
+   *  al cargar la ficha (el shell padre de esta pantalla), así que para cuando este componente monta
+   *  el dato ya está disponible. */
+  protected readonly esSeguros = computed(
+    () => this.clientesService.cliente()?.vertical === 'correduria_seguros',
+  );
 
   private clienteId = '';
   private indice = -1;
@@ -554,7 +588,7 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
       return;
     }
 
-    const plato = platoDesdeFormulario(this.formulario());
+    const plato = platoDesdeFormulario(this.formulario(), this.esSeguros());
     const nuevoMenu = this.esNuevo()
       ? [...this.menuCompleto, plato]
       : this.menuCompleto.map((p, i) => (i === this.indice ? plato : p));

@@ -3,7 +3,7 @@ import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angul
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Component, signal } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
-import { ClienteFichaComponent } from './cliente-ficha';
+import { ClienteFichaComponent, tabsFicha } from './cliente-ficha';
 import { ClientesService } from '../../services/clientes';
 import type { ClienteAgencia } from '../../core/models';
 
@@ -221,5 +221,48 @@ describe('ClienteFichaComponent', () => {
     await estabilizar(fixture);
 
     expect(verClienteSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('renderiza "Pólizas y coberturas" en el tab de catálogo para un cliente de correduría de seguros', async () => {
+    // Mismo tab, misma ruta (`menu`) — solo cambia la ETIQUETA visible. `tabsFicha` ya lo cubre en
+    // aislamiento (más abajo); esto fija que el componente de verdad la llama con el vertical del
+    // cliente cargado, y no con la constante fija que tenía antes de esta task.
+    const { fixture } = crear(clienteDePrueba({ vertical: 'correduria_seguros' }));
+    const el = await estabilizar(fixture);
+
+    const tabs = el.querySelectorAll('nav[aria-label="Secciones del cliente"] a');
+    const etiquetas = [...tabs].map((a) => a.textContent?.trim());
+    expect(etiquetas).toContain('Pólizas y coberturas');
+    expect(etiquetas).not.toContain('Menú');
+
+    const tabMenu = [...tabs].find((a) => a.getAttribute('href') === '/clientes/c1/menu');
+    expect(tabMenu?.textContent?.trim())
+      .withContext('la ruta interna sigue siendo `menu` para los dos verticales — solo cambia la etiqueta')
+      .toBe('Pólizas y coberturas');
+  });
+});
+
+describe('tabsFicha', () => {
+  it('muestra el tab "Menú" para un cliente de restauración', () => {
+    const tabs = tabsFicha('restauracion');
+    expect(tabs.find((t) => t.ruta === 'menu')?.etiqueta).toBe('Menú');
+  });
+
+  it('muestra el tab "Pólizas y coberturas" para un cliente de correduría de seguros', () => {
+    const tabs = tabsFicha('correduria_seguros');
+    expect(tabs.find((t) => t.ruta === 'menu')?.etiqueta).toBe('Pólizas y coberturas');
+  });
+
+  it('sin vertical (cliente todavía no cargó): el tab de catálogo cae al default "Menú"', () => {
+    // `ClienteFichaComponent` computa `tabs` desde `clientesService.cliente()?.vertical`, que es
+    // `undefined` mientras el cliente todavía no llegó — la barra de tabs se renderiza igual, ANTES
+    // de que exista `cliente`, así que el default tiene que ser seguro.
+    const tabs = tabsFicha(undefined);
+    expect(tabs.find((t) => t.ruta === 'menu')?.etiqueta).toBe('Menú');
+  });
+
+  it('los cuatro tabs fijos no cambian con el vertical, y el orden se conserva', () => {
+    const tabs = tabsFicha('correduria_seguros');
+    expect(tabs.map((t) => t.ruta)).toEqual(['perfil', 'research', 'resenas', 'ideas', 'menu']);
   });
 });

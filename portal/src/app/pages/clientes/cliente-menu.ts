@@ -1,8 +1,9 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
+import { ClientesService } from '../../services/clientes';
 import type { MenuCategoria, MenuItem } from '../../core/models';
 import { Vigencia } from '../../core/vigencia';
 
@@ -34,7 +35,7 @@ import { Vigencia } from '../../core/vigencia';
   imports: [FormsModule, RouterLink],
   template: `
     <div class="space-y-6">
-      <h1 class="sr-only">Menú</h1>
+      <h1 class="sr-only">{{ tituloSeccion() }}</h1>
 
       @if (cargando()) {
         <p class="text-sm text-texto-tenue">Cargando…</p>
@@ -150,8 +151,17 @@ import { Vigencia } from '../../core/vigencia';
 export class ClienteMenuPage implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
+  private readonly clientesService = inject(ClientesService);
 
   private readonly vigencia = new Vigencia();
+
+  /** El `<h1>` (oculto, `sr-only`) según el `vertical` del cliente — mismo criterio que el tab de la
+   *  ficha (`cliente-ficha.ts`): "Menú" para restauración, "Pólizas y coberturas" para correduría de
+   *  seguros. Lee del mismo `ClientesService` que ya popula `ClienteFichaComponent` al cargar la
+   *  ficha, así que para cuando esta pantalla monta el dato ya está disponible. */
+  readonly tituloSeccion = computed(() =>
+    this.clientesService.cliente()?.vertical === 'correduria_seguros' ? 'Pólizas y coberturas' : 'Menú',
+  );
 
   readonly clienteId = signal('');
   readonly menu = signal<MenuItem[]>([]);
