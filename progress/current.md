@@ -7,15 +7,17 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** iniciativa nueva — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.
-**En curso (2026-08-30): sub-proyecto 2 cerrado (con su revisión final), sub-proyecto 1 en
-implementación activa (Tasks 1-5/15).** Se decidió partir el pedido en **tres sub-proyectos
-independientes**, cada uno con su propio spec → plan → revisión externa (Codex), ejecutados en serie
-(uno se implementa antes de arrancar el diseño del siguiente — decisión explícita, no en paralelo):
+**En curso (2026-08-30): sub-proyecto 2 cerrado (con su revisión final). Sub-proyecto 1 — las 14
+tasks de implementación (6-14 de esta sesión, sumadas a las 1-5 previas) están completas, revisadas
+y comiteadas; solo falta cerrar la Task 15 (verificación final + docs + commit), EN CURSO ahora
+mismo.** Se decidió partir el pedido en **tres sub-proyectos independientes**, cada uno con su
+propio spec → plan → revisión externa (Codex), ejecutados en serie:
 
-1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **EN IMPLEMENTACIÓN**,
-   Tasks 1-5 de 15 completas (worktree `multivertical-clientes`) — ver la sección del sub-proyecto 1
-   abajo, corregida el 2026-08-30 (una entrada anterior de este archivo decía "sin implementar", y
-   ya no era cierto: una sesión previa había arrancado la implementación el 2026-08-29).
+1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **Tasks 1-14 de 15
+   completas y revisadas** (worktree `multivertical-clientes`, rama `worktree-multivertical-clientes`,
+   HEAD `1f477f7`). Falta la Task 15: corrida final de `npm run verificar --con-portal` + Karma +
+   verificación en navegador (YA hecha para el portal — ver sub-proyecto 1 abajo) + esta
+   documentación + merge a `main` + push. **En curso ahora mismo, ver "## Próximo paso".**
 2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28),
    con una revisión final (2026-08-29) que encontró 4 hallazgos más — los cuatro corregidos, ver
    la sección del sub-proyecto 2 abajo.**
@@ -23,36 +25,57 @@ independientes**, cada uno con su propio spec → plan → revisión externa (Co
    implementar.**
 
 Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
-ya cerrada). El sub-proyecto 2 ya está cerrado (con su revisión final también cerrada); el 1 está en
-implementación activa, en serie, en el worktree dedicado — el 3 espera su turno. **Qué sigue:**
-continuar el sub-proyecto 1 desde la Task 6 — ver "## Próximo paso" más abajo para el detalle.
+ya cerrada). **Qué sigue:** terminar la Task 15 del sub-proyecto 1 (verificación de punta a punta ya
+corriendo, ver abajo) y mergear la rama a `main` — ver "## Próximo paso".
 
 ## En vuelo (sin commitear)
 
-En el checkout principal (esta rama, `main`): nada — working tree limpio, sincronizado con
-`origin/main` (2026-08-30, `89e06cc`). **En el worktree** `.claude/worktrees/multivertical-clientes`
-(rama `worktree-multivertical-clientes`, NO mergeada a `main` todavía): también limpio — Task 5
-cerrada de punta a punta (comiteada y revisada) antes del último checkpoint de esa rama. Nada a medio
-terminar en ninguna de las dos.
+En el checkout principal (esta rama, `main`): nada más que este archivo (`progress/current.md`),
+que se está escribiendo ahora mismo — trabajo del propio `/progression-update`. **En el worktree**
+`.claude/worktrees/multivertical-clientes` (rama `worktree-multivertical-clientes`, 20 commits por
+delante de `origin/main`, NO mergeada a `main` todavía): un solo archivo sin commitear,
+`docs/proyecto/15-plan-plataforma.md` (la nota de "Nuevo (2026-08-26)" actualizada a reflejar que
+los sub-proyectos 1 y 2 ya cerraron — Step 6 del ritual de la Task 15, a mitad de terminar). Todo el
+código de las Tasks 1-14 ya está comiteado y revisado; nada a medio terminar ahí.
+
+**Dos corridas de verificación corriendo AHORA MISMO en background, desde el worktree** (lanzadas
+por esta sesión, ver "## Callejones sin salida" para el porqué de la segunda):
+- `bash -c 'echo PWD... && echo HEAD... && bash ./scripts/verificar.sh --con-portal'` →
+  `/tmp/verificar-out4.txt` (Windows: `C:\Users\oliva\AppData\Local\Temp\verificar-out4.txt`) — la
+  corrida REAL de la Task 15, con el directorio y el HEAD confirmados en las dos primeras líneas del
+  log para blindarla contra el bug de cwd de abajo.
+- `npm test --silent` en el checkout `main` (no el worktree) → un chequeo de comparación, para
+  entender si el conteo de tests de `main` y el del worktree coinciden por una razón real o por el
+  mismo bug de cwd — **no bloquea nada, es solo curiosidad técnica, se puede matar sin pérdida.**
 
 ## Próximo paso
 
-1. Continuar el sub-proyecto 1 desde la Task 6 (`web-builder/src/types.ts` + `contract.ts` — tipo
-   `Vertical` y `PerfilSeguros`), **trabajando DENTRO de**
-   `.claude/worktrees/multivertical-clientes`, no en este checkout. Generar su brief con el script de
-   la skill (`scripts/task-brief docs/superpowers/plans/2026-08-26-multivertical-clientes.md 6`),
-   delegar al agente `render` (Tasks 6-10 son suyas; la 9 también toca `orchestrator/`, coordinar con
-   `pipeline` antes de tocarlo), revisar el diff, comitear desde el controller (el agente `datos` no
-   comiteó en las Tasks 3-5 — probable que `render` tampoco lo haga), despachar el task-reviewer,
-   actualizar `.superpowers/sdd/progress.md`. Seguir así Tasks 7-15 en orden.
-2. Recién cuando el sub-proyecto 1 esté cerrado (Task 15, verificación final): decidir cómo integrar
-   la rama `worktree-multivertical-clientes` a `main` (mismo patrón que el sub-proyecto 2— esa rama
-   terminó mergeada/adoptada directo a `main` local) y arrancar el sub-proyecto 3.
-3. `ls db/migrations` ya no hace falta correrlo de nuevo para el sub-proyecto 1 — los números reales
-   ya están fijados (`0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql`, ninguna
-   desplegada a producción todavía). Si en algún punto se despliega la `0027`/`0028` del sub-proyecto
-   2 antes de que el 1 termine, la `0029`/`0030` ya no serían editables in situ — evaluarlo en ese
-   momento, no antes.
+1. **Esperar a que termine `/tmp/verificar-out4.txt`** (la corrida real de la Task 15) y leerla
+   completa. Si da verde con las líneas `PWD-CHECK`/`HEAD-CHECK` confirmando el worktree: es la
+   cifra real de tests para citar en `09`/el commit final. Si por algún motivo NO corrió en el
+   worktree (revisar las dos primeras líneas), repetir con el mismo patrón
+   (`bash -c 'echo ... && bash ./scripts/verificar.sh --con-portal' > archivo 2>&1`, siempre con el
+   `cd` y las comprobaciones DENTRO del `bash -c`, nunca confiando en el cwd persistido entre
+   llamadas — ver "## Callejones sin salida").
+2. Correr Karma también con el mismo blindaje (`bash -c 'cd .../multivertical-clientes && echo PWD...
+   && npm run test:components -- --watch=false'`) — la corrida de 218 SUCCESS que se hizo antes de
+   descubrir el bug de cwd NO es confiable (pudo haber corrido contra `main`, que no tiene
+   `cliente-seguros-card.spec.ts` ni el resto de las Tasks 9-14).
+3. Con las dos cifras reales: terminar `docs/proyecto/09-estado-y-roadmap.md` (nueva entrada
+   "🧭 Nuevo (2026-08-30): sub-proyecto 1 — IMPLEMENTADO Y CERRADO", con los números reales, mismo
+   estilo que la entrada del sub-proyecto 2 que ya está arriba) — `docs/proyecto/15-plan-plataforma.md`
+   ya está actualizado (falta comitear junto con el resto).
+4. **Decidir y ejecutar cómo integrar `worktree-multivertical-clientes` a `main`** — el patrón usado
+   para el sub-proyecto 2 fue adoptar la rama completa a `main` local y pushear. Antes de mergear:
+   confirmar que `main` no avanzó mientras tanto (`git log -1 origin/main` vs `main` local — la
+   lección del sub-proyecto 2, que ya mordió dos veces en esta iniciativa).
+5. Commit final + push (Step 7 del ritual de la Task 15) — el mensaje ya está en el plan
+   (`docs/superpowers/plans/2026-08-26-multivertical-clientes.md`, Task 15, Step 7), ajustarlo si
+   hace falta.
+6. Recién después: arrancar el sub-proyecto 3 (publicar posts en blog externo), que sigue con
+   spec+plan completos y sin ninguna task ejecutada.
+7. Migraciones: `0029_clientes_vertical.sql`/`0030_nap_publico_vertical.sql` siguen SIN desplegar a
+   producción, a propósito — coordinarlo con el usuario al cerrar esta etapa, no antes.
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -80,7 +103,7 @@ pisen las ediciones. Serializar, no paralelizar.
 llevan la misma advertencia: verificar `ls db/migrations` antes de crear el archivo — el número real
 depende del orden de implementación de arriba, no está fijo en el documento.
 
-## Sub-proyecto 1 — Multi-vertical de clientes: EN IMPLEMENTACIÓN (worktree, desde 2026-08-29)
+## Sub-proyecto 1 — Multi-vertical de clientes: Tasks 1-14/15 completas, cerrando la Task 15
 
 - **Spec:** [`docs/superpowers/specs/2026-08-26-multivertical-clientes-design.md`](../docs/superpowers/specs/2026-08-26-multivertical-clientes-design.md).
   Escrita, revisada por Codex una vez (veredicto NECESITA REDISEÑO → 1 Critical + 6 Major + 2 Minor,
@@ -98,30 +121,60 @@ depende del orden de implementación de arriba, no está fijo en el documento.
   tipos `MenuItem`/`MenuCategoria` y los endpoints `GET`/`PATCH /clients/:id/menu` **no se renombran**
   a `Catalogo*`/`/catalogo` — el spec original lo proponía, se revirtió por costo/beneficio (ver
   "Global Constraints" del plan y la sección "API" del spec).
-- **EN IMPLEMENTACIÓN, no en diseño — corregido 2026-08-30, la entrada anterior de este archivo
-  estaba desactualizada.** Una sesión previa (2026-08-29) ya arrancó con
-  `superpowers:subagent-driven-development` en el worktree
-  `.claude/worktrees/multivertical-clientes` (rama `worktree-multivertical-clientes`, `EnterWorktree`
-  ramificó de `origin/main` y se corrigió con `git rebase main` de inmediato — lección aplicada del
-  tropiezo del sub-proyecto 2). **Tasks 1-5 completas, comiteadas y revisadas ("Task quality:
-  Approved" las 5, con fix rounds en la 1), HEAD de esa rama `0a66cb4`.** Delegación por área: Tasks
-  1-5 → `datos` (hecho); 6-10 → `render`; 11 → `datos`; 12-14 → `front`; 15 (verificación final +
-  docs + commit) → sesión principal. El detalle task-por-task vive en
-  `.claude/worktrees/multivertical-clientes/.superpowers/sdd/progress.md` (ledger de la skill, NO
-  versionado — solo existe en esta máquina).
-  - Migraciones reales: **`0029_clientes_vertical.sql`** (`clients.vertical`, trigger de
-    inmutabilidad, grants) y **`0030_nap_publico_vertical.sql`** (`app.nap_publico` por vertical) —
-    ninguna de las dos desplegada a producción todavía, ambas siguen editables in situ si aparece un
-    hallazgo relacionado (mismo criterio que la `0027` del sub-proyecto 2).
-  - Esa rama (`worktree-multivertical-clientes`) diverge de `main` en el commit `b1ed4d3` — **desde
-    entonces `main` sumó las dos migraciones de la revisión final del sub-proyecto 2 y los dos
-    commits de documentación** (`50b80b8`, `89e06cc`) que la trajeron al día. Nada en conflicto
-    todavía (son archivos distintos salvo `progress/current.md`, que ya diverge en las dos ramas por
-    diseño — cada worktree lleva su propio checkpoint).
-- **Próximo paso real:** Task 6 (`web-builder/src/types.ts` + `contract.ts` — tipo `Vertical` y
-  `PerfilSeguros`), delegada al agente `render`. Generar su brief con el script de la skill
-  (`scripts/task-brief docs/superpowers/plans/2026-08-26-multivertical-clientes.md 6`) desde DENTRO
-  del worktree.
+- **Las 14 tasks de implementación completas, comiteadas y revisadas** (worktree
+  `.claude/worktrees/multivertical-clientes`, rama `worktree-multivertical-clientes`, HEAD `1f477f7`,
+  20 commits por delante de `origin/main`). Delegación por área, cumplida: Tasks 1-5 → `datos`;
+  6-10 → `render` (el subagent_type "render" no está registrado en esta sesión — se despachó como
+  `general-purpose` con las instrucciones del agente `render` inline en el prompt, mismo resultado);
+  11 → `datos`; 12-14 → `front`. Cada task pasó por su propio task-reviewer independiente, con fix
+  rounds donde hizo falta (Tasks 7, 10, 11 y 13 tuvieron 1 fix round cada una, todas Important o
+  Critical reales, ninguna cosmética — ver el detalle abajo). El ledger completo, task por task, con
+  cada hallazgo y su commit, vive en
+  `.claude/worktrees/multivertical-clientes/.superpowers/sdd/2026-08-26-multivertical-clientes/progress.md`
+  (ruta migrada de la convención plana vieja `.superpowers/sdd/progress.md` a la nueva por-plan
+  durante esta sesión — la skill cambió de convención entre sesiones; briefs/reports/diffs migrados
+  sin editar contenido). NO versionado — solo existe en esta máquina.
+  - **Task 6:** `Vertical` type + `PerfilSeguros` en `web-builder/src/types.ts`/`contract.ts`. Sin
+    hallazgos.
+  - **Task 7:** el render elige receta/nav/datos de contacto por `vertical`, no por `brand.plantilla`
+    — `juegoDe(vertical)`, juego `SEGUROS` nuevo, `renderMenu`→`renderCatalogo`. 1 fix round
+    (comentario de cabecera en `html.ts` que afirmaba "la firma no cambia", falso desde ese mismo
+    commit).
+  - **Task 8:** `cartaCategorias` varía copy por vertical, y — el fix real — descarta
+    video/alérgenos/etiquetas/nutrición en `unPlato()` para seguros aunque el ítem los traiga (defensa
+    en profundidad). Sin hallazgos.
+  - **Task 9:** propaga `vertical` a los 4 puntos de render de producción (`renderer/app.ts`,
+    `orchestrator/workflow.ts`+`deps.ts`, `web-builder/cli/build.ts`) — `DestinoPublicacion.vertical`
+    tocando `workflowDecision` (ya del sub-proyecto 2, cerrado) en UN SOLO punto, verificado por diff
+    completo. Sin hallazgos.
+  - **Task 10:** `perfilValido` (renderer) valida `seguros` — frontera 3, defensa en profundidad. 1
+    fix round: `PerfilSeguros` no estaba re-exportado desde `web-builder/index.ts` (typecheck lo
+    cazaba, `npm test` con `tsx` no).
+  - **Task 11:** `POST /clients` exige `vertical`; `GET`/`PATCH /clients/:id/seguros` nuevos. 1 fix
+    round: `GET /seguros` devolvía 200 siempre en vez de 404 para cliente ajeno/inexistente,
+    inconsistente con `/menu`.
+  - **Task 12:** el alta de cliente en el portal exige `vertical` (selector obligatorio). Fallout
+    mecánico en 8 fixtures de test. Interrumpida una vez por rate-limit de sesión, resumida con el
+    mismo agente sin pérdida. Sin hallazgos.
+  - **Task 13:** tab/título del catálogo por vertical, editor oculta campos de restauración para
+    seguros (mismo patrón de defensa en profundidad que la Task 8, ahora en el portal). 1 fix round:
+    la primera pasada solo condicionó el `<h1>` `sr-only` (invisible), dejando visible "Platos"/
+    "Agregar plato"/"Plato nuevo" sin condicionar en dos pantallas.
+  - **Task 14:** quinto card `ClienteSegurosCardComponent` en el tab Perfil, editor de
+    licencia/experiencia/red sobre el endpoint de la Task 11. Sin hallazgos — el reviewer trazó a
+    mano el guard `idVigente` contra carreras (sin test dedicado) y lo confirmó correcto.
+  - **Verificado en navegador, con datos reales** (dev-server de `api` + portal en `localhost:4201` —
+    puerto distinto de 4200 porque otra sesión ya tenía el portal ahí; CORS de `api/src/dev-server.ts`
+    ampliado temporalmente para probar y YA REVERTIDO): alta de cliente `correduria_seguros`, tab
+    "Pólizas y coberturas", editor de pólizas sin campos de restauración, card de Seguros
+    carga/edita/guarda, todo en tema oscuro también. **Verificado también contra un renderer propio
+    (script desechable, YA BORRADO — `tmp-verify-seguros.mts`, nunca comiteado):** `/polizas` sirve
+    200 con JSON-LD `ItemList` (no `Menu`), `/menu` da 404, el nav linkea a `/polizas` con la etiqueta
+    correcta, y la sección de contacto muestra licencia/experiencia/red — sin errores de permisos
+    (`app_render` real, no superusuario simulado).
+- **Falta cerrar la Task 15**: la corrida final de `npm run verificar --con-portal` + Karma están
+  corriendo AHORA MISMO (ver "## En vuelo" y "## Próximo paso" arriba) — retomar leyendo esos
+  archivos primero, no repetir el trabajo.
 
 ## Sub-proyecto 2 — Desacoplar keyword research de creación de webs: IMPLEMENTADO (2026-08-28), revisión final cerrada (2026-08-29)
 
@@ -291,6 +344,34 @@ Informe completo: [`progress/informes/codex-revision-conjunta.md`](informes/code
 Ver "## Próximo paso" al principio de este archivo — el sub-proyecto 2 (con su revisión final) está
 cerrado, quedan el 1 y el 3, spec+plan completos, listos para implementar en serie.
 
+## Callejones sin salida
+
+- **El cwd del bash tool se resetea silenciosamente al checkout principal (`main`) después de
+  ciertos eventos — sospecha fuerte: notificaciones de tarea en background (SendMessage a un
+  subagente resumido, o un `task-notification` de un comando backgrounded) — sin avisar y sin que el
+  siguiente `pwd` lo delate a simple vista si no se lo pide explícitamente.** Pasó VARIAS veces
+  durante la Task 15 de este sub-proyecto: dos corridas completas de `npm run verificar --con-portal`
+  y una de Karma se lanzaron creyendo estar en el worktree y en realidad corrieron contra `main` —
+  perdieron tiempo real (una puede haber tardado ~50 min por la carga del sistema, ver abajo) sin dar
+  ninguna señal de error, porque `main` también tiene un `package.json`/`scripts/verificar.sh`
+  válidos y corre igual de "bien", solo que mide el código equivocado. Se detectó recién al notar que
+  `git rev-parse HEAD` daba el hash de `main`, no el del worktree, en un chequeo posterior. **La
+  forma robusta de evitarlo, aplicada desde entonces:** nunca confiar en el cwd persistido entre
+  llamadas del bash tool para un comando largo/backgrounded — envolver el `cd` y una confirmación
+  (`echo PWD-CHECK: $(pwd)` + `echo HEAD-CHECK: $(git rev-parse HEAD)`) DENTRO del mismo `bash -c`
+  que lanza el comando real, y hacer que esas líneas queden en el MISMO archivo de log que el
+  resultado — así el archivo se autoverifica sin depender de un `pwd` aparte que también podría estar
+  midiendo el directorio equivocado.
+- **La máquina estuvo bajo carga muy pesada durante buena parte de la Task 15** (50+ procesos
+  `node.exe` simultáneos — de esta sesión, de la sesión par que corre en la misma máquina, y de
+  servidores de desarrollo propios que se dejaron corriendo de más). Tests que normalmente tardan
+  milisegundos tardaron hasta 280 segundos cada uno; un `npm run typecheck` de ~5s tardó minutos. No
+  fue un cuelgue real (se confirmó leyendo los logs de test intermedios, que sí avanzaban) — fue
+  contención de CPU genuina. **Lección:** matar los propios servidores de desarrollo (`dev:server`,
+  `ng serve`, cualquier harness desechable) apenas se termina de usarlos en el navegador, no
+  dejarlos corriendo "por si acaso" mientras se corre la verificación pesada — cada uno compite por
+  CPU con los tests.
+
 ## Archivos calientes
 
 - [orchestrator/src/workflow.ts:365-404](../orchestrator/src/workflow.ts#L365-L404) — los tres
@@ -322,6 +403,15 @@ cerrado, quedan el 1 y el 3, spec+plan completos, listos para implementar en ser
   nuevos del gate `puedeDecidirseRunUI()`/`esRetomable()` (commit `b1ed4d3`,
   `portal/src/app/pages/brief/brief.spec.ts`) están adentro y pasan. **La revisión final del
   sub-proyecto 2 queda así totalmente verificada** — gate completo + Karma, ambos en verde.
+- **Task 15 del sub-proyecto 1 (verificación final, Step 1): VERDE, confirmado con el blindaje de
+  directorio (`PWD-CHECK`/`HEAD-CHECK` contra `1f477f7`, el HEAD real del worktree).**
+  `npm run verificar --con-portal`: **1779 tests del monorepo** (sube de 1725) + **304 `node:test`**
+  del portal, typecheck limpio en los 7 paquetes + `scripts/` + portal, sin secretos. Karma corrido
+  aparte con el mismo blindaje: **238/238** (sube de 218 — el 218 que se vio antes en esta sesión
+  medía `main`, no el worktree, por el bug de cwd; descartado). **Los dos comandos que sí corrieron
+  contra el worktree, para citar tal cual en el commit final:**
+  `bash -c 'cd .../multivertical-clientes && echo PWD-CHECK... && bash ./scripts/verificar.sh --con-portal'`
+  y `bash -c 'cd .../multivertical-clientes && echo PWD-CHECK... && npm --prefix portal run test:components -- --watch=false'`.
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 
