@@ -763,6 +763,57 @@ test("🔴 cartaCategorias: el tope de la frontera 4 corta alérgenos y etiqueta
   assert.equal(tags, 7, "9 etiquetas (con repetición) tienen que cortar en 7, no pasar de largo");
 });
 
+test("cartaCategorias: copy de restauración por default, con video/alergenos/etiquetas/nutricion", () => {
+  const perfilConMenuEnriquecido = validProfile({
+    menu: [
+      {
+        category: "Pizzas",
+        name: "Margherita",
+        description: "Tomate y mozzarella.",
+        price: "12,50 €",
+        alergenos: ["gluten", "lacteos"],
+        etiquetas: ["vegetariano"],
+        video: { src: VIDEO_OK, poster: POSTER_OK },
+        nutricion: { calorias: 820, proteinas_g: 34 },
+      },
+    ],
+  });
+  const ctx = ctxDe({ vertical: "restauracion", profile: perfilConMenuEnriquecido });
+  const html = cartaCategorias.render(ctx);
+  assert.ok(html.includes("Nuestra carta"));
+  assert.ok(html.includes("platos") || html.includes("plato"));
+  assert.ok(html.includes("Contiene:"), "alergenosDe()");
+  assert.ok(html.includes('class="tag"'), "etiquetasDe()");
+});
+
+test("cartaCategorias: copy de seguros, SIN video/alergenos/etiquetas/nutricion aunque el ítem los traiga", () => {
+  // El perfil trae, A PROPÓSITO, un ítem con alergenos/video cargados (dato dormido/mal asignado) —
+  // esta pieza tiene que descartarlos igual que Postgres, no confiar en que ya lo hicieron.
+  const perfilPolizasConDatosDormidos = validProfile({
+    menu: [
+      {
+        category: "Seguros",
+        name: "Póliza Básica",
+        description: "Cobertura estándar.",
+        price: "150,00 €",
+        alergenos: ["gluten"],
+        etiquetas: ["vegetariano"],
+        video: { src: VIDEO_OK, poster: POSTER_OK },
+        nutricion: { calorias: 100 },
+      },
+    ],
+  });
+  const ctx = ctxDe({ vertical: "correduria_seguros", profile: perfilPolizasConDatosDormidos });
+  const html = cartaCategorias.render(ctx);
+  assert.ok(html.includes("Pólizas y coberturas"));
+  assert.ok(html.includes("pólizas") || html.includes("póliza"));
+  assert.ok(!html.includes("Nuestra carta"));
+  assert.ok(!html.includes("Contiene:"));
+  assert.ok(!html.includes('class="tag"'));
+  assert.ok(!html.includes('class="nutricion"'));
+  assert.ok(!html.includes("<video"));
+});
+
 // ═══════════════════════════════════════════════════════════════════ galeria
 
 function fotos(n: number): Array<{ src: string; alt?: string }> {
