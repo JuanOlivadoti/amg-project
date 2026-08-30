@@ -5,7 +5,7 @@ import { pageToStory } from "../../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../../fixtures.js";
 import type { Alergeno, BusinessProfile, Story } from "../../types.js";
 import { ctxCompleto, ctxDe, perfilCompleto } from "../ctx-de-prueba.js";
-import { renderMenu, renderStory } from "../html.js";
+import { renderCatalogo, renderStory } from "../html.js";
 import {
   MAX_CATEGORIAS_RENDER,
   MAX_DESTACADOS_RENDER,
@@ -240,6 +240,22 @@ test("🔴 barraDatos: el teléfono y el horario se escapan (vienen de la base, 
   const html = barraDatos.render(ctxDe({ profile: validProfile({ telephone: VENENO, opening_hours: VENENO }) }));
   assert.ok(!html.includes("<script>alert(1)</script>"));
   assert.match(html, /&lt;script&gt;/);
+});
+
+test("barraDatos dibuja licencia/experiencia/red para un cliente de seguros", () => {
+  const perfilConSeguros = validProfile({
+    seguros: { numeroLicencia: "J-1479", anosExperiencia: 35, redAfiliacion: "E2K" },
+  });
+  const html = barraDatos.render(ctxDe({ vertical: "correduria_seguros", profile: perfilConSeguros }));
+  assert.ok(html.includes("Nº de corredor"));
+  assert.ok(html.includes("J-1479"));
+  assert.ok(html.includes("35 años"));
+  assert.ok(html.includes("E2K"));
+});
+
+test("barraDatos NO dibuja campos de seguros para un cliente de restauración", () => {
+  const html = barraDatos.render(ctxDe({ vertical: "restauracion", profile: perfilCompleto() }));
+  assert.ok(!html.includes("Nº de corredor"));
 });
 
 // ═══════════════════════════════════════════════════════════════════ platosDestacados
@@ -628,7 +644,7 @@ function menuConVideos(n: number): Array<{ name: string; video: { src: string; p
  *
  * ⚠️ Exige `class="plato-foto"` y no `<video\b[^>]*>` a secas: el CSS de `cartaCategorias` tiene un
  * comentario que menciona `<video>` en texto libre (ver esa pieza), y ese comentario viaja dentro del
- * `<style>` de cualquier documento completo (`renderMenu`, a diferencia de `cartaCategorias.render()`
+ * `<style>` de cualquier documento completo (`renderCatalogo`, a diferencia de `cartaCategorias.render()`
  * suelto, que no lleva CSS). Un regex genérico lo cuenta como un video de más.
  */
 function videosDe(html: string): string[] {
@@ -643,14 +659,14 @@ test("🔴 cartaCategorias: presupuesto de video — más videos que el tope emi
   assert.equal(videosDe(html).length, MAX_VIDEOS_POR_DOCUMENTO);
 });
 
-test("🔴 presupuesto de video: es POR DOCUMENTO — dos renders de `renderMenu()` dan bytes idénticos", () => {
+test("🔴 presupuesto de video: es POR DOCUMENTO — dos renders de `renderCatalogo()` dan bytes idénticos", () => {
   // Mismo test que `imagenes.test.ts` («presupuesto: es POR DOCUMENTO») para video: si
   // `presupuestoVideos: nuevoPresupuestoVideos()` se moviera antes del `...doc.ctx` en
   // `renderDocumento`, el presupuesto se compartiría entre documentos y esto lo detecta — los tests que
   // llaman a `cartaCategorias.render(ctxDe(...))` directo nunca pasan por `renderDocumento`.
   const profile = validProfile({ menu: menuConVideos(3) });
-  const primera = renderMenu(profile);
-  const segunda = renderMenu(profile);
+  const primera = renderCatalogo(profile, "restauracion");
+  const segunda = renderCatalogo(profile, "restauracion");
   assert.equal(segunda, primera, "el segundo render del mismo menú salió distinto");
   assert.equal(videosDe(segunda).length, 3);
 });
@@ -905,7 +921,7 @@ test("🔴 …y es la ÚNICA prioritaria del documento: marcar dos imágenes es 
   // cinco, y marcarlas todas —que es el error natural al escribir el bucle— sería el mismo fallo
   // dentro de una sola pieza. Se comprueba las dos cosas: que hay exactamente UNA en el documento, y
   // que es la primera diapositiva y no otra.
-  const html = renderStory(pageToStory(validPage(), validBrief()), ctxCompleto().profile);
+  const html = renderStory(pageToStory(validPage(), validBrief()), ctxCompleto().profile, "restauracion");
   const prioritarias = html.match(/<img[^>]*fetchpriority="high"[^>]*>/g) ?? [];
   assert.equal(prioritarias.length, 1, "solo la primera diapositiva de la portada puede ser prioritaria");
 

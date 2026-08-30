@@ -1,4 +1,13 @@
-import type { BusinessProfile, Foto, Imagen, Location, MenuItem, NavItem, Video } from "../types.js";
+import type {
+  BusinessProfile,
+  Foto,
+  Imagen,
+  Location,
+  MenuItem,
+  NavItem,
+  Vertical,
+  Video,
+} from "../types.js";
 import type { CtxPieza } from "./piezas/tipos.js";
 import { type PresupuestoImagenes, consumirCupo, fuentePermitida } from "./imagenes.js";
 import { type PresupuestoVideos, consumirCupoVideo, fuenteVideoPermitida } from "./videos.js";
@@ -15,6 +24,13 @@ import { type PresupuestoVideos, consumirCupoVideo, fuenteVideoPermitida } from 
 export const SLUG_HOME = "home";
 export const SLUG_MENU = "menu";
 export const SLUG_BLOG = "blog";
+
+/** El slug público de la página de catálogo, por vertical. `SLUG_MENU` ("menu") se conserva como el
+ *  valor de restauración — no se renombra, sería un cambio de URL pública sin motivo para los
+ *  clientes ya publicados. */
+export function catalogoSlug(vertical: Vertical): string {
+  return vertical === "correduria_seguros" ? "polizas" : SLUG_MENU;
+}
 
 /*
  * ────────────────────────────────────────────────────────────────────────────────────────────────

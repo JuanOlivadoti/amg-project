@@ -95,8 +95,11 @@ async function main() {
   const filled = await applyProse(stories, brief, profile);
   console.log(`  [prose] ${filled}/${stories.length} página(s) redactada(s) (${config.prose.mode})`);
 
+  // El brief del M2 no lleva `vertical` (es una propiedad del cliente/sitio, no del research): esta
+  // CLI es el PoC de un solo módulo y no tiene acceso a esa tabla, así que usa "restauracion", el
+  // vertical de todo cliente hasta esta entrega — igual criterio que los fixtures de test.
   const html = new Map(
-    stories.map((s) => [s.slug, renderStory(s, profile, brief.market.language_code)]),
+    stories.map((s) => [s.slug, renderStory(s, profile, "restauracion", brief.market.language_code)]),
   );
 
   const results = await getPublisher().publish(stories, html);

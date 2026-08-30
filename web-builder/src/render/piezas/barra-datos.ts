@@ -92,6 +92,29 @@ export const barraDatos: Pieza = {
         `    <p class="dato"><span class="etiqueta">Dónde</span><a href="#ubicaciones">Cómo llegar</a></p>`,
       );
     }
+    // Los tres campos de seguros, cada uno independiente — mismo criterio que el resto de esta pieza,
+    // un dato ausente no bloquea a los demás. Solo se evalúan para esta vertical: un dato dormido de
+    // `profile.seguros` en un perfil de restauración (que no debería existir, pero la allowlist de
+    // Postgres ya lo filtraría) tampoco se dibuja acá — defensa en profundidad.
+    if (ctx.vertical === "correduria_seguros" && profile.seguros) {
+      const { numeroLicencia, anosExperiencia, redAfiliacion } = profile.seguros;
+      if (numeroLicencia) {
+        datos.push(
+          `    <p class="dato"><span class="etiqueta">Nº de corredor</span><span class="valor">${esc(numeroLicencia)}</span></p>`,
+        );
+      }
+      if (typeof anosExperiencia === "number") {
+        datos.push(
+          `    <p class="dato"><span class="etiqueta">Experiencia</span><span class="valor">${anosExperiencia} años</span></p>`,
+        );
+      }
+      if (redAfiliacion) {
+        datos.push(
+          `    <p class="dato"><span class="etiqueta">Red</span><span class="valor">${esc(redAfiliacion)}</span></p>`,
+        );
+      }
+    }
+
     // Sin ninguno de los tres no hay tarjeta: una caja vacía bajo el titular es peor que su ausencia.
     if (datos.length === 0) return "";
 

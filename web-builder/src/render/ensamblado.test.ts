@@ -6,7 +6,7 @@ import type { BrandTheme, Story } from "../types.js";
 import { tokensDeMarca } from "./css.js";
 import { propiedadResuelta, reglasDe, tokenResuelto } from "./css-de-prueba.js";
 import { ctxDe, perfilCompleto } from "./ctx-de-prueba.js";
-import { renderBlogIndex, renderHome, renderMenu, renderStory } from "./html.js";
+import { renderBlogIndex, renderCatalogo, renderHome, renderStory } from "./html.js";
 import { CATALOGO, piezaPorId } from "./piezas/index.js";
 import { juegoDe } from "./plantilla.js";
 import { renderDocumento } from "./shell.js";
@@ -35,8 +35,8 @@ function storySin(componente: "hero" | "section" | "faq"): Story {
 // ---------------------------------------------------------------- el CSS que viaja
 
 test("el CSS de una pieza que devolvió '' NO aparece en el <style>", () => {
-  const conFaq = estilo(renderStory(pageToStory(validPage(), validBrief()), validProfile()));
-  const sinFaq = estilo(renderStory(storySin("faq"), validProfile()));
+  const conFaq = estilo(renderStory(pageToStory(validPage(), validBrief()), validProfile(), "restauracion"));
+  const sinFaq = estilo(renderStory(storySin("faq"), validProfile(), "restauracion"));
 
   assert.match(conFaq, /\.p-faq /, "con FAQ, su CSS viaja");
   assert.ok(!sinFaq.includes(".p-faq"), "sin FAQ, ni un byte de su CSS");
@@ -44,7 +44,7 @@ test("el CSS de una pieza que devolvió '' NO aparece en el <style>", () => {
 });
 
 test("una landing NO paga el CSS de las piezas de otras páginas (carta, índices)", () => {
-  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilCompleto()));
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilCompleto(), "restauracion"));
   for (const ausente of [".p-cartaCategorias", ".p-indice", ".p-blogIndice", ".p-hero "]) {
     assert.ok(!css.includes(ausente), `una landing no debería llevar ${ausente}`);
   }
@@ -55,13 +55,14 @@ test("🔴 una landing sin fotos NO paga el CSS de la galería (el caso que la s
   // mitad que el test de la pieza no puede probar: ahí se comprueba el `""`, acá que ese `""` se
   // traduzca en cero bytes de `<style>`. Y es el caso NORMAL —una ficha recién dada de alta no tiene
   // fotos—, así que si esto se rompiera lo pagaría cada cliente en cada visita.
-  const sinFotos = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilCompleto()));
+  const sinFotos = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilCompleto(), "restauracion"));
   assert.ok(!sinFotos.includes(".p-galeria"), "sin fotos, ni un byte de la galería");
 
   const conFotos = estilo(
     renderStory(
       pageToStory(validPage(), validBrief()),
       perfilCompleto({ fotos: [{ src: "https://a.storyblok.com/f/1/400x300/g/1.jpg" }] }),
+      "restauracion",
     ),
   );
   assert.match(conFotos, /\.p-galeria /, "y con fotos sí viaja: el test de arriba no puede pasar por vacío");
@@ -78,7 +79,7 @@ test("🔴 `story` y `home` usan `heroSlider`; `/menu` y `/blog` usan `hero` (un
   // titular del blok `hero` cuando hay story y del contexto cuando no, y las fotos del perfil, que la
   // home también tiene. Lo que NO cambió es la garantía que este caso protege: **una receta lleva
   // exactamente UNA pieza de titular**, nunca las dos.
-  const juego = juegoDe(null);
+  const juego = juegoDe("restauracion");
   for (const receta of [juego.story, juego.home]) {
     assert.ok(receta.contenido.includes("heroSlider"), `"${receta.id}" perdió su portada`);
     assert.ok(
@@ -96,7 +97,7 @@ test("🔴 `story` y `home` usan `heroSlider`; `/menu` y `/blog` usan `hero` (un
 });
 
 test("sin perfil no viaja el CSS de las piezas de shell que dependen del perfil", () => {
-  const css = estilo(renderStory(pageToStory(validPage(), validBrief())));
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), undefined, "restauracion"));
   assert.ok(!css.includes(".p-cabecera"), "sin cabecera dibujada, su CSS tampoco");
   assert.ok(!css.includes(".p-contacto"));
   assert.ok(!css.includes(".p-locales"));
@@ -132,7 +133,7 @@ test("el <style> es idéntico BYTE A BYTE para dos recetas con las mismas piezas
 });
 
 test("el CSS de las piezas sale en orden de CATÁLOGO, no de receta", () => {
-  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilCompleto()));
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilCompleto(), "restauracion"));
   const posiciones = CATALOGO.filter((p) => css.includes(`.${p.raiz}`)).map((p) => css.indexOf(`.${p.raiz}`));
   const ordenadas = [...posiciones].sort((a, b) => a - b);
   assert.deepEqual(posiciones, ordenadas, "las piezas usadas aparecen en el orden del catálogo");
@@ -143,20 +144,18 @@ test("el CSS de las piezas sale en orden de CATÁLOGO, no de receta", () => {
 test("toda receta de todo juego nombra piezas que EXISTEN en el catálogo", () => {
   // Una receta rota no lanza (el renderizador sirve la página igual, sin ese bloque): el error de
   // programación tiene que doler acá, no en la web de un cliente.
-  const juego = juegoDe(null);
-  for (const receta of [juego.story, juego.home, juego.menu, juego.blog]) {
-    for (const id of receta.contenido) {
-      assert.ok(piezaPorId(id), `la receta "${receta.id}" nombra la pieza inexistente "${id}"`);
+  //
+  // Recorre los DOS juegos —`restauracion` y `correduria_seguros`— y no solo uno: desde que `juegoDe`
+  // eligió por vertical (Task 7) hay más de un juego, y el nombre del test («todo juego») ya lo decía
+  // antes de que hubiera dos con los que probarlo.
+  for (const vertical of ["restauracion", "correduria_seguros"] as const) {
+    const juego = juegoDe(vertical);
+    for (const receta of [juego.story, juego.home, juego.menu, juego.blog]) {
+      for (const id of receta.contenido) {
+        assert.ok(piezaPorId(id), `la receta "${receta.id}" nombra la pieza inexistente "${id}"`);
+      }
     }
   }
-});
-
-test("una plantilla desconocida NO es un error: cae a `base` (una web servida > un 503 por un typo)", () => {
-  assert.equal(juegoDe({ plantilla: "no-existe" }).id, "base");
-  assert.equal(juegoDe({}).id, "base");
-  assert.equal(juegoDe(null).id, "base");
-  // Y tampoco por un nombre heredado de Object.prototype.
-  assert.equal(juegoDe({ plantilla: "constructor" }).id, "base");
 });
 
 test("la receta NO puede tocar el shell: con `contenido: []` siguen saliendo cabecera y pie", () => {
@@ -175,7 +174,7 @@ test("la receta NO puede tocar el shell: con `contenido: []` siguen saliendo cab
 // ---------------------------------------------------------------- los tokens del manual de marca
 
 test("el CSS base emite los tokens del manual con los valores actuales como default", () => {
-  const css = estilo(renderStory(pageToStory(validPage(), validBrief())));
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), undefined, "restauracion"));
   for (const token of [
     "--marca-primario:#b91c1c",
     "--marca-secundario:#6b7280",
@@ -195,7 +194,7 @@ test("`colores.primario` SÍ pisa el acento: la entrega 3 es la que enchufa el m
   // Este test estaba escrito al revés hasta la entrega 2 —"NO pisa `--accent`"— y era correcto
   // entonces: los tokens se emitían sin consumirse para que el gate de paridad siguiera siendo
   // exigible. Invertirlo es el trabajo de esta entrega, no una regresión.
-  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual(), "restauracion"));
   assert.match(css, /--marca-primario:#0a7d34/, "el token del manual sale");
   // ⚠️ Era `'Segoe UI'` hasta la mitad C: `humanista` caía a un stack del sistema. Ahora resuelve a su
   // familia self-hosted, que es justo lo que esta mitad enchufa. No es una regresión — los roles que
@@ -207,7 +206,7 @@ test("`colores.primario` SÍ pisa el acento: la entrega 3 es la que enchufa el m
 });
 
 test("la ficha legacy `{color, font}` sigue alimentando los tokens del manual (resolución legacy→nuevo)", () => {
-  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilLegacy()));
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilLegacy(), "restauracion"));
   assert.match(css, /--marca-primario:#0a7d34/);
   assert.match(css, /--marca-fuente-texto:Georgia/);
   // ⚠️ `--accent`/`--font` ya NO se emiten desde el legacy: los declara la capa semántica del base
@@ -221,6 +220,7 @@ test("🔴 con AMBAS formas gana la específica: `colores.primario` sobre `color
     renderStory(
       pageToStory(validPage(), validBrief()),
       validProfile({ brand: { color: "#111111", colores: { primario: "#0a7d34" } } }),
+      "restauracion",
     ),
   );
   assert.match(css, /--marca-primario:#0a7d34/, "la decisión explícita gana a la herencia");
@@ -237,6 +237,7 @@ test("🔴 un token de marca que no valida se DESCARTA y cae al default, no romp
           fuentes: { texto: "</style><script>" } as never,
         },
       }),
+      "restauracion",
     ),
   );
   // ⚠️ Se comprueba la **regla inyectada entera** (`body{display:none}`) y no el fragmento
@@ -273,6 +274,7 @@ test("🔴 la allowlist de fuentes usa hasOwn, no `in`: `toString` no es una fue
     renderStory(
       pageToStory(validPage(), validBrief()),
       validProfile({ brand: { font: "toString", fuentes: { titulo: "constructor" } } as never }),
+      "restauracion",
     ),
   );
   assert.ok(!css.includes("native code"), "no puede colarse un método del prototipo como stack");
@@ -290,7 +292,7 @@ test("🔴 la allowlist de fuentes usa hasOwn, no `in`: `toString` no es una fue
 test("🔴 el <style> lleva las @font-face de las familias que la ficha pide, y SOLO esas", () => {
   // `perfilConManual`: titulo=condensada, texto=humanista, decorativa=script → tres familias de
   // cuatro. `geometrica` (Jost) no la pide nadie y no puede costar ni una petición.
-  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual(), "restauracion"));
 
   assert.match(css, /@font-face\{font-family:'Oswald'/, "condensada → Oswald");
   assert.match(css, /@font-face\{font-family:'Source Sans 3'/, "humanista → Source Sans 3");
@@ -309,7 +311,7 @@ test("🔴 una ficha sin familias propias no emite NI UN BYTE de @font-face", ()
     ["sin marca", validProfile()],
     ["legacy {color, font}", perfilLegacy()],
   ] as const) {
-    const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfil));
+    const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfil, "restauracion"));
     assert.ok(!css.includes("@font-face"), `${nombre}: no pide ninguna familia self-hosted`);
     assert.ok(!css.includes("/_assets/fonts/"), `${nombre}: y por tanto ninguna URL de fuente`);
   }
@@ -336,6 +338,7 @@ test("las @font-face no rompen el determinismo: mismas piezas, <style> idéntico
     renderStory(
       pageToStory(validPage(), validBrief()),
       validProfile({ brand: { fuentes: { titulo: "script", texto: "condensada" } } }),
+      "restauracion",
     ),
   );
   assert.deepEqual(
@@ -349,6 +352,7 @@ test("las @font-face no rompen el determinismo: mismas piezas, <style> idéntico
     renderStory(
       pageToStory(validPage(), validBrief()),
       validProfile({ brand: { fuentes: { titulo: "condensada", texto: "condensada" } } }),
+      "restauracion",
     ),
   );
   assert.deepEqual(familiasDeclaradas(dosRoles), ["Oswald", "Oswald"], "los dos pesos de Oswald, y nada más");
@@ -373,7 +377,7 @@ test("🔴 los titulares NO declaran font-weight: por eso se precarga el archivo
   // `.p-ctaFinal .cierre h2` —que estaban aquí— dejaron de existir. Ese h2 compartido es hoy el titular
   // de MÁS secciones del sitio que ningún otro: dejarlo fuera de la comprobación habría cambiado la
   // cobertura de dos piezas por la de ninguna.
-  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual()));
+  const css = estilo(renderStory(pageToStory(validPage(), validBrief()), perfilConManual(), "restauracion"));
   const titulares = [
     ".p-heroSlider h1",
     ".p-seccionProsa h2",
@@ -405,10 +409,10 @@ test("los cuatro puntos de entrada usan el mismo ensamblador y emiten un documen
   const perfil = perfilCompleto();
   const paginas = [{ slug: "x", name: "X" }];
   for (const [nombre, html] of [
-    ["story", renderStory(pageToStory(validPage(), validBrief()), perfil, "es", true)],
-    ["home", renderHome(perfil, paginas, "es", true)],
-    ["menu", renderMenu(perfil, "es", true)],
-    ["blog", renderBlogIndex(perfil, paginas, "es")],
+    ["story", renderStory(pageToStory(validPage(), validBrief()), perfil, "restauracion", "es", true)],
+    ["home", renderHome(perfil, paginas, "restauracion", "es", true)],
+    ["menu", renderCatalogo(perfil, "restauracion", "es", true)],
+    ["blog", renderBlogIndex(perfil, paginas, "restauracion", "es")],
   ] as const) {
     assert.match(html, /^<!doctype html>/, `${nombre}: falta el doctype`);
     assert.match(html, /<html lang="es">/, `${nombre}: falta el lang`);

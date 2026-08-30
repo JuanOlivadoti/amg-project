@@ -30,6 +30,9 @@ export function ctxDe(over: Partial<CtxPieza> = {}): CtxPieza {
     titulo: "",
     bajada: "",
     paginas: [],
+    // Default "restauracion": es el vertical de todos los fixtures existentes (`perfilCompleto`,
+    // `validProfile`), y los tests que sí necesitan seguros lo pasan explícito en `over`.
+    vertical: "restauracion",
     presupuestoImagenes: nuevoPresupuestoImagenes(),
     presupuestoVideos: nuevoPresupuestoVideos(),
     ...over,

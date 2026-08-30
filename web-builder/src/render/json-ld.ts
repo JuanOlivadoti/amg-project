@@ -132,6 +132,32 @@ export function menuLd(
   };
 }
 
+/** JSON-LD del catálogo para verticales sin un tipo schema.org específico (seguros: no hay `Menu` ni
+ *  `Product` correcto para una lista de pólizas — `Product` implicaría venta directa de un bien).
+ *  `ItemList` es el genérico correcto para una lista de ofertas. */
+export function catalogoLd(
+  profile: BusinessProfile,
+  url: string,
+  grupos: Array<{ categoria: string | null; items: MenuItem[] }>,
+  // Sin `vertical`: quien la llama (renderCatalogo) ya decidió por vertical si usa esta función o
+  // menuLd — no hace falta que catalogoLd vuelva a mirarlo.
+): unknown {
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    url,
+    name: `${profile.name} — catálogo`,
+    itemListElement: grupos.flatMap((g) =>
+      g.items.map((it, i) => ({
+        "@type": "ListItem",
+        position: i + 1,
+        name: it.name,
+        ...(it.description ? { description: it.description } : {}),
+      })),
+    ),
+  };
+}
+
 /** El PostalAddress de schema.org. Compartido por la página (LocalBusiness) y la home. */
 export function postalAddressLd(address: PostalAddress): Record<string, unknown> {
   return {

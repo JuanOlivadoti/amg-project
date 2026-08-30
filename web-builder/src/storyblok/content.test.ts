@@ -93,7 +93,7 @@ test("🔴 round-trip: renderStory NO explota con lo que Storyblok devuelve", ()
   const guardado = build();
   const story = fromStoryblokContent({ name: "X", slug: "italiano-madrid", content: guardado });
 
-  const html = renderStory(story); // antes: TypeError → 500 → 503 en el renderizador
+  const html = renderStory(story, null, "restauracion"); // antes: TypeError → 500 → 503 en el renderizador
   assert.match(html, /<h1>/, "sale una página con su H1");
   assert.match(html, /application\/ld\+json/, "y su JSON-LD");
 });
@@ -125,7 +125,7 @@ test("fromStoryblokContent: un blok desconocido se ignora, no rompe", () => {
 test("fromStoryblokContent: contenido vacío no explota (falla suave)", () => {
   const story = fromStoryblokContent({ content: {} });
   assert.equal(story.content.body.length, 0);
-  assert.doesNotThrow(() => renderStory(story), "una página sin bloks sale, no revienta");
+  assert.doesNotThrow(() => renderStory(story, null, "restauracion"), "una página sin bloks sale, no revienta");
 });
 
 test("🔴 round-trip: una imagen de hero sobrevive el viaje (Imagen ↔ asset Storyblok)", () => {

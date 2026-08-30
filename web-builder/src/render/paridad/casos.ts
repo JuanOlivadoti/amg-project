@@ -1,6 +1,6 @@
 import type { BusinessProfile, NavItem, Story } from "../../types.js";
 import { perfilConManual, perfilLegacy, validProfile } from "../../fixtures.js";
-import { renderBlogIndex, renderHome, renderMenu, renderStory } from "../html.js";
+import { renderBlogIndex, renderCatalogo, renderHome, renderStory } from "../html.js";
 
 /**
  * Los casos del **gate de paridad** de la entrega 2 de la spec de plantillas de landing.
@@ -142,17 +142,17 @@ export const CASOS: CasoParidad[] = [
   {
     nombre: "landing-perfil-base",
     porQue: "El caso central: una landing publicada con hero, dos secciones y FAQ, y la ficha que hay hoy en producción.",
-    render: () => renderStory(storyLanding(), perfilBase(), "es", true),
+    render: () => renderStory(storyLanding(), perfilBase(), "restauracion", "es", true),
   },
   {
     nombre: "landing-sin-perfil",
     porQue: "El renderizador sirve dominios cuya fila puede no tener ficha. El documento tiene que salir válido igual, sin contacto ni NAP.",
-    render: () => renderStory(storyLanding(), null, "es", false),
+    render: () => renderStory(storyLanding(), null, "restauracion", "es", false),
   },
   {
     nombre: "landing-perfil-legacy",
     porQue: "La marca `{color, font}` que tienen TODAS las webs sembradas: la única regresión que el manual de marca puede causar.",
-    render: () => renderStory(storyLanding(), perfilLegacy(), "es", true),
+    render: () => renderStory(storyLanding(), perfilLegacy(), "restauracion", "es", true),
   },
   {
     nombre: "landing-perfil-con-manual",
@@ -172,29 +172,30 @@ export const CASOS: CasoParidad[] = [
     // solo lo fijan sus propios tests en `shell.test.ts`; el gate solo comprueba que no aparezca ni
     // desaparezca por accidente.
     porQue: "Ficha con el manual de marca y fotos de la entrega 1. Desde la entrega 3 el render SÍ los consume: lo que el gate sigue exigiendo es que el texto, las anclas y el JSON-LD no se muevan por ello.",
-    render: () => renderStory(storyLanding(), perfilConManual(), "es", true),
+    render: () => renderStory(storyLanding(), perfilConManual(), "restauracion", "es", true),
   },
   {
     nombre: "home-sintetizada",
     porQue: "La raíz del sitio, que no es una story: se sintetiza del perfil más el índice de páginas publicadas.",
-    render: () => renderHome(perfilBase(), NAV, "es", true),
+    render: () => renderHome(perfilBase(), NAV, "restauracion", "es", true),
   },
   {
     nombre: "home-sin-paginas",
     porQue: "Un cliente recién dado de alta: la home existe y anuncia que todavía no hay páginas, en vez de dar 404.",
-    render: () => renderHome(perfilBase(), [], "es", false),
+    render: () => renderHome(perfilBase(), [], "restauracion", "es", false),
   },
   {
     nombre: "menu-agrupado",
     porQue: "`/menu` sintetizado del perfil, con su JSON-LD `Menu` y las categorías agrupadas.",
-    render: () => renderMenu(perfilBase(), "es", true),
+    render: () => renderCatalogo(perfilBase(), "restauracion", "es", true),
   },
   {
     nombre: "menu-sin-categorias",
     porQue: "Platos sin `category`: van juntos al final, y el agrupador no puede inventar un encabezado.",
     render: () =>
-      renderMenu(
+      renderCatalogo(
         validProfile({ menu: [{ name: "Plato del día", price: "s/ mercado" }, { name: "Postre de la casa" }] }),
+        "restauracion",
         "es",
         false,
       ),
@@ -202,11 +203,11 @@ export const CASOS: CasoParidad[] = [
   {
     nombre: "blog-con-posts",
     porQue: "El índice del blog con sus tarjetas enlazadas.",
-    render: () => renderBlogIndex(perfilBase(), POSTS, "es"),
+    render: () => renderBlogIndex(perfilBase(), POSTS, "restauracion", "es"),
   },
   {
     nombre: "blog-vacio",
     porQue: "El blog sin artículos: no se autoenlaza en el pie y no queda una tarjeta fantasma.",
-    render: () => renderBlogIndex(perfilBase(), [], "es"),
+    render: () => renderBlogIndex(perfilBase(), [], "restauracion", "es"),
   },
 ];
