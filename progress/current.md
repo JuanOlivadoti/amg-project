@@ -27,21 +27,18 @@ cualquier orden entre ellos, pero siempre en serie) — ver "## Próximo paso" m
 
 ## En vuelo (sin commitear)
 
-Nada — working tree limpio (`git status --short` vacío, verificado 2026-08-30). La revisión final
-del sub-proyecto 2 dejó 4 commits sin pushear (`a2fec1c`, `c37de0a`, `82237bc`, `b1ed4d3`), encima
-de `cb3a314` (el commit de cierre, tampoco pusheado) — 29 commits por delante de `origin/main` en
-total.
+Nada — working tree limpio. Los 30 commits pendientes (revisión final del sub-proyecto 2 + el commit
+de documentación de este archivo) ya se pushearon a `origin/main` (2026-08-30, `50b80b8`) —
+`origin/main` y `main` local están sincronizados.
 
 ## Próximo paso
 
-1. Decidir si pushear los 29 commits pendientes a `origin/main` ahora (el ritual pide push al
-   cerrar cada etapa, y la revisión final del sub-proyecto 2 ya cerró) o esperar a acumular más.
-2. Elegir sub-proyecto 1 (multi-vertical de clientes) o 3 (publicar posts en blog externo) para
+1. Elegir sub-proyecto 1 (multi-vertical de clientes) o 3 (publicar posts en blog externo) para
    implementar — cualquier orden entre ellos, pero **siempre en serie**, nunca en paralelo (comparten
    archivos: `db/src/store.ts`, `api/src/app.ts`, `orchestrator/src/workflow.ts` y sus tests). Los
    dos tienen spec+plan completos y pasados por la revisión conjunta — arrancar directo con
    `superpowers:subagent-driven-development` sobre el plan elegido.
-3. Antes de la primera task de cualquiera de los dos: correr `ls db/migrations` para confirmar el
+2. Antes de la primera task de cualquiera de los dos: correr `ls db/migrations` para confirmar el
    número real que le toca a la migración del plan elegido (los tres planes numeraban `0027`/`0028`
    sin cruzarse — ver `docs/proyecto/15-plan-plataforma.md`) y decidir si desplegar la `0027`
    (`kr_run_decisiones`, del sub-proyecto 2, todavía sin desplegar a producción a propósito) junto
