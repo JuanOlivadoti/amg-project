@@ -201,6 +201,16 @@ export const menuCategoriaSchema = z.object({
 });
 
 /**
+ * Extensión de correduría de seguros. EXPORTADO: lo reusa la API en PATCH /clients/:id/seguros
+ * (Task 11), mismo criterio que menuPatchSchema.
+ */
+export const perfilSegurosSchema = z.object({
+  numeroLicencia: z.string().optional(),
+  anosExperiencia: z.number().int().min(0).optional(),
+  redAfiliacion: z.string().optional(),
+});
+
+/**
  * Tema de marca. La validación acá es DEFENSA, no cosmética: `color` y `font` terminan dentro de un
  * `<style>` y el `logo` en un `<img src>`. Un `color` con `red;}` o un `font` con `</style>` serían
  * inyección de CSS/markup. Se valida en la puerta; el renderizador vuelve a validar (defensa en
@@ -258,6 +268,7 @@ const businessProfileSchema = z.object({
   locations: z.array(locationSchema).max(MAX_LOCALES).optional(),
   menu: z.array(menuItemSchema).max(MAX_ITEMS_CARTA).optional(),
   menu_categorias: z.array(menuCategoriaSchema).max(MAX_CATEGORIAS).optional(),
+  seguros: perfilSegurosSchema.optional(),
   brand: brandSchema.optional(),
   portada: fotoSchema.optional(),
   fotos: z.array(fotoSchema).max(MAX_FOTOS).optional(),

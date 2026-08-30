@@ -363,3 +363,26 @@ test("la copia de ETIQUETAS_DIETETICAS del portal (menu-taxonomia.ts) coincide v
     "una etiqueta dietética inventada tiene que seguir rechazándose",
   );
 });
+
+test("parseProfile acepta la extensión de seguros completa", () => {
+  const perfil = parseProfile({
+    name: "Corredores Ejemplo",
+    seguros: { numeroLicencia: "J-1479", anosExperiencia: 35, redAfiliacion: "E2K" },
+  });
+  assert.deepEqual(perfil.seguros, {
+    numeroLicencia: "J-1479",
+    anosExperiencia: 35,
+    redAfiliacion: "E2K",
+  });
+});
+
+test("parseProfile acepta seguros con campos parciales", () => {
+  const perfil = parseProfile({ name: "X", seguros: { numeroLicencia: "J-1" } });
+  assert.deepEqual(perfil.seguros, { numeroLicencia: "J-1" });
+});
+
+test("parseProfile rechaza anosExperiencia negativo", () => {
+  assert.throws(() =>
+    parseProfile({ name: "X", seguros: { anosExperiencia: -1 } }),
+  );
+});

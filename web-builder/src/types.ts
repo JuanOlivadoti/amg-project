@@ -10,6 +10,19 @@
 
 export const CONTRACT_VERSION = "web.v0.1";
 
+// ---------------------------------------------------------------- Verticales de negocio
+export type Vertical = "restauracion" | "correduria_seguros";
+
+/** Extensión de perfil de correduría de seguros — solo se puebla/valida/renderiza cuando
+ *  `vertical = "correduria_seguros"`. Sacados de dos sitios reales de clientes (jmmoldes.com,
+ *  gmsegur.com): número de autorización/clave de corredor, años de trayectoria, red de corredores
+ *  afiliada. */
+export interface PerfilSeguros {
+  numeroLicencia?: string;
+  anosExperiencia?: number;
+  redAfiliacion?: string;
+}
+
 // ---------------------------------------------------------------- 1) Entrada (brief M2)
 export type SchemaType = "LocalBusiness" | "Article" | "FAQPage" | "WebPage";
 export type PageType = "servicio" | "landing_local" | "blog" | "institucional";
@@ -317,6 +330,8 @@ export interface BusinessProfile {
   menu?: MenuItem[];
   /** Las categorías de la carta, con foto. Sin esto, la carta se agrupa como hoy. */
   menu_categorias?: MenuCategoria[];
+  /** Extensión de correduría de seguros — ver `PerfilSeguros`. */
+  seguros?: PerfilSeguros;
   /** Marca del negocio: lo que hace que su web se vea PROPIA y no idéntica a la del vecino. */
   brand?: BrandTheme;
   /** La foto del hero. Sin ella, el hero es tipográfico — nunca un hueco ni una imagen rota. */
