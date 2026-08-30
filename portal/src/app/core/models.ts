@@ -442,6 +442,19 @@ export interface MenuCarta {
   menu_categorias: MenuCategoria[];
 }
 
+/**
+ * La extensión de perfil para el vertical `correduria_seguros` (`business_profile.seguros`), tal
+ * como la validan `GET`/`PATCH /clients/:id/seguros` (Task 11) con `perfilSegurosSchema` de
+ * `web-builder/src/contract.ts` — el portal NO importa ese tipo (ADR-21), así que lo duplica a
+ * propósito, mismo criterio que `MenuItem`/`MenuCategoria`. Los tres campos son opcionales: un
+ * cliente de correduría de seguros recién creado no tiene ninguno todavía.
+ */
+export interface PerfilSeguros {
+  numeroLicencia?: string;
+  anosExperiencia?: number;
+  redAfiliacion?: string;
+}
+
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */
 export interface Sesion {
   accessToken: string;

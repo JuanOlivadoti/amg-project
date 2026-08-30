@@ -770,6 +770,51 @@ test('🔴 guardarMenu propaga el error del servidor (400 con campos) sin envolv
   );
 });
 
+// ---------------------------------------------------------------- perfil de seguros (Task 14)
+
+test('obtenerPerfilSeguros pide GET /clients/:id/seguros y devuelve `seguros` desenvuelto', async () => {
+  const { fn, capturado } = fakeFetch({
+    body: { seguros: { numeroLicencia: 'J-1479', anosExperiencia: 35, redAfiliacion: 'E2K' } },
+  });
+  const res = await crearApi(opts(fn)).obtenerPerfilSeguros('c1');
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/seguros');
+  assert.deepEqual(res, { numeroLicencia: 'J-1479', anosExperiencia: 35, redAfiliacion: 'E2K' });
+});
+
+test('🔴 obtenerPerfilSeguros devuelve `null` (no `undefined` ni `{}`) cuando el cliente no tiene perfil cargado', async () => {
+  // Distingue el `seguros: null` DE ADENTRO (perfil no cargado todavía) del 404 de afuera (cliente
+  // inexistente) — `db/src/clientes.ts` lo documenta con los "dos niveles de null". Si esta línea se
+  // reemplazara por `?? {}` en `api-core.ts`, este test cae: `deepEqual(res, null)` fallaría contra `{}`.
+  const { fn } = fakeFetch({ body: { seguros: null } });
+  const res = await crearApi(opts(fn)).obtenerPerfilSeguros('c1');
+  assert.equal(res, null);
+});
+
+test('actualizarPerfilSeguros manda PATCH /clients/:id/seguros con el body completo, con el id escapado', async () => {
+  const datos = { numeroLicencia: 'J-1479', anosExperiencia: 35, redAfiliacion: 'E2K' };
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).actualizarPerfilSeguros('c1/../otro', datos);
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/clients/c1%2F..%2Fotro/seguros');
+  assert.deepEqual(JSON.parse(capturado.body!), datos);
+});
+
+test('🔴 actualizarPerfilSeguros propaga el error del servidor (400 con campos) sin envolverlo', async () => {
+  const { fn } = fakeFetch({
+    status: 400,
+    body: { error: 'El perfil de seguros no es válido.', campos: [{ ruta: 'anosExperiencia', mensaje: 'Expected number' }] },
+  });
+  await assert.rejects(
+    () => crearApi(opts(fn)).actualizarPerfilSeguros('c1', { anosExperiencia: -1 } as never),
+    (err: unknown) => {
+      assert.match((err as Error).message, /El perfil de seguros no es válido/);
+      assert.deepEqual((err as { campos?: unknown }).campos, [{ ruta: 'anosExperiencia', mensaje: 'Expected number' }]);
+      return true;
+    },
+  );
+});
+
 test('conectarGoogle postea a /clients/:id/google/conectar y devuelve { url }', async () => {
   const { fn, capturado } = fakeFetch({ body: { url: 'https://accounts.google.test/consent?state=abc' } });
   const res = await crearApi(opts(fn)).conectarGoogle('c1');

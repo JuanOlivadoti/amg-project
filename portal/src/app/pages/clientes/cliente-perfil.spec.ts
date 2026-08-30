@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { ClientePerfilPage } from './cliente-perfil';
 import { ClientesService } from '../../services/clientes';
+import { ApiService } from '../../services/api';
 import type { CambiosClienteAgencia, ClienteAgencia } from '../../core/models';
 
 /**
@@ -52,6 +53,9 @@ interface Mocks {
   verClienteSpy: jasmine.Spy;
   actualizarSpy: jasmine.Spy;
   errorSignal: ReturnType<typeof signal<string>>;
+  /** Solo lo usa el card de Seguros (Task 14), y solo si `vertical === 'correduria_seguros'` —
+   *  para el resto de los tests (todos con un cliente de restauración) ese card ni se instancia. */
+  obtenerPerfilSegurosSpy: jasmine.Spy;
 }
 
 /**
@@ -68,6 +72,8 @@ function crear(
     verClienteSpy: overrides.verClienteSpy ?? jasmine.createSpy('verCliente').and.callFake(async () => undefined),
     actualizarSpy: overrides.actualizarSpy ?? jasmine.createSpy('actualizar').and.callFake(async () => undefined),
     errorSignal: overrides.errorSignal ?? signal(''),
+    obtenerPerfilSegurosSpy:
+      overrides.obtenerPerfilSegurosSpy ?? jasmine.createSpy('obtenerPerfilSeguros').and.resolveTo(null),
   };
 
   TestBed.configureTestingModule({
@@ -82,6 +88,13 @@ function crear(
           error: mocks.errorSignal,
           verCliente: mocks.verClienteSpy,
           actualizar: mocks.actualizarSpy,
+        },
+      },
+      {
+        provide: ApiService,
+        useValue: {
+          obtenerPerfilSeguros: mocks.obtenerPerfilSegurosSpy,
+          actualizarPerfilSeguros: jasmine.createSpy('actualizarPerfilSeguros').and.resolveTo(undefined),
         },
       },
     ],
@@ -263,5 +276,19 @@ describe('ClientePerfilPage', () => {
     expect(contacto['email']).toBe('hola@pizzanonna.es');
     expect(contacto['facebook']).toBe('https://facebook.com/pizzanonna');
     expect(contacto['direccion']).toEqual({ ciudad: 'Madrid', calle: 'Gran Vía' });
+  });
+
+  it('monta el card de Seguros solo para vertical=correduria_seguros', async () => {
+    const { fixture } = crear(clienteDePrueba({ vertical: 'correduria_seguros' }));
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('app-cliente-seguros-card')).withContext('debería montarse para correduria_seguros').not.toBeNull();
+  });
+
+  it('NO monta el card de Seguros para restauracion', async () => {
+    const { fixture } = crear(clienteDePrueba({ vertical: 'restauracion' }));
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('app-cliente-seguros-card')).withContext('NO debería montarse para restauracion').toBeNull();
   });
 });
