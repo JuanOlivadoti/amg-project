@@ -14,14 +14,38 @@ siguiente — decisión explícita, no en paralelo):
 
 1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **diseño y plan
    completos, sin implementar.**
-2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28).**
+2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28),
+   con una revisión final (2026-08-29) que encontró 4 hallazgos más — los cuatro corregidos, ver
+   la sección del sub-proyecto 2 abajo.**
 3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos, sin
    implementar.**
 
 Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
-ya cerrada). El sub-proyecto 2, que el orden fijado exigía primero, ya tiene código real. **Qué
-sigue:** implementar el 1 o el 3 (en cualquier orden entre ellos, pero siempre en serie) — ver la
-sección "Qué sigue" al final de este archivo para el detalle.
+ya cerrada). El sub-proyecto 2, que el orden fijado exigía primero, ya tiene código real y pasó una
+revisión final propia (no solo la conjunta de los tres). **Qué sigue:** implementar el 1 o el 3 (en
+cualquier orden entre ellos, pero siempre en serie) — ver "## Próximo paso" más abajo para el detalle.
+
+## En vuelo (sin commitear)
+
+Nada — working tree limpio (`git status --short` vacío, verificado 2026-08-30). La revisión final
+del sub-proyecto 2 dejó 4 commits sin pushear (`a2fec1c`, `c37de0a`, `82237bc`, `b1ed4d3`), encima
+de `cb3a314` (el commit de cierre, tampoco pusheado) — 29 commits por delante de `origin/main` en
+total.
+
+## Próximo paso
+
+1. Decidir si pushear los 29 commits pendientes a `origin/main` ahora (el ritual pide push al
+   cerrar cada etapa, y la revisión final del sub-proyecto 2 ya cerró) o esperar a acumular más.
+2. Elegir sub-proyecto 1 (multi-vertical de clientes) o 3 (publicar posts en blog externo) para
+   implementar — cualquier orden entre ellos, pero **siempre en serie**, nunca en paralelo (comparten
+   archivos: `db/src/store.ts`, `api/src/app.ts`, `orchestrator/src/workflow.ts` y sus tests). Los
+   dos tienen spec+plan completos y pasados por la revisión conjunta — arrancar directo con
+   `superpowers:subagent-driven-development` sobre el plan elegido.
+3. Antes de la primera task de cualquiera de los dos: correr `ls db/migrations` para confirmar el
+   número real que le toca a la migración del plan elegido (los tres planes numeraban `0027`/`0028`
+   sin cruzarse — ver `docs/proyecto/15-plan-plataforma.md`) y decidir si desplegar la `0027`
+   (`kr_run_decisiones`, del sub-proyecto 2, todavía sin desplegar a producción a propósito) junto
+   con la migración del siguiente.
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -74,7 +98,7 @@ depende del orden de implementación de arriba, no está fijo en el documento.
   adelantar la implementación de este antes de diseñar los otros dos, es un cambio de secuencia
   explícito a confirmar con el usuario, no algo que se pueda asumir leyendo este archivo solo.
 
-## Sub-proyecto 2 — Desacoplar keyword research de creación de webs: IMPLEMENTADO (2026-08-28)
+## Sub-proyecto 2 — Desacoplar keyword research de creación de webs: IMPLEMENTADO (2026-08-28), revisión final cerrada (2026-08-29)
 
 - **Spec:** [`docs/superpowers/specs/2026-08-26-desacoplar-kr-web-design.md`](../docs/superpowers/specs/2026-08-26-desacoplar-kr-web-design.md)
   y **plan:** [`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`](../docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md)
@@ -103,6 +127,39 @@ depende del orden de implementación de arriba, no está fijo en el documento.
   en un navegador real (requiere Postgres real compartido entre API y orquestador) — cubierto en
   cambio por 7 tests de Karma contra datos mockeados. El resto del flujo sí se verificó contra la API
   real en un navegador.
+- **Revisión final del sub-proyecto 2 (2026-08-29): 4 hallazgos más, los cuatro corregidos y
+  commiteados (sin pushear todavía).** No hay un informe de Codex separado para esta ronda — los
+  hallazgos y su corrección quedaron documentados en el cuerpo de cada commit:
+  1. **[Critical] Runs bricked de verdad, no solo en la carrera de doble aprobación.** Los tres
+     cierres en error de `workflowDecision` (cliente archivado, cero páginas publicables, y el
+     `onFailure` de `crearFuncionDecision` tras agotar reintentos) usaban `cerrarDecision` en vez de
+     `compensarAprobacionFallida`. Un run cuya PRIMERA decisión caía en cualquiera de esas tres
+     ramas quedaba `approved` sin ninguna decisión `completado`, y el `WHERE` retomable de
+     `registrarDecision` nunca lo volvía a calificar (`NULL = 'solo_informe'` es `NULL`, no `true`)
+     — bloqueado para siempre salvo SQL manual. Commit `a2fec1c`
+     (`db/src/store.ts`, `orchestrator/src/functions.ts:110-122`, `orchestrator/src/workflow.ts:365-404`):
+     los tres call sites ahora usan `compensarAprobacionFallida`; agregado también el desempate
+     `, id desc` en las dos consultas que ordenan por `decidido_en` y el prefijo `kr_runs.` en
+     `RUN_SUMMARY_COLS` (evita una futura columna ambigua en el `left join lateral` de
+     `getRunConUltimaDecision`).
+  2. **[Important] El selector de destino y "Confirmar" se mostraban en cualquier estado del run**,
+     incluido `approved` sin decisión retomable — el caso común tras la primera decisión exitosa —,
+     y confirmar ahí siempre devolvía 409 `TRANSICION_INVALIDA`: la misma confusión que el retiro
+     del gate `tiene_workflow` debía eliminar, reintroducida de otra forma. Commit `b1ed4d3`
+     (`portal/src/app/pages/brief/brief.ts:390-424`): `puedeDecidirseRunUI()` nuevo (`pending_approval`
+     siempre califica, `approved` solo si `esRetomable()`), y "Construir la web ahora" ahora respeta
+     `motivoNoAprobar()` en su `[disabled]`, no solo `trabajando()`.
+  3. **[Important] Dos comentarios (`portal/src/app/core/features.ts`,
+     `portal/src/environments/environment.prod.ts`) describían la compuerta vieja** (un
+     `paso.esperarEvento` dentro de un único workflow, sin listener de `research/aprobado`) —
+     literalmente falso desde que este sub-proyecto agregó `crearFuncionDecision`. Sobrevivieron
+     porque el diff que retiró el mecanismo nunca tocó estos dos archivos, solo el código que
+     describían. Corregido en `82237bc`.
+  4. **[Minor] El 501 de `crear_posts` usaba el literal `"NO_IMPLEMENTADO"` inline** en vez de una
+     constante en `codigos.ts` (la fuente única que el test de sincronía porta-api exige). Promovido
+     a constante en `c37de0a`, junto con el retiro de un branch muerto en `api/src/app.ts`
+     (`err.message.includes("ninguna página aprobada")`, ya no alcanzable desde que
+     `registrarDecision` devuelve `null` en vez de lanzar esa cadena).
 
 ## Sub-proyecto 3 — Publicar posts a un blog externo: estado detallado
 
@@ -206,14 +263,40 @@ Informe completo: [`progress/informes/codex-revision-conjunta.md`](informes/code
 
 ## Qué sigue
 
-**El sub-proyecto 2 está cerrado.** Quedan el 1 (multi-vertical de clientes) y el 3 (publicar posts
-en blog externo), ambos con spec+plan completos y ya pasados por la revisión exhaustiva conjunta —
-nada de diseño pendiente en ninguno de los dos. **Implementar en cualquier orden entre ellos, pero
-SIEMPRE en serie, nunca en paralelo** (comparten archivos con éste y entre sí: `db/src/store.ts`,
-`api/src/app.ts`, `orchestrator/src/workflow.ts` y sus tests). Antes de arrancar cualquiera de los
-dos: correr `migrate:deploy` para la `0027` (o confirmar si conviene desplegarla junto con la
-migración del siguiente sub-proyecto), y verificar `ls db/migrations` para el número real que le
-toque — los tres planes numeraban `0027`/`0028` sin cruzarse entre sí.
+Ver "## Próximo paso" al principio de este archivo — el sub-proyecto 2 (con su revisión final) está
+cerrado, quedan el 1 y el 3, spec+plan completos, listos para implementar en serie.
+
+## Archivos calientes
+
+- [orchestrator/src/workflow.ts:365-404](../orchestrator/src/workflow.ts#L365-L404) — los tres
+  cierres en error de `workflowDecision` (cliente archivado, cero páginas publicables) usan
+  `compensarAprobacionFallida`, no `cerrarDecision` — es el fix del bug Critical de la revisión
+  final (commit `a2fec1c`).
+- [orchestrator/src/functions.ts:110-122](../orchestrator/src/functions.ts#L110-L122) — el
+  `onFailure` de `crearFuncionDecision` (agotados los reintentos) usa el mismo
+  `compensarAprobacionFallida`.
+- [db/src/store.ts:383-398](../db/src/store.ts#L383-L398) — `RUN_SUMMARY_COLS` prefijado con
+  `kr_runs.`; y las dos consultas retomables (`registrarDecision` ~L1400, `getUltimaDecision`
+  ~L1551) con el desempate `, id desc`.
+- [portal/src/app/pages/brief/brief.ts:390-424](../portal/src/app/pages/brief/brief.ts#L390-L424) —
+  `esRetomable()`/`puedeDecidirseRunUI()` nuevos, gatean el selector de destino y "Confirmar" por
+  el estado real del run, no solo rol+flag.
+- `api/src/codigos.ts`, `portal/src/app/core/codigos.ts` — `NO_IMPLEMENTADO` promovida a constante
+  (antes literal inline en `api/src/app.ts`).
+
+## Verificaciones
+
+- **`npm run verificar` (sin `--con-portal`): VERDE** (corrido 2026-08-30, invocado como
+  `bash ./scripts/verificar.sh` porque `npm run verificar` a secas falla en esta sesión de Git
+  Bash — resuelve el script vía `cmd.exe` en vez de respetar el shebang; investigar el
+  `script-shell` de npm si se repite). Entorno, arnés, higiene de secretos (655 archivos
+  versionados, ninguno con secretos), typecheck (7 paquetes + `scripts/`) y 1725 tests del
+  monorepo, todos en verde. Portal: typecheck limpio + 300 tests `node:test`, también verde.
+- **`npm --prefix portal run test:components` (Karma): VERDE — 218/218** (corrido aparte, 2026-08-30,
+  porque `npm run verificar` sin `--con-portal` no los incluye). Sube de 213 a 218: los 5 tests
+  nuevos del gate `puedeDecidirseRunUI()`/`esRetomable()` (commit `b1ed4d3`,
+  `portal/src/app/pages/brief/brief.spec.ts`) están adentro y pasan. **La revisión final del
+  sub-proyecto 2 queda así totalmente verificada** — gate completo + Karma, ambos en verde.
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 
