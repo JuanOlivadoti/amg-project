@@ -28,6 +28,14 @@ function escribir(el: HTMLElement, id: string, valor: string): void {
   campo!.dispatchEvent(new Event('input'));
 }
 
+/** Mismo motivo que `escribir`, para un `<select>`: dispara 'change', no 'input'. */
+function seleccionar(el: HTMLElement, id: string, valor: string): void {
+  const campo = el.querySelector<HTMLSelectElement>(`#${id}`);
+  expect(campo).withContext(`no encontré #${id}`).not.toBeNull();
+  campo!.value = valor;
+  campo!.dispatchEvent(new Event('change'));
+}
+
 describe('ClienteCrearPage', () => {
   async function render(
     crearSpy: jasmine.Spy,
@@ -53,6 +61,7 @@ describe('ClienteCrearPage', () => {
     spyOn(router, 'navigate').and.resolveTo(true);
 
     escribir(el, 'cliente-nombre', 'Pizza Nonna');
+    seleccionar(el, 'cliente-vertical', 'restauracion');
     escribir(el, 'cliente-etiquetas', 'premium, Madrid ,  ');
     escribir(el, 'cliente-email', 'hola@pizzanonna.es');
     escribir(el, 'cliente-ciudad', 'Madrid');
@@ -68,6 +77,7 @@ describe('ClienteCrearPage', () => {
     expect(crearSpy).toHaveBeenCalledTimes(1);
     const datos = crearSpy.calls.mostRecent().args[0] as NuevoClienteAgencia;
     expect(datos.nombre).toBe('Pizza Nonna');
+    expect(datos.vertical).toBe('restauracion');
     // '.split(",").map(trim).filter(Boolean)': el mismo criterio que el origen, sin entradas vacías.
     expect(datos.etiquetas).toEqual(['premium', 'Madrid']);
     expect((datos.contacto as Record<string, unknown>)['email']).toBe('hola@pizzanonna.es');
@@ -104,6 +114,7 @@ describe('ClienteCrearPage', () => {
     spyOn(router, 'navigate');
 
     escribir(el, 'cliente-nombre', 'Pizza Nonna');
+    seleccionar(el, 'cliente-vertical', 'restauracion');
     fixture.detectChanges();
     await fixture.whenStable();
 
@@ -116,6 +127,46 @@ describe('ClienteCrearPage', () => {
     expect(crearSpy).toHaveBeenCalledTimes(1);
     expect(router.navigate).not.toHaveBeenCalled();
     expect(el.textContent).toContain('ya existe un cliente con ese nombre');
+  });
+
+  it('no permite enviar el formulario sin elegir vertical', async () => {
+    const crearSpy = jasmine.createSpy('crear');
+    const { fixture, el, router } = await render(crearSpy);
+    spyOn(router, 'navigate');
+
+    // Nombre válido, vertical SIN elegir (el select queda en su opción placeholder "").
+    escribir(el, 'cliente-nombre', 'Pizza Nonna');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const form = el.querySelector('form');
+    form!.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(crearSpy).not.toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('Elegí un vertical');
+  });
+
+  it('incluye vertical en los datos enviados a crearCliente', async () => {
+    const crearSpy = jasmine.createSpy('crear').and.resolveTo(undefined);
+    const { fixture, el, router } = await render(crearSpy);
+    spyOn(router, 'navigate').and.resolveTo(true);
+
+    escribir(el, 'cliente-nombre', 'Correduría Ejemplo');
+    seleccionar(el, 'cliente-vertical', 'correduria_seguros');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const form = el.querySelector('form');
+    form!.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(crearSpy).toHaveBeenCalledTimes(1);
+    expect(crearSpy).toHaveBeenCalledWith(jasmine.objectContaining({ vertical: 'correduria_seguros' }));
   });
 });
 

@@ -5,7 +5,8 @@ import { Router, RouterLink } from '@angular/router';
 import { ClientesService } from '../../services/clientes';
 import { PageBreadcrumbComponent } from '../../shared/components/page-breadcrumb';
 import { ComponentCardComponent } from '../../shared/components/component-card';
-import type { EstadoContrato, NivelActividad, NuevoClienteAgencia, TipoCliente } from '../../core/models';
+import { OPCIONES_VERTICAL } from '../../core/models';
+import type { EstadoContrato, NivelActividad, NuevoClienteAgencia, TipoCliente, Vertical } from '../../core/models';
 
 /**
  * Todos los campos que entran al formulario, como texto plano (incluso los que van a un `select` o
@@ -18,6 +19,7 @@ import type { EstadoContrato, NivelActividad, NuevoClienteAgencia, TipoCliente }
  */
 interface FormularioCliente {
   nombre: string;
+  vertical: Vertical | '';
   empresa: string;
   nombreContacto: string;
   email: string;
@@ -52,6 +54,7 @@ interface FormularioCliente {
 function formularioVacio(): FormularioCliente {
   return {
     nombre: '',
+    vertical: '',
     empresa: '',
     nombreContacto: '',
     email: '',
@@ -292,6 +295,27 @@ const OPCIONES_ESTADO_CONTRATO: ReadonlyArray<{ valor: EstadoContrato | ''; etiq
 
         <app-component-card titulo="Clasificación">
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-texto-medio" for="cliente-vertical">
+                Vertical <span class="text-error">*</span>
+              </label>
+              <select
+                id="cliente-vertical"
+                name="vertical"
+                [ngModel]="form().vertical"
+                (ngModelChange)="actualizar('vertical', $event)"
+                class="rounded-md border border-borde-fuerte bg-superficie text-texto px-3 py-2 text-sm"
+              >
+                <option value="" disabled>Seleccionar…</option>
+                @for (o of OPCIONES_VERTICAL; track o.valor) {
+                  <option [value]="o.valor">{{ o.etiqueta }}</option>
+                }
+              </select>
+              @if (intentoEnviar() && !verticalValido()) {
+                <p class="text-xs text-error">Elegí un vertical de negocio.</p>
+              }
+            </div>
+
             <div class="flex flex-col gap-1">
               <label class="text-sm font-medium text-texto-medio" for="cliente-tipo">Tipo de cliente</label>
               <select
@@ -583,6 +607,7 @@ export class ClienteCrearPage {
   readonly clientesService = inject(ClientesService);
   private readonly router = inject(Router);
 
+  readonly OPCIONES_VERTICAL = OPCIONES_VERTICAL;
   readonly OPCIONES_TIPO = OPCIONES_TIPO;
   readonly OPCIONES_NIVEL_ACTIVIDAD = OPCIONES_NIVEL_ACTIVIDAD;
   readonly OPCIONES_ESTADO_CONTRATO = OPCIONES_ESTADO_CONTRATO;
@@ -593,6 +618,9 @@ export class ClienteCrearPage {
   readonly intentoEnviar = signal(false);
 
   readonly nombreValido = computed(() => this.form().nombre.trim().length >= 2);
+  /** A diferencia de `tipo`, acá no hay "sin clasificar": `db`/`api` ya lo exigen (Tasks 1-11 del
+   *  sub-proyecto multivertical-clientes), y el formulario no puede dejar enviar sin elegir uno. */
+  readonly verticalValido = computed(() => this.form().vertical !== '');
 
   actualizar<K extends keyof FormularioCliente>(campo: K, valor: FormularioCliente[K]): void {
     this.form.update((f) => ({ ...f, [campo]: valor }));
@@ -608,6 +636,9 @@ export class ClienteCrearPage {
 
     return {
       nombre: f.nombre.trim(),
+      // El formulario no permite submit sin elegir uno (ver `guardar()` + `verticalValido`), así que
+      // acá viaja siempre, sin el condicional "si está vacío no se manda" que usan los campos opcionales.
+      vertical: f.vertical as Vertical,
       tipo: f.tipo === '' ? null : f.tipo,
       industria: limpio(f.industria),
       etiquetas,
@@ -658,7 +689,7 @@ export class ClienteCrearPage {
 
   async guardar(): Promise<void> {
     this.intentoEnviar.set(true);
-    if (!this.nombreValido()) return;
+    if (!this.nombreValido() || !this.verticalValido()) return;
 
     this.enviando.set(true);
     try {

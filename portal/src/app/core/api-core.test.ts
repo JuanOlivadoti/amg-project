@@ -554,10 +554,12 @@ test('verCliente pega a GET /clients/:id y desenvuelve { cliente }', async () =>
 
 test('crearCliente postea el cuerpo a POST /clients y devuelve el id', async () => {
   const { fn, capturado } = fakeFetch({ status: 201, body: { id: 'c9' } });
-  const id = await crearApi(opts(fn)).crearCliente({ nombre: 'Nuevo Cliente' });
+  // `vertical` es obligatorio desde el sub-proyecto multivertical-clientes (Task 12): sin él,
+  // `NuevoClienteAgencia` ni siquiera compila.
+  const id = await crearApi(opts(fn)).crearCliente({ nombre: 'Nuevo Cliente', vertical: 'restauracion' });
   assert.equal(capturado.method, 'POST');
   assert.equal(capturado.url, 'http://api.test/clients');
-  assert.deepEqual(JSON.parse(capturado.body!), { nombre: 'Nuevo Cliente' });
+  assert.deepEqual(JSON.parse(capturado.body!), { nombre: 'Nuevo Cliente', vertical: 'restauracion' });
   assert.equal(id, 'c9');
 });
 
