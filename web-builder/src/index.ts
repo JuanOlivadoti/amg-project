@@ -6,7 +6,10 @@
  */
 export { parseBrief, parseProfile, SUPPORTED_SCHEMA_VERSIONS } from "./contract.js";
 export { briefToStories, pageToStory } from "./handoff/adapter.js";
-export { renderStory, renderHome, renderMenu, renderBlogIndex } from "./render/html.js";
+export { renderStory, renderHome, renderCatalogo, renderBlogIndex } from "./render/html.js";
+// `catalogoSlug` (el slug de catálogo por vertical: "menu" o "polizas") lo necesita el renderizador
+// para decidir qué slug sintetizar — hasta ahora solo lo usaban las piezas y el render internos.
+export { catalogoSlug } from "./render/lib.js";
 export { fromStoryblokContent } from "./storyblok/content.js";
 export { getPublisher, modoPublicacion } from "./publish/publisher.js";
 export type { ModoPublicacion, Publisher, PublishResult } from "./publish/publisher.js";
@@ -30,6 +33,7 @@ export type {
   MenuCategoria,
   MenuItem,
   NavItem,
+  PerfilSeguros,
   Story,
   Testimonio,
   Video,

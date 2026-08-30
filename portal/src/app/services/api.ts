@@ -59,4 +59,7 @@ export class ApiService {
 
   readonly obtenerMenu = this.cliente.obtenerMenu;
   readonly guardarMenu = this.cliente.guardarMenu;
+
+  readonly obtenerPerfilSeguros = this.cliente.obtenerPerfilSeguros;
+  readonly actualizarPerfilSeguros = this.cliente.actualizarPerfilSeguros;
 }

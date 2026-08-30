@@ -185,7 +185,7 @@ export function crearDeps(cx: Conexiones): Deps {
 
       await applyProse(stories, brief, perfil);
       const html = new Map(
-        stories.map((s) => [s.slug, renderStory(s, perfil, brief.market.language_code)]),
+        stories.map((s) => [s.slug, renderStory(s, perfil, destino.vertical, brief.market.language_code)]),
       );
 
       return getPublisher(destino.storyblokSpaceId).publish(stories, html);

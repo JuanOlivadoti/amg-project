@@ -1,9 +1,33 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
+import { signal } from '@angular/core';
 import { ClienteMenuPage } from './cliente-menu';
 import { ApiService } from '../../services/api';
-import type { MenuCarta } from '../../core/models';
+import { ClientesService } from '../../services/clientes';
+import type { ClienteAgencia, MenuCarta, Vertical } from '../../core/models';
+
+function clienteDePrueba(overrides: Partial<ClienteAgencia> = {}): ClienteAgencia {
+  return {
+    id: 'c1',
+    nombre: 'Pizza Nonna',
+    vertical: 'restauracion',
+    tipo: null,
+    industria: null,
+    etiquetas: null,
+    nivel_actividad: null,
+    estado_contrato: null,
+    contrato_vence_en: null,
+    score: null,
+    asignado_a: null,
+    contacto: null,
+    origen: null,
+    google_conectado_en: null,
+    archived_at: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
 
 function cartaDePrueba(overrides: Partial<MenuCarta> = {}): MenuCarta {
   return {
@@ -24,11 +48,17 @@ function crear(
     obtenerMenu?: jasmine.Spy;
     guardarMenu?: jasmine.Spy;
     params?: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+    /** Por defecto un cliente de restauración, para no cambiar el comportamiento de ningún test
+     *  escrito antes de que esta pantalla condicionara su copy por vertical. */
+    vertical?: Vertical;
   } = {},
 ) {
   const obtenerMenuSpy = opciones.obtenerMenu ?? jasmine.createSpy('obtenerMenu').and.resolveTo(cartaDePrueba());
   const guardarMenuSpy = opciones.guardarMenu ?? jasmine.createSpy('guardarMenu').and.resolveTo(undefined);
   const params = opciones.params ?? new BehaviorSubject(convertToParamMap({ id: 'c1' }));
+  const clienteActual = signal<ClienteAgencia | null>(
+    clienteDePrueba({ vertical: opciones.vertical ?? 'restauracion' }),
+  );
 
   TestBed.configureTestingModule({
     imports: [ClienteMenuPage],
@@ -36,10 +66,11 @@ function crear(
       provideRouter([]),
       { provide: ActivatedRoute, useValue: { paramMap: params.asObservable() } },
       { provide: ApiService, useValue: { obtenerMenu: obtenerMenuSpy, guardarMenu: guardarMenuSpy } },
+      { provide: ClientesService, useValue: { cliente: clienteActual } },
     ],
   });
   const fixture = TestBed.createComponent(ClienteMenuPage);
-  return { fixture, obtenerMenuSpy, guardarMenuSpy, params };
+  return { fixture, obtenerMenuSpy, guardarMenuSpy, params, clienteActual };
 }
 
 async function estabilizar(fixture: ComponentFixture<ClienteMenuPage>): Promise<HTMLElement> {
@@ -359,5 +390,33 @@ describe('ClienteMenuPage', () => {
     const [, cartaFinal] = guardarMenuSpy.calls.mostRecent().args as [string, MenuCarta];
     // El único plato que sobrevive a los dos borrados es Tiramisú.
     expect(cartaFinal.menu.map((p) => p.name)).toEqual(['Tiramisú']);
+  });
+
+  it('el copy visible dice "Pólizas"/"Agregar póliza"/estado vacío de pólizas para un cliente de seguros', async () => {
+    // Encontrado en la ronda de revisión: la primera pasada de esta task solo condicionó el <h1>
+    // sr-only (invisible) y dejó el <h2>/link/estado-vacío REALES —los que de verdad ve una persona
+    // vidente— hardcodeados a "plato". Este test cubre justo lo que esa pasada no cubría.
+    const carta = cartaDePrueba({ menu: [], menu_categorias: [] });
+    const { fixture } = crear({
+      vertical: 'correduria_seguros',
+      obtenerMenu: jasmine.createSpy('obtenerMenu').and.resolveTo(carta),
+    });
+    const el = await estabilizar(fixture);
+
+    expect(el.textContent).toContain('Pólizas');
+    expect(el.textContent).not.toContain('Platos');
+    expect(el.textContent).toContain('Agregar póliza');
+    expect(el.textContent).not.toContain('Agregar plato');
+    expect(el.textContent).toContain('Todavía no hay pólizas cargadas.');
+    expect(el.textContent).not.toContain('Todavía no hay platos cargados.');
+  });
+
+  it('sin regresión: el copy sigue diciendo "Platos"/"Agregar plato" para un cliente de restauración', async () => {
+    const { fixture } = crear({ vertical: 'restauracion' });
+    const el = await estabilizar(fixture);
+
+    expect(el.textContent).toContain('Platos');
+    expect(el.textContent).toContain('Agregar plato');
+    expect(el.textContent).not.toContain('Pólizas');
   });
 });

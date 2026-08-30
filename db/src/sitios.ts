@@ -21,6 +21,9 @@ import type { DbPool } from "./pool.js";
 export interface Sitio {
   clientId: string;
   domain: string;
+  /** El rubro del cliente (0029). Determina qué slug/JSON-LD/receta de render usa el resolver
+   *  público — nunca `| null`: la columna es `not null` en `clients`. */
+  vertical: "restauracion" | "correduria_seguros";
   /** `null` = el cliente tiene dominio pero todavía no tiene space: no hay nada que servir. */
   spaceId: string | null;
   /** Token de contenido PUBLICADO. No es un secreto (ver 0007). */
@@ -69,6 +72,7 @@ export class MemSitios implements SitioResolver {
 interface FilaSitio {
   id: string;
   domain: string;
+  vertical: "restauracion" | "correduria_seguros";
   storyblok_space_id: string | null;
   storyblok_public_token: string | null;
   storyblok_preview_token: string | null;
@@ -82,7 +86,7 @@ interface FilaSitio {
  * Fijate en lo que NO hace esta clase, comparada con `PgStore`: no setea `app.tenant_id` ni
  * `app.user_id`. No es un olvido — es que no hay ninguno que sea verdad, y setear uno derivado del
  * propio dominio sería un control autoexpedido. Lo que protege acá es el rol: `app_render` tiene
- * `select` sobre CINCO columnas de UNA tabla, y la política solo le muestra clientes con dominio
+ * `select` sobre SEIS columnas de UNA tabla, y la política solo le muestra clientes con dominio
  * publicado y sin archivar.
  *
  * Las columnas del `select` son literales por la misma razón: si alguien agrega una columna a
@@ -98,7 +102,7 @@ export class PgSitios implements SitioResolver {
       await tx.exec("set local role app_render");
 
       const { rows } = await tx.query<FilaSitio>(
-        `select id, domain, storyblok_space_id, storyblok_public_token, storyblok_preview_token,
+        `select id, domain, vertical, storyblok_space_id, storyblok_public_token, storyblok_preview_token,
                 business_profile_publico, market_language
            from clients
           where domain = $1`,
@@ -111,6 +115,7 @@ export class PgSitios implements SitioResolver {
       return {
         clientId: fila.id,
         domain: fila.domain,
+        vertical: fila.vertical,
         spaceId: fila.storyblok_space_id,
         publicToken: fila.storyblok_public_token,
         previewToken: fila.storyblok_preview_token,

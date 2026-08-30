@@ -13,7 +13,7 @@ import type {
   FiltrosIdeas,
   PgResenas,
 } from "db";
-import { menuPatchSchema } from "web-builder/contract";
+import { menuPatchSchema, perfilSegurosSchema } from "web-builder/contract";
 import { validarCambiosIdea, serializarResumen, serializarDetalle } from "./ideas-http.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
@@ -440,7 +440,19 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return c.json({ clientes });
   });
 
-  /** POST /clients — alta. El `tenant_id` sale del contexto (header/token), nunca del body. */
+  /**
+   * POST /clients — alta. El `tenant_id` sale del contexto (header/token), nunca del body.
+   *
+   * `vertical` (0029_clientes_vertical.sql) es NOT NULL sin default y deliberadamente INMUTABLE tras
+   * el alta (no vive en `CambiosCliente`/`filtrarCamposCliente`, así que `PATCH /clients/:id` sigue
+   * ignorándolo en silencio, mismo comportamiento que cualquier otra clave desconocida — ver
+   * `filtrarCamposCliente` más abajo). Se lee APARTE de `filtrarCamposCliente`, solo acá: esa función
+   * alimenta tanto POST (necesita `vertical`) como PATCH (no debe aceptarlo), así que agregarla ahí
+   * la volvería editable por PATCH sin querer.
+   *
+   * `VERTICALES_VALIDAS` es la misma allowlist positiva que `ROLES_ASIGNABLES` más abajo: un body con
+   * un valor fuera de los dos conocidos (o sin `vertical`) es 400, nunca un default silencioso.
+   */
   app.post("/clients", async (c) => {
     const ctx = c.get("ctx");
     const body = await c.req.json().catch(() => null);
@@ -449,7 +461,15 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     if (typeof campos.nombre !== "string") {
       return c.json({ error: "Se requiere nombre (string)." }, 400);
     }
-    const id = await deps.clientes.crearCliente(ctx, { ...campos, nombre: campos.nombre });
+    const vertical = (body as Record<string, unknown>)["vertical"];
+    if (typeof vertical !== "string" || !VERTICALES_VALIDAS.has(vertical)) {
+      return c.json({ error: "Se requiere vertical: 'restauracion' o 'correduria_seguros'." }, 400);
+    }
+    const id = await deps.clientes.crearCliente(ctx, {
+      ...campos,
+      nombre: campos.nombre,
+      vertical: vertical as "restauracion" | "correduria_seguros",
+    });
     return c.json({ id }, 201);
   });
 
@@ -496,6 +516,37 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       return c.json({ error: "El menú no es válido.", campos }, 400);
     }
     const ok = await deps.clientes.actualizarMenu(ctx, c.req.param("id"), parsed.data);
+    return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
+  });
+
+  /**
+   * GET/PATCH /clients/:id/seguros — la extensión de perfil para el vertical `correduria_seguros`
+   * (`business_profile.seguros`), mismo patrón que `/menu` arriba (404 si el cliente no existe/no es
+   * visible, incluido el GET). No se restringe por `vertical` acá (ni el GET ni el PATCH consultan
+   * qué vertical tiene el cliente): un cliente de `restauracion` que los llame simplemente lee/escribe
+   * una clave que ningún renderizador ni pantalla de su vertical usa — no es una superficie de
+   * ataque, es una clave jsonb inerte, y agregar esa consulta extra no compra ninguna garantía de
+   * seguridad que RLS no dé ya.
+   */
+
+  /** GET /clients/:id/seguros — 404 si el cliente no existe o no es visible; si existe, `seguros` puede ser `null`. */
+  app.get("/clients/:id/seguros", async (c) => {
+    const ctx = c.get("ctx");
+    const resultado = await deps.clientes.obtenerPerfilSeguros(ctx, c.req.param("id"));
+    if (!resultado) return c.json({ error: "Cliente no encontrado." }, 404);
+    return c.json(resultado);
+  });
+
+  /** PATCH /clients/:id/seguros — reemplaza el perfil de seguros completo, validado con Zod (frontera 2). */
+  app.patch("/clients/:id/seguros", async (c) => {
+    const ctx = c.get("ctx");
+    const body = await c.req.json().catch(() => null);
+    const parsed = perfilSegurosSchema.safeParse(body);
+    if (!parsed.success) {
+      const campos = parsed.error.issues.map((i) => ({ ruta: i.path.join("."), mensaje: i.message }));
+      return c.json({ error: "El perfil de seguros no es válido.", campos }, 400);
+    }
+    const ok = await deps.clientes.actualizarPerfilSeguros(ctx, c.req.param("id"), parsed.data);
     return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
   });
 
@@ -949,6 +1000,15 @@ function filtroVacioEsAusente(v: string | undefined): string | undefined {
  * lo hace explícito, sin gastar un viaje a la base para descartar un valor que nunca fue válido).
  */
 const ROLES_ASIGNABLES = new Set(["maestro", "equipo", "cliente"]);
+
+/**
+ * Allowlist POSITIVA de los valores válidos de `vertical` en `POST /clients`, en el borde HTTP —
+ * mismo criterio que `ROLES_ASIGNABLES`. Duplica el enum `Vertical` de `db/src/clientes.ts` (dos
+ * valores hoy, agregar un tercero es un ADR, no un `if`): la columna real ya rechazaría un valor
+ * inválido con 22P02 (enum), pero descartarlo acá evita gastar un viaje a la base para lo mismo, y
+ * distingue "vertical ausente" de "vertical inválida" en un solo mensaje claro.
+ */
+const VERTICALES_VALIDAS = new Set(["restauracion", "correduria_seguros"]);
 
 /**
  * Allowlist de la edición/alta de clientes, en el borde HTTP (defensa en profundidad: `PgClientes`

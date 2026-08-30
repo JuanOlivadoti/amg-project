@@ -111,7 +111,7 @@ describe("GET /runs/:id/informe y /informe.md", () => {
   /** Un cliente del tenant, devolviendo su id. */
   async function mkCliente(tenantId: string, nombre: string): Promise<string> {
     const filas = await sql<{ id: string }>(
-      "insert into clients (tenant_id, nombre) values ($1,$2) returning id",
+      "insert into clients (tenant_id, nombre, vertical) values ($1,$2,'restauracion') returning id",
       [tenantId, nombre],
     );
     return filas[0]!.id;

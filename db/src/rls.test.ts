@@ -138,7 +138,7 @@ test("RLS: un tenant NO puede INSERTAR una fila marcada con el tenant de otro", 
     () =>
       db.asUser(
         { tenantId: s.tenantA, userId: s.equipoA },
-        "insert into clients (tenant_id, nombre) values ($1, 'inyectado')",
+        "insert into clients (tenant_id, nombre, vertical) values ($1, 'inyectado', 'restauracion')",
         [s.tenantB],
       ),
     /row-level security/i,

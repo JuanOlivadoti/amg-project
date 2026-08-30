@@ -103,9 +103,10 @@ beforeEach(async () => {
   ).map((r) => r.id) as [string, string];
 
   [clientA1] = (
-    await sql<{ id: string }>("insert into clients (tenant_id, nombre) values ($1,'Bella Napoli') returning id", [
-      tenantA,
-    ])
+    await sql<{ id: string }>(
+      "insert into clients (tenant_id, nombre, vertical) values ($1,'Bella Napoli','restauracion') returning id",
+      [tenantA],
+    )
   ).map((r) => r.id) as [string];
 
   const mkMembresia = async (tenantId: string, rol: string, clientId: string | null) =>
@@ -728,7 +729,7 @@ test("POST /clients: el equipo crea el cliente en su tenant", async () => {
   const res = await req("POST", "/clients", {
     user: equipoA,
     tenant: tenantA,
-    body: { nombre: "Nuevo Cliente" },
+    body: { nombre: "Nuevo Cliente", vertical: "restauracion" },
   });
   assert.equal(res.status, 201);
   const { id } = (await res.json()) as { id: string };
@@ -741,11 +742,45 @@ test("POST /clients: el equipo crea el cliente en su tenant", async () => {
   assert.equal(filas[0]!.nombre, "Nuevo Cliente");
 });
 
+test("POST /clients sin vertical → 400", async () => {
+  const res = await req("POST", "/clients", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { nombre: "Sin vertical" },
+  });
+  assert.equal(res.status, 400);
+  const filas = await sql("select id from clients where nombre = 'Sin vertical'");
+  assert.equal(filas.length, 0, "no se creó ninguna fila sin vertical");
+});
+
+test("POST /clients con vertical inválida → 400", async () => {
+  const res = await req("POST", "/clients", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { nombre: "Vertical rara", vertical: "peluqueria" },
+  });
+  assert.equal(res.status, 400);
+  const filas = await sql("select id from clients where nombre = 'Vertical rara'");
+  assert.equal(filas.length, 0, "no se creó ninguna fila con una vertical fuera de la allowlist");
+});
+
+test("POST /clients con vertical 'correduria_seguros' crea el cliente con ese rubro", async () => {
+  const res = await req("POST", "/clients", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { nombre: "Corredores X", vertical: "correduria_seguros" },
+  });
+  assert.equal(res.status, 201);
+  const { id } = (await res.json()) as { id: string };
+  const filas = await sql<{ vertical: string }>("select vertical from clients where id = $1", [id]);
+  assert.equal(filas[0]!.vertical, "correduria_seguros");
+});
+
 test("🔴 POST /clients con tenant_id en el body: el cliente nace en el tenant del TOKEN, no del body", async () => {
   const res = await req("POST", "/clients", {
     user: equipoA,
     tenant: tenantA,
-    body: { nombre: "Intento de fuga de tenant", tenant_id: tenantB },
+    body: { nombre: "Intento de fuga de tenant", tenant_id: tenantB, vertical: "restauracion" },
   });
   assert.equal(res.status, 201);
   const { id } = (await res.json()) as { id: string };
@@ -765,7 +800,7 @@ test("POST /clients con rol en el body: no tiene ningún efecto, el cliente se c
   const res = await req("POST", "/clients", {
     user: equipoA,
     tenant: tenantA,
-    body: { nombre: "Con rol colado", rol: "maestro" },
+    body: { nombre: "Con rol colado", rol: "maestro", vertical: "restauracion" },
   });
   assert.equal(res.status, 201);
   const { id } = (await res.json()) as { id: string };
@@ -775,7 +810,11 @@ test("POST /clients con rol en el body: no tiene ningún efecto, el cliente se c
 });
 
 test("POST /clients sin nombre → 400 (no 500)", async () => {
-  const res = await req("POST", "/clients", { user: equipoA, tenant: tenantA, body: { tipo: "empresa" } });
+  const res = await req("POST", "/clients", {
+    user: equipoA,
+    tenant: tenantA,
+    body: { tipo: "empresa", vertical: "restauracion" },
+  });
   assert.equal(res.status, 400);
 });
 
@@ -783,7 +822,7 @@ test("🔴 un CLIENTE (rol) no puede crear clientes → 403, no 500", async () =
   const res = await req("POST", "/clients", {
     user: duenoA1,
     tenant: tenantA,
-    body: { nombre: "El cliente no da de alta" },
+    body: { nombre: "El cliente no da de alta", vertical: "restauracion" },
   });
   assert.equal(res.status, 403);
   const filas = await sql("select id from clients where nombre = 'El cliente no da de alta'");
@@ -870,11 +909,27 @@ test("🔴 POST /clients con asignado_a que no es miembro del tenant → 400 (no
   const res = await req("POST", "/clients", {
     user: equipoA,
     tenant: tenantA,
-    body: { nombre: "Con asignado ajeno", asignado_a: equipoB },
+    body: { nombre: "Con asignado ajeno", asignado_a: equipoB, vertical: "restauracion" },
   });
   assert.equal(res.status, 400);
   const filas = await sql("select id from clients where nombre = 'Con asignado ajeno'");
   assert.equal(filas.length, 0, "no se creó ninguna fila con un asignado_a inválido");
+});
+
+test("PATCH /clients/:id ignora vertical en el body — inmutable en el borde HTTP", async () => {
+  // clientA1 nace 'restauracion' en el seed (línea ~107). El PATCH intenta cambiarla a
+  // 'correduria_seguros'; `filtrarCamposCliente` no conoce `vertical` (no está en `CambiosCliente`),
+  // así que la clave se ignora en silencio, mismo comportamiento que cualquier otra clave desconocida
+  // — ver el comentario de `POST /clients` más arriba.
+  const res = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { vertical: "correduria_seguros" },
+  });
+  assert.equal(res.status, 404, "sin ningún campo editable válido, es el mismo 404 de 'sin cambios válidos'");
+
+  const filas = await sql<{ vertical: string }>("select vertical from clients where id = $1", [clientA1]);
+  assert.equal(filas[0]!.vertical, "restauracion", "vertical no cambió: PATCH la ignoró en silencio");
 });
 
 // ---------------------------------------------------------------- menú (editor del portal)
@@ -980,6 +1035,79 @@ test("equivalencia: el mismo set de casos límite se acepta/rechaza igual en men
     });
     assert.equal(res.status === 200, valido, `el endpoint discrepa para ${JSON.stringify(plato)}`);
   }
+});
+
+// ---------------------------------------------------------------- perfil de seguros (editor del portal)
+
+test("GET /clients/:id/seguros de un cliente sin la clave cargada devuelve seguros: null", async () => {
+  const res = await req("GET", `/clients/${clientA1}/seguros`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { seguros: null });
+});
+
+test("🔴 GET /clients/:id/seguros de OTRO tenant → 404 (mismo criterio que GET /clients/:id/menu)", async () => {
+  const res = await req("GET", `/clients/${clientA1}/seguros`, { user: equipoB, tenant: tenantB });
+  assert.equal(res.status, 404);
+});
+
+test("GET /clients/:id/seguros inexistente → 404", async () => {
+  const res = await req("GET", "/clients/00000000-0000-4000-8000-000000000000/seguros", {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(res.status, 404);
+});
+
+test("PATCH /clients/:id/seguros guarda los tres campos, y GET los devuelve igual", async () => {
+  const datos = { numeroLicencia: "J-1479", anosExperiencia: 35, redAfiliacion: "E2K" };
+  const resPatch = await req("PATCH", `/clients/${clientA1}/seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: datos,
+  });
+  assert.equal(resPatch.status, 200);
+  assert.deepEqual(await resPatch.json(), { ok: true });
+
+  const resGet = await req("GET", `/clients/${clientA1}/seguros`, { user: equipoA, tenant: tenantA });
+  assert.deepEqual(await resGet.json(), { seguros: datos });
+});
+
+test("PATCH /clients/:id/seguros con anosExperiencia negativo → 400 con la ruta exacta del campo", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}/seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { anosExperiencia: -1 },
+  });
+  assert.equal(res.status, 400);
+  const cuerpo = (await res.json()) as { campos: Array<{ ruta: string; mensaje: string }> };
+  assert.ok(cuerpo.campos.some((c) => c.ruta === "anosExperiencia"));
+});
+
+test("🔴 PATCH /clients/:id/seguros de OTRO tenant → 404 con el MISMO mensaje que un id inexistente (no revela existencia)", async () => {
+  const datos = { numeroLicencia: "Fuga" };
+  const resOtroTenant = await req("PATCH", `/clients/${clientA1}/seguros`, {
+    user: equipoB,
+    tenant: tenantB,
+    body: datos,
+  });
+  assert.equal(resOtroTenant.status, 404);
+  const cuerpoOtroTenant = await resOtroTenant.json();
+
+  const resInexistente = await req("PATCH", "/clients/00000000-0000-4000-8000-000000000000/seguros", {
+    user: equipoA,
+    tenant: tenantA,
+    body: datos,
+  });
+  assert.equal(resInexistente.status, 404);
+  const cuerpoInexistente = await resInexistente.json();
+
+  assert.deepEqual(cuerpoOtroTenant, cuerpoInexistente, "el 404 no distingue 'de otro tenant' de 'no existe'");
+
+  const filas = await sql<{ business_profile: Record<string, unknown> | null }>(
+    "select business_profile from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(filas[0]?.business_profile, null, "el tenant B no pudo tocar el cliente de A");
 });
 
 test("POST /clients/:id/archive: el equipo archiva su cliente (archived_at pasa a no-null)", async () => {
@@ -1117,9 +1245,10 @@ test("🔴 PATCH /members/:userId: un rol 'cliente' intentando cambiar un rol �
 });
 
 test("🔴 PATCH /members/:userId: client_id de OTRO tenant → 400 (FK compuesta), sin efecto", async () => {
-  const [clientB1] = await sql<{ id: string }>("insert into clients (tenant_id, nombre) values ($1,'Sushi Zen') returning id", [
-    tenantB,
-  ]);
+  const [clientB1] = await sql<{ id: string }>(
+    "insert into clients (tenant_id, nombre, vertical) values ($1,'Sushi Zen','restauracion') returning id",
+    [tenantB],
+  );
   const res = await req("PATCH", `/members/${equipoA}`, {
     user: maestroA,
     tenant: tenantA,
@@ -1452,7 +1581,7 @@ test("GET /clients/:id/resenas devuelve solo las del cliente, ordenadas 1-3★ s
 
 test("🔴 GET /clients/:id/resenas de OTRO tenant devuelve lista vacía, no un error (RLS)", async () => {
   const [clientB1] = await sql<{ id: string }>(
-    "insert into clients (tenant_id, nombre) values ($1,'Sushi Zen') returning id",
+    "insert into clients (tenant_id, nombre, vertical) values ($1,'Sushi Zen','restauracion') returning id",
     [tenantB],
   );
   await sembrarResena(clientB1!.id, { googleReviewId: "de-otro-tenant" });

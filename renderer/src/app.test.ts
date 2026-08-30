@@ -55,6 +55,7 @@ function story(titular = "La carta", over: Partial<Story> = {}): Story {
 const sitioA: Sitio = {
   clientId: "c-a",
   domain: "bellanapoli.es",
+  vertical: "restauracion",
   spaceId: "111",
   publicToken: "pub-111",
   previewToken: "prv-111",
@@ -65,6 +66,7 @@ const sitioA: Sitio = {
 const sitioB: Sitio = {
   clientId: "c-b",
   domain: "sushizen.es",
+  vertical: "restauracion",
   spaceId: "222",
   publicToken: "pub-222",
   previewToken: "prv-222",
@@ -554,6 +556,40 @@ describe("renderizador — /menu y /blog", () => {
   it("🔴 sin carta en el perfil, /menu es 404 (no una página vacía)", async () => {
     const { app } = montar({ perfil: { name: "Sin carta" } });
     assert.equal((await pedir(app, "/menu", "bellanapoli.es")).status, 404);
+  });
+
+  it("resolver sirve /polizas (no /menu) para un cliente de vertical correduria_seguros", async () => {
+    // Task 9: el slug de catálogo lo decide `sitio.vertical`, no una constante fija. Un cliente de
+    // correduría sirve /polizas — y /menu, el slug de restauración, no debería resolver nada suyo.
+    const sitioSeguros: Sitio = {
+      ...sitioA,
+      vertical: "correduria_seguros",
+      businessProfile: {
+        name: "Correduría Segura",
+        menu: [{ name: "Seguro de hogar", price: "12 €/mes" }],
+      },
+    };
+    const { app } = montar({ sitios: new MemSitios([sitioSeguros]) });
+
+    const res = await pedir(app, "/polizas", "bellanapoli.es");
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /Pólizas y coberturas/);
+
+    assert.equal((await pedir(app, "/menu", "bellanapoli.es")).status, 404, "/menu no es SU slug de catálogo");
+  });
+
+  it("resolver sirve /menu (no /polizas) para un cliente de vertical restauracion — sin regresión", async () => {
+    const { app } = montar();
+
+    const res = await pedir(app, "/menu", "bellanapoli.es");
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /Golden Burger/);
+
+    assert.equal(
+      (await pedir(app, "/polizas", "bellanapoli.es")).status,
+      404,
+      "/polizas no es el slug de catálogo de un restaurante",
+    );
   });
 
   it("🔴 sirve /blog con los artículos del space", async () => {

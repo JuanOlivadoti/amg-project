@@ -8,7 +8,7 @@ import { MAX_DESTACADOS_RENDER, MAX_TESTIMONIOS_RENDER } from "../lib.js";
 import { CATALOGO } from "./index.js";
 import { bienvenida, BIENVENIDA_DEFAULT } from "./bienvenida.js";
 import { blogIndice } from "./blog-indice.js";
-import { cabecera } from "./cabecera.js";
+import { cabecera, navPrincipal } from "./cabecera.js";
 import { contacto } from "./contacto.js";
 import { destacados, DESTACADOS_DEFAULT } from "./destacados.js";
 import { faq } from "./faq.js";
@@ -56,6 +56,21 @@ test("🔴 cabecera: el nombre se escapa y un logo `javascript:` cae al nombre, 
   assert.ok(!html.includes("<script>alert(1)</script>"));
   assert.ok(!html.includes('src="javascript:'), "un logo con esquema no puede llegar a un <img src>");
   assert.match(html, /class="marca"/, "cae al nombre del negocio");
+});
+
+test("navPrincipal linkea /polizas con etiqueta 'Pólizas y coberturas' para seguros", () => {
+  const items = navPrincipal(perfilCompleto(), "correduria_seguros");
+  const item = items.find((i) => i.slug === "polizas");
+  assert.ok(item);
+  assert.equal(item!.href, "/polizas");
+  assert.equal(item!.label, "Pólizas y coberturas");
+});
+
+test("navPrincipal sigue linkeando /menu con etiqueta 'Menú' para restauración — sin regresión", () => {
+  const items = navPrincipal(perfilCompleto(), "restauracion");
+  const item = items.find((i) => i.slug === "menu");
+  assert.equal(item!.href, "/menu");
+  assert.equal(item!.label, "Menú");
 });
 
 // ---------------------------------------------------------------- hero

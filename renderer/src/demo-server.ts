@@ -73,10 +73,12 @@ const [{ id: tenant }] = (
   )
 ).rows as [{ id: string }];
 
+// 'restauracion' explícito: la demo pública corre sobre el cliente real de AMG Madrid, hoy un
+// restaurante — misma decisión que ya toman seed-demo.ts y dev-server.ts.
 await pg.query(
   `insert into clients (tenant_id, nombre, domain, storyblok_space_id,
-                        storyblok_public_token, storyblok_preview_token, business_profile)
-   values ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+                        storyblok_public_token, storyblok_preview_token, business_profile, vertical)
+   values ($1,$2,$3,$4,$5,$6,$7::jsonb,'restauracion')`,
   [tenant, dominio, dominio, spaceId, publicToken, previewToken, perfil ? JSON.stringify(perfil) : null],
 );
 

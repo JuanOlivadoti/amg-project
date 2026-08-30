@@ -1,4 +1,4 @@
-import type { BusinessProfile, NavItem, Story } from "../../types.js";
+import type { BusinessProfile, NavItem, Story, Vertical } from "../../types.js";
 import type { PresupuestoImagenes } from "../imagenes.js";
 import type { PresupuestoVideos } from "../videos.js";
 
@@ -65,6 +65,9 @@ export interface CtxPieza {
   bajada: string;
   /** Páginas publicadas (home) o artículos (`/blog`). Vacío en el resto. */
   paginas: NavItem[];
+  /** El rubro del cliente dueño del documento. Cualquier pieza puede leerlo para variar su copy
+   *  (título de sección, unidad de conteo) sin necesitar una pieza nueva por vertical. */
+  vertical: Vertical;
   /**
    * El presupuesto de imágenes **de este documento** (§Política de imágenes, punto 5).
    *

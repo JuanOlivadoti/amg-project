@@ -1,8 +1,9 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
+import { ClientesService } from '../../services/clientes';
 import type { MenuCategoria, MenuItem } from '../../core/models';
 import { Vigencia } from '../../core/vigencia';
 
@@ -34,7 +35,7 @@ import { Vigencia } from '../../core/vigencia';
   imports: [FormsModule, RouterLink],
   template: `
     <div class="space-y-6">
-      <h1 class="sr-only">Menú</h1>
+      <h1 class="sr-only">{{ tituloSeccion() }}</h1>
 
       @if (cargando()) {
         <p class="text-sm text-texto-tenue">Cargando…</p>
@@ -112,12 +113,16 @@ import { Vigencia } from '../../core/vigencia';
 
         <section class="space-y-3">
           <div class="flex items-center justify-between">
-            <h2 class="text-sm font-medium text-texto">Platos</h2>
-            <a [routerLink]="['/clientes', clienteId(), 'menu', platos().length]" class="cta">Agregar plato</a>
+            <h2 class="text-sm font-medium text-texto">{{ esSeguros() ? 'Pólizas' : 'Platos' }}</h2>
+            <a [routerLink]="['/clientes', clienteId(), 'menu', platos().length]" class="cta">
+              {{ esSeguros() ? 'Agregar póliza' : 'Agregar plato' }}
+            </a>
           </div>
 
           @if (platos().length === 0) {
-            <p class="text-sm text-texto-tenue">Todavía no hay platos cargados.</p>
+            <p class="text-sm text-texto-tenue">
+              {{ esSeguros() ? 'Todavía no hay pólizas cargadas.' : 'Todavía no hay platos cargados.' }}
+            </p>
           } @else {
             @for (grupo of gruposDePlatos(); track grupo.nombre) {
               <div class="space-y-2">
@@ -150,8 +155,21 @@ import { Vigencia } from '../../core/vigencia';
 export class ClienteMenuPage implements OnInit, OnDestroy {
   private readonly api = inject(ApiService);
   private readonly route = inject(ActivatedRoute);
+  private readonly clientesService = inject(ClientesService);
 
   private readonly vigencia = new Vigencia();
+
+  /** `true` para un cliente de correduría de seguros — condiciona TODO el copy visible de esta
+   *  pantalla (el `<h1>` `sr-only`, el `<h2>` "Platos"/"Pólizas", el link "Agregar plato"/"Agregar
+   *  póliza" y el estado vacío), mismo criterio que `esSeguros` en `cliente-menu-detalle.ts`. Lee del
+   *  mismo `ClientesService` que ya popula `ClienteFichaComponent` al cargar la ficha, así que para
+   *  cuando esta pantalla monta el dato ya está disponible. */
+  readonly esSeguros = computed(() => this.clientesService.cliente()?.vertical === 'correduria_seguros');
+
+  /** El `<h1>` (oculto, `sr-only`) según el `vertical` del cliente — mismo criterio que el tab de la
+   *  ficha (`cliente-ficha.ts`): "Menú" para restauración, "Pólizas y coberturas" para correduría de
+   *  seguros. */
+  readonly tituloSeccion = computed(() => (this.esSeguros() ? 'Pólizas y coberturas' : 'Menú'));
 
   readonly clienteId = signal('');
   readonly menu = signal<MenuItem[]>([]);

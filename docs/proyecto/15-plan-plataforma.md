@@ -6,14 +6,15 @@
 >
 > Escrito el **2026-08-07**, el día que se cerró Fase 2.
 >
-> 🧭 **Nuevo (2026-08-26): además de los bloques de abajo (mayormente hechos), hay una iniciativa
+> 🧭 **Nuevo (2026-08-30): además de los bloques de abajo (mayormente hechos), hay una iniciativa
 > nueva en marcha — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.** Partida
 > en tres sub-proyectos independientes (multi-vertical de clientes, desacoplar keyword research de
-> creación de webs, publicar posts en blog externo), con spec+plan completos y dos rondas de revisión
-> conjunta (Codex incluido) ya procesadas — **listos para implementar, en el orden fijado (sub-proyecto
-> 2 primero)**. El detalle de orden/dependencias vive en `progress/current.md`, no acá — este archivo
-> no se reestructura para la iniciativa nueva porque los "bloques" de abajo son trabajo previo, casi
-> todo cerrado.
+> creación de webs, publicar posts en blog externo). **Los sub-proyectos 2 y 1 ya están IMPLEMENTADOS
+> Y CERRADOS** (desacoplar keyword research, 2026-08-28; multi-vertical de clientes — restauración +
+> correduría de seguros, 2026-08-30) — queda el 3 (publicar posts en blog externo), con spec+plan
+> completos y revisión conjunta ya procesada, listo para implementar. El detalle vive en
+> `progress/current.md`, no acá — este archivo no se reestructura para la iniciativa nueva porque los
+> "bloques" de abajo son trabajo previo, casi todo cerrado.
 
 ---
 

@@ -1,26 +1,38 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import type { Subscription } from 'rxjs';
 import { ClientesService } from '../../services/clientes';
+import type { Vertical } from '../../core/models';
 import { PageBreadcrumbComponent } from '../../shared/components/page-breadcrumb';
 
-interface TabFicha {
+export interface TabFicha {
   readonly etiqueta: string;
   readonly ruta: string;
 }
 
 /**
- * Los CINCO tabs de la ficha, y el orden acá ES el orden en pantalla. `Perfil` va primero porque es
- * el tab por defecto (el `redirectTo` de `app.routes.ts`); `Reseñas`, `Ideas` y `Menú` van al final
- * por orden histórico de cuándo se agregaron a la ficha, no por ningún criterio activo.
+ * Los CUATRO tabs que no dependen del cliente, y el orden acá ES el orden en pantalla. `Perfil` va
+ * primero porque es el tab por defecto (el `redirectTo` de `app.routes.ts`); `Reseñas` e `Ideas` van
+ * al final por orden histórico de cuándo se agregaron a la ficha, no por ningún criterio activo.
  */
-export const TABS_FICHA: readonly TabFicha[] = [
+const TABS_FIJOS: readonly TabFicha[] = [
   { etiqueta: 'Perfil', ruta: 'perfil' },
   { etiqueta: 'Research', ruta: 'research' },
   { etiqueta: 'Reseñas', ruta: 'resenas' },
   { etiqueta: 'Ideas', ruta: 'ideas' },
-  { etiqueta: 'Menú', ruta: 'menu' },
 ];
+
+/**
+ * Los CINCO tabs de la ficha: los cuatro fijos más el del catálogo, cuya ETIQUETA depende del
+ * `vertical` del cliente (Task 12) — "Menú" para restauración, "Pólizas y coberturas" para
+ * correduría de seguros. La RUTA interna sigue siendo `menu` para los dos rubros a propósito: no hay
+ * ninguna razón para que el contrato interno (la URL, lo que pide `cliente-menu.ts`) sepa de
+ * verticales, y renombrarla solo por vertical rompería cualquier link guardado.
+ */
+export function tabsFicha(vertical: Vertical | undefined): readonly TabFicha[] {
+  const etiquetaCatalogo = vertical === 'correduria_seguros' ? 'Pólizas y coberturas' : 'Menú';
+  return [...TABS_FIJOS, { etiqueta: etiquetaCatalogo, ruta: 'menu' }];
+}
 
 /**
  * Shell de `/clientes/:id`: la ficha del cliente como CONTENEDOR de sus secciones, no como pantalla.
@@ -110,7 +122,7 @@ export const TABS_FICHA: readonly TabFicha[] = [
             selector "nav a" a secas recogía también el ancla del breadcrumb.
           -->
           <nav class="-mb-px flex gap-8" aria-label="Secciones del cliente">
-            @for (tab of tabs; track tab.ruta) {
+            @for (tab of tabs(); track tab.ruta) {
               <a
                 [routerLink]="['/clientes', id(), tab.ruta]"
                 routerLinkActive="border-accion! text-texto!"
@@ -134,7 +146,9 @@ export class ClienteFichaComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
-  readonly tabs = TABS_FICHA;
+  /** La etiqueta del tab de catálogo depende del `vertical` del cliente cargado (Task 13) — por eso
+   *  es un `computed` y no la constante fija que era hasta acá. */
+  readonly tabs = computed(() => tabsFicha(this.clientesService.cliente()?.vertical));
   /** El `:id` de la URL, para armar los `routerLink` de los tabs. */
   readonly id = signal('');
 

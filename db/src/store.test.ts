@@ -95,7 +95,7 @@ beforeEach(async () => {
 
   const mk = async (tid: string, n: string) => {
     const { rows } = await pg.query<{ id: string }>(
-      "insert into clients (tenant_id, nombre) values ($1, $2) returning id",
+      "insert into clients (tenant_id, nombre, vertical) values ($1, $2, 'restauracion') returning id",
       [tid, n],
     );
     return rows[0]!.id;
@@ -1857,6 +1857,19 @@ test("getClient incluye archived_at", async () => {
   assert.ok(cliente);
   assert.ok(cliente!.archived_at !== undefined, "archived_at tiene que venir en la fila, aunque sea null");
   assert.notEqual(cliente!.archived_at, null);
+});
+
+/**
+ * `renderStory` (Task 9) necesita `ClientRow.vertical` para elegir la receta al publicar, y quien
+ * llama a `getClient` en producción es el orquestador, bajo `app_service` -- no `app_user`. El grant
+ * de columna de la Task 1 (`grant select (vertical) on clients to app_user, app_service, app_render`,
+ * 0029_clientes_vertical.sql) solo se ejercita de verdad corriendo bajo `storeServicio`: bajo `store`
+ * (app_user) este test pasaría igual aunque el grant de app_service no existiera.
+ */
+test("getClient incluye vertical, bajo el rol real app_service", async () => {
+  const cliente = await storeServicio.getClient(ctxA(), clientA1);
+  assert.ok(cliente);
+  assert.equal(cliente!.vertical, "restauracion");
 });
 
 /**

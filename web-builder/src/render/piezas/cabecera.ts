@@ -1,8 +1,8 @@
-import type { BusinessProfile } from "../../types.js";
+import type { BusinessProfile, Vertical } from "../../types.js";
 import { consumirCupo, fuentePermitida } from "../imagenes.js";
 import {
   SLUG_HOME,
-  SLUG_MENU,
+  catalogoSlug,
   datosAccionables,
   envolver,
   esc,
@@ -41,10 +41,12 @@ interface ItemNav {
  * Cada ítem es **condicional al dato que lo hace útil**: sin carta no hay "Menú", sin locales ni
  * dirección no hay "Ubicaciones". Un enlace a una sección vacía es peor que no tener el enlace.
  */
-function navPrincipal(profile: BusinessProfile): ItemNav[] {
+export function navPrincipal(profile: BusinessProfile, vertical: Vertical): ItemNav[] {
   const items: ItemNav[] = [{ href: "/", label: "Inicio", slug: SLUG_HOME }];
   if (profile.menu && profile.menu.length > 0) {
-    items.push({ href: `/${SLUG_MENU}`, label: "Menú", slug: SLUG_MENU });
+    const slug = catalogoSlug(vertical);
+    const label = vertical === "correduria_seguros" ? "Pólizas y coberturas" : "Menú";
+    items.push({ href: `/${slug}`, label, slug });
   }
   // Ubicaciones y Contacto son ANCLAS al footer, no páginas: el footer está en todas las páginas, así
   // que el enlace funciona desde cualquiera sin cargar nada.
@@ -143,7 +145,7 @@ export const cabecera: Pieza = {
     // sin ficha cargada) sale sin barra, como hasta ahora.
     const profile = ctx.profile;
     if (!profile) return "";
-    const navHtml = renderNav(navPrincipal(profile), ctx.activeSlug);
+    const navHtml = renderNav(navPrincipal(profile, ctx.vertical), ctx.activeSlug);
     // ⚠️ **El logo es el SEGUNDO emisor de `<img>` del render** —el otro es `renderImagen`— y es el
     // único que aparece en TODAS las páginas del sitio. Como vector de fuga hacia un host arbitrario
     // es, por tanto, el PEOR de los dos: una foto de hero se ve en una página; el logo, en todas.

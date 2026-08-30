@@ -16,7 +16,7 @@ async function crearRunDePrueba(
   const tenantId = tenantRow!.id;
 
   const [clientRow] = await sql<{ id: string }>(
-    "insert into clients (tenant_id, nombre) values ($1, 'Test Client') returning id",
+    "insert into clients (tenant_id, nombre, vertical) values ($1, 'Test Client', 'restauracion') returning id",
     [tenantId],
   );
   const clientId = clientRow!.id;
@@ -119,7 +119,7 @@ test("RLS: dentro del mismo tenant, un rol 'cliente' no ve las decisiones de OTR
 
     // Crear un segundo cliente y su owner en el mismo tenant
     const [clientA2Row] = await db.asService<{ id: string }>(
-      "insert into clients (tenant_id, nombre) values ($1, 'Cliente A2 Test') returning id",
+      "insert into clients (tenant_id, nombre, vertical) values ($1, 'Cliente A2 Test', 'restauracion') returning id",
       [s.tenantA],
     );
     const clientA2Id = clientA2Row!.id;

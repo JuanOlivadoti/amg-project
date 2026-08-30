@@ -791,9 +791,12 @@ export async function sembrarDemo(
     const tenantId = t[0]!.id;
 
     // --- Cliente (upsert por id FIJO: sin resolución por nombre, sin carreras) ---
+    // 'restauracion' explícito: la demo de AMG Madrid es (y sigue siendo) un restaurante. `vertical`
+    // NO entra en el `do update` — es inmutable tras el alta (0029_clientes_vertical.sql); un reseed
+    // no tiene que poder cambiarla.
     await con.query(
-      `insert into clients (id, tenant_id, nombre, prompt_negocio, business_profile)
-       values ($1, $2, $3, $4, $5::jsonb)
+      `insert into clients (id, tenant_id, nombre, prompt_negocio, business_profile, vertical)
+       values ($1, $2, $3, $4, $5::jsonb, 'restauracion')
        on conflict (id) do update
          set nombre = excluded.nombre,
              prompt_negocio = excluded.prompt_negocio,

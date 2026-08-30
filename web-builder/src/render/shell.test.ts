@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { pageToStory } from "../handoff/adapter.js";
 import { perfilConManual, perfilLegacy, validBrief, validPage, validProfile } from "../fixtures.js";
 import { perfilCompleto } from "./ctx-de-prueba.js";
-import { renderBlogIndex, renderHome, renderMenu, renderStory } from "./html.js";
+import { renderBlogIndex, renderCatalogo, renderHome, renderStory } from "./html.js";
 
 /**
  * **El shell es lo que la receta NO puede tocar.**
@@ -21,10 +21,10 @@ const PAGINAS = [{ slug: "pizzeria-chamberi", name: "Pizzería en Chamberí" }];
 /** Las cuatro páginas que el renderizador sabe servir, con una ficha que dispara todas las piezas. */
 function lasCuatro(): Array<[string, string]> {
   return [
-    ["landing", renderStory(pageToStory(validPage(), validBrief()), PERFIL, "es", true)],
-    ["home", renderHome(PERFIL, PAGINAS, "es", true)],
-    ["/menu", renderMenu(PERFIL, "es", true)],
-    ["/blog", renderBlogIndex(PERFIL, PAGINAS, "es")],
+    ["landing", renderStory(pageToStory(validPage(), validBrief()), PERFIL, "restauracion", "es", true)],
+    ["home", renderHome(PERFIL, PAGINAS, "restauracion", "es", true)],
+    ["/menu", renderCatalogo(PERFIL, "restauracion", "es", true)],
+    ["/blog", renderBlogIndex(PERFIL, PAGINAS, "restauracion", "es")],
   ];
 }
 
@@ -58,7 +58,7 @@ test("ninguna receta puede omitir la cabecera ni el pie: las cuatro páginas los
 });
 
 test("la receta manda SOLO dentro de <main>: el nav ancla y el JSON-LD viven fuera", () => {
-  const html = renderStory(pageToStory(validPage(), validBrief()), PERFIL, "es", true);
+  const html = renderStory(pageToStory(validPage(), validBrief()), PERFIL, "restauracion", "es", true);
   const main = html.slice(html.indexOf("<main>"), html.indexOf("</main>"));
   assert.ok(!main.includes('id="ubicaciones"'), "las ubicaciones son del pie, no del contenido");
   assert.ok(!main.includes("ld+json"), "el JSON-LD es una propiedad del documento, no de una pieza");
@@ -73,10 +73,10 @@ test("sin locales, `id=\"ubicaciones\"` no existe — y el nav tampoco lo ofrece
     locations: [],
   });
   for (const html of [
-    renderStory(pageToStory(validPage(), validBrief()), pelado, "es", false),
-    renderHome(pelado, PAGINAS, "es", false),
-    renderMenu(pelado, "es", false),
-    renderBlogIndex(pelado, PAGINAS, "es"),
+    renderStory(pageToStory(validPage(), validBrief()), pelado, "restauracion", "es", false),
+    renderHome(pelado, PAGINAS, "restauracion", "es", false),
+    renderCatalogo(pelado, "restauracion", "es", false),
+    renderBlogIndex(pelado, PAGINAS, "restauracion", "es"),
   ]) {
     assert.ok(!html.includes('id="ubicaciones"'), "sin datos, la región no se dibuja");
     assert.ok(!html.includes('href="#ubicaciones"'), "y el enlace tampoco: las dos salen del mismo dato");
@@ -84,7 +84,7 @@ test("sin locales, `id=\"ubicaciones\"` no existe — y el nav tampoco lo ofrece
 });
 
 test("sin perfil el documento sigue siendo válido: sin cabecera, con la línea técnica", () => {
-  const html = renderStory(pageToStory(validPage(), validBrief()), null, "es", false);
+  const html = renderStory(pageToStory(validPage(), validBrief()), null, "restauracion", "es", false);
   assert.match(html, /^<!doctype html>/);
   assert.ok(!html.includes('class="sitebar"'), "una página suelta sin sitio no lleva barra");
   assert.ok(!html.includes('id="contacto"'));
@@ -93,7 +93,7 @@ test("sin perfil el documento sigue siendo válido: sin cabecera, con la línea 
 });
 
 test("el <head> lleva title, canonical y og:url resueltos de la MISMA fuente", () => {
-  const html = renderStory(pageToStory(validPage(), validBrief()), PERFIL);
+  const html = renderStory(pageToStory(validPage(), validBrief()), PERFIL, "restauracion");
   const canonical = html.match(/rel="canonical" href="([^"]*)"/)?.[1];
   const ogUrl = html.match(/property="og:url" content="([^"]*)"/)?.[1];
   assert.equal(canonical, ogUrl, "canonical y og:url no pueden divergir: es el mismo hecho dicho dos veces");
@@ -114,7 +114,7 @@ test("una descripción vacía NO emite `<meta name=\"description\">` — decisi�
   const story = pageToStory(validPage(), validBrief());
   story.content.seo.description = "";
   story.content.seo.og_description = "";
-  const html = renderStory(story, PERFIL, "es", true);
+  const html = renderStory(story, PERFIL, "restauracion", "es", true);
 
   assert.doesNotMatch(html, /<meta name="description"/, "no debe emitir la etiqueta con content vacío");
   assert.doesNotMatch(html, /<meta property="og:description"/);
@@ -128,7 +128,7 @@ test("con descripción, las dos etiquetas salen y van escapadas", () => {
   const story = pageToStory(validPage(), validBrief());
   story.content.seo.description = 'Pizza & pasta "de verdad"';
   story.content.seo.og_description = "<script>alert(1)</script>";
-  const html = renderStory(story, PERFIL, "es", true);
+  const html = renderStory(story, PERFIL, "restauracion", "es", true);
 
   assert.match(html, /<meta name="description" content="Pizza &amp; pasta &quot;de verdad&quot;">/);
   assert.doesNotMatch(html, /<meta property="og:description" content="<script>/);
@@ -146,10 +146,10 @@ test("con descripción, las dos etiquetas salen y van escapadas", () => {
 function lasCuatroConManual(): Array<[string, string]> {
   const p = perfilConManual();
   return [
-    ["landing", renderStory(pageToStory(validPage(), validBrief()), p, "es", true)],
-    ["home", renderHome(p, PAGINAS, "es", true)],
-    ["/menu", renderMenu(p, "es", true)],
-    ["/blog", renderBlogIndex(p, PAGINAS, "es")],
+    ["landing", renderStory(pageToStory(validPage(), validBrief()), p, "restauracion", "es", true)],
+    ["home", renderHome(p, PAGINAS, "restauracion", "es", true)],
+    ["/menu", renderCatalogo(p, "restauracion", "es", true)],
+    ["/blog", renderBlogIndex(p, PAGINAS, "restauracion", "es")],
   ];
 }
 
@@ -189,7 +189,7 @@ test("🔴 sin ninguna familia self-hosted NO se emite preload: no hay nada que 
     ["sin marca", validProfile()],
     ["legacy {color, font}", perfilLegacy()],
   ] as const) {
-    const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es", true);
+    const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "restauracion", "es", true);
     assert.equal(preloadsDe(html).length, 0, `${nombre}: precarga algo que no usa`);
     assert.ok(!html.includes("/_assets/fonts/"), `${nombre}: ni siquiera nombra la ruta de fuentes`);
   }
@@ -203,6 +203,7 @@ test("🔴 sin `fuentes.titulo`, se precarga la familia que los titulares HEREDA
   const html = renderStory(
     pageToStory(validPage(), validBrief()),
     validProfile({ brand: { fuentes: { texto: "geometrica" } } }),
+    "restauracion",
     "es",
     true,
   );
@@ -213,6 +214,7 @@ test("el preload sigue al rol de titulares, no al de la decorativa ni al del cue
   const html = renderStory(
     pageToStory(validPage(), validBrief()),
     validProfile({ brand: { fuentes: { titulo: "script", texto: "condensada", decorativa: "geometrica" } } }),
+    "restauracion",
     "es",
     true,
   );

@@ -14,7 +14,7 @@ import {
 } from "./css-de-prueba.js";
 import { ensamblarCss } from "./css.js";
 import { ctxDe } from "./ctx-de-prueba.js";
-import { renderMenu, renderStory } from "./html.js";
+import { renderCatalogo, renderStory } from "./html.js";
 import { CATALOGO } from "./piezas/index.js";
 import type { Pieza } from "./piezas/tipos.js";
 import { renderDocumento } from "./shell.js";
@@ -39,7 +39,7 @@ function estilo(html: string): string {
 
 /** El `<style>` de una página completa con esta ficha. */
 function cssDe(profile?: BusinessProfile | null): string {
-  return estilo(renderStory(pageToStory(validPage(), validBrief()), profile));
+  return estilo(renderStory(pageToStory(validPage(), validBrief()), profile, "restauracion"));
 }
 
 /**
@@ -397,7 +397,7 @@ test("el acento legible es lo que pinta el TEXTO de acento; el botón conserva e
   // fondo oscuro y EMPEORA el botón, que lleva texto blanco encima.
   // El precio de la carta vive en `/menu` (la receta de la landing no lleva `cartaCategorias`), así
   // que hacen falta las dos páginas.
-  const cssMenu = estilo(renderMenu(validProfile({ menu: [{ name: "Pizza", price: "12 €" }] })));
+  const cssMenu = estilo(renderCatalogo(validProfile({ menu: [{ name: "Pizza", price: "12 €" }] }), "restauracion"));
   const cssLanding = cssDe(validProfile());
   assert.equal(propiedadResuelta(cssMenu, ".p-cartaCategorias .precio", "color"), "#b91c1c");
   assert.equal(propiedadResuelta(cssLanding, ".p-heroSlider .cta", "background"), "#b91c1c");

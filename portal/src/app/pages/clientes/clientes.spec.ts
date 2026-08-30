@@ -15,6 +15,7 @@ function clienteDePrueba(overrides: Partial<ClienteAgencia> = {}): ClienteAgenci
   return {
     id: 'c1',
     nombre: 'Pizza Nonna',
+    vertical: 'restauracion',
     tipo: 'empresa',
     industria: 'restauración',
     etiquetas: [],

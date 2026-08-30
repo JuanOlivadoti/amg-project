@@ -1,10 +1,12 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { PGlite } from "@electric-sql/pglite";
 import { TestDb, seed } from "./testdb.js";
 import type { Seed } from "./testdb.js";
 import { PgClientes } from "./clientes.js";
-import type { NuevoCliente } from "./clientes.js";
+import type { NuevoCliente, CambiosCliente } from "./clientes.js";
 import { PglitePool } from "./pool.js";
+import { aplicarMigracion, aplicarMigracionesHasta } from "./migrate.js";
 
 /**
  * Etapa 1 del CRM de clientes (SOLO esquema, ver `docs/proyecto/11-plan-fase-2.md`): las columnas
@@ -80,7 +82,7 @@ test("un cliente con todos los campos de CRM se guarda y se lee igual", async ()
 test("un cliente recién creado tiene los defaults del CRM: sin_contrato, etiquetas y contacto vacíos", async () => {
   const [row] = await db.asUser(
     { tenantId: s.tenantA, userId: s.equipoA },
-    `insert into clients (tenant_id, nombre) values ($1, 'Nuevo Negocio')
+    `insert into clients (tenant_id, nombre, vertical) values ($1, 'Nuevo Negocio', 'restauracion')
      returning estado_contrato, etiquetas, contacto, score, asignado_a, tipo`,
     [s.tenantA],
   );
@@ -364,6 +366,7 @@ test("crearCliente usa el tenant_id del CONTEXTO, aunque el payload traiga uno d
   const payloadConFuga = {
     nombre: "Intento de fuga de tenant",
     tenantId: s.tenantB,
+    vertical: "restauracion",
   } as unknown as NuevoCliente;
 
   const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, payloadConFuga);
@@ -378,7 +381,7 @@ test("crearCliente usa el tenant_id del CONTEXTO, aunque el payload traiga uno d
 test("crearCliente sin campos opcionales respeta los defaults del esquema (0011)", async () => {
   const id = await clientes.crearCliente(
     { tenantId: s.tenantA, userId: s.equipoA },
-    { nombre: "Nuevo Negocio TS" },
+    { nombre: "Nuevo Negocio TS", vertical: "restauracion" },
   );
 
   const fila = (await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })).find(
@@ -392,7 +395,10 @@ test("crearCliente sin campos opcionales respeta los defaults del esquema (0011)
 });
 
 test("actualizarCliente de un cliente de OTRO tenant no afecta ninguna fila (0, no una excepción)", async () => {
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Solo de A" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo de A", vertical: "restauracion" },
+  );
 
   const resultado = await clientes.actualizarCliente(
     { tenantId: s.tenantB, userId: s.equipoB },
@@ -408,7 +414,10 @@ test("actualizarCliente de un cliente de OTRO tenant no afecta ninguna fila (0, 
 });
 
 test("actualizarCliente del MISMO tenant sí aplica los cambios", async () => {
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Editable" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Editable", vertical: "restauracion" },
+  );
 
   const ok = await clientes.actualizarCliente({ tenantId: s.tenantA, userId: s.equipoA }, id, {
     score: 55,
@@ -426,7 +435,10 @@ test("actualizarCliente del MISMO tenant sí aplica los cambios", async () => {
 });
 
 test("archivarCliente / desarchivarCliente cambian archived_at", async () => {
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Para archivar" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Para archivar", vertical: "restauracion" },
+  );
 
   const antes = (await clientes.listarClientes({ tenantId: s.tenantA, userId: s.equipoA })).find(
     (c) => c.id === id,
@@ -449,7 +461,10 @@ test("archivarCliente / desarchivarCliente cambian archived_at", async () => {
 });
 
 test("archivarCliente de un cliente de OTRO tenant no afecta ninguna fila", async () => {
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Protegido" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Protegido", vertical: "restauracion" },
+  );
 
   const resultado = await clientes.archivarCliente({ tenantId: s.tenantB, userId: s.equipoB }, id);
   assert.equal(resultado, false);
@@ -468,7 +483,7 @@ test("archivarCliente de un cliente de OTRO tenant no afecta ninguna fila", asyn
 test("obtenerCliente devuelve el cliente por id, con las mismas columnas que listarClientes", async () => {
   const id = await clientes.crearCliente(
     { tenantId: s.tenantA, userId: s.equipoA },
-    { nombre: "Uno Solo", industria: "restauracion", score: 42 },
+    { nombre: "Uno Solo", industria: "restauracion", score: 42, vertical: "restauracion" },
   );
 
   const cliente = await clientes.obtenerCliente({ tenantId: s.tenantA, userId: s.equipoA }, id);
@@ -480,7 +495,10 @@ test("obtenerCliente devuelve el cliente por id, con las mismas columnas que lis
 });
 
 test("obtenerCliente de un id de OTRO tenant devuelve null (no lanza)", async () => {
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Solo de A" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo de A", vertical: "restauracion" },
+  );
 
   const comoB = await clientes.obtenerCliente({ tenantId: s.tenantB, userId: s.equipoB }, id);
   assert.equal(comoB, null, "bajo RLS, un id de otro tenant no matchea: null, no un error");
@@ -603,10 +621,29 @@ test("equipoA (rol equipo, mismo tenant) SÍ ve todas las columnas de CRM sin ca
   });
 });
 
+test("🔴 duenoA1 (rol cliente) SÍ ve `vertical` sin enmascarar — es un atributo de producto, no una nota de CRM", async () => {
+  // A diferencia de las 10 columnas de arriba, `vertical` no pasa por `app.es_staff()`: el propio
+  // portal del cliente lo necesita (para saber qué formulario/secciones mostrarle), así que va en el
+  // grupo SIN enmascarar de CLIENTE_CRM_COLS (junto a id/nombre/google_conectado_en).
+  const comoDueno = await clientes.obtenerCliente({ tenantId: s.tenantA, userId: s.duenoA1 }, s.clientA1);
+
+  assert.ok(comoDueno, "duenoA1 sigue viendo su propia fila");
+  assert.equal(comoDueno?.vertical, "restauracion", "vertical NO se enmascara para el rol cliente");
+  assert.equal(comoDueno?.tipo, null, "tipo CRM sigue enmascarado — solo vertical cambia");
+
+  const viaListar = (
+    await clientes.listarClientes({ tenantId: s.tenantA, userId: s.duenoA1 })
+  ).find((c) => c.id === s.clientA1);
+  assert.equal(viaListar?.vertical, "restauracion", "listarClientes tampoco enmascara vertical");
+});
+
 // ---------------------------------------------------------------- menú (editor del portal)
 
 test("obtenerMenu de un cliente sin business_profile devuelve arrays vacíos, no null ni excepción", async () => {
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Sin carta" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Sin carta", vertical: "restauracion" },
+  );
 
   const menu = await clientes.obtenerMenu({ tenantId: s.tenantA, userId: s.equipoA }, id);
 
@@ -614,7 +651,10 @@ test("obtenerMenu de un cliente sin business_profile devuelve arrays vacíos, no
 });
 
 test("obtenerMenu de un cliente inexistente (o de otro tenant) devuelve null", async () => {
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Solo A" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo A", vertical: "restauracion" },
+  );
 
   const menu = await clientes.obtenerMenu({ tenantId: s.tenantB, userId: s.equipoB }, id);
 
@@ -625,7 +665,10 @@ test("actualizarMenu sobre un cliente con business_profile NULL lo guarda igual 
   // `crearCliente` nunca escribe `business_profile`: la columna queda en su default, NULL. Éste es
   // exactamente el caso que `coalesce(business_profile, '{}'::jsonb)` tiene que cubrir — sin él, el
   // `||` de jsonb sobre NULL da NULL, el UPDATE devuelve éxito y el menú no queda guardado.
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Perfil vacío" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Perfil vacío", vertical: "restauracion" },
+  );
 
   const ok = await clientes.actualizarMenu({ tenantId: s.tenantA, userId: s.equipoA }, id, {
     menu: [{ name: "Margherita", price: "9,00 €" }],
@@ -641,7 +684,10 @@ test("actualizarMenu sobre un cliente con business_profile NULL lo guarda igual 
 });
 
 test("actualizarMenu toca SOLO menu/menu_categorias — el resto de business_profile sobrevive", async () => {
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Con perfil" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Con perfil", vertical: "restauracion" },
+  );
   // Perfil inicial con brand y fotos, escrito directo (no hay otro método de escritura de perfil
   // completo desde este store — mismo camino que usaría el CLI de seed).
   await db.asService(
@@ -675,7 +721,10 @@ test("actualizarMenu toca SOLO menu/menu_categorias — el resto de business_pro
 });
 
 test("actualizarMenu de un cliente de OTRO tenant no afecta ninguna fila", async () => {
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Solo de A" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo de A", vertical: "restauracion" },
+  );
 
   const ok = await clientes.actualizarMenu({ tenantId: s.tenantB, userId: s.equipoB }, id, {
     menu: [{ name: "Intento de fuga" }],
@@ -692,7 +741,10 @@ test("🔴 actualizarMenu con rol cliente (duenoA1) no escribe — client_write/
   // nueva —`client_write` (0001) ya lo impone y ningún cambio de esta etapa la tocó— pero hasta ahora
   // solo quedaba cubierta transitivamente por los tests de `client_write` sobre `PATCH /clients/:id`,
   // nunca por un test directo sobre `actualizarMenu`.
-  const id = await clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, { nombre: "Con carta" });
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Con carta", vertical: "restauracion" },
+  );
   await clientes.actualizarMenu({ tenantId: s.tenantA, userId: s.equipoA }, id, {
     menu: [{ name: "Margherita" }],
     menu_categorias: [],
@@ -706,4 +758,259 @@ test("🔴 actualizarMenu con rol cliente (duenoA1) no escribe — client_write/
 
   const menu = await clientes.obtenerMenu({ tenantId: s.tenantA, userId: s.equipoA }, id);
   assert.deepEqual(menu, { menu: [{ name: "Margherita" }], menu_categorias: [] }, "el menú no cambió");
+});
+
+// ---------------------------------------------------------------- perfil de seguros (editor del portal)
+//
+// Mismo mecanismo que `menu`/`menu_categorias` arriba (`obtenerPerfilSeguros`/`actualizarPerfilSeguros`
+// leen/escriben SOLO la clave `seguros` de `business_profile`), agregado junto con `vertical` (0029)
+// porque hasta esta etapa no existía ningún camino de ESCRITURA para `business_profile.seguros` en
+// todo el repo — el editor del portal (Task 14) lo necesita para poder guardar algo.
+
+test("obtenerPerfilSeguros de un cliente que existe pero no tiene la clave cargada devuelve { seguros: null }", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Sin seguros", vertical: "correduria_seguros" },
+  );
+
+  const resultado = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
+
+  // El objeto envolvente NO es null (la fila existe): distingue este caso de "cliente no encontrado",
+  // que es el que la API usa para decidir 404 en vez de 200 — ver el test de OTRO tenant más abajo.
+  assert.deepEqual(resultado, { seguros: null });
+});
+
+test("obtenerPerfilSeguros de un cliente de OTRO tenant (o inexistente) devuelve null a secas — la API lo usa para 404", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo A (lectura seguros)", vertical: "correduria_seguros" },
+  );
+
+  const resultado = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantB, userId: s.equipoB }, id);
+
+  // `null` a secas (no `{ seguros: null }`): es la fila la que falta, no el dato dentro de ella.
+  assert.equal(resultado, null);
+});
+
+test("actualizarPerfilSeguros reemplaza SOLO seguros, preserva el resto de business_profile", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Corredores X", vertical: "correduria_seguros" },
+  );
+  // Precondición: el cliente ya tiene otro campo de perfil (name) que no debe perderse.
+  await db.asService("update clients set business_profile = $1::jsonb where id = $2", [
+    JSON.stringify({ name: "Corredores X" }),
+    id,
+  ]);
+
+  const ok = await clientes.actualizarPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    numeroLicencia: "J-1479",
+    anosExperiencia: 35,
+    redAfiliacion: "E2K",
+  });
+  assert.equal(ok, true);
+
+  const [fila] = await db.asService<{ business_profile: Record<string, unknown> }>(
+    "select business_profile from clients where id = $1",
+    [id],
+  );
+  assert.equal(fila?.business_profile["name"], "Corredores X", "el resto del perfil sobrevive");
+  assert.deepEqual(fila?.business_profile["seguros"], {
+    numeroLicencia: "J-1479",
+    anosExperiencia: 35,
+    redAfiliacion: "E2K",
+  });
+
+  // Y el propio método lo lee de vuelta igual (round-trip completo, no solo la fila cruda).
+  const resultado = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(resultado, {
+    seguros: { numeroLicencia: "J-1479", anosExperiencia: 35, redAfiliacion: "E2K" },
+  });
+});
+
+test("actualizarPerfilSeguros de un cliente de OTRO tenant no afecta ninguna fila", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo de A (seguros)", vertical: "correduria_seguros" },
+  );
+
+  const ok = await clientes.actualizarPerfilSeguros({ tenantId: s.tenantB, userId: s.equipoB }, id, {
+    numeroLicencia: "Intento de fuga",
+  });
+  assert.equal(ok, false);
+
+  const resultado = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(resultado, { seguros: null }, "el cliente de A no cambió");
+});
+
+// ================================================================== 0029: clients.vertical
+//
+// El rubro del cliente (restauración | correduría de seguros). NOT NULL sin default, backfill
+// explícito de los clientes existentes, y grants de columna para app_service/app_render — que
+// PGlite con rol superusuario NO exige, así que estos dos últimos tests corren bajo el rol real
+// (`db.asOrquestador`/`db.asRender`), no bajo `db.asService`.
+
+test("🔴 el backfill de la 0029 deja restauracion a un cliente creado ANTES de la migración", async () => {
+  // Requiere aplicar las migraciones hasta la 0028 (la anterior a esta), insertar el cliente SIN
+  // vertical (la columna todavía no existe en ese punto de la historia), aplicar la 0029 sola, y
+  // recién ahí leer — mismo patrón que ya usan store.test.ts (🔴 la 0019 ...) y seed-contrato.test.ts
+  // con la 0017, consolidado acá en `aplicarMigracionesHasta`/`aplicarMigracion` (migrate.ts) para no
+  // copiar una tercera vez el filtro de `readdirSync` por prefijo.
+  const pgPrevio = new PGlite();
+  try {
+    const aplicadas = await aplicarMigracionesHasta(pgPrevio, 28);
+    // Control positivo del recorte: si el filtro dejara de matchear, se aplicaría "nada" y el insert
+    // de abajo (sin la columna `vertical`, que sería la única sin `not null`) pasaría por la razón
+    // equivocada.
+    assert.ok(aplicadas.length >= 20, `esperaba las migraciones previas y encontré ${aplicadas.length}`);
+
+    const { rows: t } = await pgPrevio.query<{ id: string }>(
+      "insert into tenants (nombre, slug) values ('Previa 0029', 'previa-0029') returning id",
+    );
+    await pgPrevio.query(
+      "insert into clients (tenant_id, nombre) values ($1, 'Cliente pre-existente')",
+      [t[0]!.id],
+    );
+
+    await aplicarMigracion(pgPrevio, 29);
+
+    const { rows } = await pgPrevio.query<{ vertical: string }>(
+      "select vertical from clients where nombre = 'Cliente pre-existente'",
+    );
+    assert.equal(rows[0]?.vertical, "restauracion");
+  } finally {
+    await pgPrevio.close();
+  }
+});
+
+test("🔴 clients.vertical es NOT NULL sin default — un insert que la omite falla", async () => {
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: s.equipoA },
+        "insert into clients (tenant_id, nombre) values ($1, 'Sin vertical')",
+        [s.tenantA],
+      ),
+    /null value in column "vertical"/,
+  );
+});
+
+test("🔴 crearCliente exige vertical: TypeScript lo rechaza en compilación, y si se cuela por un cast, Postgres también", async () => {
+  // El tipo `NuevoCliente.vertical` es obligatorio (sin `?`): esto no compilaría sin el cast. El cast
+  // simula el mismo caso que ya cubren los otros tests de fuga de este archivo — un handler HTTP real
+  // parsea JSON sin tipos, así que la garantía de runtime (la columna es NOT NULL sin default) tiene
+  // que sostenerse aunque el compilador no esté mirando.
+  const datosSinVertical = { nombre: "Sin vertical vía crearCliente" } as unknown as NuevoCliente;
+  await assert.rejects(
+    () => clientes.crearCliente({ tenantId: s.tenantA, userId: s.equipoA }, datosSinVertical),
+    /null value in column "vertical"/,
+  );
+});
+
+test("clients.vertical acepta los dos valores del enum y rechaza cualquier otro", async () => {
+  await db.asUser(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    "insert into clients (tenant_id, nombre, vertical) values ($1, 'Cliente seguros', 'correduria_seguros')",
+    [s.tenantA],
+  );
+
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: s.equipoA },
+        "insert into clients (tenant_id, nombre, vertical) values ($1, 'Cliente inválido', 'peluqueria')",
+        [s.tenantA],
+      ),
+    /invalid input value for enum/,
+  );
+});
+
+test("🔴 app_service puede leer vertical (grant de columna real, no solo la query bajo superusuario)", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Grant app_service", vertical: "restauracion" },
+  );
+
+  // `asOrquestador`, no `asService`: `asService` es el superusuario de infraestructura y SALTA los
+  // grants de columna — pasaría aunque el `grant select (vertical) on clients to app_service` de la
+  // 0029 no existiera. `asOrquestador` es el rol `app_service` DE VERDAD, sujeto a RLS y a los grants.
+  const rows = await db.asOrquestador<{ vertical: string }>(
+    { tenantId: s.tenantA },
+    "select vertical from clients where id = $1",
+    [id],
+  );
+  assert.equal(rows[0]?.vertical, "restauracion");
+});
+
+test("🔴 app_render puede leer vertical bajo su propio rol", async () => {
+  // `client_render_select` (0007) exige `domain is not null`: sin un dominio publicado, la fila es
+  // invisible para app_render y este test no distinguiría "sin grant" de "sin fila visible". El
+  // dominio es lo único que hace falta agregar aparte de `crearCliente` (que no lo acepta).
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Grant app_render", vertical: "restauracion" },
+  );
+  await db.asService("update clients set domain = 'grant-render-0029.es' where id = $1", [id]);
+
+  const rows = await db.asRender<{ vertical: string }>(
+    "select vertical from clients where id = $1",
+    [id],
+  );
+  assert.equal(rows[0]?.vertical, "restauracion");
+});
+
+test("🔴 clients.vertical es inmutable en la BASE: un UPDATE directo por SQL (fuera de actualizarCliente) también se rechaza", async () => {
+  // `CambiosCliente`/`COLUMNAS_EDITABLES` (clientes.ts) nunca mencionan `vertical` — pero ESO no es
+  // la garantía completa: `clients` tiene un grant de UPDATE de TABLA para `app_user`, sin angostar
+  // por columna (0001_init.sql), así que este UPDATE directo —el mismo camino que tomaría un
+  // endpoint nuevo, un script, o un bug en otra feature— se saltearía esa capa de TypeScript por
+  // completo si no fuera por el trigger `clients_vertical_inmutable` (0029).
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: s.equipoA },
+        "update clients set vertical = 'correduria_seguros' where id = $1",
+        [s.clientA1],
+      ),
+    /inmutable/i,
+  );
+
+  // Y la fila no cambió: el trigger raise abortó la sentencia entera, no solo esa columna.
+  const [cruda] = await db.asService<{ vertical: string }>(
+    "select vertical from clients where id = $1",
+    [s.clientA1],
+  );
+  assert.equal(cruda?.vertical, "restauracion", "vertical sigue en su valor original");
+});
+
+test("🔴 actualizarCliente ignora `vertical` aunque se lo cuelen en `cambios` (no está en CambiosCliente, y el trigger la respalda)", async () => {
+  // Mismo criterio que el test de `crearCliente usa el tenant_id del CONTEXTO...` más arriba: un
+  // handler HTTP real parsea JSON sin tipos, así que un `cambios` real podría traer una clave extra
+  // aunque `CambiosCliente` no la declare. El cast simula justo eso — la garantía tiene que ser de
+  // RUNTIME (qué columnas arma el `set`), no solo del compilador negándose a compilar el objeto.
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Vertical fija", vertical: "restauracion" },
+  );
+
+  const cambiosConFuga = { vertical: "correduria_seguros" } as unknown as CambiosCliente;
+
+  const ok = await clientes.actualizarCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    id,
+    cambiosConFuga,
+  );
+  // `actualizarCliente` recorre COLUMNAS_EDITABLES, que no incluye `vertical`: la clave colada nunca
+  // llega a formar parte del `set`. Con `cambiosConFuga` sin ninguna otra columna editable, `sets`
+  // queda vacío y el método devuelve `false` ANTES de tocar la base — ni siquiera llega a intentar
+  // un UPDATE (que de todos modos el trigger rechazaría si `vertical` estuviera en la lista).
+  assert.equal(ok, false, "cambiosConFuga no tiene ninguna columna editable: no hay nada que aplicar");
+
+  // No hay forma de leer `vertical` desde `ClienteCRM` todavía (no está en CLIENTE_CRM_COLS — ver el
+  // informe de esta task), así que se confirma por SQL crudo con el superusuario de infraestructura.
+  const [cruda] = await db.asService<{ vertical: string }>(
+    "select vertical from clients where id = $1",
+    [id],
+  );
+  assert.equal(cruda?.vertical, "restauracion", "vertical no cambió: la fuga no tuvo ningún efecto");
 });

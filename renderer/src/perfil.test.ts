@@ -137,12 +137,12 @@ describe("perfilValido + renderStory: el contrato de verdad", () => {
     // Este test documenta el fallo del que hay que protegerse. Si algún día `renderStory` se vuelve
     // tolerante, este test cae y avisa de que la defensa de abajo pasó a ser redundante — que es
     // información útil, no ruido.
-    assert.throws(() => renderStory(story(), { name: "N", address: "Calle Mayor 1" } as never, "es"));
+    assert.throws(() => renderStory(story(), { name: "N", address: "Calle Mayor 1" } as never, "restauracion", "es"));
   });
 
   it("🔴 con perfilValido delante, el mismo dato SIRVE la página en vez de tirarla", () => {
     // Una web de restaurante no puede caerse porque alguien cargó mal el NAP en su ficha.
-    const html = renderStory(story(), perfilValido({ name: "N", address: "Calle Mayor 1" }), "es");
+    const html = renderStory(story(), perfilValido({ name: "N", address: "Calle Mayor 1" }), "restauracion", "es");
 
     assert.match(html, /Bienvenidos/, "la página tiene que salir igual");
     assert.match(html, /<p class="negocio">N<\/p>/, "y con lo que sí era válido del perfil");
@@ -158,7 +158,7 @@ describe("perfilValido + renderStory: el contrato de verdad", () => {
     // `perfilValido` y llega al render"— se seguía cumpliendo, y el test decía que no. Un test que
     // afirma sobre la forma de emisión de OTRO paquete se rompe cada vez que ese paquete se
     // reorganiza, y entonces se "arregla" mecánicamente sin mirar si el contrato sigue vivo.
-    const html = renderStory(story(), perfilValido({ name: "N", brand: { color: "#0a7d34", font: "serif" } }), "es");
+    const html = renderStory(story(), perfilValido({ name: "N", brand: { color: "#0a7d34", font: "serif" } }), "restauracion", "es");
     assert.match(html, /#0a7d34/, "el color de marca no llega al CSS emitido");
     assert.match(html, /Georgia/, "la fuente de marca no llega al CSS emitido");
   });
@@ -167,6 +167,7 @@ describe("perfilValido + renderStory: el contrato de verdad", () => {
     const html = renderStory(
       story(),
       perfilValido({ name: "N", brand: { color: "red;}x{", font: "Comic", logo: "javascript:1" } }),
+      "restauracion",
       "es",
     );
     // El valor hostil ENTERO, no el nombre del token: `--accent:red` ya no se emite nunca, así que
@@ -184,7 +185,7 @@ describe("perfilValido + renderStory: el contrato de verdad", () => {
   });
 
   it("un perfil bien formado sí llega al JSON-LD y al bloque de contacto", () => {
-    const html = renderStory(story(), perfilValido(NAP_BUENO), "es");
+    const html = renderStory(story(), perfilValido(NAP_BUENO), "restauracion", "es");
 
     assert.match(html, /Calle Mayor 1/);
     assert.match(html, /28013/);
@@ -404,5 +405,36 @@ describe("perfilValido — el perfil extendido (fotos, manual de marca, carta)",
       menu: [{ name: "Margherita", precios: [{ etiqueta: "Ración", importe: "14,50 €", comensales: "2-3 personas" }] }],
     });
     assert.equal(p?.menu?.[0]?.precios?.[0]?.comensales, "2-3 personas");
+  });
+
+  it("perfilValido conserva seguros con los tres campos", () => {
+    const perfil = perfilValido({
+      name: "X",
+      seguros: { numeroLicencia: "J-1479", anosExperiencia: 35, redAfiliacion: "E2K" },
+    });
+    assert.deepEqual(perfil!.seguros, {
+      numeroLicencia: "J-1479",
+      anosExperiencia: 35,
+      redAfiliacion: "E2K",
+    });
+  });
+
+  it("perfilValido descarta seguros mal formado sin tirar el resto del perfil", () => {
+    const perfil = perfilValido({ name: "X", seguros: "no es un objeto" });
+    assert.equal(perfil!.seguros, undefined);
+    assert.equal(perfil!.name, "X");
+  });
+
+  it("perfilValido descarta anosExperiencia negativo, conserva los otros dos campos", () => {
+    const perfil = perfilValido({
+      name: "X",
+      seguros: { numeroLicencia: "J-1", anosExperiencia: -5, redAfiliacion: "E2K" },
+    });
+    assert.deepEqual(perfil!.seguros, { numeroLicencia: "J-1", redAfiliacion: "E2K" });
+  });
+
+  it("perfilValido descarta anosExperiencia decimal", () => {
+    const perfil = perfilValido({ name: "X", seguros: { anosExperiencia: 4.5 } });
+    assert.equal(perfil!.seguros, undefined);
   });
 });

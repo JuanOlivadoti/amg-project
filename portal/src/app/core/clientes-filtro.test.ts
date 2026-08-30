@@ -8,6 +8,7 @@ function cliente(overrides: Partial<ClienteAgencia>): ClienteAgencia {
   return {
     id: 'c1',
     nombre: 'Pizzería Roma',
+    vertical: 'restauracion',
     tipo: null,
     industria: null,
     etiquetas: [],

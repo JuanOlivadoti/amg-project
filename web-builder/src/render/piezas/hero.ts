@@ -11,7 +11,7 @@ import type { CtxPieza, Pieza } from "./tipos.js";
  *  - una página **sintetizada** (`/`, `/menu`, `/blog`): el `titulo`/`bajada` del contexto.
  *
  * Por eso esta pieza no está solo en la receta de story. La tabla del encargo la listaba únicamente
- * ahí, pero `renderHome`/`renderMenu`/`renderBlogIndex` emiten su propio `<header class="hero">`:
+ * ahí, pero `renderHome`/`renderCatalogo`/`renderBlogIndex` emiten su propio `<header class="hero">`:
  * dejarla fuera borraba el `<h1>` de tres páginas, o bien obligaba a triplicar el CSS de `.hero`
  * dentro de `indice`, `cartaCategorias` y `blogIndice`.
  *

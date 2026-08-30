@@ -26,6 +26,9 @@ import type { RolConexion, TenantContext } from "./store.js";
  * tiene DOS lecturas con DOS tipos: `ClientRow` y `ClienteCRM`, cada una con su propio alcance.
  */
 
+/** El rubro del cliente (0029). Dos valores hoy; agregar un tercero es un ADR, no un `if`. */
+export type Vertical = "restauracion" | "correduria_seguros";
+
 /**
  * La fila completa del CRM: lo que ve la agencia de UN cliente en el portal. Todo esto es interno —
  * ninguna de estas columnas tiene grant a `app_render` (ADR-19, ver 0011).
@@ -33,6 +36,11 @@ import type { RolConexion, TenantContext } from "./store.js";
 export interface ClienteCRM {
   id: string;
   nombre: string;
+  /** NO enmascarada, a diferencia de `tipo`/`industria` (clasificación interna de la agencia):
+   *  `vertical` es un atributo de PRODUCTO — el propio portal del cliente lo necesita para saber qué
+   *  formulario y qué secciones mostrarle — no una nota del CRM. Nunca `| null`: la columna es `not
+   *  null` (0029) y esta lectura no la enmascara para ningún rol. */
+  vertical: Vertical;
   tipo: string | null;
   industria: string | null;
   /** `| null`: además del array vacío del default, un rol `cliente` la ve enmascarada (ver
@@ -68,6 +76,19 @@ export interface ClienteCRM {
  */
 export interface NuevoCliente {
   nombre: string;
+  /**
+   * El rubro del cliente (`0029_clientes_vertical.sql`). REQUERIDO y no `?`: la columna es `not null`
+   * SIN default (mismo criterio que `PIPELINE_MODO`), así que el compilador tiene que obligar a
+   * elegirlo en cada alta — ningún caller puede "olvidarse" y dejar que un default lo decida por él,
+   * porque no hay ningún default que lo decida.
+   *
+   * INMUTABLE tras el alta: a propósito NO está en `CambiosCliente` ni en `COLUMNAS_EDITABLES` más
+   * abajo. La API todavía no expone una forma de elegirlo al crear un cliente real —eso es trabajo de
+   * otra etapa de este plan—; hasta entonces, `api/src/app.ts` fija `'restauracion'` explícitamente en
+   * el POST /clients de producción, la misma decisión que ya tomaban los tres caminos de datos de
+   * DEMO/DEV.
+   */
+  vertical: Vertical;
   tipo?: string | null;
   industria?: string | null;
   etiquetas?: string[];
@@ -146,6 +167,8 @@ const CLIENTE_CRM_MASKED_COLS: Record<string, string> = {
 const CLIENTE_CRM_COLS = [
   "id",
   "nombre",
+  // Sin enmascarar (ver el docblock de ClienteCRM.vertical): atributo de producto, no nota de CRM.
+  "vertical",
   ...Object.entries(CLIENTE_CRM_MASKED_COLS).map(
     ([alias, expr]) => `case when app.es_staff() then ${expr} else null end as ${alias}`,
   ),
@@ -224,8 +247,11 @@ export class PgClientes {
    */
   async crearCliente(ctx: TenantContext, datos: NuevoCliente): Promise<string> {
     return this.withTenant(ctx, async (tx) => {
-      const columnas: string[] = ["tenant_id", "nombre"];
-      const valores: unknown[] = [ctx.tenantId, datos.nombre];
+      // `vertical` va junto a `tenant_id`/`nombre` como columna SIEMPRE insertada, no en la lista de
+      // `opcionales` de abajo: es `not null` sin default (0029), así que omitirla no es "dejarla en su
+      // default" (no hay ninguno) — es un insert que Postgres va a rechazar.
+      const columnas: string[] = ["tenant_id", "nombre", "vertical"];
+      const valores: unknown[] = [ctx.tenantId, datos.nombre, datos.vertical];
 
       const opcionales: Array<[string, unknown]> = [
         ["tipo", datos.tipo],
@@ -336,6 +362,58 @@ export class PgClientes {
          where id = $3
          returning id`,
         [JSON.stringify(datos.menu), JSON.stringify(datos.menu_categorias), id],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
+   * La extensión de perfil de seguros (`numeroLicencia`/`anosExperiencia`/`redAfiliacion`), tal como
+   * vive dentro de `business_profile.seguros` (validada por `perfilSegurosSchema` en
+   * `web-builder/contract` ANTES de llegar acá — mismo criterio que `actualizarMenu` con
+   * `menuPatchSchema`: acá no se vuelve a validar, solo se lee/escribe).
+   *
+   * El retorno tiene DOS niveles de `null`, y hay que distinguirlos: el de AFUERA es "cliente no
+   * encontrado o no visible" (0 filas — así es como el handler HTTP decide 404, mismo criterio que
+   * `obtenerCliente`); el de ADENTRO (`seguros: null`) es "el cliente existe pero no tiene la clave
+   * cargada". `obtenerMenu` no tiene este problema porque coalescea sus arrays a `[]` en el propio
+   * SQL, así que `rows[0]` nunca es ambiguo — `seguros` no tiene un "vacío" natural equivalente (un
+   * `{}` sería indistinguible de "cargado pero sin ningún campo"), así que acá el objeto envolvente
+   * es lo que separa ambos casos en vez del valor en sí.
+   */
+  async obtenerPerfilSeguros(
+    ctx: TenantContext,
+    id: string,
+  ): Promise<{ seguros: Record<string, unknown> | null } | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ seguros: Record<string, unknown> | null }>(
+        `select business_profile -> 'seguros' as seguros from clients where id = $1`,
+        [id],
+      );
+      if (rows.length === 0) return null; // fila inexistente/ajena — la API responde 404
+      return { seguros: rows[0]!.seguros ?? null }; // fila existe, el dato puede ser null igual
+    });
+  }
+
+  /**
+   * Reemplaza SOLO la clave `seguros` dentro de `business_profile`, sin tocar ninguna otra clave del
+   * perfil (`menu`, `brand`, `fotos`, etc.) — mismo mecanismo que `actualizarMenu`, incluido el
+   * `coalesce` para el cliente recién creado cuya columna `business_profile` es NULL (sin él, el `||`
+   * de jsonb sobre NULL da NULL y el UPDATE "funcionaría" sin guardar nada).
+   */
+  async actualizarPerfilSeguros(
+    ctx: TenantContext,
+    id: string,
+    datos: Record<string, unknown>,
+  ): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update clients
+         set business_profile = coalesce(business_profile, '{}'::jsonb)
+           || jsonb_build_object('seguros', $1::jsonb)
+         where id = $2
+         returning id`,
+        [JSON.stringify(datos), id],
       );
       return rows.length > 0;
     });

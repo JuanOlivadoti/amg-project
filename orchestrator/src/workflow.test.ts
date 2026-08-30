@@ -359,7 +359,7 @@ beforeEach(async () => {
   // publicaba todo en el space global del proceso y la `/menu` de uno pisaba la del otro.
   const mk = async (tid: string, n: string, space: string) => {
     const { rows } = await pg.query<{ id: string }>(
-      "insert into clients (tenant_id, nombre, storyblok_space_id) values ($1, $2, $3) returning id",
+      "insert into clients (tenant_id, nombre, storyblok_space_id, vertical) values ($1, $2, $3, 'restauracion') returning id",
       [tid, n, space],
     );
     return rows[0]!.id;
@@ -804,6 +804,43 @@ test("🔴 cada cliente publica en SU space: dos tenants, el mismo slug, y no se
   );
   assert.equal(espiaA.destinos[0]?.clientId, clientA);
   assert.equal(espiaB.destinos[0]?.clientId, clientB);
+});
+
+/**
+ * `DestinoPublicacion.vertical` (Task 9): el render y el slug de catálogo dependen de la vertical del
+ * CLIENTE, no de un default fijo. Sin propagarla, un cliente de `correduria_seguros` publicaría con la
+ * receta y el slug ("menu") de restauración.
+ */
+test("workflowDecision: crear_web propaga la vertical del cliente a deps.publicar", async () => {
+  const { rows } = await pg.query<{ id: string }>(
+    "insert into clients (tenant_id, nombre, storyblok_space_id, vertical) values ($1, $2, $3, 'correduria_seguros') returning id",
+    [tenantA, "Correduría Segura", "space-seguros"],
+  );
+  const clientSeguros = rows[0]!.id;
+
+  const runId = await crearRunConPaginaAprobada(tenantA, clientSeguros, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
+
+  assert.equal(espia.destinos[0]?.vertical, "correduria_seguros");
+});
+
+/**
+ * Sin regresión: `clientA` (el fixture de siempre, `restauracion`) sigue propagando SU vertical, no
+ * un default fijo que el test anterior podría pasar por accidente.
+ */
+test("workflowDecision: crear_web propaga 'restauracion' para el cliente por defecto", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
+
+  assert.equal(espia.destinos[0]?.vertical, "restauracion");
 });
 
 /**

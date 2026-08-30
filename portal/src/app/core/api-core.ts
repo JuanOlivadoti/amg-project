@@ -12,6 +12,7 @@ import type {
   Miembro,
   NuevoClienteAgencia,
   NuevoRun,
+  PerfilSeguros,
   ResenaGoogle,
   RunSummary,
 } from './models';
@@ -310,6 +311,13 @@ export interface ClienteApi {
    * el servidor exige las dos claves completas (`PATCH /clients/:id/menu`, `menuPatchSchema`).
    */
   guardarMenu(clientId: string, carta: MenuCarta): Promise<void>;
+
+  /** El perfil de seguros del cliente (licencia/experiencia/red). `null` si no lo cargó todavía —
+   *  mismo criterio que el resto de esta interfaz: nunca un objeto a medias inventado acá. */
+  obtenerPerfilSeguros(clientId: string): Promise<PerfilSeguros | null>;
+  /** Reemplaza el perfil de seguros completo. Mismo criterio que guardarMenu: manda siempre el objeto
+   *  entero, el servidor no hace merge parcial de campo por campo. */
+  actualizarPerfilSeguros(clientId: string, datos: PerfilSeguros): Promise<void>;
 }
 
 export function crearApi(opts: ApiOpts): ClienteApi {
@@ -575,6 +583,17 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     },
     async guardarMenu(clientId, carta) {
       await pedir('PATCH', `/clients/${encodeURIComponent(clientId)}/menu`, carta);
+    },
+
+    async obtenerPerfilSeguros(clientId) {
+      const { seguros } = await pedir<{ seguros: PerfilSeguros | null }>(
+        'GET',
+        `/clients/${encodeURIComponent(clientId)}/seguros`,
+      );
+      return seguros;
+    },
+    async actualizarPerfilSeguros(clientId, datos) {
+      await pedir('PATCH', `/clients/${encodeURIComponent(clientId)}/seguros`, datos);
     },
   };
 }

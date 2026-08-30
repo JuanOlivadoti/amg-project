@@ -1,4 +1,4 @@
-import type { BrandTheme } from "../types.js";
+import type { Vertical } from "../types.js";
 
 /**
  * La plantilla como **receta de contenido**.
@@ -14,13 +14,15 @@ export interface Plantilla {
 }
 
 /**
- * **`brand.plantilla` elige un JUEGO de cuatro recetas, una por tipo de documento.**
+ * **La `Vertical` del cliente elige un JUEGO de cuatro recetas, una por tipo de documento.**
  *
  * Esto cierra una ambigüedad de la spec: §4 define `Plantilla` como *una* receta mientras
- * §Arquitectura de render dice que `renderStory`/`renderHome`/`renderMenu`/`renderBlogIndex` son
- * cuatro llamadas al mismo ensamblador. Las dos cosas son ciertas si lo que la ficha elige es el
- * juego: un restaurante no tiene "una plantilla" para su landing y otra distinta para su carta, tiene
- * **un aspecto** que se aplica a los cuatro documentos que su sitio sabe emitir.
+ * §Arquitectura de render dice que `renderStory`/`renderHome`/`renderCatalogo`/`renderBlogIndex` son
+ * cuatro llamadas al mismo ensamblador. Las dos cosas son ciertas si lo que decide es el juego: un
+ * restaurante no tiene "una plantilla" para su landing y otra distinta para su carta, tiene **un
+ * aspecto** que se aplica a los cuatro documentos que su sitio sabe emitir. Antes lo elegía
+ * `brand.plantilla`; desde esta task lo elige `vertical` — `brand.plantilla` sigue existiendo en el
+ * perfil, pero solo para uso de marca (tipografía, color), no para la estructura de piezas.
  */
 export interface JuegoDePlantillas {
   id: string;
@@ -35,7 +37,7 @@ export interface JuegoDePlantillas {
 }
 
 /**
- * El único juego que existe. Ampliar a varios es escribir una receta, no CSS.
+ * El juego de restauración — el original, y el default histórico de este archivo.
  *
  * `hero` está en TRES de las cuatro y no solo en `story`: las páginas sintetizadas (`/`, `/menu`,
  * `/blog`) no salen de una story, y su `<h1>` lo pone el titular del contexto. Ver el comentario de la
@@ -110,17 +112,35 @@ const BASE: JuegoDePlantillas = {
   blog: { id: "base/blog", contenido: ["hero", "blogIndice"] },
 };
 
-const JUEGOS: Record<string, JuegoDePlantillas> = { base: BASE };
-
 /**
- * El juego que pide la ficha, o `base`.
+ * El juego de seguros. `barraDatos` en las tres páginas de negocio y `ctaFinal` en las mismas tres:
+ * mismo criterio que `BASE` (ver el comentario de arriba), no una decisión nueva por vertical.
  *
- * **Una plantilla inexistente NO es un error**: cae al default, igual que un color inválido cae al
- * default. Una web servida es mejor que un 503 por un typo en una ficha — y la ficha la edita una
- * persona, no un compilador.
+ * Sin `platosDestacados` (restaurante-only): la sección equivalente es la genérica `destacados`.
+ * `cartaCategorias` dibuja el catálogo de pólizas (misma pieza, generalizada — ver Task 8).
  */
-export function juegoDe(brand?: BrandTheme | null): JuegoDePlantillas {
-  const id = brand?.plantilla;
-  if (typeof id === "string" && Object.hasOwn(JUEGOS, id)) return JUEGOS[id]!;
-  return BASE;
+const SEGUROS: JuegoDePlantillas = {
+  id: "seguros",
+  story: {
+    id: "seguros/story",
+    contenido: ["heroSlider", "barraDatos", "seccionProsa", "destacados", "testimonios", "faq", "ctaFinal"],
+  },
+  home: {
+    id: "seguros/home",
+    contenido: ["heroSlider", "barraDatos", "bienvenida", "destacados", "testimonios", "indice", "ctaFinal"],
+  },
+  menu: { id: "seguros/menu", contenido: ["hero", "barraDatos", "cartaCategorias", "ctaFinal"] },
+  blog: { id: "seguros/blog", contenido: ["hero", "blogIndice"] },
+};
+
+/** Un juego por VERTICAL — ya no por `brand.plantilla`. `brand.plantilla` sigue existiendo en el
+ *  perfil para uso de marca (no gobierna la estructura de piezas desde este cambio). */
+const JUEGOS: Record<Vertical, JuegoDePlantillas> = {
+  restauracion: BASE,
+  correduria_seguros: SEGUROS,
+};
+
+/** Devuelve el juego de la vertical. Nunca lanza — cualquier valor de `Vertical` tiene su juego. */
+export function juegoDe(vertical: Vertical): JuegoDePlantillas {
+  return JUEGOS[vertical];
 }

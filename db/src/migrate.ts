@@ -74,3 +74,46 @@ export async function aplicarMigraciones(db: Ejecutor): Promise<string[]> {
   }
   return archivos;
 }
+
+/** El prefijo numérico `NNNN` de `NNNN_nombre.sql`, como número. Lanza si el archivo no lo tiene —
+ *  mejor un error temprano que comparar strings y fallar en silencio con un orden torcido. */
+function numeroDeMigracion(nombreArchivo: string): number {
+  const m = /^(\d{4})_/.exec(nombreArchivo);
+  if (!m) throw new Error(`Migración sin prefijo numérico de 4 dígitos: ${nombreArchivo}`);
+  return Number(m[1]);
+}
+
+/**
+ * Aplica solo las migraciones con número `<= n` (mismo orden alfabético que `aplicarMigraciones`),
+ * incluido el stand-in de `auth.users`.
+ *
+ * Existe para un caso puntual: un test de backfill necesita una base "detenida" ANTES de que la
+ * migración que agrega una columna exista, para poder insertar una fila que la migración de al lado
+ * tiene que rellenar — el mismo patrón que ya vivía copiado, inline, en `store.test.ts` y
+ * `seed-contrato.test.ts` (filtrar `readdirSync(MIGRATIONS_DIR)` por prefijo y aplicar uno por uno).
+ * Acá se consolida una vez para no repetirlo una tercera vez en `clientes.test.ts`
+ * (`0029_clientes_vertical.sql`) — no reemplaza esos dos usos existentes, que se dejan como están.
+ */
+export async function aplicarMigracionesHasta(db: Ejecutor, n: number): Promise<string[]> {
+  await asegurarAuthStandIn(db);
+  const archivos = (await readdir(MIGRATIONS_DIR))
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .filter((f) => numeroDeMigracion(f) <= n);
+  for (const f of archivos) {
+    await db.exec(await readFile(join(MIGRATIONS_DIR, f), "utf8"));
+  }
+  return archivos;
+}
+
+/**
+ * Aplica UNA sola migración, la de número `n` exacto. Complementa a `aplicarMigracionesHasta`: primero
+ * se detiene la base en `n - 1`, se siembra el caso que hace falta probar, y recién ahí se aplica esta
+ * migración sola para observar su efecto (el backfill, en el caso que la motivó).
+ */
+export async function aplicarMigracion(db: Ejecutor, n: number): Promise<void> {
+  const archivos = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql"));
+  const objetivo = archivos.find((f) => numeroDeMigracion(f) === n);
+  if (!objetivo) throw new Error(`No existe ninguna migración con número ${n}`);
+  await db.exec(await readFile(join(MIGRATIONS_DIR, objetivo), "utf8"));
+}

@@ -50,10 +50,12 @@ async function cliente(
   space: string,
   perfil: unknown,
 ): Promise<void> {
+  // 'restauracion' explícito: este dev-server siembra clientes de demostración, todos restaurantes
+  // hoy — no un default que se cuela, la misma decisión que ya toman seed-demo.ts y demo-server.ts.
   await sql(
     `insert into clients (tenant_id, nombre, domain, storyblok_space_id,
-                          storyblok_public_token, storyblok_preview_token, business_profile)
-     values ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+                          storyblok_public_token, storyblok_preview_token, business_profile, vertical)
+     values ($1,$2,$3,$4,$5,$6,$7::jsonb,'restauracion')`,
     [tenant, nombre, dominio, space, `pub-${space}`, `prv-${space}`, JSON.stringify(perfil)],
   );
 }

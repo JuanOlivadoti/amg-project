@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderBlogIndex, renderHome, renderMenu, renderStory } from "./html.js";
+import { renderBlogIndex, renderCatalogo, renderHome, renderStory } from "./html.js";
 import { pageToStory } from "../handoff/adapter.js";
 import { validBrief, validPage, validProfile } from "../fixtures.js";
 import type { NavItem } from "../types.js";
@@ -23,23 +23,23 @@ function extractLd(html: string): { "@graph": Array<{ "@type": string; [k: strin
 }
 
 test("#15 render: <html lang> sale del brief (no hardcodeado)", () => {
-  const html = renderStory(story(), null, "ca");
+  const html = renderStory(story(), null, "restauracion", "ca");
   assert.match(html, /<html lang="ca">/);
 });
 
 test("#17 render: id 'contacto' y 'faq' no se duplican", () => {
-  const html = renderStory(story(), validProfile());
+  const html = renderStory(story(), validProfile(), "restauracion");
   assert.equal((html.match(/id="contacto"/g) ?? []).length, 1);
   assert.equal((html.match(/id="faq"/g) ?? []).length, 1);
 });
 
 test("#16 render: canonical del brief resuelto contra el dominio del perfil", () => {
-  const html = renderStory(story(), validProfile());
+  const html = renderStory(story(), validProfile(), "restauracion");
   assert.match(html, /rel="canonical" href="https:\/\/trattoriabellanapoli\.es\/restaurante-italiano-madrid-centro"/);
 });
 
 test("#16 render: sin perfil, canonical queda relativo (el frontend le pone base)", () => {
-  const html = renderStory(story(), null);
+  const html = renderStory(story(), null, "restauracion");
   assert.match(html, /rel="canonical" href="\/restaurante-italiano-madrid-centro"/);
 });
 
@@ -52,20 +52,20 @@ test("#9 render: neutraliza intento de XSS en el título (no hay </script><scrip
       canonical: "/x",
     },
   });
-  const html = renderStory(pageToStory(malicious, validBrief()), null);
+  const html = renderStory(pageToStory(malicious, validBrief()), null, "restauracion");
   assert.ok(!/<\/script><script>alert/i.test(html), "no debe haber cierre de script crudo");
   assert.match(html, /\\u003c\/script\\u003e/, "el título debe quedar escapado en el JSON-LD");
 });
 
 test("render: JSON-LD incluye LocalBusiness y FAQPage en el @graph", () => {
-  const graph = extractLd(renderStory(story(), validProfile()))["@graph"];
+  const graph = extractLd(renderStory(story(), validProfile(), "restauracion"))["@graph"];
   const types = graph.map((n) => n["@type"]);
   assert.ok(types.includes("LocalBusiness"));
   assert.ok(types.includes("FAQPage"));
 });
 
 test("#13 render: con perfil, LocalBusiness incluye telephone y address", () => {
-  const graph = extractLd(renderStory(story(), validProfile()))["@graph"];
+  const graph = extractLd(renderStory(story(), validProfile(), "restauracion"))["@graph"];
   const lb = graph.find((n) => n["@type"] === "LocalBusiness") as unknown as {
     telephone: string;
     address: { "@type": string };
@@ -91,7 +91,7 @@ test("JSON-LD: con solo `locations` (sin address/telephone de nivel superior, co
       },
     ],
   });
-  const graph = extractLd(renderStory(story(), perfil))["@graph"];
+  const graph = extractLd(renderStory(story(), perfil, "restauracion"))["@graph"];
   const lb = graph.find((n) => n["@type"] === "LocalBusiness") as unknown as {
     telephone?: string;
     address?: { "@type": string; streetAddress: string };
@@ -113,7 +113,7 @@ test("🔴 revisión externa #2 — con AMBOS (telephone/address clásicos Y loc
     ],
   });
 
-  const graphStory = extractLd(renderStory(story(), perfil))["@graph"];
+  const graphStory = extractLd(renderStory(story(), perfil, "restauracion"))["@graph"];
   const lbStory = graphStory.find((n) => n["@type"] === "LocalBusiness") as unknown as {
     telephone?: string;
     address?: { streetAddress: string };
@@ -121,7 +121,7 @@ test("🔴 revisión externa #2 — con AMBOS (telephone/address clásicos Y loc
   assert.equal(lbStory.telephone, "+34 111", "renderStory: locations manda sobre el teléfono clásico");
   assert.equal(lbStory.address?.streetAddress, "Calle Nueva 5", "renderStory: locations manda sobre la dirección clásica");
 
-  const htmlHome = renderHome(perfil, [], "es");
+  const htmlHome = renderHome(perfil, [], "restauracion", "es");
   const ldHome = JSON.parse(htmlHome.split('<script type="application/ld+json">')[1]!.split("</script>")[0]!);
   assert.equal(ldHome.telephone, "+34 111", "renderHome: locations manda también acá");
   assert.equal(ldHome.address?.streetAddress, "Calle Nueva 5", "renderHome: idem para la dirección");
@@ -134,7 +134,7 @@ test("tema: un color de marca válido pinta el acento", () => {
   // `--marca-primario`, y `--accent` lo consume. Lo que importa es lo mismo de siempre —el hex del
   // cliente termina siendo el acento que se ve— así que el test resuelve la cadena en vez de
   // comprobar una cadena de texto que era un detalle de emisión.
-  const html = renderStory(story(), validProfile({ brand: { color: "#0a7d34" } }));
+  const html = renderStory(story(), validProfile({ brand: { color: "#0a7d34" } }), "restauracion");
   assert.equal(tokenResuelto(estiloDe(html), "--accent"), "#0a7d34", "el hex de marca pinta el acento");
 });
 
@@ -146,7 +146,11 @@ test("🔴 tema: un color con inyección CSS se DESCARTA, no se inyecta", () => 
   // (`.p-cabecera .topbar` se esconde en móvil), y con el fragmento suelto este caso denunciaba una
   // regla nuestra en vez de la inyección. Lo que se fija no cambia: el payload no puede cerrar la
   // declaración del token y abrir una regla propia.
-  const html = renderStory(story(), validProfile({ brand: { color: "red;}body{display:none}" } as never }));
+  const html = renderStory(
+    story(),
+    validProfile({ brand: { color: "red;}body{display:none}" } as never }),
+    "restauracion",
+  );
   assert.doesNotMatch(html, /body\{display:none\}/, "el valor malicioso no llega a la hoja de estilo");
   assert.doesNotMatch(html, /--accent:red/, "y tampoco se acepta un color no-hex");
   // La aserción que NO depende de cómo esté escrito el ataque: el token cae a su default del base.
@@ -161,16 +165,24 @@ test("🔴 tema: un color con inyección CSS se DESCARTA, no se inyecta", () => 
 });
 
 test("🔴 tema: la fuente sale de una allowlist, no es texto libre", () => {
-  const ok = renderStory(story(), validProfile({ brand: { font: "serif" } }));
+  const ok = renderStory(story(), validProfile({ brand: { font: "serif" } }), "restauracion");
   assert.match(tokenResuelto(estiloDe(ok), "--font"), /^Georgia/, "la fuente elegida mapea a un stack seguro");
 
   // Un valor fuera de la allowlist se ignora (no se puede escribir el stack a mano).
-  const malo = renderStory(story(), validProfile({ brand: { font: "</style><script>" } as never }));
+  const malo = renderStory(
+    story(),
+    validProfile({ brand: { font: "</style><script>" } as never }),
+    "restauracion",
+  );
   assert.doesNotMatch(malo, /<\/style><script>/);
 });
 
 test("marca: el logo aparece en la cabecera del sitio, escapado", () => {
-  const html = renderStory(story(), validProfile({ brand: { logo: "https://a.storyblok.com/f/1/logo.png" } }));
+  const html = renderStory(
+    story(),
+    validProfile({ brand: { logo: "https://a.storyblok.com/f/1/logo.png" } }),
+    "restauracion",
+  );
   assert.match(html, /class="sitebar"/, "hay cabecera de sitio");
   assert.match(html, /<img class="logo" src="https:\/\/a\.storyblok\.com\/f\/1\/logo\.png"/);
 });
@@ -190,19 +202,19 @@ test("🔴 marca: un logo fuera de la allowlist de hosts NO se emite — cae al 
     "https://a.storyblok.com@evil.com/logo.png", // userinfo: el host REAL es evil.com
     "http://a.storyblok.com/logo.png", // host correcto, pero sin https
   ]) {
-    const html = renderStory(story(), validProfile({ brand: { logo: hostil } }));
+    const html = renderStory(story(), validProfile({ brand: { logo: hostil } }), "restauracion");
     assert.doesNotMatch(html, /<img class="logo"/, `${hostil} llegó a un <img> del sitio`);
     assert.match(html, /class="marca">Trattoria Bella Napoli/, `${hostil} no cayó al nombre del negocio`);
   }
 });
 
 test("marca: sin logo, la cabecera muestra el nombre del negocio", () => {
-  const html = renderStory(story(), validProfile());
+  const html = renderStory(story(), validProfile(), "restauracion");
   assert.match(html, /class="marca">Trattoria Bella Napoli/);
 });
 
 test("sin perfil no hay cabecera de sitio (falla suave)", () => {
-  assert.doesNotMatch(renderStory(story()), /class="sitebar"/);
+  assert.doesNotMatch(renderStory(story(), null, "restauracion"), /class="sitebar"/);
 });
 
 // ---------------------------------------------------------------- imágenes de contenido
@@ -230,7 +242,7 @@ test("imagen: la portada renderiza con prioridad alta, alt y dimensiones del ass
     src: "https://a.storyblok.com/f/1/1600x900/abc/portada.jpg",
     alt: "Fachada del restaurante",
   };
-  const html = renderStory(s);
+  const html = renderStory(s, undefined, "restauracion");
 
   // Posicional, no por `id`: los `id` del carrusel pasaron a los radios que lo controlan cuando los
   // puntos-ancla se sustituyeron por `:checked`.
@@ -250,7 +262,7 @@ test("🔴 imagen: una src no-http no se renderiza (una img rota es peor que nin
   // Ojo: las clases de la portada están siempre en el CSS; lo que NO debe aparecer es la etiqueta
   // <img>. Se renderiza SIN perfil a propósito, así que la única foto candidata del documento es ésta:
   // cualquier `<img>` que apareciera vendría de la src envenenada.
-  const html = renderStory(s);
+  const html = renderStory(s, undefined, "restauracion");
   assert.doesNotMatch(html, /<img\b/, "una src no-http no puede llegar a ninguna <img> del documento");
   assert.match(html, /class="portada sin-img"/, "y la portada cae al hero tipográfico, no a un hueco");
 });
@@ -264,7 +276,7 @@ const nav: NavItem[] = [
 
 test("nav: la barra son las secciones del sitio, no las páginas de research", () => {
   const perfil = validProfile({ menu: [{ name: "Golden Burger" }] });
-  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "restauracion", "es");
   assert.match(html, /<a href="\/"[^>]*>Inicio<\/a>/);
   assert.match(html, /<a href="\/menu"[^>]*>Menú<\/a>/);
   assert.match(html, /<a href="#ubicaciones"[^>]*>Ubicaciones<\/a>/);
@@ -274,24 +286,24 @@ test("nav: la barra son las secciones del sitio, no las páginas de research", (
 });
 
 test("nav: sin carta cargada no hay enlace a Menú (un enlace a una sección vacía es peor que ninguno)", () => {
-  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "restauracion", "es");
   assert.ok(!html.includes(">Menú<"));
   assert.match(html, /<a href="\/"[^>]*>Inicio<\/a>/);
 });
 
 test("nav: sin locales ni dirección no hay enlace a Ubicaciones", () => {
   const perfil = validProfile({ address: undefined, opening_hours: undefined, telephone: undefined });
-  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "restauracion", "es");
   assert.ok(!html.includes(">Ubicaciones<"));
 });
 
 test("nav: el link a Menú lleva aria-current en la propia página /menu", () => {
   const perfil = validProfile({ menu: [{ name: "Golden Burger" }] });
-  const html = renderMenu(perfil, "es");
+  const html = renderCatalogo(perfil, "restauracion", "es");
   assert.match(html, /<a href="\/menu" class="activo" aria-current="page">Menú<\/a>/);
 });
 
-// ---------------------------------------------------------------- la página /menu
+// ---------------------------------------------------------------- la página de catálogo
 
 test("menu: agrupa la carta por categoría, en orden de aparición", () => {
   const perfil = validProfile({
@@ -301,7 +313,7 @@ test("menu: agrupa la carta por categoría, en orden de aparición", () => {
       { category: "Hamburguesas", name: "Clásica" },
     ],
   });
-  const html = renderMenu(perfil, "es");
+  const html = renderCatalogo(perfil, "restauracion", "es");
   assert.match(html, /Hamburguesas/);
   assert.match(html, /Golden Burger/);
   assert.match(html, /12,50 €/);
@@ -315,13 +327,15 @@ test("menu: los ítems sin categoría van juntos al final", () => {
   const perfil = validProfile({
     menu: [{ name: "Suelto" }, { category: "Cervezas", name: "Ale" }],
   });
-  const html = renderMenu(perfil, "es");
+  const html = renderCatalogo(perfil, "restauracion", "es");
   assert.ok(html.indexOf("Ale") < html.indexOf("Suelto"));
 });
 
 test("menu: JSON-LD Menu con sus secciones", () => {
   const perfil = validProfile({ menu: [{ category: "Cervezas", name: "Ale", price: "5 €" }] });
-  const ld = JSON.parse(renderMenu(perfil, "es").split('<script type="application/ld+json">')[1]!.split("</script>")[0]!);
+  const ld = JSON.parse(
+    renderCatalogo(perfil, "restauracion", "es").split('<script type="application/ld+json">')[1]!.split("</script>")[0]!,
+  );
   assert.equal(ld["@type"], "Menu");
   assert.equal(ld.hasMenuSection[0]["@type"], "MenuSection");
   assert.equal(ld.hasMenuSection[0].hasMenuItem[0].name, "Ale");
@@ -346,7 +360,9 @@ test("🔴 menu JSON-LD: un plato con varios `precios` emite `offers` con el PRI
       { category: "Pizzas", name: "Diavola", price: "14,00 €" },
     ],
   });
-  const ld = JSON.parse(renderMenu(perfil, "es").split('<script type="application/ld+json">')[1]!.split("</script>")[0]!);
+  const ld = JSON.parse(
+    renderCatalogo(perfil, "restauracion", "es").split('<script type="application/ld+json">')[1]!.split("</script>")[0]!,
+  );
   const items = ld.hasMenuSection[0].hasMenuItem;
   assert.equal(items[0].offers.price, "9,00 €", "el primero de `precios`, no el último ni el mayor");
   assert.equal(items[1].offers.price, "14,00 €", "y `price` sigue funcionando como el atajo de un importe");
@@ -354,21 +370,42 @@ test("🔴 menu JSON-LD: un plato con varios `precios` emite `offers` con el PRI
 
 test("🔴 menu: el nombre y el precio de un ítem se escapan", () => {
   const perfil = validProfile({ menu: [{ name: "<script>alert(1)</script>", price: '"><b>' }] });
-  const html = renderMenu(perfil, "es");
+  const html = renderCatalogo(perfil, "restauracion", "es");
   assert.ok(!html.includes("<script>alert(1)</script>"));
   assert.ok(!html.includes('"><b>'));
 });
 
 test("menu: sin carta, la página no promete nada (no rompe)", () => {
-  const html = renderMenu(validProfile(), "es");
+  const html = renderCatalogo(validProfile(), "restauracion", "es");
   assert.match(html, /<h1>/);
   assert.ok(!html.includes("<script type=\"application/ld+json\">\n{\n  \"@context\": \"https://schema.org\",\n  \"@type\": \"Menu\",\n  \"hasMenuSection\": []"));
+});
+
+test("renderCatalogo para restauración: slug /menu, JSON-LD Menu", () => {
+  const perfilConMenu = validProfile({ menu: [{ category: "Pizzas", name: "Margherita", price: "9 €" }] });
+  const html = renderCatalogo(perfilConMenu, "restauracion");
+  assert.ok(html.includes('"@type":"Menu"') || html.includes('"@type": "Menu"'));
+  assert.ok(html.includes("Menú ·"));
+});
+
+test("renderCatalogo para seguros: slug /polizas, JSON-LD ItemList, título distinto", () => {
+  const perfilConPolizas = validProfile({
+    menu: [{ category: "Autos", name: "Todo riesgo", description: "Cobertura total" }],
+  });
+  const html = renderCatalogo(perfilConPolizas, "correduria_seguros");
+  // El slug: la aserción que la mutación de `catalogoSlug` (devolver siempre "menu") NO hace caer —
+  // sin ella, este caso pasaría por vacío para esa regresión específica.
+  assert.ok(html.includes('href="/polizas"'), "el canonical/nav tienen que apuntar a /polizas, no a /menu");
+  assert.ok(!html.includes('href="/menu"'), "y nunca al slug de restauración");
+  assert.ok(html.includes('"@type":"ItemList"') || html.includes('"@type": "ItemList"'));
+  assert.ok(html.includes("Pólizas y coberturas ·"));
+  assert.ok(!html.includes("La carta de"));
 });
 
 // ---------------------------------------------------------------- home sintetizada
 
 test("home: sintetiza una portada válida con el nombre del negocio y el índice de páginas", () => {
-  const html = renderHome(validProfile(), nav, "es");
+  const html = renderHome(validProfile(), nav, "restauracion", "es");
   assert.match(html, /^<!doctype html>/, "es una página completa");
   assert.match(html, /<h1>Trattoria Bella Napoli<\/h1>/, "el hero es el nombre del negocio");
   assert.match(html, /class="card" href="\/menu"><h3>La carta<\/h3>/);
@@ -378,7 +415,7 @@ test("home: sintetiza una portada válida con el nombre del negocio y el índice
 });
 
 test("home: sin páginas publicadas la portada no rompe, avisa que vendrán", () => {
-  const html = renderHome(validProfile(), [], "es");
+  const html = renderHome(validProfile(), [], "restauracion", "es");
   assert.match(html, /<h1>Trattoria Bella Napoli<\/h1>/);
   assert.doesNotMatch(html, /class="cards"/, "sin páginas no hay grid");
   assert.match(html, /class="pending"/, "hay un aviso en su lugar");
@@ -386,7 +423,7 @@ test("home: sin páginas publicadas la portada no rompe, avisa que vendrán", ()
 
 test("🔴 home: el nombre y el slug de una tarjeta se escapan/sanean como en la nav", () => {
   const veneno: NavItem[] = [{ slug: 'javascript:alert(1)', name: "</h3><script>x</script>" }];
-  const html = renderHome(validProfile(), veneno, "es");
+  const html = renderHome(validProfile(), veneno, "restauracion", "es");
   assert.doesNotMatch(html, /<\/h3><script>/, "el nombre de la tarjeta no sale crudo");
   assert.doesNotMatch(html, /href="javascript:/i, "el slug de la tarjeta tampoco es un esquema");
 });
@@ -404,14 +441,14 @@ test("home JSON-LD: con solo `locations` (sin address/telephone de nivel superio
       },
     ],
   });
-  const html = renderHome(perfil, nav, "es");
+  const html = renderHome(perfil, nav, "restauracion", "es");
   const ld = JSON.parse(html.split('<script type="application/ld+json">')[1]!.split("</script>")[0]!);
   assert.equal(ld.address?.streetAddress, "Carrera de San Jerónimo 3", "toma la dirección del PRIMER local");
   assert.equal(ld.telephone, "+34 900 000 000", "toma el teléfono del PRIMER local");
 });
 
 test("home: sin perfil cae a un WebSite y un título neutro (falla suave)", () => {
-  const html = renderHome(null, nav, "es");
+  const html = renderHome(null, nav, "restauracion", "es");
   assert.match(html, /<h1>Inicio<\/h1>/);
   assert.match(html, /"@type": "WebSite"/);
 });
@@ -419,7 +456,7 @@ test("home: sin perfil cae a un WebSite y un título neutro (falla suave)", () =
 // ---------------------------------------------------------------- footer compartido (contacto + ubicaciones + blog)
 
 test("footer: el contacto vive en el pie y está en todas las páginas", () => {
-  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "restauracion", "es");
   const pie = html.slice(html.indexOf("<footer"));
   assert.match(pie, /id="contacto"/);
   assert.match(pie, /Trattoria Bella Napoli/);
@@ -435,7 +472,7 @@ test("footer: lista todos los locales, cada uno con su dirección y horario", ()
       { name: "Salamanca", address: { streetAddress: "Ortega y Gasset 79", addressLocality: "Madrid" }, opening_hours: "hasta la 01:00" },
     ],
   });
-  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "restauracion", "es");
   assert.match(html, /id="ubicaciones"/);
   assert.match(html, /Centro/);
   assert.match(html, /San Jerónimo 3/);
@@ -453,7 +490,7 @@ test("footer: la dirección de un local lleva coma entre la calle y la ciudad, c
       },
     ],
   });
-  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "restauracion", "es");
   assert.match(html, /Carrera de San Jerónimo 3, Madrid/, "sin código postal, la coma va después de la calle");
   assert.match(html, /Ortega y Gasset 79, 28006 Madrid/, "con código postal, la coma sigue yendo después de la calle");
   assert.ok(!html.includes("Carrera de San Jerónimo 3 Madrid"), "nunca sin coma entre calle y ciudad");
@@ -461,7 +498,7 @@ test("footer: la dirección de un local lleva coma entre la calle y la ciudad, c
 
 test("footer: un perfil clásico (sin locations) sigue mostrando su dirección", () => {
   // Compatibilidad hacia atrás: el negocio de un solo local no tiene que tocar su JSON.
-  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "restauracion", "es");
   assert.match(html, /id="ubicaciones"/);
   assert.match(html, /Calle Mayor 12/);
 });
@@ -471,7 +508,7 @@ test("🔴 revisión externa #2 — el footer 'Contacto' también respeta la pre
     telephone: "+34 000",
     locations: [{ name: "Centro", telephone: "+34 111" }],
   });
-  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "restauracion", "es");
   const inicio = html.indexOf('id="contacto"');
   const contacto = html.slice(inicio, html.indexOf("</section>", inicio));
   assert.match(contacto, /\+34 111/, "el Contacto muestra el teléfono de locations");
@@ -479,12 +516,12 @@ test("🔴 revisión externa #2 — el footer 'Contacto' también respeta la pre
 });
 
 test("footer: sin páginas de blog no hay enlace al blog", () => {
-  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es", false);
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "restauracion", "es", false);
   assert.ok(!/href="\/blog"/.test(html));
 });
 
 test("footer: con páginas de blog aparece el enlace, solo en el pie", () => {
-  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "es", true);
+  const html = renderStory(pageToStory(validPage(), validBrief()), validProfile(), "restauracion", "es", true);
   assert.match(html.slice(html.indexOf("<footer")), /href="\/blog"/);
   const cabecera = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
   assert.ok(!cabecera.includes('href="/blog"'));
@@ -494,13 +531,13 @@ test("🔴 footer: el nombre de un local se escapa (viene de la base, sin Zod)",
   const perfil = validProfile({
     locations: [{ name: '</p><script>alert(1)</script>', opening_hours: "11:00" }],
   });
-  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), perfil, "restauracion", "es");
   assert.ok(!html.includes("<script>alert(1)</script>"));
   assert.match(html, /&lt;script&gt;/);
 });
 
 test("footer: sin perfil queda solo la línea técnica (falla suave)", () => {
-  const html = renderStory(pageToStory(validPage(), validBrief()), null, "es");
+  const html = renderStory(pageToStory(validPage(), validBrief()), null, "restauracion", "es");
   assert.match(html, /contrato web\.v0\.1/);
   assert.ok(!html.includes('id="contacto"'));
 });
@@ -512,7 +549,7 @@ test("blog: lista los posts como tarjetas enlazadas", () => {
     { slug: "mejor-hamburguesa-dubai", name: "La mejor hamburguesa del mundo" },
     { slug: "burger-bash-miami", name: "Premiados en Miami" },
   ];
-  const html = renderBlogIndex(validProfile(), posts, "es");
+  const html = renderBlogIndex(validProfile(), posts, "restauracion", "es");
   assert.match(html, /href="\/mejor-hamburguesa-dubai"/);
   assert.match(html, /La mejor hamburguesa del mundo/);
   assert.match(html, /href="\/burger-bash-miami"/);
@@ -520,7 +557,7 @@ test("blog: lista los posts como tarjetas enlazadas", () => {
 
 test("🔴 blog: el nombre y el slug de un post se escapan/sanean", () => {
   const posts: NavItem[] = [{ slug: "javascript:alert(1)", name: "<img src=x onerror=alert(1)>" }];
-  const html = renderBlogIndex(validProfile(), posts, "es");
+  const html = renderBlogIndex(validProfile(), posts, "restauracion", "es");
   assert.ok(!html.includes("<img src=x onerror=alert(1)>"));
   assert.ok(!html.includes('href="javascript:alert(1)"'));
 });
@@ -528,10 +565,10 @@ test("🔴 blog: el nombre y el slug de un post se escapan/sanean", () => {
 test("blog: en el índice del blog el pie no se autoenlaza (con o sin artículos)", () => {
   const posts: NavItem[] = [{ slug: "mejor-hamburguesa-dubai", name: "La mejor hamburguesa del mundo" }];
 
-  const sinPosts = renderBlogIndex(validProfile(), [], "es");
+  const sinPosts = renderBlogIndex(validProfile(), [], "restauracion", "es");
   assert.match(sinPosts, /<h1>/);
   assert.ok(!sinPosts.includes('href="/blog"'), "sin artículos, el pie tampoco ofrece /blog");
 
-  const conPosts = renderBlogIndex(validProfile(), posts, "es");
+  const conPosts = renderBlogIndex(validProfile(), posts, "restauracion", "es");
   assert.ok(!conPosts.includes('href="/blog"'), "con artículos, el pie de /blog no se enlaza a sí mismo");
 });

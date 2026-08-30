@@ -375,7 +375,13 @@ describe("0014 — es independiente del orden en que se aplique respecto de la 0
    */
   const LA_0020 = "0020_secciones_de_plantilla.sql";
   const LA_0023 = "0023_menu_enriquecido.sql";
-  const PISAN_LA_FUNCION = [LA_0020, LA_0023];
+  // La 0030 también reemplaza `app.nap_publico` (le agrega el parámetro `vertical`) y su cuerpo llama
+  // a `app.foto_publica`/`app.numero_publico` (0014) y a `app.video_publico`/`app.lista_texto_publica`
+  // (0023): sin agregarla acá, `alFinal` la deja en el bloque de "hermanas que no pisan la función" y
+  // la aplica ANTES de la 0014/0023, y el `create function` de la 0030 revienta con "function
+  // app.foto_publica(jsonb) does not exist" — se midió al escribir la 0030.
+  const LA_0030 = "0030_nap_publico_vertical.sql";
+  const PISAN_LA_FUNCION = [LA_0020, LA_0023, LA_0030];
 
   async function aplicarEnOrden(pg: PGlite, archivos: string[]): Promise<void> {
     await asegurarAuthStandIn(pg);
@@ -459,7 +465,10 @@ describe("0014 — es independiente del orden en que se aplique respecto de la 0
         menu: [{ name: "Cochinillo", precios: [{ etiqueta: "Ración", importe: "24 €" }] }],
         brand: { colores: { primario: "#0a7d34" }, fuentes: { titulo: "condensada" } },
       });
-      const [pubA, pubB] = await enAmbas<{ p: unknown }>("select app.nap_publico($1::jsonb) as p", [perfil]);
+      const [pubA, pubB] = await enAmbas<{ p: unknown }>(
+        "select app.nap_publico($1::jsonb, 'restauracion'::app.vertical_cliente) as p",
+        [perfil],
+      );
       assert.deepEqual(pubA, pubB, "la allowlist proyecta igual en los dos órdenes");
       assert.equal(
         (pubA[0]?.p as Record<string, unknown>)["notas_internas"],

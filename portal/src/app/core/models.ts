@@ -160,6 +160,21 @@ export interface NuevoRun {
 /** Los tres valores que acepta `clients.tipo` (0011_clientes_crm.sql). `null` = sin clasificar. */
 export type TipoCliente = 'empresa' | 'autonomo' | 'particular';
 
+/**
+ * Los dos verticales de negocio que soporta la plataforma (`clients.vertical`, migración 0029 del
+ * sub-proyecto multivertical-clientes). A diferencia de `tipo`/`nivel_actividad`/`estado_contrato`,
+ * este campo es OBLIGATORIO desde el alta: `db`/`api` ya lo exigen (Tasks 1-11 de ese sub-proyecto,
+ * 400 si falta o no es uno de estos dos valores) y es inmutable una vez creado el cliente
+ * (`clients_vertical_inmutable`, trigger de la 0029). El portal no puede dejar elegir "sin
+ * clasificar" acá como sí hace con `tipo`.
+ */
+export type Vertical = 'restauracion' | 'correduria_seguros';
+
+export const OPCIONES_VERTICAL: ReadonlyArray<{ valor: Vertical; etiqueta: string }> = [
+  { valor: 'restauracion', etiqueta: 'Restauración' },
+  { valor: 'correduria_seguros', etiqueta: 'Correduría de seguros' },
+];
+
 /** Los tres valores que acepta `clients.nivel_actividad`. `null` = sin medir todavía. */
 export type NivelActividad = 'bajo' | 'medio' | 'alto';
 
@@ -187,6 +202,7 @@ export type EstadoContrato = 'sin_contrato' | 'vigente' | 'vencido';
 export interface ClienteAgencia {
   id: string;
   nombre: string;
+  vertical: Vertical;
   tipo: TipoCliente | null;
   industria: string | null;
   etiquetas: string[] | null;
@@ -210,6 +226,7 @@ export interface ClienteAgencia {
  */
 export interface NuevoClienteAgencia {
   nombre: string;
+  vertical: Vertical;
   tipo?: TipoCliente | null;
   industria?: string | null;
   etiquetas?: string[];
@@ -423,6 +440,19 @@ export interface MenuCategoria {
 export interface MenuCarta {
   menu: MenuItem[];
   menu_categorias: MenuCategoria[];
+}
+
+/**
+ * La extensión de perfil para el vertical `correduria_seguros` (`business_profile.seguros`), tal
+ * como la validan `GET`/`PATCH /clients/:id/seguros` (Task 11) con `perfilSegurosSchema` de
+ * `web-builder/src/contract.ts` — el portal NO importa ese tipo (ADR-21), así que lo duplica a
+ * propósito, mismo criterio que `MenuItem`/`MenuCategoria`. Los tres campos son opcionales: un
+ * cliente de correduría de seguros recién creado no tiene ninguno todavía.
+ */
+export interface PerfilSeguros {
+  numeroLicencia?: string;
+  anosExperiencia?: number;
+  redAfiliacion?: string;
 }
 
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */

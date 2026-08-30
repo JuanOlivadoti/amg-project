@@ -137,8 +137,12 @@ export const cartaCategorias: Pieza = {
     // Sin `menu` no hay pieza. La página `/menu` ni siquiera se sirve en ese caso.
     if (!profile || !profile.menu || profile.menu.length === 0) return "";
 
+    const esSeguros = ctx.vertical === "correduria_seguros";
+    const antetitulo = esSeguros ? "Lo que ofrecemos" : "Nuestra carta";
+    const titulo = esSeguros ? "Pólizas y coberturas" : "Lo que se cocina hoy";
+
     const bloques = gruposDe(profile)
-      .map((g) => unaCategoria(g, ctx.presupuestoImagenes, ctx.presupuestoVideos))
+      .map((g) => unaCategoria(g, ctx.presupuestoImagenes, ctx.presupuestoVideos, esSeguros))
       .join("\n");
     // El antetítulo y el título son ETIQUETAS DE PLANTILLA, no contenido del negocio — igual que
     // "Inicio" o "Contacto" en el nav. Lo que no se inventa es el dato del cliente; cómo se rotula
@@ -146,7 +150,7 @@ export const cartaCategorias: Pieza = {
     return envolver(
       "p-cartaCategorias",
       `<section class="seccion"><div class="banda">
-  <div class="encabezado"><p class="antetitulo">Nuestra carta</p><h2>Lo que se cocina hoy</h2></div>
+  <div class="encabezado"><p class="antetitulo">${esc(antetitulo)}</p><h2>${esc(titulo)}</h2></div>
 ${bloques}
 </div></section>`,
     );
@@ -271,14 +275,21 @@ function gruposDe(profile: BusinessProfile): GrupoCarta[] {
   return conMeta.map((x) => x.grupo);
 }
 
-function unaCategoria(g: GrupoCarta, presupuesto: PresupuestoImagenes, presupuestoVideos: PresupuestoVideos): string {
+function unaCategoria(
+  g: GrupoCarta,
+  presupuesto: PresupuestoImagenes,
+  presupuestoVideos: PresupuestoVideos,
+  esSeguros: boolean,
+): string {
   const foto = renderImagen(comoImagen(g.foto), "categoria-img", presupuesto);
-  const filas = g.items.map((it) => unPlato(it, presupuesto, presupuestoVideos)).join("\n");
+  // esSeguros viaja también a unPlato — no solo para el conteo. Ver Step 1b.
+  const filas = g.items.map((it) => unPlato(it, presupuesto, presupuestoVideos, esSeguros)).join("\n");
   // El conteo es un dato REAL: sale de los platos que tiene el grupo, no de un campo que alguien
   // rellene a mano y se desincronice. La referencia rotula "18 Items" con un número escrito en su
   // fixture; acá no puede mentir.
   const n = g.items.length;
-  const conteo = `<p class="conteo">${n} ${n === 1 ? "plato" : "platos"}</p>`;
+  const unidad = esSeguros ? (n === 1 ? "póliza" : "pólizas") : n === 1 ? "plato" : "platos";
+  const conteo = `<p class="conteo">${n} ${unidad}</p>`;
   // Sin nombre de categoría no hay cabecera que rotular: los platos sueltos van directos a la lista.
   const cabecera = g.categoria
     ? `<header class="cab ${foto ? "con-img" : "sin-img"}">${foto}<h3>${esc(g.categoria)}</h3>${conteo}</header>`
@@ -291,15 +302,22 @@ ${filas}
 </section>`;
 }
 
-function unPlato(it: MenuItem, presupuesto: PresupuestoImagenes, presupuestoVideos: PresupuestoVideos): string {
-  // El video reemplaza a la foto en la miniatura si el plato tiene los dos: un plato, una miniatura.
-  const video = renderVideo(comoVideo(it.video), "plato-foto", presupuestoVideos, presupuesto);
+function unPlato(
+  it: MenuItem,
+  presupuesto: PresupuestoImagenes,
+  presupuestoVideos: PresupuestoVideos,
+  esSeguros: boolean,
+): string {
+  // El video reemplaza a la foto en la miniatura si el plato tiene los dos — pero solo para
+  // restauración: seguros nunca dibuja video, alérgenos, etiquetas ni nutrición, aunque el objeto
+  // `it` los trajera (defensa en profundidad, ver el docblock de la task).
+  const video = esSeguros ? "" : renderVideo(comoVideo(it.video), "plato-foto", presupuestoVideos, presupuesto);
   const foto = video ? "" : renderImagen(comoImagen(it.foto), "plato-foto", presupuesto);
   const nota = it.nota ? `<span class="nota">${esc(it.nota)}</span>` : "";
-  const alergenos = alergenosDe(it);
-  const etiquetas = etiquetasDe(it);
+  const alergenos = esSeguros ? "" : alergenosDe(it);
+  const etiquetas = esSeguros ? "" : etiquetasDe(it);
   const desc = it.description ? `<p class="desc">${esc(it.description)}</p>` : "";
-  const nutricion = nutricionDe(it);
+  const nutricion = esSeguros ? "" : nutricionDe(it);
   // TODOS los importes, cada uno con su etiqueta. La etiqueta vacía es el caso de `price` (un solo
   // importe), y entonces no se dibuja el rótulo: "12,50 €" no necesita que le expliquen qué es.
   const precios = preciosDe(it)

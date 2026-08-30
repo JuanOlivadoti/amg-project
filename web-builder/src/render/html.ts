@@ -1,7 +1,14 @@
-import type { BusinessProfile, NavItem, Story } from "../types.js";
+import type { BusinessProfile, NavItem, Story, Vertical } from "../types.js";
 import { imagenPublicable } from "./imagenes.js";
-import { homeLd, jsonLd, menuLd, researchTrace } from "./json-ld.js";
-import { SLUG_BLOG, SLUG_HOME, SLUG_MENU, agruparCarta, resolveCanonical, urlDeSeccion } from "./lib.js";
+import { catalogoLd, homeLd, jsonLd, menuLd, researchTrace } from "./json-ld.js";
+import {
+  SLUG_BLOG,
+  SLUG_HOME,
+  agruparCarta,
+  catalogoSlug,
+  resolveCanonical,
+  urlDeSeccion,
+} from "./lib.js";
 import type { CtxPieza } from "./piezas/tipos.js";
 import { juegoDe } from "./plantilla.js";
 import { renderDocumento } from "./shell.js";
@@ -10,11 +17,18 @@ import { renderDocumento } from "./shell.js";
  * Render AI-search-first (ADR-04): HTML semántico + JSON-LD por tipo de página.
  * Página autocontenida (CSS inline, sin dependencias externas).
  *
- * **Este archivo es la frontera pública del render y su firma no cambia**: `renderer/` importa estas
- * cuatro funciones por nombre de paquete, y lo que sale de acá se sirve a internet anónimo. Desde la
- * entrega 2 de la spec de plantillas de landing son **cuatro llamadas al mismo ensamblador**
- * (`shell.ts`) con distinta receta de contenido (`plantilla.ts`); el HTML lo producen las piezas
- * (`piezas/`) y el CSS se ensambla con las que dibujaron algo (`css.ts`).
+ * **Este archivo es la frontera pública del render**: `renderer/` importa estas cuatro funciones por
+ * nombre de paquete, y lo que sale de acá se sirve a internet anónimo. Desde la entrega 2 de la spec
+ * de plantillas de landing son **cuatro llamadas al mismo ensamblador** (`shell.ts`) con distinta
+ * receta de contenido (`plantilla.ts`); el HTML lo producen las piezas (`piezas/`) y el CSS se
+ * ensambla con las que dibujaron algo (`css.ts`).
+ *
+ * ⚠️ **La firma SÍ cambió acá** (multi-vertical de clientes, Task 7): las cuatro funciones ganaron un
+ * parámetro `vertical: Vertical` (eligen la receta y el catálogo por vertical del cliente, ya no por
+ * `brand.plantilla`), y `renderMenu` se renombró a `renderCatalogo`. Es un cambio deliberado y es
+ * justo lo que rompe la compilación de `renderer/` y de `orchestrator/src/deps.ts` hasta que la Task 9
+ * de ese plan actualice sus call sites (`sitio.vertical`/`destino.vertical`) — no es una regresión sin
+ * detectar, es la rotura esperada y documentada de una migración en dos pasos.
  *
  * Antes cada una repetía su propio `<!doctype>`, `<head>`, `<style>` y footer: cuatro copias de la
  * misma estructura, que es la razón por la que el bug del modo oscuro sobrevivió —había que
@@ -29,7 +43,9 @@ import { renderDocumento } from "./shell.js";
  */
 type CtxDeEntrada = Omit<CtxPieza, "presupuestoImagenes" | "presupuestoVideos">;
 
-function ctx(over: Partial<CtxDeEntrada> & Pick<CtxDeEntrada, "activeSlug">): CtxDeEntrada {
+function ctx(
+  over: Partial<CtxDeEntrada> & Pick<CtxDeEntrada, "activeSlug" | "vertical">,
+): CtxDeEntrada {
   return {
     story: null,
     profile: null,
@@ -47,7 +63,8 @@ function ctx(over: Partial<CtxDeEntrada> & Pick<CtxDeEntrada, "activeSlug">): Ct
  */
 export function renderStory(
   story: Story,
-  profile?: BusinessProfile | null,
+  profile: BusinessProfile | null | undefined,
+  vertical: Vertical,
   languageCode = "es",
   hayBlog = false,
 ): string {
@@ -70,8 +87,8 @@ export function renderStory(
       jsonLd: jsonLd(c, url, profile),
       trace: researchTrace(c),
     },
-    receta: juegoDe(profile?.brand).story,
-    ctx: ctx({ story, profile: profile ?? null, activeSlug: story.slug }),
+    receta: juegoDe(vertical).story,
+    ctx: ctx({ story, profile: profile ?? null, activeSlug: story.slug, vertical }),
     pie: { contractVersion: c.meta.contract_version, schemaType: c.schema_type, hayBlog },
   });
 }
@@ -89,8 +106,9 @@ export function renderStory(
  * función deja de invocarse. Es un fallback, no una imposición.
  */
 export function renderHome(
-  profile?: BusinessProfile | null,
+  profile: BusinessProfile | null | undefined,
   nav: NavItem[] = [],
+  vertical: Vertical,
   languageCode = "es",
   hayBlog = false,
 ): string {
@@ -111,50 +129,65 @@ export function renderHome(
       ...(ogImage ? { ogImage } : {}),
       jsonLd: homeLd(profile, url),
     },
-    receta: juegoDe(profile?.brand).home,
+    receta: juegoDe(vertical).home,
     ctx: ctx({
       profile: profile ?? null,
       activeSlug: SLUG_HOME,
       titulo: nombre,
       bajada: descripcion,
       paginas: nav,
+      vertical,
     }),
     pie: { contractVersion: "web.v0.1", schemaType: "WebPage", hayBlog },
   });
 }
 
 /**
- * La página `/menu`: la carta del negocio.
+ * La página de catálogo: `/menu` (restauración) o `/polizas` (correduría de seguros).
  *
- * **Sintetizada, igual que la home**: sale del perfil, no de una story ni del LLM. Un menú es una
- * lista de producto con precio — no hay nada que "redactar", y generarlo por IA metería una fuente
- * más de contenido que revisar en la compuerta humana (ADR-06). Si el cliente crea su propia story
- * `menu` en Storyblok, esa gana: el renderizador la sirve y esta función no se invoca.
+ * **Sintetizada, igual que la home**: sale del perfil, no de una story ni del LLM. Un catálogo es una
+ * lista de producto/oferta — no hay nada que "redactar", y generarlo por IA metería una fuente más de
+ * contenido que revisar en la compuerta humana (ADR-06). Si el cliente crea su propia story en ese
+ * slug en Storyblok, esa gana: el renderizador la sirve y esta función no se invoca.
  */
-export function renderMenu(
-  profile?: BusinessProfile | null,
+export function renderCatalogo(
+  profile: BusinessProfile | null | undefined,
+  vertical: Vertical,
   languageCode = "es",
   hayBlog = false,
 ): string {
-  const nombre = profile?.name ?? "Menú";
+  const nombre = profile?.name ?? "Catálogo";
   const items = profile?.menu ?? [];
-  const url = urlDeSeccion(profile, SLUG_MENU);
-  const titulo = `Menú · ${nombre}`;
+  const slug = catalogoSlug(vertical);
+  const url = urlDeSeccion(profile, slug);
+  const esRestauracion = vertical === "restauracion";
+  const titulo = esRestauracion ? `Menú · ${nombre}` : `Pólizas y coberturas · ${nombre}`;
+  const descripcion = esRestauracion ? `La carta de ${nombre}.` : `Los seguros que ofrece ${nombre}.`;
 
   return renderDocumento({
     cabeza: {
       lang: languageCode,
       title: titulo,
-      description: `La carta de ${nombre}.`,
+      description: descripcion,
       canonical: url,
       ogTitle: titulo,
-      // Sin carta no hay `Menu` que declarar: un JSON-LD con `hasMenuSection: []` le diría a Google
-      // que este negocio tiene una carta vacía, que es peor que no decir nada.
-      ...(items.length && profile ? { jsonLd: menuLd(profile, url, agruparCarta(items)) } : {}),
+      // Sin ítems no hay catálogo que declarar: un JSON-LD con listas vacías le diría a Google que
+      // este negocio no tiene nada que ofrecer, que es peor que no decir nada.
+      ...(items.length && profile
+        ? {
+            jsonLd: esRestauracion
+              ? menuLd(profile, url, agruparCarta(items))
+              : catalogoLd(profile, url, agruparCarta(items)),
+          }
+        : {}),
     },
-    receta: juegoDe(profile?.brand).menu,
-    ctx: ctx({ profile: profile ?? null, activeSlug: SLUG_MENU, titulo }),
-    pie: { contractVersion: "web.v0.1", schemaType: "Menu", hayBlog },
+    receta: juegoDe(vertical).menu,
+    ctx: ctx({ profile: profile ?? null, activeSlug: slug, titulo, vertical }),
+    pie: {
+      contractVersion: "web.v0.1",
+      schemaType: esRestauracion ? "Menu" : "ItemList",
+      hayBlog,
+    },
   });
 }
 
@@ -168,6 +201,7 @@ export function renderMenu(
 export function renderBlogIndex(
   profile: BusinessProfile | null | undefined,
   posts: NavItem[],
+  vertical: Vertical,
   languageCode = "es",
 ): string {
   const nombre = profile?.name ?? "Blog";
@@ -182,8 +216,8 @@ export function renderBlogIndex(
       canonical: url,
       ogTitle: titulo,
     },
-    receta: juegoDe(profile?.brand).blog,
-    ctx: ctx({ profile: profile ?? null, activeSlug: SLUG_BLOG, titulo, paginas: posts }),
+    receta: juegoDe(vertical).blog,
+    ctx: ctx({ profile: profile ?? null, activeSlug: SLUG_BLOG, titulo, paginas: posts, vertical }),
     // `hayBlog: false` a propósito: el pie de /blog no se autoenlaza.
     pie: { contractVersion: "web.v0.1", schemaType: "WebPage", hayBlog: false },
   });

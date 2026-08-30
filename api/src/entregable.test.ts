@@ -60,10 +60,10 @@ describe("GET /runs/:id/entregable.md", () => {
 
   async function mkCliente(tenantId: string, nombre: string): Promise<string> {
     return (
-      await sql<{ id: string }>("insert into clients (tenant_id, nombre) values ($1,$2) returning id", [
-        tenantId,
-        nombre,
-      ])
+      await sql<{ id: string }>(
+        "insert into clients (tenant_id, nombre, vertical) values ($1,$2,'restauracion') returning id",
+        [tenantId, nombre],
+      )
     )[0]!.id;
   }
 
