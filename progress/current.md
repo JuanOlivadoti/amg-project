@@ -7,13 +7,15 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** iniciativa nueva — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.
-**En curso (2026-08-28): el sub-proyecto 2 quedó IMPLEMENTADO Y CERRADO.** Se decidió partir el
-pedido en **tres sub-proyectos independientes**, cada uno con su propio spec → plan → revisión
-externa (Codex), ejecutados en serie (uno se implementa antes de arrancar el diseño del
-siguiente — decisión explícita, no en paralelo):
+**En curso (2026-08-30): sub-proyecto 2 cerrado (con su revisión final), sub-proyecto 1 en
+implementación activa (Tasks 1-5/15).** Se decidió partir el pedido en **tres sub-proyectos
+independientes**, cada uno con su propio spec → plan → revisión externa (Codex), ejecutados en serie
+(uno se implementa antes de arrancar el diseño del siguiente — decisión explícita, no en paralelo):
 
-1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **diseño y plan
-   completos, sin implementar.**
+1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **EN IMPLEMENTACIÓN**,
+   Tasks 1-5 de 15 completas (worktree `multivertical-clientes`) — ver la sección del sub-proyecto 1
+   abajo, corregida el 2026-08-30 (una entrada anterior de este archivo decía "sin implementar", y
+   ya no era cierto: una sesión previa había arrancado la implementación el 2026-08-29).
 2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28),
    con una revisión final (2026-08-29) que encontró 4 hallazgos más — los cuatro corregidos, ver
    la sección del sub-proyecto 2 abajo.**
@@ -21,28 +23,36 @@ siguiente — decisión explícita, no en paralelo):
    implementar.**
 
 Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
-ya cerrada). El sub-proyecto 2, que el orden fijado exigía primero, ya tiene código real y pasó una
-revisión final propia (no solo la conjunta de los tres). **Qué sigue:** implementar el 1 o el 3 (en
-cualquier orden entre ellos, pero siempre en serie) — ver "## Próximo paso" más abajo para el detalle.
+ya cerrada). El sub-proyecto 2 ya está cerrado (con su revisión final también cerrada); el 1 está en
+implementación activa, en serie, en el worktree dedicado — el 3 espera su turno. **Qué sigue:**
+continuar el sub-proyecto 1 desde la Task 6 — ver "## Próximo paso" más abajo para el detalle.
 
 ## En vuelo (sin commitear)
 
-Nada — working tree limpio. Los 30 commits pendientes (revisión final del sub-proyecto 2 + el commit
-de documentación de este archivo) ya se pushearon a `origin/main` (2026-08-30, `50b80b8`) —
-`origin/main` y `main` local están sincronizados.
+En el checkout principal (esta rama, `main`): nada — working tree limpio, sincronizado con
+`origin/main` (2026-08-30, `89e06cc`). **En el worktree** `.claude/worktrees/multivertical-clientes`
+(rama `worktree-multivertical-clientes`, NO mergeada a `main` todavía): también limpio — Task 5
+cerrada de punta a punta (comiteada y revisada) antes del último checkpoint de esa rama. Nada a medio
+terminar en ninguna de las dos.
 
 ## Próximo paso
 
-1. Elegir sub-proyecto 1 (multi-vertical de clientes) o 3 (publicar posts en blog externo) para
-   implementar — cualquier orden entre ellos, pero **siempre en serie**, nunca en paralelo (comparten
-   archivos: `db/src/store.ts`, `api/src/app.ts`, `orchestrator/src/workflow.ts` y sus tests). Los
-   dos tienen spec+plan completos y pasados por la revisión conjunta — arrancar directo con
-   `superpowers:subagent-driven-development` sobre el plan elegido.
-2. Antes de la primera task de cualquiera de los dos: correr `ls db/migrations` para confirmar el
-   número real que le toca a la migración del plan elegido (los tres planes numeraban `0027`/`0028`
-   sin cruzarse — ver `docs/proyecto/15-plan-plataforma.md`) y decidir si desplegar la `0027`
-   (`kr_run_decisiones`, del sub-proyecto 2, todavía sin desplegar a producción a propósito) junto
-   con la migración del siguiente.
+1. Continuar el sub-proyecto 1 desde la Task 6 (`web-builder/src/types.ts` + `contract.ts` — tipo
+   `Vertical` y `PerfilSeguros`), **trabajando DENTRO de**
+   `.claude/worktrees/multivertical-clientes`, no en este checkout. Generar su brief con el script de
+   la skill (`scripts/task-brief docs/superpowers/plans/2026-08-26-multivertical-clientes.md 6`),
+   delegar al agente `render` (Tasks 6-10 son suyas; la 9 también toca `orchestrator/`, coordinar con
+   `pipeline` antes de tocarlo), revisar el diff, comitear desde el controller (el agente `datos` no
+   comiteó en las Tasks 3-5 — probable que `render` tampoco lo haga), despachar el task-reviewer,
+   actualizar `.superpowers/sdd/progress.md`. Seguir así Tasks 7-15 en orden.
+2. Recién cuando el sub-proyecto 1 esté cerrado (Task 15, verificación final): decidir cómo integrar
+   la rama `worktree-multivertical-clientes` a `main` (mismo patrón que el sub-proyecto 2— esa rama
+   terminó mergeada/adoptada directo a `main` local) y arrancar el sub-proyecto 3.
+3. `ls db/migrations` ya no hace falta correrlo de nuevo para el sub-proyecto 1 — los números reales
+   ya están fijados (`0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql`, ninguna
+   desplegada a producción todavía). Si en algún punto se despliega la `0027`/`0028` del sub-proyecto
+   2 antes de que el 1 termine, la `0029`/`0030` ya no serían editables in situ — evaluarlo en ese
+   momento, no antes.
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -70,7 +80,7 @@ pisen las ediciones. Serializar, no paralelizar.
 llevan la misma advertencia: verificar `ls db/migrations` antes de crear el archivo — el número real
 depende del orden de implementación de arriba, no está fijo en el documento.
 
-## Sub-proyecto 1 — Multi-vertical de clientes: estado detallado
+## Sub-proyecto 1 — Multi-vertical de clientes: EN IMPLEMENTACIÓN (worktree, desde 2026-08-29)
 
 - **Spec:** [`docs/superpowers/specs/2026-08-26-multivertical-clientes-design.md`](../docs/superpowers/specs/2026-08-26-multivertical-clientes-design.md).
   Escrita, revisada por Codex una vez (veredicto NECESITA REDISEÑO → 1 Critical + 6 Major + 2 Minor,
@@ -78,8 +88,7 @@ depende del orden de implementación de arriba, no está fijo en el documento.
 - **Plan:** [`docs/superpowers/plans/2026-08-26-multivertical-clientes.md`](../docs/superpowers/plans/2026-08-26-multivertical-clientes.md).
   15 tasks (db → web-builder/renderer → orchestrator → api → portal → verificación). Revisado por
   Codex una vez (veredicto NECESITA REDISEÑO → 1 Critical + 8 Major + 4 Minor, los 13 corregidos e
-  incorporados al plan). **Ninguna task se ejecutó todavía** — cero código tocado, cero migración
-  aplicada.
+  incorporados al plan).
 - **Informes de las dos rondas de Codex**, guardados tal cual llegaron:
   [`progress/informes/codex-multivertical-clientes.md`](informes/codex-multivertical-clientes.md)
   (ronda sobre el spec) y
@@ -89,11 +98,30 @@ depende del orden de implementación de arriba, no está fijo en el documento.
   tipos `MenuItem`/`MenuCategoria` y los endpoints `GET`/`PATCH /clients/:id/menu` **no se renombran**
   a `Catalogo*`/`/catalogo` — el spec original lo proponía, se revirtió por costo/beneficio (ver
   "Global Constraints" del plan y la sección "API" del spec).
-- **Qué falta para este sub-proyecto:** nada de diseño — está listo para pasar a
-  `superpowers:subagent-driven-development` cuando le toque el turno de implementación (después de que
-  los sub-proyectos 2 y 3 tengan su spec+plan, según la decisión de secuencia de arriba). Si se decide
-  adelantar la implementación de este antes de diseñar los otros dos, es un cambio de secuencia
-  explícito a confirmar con el usuario, no algo que se pueda asumir leyendo este archivo solo.
+- **EN IMPLEMENTACIÓN, no en diseño — corregido 2026-08-30, la entrada anterior de este archivo
+  estaba desactualizada.** Una sesión previa (2026-08-29) ya arrancó con
+  `superpowers:subagent-driven-development` en el worktree
+  `.claude/worktrees/multivertical-clientes` (rama `worktree-multivertical-clientes`, `EnterWorktree`
+  ramificó de `origin/main` y se corrigió con `git rebase main` de inmediato — lección aplicada del
+  tropiezo del sub-proyecto 2). **Tasks 1-5 completas, comiteadas y revisadas ("Task quality:
+  Approved" las 5, con fix rounds en la 1), HEAD de esa rama `0a66cb4`.** Delegación por área: Tasks
+  1-5 → `datos` (hecho); 6-10 → `render`; 11 → `datos`; 12-14 → `front`; 15 (verificación final +
+  docs + commit) → sesión principal. El detalle task-por-task vive en
+  `.claude/worktrees/multivertical-clientes/.superpowers/sdd/progress.md` (ledger de la skill, NO
+  versionado — solo existe en esta máquina).
+  - Migraciones reales: **`0029_clientes_vertical.sql`** (`clients.vertical`, trigger de
+    inmutabilidad, grants) y **`0030_nap_publico_vertical.sql`** (`app.nap_publico` por vertical) —
+    ninguna de las dos desplegada a producción todavía, ambas siguen editables in situ si aparece un
+    hallazgo relacionado (mismo criterio que la `0027` del sub-proyecto 2).
+  - Esa rama (`worktree-multivertical-clientes`) diverge de `main` en el commit `b1ed4d3` — **desde
+    entonces `main` sumó las dos migraciones de la revisión final del sub-proyecto 2 y los dos
+    commits de documentación** (`50b80b8`, `89e06cc`) que la trajeron al día. Nada en conflicto
+    todavía (son archivos distintos salvo `progress/current.md`, que ya diverge en las dos ramas por
+    diseño — cada worktree lleva su propio checkpoint).
+- **Próximo paso real:** Task 6 (`web-builder/src/types.ts` + `contract.ts` — tipo `Vertical` y
+  `PerfilSeguros`), delegada al agente `render`. Generar su brief con el script de la skill
+  (`scripts/task-brief docs/superpowers/plans/2026-08-26-multivertical-clientes.md 6`) desde DENTRO
+  del worktree.
 
 ## Sub-proyecto 2 — Desacoplar keyword research de creación de webs: IMPLEMENTADO (2026-08-28), revisión final cerrada (2026-08-29)
 
