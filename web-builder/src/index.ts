@@ -33,6 +33,7 @@ export type {
   MenuCategoria,
   MenuItem,
   NavItem,
+  PerfilSeguros,
   Story,
   Testimonio,
   Video,

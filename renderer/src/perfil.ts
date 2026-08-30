@@ -10,6 +10,7 @@ import type {
   MenuCategoria,
   MenuItem,
   Testimonio,
+  PerfilSeguros,
 } from "web-builder";
 
 /** Las tres del legacy `font`. Es un subconjunto de `FUENTES`, no una lista paralela. */
@@ -305,6 +306,21 @@ function nutricion(v: unknown): MenuItem["nutricion"] | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
+/** La extensión de seguros. Cada clave sobrevive sola, mismo criterio que `nutricion`/`locales`.
+ *  `anosExperiencia` replica la misma regla que ya impone el Zod de `contract.ts` (`.int().min(0)`,
+ *  Task 6) — un entero negativo o decimal salido de Postgres sin pasar por Zod tiene que descartarse
+ *  acá igual, no solo confiar en que la frontera 1 ya lo filtró (corrección de la revisión). */
+function seguros(v: unknown): BusinessProfile["seguros"] | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
+  const out: NonNullable<BusinessProfile["seguros"]> = {};
+  if (texto(o["numeroLicencia"])) out.numeroLicencia = texto(o["numeroLicencia"]);
+  const anos = o["anosExperiencia"];
+  if (typeof anos === "number" && Number.isInteger(anos) && anos >= 0) out.anosExperiencia = anos;
+  if (texto(o["redAfiliacion"])) out.redAfiliacion = texto(o["redAfiliacion"]);
+  return Object.keys(out).length ? out : undefined;
+}
+
 /** La carta, validada. Sin `name` no hay ítem que mostrar. */
 function carta(v: unknown): MenuItem[] | undefined {
   if (!Array.isArray(v)) return undefined;
@@ -440,5 +456,6 @@ export function perfilValido(bruto: unknown): BusinessProfile | null {
     ...(texto(p["bienvenida"]) ? { bienvenida: texto(p["bienvenida"])! } : {}),
     ...(destacados(p["destacados"]) ? { destacados: destacados(p["destacados"]) } : {}),
     ...(testimonios(p["testimonios"]) ? { testimonios: testimonios(p["testimonios"]) } : {}),
+    ...(seguros(p["seguros"]) ? { seguros: seguros(p["seguros"]) } : {}),
   };
 }
