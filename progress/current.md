@@ -7,75 +7,54 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** iniciativa nueva — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.
-**En curso (2026-08-30): sub-proyecto 2 cerrado (con su revisión final). Sub-proyecto 1 — las 14
-tasks de implementación (6-14 de esta sesión, sumadas a las 1-5 previas) están completas, revisadas
-y comiteadas; solo falta cerrar la Task 15 (verificación final + docs + commit), EN CURSO ahora
-mismo.** Se decidió partir el pedido en **tres sub-proyectos independientes**, cada uno con su
+**En curso (2026-08-30): sub-proyecto 2 CERRADO (con su revisión final). Sub-proyecto 1
+(multi-vertical de clientes) CERRADO — las 15 tasks completas, mergeadas a `main` local y
+PUSHEADAS.** Se decidió partir el pedido en **tres sub-proyectos independientes**, cada uno con su
 propio spec → plan → revisión externa (Codex), ejecutados en serie:
 
-1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **Tasks 1-14 de 15
-   completas y revisadas** (worktree `multivertical-clientes`, rama `worktree-multivertical-clientes`,
-   HEAD `1f477f7`). Falta la Task 15: corrida final de `npm run verificar --con-portal` + Karma +
-   verificación en navegador (YA hecha para el portal — ver sub-proyecto 1 abajo) + esta
-   documentación + merge a `main` + push. **En curso ahora mismo, ver "## Próximo paso".**
+1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **CERRADO
+   (2026-08-30).** Las 15 tasks del [plan](../docs/superpowers/plans/2026-08-26-multivertical-clientes.md)
+   completas, revisadas, mergeadas a `main` (commit `a26f1e3`) y pusheadas a `origin/main`. Detalle
+   completo en la sección del sub-proyecto 1 abajo.
 2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28),
    con una revisión final (2026-08-29) que encontró 4 hallazgos más — los cuatro corregidos, ver
    la sección del sub-proyecto 2 abajo.**
 3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos, sin
-   implementar.**
+   implementar. Es lo único que queda de esta iniciativa.**
 
 Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
-ya cerrada). **Qué sigue:** terminar la Task 15 del sub-proyecto 1 (verificación de punta a punta ya
-corriendo, ver abajo) y mergear la rama a `main` — ver "## Próximo paso".
+ya cerrada). **Qué sigue:** arrancar el sub-proyecto 3 — ver "## Próximo paso".
 
 ## En vuelo (sin commitear)
 
-En el checkout principal (esta rama, `main`): nada más que este archivo (`progress/current.md`),
-que se está escribiendo ahora mismo — trabajo del propio `/progression-update`. **En el worktree**
-`.claude/worktrees/multivertical-clientes` (rama `worktree-multivertical-clientes`, 20 commits por
-delante de `origin/main`, NO mergeada a `main` todavía): un solo archivo sin commitear,
-`docs/proyecto/15-plan-plataforma.md` (la nota de "Nuevo (2026-08-26)" actualizada a reflejar que
-los sub-proyectos 1 y 2 ya cerraron — Step 6 del ritual de la Task 15, a mitad de terminar). Todo el
-código de las Tasks 1-14 ya está comiteado y revisado; nada a medio terminar ahí.
-
-**Dos corridas de verificación corriendo AHORA MISMO en background, desde el worktree** (lanzadas
-por esta sesión, ver "## Callejones sin salida" para el porqué de la segunda):
-- `bash -c 'echo PWD... && echo HEAD... && bash ./scripts/verificar.sh --con-portal'` →
-  `/tmp/verificar-out4.txt` (Windows: `C:\Users\oliva\AppData\Local\Temp\verificar-out4.txt`) — la
-  corrida REAL de la Task 15, con el directorio y el HEAD confirmados en las dos primeras líneas del
-  log para blindarla contra el bug de cwd de abajo.
-- `npm test --silent` en el checkout `main` (no el worktree) → un chequeo de comparación, para
-  entender si el conteo de tests de `main` y el del worktree coinciden por una razón real o por el
-  mismo bug de cwd — **no bloquea nada, es solo curiosidad técnica, se puede matar sin pérdida.**
+Nada — working tree limpio en `main`, sincronizado con `origin/main` (2026-08-30, `a26f1e3`). El
+worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
+worktree remove`); quedó un directorio huérfano con `node_modules` que no se pudo borrar del disco
+por un lock de proceso ("device or resource busy") — no es un worktree de git (ya no aparece en
+`git worktree list`), es basura de disco inofensiva, se puede borrar a mano cuando el proceso que
+lo bloquea termine.
 
 ## Próximo paso
 
-1. **Esperar a que termine `/tmp/verificar-out4.txt`** (la corrida real de la Task 15) y leerla
-   completa. Si da verde con las líneas `PWD-CHECK`/`HEAD-CHECK` confirmando el worktree: es la
-   cifra real de tests para citar en `09`/el commit final. Si por algún motivo NO corrió en el
-   worktree (revisar las dos primeras líneas), repetir con el mismo patrón
-   (`bash -c 'echo ... && bash ./scripts/verificar.sh --con-portal' > archivo 2>&1`, siempre con el
-   `cd` y las comprobaciones DENTRO del `bash -c`, nunca confiando en el cwd persistido entre
-   llamadas — ver "## Callejones sin salida").
-2. Correr Karma también con el mismo blindaje (`bash -c 'cd .../multivertical-clientes && echo PWD...
-   && npm run test:components -- --watch=false'`) — la corrida de 218 SUCCESS que se hizo antes de
-   descubrir el bug de cwd NO es confiable (pudo haber corrido contra `main`, que no tiene
-   `cliente-seguros-card.spec.ts` ni el resto de las Tasks 9-14).
-3. Con las dos cifras reales: terminar `docs/proyecto/09-estado-y-roadmap.md` (nueva entrada
-   "🧭 Nuevo (2026-08-30): sub-proyecto 1 — IMPLEMENTADO Y CERRADO", con los números reales, mismo
-   estilo que la entrada del sub-proyecto 2 que ya está arriba) — `docs/proyecto/15-plan-plataforma.md`
-   ya está actualizado (falta comitear junto con el resto).
-4. **Decidir y ejecutar cómo integrar `worktree-multivertical-clientes` a `main`** — el patrón usado
-   para el sub-proyecto 2 fue adoptar la rama completa a `main` local y pushear. Antes de mergear:
-   confirmar que `main` no avanzó mientras tanto (`git log -1 origin/main` vs `main` local — la
-   lección del sub-proyecto 2, que ya mordió dos veces en esta iniciativa).
-5. Commit final + push (Step 7 del ritual de la Task 15) — el mensaje ya está en el plan
-   (`docs/superpowers/plans/2026-08-26-multivertical-clientes.md`, Task 15, Step 7), ajustarlo si
-   hace falta.
-6. Recién después: arrancar el sub-proyecto 3 (publicar posts en blog externo), que sigue con
-   spec+plan completos y sin ninguna task ejecutada.
-7. Migraciones: `0029_clientes_vertical.sql`/`0030_nap_publico_vertical.sql` siguen SIN desplegar a
-   producción, a propósito — coordinarlo con el usuario al cerrar esta etapa, no antes.
+1. **Arrancar el sub-proyecto 3** (publicar posts en blog externo) con
+   `superpowers:subagent-driven-development` sobre
+   `docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md` (12 tasks, spec+plan completos,
+   revisión conjunta ya procesada — nada de diseño pendiente). Usar un worktree nuevo
+   (`superpowers:using-git-worktrees`), rebasado sobre el `main` local real — no `origin/main` — apenas
+   se cree (lección de esta iniciativa, mordió dos veces: sub-proyecto 2 y otra vez al arrancar este).
+2. Antes de la Task 1 de ese plan: correr `ls db/migrations` para el número real de su migración —
+   el plan numeraba `0028` tentativamente, pero ahora hay `0027`-`0030` ocupadas (sub-proyectos 2 y
+   1), así que le toca `0031`.
+3. **Migraciones pendientes de desplegar a producción, coordinarlo con el usuario, no asumirlo:**
+   `0027_kr_run_decisiones.sql`, `0028_client_row_archived_at.sql` (sub-proyecto 2) y
+   `0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql` (sub-proyecto 1) — las cuatro
+   aplicadas solo en PGlite hasta ahora.
+4. **Lección de proceso para llevar a cualquier trabajo futuro con worktrees + comandos backgrounded
+   largos:** el cwd del bash tool de esta sesión se reseteó solo al checkout `main` varias veces
+   durante la Task 15, sin ningún error visible — ver "## Callejones sin salida" para el patrón que
+   lo blinda (confirmar `pwd`/`git rev-parse HEAD` DENTRO del mismo `bash -c` que corre el comando
+   real, nunca confiar en el cwd persistido entre llamadas cuando hay de por medio una notificación
+   de tarea en background).
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -172,9 +151,14 @@ depende del orden de implementación de arriba, no está fijo en el documento.
     200 con JSON-LD `ItemList` (no `Menu`), `/menu` da 404, el nav linkea a `/polizas` con la etiqueta
     correcta, y la sección de contacto muestra licencia/experiencia/red — sin errores de permisos
     (`app_render` real, no superusuario simulado).
-- **Falta cerrar la Task 15**: la corrida final de `npm run verificar --con-portal` + Karma están
-  corriendo AHORA MISMO (ver "## En vuelo" y "## Próximo paso" arriba) — retomar leyendo esos
-  archivos primero, no repetir el trabajo.
+- **Task 15 (verificación final) CERRADA.** `npm run verificar --con-portal`: 1779 tests del
+  monorepo + 304 `node:test` del portal, todos en verde, corridos con el directorio y el HEAD
+  confirmados en el propio log (bug de cwd descrito en "Callejones sin salida"). Karma: 238/238,
+  mismo blindaje. Docs actualizadas (`09`, `15`), commiteadas (`7ae24d0`). Rama
+  `worktree-multivertical-clientes` mergeada a `main` local (`a26f1e3` — conflicto en
+  `progress/current.md` resuelto a favor de la versión de `main`, el checkpoint del worktree quedó
+  superado) y pusheada a `origin/main`. Worktree removido (`git worktree remove`), branch local
+  borrado. Sub-proyecto 1 CERRADO de punta a punta.
 
 ## Sub-proyecto 2 — Desacoplar keyword research de creación de webs: IMPLEMENTADO (2026-08-28), revisión final cerrada (2026-08-29)
 
