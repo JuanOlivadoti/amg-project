@@ -315,6 +315,26 @@ describe('ClienteMenuDetallePage', () => {
     expect(el.querySelector('[data-testid="campo-etiquetas"]')).toBeTruthy();
     expect(el.querySelector('[data-testid="campo-nutricion"]')).toBeTruthy();
   });
+
+  it('el <h1> de un ítem nuevo dice "Póliza nueva" para un cliente de seguros, no "Plato nuevo"', async () => {
+    // Encontrado en la ronda de revisión: el <h1> REAL (visible) de esta pantalla —a diferencia del
+    // sr-only de cliente-menu.ts— seguía hardcodeado a 'Plato nuevo' pase lo que pase con el
+    // vertical. `cartaDePrueba()` trae 1 plato, así que índice 1 (=== menu.length) es "ítem nuevo".
+    const params = new BehaviorSubject(convertToParamMap({ id: 'c1', index: '1' }));
+    const { fixture } = crear({ params, vertical: 'correduria_seguros' });
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('h1')?.textContent?.trim()).toBe('Póliza nueva');
+    expect(el.textContent).not.toContain('Plato nuevo');
+  });
+
+  it('sin regresión: el <h1> de un ítem nuevo sigue diciendo "Plato nuevo" para un cliente de restauración', async () => {
+    const params = new BehaviorSubject(convertToParamMap({ id: 'c1', index: '1' }));
+    const { fixture } = crear({ params, vertical: 'restauracion' });
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('h1')?.textContent?.trim()).toBe('Plato nuevo');
+  });
 });
 
 /** Un `FormularioPlato` con TODOS los campos de restauración cargados — simula un ítem que se guardó

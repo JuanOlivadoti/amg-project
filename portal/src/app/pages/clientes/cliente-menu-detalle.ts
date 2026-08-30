@@ -176,7 +176,9 @@ export function platoDesdeFormulario(f: FormularioPlato, esSeguros: boolean): Me
       } @else if (noEncontrado()) {
         <p class="text-sm text-error">Plato no encontrado.</p>
       } @else {
-        <h1 class="text-lg font-medium text-texto">{{ esNuevo() ? 'Plato nuevo' : formulario().name }}</h1>
+        <h1 class="text-lg font-medium text-texto">
+          {{ esNuevo() ? (esSeguros() ? 'Póliza nueva' : 'Plato nuevo') : formulario().name }}
+        </h1>
 
         @if (errorGuardar()) {
           <p class="text-sm text-error">{{ errorGuardar() }}</p>
@@ -457,10 +459,11 @@ export class ClienteMenuDetallePage implements OnInit, OnDestroy {
   readonly maxPrecios = MAX_PRECIOS;
 
   /** `true` para un cliente de correduría de seguros: oculta video/alérgenos/etiquetas/nutrición en
-   *  el template (más abajo) Y evita que `guardar()` los persista — ver el docblock de
-   *  `platoDesdeFormulario()`. Lee del mismo `ClientesService` que ya popula `ClienteFichaComponent`
-   *  al cargar la ficha (el shell padre de esta pantalla), así que para cuando este componente monta
-   *  el dato ya está disponible. */
+   *  el template (más abajo), condiciona el `<h1>` de "Plato nuevo"/"Póliza nueva", Y evita que
+   *  `guardar()` persista los campos de restauración — ver el docblock de `platoDesdeFormulario()`.
+   *  Lee del mismo `ClientesService` que ya popula `ClienteFichaComponent` al cargar la ficha (el
+   *  shell padre de esta pantalla), así que para cuando este componente monta el dato ya está
+   *  disponible. */
   protected readonly esSeguros = computed(
     () => this.clientesService.cliente()?.vertical === 'correduria_seguros',
   );

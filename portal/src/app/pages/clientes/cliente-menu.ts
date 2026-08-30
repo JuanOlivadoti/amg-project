@@ -113,12 +113,16 @@ import { Vigencia } from '../../core/vigencia';
 
         <section class="space-y-3">
           <div class="flex items-center justify-between">
-            <h2 class="text-sm font-medium text-texto">Platos</h2>
-            <a [routerLink]="['/clientes', clienteId(), 'menu', platos().length]" class="cta">Agregar plato</a>
+            <h2 class="text-sm font-medium text-texto">{{ esSeguros() ? 'Pólizas' : 'Platos' }}</h2>
+            <a [routerLink]="['/clientes', clienteId(), 'menu', platos().length]" class="cta">
+              {{ esSeguros() ? 'Agregar póliza' : 'Agregar plato' }}
+            </a>
           </div>
 
           @if (platos().length === 0) {
-            <p class="text-sm text-texto-tenue">Todavía no hay platos cargados.</p>
+            <p class="text-sm text-texto-tenue">
+              {{ esSeguros() ? 'Todavía no hay pólizas cargadas.' : 'Todavía no hay platos cargados.' }}
+            </p>
           } @else {
             @for (grupo of gruposDePlatos(); track grupo.nombre) {
               <div class="space-y-2">
@@ -155,13 +159,17 @@ export class ClienteMenuPage implements OnInit, OnDestroy {
 
   private readonly vigencia = new Vigencia();
 
+  /** `true` para un cliente de correduría de seguros — condiciona TODO el copy visible de esta
+   *  pantalla (el `<h1>` `sr-only`, el `<h2>` "Platos"/"Pólizas", el link "Agregar plato"/"Agregar
+   *  póliza" y el estado vacío), mismo criterio que `esSeguros` en `cliente-menu-detalle.ts`. Lee del
+   *  mismo `ClientesService` que ya popula `ClienteFichaComponent` al cargar la ficha, así que para
+   *  cuando esta pantalla monta el dato ya está disponible. */
+  readonly esSeguros = computed(() => this.clientesService.cliente()?.vertical === 'correduria_seguros');
+
   /** El `<h1>` (oculto, `sr-only`) según el `vertical` del cliente — mismo criterio que el tab de la
    *  ficha (`cliente-ficha.ts`): "Menú" para restauración, "Pólizas y coberturas" para correduría de
-   *  seguros. Lee del mismo `ClientesService` que ya popula `ClienteFichaComponent` al cargar la
-   *  ficha, así que para cuando esta pantalla monta el dato ya está disponible. */
-  readonly tituloSeccion = computed(() =>
-    this.clientesService.cliente()?.vertical === 'correduria_seguros' ? 'Pólizas y coberturas' : 'Menú',
-  );
+   *  seguros. */
+  readonly tituloSeccion = computed(() => (this.esSeguros() ? 'Pólizas y coberturas' : 'Menú'));
 
   readonly clienteId = signal('');
   readonly menu = signal<MenuItem[]>([]);
