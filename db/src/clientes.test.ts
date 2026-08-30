@@ -767,15 +767,29 @@ test("🔴 actualizarMenu con rol cliente (duenoA1) no escribe — client_write/
 // porque hasta esta etapa no existía ningún camino de ESCRITURA para `business_profile.seguros` en
 // todo el repo — el editor del portal (Task 14) lo necesita para poder guardar algo.
 
-test("obtenerPerfilSeguros devuelve null si el cliente no tiene la clave cargada", async () => {
+test("obtenerPerfilSeguros de un cliente que existe pero no tiene la clave cargada devuelve { seguros: null }", async () => {
   const id = await clientes.crearCliente(
     { tenantId: s.tenantA, userId: s.equipoA },
     { nombre: "Sin seguros", vertical: "correduria_seguros" },
   );
 
-  const seguros = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  const resultado = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
 
-  assert.equal(seguros, null);
+  // El objeto envolvente NO es null (la fila existe): distingue este caso de "cliente no encontrado",
+  // que es el que la API usa para decidir 404 en vez de 200 — ver el test de OTRO tenant más abajo.
+  assert.deepEqual(resultado, { seguros: null });
+});
+
+test("obtenerPerfilSeguros de un cliente de OTRO tenant (o inexistente) devuelve null a secas — la API lo usa para 404", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo A (lectura seguros)", vertical: "correduria_seguros" },
+  );
+
+  const resultado = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantB, userId: s.equipoB }, id);
+
+  // `null` a secas (no `{ seguros: null }`): es la fila la que falta, no el dato dentro de ella.
+  assert.equal(resultado, null);
 });
 
 test("actualizarPerfilSeguros reemplaza SOLO seguros, preserva el resto de business_profile", async () => {
@@ -808,8 +822,10 @@ test("actualizarPerfilSeguros reemplaza SOLO seguros, preserva el resto de busin
   });
 
   // Y el propio método lo lee de vuelta igual (round-trip completo, no solo la fila cruda).
-  const seguros = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
-  assert.deepEqual(seguros, { numeroLicencia: "J-1479", anosExperiencia: 35, redAfiliacion: "E2K" });
+  const resultado = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(resultado, {
+    seguros: { numeroLicencia: "J-1479", anosExperiencia: 35, redAfiliacion: "E2K" },
+  });
 });
 
 test("actualizarPerfilSeguros de un cliente de OTRO tenant no afecta ninguna fila", async () => {
@@ -823,8 +839,8 @@ test("actualizarPerfilSeguros de un cliente de OTRO tenant no afecta ninguna fil
   });
   assert.equal(ok, false);
 
-  const seguros = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
-  assert.equal(seguros, null, "el cliente de A no cambió");
+  const resultado = await clientes.obtenerPerfilSeguros({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(resultado, { seguros: null }, "el cliente de A no cambió");
 });
 
 // ================================================================== 0029: clients.vertical

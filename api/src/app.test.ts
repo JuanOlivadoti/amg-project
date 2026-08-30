@@ -1045,6 +1045,19 @@ test("GET /clients/:id/seguros de un cliente sin la clave cargada devuelve segur
   assert.deepEqual(await res.json(), { seguros: null });
 });
 
+test("🔴 GET /clients/:id/seguros de OTRO tenant → 404 (mismo criterio que GET /clients/:id/menu)", async () => {
+  const res = await req("GET", `/clients/${clientA1}/seguros`, { user: equipoB, tenant: tenantB });
+  assert.equal(res.status, 404);
+});
+
+test("GET /clients/:id/seguros inexistente → 404", async () => {
+  const res = await req("GET", "/clients/00000000-0000-4000-8000-000000000000/seguros", {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(res.status, 404);
+});
+
 test("PATCH /clients/:id/seguros guarda los tres campos, y GET los devuelve igual", async () => {
   const datos = { numeroLicencia: "J-1479", anosExperiencia: 35, redAfiliacion: "E2K" };
   const resPatch = await req("PATCH", `/clients/${clientA1}/seguros`, {

@@ -521,18 +521,20 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
 
   /**
    * GET/PATCH /clients/:id/seguros — la extensión de perfil para el vertical `correduria_seguros`
-   * (`business_profile.seguros`), mismo patrón que `/menu` arriba. No se restringe por `vertical` acá
-   * (ni el GET ni el PATCH consultan qué vertical tiene el cliente): un cliente de `restauracion` que
-   * los llame simplemente lee/escribe una clave que ningún renderizador ni pantalla de su vertical
-   * usa — no es una superficie de ataque, es una clave jsonb inerte, y agregar esa consulta extra no
-   * compra ninguna garantía de seguridad que RLS no dé ya.
+   * (`business_profile.seguros`), mismo patrón que `/menu` arriba (404 si el cliente no existe/no es
+   * visible, incluido el GET). No se restringe por `vertical` acá (ni el GET ni el PATCH consultan
+   * qué vertical tiene el cliente): un cliente de `restauracion` que los llame simplemente lee/escribe
+   * una clave que ningún renderizador ni pantalla de su vertical usa — no es una superficie de
+   * ataque, es una clave jsonb inerte, y agregar esa consulta extra no compra ninguna garantía de
+   * seguridad que RLS no dé ya.
    */
 
-  /** GET /clients/:id/seguros — `null` si el cliente no existe, no es visible, o no tiene la clave cargada. */
+  /** GET /clients/:id/seguros — 404 si el cliente no existe o no es visible; si existe, `seguros` puede ser `null`. */
   app.get("/clients/:id/seguros", async (c) => {
     const ctx = c.get("ctx");
-    const seguros = await deps.clientes.obtenerPerfilSeguros(ctx, c.req.param("id"));
-    return c.json({ seguros });
+    const resultado = await deps.clientes.obtenerPerfilSeguros(ctx, c.req.param("id"));
+    if (!resultado) return c.json({ error: "Cliente no encontrado." }, 404);
+    return c.json(resultado);
   });
 
   /** PATCH /clients/:id/seguros — reemplaza el perfil de seguros completo, validado con Zod (frontera 2). */

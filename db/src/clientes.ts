@@ -373,21 +373,25 @@ export class PgClientes {
    * `web-builder/contract` ANTES de llegar acá — mismo criterio que `actualizarMenu` con
    * `menuPatchSchema`: acá no se vuelve a validar, solo se lee/escribe).
    *
-   * `null` si el cliente no tiene la clave cargada — nunca un objeto vacío a medias, mismo criterio
-   * que `obtenerCliente`/`obtenerMenu` (fila inexistente/ajena también da `null`, no hay forma de
-   * distinguir los dos casos desde acá, y no hace falta: los dos son "no hay nada que mostrar").
+   * El retorno tiene DOS niveles de `null`, y hay que distinguirlos: el de AFUERA es "cliente no
+   * encontrado o no visible" (0 filas — así es como el handler HTTP decide 404, mismo criterio que
+   * `obtenerCliente`); el de ADENTRO (`seguros: null`) es "el cliente existe pero no tiene la clave
+   * cargada". `obtenerMenu` no tiene este problema porque coalescea sus arrays a `[]` en el propio
+   * SQL, así que `rows[0]` nunca es ambiguo — `seguros` no tiene un "vacío" natural equivalente (un
+   * `{}` sería indistinguible de "cargado pero sin ningún campo"), así que acá el objeto envolvente
+   * es lo que separa ambos casos en vez del valor en sí.
    */
   async obtenerPerfilSeguros(
     ctx: TenantContext,
     id: string,
-  ): Promise<Record<string, unknown> | null> {
+  ): Promise<{ seguros: Record<string, unknown> | null } | null> {
     return this.withTenant(ctx, async (tx) => {
       const { rows } = await tx.query<{ seguros: Record<string, unknown> | null }>(
         `select business_profile -> 'seguros' as seguros from clients where id = $1`,
         [id],
       );
-      if (rows.length === 0) return null;
-      return rows[0]!.seguros ?? null;
+      if (rows.length === 0) return null; // fila inexistente/ajena — la API responde 404
+      return { seguros: rows[0]!.seguros ?? null }; // fila existe, el dato puede ser null igual
     });
   }
 
