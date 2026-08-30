@@ -17,11 +17,18 @@ import { renderDocumento } from "./shell.js";
  * Render AI-search-first (ADR-04): HTML semántico + JSON-LD por tipo de página.
  * Página autocontenida (CSS inline, sin dependencias externas).
  *
- * **Este archivo es la frontera pública del render y su firma no cambia**: `renderer/` importa estas
- * cuatro funciones por nombre de paquete, y lo que sale de acá se sirve a internet anónimo. Desde la
- * entrega 2 de la spec de plantillas de landing son **cuatro llamadas al mismo ensamblador**
- * (`shell.ts`) con distinta receta de contenido (`plantilla.ts`); el HTML lo producen las piezas
- * (`piezas/`) y el CSS se ensambla con las que dibujaron algo (`css.ts`).
+ * **Este archivo es la frontera pública del render**: `renderer/` importa estas cuatro funciones por
+ * nombre de paquete, y lo que sale de acá se sirve a internet anónimo. Desde la entrega 2 de la spec
+ * de plantillas de landing son **cuatro llamadas al mismo ensamblador** (`shell.ts`) con distinta
+ * receta de contenido (`plantilla.ts`); el HTML lo producen las piezas (`piezas/`) y el CSS se
+ * ensambla con las que dibujaron algo (`css.ts`).
+ *
+ * ⚠️ **La firma SÍ cambió acá** (multi-vertical de clientes, Task 7): las cuatro funciones ganaron un
+ * parámetro `vertical: Vertical` (eligen la receta y el catálogo por vertical del cliente, ya no por
+ * `brand.plantilla`), y `renderMenu` se renombró a `renderCatalogo`. Es un cambio deliberado y es
+ * justo lo que rompe la compilación de `renderer/` y de `orchestrator/src/deps.ts` hasta que la Task 9
+ * de ese plan actualice sus call sites (`sitio.vertical`/`destino.vertical`) — no es una regresión sin
+ * detectar, es la rotura esperada y documentada de una migración en dos pasos.
  *
  * Antes cada una repetía su propio `<!doctype>`, `<head>`, `<style>` y footer: cuatro copias de la
  * misma estructura, que es la razón por la que el bug del modo oscuro sobrevivió —había que
