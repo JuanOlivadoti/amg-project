@@ -35,10 +35,10 @@ el proyecto).
 - **Sanitización de HTML: librería `sanitize-html`** (dependencia nueva del paquete `db` — no existe
   ningún sanitizador reutilizable en el repo, verificado). Allowlist mínimo (sin `img` — YAGNI, se
   agrega cuando haga falta de verdad).
-- **Migración**: verificar el próximo número libre en `db/migrations/` antes de crear el archivo
-  (Task 1). Este plan asume `0028`, asumiendo que el sub-proyecto 2 ya aplicó su
-  `0027_kr_run_decisiones.sql` — si no es así, ajustar el número (y las referencias a `0028` en todo
-  este plan) al que corresponda.
+- **Migración**: `0031` — confirmado corriendo `ls db/migrations` el 2026-08-31 (enmienda de flujo,
+  ver "Historial de revisión"). El sub-proyecto 2 (`0027`/`0028`) y el sub-proyecto 1 (`0029`/`0030`)
+  ya están mergeados a `main`, así que `0031` es el próximo número libre real — no hace falta
+  reverificar salvo que algo más lo haya tomado entre el 2026-08-31 y el arranque de este plan.
 - **Ruta API real**: `PATCH /pages/:id` (existente, `api/src/app.ts:348-356`) se EXTIENDE, no se crea
   una ruta anidada nueva — corrección encontrada al investigar el código real (ver spec,
   "Arquitectura"). `GET /pages/:id/post` es nueva.
@@ -60,7 +60,7 @@ el proyecto).
 ### Task 1: Migración — columnas, grants, rol `app_posts`, funciones `security definer`
 
 **Files:**
-- Create: `db/migrations/0028_posts_blog_externo.sql` (verificar el número real primero, ver
+- Create: `db/migrations/0031_posts_blog_externo.sql` (verificar el número real primero, ver
   "Global Constraints")
 - Test: `db/src/rls.test.ts` (o el archivo de tests de RLS/grants que uses de referencia — agregar
   una sección nueva, mismo patrón que la sección de `resenas_google`/`app_resenas`)
@@ -76,9 +76,9 @@ el proyecto).
 - [ ] **Step 1: Escribir el archivo de migración**
 
 ```sql
--- db/migrations/0028_posts_blog_externo.sql
+-- db/migrations/0031_posts_blog_externo.sql
 --
--- AMG OS — 0028: publicar posts generados por IA en el blog externo del cliente (sub-proyecto 3)
+-- AMG OS — 0031: publicar posts generados por IA en el blog externo del cliente (sub-proyecto 3)
 --
 -- Mismo molde que resenas_google (0021/0022/0024/0025), aplicado a kr_pages en vez de una tabla
 -- nueva: el post vive como columnas en la fila del recurso. A diferencia de reseñas, la GENERACIÓN
@@ -115,7 +115,7 @@ comment on column kr_pages.post_generado_en is
 comment on column kr_pages.post_solicitado_en is
   'Cuando HAY UN INTENTO DE PUBLICACIÓN EN CURSO sin confirmar todavía. Un pedido nuevo la pisa '
   '(reintento, mismo criterio que respuesta_solicitada_en en resenas_google/0025); un intento que '
-  'FALLA la vuelve a NULL (marcar_post_fallido, 0028) -- por eso "solicitada" siempre significa "en '
+  'FALLA la vuelve a NULL (marcar_post_fallido, 0031) -- por eso "solicitada" siempre significa "en '
   'curso ahora mismo", nunca "se intentó alguna vez y no se sabe cómo terminó". Ver post_error_en.';
 comment on column kr_pages.post_publicado_en is
   'Cuando el BlogPublisher CONFIRMÓ la publicación externa. NULL = no publicado (nunca pedido, en '
@@ -145,7 +145,9 @@ alter table clients
   add column if not exists blog_externo_credencial   text;
 
 comment on column clients.blog_externo_tipo is
-  'Plataforma del blog externo del cliente (''wordpress'', valores futuros). NULL = no configurado.';
+  'Etiqueta LIBRE de la plataforma del blog externo del cliente (''wordpress'', ''wix'', ''otro'' -- '
+  'texto informativo, no un enum: hoy la publicación real es manual, copiando el post con el botón '
+  'de la Task 11, así que este campo no gobierna ninguna lógica). NULL = no configurado.';
 comment on column clients.blog_externo_url is
   'URL base del blog externo del cliente.';
 comment on column clients.blog_externo_credencial is
@@ -427,7 +429,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add db/migrations/0028_posts_blog_externo.sql db/src/rls.test.ts
+git add db/migrations/0031_posts_blog_externo.sql db/src/rls.test.ts
 git commit -m "db: migración de posts en blog externo — columnas, rol app_posts, funciones security definer"
 ```
 
@@ -772,7 +774,7 @@ export interface PostBlog {
   cuerpo: string;
 }
 
-/** Lo que el orquestador necesita para publicar UNA página, vía `app.post_para_publicar` (0028). */
+/** Lo que el orquestador necesita para publicar UNA página, vía `app.post_para_publicar` (0031). */
 export interface PostParaPublicar {
   pageId: string;
   clientId: string;
@@ -793,7 +795,7 @@ export interface PostDePagina {
   solicitadoEn: string | null;
   publicadoEn: string | null;
   urlExterna: string | null;
-  /** Cuando el ÚLTIMO intento de publicación falló. Ver el comentario de la columna, migración 0028. */
+  /** Cuando el ÚLTIMO intento de publicación falló. Ver el comentario de la columna, migración 0031. */
   errorEn: string | null;
 }
 ```
@@ -873,7 +875,7 @@ async editarPost(
  * El `join` con `clients` exige `blog_externo_tipo`/`blog_externo_url` — las DOS columnas que
  * `app_user` puede leer (Task 1, `grant select`). NO se puede exigir `blog_externo_credencial` acá
  * (no seleccionable por `app_user`, a propósito): esa validación completa vive en
- * `app.post_para_publicar` (0028), que sí puede leerla porque corre como `app_posts`.
+ * `app.post_para_publicar` (0031), que sí puede leerla porque corre como `app_posts`.
  */
 async solicitarPublicacionPost(ctx: TenantContext, pageId: string): Promise<boolean> {
   return this.withTenant(ctx, async (tx) => {
@@ -897,7 +899,7 @@ async solicitarPublicacionPost(ctx: TenantContext, pageId: string): Promise<bool
 }
 
 /**
- * Lo que el orquestador necesita para publicar UNA página, vía `app.post_para_publicar` (0028).
+ * Lo que el orquestador necesita para publicar UNA página, vía `app.post_para_publicar` (0031).
  * `null` si la solicitud ya no aplica — el evento que dispara esto no porta autoridad (ADR-18), esta
  * consulta es la que decide. Cross-tenant por el mismo motivo que `resenaParaPublicar`: el evento
  * solo trae el `pageId`, sin contexto de tenant. Solo funciona con `this.rol === "app_service"`
@@ -921,7 +923,7 @@ async postParaPublicar(pageId: string): Promise<PostParaPublicar | null> {
 }
 
 /**
- * Confirma que se publicó, vía `app.marcar_post_publicado` (0028). `false` si nadie la pidió o ya
+ * Confirma que se publicó, vía `app.marcar_post_publicado` (0031). `false` si nadie la pidió o ya
  * estaba publicada — el WHERE de la función decide.
  */
 async marcarPostPublicado(pageId: string, urlExterna: string): Promise<boolean> {
@@ -936,7 +938,7 @@ async marcarPostPublicado(pageId: string, urlExterna: string): Promise<boolean> 
 
 /**
  * Cierra un intento de publicación que falló (excepción del publisher, `publicado: false`, o
- * credenciales incompletas — ver `postParaPublicar`), vía `app.marcar_post_fallido` (0028). Limpia
+ * credenciales incompletas — ver `postParaPublicar`), vía `app.marcar_post_fallido` (0031). Limpia
  * `post_solicitado_en` (desbloquea `editarPost` y un nuevo intento) y marca `post_error_en` (rastro
  * para el portal). `false` si la fila ya no estaba "en curso" — no lanza. Cross-tenant, mismo motivo
  * que `postParaPublicar`/`marcarPostPublicado`.
@@ -1383,7 +1385,11 @@ Expected: FAIL — el módulo no existe.
 ```ts
 // orchestrator/src/post-blog/publisher.ts
 export interface CredencialesBlogExterno {
-  tipo: "wordpress"; // único valor hoy — el enum crece cuando haya una segunda plataforma real
+  // Etiqueta informativa (ENMENDADO 2026-08-31): no hay integración real todavía, así que "tipo" no
+  // gobierna ninguna lógica de `MockBlogPublisher` -- es solo lo que el staff configuró para
+  // recordar dónde va cada cliente. Cuando se construya una implementación real de un tipo concreto
+  // (ej. WordPressPublisher), ESE publisher es quien decide si el "tipo" que le llega es el suyo.
+  tipo: string;
   url: string;
   credencial: string;
 }
@@ -1557,7 +1563,7 @@ test("publicarPost: postParaPublicar devuelve null → no llama al publisher, pe
   // sigue en NOT null porque solicitarPublicacionPost sí lo marcó -- ver Task 1, post_para_publicar
   // ahora exige credenciales completas). En ese segundo caso, sin este best-effort la fila quedaba
   // atascada para siempre. Llamar a marcarPostFallido acá es seguro en los dos casos: si no hay nada
-  // que limpiar, su propio WHERE (0028) no toca nada.
+  // que limpiar, su propio WHERE (0031) no toca nada.
   const llamadas: string[] = [];
   const deps = {
     store: {
@@ -1652,7 +1658,7 @@ export async function publicarPost(
     resultado = await deps.postPublisher.publicar(
       { titulo: info.titulo, cuerpo: info.cuerpo, slug: info.slug },
       info.pageId,
-      { tipo: info.blogTipo as "wordpress", url: info.blogUrl, credencial: info.blogCredencial },
+      { tipo: info.blogTipo, url: info.blogUrl, credencial: info.blogCredencial },
     );
   } catch (e) {
     log(`[publicar-post] ${pageId}: el publisher lanzó: ${(e as Error).message}`);
@@ -2166,12 +2172,18 @@ if (typeof body["blog_externo_credencial"] === "string" || body["blog_externo_cr
 
 ```ts
 // api/src/app.ts — en el handler de PATCH /clients/:id, ANTES de llamar a filtrarCamposCliente:
-// el único valor soportado hoy es "wordpress" (spec, decisión #1: genérico en el diseño, sin una
-// segunda plataforma construida) -- un typo no debe llegar a la base como un "tipo" que ninguna
-// función security definer (post_para_publicar, 0028) va a reconocer nunca.
+// ENMENDADO 2026-08-31 (enmienda de flujo, ver "Historial de revisión"): `blog_externo_tipo` ya NO
+// está restringido a "wordpress" -- hoy la publicación real es manual (el staff copia el post con el
+// botón de la Task 11 y lo pega donde corresponda, ver BlogPublisher solo-mock), así que el campo es
+// una ETIQUETA informativa para que el staff sepa dónde va cada cliente, no un selector que active
+// lógica distinta. Se valida forma (string no vacío, largo razonable), no un valor cerrado -- eso
+// evita basura obvia (objetos, strings gigantes) sin inventar un enum que la interfaz de MockBlogPublisher
+// (Task 5) no necesita.
 const tipoBlog = (await c.req.json().catch(() => ({})))["blog_externo_tipo"];
-if (tipoBlog !== undefined && tipoBlog !== null && tipoBlog !== "wordpress") {
-  return c.json({ error: 'blog_externo_tipo solo admite "wordpress" o null.' }, 400);
+if (tipoBlog !== undefined && tipoBlog !== null) {
+  if (typeof tipoBlog !== "string" || tipoBlog.trim().length === 0 || tipoBlog.length > 100) {
+    return c.json({ error: "blog_externo_tipo debe ser texto no vacío (máx. 100 caracteres) o null." }, 400);
+  }
 }
 // (si el handler ya parseó el body una vez más arriba, reusá esa variable en vez de volver a leer
 // c.req.json() -- Hono cachea el body parseado, pero confirmalo en vez de asumirlo)
@@ -2207,11 +2219,25 @@ test("PATCH /clients/:id con blog_externo_tipo/url/credencial: 200, credencial N
   assert.equal("blog_externo_credencial" in cuerpo, false, "la credencial nunca vuelve por GET — app_user no puede leerla (Task 1)");
 });
 
-test("🔴 PATCH /clients/:id con blog_externo_tipo inválido: 400", async () => {
+test("PATCH /clients/:id acepta cualquier etiqueta de texto en blog_externo_tipo (no solo 'wordpress')", async () => {
+  // Enmendado 2026-08-31: `blog_externo_tipo` es informativo, no un enum cerrado — ver el comentario
+  // del handler más arriba. "wix" es un ejemplo cualquiera, no el único valor alternativo soportado.
   const res = await req("PATCH", `/clients/${clientA1}`, {
     user: equipoA, tenant: tenantA, body: { blog_externo_tipo: "wix" },
   });
-  assert.equal(res.status, 400);
+  assert.equal(res.status, 200);
+});
+
+test("🔴 PATCH /clients/:id con blog_externo_tipo vacío o demasiado largo: 400", async () => {
+  const vacio = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA, tenant: tenantA, body: { blog_externo_tipo: "" },
+  });
+  assert.equal(vacio.status, 400);
+
+  const demasiadoLargo = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA, tenant: tenantA, body: { blog_externo_tipo: "x".repeat(101) },
+  });
+  assert.equal(demasiadoLargo.status, 400);
 });
 ```
 
@@ -2630,11 +2656,62 @@ edición SÍ está habilitada (`solicitadoEn` ya volvió a `null` — ver `marca
 Mismo contenido, controles de edición y de "Publicar" ocultos o deshabilitados — nunca mostrar un
 control que la API rechazaría en silencio (mismo criterio que `cliente-resenas.ts:137-141`).
 
+- [ ] **Step 3.5: Botón "Copiar" — publicación manual, sin depender de `BlogPublisher`**
+
+> **Agregado 2026-08-31 (enmienda de flujo, ver "Historial de revisión").** Hoy `BlogPublisher` es
+> solo mock (Global Constraints): "Publicar" no llega a ninguna plataforma real, así que el camino
+> con el que el staff publica DE VERDAD hasta que exista una integración real es copiar el post y
+> pegarlo a mano donde corresponda (WordPress, Wix, Medium, lo que use cada cliente — de ahí que
+> `blog_externo_tipo` se abriera a texto libre, Task 1/Task 5/Task 10). Este botón es independiente
+> del estado de publicación: disponible en los CUATRO estados de la tabla de arriba, no solo en
+> "editable".
+
+Comportamiento (contrato, no prescribe la implementación Angular — mismo criterio que el resto de
+esta task):
+
+- Un botón "Copiar" junto al título/cuerpo, visible en cualquier estado (incluidos "Publicando…" y
+  "Publicada" — copiar no es "editar", no hay motivo para deshabilitarlo cuando sí lo está el form).
+- Al hacer clic, copia el post al portapapeles con **dos formatos a la vez**: `text/html` con el
+  `post_cuerpo` tal como lo devuelve la API (ya es HTML sanitizado — Task 1/3, `sanitizarHtml`) para
+  que un editor de destino con paste-handler rico (WordPress Gutenberg/clásico, Wix, Medium, Google
+  Docs) preserve negrita/títulos/links al pegar; y `text/plain` (el mismo contenido con las tags
+  quitadas, ej. vía `textContent` de un elemento temporal) como respaldo para pegar en un campo que
+  solo acepta texto plano. Vía `navigator.clipboard.write([new ClipboardItem({...})])` — con fallback
+  a `navigator.clipboard.writeText(texcoPlano)` si `ClipboardItem`/`clipboard.write` no está
+  disponible (contexto no seguro, navegador viejo).
+- El título se copia aparte o como parte del mismo bloque (a decisión del agente `front` mirando el
+  layout real) — lo que importa es que el HTML copiado sea exactamente el `post_cuerpo` sanitizado,
+  nunca el markup crudo re-serializado con `<script>`/`onXxx` residual (no debería haberlo, viene
+  sanitizado, pero copiar literalmente lo que la API devuelve —no una reconstrucción manual del DOM
+  vía `innerHTML` seguido de `outerHTML`— evita reintroducir el problema).
+- Confirmación visual breve tras copiar (ej. el texto del botón cambia a "Copiado ✓" por 2 segundos)
+  — sin esto, un clic que falló en silencio (portapapeles bloqueado por el navegador) es indistinguible
+  de uno que funcionó.
+
+Test — cubrir con un spy sobre `navigator.clipboard.write` (o `writeText` en el camino de fallback):
+
+```ts
+// cliente-posts.spec.ts (o el archivo que corresponda)
+test('el botón "Copiar" escribe el post al portapapeles en HTML y texto plano', async () => {
+  const writeSpy = spyOn(navigator.clipboard, 'write').and.resolveTo(undefined);
+  // ... renderizar con un post con post_cuerpo = '<p>Hola <strong>mundo</strong></p>' ...
+  // click en el botón "Copiar"
+  expect(writeSpy).toHaveBeenCalled();
+  const item = writeSpy.calls.mostRecent().args[0][0] as ClipboardItem;
+  expect(item.types).toContain('text/html');
+  expect(item.types).toContain('text/plain');
+});
+```
+
+Run: `npm --prefix portal run test:components -- --include='**/cliente-posts*.spec.ts'`
+Expected: PASS.
+
 - [ ] **Step 4: Tests de componente**
 
 Cubrir como mínimo: la lista renderiza los CUATRO estados de la tabla de arriba (sin publicar /
 publicando / falló-reintentar / publicado), el botón "Publicar" (y "Reintentar publicación") llama
-al `PATCH` correcto, el rol `cliente` no ve ningún botón.
+al `PATCH` correcto, el rol `cliente` no ve ningún botón, y el botón "Copiar" (Step 3.5) está
+presente y habilitado en los cuatro estados.
 
 Run: `npm --prefix portal run test:components -- --include='**/cliente-posts*.spec.ts'` (o el
 patrón real que uses)
@@ -2645,7 +2722,10 @@ Expected: PASS.
 `npm run dev:server -w api`, configurar `blog_externo_tipo`/`url`/`credencial` del cliente de prueba
 (Task 10, Step 0 — sin esto `solicitarPublicacionPost` rechaza cualquier intento de publicar),
 aprobar un run con `crear_posts`, ver los borradores generados (mock), editar uno, publicarlo con
-`MockBlogPublisher`, confirmar que el link aparece.
+`MockBlogPublisher`, confirmar que el link aparece. Probar también el botón "Copiar": copiar un post
+con negrita/lista y pegarlo en un editor de texto rico real (ej. un doc de Google Docs, o el propio
+editor del portal en otro campo) para confirmar que el formato sobrevive, no solo que el clipboard
+recibió algo.
 
 - [ ] **Step 6: Commit**
 
@@ -2768,3 +2848,50 @@ aplicados** — reporte completo:
 3. Los otros dos hallazgos de la Ronda 2 (Task 4 del sub-proyecto 1 pisando `archived_at`; la
    redacción "en paralelo" corregida a "en serie") tocan los OTROS documentos de la iniciativa — ver
    `docs/superpowers/plans/2026-08-26-multivertical-clientes.md` y `progress/current.md`.
+
+### Enmienda de flujo (2026-08-31, antes de arrancar la implementación)
+
+Conversación con el usuario para acordar CÓMO se ejecuta este plan (no qué construye) — sub-proyecto
+1 y 2 ya habían dejado dos precedentes distintos (worktree+merge distinto momento de revisión cada
+uno) y valía la pena decidir explícitamente en vez de repetir el último por inercia.
+
+1. **Método de ejecución: `superpowers:subagent-driven-development`** — sin cambios respecto al
+   header del plan. Implementador + revisor independiente por task, fix rounds. Mismo método que los
+   dos sub-proyectos anteriores.
+2. **Aislamiento: rama nueva desde el `main` LOCAL, NO worktree** — a diferencia de los sub-proyectos
+   1 y 2. Decisión explícita del usuario: quiere poder levantar la app en local sobre esta rama sin
+   la indirección de un directorio de worktree aparte. Implica que mientras dure la implementación,
+   el checkout de `c:\Users\oliva\Documents\projects\AMG` va a estar sobre la rama del sub-proyecto 3,
+   no sobre `main` — tenerlo presente si hace falta volver a `main` para otra cosa en paralelo.
+3. **La revisión externa de Codex corre ANTES de mergear a `main`** — a diferencia del sub-proyecto 1
+   (revisado después de mergear, 16ª ronda/tanda 22, con un commit de arreglo directo sobre `main`) e
+   igual que el sub-proyecto 2. Los hallazgos y sus fixes quedan contenidos en la rama; `main` solo
+   recibe código ya revisado.
+4. **`BlogPublisher` sigue siendo SOLO mock** (sin cambios respecto al spec — sigue sin haber un
+   cliente con plataforma confirmada), **pero se agrega un botón "Copiar" en el portal (Task 11, Step
+   3.5, nuevo)** que copia el post como HTML enriquecido + texto plano de respaldo (Clipboard API,
+   `text/html` + `text/plain`), disponible en los cuatro estados de publicación. Motivo: hasta que
+   exista una integración real, la publicación de verdad la hace el staff a mano, pegando el post en
+   la plataforma del cliente — y pegar Markdown crudo en un editor rico (WordPress, Wix, Medium) NO
+   se renderiza como texto formateado (sale con los `**`/`##` literales, salvo que el destino tenga un
+   plugin de Markdown, que no podemos asumir); pegar HTML enriquecido sí preserva negrita/títulos/
+   links en el paste-handler de casi cualquier editor. El `post_cuerpo` sigue siendo HTML sanitizado
+   como ya estaba diseñado (Task 1/2/3) — este cambio es únicamente agregar el botón de copiar, no
+   tocar cómo se genera ni se guarda el post.
+5. **`blog_externo_tipo` se abre a texto libre** (antes: único valor válido `"wordpress"`, con un
+   `400` explícito para cualquier otro) — porque ahora que la publicación real es manual, el campo es
+   una etiqueta informativa ("wordpress", "wix", "otro") para que el staff recuerde dónde va cada
+   cliente, no un selector que active lógica distinta de `MockBlogPublisher`. Cambios ya aplicados en
+   el cuerpo de este plan: comentario de la columna (Task 1), `CredencialesBlogExterno.tipo: string`
+   (Task 5, era `"wordpress"` literal), y la validación de `PATCH /clients/:id` (Task 10, Step 0 —
+   ahora exige string no vacío ≤100 caracteres en vez de comparar contra `"wordpress"`), con sus
+   tests ajustados en el mismo lugar.
+6. **Migración confirmada: `0031`**, no el `0028` que el plan asumía — verificado corriendo
+   `ls db/migrations` el 2026-08-31 (el sub-proyecto 2 tomó `0027`/`0028`, el sub-proyecto 1 tomó
+   `0029`/`0030`, ambos ya mergeados a `main`). Las 15 referencias a `0028` en este plan ya se
+   reemplazaron por `0031` — ver "Global Constraints".
+
+Ninguno de estos seis puntos toca las 6 decisiones de producto del spec original ni las restricciones
+de "Fuera de alcance" — son de proceso (1-3) o de una UX/campo que el spec dejaba abierto a decidir
+al escribir el plan (4-6, el propio spec dice "es una decisión a tomar explícitamente al escribir el
+plan, no algo que este spec resuelva" sobre `BlogPublisher`).
