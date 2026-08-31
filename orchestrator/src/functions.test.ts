@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 import {
   CRON_BARRIDO,
   CRON_POLLING_RESENAS,
+  REINTENTOS_PUBLICAR_POST,
   crearFuncionPollingResenas,
+  crearFuncionPublicarPost,
   crearFuncionPublicarResena,
   crearFuncionVincularTelegram,
   pollearResenas,
+  publicarPost,
   publicarRespuestaResena,
   vincularTelegramPendientes,
 } from "./functions.js";
@@ -816,4 +819,109 @@ test("🔴 la fábrica produce una función con id propio, distinta de las demá
 
   assert.match(fn.id(), /publicar/);
   assert.match(fn.id(), /resena/i);
+});
+
+// ---------------------------------------------------------------- publicar el post (sub-proyecto 3, Task 7)
+
+test("publicarPost: con info válida, llama al publisher con los argumentos correctos y confirma", async () => {
+  const llamadas: string[] = [];
+  let publicarArgs: unknown[] | null = null;
+
+  const deps = {
+    store: {
+      postParaPublicar: async (pageId: string) => {
+        llamadas.push(`postParaPublicar(${pageId})`);
+        return {
+          pageId, clientId: "c1", tenantId: "t1", titulo: "T", cuerpo: "<p>C</p>", slug: "slug-1",
+          blogTipo: "wordpress" as const, blogUrl: "https://x.com", blogCredencial: "sek",
+        };
+      },
+      marcarPostPublicado: async (pageId: string, url: string) => {
+        llamadas.push(`marcarPostPublicado(${pageId}, ${url})`);
+        return true;
+      },
+      marcarPostFallido: async () => { llamadas.push("marcarPostFallido"); return true; },
+    },
+    postPublisher: {
+      publicar: async (...args: unknown[]) => {
+        llamadas.push("publicar");
+        publicarArgs = args;
+        return { url: "https://x.com/slug-1", publicado: true };
+      },
+    },
+  };
+
+  const resultado = await publicarPost(deps as never, "page-1");
+
+  assert.deepEqual(resultado, { publicada: true });
+  assert.deepEqual(llamadas, ["postParaPublicar(page-1)", "publicar", "marcarPostPublicado(page-1, https://x.com/slug-1)"]);
+  assert.deepEqual(publicarArgs, [
+    { titulo: "T", cuerpo: "<p>C</p>", slug: "slug-1" },
+    "page-1",
+    { tipo: "wordpress", url: "https://x.com", credencial: "sek" },
+  ]);
+});
+
+test("publicarPost: postParaPublicar devuelve null → no llama al publisher, pero SÍ intenta limpiar (best-effort)", async () => {
+  // Codex, ronda 1 sobre el plan, hallazgo Major "publicación fallida bloquea el post para siempre":
+  // `null` puede ser una carrera legítima (post_solicitado_en ya en null, marcarPostFallido no
+  // matchea nada) O credenciales incompletas (post_solicitado_en SIGUE en null desde antes... no,
+  // sigue en NOT null porque solicitarPublicacionPost sí lo marcó -- ver Task 1, post_para_publicar
+  // ahora exige credenciales completas). En ese segundo caso, sin este best-effort la fila quedaba
+  // atascada para siempre. Llamar a marcarPostFallido acá es seguro en los dos casos: si no hay nada
+  // que limpiar, su propio WHERE (0031) no toca nada.
+  const llamadas: string[] = [];
+  const deps = {
+    store: {
+      postParaPublicar: async () => { llamadas.push("postParaPublicar"); return null; },
+      marcarPostPublicado: async () => { llamadas.push("marcarPostPublicado"); return true; },
+      marcarPostFallido: async () => { llamadas.push("marcarPostFallido"); return false; },
+    },
+    postPublisher: { publicar: async () => { llamadas.push("publicar"); return { url: "", publicado: true }; } },
+  };
+  const resultado = await publicarPost(deps as never, "page-1");
+  assert.deepEqual(resultado, { publicada: false });
+  assert.deepEqual(llamadas, ["postParaPublicar", "marcarPostFallido"]);
+});
+
+test("🔴 publicarPost: el publisher no confirma (publicado: false) → NO llama a marcarPostPublicado, SÍ a marcarPostFallido", async () => {
+  const llamadas: string[] = [];
+  const deps = {
+    store: {
+      postParaPublicar: async () => ({ pageId: "p1", clientId: "c1", tenantId: "t1", titulo: "T", cuerpo: "C", slug: "s", blogTipo: "wordpress" as const, blogUrl: "u", blogCredencial: "k" }),
+      marcarPostPublicado: async () => { llamadas.push("marcarPostPublicado"); return true; },
+      marcarPostFallido: async () => { llamadas.push("marcarPostFallido"); return true; },
+    },
+    postPublisher: { publicar: async () => ({ url: "", publicado: false }) },
+  };
+  const resultado = await publicarPost(deps as never, "page-1");
+  assert.deepEqual(resultado, { publicada: false });
+  assert.deepEqual(llamadas, ["marcarPostFallido"], "🔴 solo lo que el publisher CONFIRMA se marca — 'se mandó' no alcanza, y el fallo queda registrado");
+});
+
+test("🔴 publicarPost: el publisher LANZA → captura, llama a marcarPostFallido, no propaga la excepción", async () => {
+  const llamadas: string[] = [];
+  const deps = {
+    store: {
+      postParaPublicar: async () => ({ pageId: "p1", clientId: "c1", tenantId: "t1", titulo: "T", cuerpo: "C", slug: "s", blogTipo: "wordpress" as const, blogUrl: "u", blogCredencial: "k" }),
+      marcarPostPublicado: async () => { llamadas.push("marcarPostPublicado"); return true; },
+      marcarPostFallido: async () => { llamadas.push("marcarPostFallido"); return true; },
+    },
+    postPublisher: { publicar: async () => { throw new Error("WordPress caído"); } },
+  };
+  const resultado = await publicarPost(deps as never, "page-1");
+  assert.deepEqual(resultado, { publicada: false });
+  assert.deepEqual(llamadas, ["marcarPostFallido"]);
+});
+
+test("REINTENTOS_PUBLICAR_POST es 0 — el reintento real es 'Publicar' de nuevo, no Inngest", () => {
+  assert.equal(REINTENTOS_PUBLICAR_POST, 0);
+});
+
+test("🔴 crearFuncionPublicarPost: la fábrica produce una función con id propio, distinta de las demás", () => {
+  const deps = {} as Deps;
+  const fn = crearFuncionPublicarPost(deps);
+
+  assert.match(fn.id(), /publicar/);
+  assert.match(fn.id(), /post/i);
 });
