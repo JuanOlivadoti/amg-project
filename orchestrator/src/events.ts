@@ -76,9 +76,23 @@ export interface ResenaPublicacionSolicitada {
   };
 }
 
+export interface PostPublicacionSolicitada {
+  data: {
+    /**
+     * El `id` de `kr_pages`. La fila YA quedó marcada bajo RLS antes de este evento (ADR-18) — esto
+     * solo despierta al orquestador, que vuelve a preguntarle a la base qué publicar
+     * (`postParaPublicar`). Nunca se confía en otro dato del evento para decidir qué escribir.
+     */
+    pageId: string;
+    /** Solo trazabilidad — igual que `solicitadoPor` en `ResenaPublicacionSolicitada`. */
+    solicitadoPor?: string;
+  };
+}
+
 export type Eventos = {
   "research/solicitado": ResearchSolicitado;
   "research/aprobado": ResearchAprobado;
   "research/rechazado": ResearchRechazado;
   "resenas/respuesta.solicitada": ResenaPublicacionSolicitada;
+  "posts/publicacion.solicitada": PostPublicacionSolicitada;
 };
