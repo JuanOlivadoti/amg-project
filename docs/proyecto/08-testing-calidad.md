@@ -210,7 +210,7 @@ supuesto. Las lecciones que se repiten:
 
 ## Revisiones externas (Codex) — qué encontraron y qué se corrigió
 
-**Trece rondas de revisión adversarial**, en 19 tandas de correcciones. Todos los hallazgos están
+**Dieciséis rondas de revisión adversarial**, en 22 tandas de correcciones. Todos los hallazgos están
 corregidos y **los tests los fijan como contrato** para que no reaparezcan.
 
 El patrón que se repite —y por eso las reviews están en el proceso— es que **casi siempre encuentran
@@ -662,6 +662,32 @@ queda" y omite eso miente por omisión. Es el bloque **J**.
 > encontró un bug concreto que el hallazgo no mencionaba.** Es el argumento contra aplicar findings a
 > ciegas, por el lado contrario al habitual: no por los falsos positivos, sino porque medir el terreno
 > encuentra cosas que el revisor externo no podía ver.
+
+### Tanda 22 — 16ª review: la carrera de un componente Angular reusado entre clientes, y una posición JSON-LD que no era global ✅
+
+Ronda de código sobre la implementación ya cerrada y mergeada del sub-proyecto 1 (multi-vertical de
+clientes, commits `b1ed4d3..1f477f7`, 79 archivos). Veredicto **NO LISTO**, **2 hallazgos** (1 Major,
+1 Minor), **ambos verificados y corregidos** con un commit directo sobre `main` — la rama ya estaba
+mergeada, no había nada que revertir. Reporte completo y clasificación en
+`progress/informes/codex-multivertical-clientes-implementacion.md` (no versionado).
+
+| Hallazgo | Cómo terminó |
+|---|---|
+| **[Major] El guard `idVigente` protegía la carga pero no la edición ni el guardado** | **Verificado** contra `cliente-seguros-card.ts:179-223`. `cargar()` solo reseteaba `cargando`/`error` al cambiar de cliente, dejando visible el formulario (y el `guardando`) del cliente anterior; `guardar()` nunca comparaba contra `idVigente` antes de aplicar el resultado del `PATCH`, así que una resolución tardía del cliente A podía pisar el perfil o el error ya mostrado del cliente B — Angular reutiliza la instancia del componente mientras el `@if` de vertical en `cliente-perfil.ts` sigue en `true`. Arreglado: `cargar()` resetea `editando`/`form`/`guardando` al cambiar de id, y `guardar()` captura `idVigente` al entrar y descarta tanto el éxito como el error si ya cambió mientras el `PATCH` estaba en vuelo. Dos tests nuevos con promesas controladas en `cliente-seguros-card.spec.ts`, verificados por mutación en dos pasos: quitar el reset de `cargar()` tumba los dos; con el reset restaurado, quitar solo el guard de `guardar()` tumba exactamente el del PATCH pendiente. |
+| **[Minor] `ItemList.position` se reiniciaba en cada categoría** | **Verificado** contra `json-ld.ts:150-157` — el índice usado era el del `.map` interno de cada grupo, no uno global sobre `itemListElement`; con dos categorías de 2 y 1 pólizas daba `[1, 2, 1]` en vez de `[1, 2, 3]`. El único test existente (`html.test.ts`) usaba una sola categoría y no comprobaba `position`. Arreglado con un contador fuera del `flatMap`. Test nuevo con dos categorías que exige `[1, 2, 3]`, verificado por mutación (volver a `i + 1` del `.map` anidado lo tumba). |
+
+Los otros ocho ángulos que pidió el prompt salieron limpios: inmutabilidad de `vertical` (trigger +
+ausencia en `COLUMNAS_EDITABLES` + filtrado HTTP), la allowlist de seguros exacta en las cuatro
+fronteras, la defensa en profundidad de `unPlato()`/`platoDesdeFormulario()`, los 4 call sites de
+render de producción pasando `vertical`, RBAC/RLS de `GET`/`PATCH /clients/:id/seguros`, y los grants
+de las migraciones `0029`/`0030`. Codex no pudo ejercitar el escenario de carrera manejando la app
+(solo corrió los tests existentes, que no lo cubrían) ni aplicar mutaciones, por su política de solo
+lectura — quedó en el reporte como "recomendación con mutación exacta", que es lo que se verificó acá.
+
+Verificación tras el arreglo: **1780 tests del monorepo** (sube de 1779, +1 en `web-builder`),
+typecheck limpio, **304 `node:test`** del portal (sin cambio) y **240 Karma** (sube de 238, +2) —
+corrida con el directorio y el HEAD confirmados en el propio log (`PWD-CHECK`/`HEAD-CHECK`), mismo
+blindaje que dejó la ronda anterior tras el bug de cwd documentado en `progress/current.md`.
 
 ### 🔑 Acción humana — ✅ cerrada
 

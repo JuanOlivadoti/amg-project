@@ -7,49 +7,78 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** iniciativa nueva — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.
-**En curso (2026-08-30): sub-proyecto 2 CERRADO (con su revisión final). Sub-proyecto 1
-(multi-vertical de clientes) CERRADO — las 15 tasks completas, mergeadas a `main` local y
-PUSHEADAS.** Se decidió partir el pedido en **tres sub-proyectos independientes**, cada uno con su
-propio spec → plan → revisión externa (Codex), ejecutados en serie:
+**En curso (2026-08-31): sub-proyecto 2 CERRADO (con su revisión final). Sub-proyecto 1
+(multi-vertical de clientes) CERRADO — las 15 tasks completas, mergeadas a `main` y PUSHEADAS, y su
+revisión de Codex sobre el código (16ª ronda, tanda 22) también CERRADA: 2 hallazgos, ambos
+verificados y corregidos con un commit directo sobre `main` (rojo→fix→mutación→verde, detalle en
+`docs/proyecto/08-testing-calidad.md` § Tanda 22).** Se decidió partir el pedido en **tres
+sub-proyectos independientes**, cada uno con su propio spec → plan → revisión externa (Codex),
+ejecutados en serie:
 
 1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **CERRADO
-   (2026-08-30).** Las 15 tasks del [plan](../docs/superpowers/plans/2026-08-26-multivertical-clientes.md)
-   completas, revisadas, mergeadas a `main` (commit `a26f1e3`) y pusheadas a `origin/main`. Detalle
-   completo en la sección del sub-proyecto 1 abajo.
+   (2026-08-30), revisión de código CERRADA (2026-08-31).** Las 15 tasks del
+   [plan](../docs/superpowers/plans/2026-08-26-multivertical-clientes.md) completas, revisadas,
+   mergeadas a `main` (commit `a26f1e3`) y pusheadas. La 16ª review de Codex sobre el código
+   implementado encontró la carrera de `idVigente` en `cliente-seguros-card.ts` (Major) y el
+   `ItemList.position` no-global en `json-ld.ts` (Minor) — los dos corregidos con tests rojos +
+   verificación por mutación, commit pendiente de hacer en esta sesión. Detalle completo en la
+   sección del sub-proyecto 1 abajo.
 2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28),
    con una revisión final (2026-08-29) que encontró 4 hallazgos más — los cuatro corregidos, ver
    la sección del sub-proyecto 2 abajo.**
 3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos, sin
-   implementar. Es lo único que queda de esta iniciativa.**
+   implementar. Es el próximo paso.**
 
 Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
 ya cerrada). **Qué sigue:** arrancar el sub-proyecto 3 — ver "## Próximo paso".
 
 ## En vuelo (sin commitear)
 
-Nada — working tree limpio en `main`, sincronizado con `origin/main` (2026-08-30, `a26f1e3`). El
-worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
+La corrección de los 2 hallazgos de la 16ª review de Codex (tanda 22), lista y verificada en verde
+pero **sin commitear todavía**:
+
+- `web-builder/src/render/json-ld.ts:150-165` — `catalogoLd`: `position` de `ItemList` ahora es un
+  contador global fuera del `flatMap`, no el índice del `.map` interno de cada grupo.
+- `web-builder/src/render/html.test.ts` — test nuevo con 2 categorías que exige `[1, 2, 3]`.
+- `portal/src/app/pages/clientes/cliente-seguros-card.ts:179-233` — `cargar()` resetea
+  `editando`/`form`/`guardando` al cambiar de cliente; `guardar()` captura `idVigente` al entrar y
+  descarta el resultado del PATCH (éxito o error) si el cliente ya cambió.
+- `portal/src/app/pages/clientes/cliente-seguros-card.spec.ts` — 2 tests nuevos con promesas
+  controladas (A→B en edición, A→B con PATCH de A pendiente).
+- `docs/proyecto/08-testing-calidad.md` y `docs/proyecto/09-estado-y-roadmap.md` — ronda documentada
+  (Tanda 22), cifras de tests sincronizadas (1780 monorepo, 304 `node:test` + 240 Karma portal).
+
+Verificado: `npm --prefix portal run test:components` (240/240), `npm run verificar` completo
+(1780 tests monorepo + typecheck limpio + 304 `node:test` portal), los dos con `PWD-CHECK`/
+`HEAD-CHECK` en el propio log. Mutación confirmada en los tres hallazgos: cada fix cae exactamente
+con su reversión, ninguno más. **Falta:** el commit + push de cierre (paso 1 de abajo).
+
+El worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
 worktree remove`); quedó un directorio huérfano con `node_modules` que no se pudo borrar del disco
-por un lock de proceso ("device or resource busy") — no es un worktree de git (ya no aparece en
-`git worktree list`), es basura de disco inofensiva, se puede borrar a mano cuando el proceso que
-lo bloquea termine.
+por un lock de proceso ("device or resource busy") — no es un worktree de git (ya no aparece en `git
+worktree list`), es basura de disco inofensiva, se puede borrar a mano cuando el proceso que lo
+bloquea termine.
 
 ## Próximo paso
 
-1. **Arrancar el sub-proyecto 3** (publicar posts en blog externo) con
+1. **Commitear y pushear el fix de la 16ª review (tanda 22), ya verificado en verde** — ver
+   "## En vuelo" para la lista completa de archivos. Un solo commit sobre `main` (ya no hay rama del
+   sub-proyecto 1 que revertir), mensaje que nombre los dos hallazgos y la ronda.
+2. **Arrancar el sub-proyecto 3** (publicar posts en blog externo) con
    `superpowers:subagent-driven-development` sobre
-   `docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md` (12 tasks, spec+plan completos,
-   revisión conjunta ya procesada — nada de diseño pendiente). Usar un worktree nuevo
-   (`superpowers:using-git-worktrees`), rebasado sobre el `main` local real — no `origin/main` — apenas
-   se cree (lección de esta iniciativa, mordió dos veces: sub-proyecto 2 y otra vez al arrancar este).
-2. Antes de la Task 1 de ese plan: correr `ls db/migrations` para el número real de su migración —
+   `docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md` (12 tasks, spec+plan
+   completos, revisión conjunta ya procesada — nada de diseño pendiente). Usar un worktree nuevo
+   (`superpowers:using-git-worktrees`), rebasado sobre el `main` local real — no `origin/main` —
+   apenas se cree (lección de esta iniciativa, mordió dos veces: sub-proyecto 2 y otra vez al
+   arrancar el sub-proyecto 1).
+3. Antes de la Task 1 de ese plan: correr `ls db/migrations` para el número real de su migración —
    el plan numeraba `0028` tentativamente, pero ahora hay `0027`-`0030` ocupadas (sub-proyectos 2 y
    1), así que le toca `0031`.
-3. **Migraciones pendientes de desplegar a producción, coordinarlo con el usuario, no asumirlo:**
+4. **Migraciones pendientes de desplegar a producción, coordinarlo con el usuario, no asumirlo:**
    `0027_kr_run_decisiones.sql`, `0028_client_row_archived_at.sql` (sub-proyecto 2) y
    `0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql` (sub-proyecto 1) — las cuatro
    aplicadas solo en PGlite hasta ahora.
-4. **Lección de proceso para llevar a cualquier trabajo futuro con worktrees + comandos backgrounded
+5. **Lección de proceso para llevar a cualquier trabajo futuro con worktrees + comandos backgrounded
    largos:** el cwd del bash tool de esta sesión se reseteó solo al checkout `main` varias veces
    durante la Task 15, sin ningún error visible — ver "## Callejones sin salida" para el patrón que
    lo blinda (confirmar `pwd`/`git rev-parse HEAD` DENTRO del mismo `bash -c` que corre el comando
@@ -358,44 +387,32 @@ cerrado, quedan el 1 y el 3, spec+plan completos, listos para implementar en ser
 
 ## Archivos calientes
 
-- [orchestrator/src/workflow.ts:365-404](../orchestrator/src/workflow.ts#L365-L404) — los tres
-  cierres en error de `workflowDecision` (cliente archivado, cero páginas publicables) usan
-  `compensarAprobacionFallida`, no `cerrarDecision` — es el fix del bug Critical de la revisión
-  final (commit `a2fec1c`).
-- [orchestrator/src/functions.ts:110-122](../orchestrator/src/functions.ts#L110-L122) — el
-  `onFailure` de `crearFuncionDecision` (agotados los reintentos) usa el mismo
-  `compensarAprobacionFallida`.
-- [db/src/store.ts:383-398](../db/src/store.ts#L383-L398) — `RUN_SUMMARY_COLS` prefijado con
-  `kr_runs.`; y las dos consultas retomables (`registrarDecision` ~L1400, `getUltimaDecision`
-  ~L1551) con el desempate `, id desc`.
-- [portal/src/app/pages/brief/brief.ts:390-424](../portal/src/app/pages/brief/brief.ts#L390-L424) —
-  `esRetomable()`/`puedeDecidirseRunUI()` nuevos, gatean el selector de destino y "Confirmar" por
-  el estado real del run, no solo rol+flag.
-- `api/src/codigos.ts`, `portal/src/app/core/codigos.ts` — `NO_IMPLEMENTADO` promovida a constante
-  (antes literal inline en `api/src/app.ts`).
+- [portal/src/app/pages/clientes/cliente-seguros-card.ts:179-233](../portal/src/app/pages/clientes/cliente-seguros-card.ts#L179-L233) —
+  `cargar()`/`guardar()`, el fix de la carrera de `idVigente` (hallazgo 1 de la tanda 22). Sin
+  commitear.
+- [web-builder/src/render/json-ld.ts:150-165](../web-builder/src/render/json-ld.ts#L150-L165) —
+  `catalogoLd`, el contador global de `position` (hallazgo 2 de la tanda 22). Sin commitear.
+- `docs/proyecto/08-testing-calidad.md` § Tanda 22 — la ronda documentada; es la referencia si algo
+  de esto se toca de nuevo.
 
 ## Verificaciones
 
-- **`npm run verificar` (sin `--con-portal`): VERDE** (corrido 2026-08-30, invocado como
-  `bash ./scripts/verificar.sh` porque `npm run verificar` a secas falla en esta sesión de Git
-  Bash — resuelve el script vía `cmd.exe` en vez de respetar el shebang; investigar el
-  `script-shell` de npm si se repite). Entorno, arnés, higiene de secretos (655 archivos
-  versionados, ninguno con secretos), typecheck (7 paquetes + `scripts/`) y 1725 tests del
-  monorepo, todos en verde. Portal: typecheck limpio + 300 tests `node:test`, también verde.
-- **`npm --prefix portal run test:components` (Karma): VERDE — 218/218** (corrido aparte, 2026-08-30,
-  porque `npm run verificar` sin `--con-portal` no los incluye). Sube de 213 a 218: los 5 tests
-  nuevos del gate `puedeDecidirseRunUI()`/`esRetomable()` (commit `b1ed4d3`,
-  `portal/src/app/pages/brief/brief.spec.ts`) están adentro y pasan. **La revisión final del
-  sub-proyecto 2 queda así totalmente verificada** — gate completo + Karma, ambos en verde.
-- **Task 15 del sub-proyecto 1 (verificación final, Step 1): VERDE, confirmado con el blindaje de
-  directorio (`PWD-CHECK`/`HEAD-CHECK` contra `1f477f7`, el HEAD real del worktree).**
-  `npm run verificar --con-portal`: **1779 tests del monorepo** (sube de 1725) + **304 `node:test`**
-  del portal, typecheck limpio en los 7 paquetes + `scripts/` + portal, sin secretos. Karma corrido
-  aparte con el mismo blindaje: **238/238** (sube de 218 — el 218 que se vio antes en esta sesión
-  medía `main`, no el worktree, por el bug de cwd; descartado). **Los dos comandos que sí corrieron
-  contra el worktree, para citar tal cual en el commit final:**
-  `bash -c 'cd .../multivertical-clientes && echo PWD-CHECK... && bash ./scripts/verificar.sh --con-portal'`
-  y `bash -c 'cd .../multivertical-clientes && echo PWD-CHECK... && npm --prefix portal run test:components -- --watch=false'`.
+- **16ª review de Codex (tanda 22), post-fix: VERDE de punta a punta, confirmado con
+  `PWD-CHECK`/`HEAD-CHECK` en el mismo log que corrió cada comando (2026-08-31).**
+  - Rojo primero (verificado antes de tocar el componente/función): los 2 tests nuevos de
+    `cliente-seguros-card.spec.ts` fallaban exactamente como predecía el hallazgo 1; el test nuevo de
+    `html.test.ts` (posiciones `[1,2,1]`) fallaba exactamente como predecía el hallazgo 2.
+  - Mutación: reintroducir cada bug por separado tumba exactamente su(s) test(s) — verificado en tres
+    pasadas (reset de `cargar()`, guard de `guardar()`, contador de `catalogoLd`), ninguna arrastró
+    una regresión en otro test.
+  - `npm --prefix portal run test:components`: **240/240** (sube de 238, los 2 tests nuevos).
+  - `npm run verificar` (`bash ./scripts/verificar.sh`, porque `npm run verificar` a secas sigue
+    resolviendo vía `cmd.exe` en esta sesión de Git Bash y falla con `./scripts/verificar.sh` no
+    reconocido): **1780 tests del monorepo** (sube de 1779, el nuevo test de `json-ld.ts`), typecheck
+    limpio en los 7 paquetes + `scripts/` + portal, sin secretos, **304 `node:test`** del portal sin
+    cambio (los 2 tests nuevos son Karma, no `node:test`).
+  - Documentado en `docs/proyecto/08-testing-calidad.md` § Tanda 22 y sincronizado en el `09`.
+    **Falta el commit** — ver "## Próximo paso".
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 

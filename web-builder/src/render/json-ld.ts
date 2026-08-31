@@ -147,14 +147,20 @@ export function catalogoLd(
     "@type": "ItemList",
     url,
     name: `${profile.name} — catálogo`,
-    itemListElement: grupos.flatMap((g) =>
-      g.items.map((it, i) => ({
-        "@type": "ListItem",
-        position: i + 1,
-        name: it.name,
-        ...(it.description ? { description: it.description } : {}),
-      })),
-    ),
+    // `position` es el orden dentro de TODO `itemListElement`, no dentro de cada grupo — por eso el
+    // contador vive afuera del `flatMap` (Codex review 2026-08-31, hallazgo 2: `i + 1` del `.map`
+    // anidado reiniciaba la posición en cada categoría).
+    itemListElement: (() => {
+      let posicion = 0;
+      return grupos.flatMap((g) =>
+        g.items.map((it) => ({
+          "@type": "ListItem",
+          position: ++posicion,
+          name: it.name,
+          ...(it.description ? { description: it.description } : {}),
+        })),
+      );
+    })(),
   };
 }
 

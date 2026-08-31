@@ -402,6 +402,24 @@ test("renderCatalogo para seguros: slug /polizas, JSON-LD ItemList, título dist
   assert.ok(!html.includes("La carta de"));
 });
 
+test("🔴 renderCatalogo para seguros: ItemList.position es global, no se reinicia por categoría", () => {
+  // Codex review 2026-08-31 (hallazgo 2): `catalogoLd` calculaba `position` con el índice del `.map`
+  // interno de cada grupo, así que dos categorías con 2 y 1 pólizas emitían `[1, 2, 1]` en vez de
+  // `[1, 2, 3]`. `ItemList.position` en schema.org es el orden dentro de TODA la lista, no dentro de
+  // cada `MenuSection` — acá no hay secciones, solo un único `itemListElement` plano.
+  const perfil = validProfile({
+    menu: [
+      { category: "Autos", name: "Todo riesgo", description: "Cobertura total" },
+      { category: "Autos", name: "Terceros", description: "Cobertura básica" },
+      { category: "Hogar", name: "Multirriesgo", description: "Cobertura del hogar" },
+    ],
+  });
+  const html = renderCatalogo(perfil, "correduria_seguros");
+  const ld = JSON.parse(html.split('<script type="application/ld+json">')[1]!.split("</script>")[0]!);
+  const posiciones = (ld.itemListElement as Array<{ position: number }>).map((it) => it.position);
+  assert.deepEqual(posiciones, [1, 2, 3]);
+});
+
 // ---------------------------------------------------------------- home sintetizada
 
 test("home: sintetiza una portada válida con el nombre del negocio y el índice de páginas", () => {

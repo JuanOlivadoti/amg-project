@@ -153,4 +153,78 @@ describe('ClienteSegurosCardComponent', () => {
     fixture.detectChanges();
     expect(el.querySelector('form')).toBeNull();
   });
+
+  // Codex review 2026-08-31 (hallazgo 1): el guard `idVigente` protegía la carga pero no el estado de
+  // edición ni el guardado. Angular reutiliza la instancia del componente mientras el `@if` de vertical
+  // en `cliente-perfil.ts` se mantiene en `true`, así que navegar de una correduría a otra sin desmontar
+  // el card podía dejar visible/guardable el formulario del cliente anterior.
+
+  it('🔴 cambiar de cliente mientras se edita descarta el formulario del anterior', async () => {
+    const perfilA: PerfilSeguros = { numeroLicencia: 'A-1', anosExperiencia: 1, redAfiliacion: 'RedA' };
+    const perfilB: PerfilSeguros = { numeroLicencia: 'B-2', anosExperiencia: 2, redAfiliacion: 'RedB' };
+    const obtenerPerfilSegurosSpy = jasmine
+      .createSpy('obtenerPerfilSeguros')
+      .and.callFake((id: string) => Promise.resolve(id === 'c1' ? perfilA : perfilB));
+    const { fixture } = crear({ obtenerPerfilSeguros: obtenerPerfilSegurosSpy });
+    const el = await estabilizar(fixture);
+
+    boton(el, 'Editar')!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const numeroLicencia = el.querySelector<HTMLInputElement>('#seguros-numero-licencia');
+    numeroLicencia!.value = 'EDITANDO-A-SIN-GUARDAR';
+    numeroLicencia!.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(el.querySelector('form')).withContext('debe estar en modo edición antes de cambiar de cliente').not.toBeNull();
+
+    fixture.componentInstance.cliente.set(clienteDePrueba({ id: 'c2', nombre: 'Correduría B' }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(el.querySelector('form')).withContext('el formulario de A no debe sobrevivir al cambio de cliente').toBeNull();
+    expect(el.textContent).toContain('B-2');
+    expect(el.textContent).not.toContain('EDITANDO-A-SIN-GUARDAR');
+  });
+
+  it('🔴 un PATCH pendiente del cliente anterior no debe alterar el perfil ni el error del actual', async () => {
+    const perfilA: PerfilSeguros = { numeroLicencia: 'A-1', anosExperiencia: 1, redAfiliacion: 'RedA' };
+    const perfilB: PerfilSeguros = { numeroLicencia: 'B-2', anosExperiencia: 2, redAfiliacion: 'RedB' };
+    let resolverPatchA!: () => void;
+    const patchAPendiente = new Promise<void>((r) => (resolverPatchA = r));
+    const obtenerPerfilSegurosSpy = jasmine
+      .createSpy('obtenerPerfilSeguros')
+      .and.callFake((id: string) => Promise.resolve(id === 'c1' ? perfilA : perfilB));
+    const actualizarPerfilSegurosSpy = jasmine
+      .createSpy('actualizarPerfilSeguros')
+      .and.callFake((id: string) => (id === 'c1' ? patchAPendiente : Promise.resolve(undefined)));
+    const { fixture } = crear({
+      obtenerPerfilSeguros: obtenerPerfilSegurosSpy,
+      actualizarPerfilSeguros: actualizarPerfilSegurosSpy,
+    });
+    const el = await estabilizar(fixture);
+
+    boton(el, 'Editar')!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    el.querySelector('form')!.dispatchEvent(new Event('submit')); // guardar() de A arranca, el PATCH queda pendiente
+    fixture.detectChanges();
+
+    fixture.componentInstance.cliente.set(clienteDePrueba({ id: 'c2', nombre: 'Correduría B' }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(el.textContent).toContain('B-2');
+    expect(el.querySelector('form')).withContext('B no debe quedar en modo edición por el submit de A').toBeNull();
+
+    resolverPatchA();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(el.textContent).toContain('B-2');
+    expect(el.textContent).not.toContain('A-1');
+    expect(el.querySelector('.text-error')).withContext('la resolución tardía de A no debe mostrar error sobre B').toBeNull();
+  });
 });

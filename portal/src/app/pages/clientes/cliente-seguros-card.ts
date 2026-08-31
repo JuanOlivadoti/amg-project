@@ -181,6 +181,12 @@ export class ClienteSegurosCardComponent {
     this.idVigente = id;
     this.cargando.set(true);
     this.error.set('');
+    // Cambiar de cliente invalida cualquier edición en curso del anterior — si no se resetea acá, el
+    // formulario y el "Guardando…" de A quedan visibles sobre los datos recién cargados de B (Codex
+    // review 2026-08-31, hallazgo 1).
+    this.editando.set(false);
+    this.guardando.set(false);
+    this.form.set(formularioVacio());
     try {
       const perfil = await this.api.obtenerPerfilSeguros(id);
       if (this.idVigente !== id) return; // llegó tarde: ya se pidió otro cliente
@@ -207,18 +213,23 @@ export class ClienteSegurosCardComponent {
   }
 
   async guardar(): Promise<void> {
+    // Capturado ACÁ, no leído de nuevo después del `await`: si el cliente cambia mientras el PATCH
+    // sigue en vuelo, `this.idVigente` ya apunta al nuevo y esta resolución tardía no debe tocar su
+    // estado (mismo guard que `cargar`, ver hallazgo 1 de la review).
+    const id = this.idVigente;
     this.guardando.set(true);
     try {
-      const id = this.cliente().id;
       const datos = perfilDesde(this.form());
       await this.api.actualizarPerfilSeguros(id, datos);
+      if (this.idVigente !== id) return;
       this.perfil.set(datos);
       this.error.set('');
       this.editando.set(false);
     } catch (e) {
+      if (this.idVigente !== id) return;
       this.error.set((e as Error).message);
     } finally {
-      this.guardando.set(false);
+      if (this.idVigente === id) this.guardando.set(false);
     }
   }
 }
