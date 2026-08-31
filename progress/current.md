@@ -26,32 +26,17 @@ ejecutados en serie:
 2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28),
    con una revisión final (2026-08-29) que encontró 4 hallazgos más — los cuatro corregidos, ver
    la sección del sub-proyecto 2 abajo.**
-3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos, sin
-   implementar. Es el próximo paso.**
+3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos, con una
+   enmienda de flujo acordada (2026-08-31). Es el próximo paso, arranca en una sesión nueva.**
 
 Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
-ya cerrada). **Qué sigue:** arrancar el sub-proyecto 3 — ver "## Próximo paso".
+ya cerrada). **Qué sigue:** arrancar el sub-proyecto 3 en una sesión nueva — ver "## Próximo paso".
 
 ## En vuelo (sin commitear)
 
-La corrección de los 2 hallazgos de la 16ª review de Codex (tanda 22), lista y verificada en verde
-pero **sin commitear todavía**:
-
-- `web-builder/src/render/json-ld.ts:150-165` — `catalogoLd`: `position` de `ItemList` ahora es un
-  contador global fuera del `flatMap`, no el índice del `.map` interno de cada grupo.
-- `web-builder/src/render/html.test.ts` — test nuevo con 2 categorías que exige `[1, 2, 3]`.
-- `portal/src/app/pages/clientes/cliente-seguros-card.ts:179-233` — `cargar()` resetea
-  `editando`/`form`/`guardando` al cambiar de cliente; `guardar()` captura `idVigente` al entrar y
-  descarta el resultado del PATCH (éxito o error) si el cliente ya cambió.
-- `portal/src/app/pages/clientes/cliente-seguros-card.spec.ts` — 2 tests nuevos con promesas
-  controladas (A→B en edición, A→B con PATCH de A pendiente).
-- `docs/proyecto/08-testing-calidad.md` y `docs/proyecto/09-estado-y-roadmap.md` — ronda documentada
-  (Tanda 22), cifras de tests sincronizadas (1780 monorepo, 304 `node:test` + 240 Karma portal).
-
-Verificado: `npm --prefix portal run test:components` (240/240), `npm run verificar` completo
-(1780 tests monorepo + typecheck limpio + 304 `node:test` portal), los dos con `PWD-CHECK`/
-`HEAD-CHECK` en el propio log. Mutación confirmada en los tres hallazgos: cada fix cae exactamente
-con su reversión, ninguno más. **Falta:** el commit + push de cierre (paso 1 de abajo).
+Nada — working tree limpio en `main`, sincronizado con `origin/main` (`6bd805a`). El fix de la 16ª
+review (tanda 22) y la enmienda de flujo del plan del sub-proyecto 3 ya están commiteados y
+pusheados (ver "Decisiones tomadas" para el detalle de la enmienda).
 
 El worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
 worktree remove`); quedó un directorio huérfano con `node_modules` que no se pudo borrar del disco
@@ -61,29 +46,29 @@ bloquea termine.
 
 ## Próximo paso
 
-1. **Commitear y pushear el fix de la 16ª review (tanda 22), ya verificado en verde** — ver
-   "## En vuelo" para la lista completa de archivos. Un solo commit sobre `main` (ya no hay rama del
-   sub-proyecto 1 que revertir), mensaje que nombre los dos hallazgos y la ronda.
-2. **Arrancar el sub-proyecto 3** (publicar posts en blog externo) con
+1. **Arrancar el sub-proyecto 3** (publicar posts en blog externo) en una sesión nueva, con
    `superpowers:subagent-driven-development` sobre
-   `docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md` (12 tasks, spec+plan
-   completos, revisión conjunta ya procesada — nada de diseño pendiente). Usar un worktree nuevo
-   (`superpowers:using-git-worktrees`), rebasado sobre el `main` local real — no `origin/main` —
-   apenas se cree (lección de esta iniciativa, mordió dos veces: sub-proyecto 2 y otra vez al
-   arrancar el sub-proyecto 1).
-3. Antes de la Task 1 de ese plan: correr `ls db/migrations` para el número real de su migración —
-   el plan numeraba `0028` tentativamente, pero ahora hay `0027`-`0030` ocupadas (sub-proyectos 2 y
-   1), así que le toca `0031`.
-4. **Migraciones pendientes de desplegar a producción, coordinarlo con el usuario, no asumirlo:**
+   `docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md` (12 tasks + la Task 11 Step
+   3.5 nueva). Flujo acordado con el usuario el 2026-08-31 (detalle completo en "Decisiones
+   tomadas" y en el propio plan, sección "Enmienda de flujo"):
+   - **Rama simple desde el `main` LOCAL, NO worktree** — a pedido explícito del usuario, para poder
+     levantar la app en local sin la indirección de un directorio de worktree aparte. Mientras dure
+     la implementación, el checkout de `c:\Users\oliva\Documents\projects\AMG` va a estar sobre esa
+     rama, no sobre `main`.
+   - La revisión externa de Codex corre **antes** de mergear a `main` (a diferencia del sub-proyecto
+     1, que se revisó después).
+   - La migración ya está confirmada en `0031` en el propio plan — no hace falta re-verificar salvo
+     que algo la haya tomado entre el 2026-08-31 y el arranque real.
+2. **Migraciones pendientes de desplegar a producción, coordinarlo con el usuario, no asumirlo:**
    `0027_kr_run_decisiones.sql`, `0028_client_row_archived_at.sql` (sub-proyecto 2) y
    `0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql` (sub-proyecto 1) — las cuatro
    aplicadas solo en PGlite hasta ahora.
-5. **Lección de proceso para llevar a cualquier trabajo futuro con worktrees + comandos backgrounded
-   largos:** el cwd del bash tool de esta sesión se reseteó solo al checkout `main` varias veces
-   durante la Task 15, sin ningún error visible — ver "## Callejones sin salida" para el patrón que
-   lo blinda (confirmar `pwd`/`git rev-parse HEAD` DENTRO del mismo `bash -c` que corre el comando
-   real, nunca confiar en el cwd persistido entre llamadas cuando hay de por medio una notificación
-   de tarea en background).
+3. **Lección de proceso para llevar a cualquier trabajo futuro con comandos backgrounded largos:** el
+   cwd del bash tool de esta sesión se reseteó solo al checkout `main` varias veces durante la Task
+   15 del sub-proyecto 1, sin ningún error visible — ver "## Callejones sin salida" para el patrón
+   que lo blinda (confirmar `pwd`/`git rev-parse HEAD` DENTRO del mismo `bash -c` que corre el
+   comando real, nunca confiar en el cwd persistido entre llamadas cuando hay de por medio una
+   notificación de tarea en background).
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -289,6 +274,28 @@ depende del orden de implementación de arriba, no está fijo en el documento.
   [`progress/informes/codex-publicar-posts-plan.md`](informes/codex-publicar-posts-plan.md).
 - **Qué falta:** nada de diseño individual — los tres sub-proyectos de la iniciativa tienen spec+plan
   completos, cada uno con sus rondas de Codex procesadas.
+- **Enmienda de flujo acordada con el usuario (2026-08-31), commiteada en el plan (`6bd805a`),
+  sección "Historial de revisión § Enmienda de flujo":**
+  - **Método:** `superpowers:subagent-driven-development` — sin cambios, igual que los otros dos.
+  - **Aislamiento: rama simple desde el `main` LOCAL, NO worktree.** Decisión explícita del usuario
+    (pidió poder levantar la app en local sin la indirección de un directorio de worktree aparte) —
+    rompe con el patrón de los sub-proyectos 1 y 2. Implica que mientras dure la implementación, el
+    checkout de `c:\Users\oliva\Documents\projects\AMG` está sobre esa rama, no sobre `main`.
+  - **La revisión de Codex corre ANTES de mergear a `main`** — a diferencia del sub-proyecto 1
+    (revisado después de mergear, con un commit de arreglo directo sobre `main`), igual que el
+    sub-proyecto 2.
+  - **`BlogPublisher` sigue solo mock**, pero se agregó la Task 11 Step 3.5 (nuevo): un botón
+    "Copiar" que copia el post como HTML enriquecido + texto plano de respaldo (Clipboard API), para
+    que el staff pueda pegarlo con formato en cualquier plataforma mientras no haya integración real
+    — pegar Markdown crudo no se renderiza en WordPress/Wix/Medium salvo plugin específico, HTML
+    enriquecido sí sobrevive el paste-handler de casi cualquier editor rico.
+  - **`blog_externo_tipo` se abrió a texto libre** (antes forzaba el único valor `"wordpress"`, con
+    `400` para cualquier otro) — ahora es una etiqueta informativa para el staff, no un enum que
+    gobierne lógica de `MockBlogPublisher`. Cambios ya aplicados en el plan: comentario de columna
+    (Task 1), `CredencialesBlogExterno.tipo: string` (Task 5), validación de `PATCH /clients/:id`
+    (Task 10, exige string no vacío ≤100 caracteres), con sus tests ajustados.
+  - **Migración confirmada `0031`** (no `0028` como asumía el plan) — las 15 referencias ya
+    reemplazadas en el archivo.
 
 ## Revisión exhaustiva conjunta de los tres sub-proyectos (2026-08-26) — en curso
 
