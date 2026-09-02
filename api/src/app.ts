@@ -344,15 +344,94 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return ok ? c.json({ ok: true }) : c.json({ error: "Página no encontrada." }, 404);
   });
 
-  /** PATCH /pages/:id — corrige una página propuesta. Editar REVOCA la aprobación, siempre (ADR-06). */
+  /**
+   * PATCH /pages/:id — dirige por FORMA EXACTA del body (conjunto de claves Y tipos), nunca por "¿tiene
+   * al menos un campo de esta familia?": un body que no calza con NINGUNA de las tres formas exactas
+   * de abajo es 400, no se "adivina" la intención (Codex, ronda 1 sobre el plan de este sub-proyecto,
+   * hallazgo Major: la versión anterior dejaba pasar combinaciones mezcladas o con tipos inválidos —
+   * `{post_titulo, publicar_post:true}` editaba e ignoraba la publicación, `{post_titulo,
+   * claveDesconocida}` daba 200 ignorando la clave, `{post_titulo: 7}` terminaba en 404 en vez de 400,
+   * `{publicar_post:false, post_titulo}` editaba igual). Mismo criterio que ya usa
+   * `PATCH /clients/:id/resenas/:resenaId` más abajo.
+   *  - Subconjunto no vacío de {url_slug, keyword_principal, seo, content_brief,
+   *    preguntas_frecuentes}, SIN ninguna otra clave → editPage (revoca approved, ADR-06).
+   *  - Subconjunto no vacío de {post_titulo, post_cuerpo} (ambos string si están), SIN ninguna otra
+   *    clave → editarPost (NO revoca approved: editar el TEXTO no es editar el BRIEF que se aprobó).
+   *  - Exactamente {publicar_post: true} → comando compuesto (ADR-18): la fila se marca bajo RLS
+   *    primero, y solo si cambió se emite el evento — que no porta autoridad, lleva únicamente el
+   *    `pageId` (el orquestador vuelve a preguntarle a la base qué publicar).
+   */
   app.patch("/pages/:id", async (c) => {
     const ctx = c.get("ctx");
+    const pageId = c.req.param("id");
     const body = await c.req.json().catch(() => null);
-    if (!body || typeof body !== "object") return c.json({ error: "Body inválido." }, 400);
-    const ok = await deps.store.editPage(ctx, c.req.param("id"), filtrarCambios(body));
-    return ok
-      ? c.json({ ok: true })
-      : c.json({ error: "Página no encontrada, retirada, o sin cambios válidos." }, 404);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body inválido." }, 400);
+    const b = body as Record<string, unknown>;
+    const claves = Object.keys(b);
+
+    const CLAVES_BRIEF = new Set(["url_slug", "keyword_principal", "seo", "content_brief", "preguntas_frecuentes"]);
+    const CLAVES_POST = new Set(["post_titulo", "post_cuerpo"]);
+
+    const esPublicar = claves.length === 1 && b["publicar_post"] === true;
+    const esBrief = claves.length > 0 && claves.every((k) => CLAVES_BRIEF.has(k));
+    const esPost =
+      claves.length > 0 &&
+      claves.every((k) => CLAVES_POST.has(k)) &&
+      claves.every((k) => typeof b[k] === "string");
+
+    if (esPublicar) {
+      const ok = await deps.store.solicitarPublicacionPost(ctx, pageId);
+      if (!ok) {
+        return c.json(
+          {
+            error:
+              "Página no encontrada, no aprobada, retirada, sin post, ya publicada, el cliente no " +
+              "configuró su blog, o sin permiso.",
+          },
+          404,
+        );
+      }
+      await deps.emisor.send({
+        name: "posts/publicacion.solicitada",
+        data: ctx.userId ? { pageId, solicitadoPor: ctx.userId } : { pageId },
+      });
+      return c.json({ ok: true });
+    }
+
+    if (esPost) {
+      const cambios: { postTitulo?: string; postCuerpo?: string } = {};
+      if (typeof b["post_titulo"] === "string") cambios.postTitulo = b["post_titulo"];
+      if (typeof b["post_cuerpo"] === "string") cambios.postCuerpo = b["post_cuerpo"];
+      const ok = await deps.store.editarPost(ctx, pageId, cambios);
+      return ok
+        ? c.json({ ok: true })
+        : c.json({ error: "Página no encontrada, sin permiso, o con una publicación en curso." }, 404);
+    }
+
+    if (esBrief) {
+      const ok = await deps.store.editPage(ctx, pageId, filtrarCambios(b));
+      return ok
+        ? c.json({ ok: true })
+        : c.json({ error: "Página no encontrada, retirada, o sin cambios válidos." }, 404);
+    }
+
+    return c.json(
+      { error: "El body no coincide con ninguna combinación válida de campos (brief, post, o publicar_post)." },
+      400,
+    );
+  });
+
+  /**
+   * GET /pages/:id/post — ver el borrador del post (staff y cliente, solo lectura para cliente, mismo
+   * criterio de RLS que GET /runs/:id). `getPost` (`db/src/store.ts`) devuelve `null` tanto si la
+   * página no existe como si nunca se generó un post — las dos dan el mismo 404 acá, a propósito
+   * (Codex, ronda 1 sobre el plan, hallazgo Minor: una versión anterior devolvía 200 con un objeto de
+   * puros `null` para una página sin post, y eso es truthy).
+   */
+  app.get("/pages/:id/post", async (c) => {
+    const ctx = c.get("ctx");
+    const post = await deps.store.getPost(ctx, c.req.param("id"));
+    return post ? c.json({ post }) : c.json({ error: "Página no encontrada, o sin post generado." }, 404);
   });
 
   /*

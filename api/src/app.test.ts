@@ -230,6 +230,74 @@ async function runNacidoDelPipeline(): Promise<{ runId: string; pageId: string }
   return { runId, pageId };
 }
 
+/**
+ * Página `approved=true` con un post YA generado (`post_titulo`/`post_cuerpo`/`post_generado_en`) —
+ * el estado que `editarPost`/`solicitarPublicacionPost`/`getPost` (Task 3, `db/src/store.ts`)
+ * esperan encontrar. El `run` que la sostiene es sembrado aparte (superusuario, mismo criterio que
+ * `pageA1` en el `beforeEach`): a estos métodos no les importa el `status` del run, solo el de la
+ * página — sembrar por el camino corto es fiel a lo que prueban.
+ */
+async function sembrarPaginaAprobadaConPost(clientId: string): Promise<string> {
+  const [run] = await sql<{ id: string }>(
+    `insert into kr_runs (tenant_id, client_id, schema_version, status, prompt,
+                          market_country, market_language, market_location_code)
+     values ($1,$2,'kr.v0.5','pending_approval','prompt', 'ES','es',2724) returning id`,
+    [tenantA, clientId],
+  );
+  const [page] = await sql<{ id: string }>(
+    `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug,
+                           keyword_principal, keywords_secundarias, intencion, local, volumen,
+                           dificultad, evidencia, opportunity_score, score_confidence, seo,
+                           content_brief, preguntas_frecuentes, approved, retirada,
+                           post_titulo, post_cuerpo, post_generado_en)
+     values ($1,$2,$3, gen_random_uuid(), 'landing_local', '/con-post-' || gen_random_uuid(),
+             'con post', array['con post'], 'local', true, 100,
+             10, 'datos_mercado', 50, 1, '{}'::jsonb, '{}'::jsonb, array[]::text[],
+             true, false, 'Título generado', '<p>Cuerpo generado</p>', now())
+     returning id`,
+    [tenantA, run!.id, clientId],
+  );
+  return page!.id;
+}
+
+/** Igual que `sembrarPaginaAprobadaConPost`, pero SIN post generado — para probar los 404 de "sin post". */
+async function sembrarPaginaAprobadaSinPost(clientId: string): Promise<string> {
+  const [run] = await sql<{ id: string }>(
+    `insert into kr_runs (tenant_id, client_id, schema_version, status, prompt,
+                          market_country, market_language, market_location_code)
+     values ($1,$2,'kr.v0.5','pending_approval','prompt', 'ES','es',2724) returning id`,
+    [tenantA, clientId],
+  );
+  const [page] = await sql<{ id: string }>(
+    `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug,
+                           keyword_principal, keywords_secundarias, intencion, local, volumen,
+                           dificultad, evidencia, opportunity_score, score_confidence, seo,
+                           content_brief, preguntas_frecuentes, approved, retirada)
+     values ($1,$2,$3, gen_random_uuid(), 'landing_local', '/sin-post-' || gen_random_uuid(),
+             'sin post', array['sin post'], 'local', true, 100,
+             10, 'datos_mercado', 50, 1, '{}'::jsonb, '{}'::jsonb, array[]::text[],
+             true, false)
+     returning id`,
+    [tenantA, run!.id, clientId],
+  );
+  return page!.id;
+}
+
+/**
+ * Configura el blog externo de un cliente por SQL directo (superusuario) — necesario para que
+ * `solicitarPublicacionPost` (Task 3) califique: su `where` exige `blog_externo_tipo`/`_url` (las
+ * columnas que `app_user` puede leer, 0031) además del post.
+ */
+async function sembrarClienteConBlog(clientId: string): Promise<void> {
+  await sql(
+    `update clients
+     set blog_externo_tipo = 'wordpress', blog_externo_url = 'https://blog.cliente.test',
+         blog_externo_credencial = 'sek-de-test'
+     where id = $1`,
+    [clientId],
+  );
+}
+
 // ---------------------------------------------------------------- autenticación
 
 test("GET /health responde 200 SIN token (lo sondea el PaaS)", async () => {
@@ -717,6 +785,142 @@ test("sanity: el store de servicio ve la fila sembrada", async () => {
   const servicio = new PgStore(new PglitePool(pg), "app_service");
   const run = await servicio.getRun(ctxServicio(), runA1);
   assert.equal(run?.id, runA1);
+});
+
+// ---------------------------------------------------------------- posts de blog externo (0031, sub-proyecto 3)
+
+test("PATCH /pages/:id con {post_titulo, post_cuerpo}: edita el post, NO revoca approved", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { post_titulo: "Nuevo título", post_cuerpo: "<p>Nuevo cuerpo</p>" },
+  });
+  assert.equal(res.status, 200);
+  const [fila] = await sql<{ post_titulo: string; approved: boolean }>(
+    "select post_titulo, approved from kr_pages where id = $1",
+    [pageId],
+  );
+  assert.equal(fila!.post_titulo, "Nuevo título");
+  assert.equal(fila!.approved, true, "editar el post no revoca la aprobación de la página");
+});
+
+test("PATCH /pages/:id con {publicar_post: true}: marca post_solicitado_en y emite EXACTAMENTE posts/publicacion.solicitada", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  await sembrarClienteConBlog(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { publicar_post: true },
+  });
+  assert.equal(res.status, 200);
+  const [fila] = await sql<{ post_solicitado_en: string | null }>(
+    "select post_solicitado_en from kr_pages where id = $1",
+    [pageId],
+  );
+  assert.ok(fila!.post_solicitado_en);
+  assert.equal(eventos.length, 1);
+  assert.deepEqual(eventos[0], { name: "posts/publicacion.solicitada", data: { pageId, solicitadoPor: equipoA } });
+});
+
+test("🔴 PATCH /pages/:id con {publicar_post: true} sobre página SIN post: 404, sin evento", async () => {
+  const pageId = await sembrarPaginaAprobadaSinPost(clientA1);
+  await sembrarClienteConBlog(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { publicar_post: true },
+  });
+  assert.equal(res.status, 404);
+  assert.equal(eventos.length, 0, "🔴 sin fila marcada, no se emite nada");
+});
+
+test("🔴 PATCH /pages/:id mezclando un campo de brief con uno de post: 400", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { url_slug: "nuevo-slug", post_titulo: "T" },
+  });
+  assert.equal(res.status, 400);
+});
+
+// Los cuatro combos que colaban en la primera versión de este dispatch (Codex, ronda 1 sobre el
+// plan, hallazgo Major) — cada uno tiene que dar 400 ahora.
+test("🔴 PATCH /pages/:id con {post_titulo, publicar_post:true} (mezcla edición+comando): 400", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { post_titulo: "T", publicar_post: true },
+  });
+  assert.equal(res.status, 400, "🔴 antes: editaba e ignoraba silenciosamente la publicación");
+  assert.equal(eventos.length, 0);
+  const [fila] = await sql<{ post_titulo: string }>("select post_titulo from kr_pages where id = $1", [pageId]);
+  assert.equal(fila!.post_titulo, "Título generado", "el body inválido no tuvo ningún efecto");
+});
+
+test("🔴 PATCH /pages/:id con {post_titulo, claveDesconocida}: 400", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { post_titulo: "T", claveDesconocida: 1 },
+  });
+  assert.equal(res.status, 400, "🔴 antes: devolvía 200 e ignoraba la clave desconocida");
+});
+
+test("🔴 PATCH /pages/:id con {post_titulo: 7} (tipo inválido): 400, no 404", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { post_titulo: 7 },
+  });
+  assert.equal(res.status, 400, "🔴 antes: cambios vacíos → editarPost devolvía false → 404 engañoso");
+});
+
+test("🔴 PATCH /pages/:id con {publicar_post: false, post_titulo}: 400", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { publicar_post: false, post_titulo: "T" },
+  });
+  assert.equal(res.status, 400, "🔴 antes: editaba el post ignorando el publicar_post:false presente");
+});
+
+test("🔴 PATCH /pages/:id con body vacío {}: 400", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, { user: equipoA, tenant: tenantA, body: {} });
+  assert.equal(res.status, 400);
+});
+
+test("GET /pages/:id/post — staff ve el post, cliente también (solo lectura)", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const resStaff = await req("GET", `/pages/${pageId}/post`, { user: equipoA, tenant: tenantA });
+  assert.equal(resStaff.status, 200);
+  const cuerpoStaff = (await resStaff.json()) as { post: { titulo: string } };
+  assert.equal(cuerpoStaff.post.titulo, "Título generado");
+
+  const resCliente = await req("GET", `/pages/${pageId}/post`, { user: duenoA1, tenant: tenantA });
+  assert.equal(resCliente.status, 200);
+});
+
+test("🔴 GET /pages/:id/post sobre una página SIN post generado todavía: 404", async () => {
+  const pageId = await sembrarPaginaAprobadaSinPost(clientA1);
+  const res = await req("GET", `/pages/${pageId}/post`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 404, "🔴 antes: getPost devolvía un objeto con todo null, y eso es truthy → 200");
+});
+
+test("🔴 PATCH /pages/:id con {post_titulo} desde rol cliente: 404 (ADR-20, no un 403 que confirme la fila)", async () => {
+  const pageId = await sembrarPaginaAprobadaConPost(clientA1);
+  const res = await req("PATCH", `/pages/${pageId}`, {
+    user: duenoA1,
+    tenant: tenantA,
+    body: { post_titulo: "intento" },
+  });
+  assert.equal(res.status, 404);
 });
 
 // ---------------------------------------------------------------- clientes (CRM)
