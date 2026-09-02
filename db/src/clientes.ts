@@ -60,6 +60,17 @@ export interface ClienteCRM {
   /** NO enmascarada: a diferencia de las columnas de CRM interno, el rol `cliente` necesita saber si
    *  su propio Google Business Profile está conectado (Bloque F) para pintar el tab de reseñas. */
   google_conectado_en: string | null;
+  /**
+   * NO enmascaradas, a diferencia de las columnas de `CLIENTE_CRM_MASKED_COLS`: `tipo`/`url` no son
+   * una nota interna de la agencia sobre el cliente, son DATO del propio blog del cliente (su propia
+   * URL) — ocultárselo al rol `cliente` no protegería nada que no sepa ya (sub-proyecto 3, 0031).
+   * `blog_externo_credencial` NUNCA aparece acá: no está en `ClienteCRM` porque `app_user` no tiene
+   * `select` sobre esa columna (0031) — nombrarla en el `select` de abajo reventaría con
+   * `permission denied` en vez de omitirla en silencio. Ver el comentario de la columna en la
+   * migración.
+   */
+  blog_externo_tipo: string | null;
+  blog_externo_url: string | null;
   archived_at: string | null;
   created_at: string;
 }
@@ -119,6 +130,17 @@ export interface CambiosCliente {
   asignado_a?: string | null;
   contacto?: Record<string, unknown>;
   origen?: string | null;
+  /**
+   * Las tres columnas de `blog_externo_*` (0031, sub-proyecto 3). `credencial` SÍ se puede escribir
+   * acá (a diferencia de `ClienteCRM`, que nunca la lee de vuelta) — mismo criterio de
+   * escribir-pero-no-leer que `google_refresh_token` (0021). La validación de FORMA de `tipo` (string
+   * no vacío, largo razonable) vive en el handler de `PATCH /clients/:id` (`api/src/app.ts`), no acá:
+   * este tipo solo declara qué forma puede tener el valor, no lo restringe a un enum cerrado — es una
+   * etiqueta libre, no un selector de lógica (ver el comentario de la columna en la migración).
+   */
+  blog_externo_tipo?: string | null;
+  blog_externo_url?: string | null;
+  blog_externo_credencial?: string | null;
 }
 
 /**
@@ -174,6 +196,10 @@ const CLIENTE_CRM_COLS = [
   ),
   // Sin enmascarar (ver el docblock de ClienteCRM.google_conectado_en): el rol `cliente` la necesita.
   "google_conectado_en",
+  // Sin enmascarar (ver el docblock de ClienteCRM.blog_externo_tipo). `blog_externo_credencial` NO
+  // aparece acá a propósito: `app_user` no tiene `select` sobre esa columna (0031).
+  "blog_externo_tipo",
+  "blog_externo_url",
   "archived_at",
   "created_at",
 ].join(", ");
@@ -192,6 +218,9 @@ const COLUMNAS_EDITABLES = [
   "asignado_a",
   "contacto",
   "origen",
+  "blog_externo_tipo",
+  "blog_externo_url",
+  "blog_externo_credencial",
 ] as const;
 
 export class PgClientes {

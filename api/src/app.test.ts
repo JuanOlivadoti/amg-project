@@ -932,6 +932,72 @@ test("PATCH /clients/:id ignora vertical en el body — inmutable en el borde HT
   assert.equal(filas[0]!.vertical, "restauracion", "vertical no cambió: PATCH la ignoró en silencio");
 });
 
+// ---------------------------------------------------------------- blog externo del cliente (0031, sub-proyecto 3)
+
+test("PATCH /clients/:id con blog_externo_tipo/url/credencial: 200, credencial NO vuelve en el GET", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: {
+      blog_externo_tipo: "wordpress",
+      blog_externo_url: "https://blog.cliente.com",
+      blog_externo_credencial: "sek",
+    },
+  });
+  assert.equal(res.status, 200);
+
+  const getRes = await req("GET", `/clients/${clientA1}`, { user: equipoA, tenant: tenantA });
+  assert.equal(getRes.status, 200);
+  const cuerpo = (await getRes.json()) as { cliente: Record<string, unknown> };
+  assert.equal(cuerpo.cliente["blog_externo_tipo"], "wordpress");
+  assert.equal(cuerpo.cliente["blog_externo_url"], "https://blog.cliente.com");
+  assert.equal(
+    "blog_externo_credencial" in cuerpo.cliente,
+    false,
+    "la credencial nunca vuelve por GET — app_user no puede leerla (Task 1 / 0031)",
+  );
+
+  // Y de verdad quedó escrita en la base (no solo omitida del GET): sqlCrudo de test, superusuario.
+  const [fila] = await sql<{ blog_externo_credencial: string | null }>(
+    "select blog_externo_credencial from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(fila!.blog_externo_credencial, "sek", "la credencial SÍ se escribió, solo no se lee de vuelta");
+});
+
+test("PATCH /clients/:id acepta cualquier etiqueta de texto en blog_externo_tipo (no solo 'wordpress')", async () => {
+  // `blog_externo_tipo` es informativo, no un enum cerrado (ver el comentario del handler,
+  // api/src/app.ts): "wix" es un ejemplo cualquiera, no el único valor alternativo soportado.
+  const res = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { blog_externo_tipo: "wix" },
+  });
+  assert.equal(res.status, 200);
+});
+
+test("🔴 PATCH /clients/:id con blog_externo_tipo vacío o demasiado largo: 400", async () => {
+  const vacio = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { blog_externo_tipo: "" },
+  });
+  assert.equal(vacio.status, 400);
+
+  const demasiadoLargo = await req("PATCH", `/clients/${clientA1}`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { blog_externo_tipo: "x".repeat(101) },
+  });
+  assert.equal(demasiadoLargo.status, 400);
+
+  const filas = await sql<{ blog_externo_tipo: string | null }>(
+    "select blog_externo_tipo from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(filas[0]!.blog_externo_tipo, null, "ninguno de los dos bodies inválidos escribió nada");
+});
+
 // ---------------------------------------------------------------- menú (editor del portal)
 
 test("GET /clients/:id/menu de un cliente sin carta devuelve arrays vacíos", async () => {

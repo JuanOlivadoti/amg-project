@@ -481,11 +481,30 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return c.json({ cliente });
   });
 
-  /** PATCH /clients/:id — allowlist de campos en el borde HTTP, mismo criterio que PATCH /pages/:id. */
+  /**
+   * PATCH /clients/:id — allowlist de campos en el borde HTTP, mismo criterio que PATCH /pages/:id.
+   *
+   * `blog_externo_tipo` (0031, sub-proyecto 3) es la ÚNICA de las columnas de esta ruta que necesita
+   * una validación de FORMA además de tipo: `filtrarCamposCliente` es una función pura (sin `c`, sin
+   * poder devolver un 400 por su cuenta), así que ese chequeo vive ACÁ. Ya NO está restringido a
+   * "wordpress" -- hoy la publicación real es manual (el staff copia el post y lo pega donde
+   * corresponda), así que el campo es una ETIQUETA informativa para que el staff sepa dónde va cada
+   * cliente, no un selector que active lógica distinta (ver el comentario de la columna, migración
+   * 0031). Se valida forma (string no vacío, largo razonable), no un valor cerrado.
+   */
   app.patch("/clients/:id", async (c) => {
     const ctx = c.get("ctx");
     const body = await c.req.json().catch(() => null);
     if (!body || typeof body !== "object") return c.json({ error: "Body inválido." }, 400);
+    const tipoBlog = (body as Record<string, unknown>)["blog_externo_tipo"];
+    if (tipoBlog !== undefined && tipoBlog !== null) {
+      if (typeof tipoBlog !== "string" || tipoBlog.trim().length === 0 || tipoBlog.length > 100) {
+        return c.json(
+          { error: "blog_externo_tipo debe ser texto no vacío (máx. 100 caracteres) o null." },
+          400,
+        );
+      }
+    }
     const ok = await deps.clientes.actualizarCliente(ctx, c.req.param("id"), filtrarCamposCliente(body));
     return ok
       ? c.json({ ok: true })
@@ -1040,5 +1059,17 @@ function filtrarCamposCliente(body: Record<string, unknown>): CambiosCliente {
   }
   if (esObjeto(body["contacto"])) campos.contacto = body["contacto"];
   if (typeof body["origen"] === "string" || body["origen"] === null) campos.origen = body["origen"] as string | null;
+  // Blog externo (0031, sub-proyecto 3). Sin validar el VALOR de "tipo" acá -- eso es responsabilidad
+  // del handler de PATCH /clients/:id (tiene `c`, esta función no); acá solo se filtra la FORMA
+  // (string o null), mismo criterio que el resto de esta función.
+  if (typeof body["blog_externo_tipo"] === "string" || body["blog_externo_tipo"] === null) {
+    campos.blog_externo_tipo = body["blog_externo_tipo"] as string | null;
+  }
+  if (typeof body["blog_externo_url"] === "string" || body["blog_externo_url"] === null) {
+    campos.blog_externo_url = body["blog_externo_url"] as string | null;
+  }
+  if (typeof body["blog_externo_credencial"] === "string" || body["blog_externo_credencial"] === null) {
+    campos.blog_externo_credencial = body["blog_externo_credencial"] as string | null;
+  }
   return campos;
 }
