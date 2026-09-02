@@ -341,15 +341,70 @@ export async function workflowDecision(
   }
 
   if (decision.destino === "crear_posts") {
-    // Nunca debería llegar acá — la API lo rechaza con 501 antes de emitir el evento (Task 10). Si
-    // llega igual (evento emitido a mano, bug), falla cerrado y explícito.
-    await paso.run("cerrar-no-implementado", () =>
-      deps.store.cerrarDecision(ctx, decisionId, {
-        resultado: "error",
-        detalleError: "Destino 'crear_posts' todavía no está implementado (sub-proyecto 3).",
-      }),
-    );
-    return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" };
+    return paso.run("generar-posts", async () => {
+      // getRunPages ya existe y trae `id`/`approved` — no hace falta un método nuevo. registrarDecision
+      // (sub-proyecto 2, enmendado 2026-08-26) ya garantizó que el run tiene al menos una página
+      // aprobada antes de llegar acá — el filtro de abajo es sobre CUÁLES, no una repetición de esa
+      // garantía: una página puede desaprobarse editándola DESPUÉS de que la decisión ya calificó
+      // (defensa en profundidad, mismo criterio que la rama crear_web).
+      const todas = await deps.store.getRunPages(ctx, decision.run_id);
+      const paginas = todas.filter((p) => p.approved);
+      if (paginas.length === 0) {
+        await deps.store.cerrarDecision(ctx, decisionId, {
+          resultado: "error",
+          detalleError: "El run no tiene páginas publicables.",
+        });
+        return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
+      }
+
+      const cliente = await deps.store.getClient(ctx, decision.client_id);
+      // Defensa en profundidad (revisión conjunta de los tres sub-proyectos, 2026-08-26): un cliente
+      // puede archivarse entre que la decisión se registró y que esta rama corre. Sin este chequeo,
+      // crear_posts seguía generando (y gastando el LLM) para un cliente ya archivado.
+      if (!cliente || cliente.archived_at !== null) {
+        await deps.store.cerrarDecision(ctx, decisionId, {
+          resultado: "error",
+          detalleError: "El cliente fue archivado o ya no es visible: no se generan posts.",
+        });
+        return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
+      }
+
+      let generados = 0;
+      for (const pagina of paginas) {
+        // Falla puntual: si el LLM revienta en UNA página, las demás se generan igual — try/catch POR
+        // PÁGINA, no uno solo para el loop entero. Sin reintento automático acá.
+        try {
+          const post = await deps.postProvider.generar({
+            contentBrief: pagina.content_brief,
+            keywordPrincipal: pagina.keyword_principal,
+            perfilCliente: cliente.business_profile,
+            vertical: cliente.vertical,
+          });
+          // `generados` solo cuenta si guardarPost devuelve `true`: un UPDATE que no afecta ninguna
+          // fila (la página desapareció entre leerla y escribirle) no cuenta como generado.
+          if (await deps.store.guardarPost(ctx, pagina.id, post)) {
+            generados++;
+          } else {
+            log(`[decision ${decisionId}] guardarPost no encontró la página ${pagina.url_slug} — no cuenta como generado`);
+          }
+        } catch (e) {
+          log(`[decision ${decisionId}] falló la generación del post para ${pagina.url_slug}: ${(e as Error).message}`);
+        }
+      }
+
+      // 'completado' acá significa "hay al menos un borrador esperando revisión" — NUNCA "publicados".
+      // Distinto de crear_web, donde 'completado' sí significa publicado.
+      if (generados === 0) {
+        await deps.store.cerrarDecision(ctx, decisionId, {
+          resultado: "error",
+          detalleError: `Falló la generación de los ${paginas.length} posts del run — ver logs.`,
+        });
+        return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
+      }
+      await deps.store.cerrarDecision(ctx, decisionId, { resultado: "completado" });
+      log(`[decision ${decisionId}] generados ${generados} de ${paginas.length} post(s)`);
+      return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "completado" as const };
+    });
   }
 
   if (decision.destino === "solo_informe") {

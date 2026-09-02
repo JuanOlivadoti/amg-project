@@ -1011,27 +1011,143 @@ test("workflowDecision: guard de reproceso — llamar dos veces sobre la misma d
 });
 
 /**
- * `crear_posts` no tiene ningún camino que lo emita hoy: la API lo rechaza con 501 antes de
- * `registrarDecision` (Task 10, sub-proyecto 3 sin implementar). Este test simula el bug/evento a
- * mano — una fila insertada directo, sin pasar por la API — y confirma que `workflowDecision` falla
- * CERRADO en vez de intentar publicar algo que no sabe generar.
+ * `crear_posts`: un post por cada página aprobada del run, generado con `deps.postProvider`
+ * (sub-proyecto 3). `depsFalsas` no trae `postProvider` por default (no lo necesita ninguna otra
+ * rama), así que cada test acá extiende el `deps` base con uno propio.
  */
-test("🔴 workflowDecision: crear_posts persistido a mano cierra en error, nunca en completado", async () => {
-  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
-
-  const { rows } = await pg.query<{ id: string }>(
-    `insert into kr_run_decisiones (run_id, tenant_id, client_id, destino)
-     values ($1, $2, $3, 'crear_posts') returning id`,
-    [runId, tenantA, clientA],
-  );
+test("workflowDecision: crear_posts genera un post por cada página aprobada y cierra 'completado'", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA, { urlSlug: "/pizza-al-horno" });
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_posts");
+  assert.ok(decisionId, "registrarDecision (sub-proyecto 2, enmendado) exige página aprobada para crear_posts");
 
   const espia = depsFalsas([]);
-  const resultado = await workflowDecision(
-    new MotorPasos(),
-    { tenantId: tenantA, decisionId: rows[0]!.id },
-    espia.deps,
+  const deps = {
+    ...espia.deps,
+    postProvider: { generar: async () => ({ titulo: "Pizza al horno: la receta", cuerpo: "<p>Contenido.</p>" }) },
+  };
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, deps);
+  assert.equal(resultado.resultado, "completado");
+
+  const { rows } = await pg.query<{ post_titulo: string | null }>(
+    "select post_titulo from kr_pages where run_id = $1 and approved",
+    [runId],
   );
+  assert.ok(rows[0]?.post_titulo, "la página aprobada tiene un post guardado");
+});
+
+test("workflowDecision: crear_posts con fallo puntual — 1 de 2 páginas falla, la otra se genera y cierra 'completado'", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA, { urlSlug: "/primera-pagina" });
+  // Segunda página aprobada sobre el MISMO run, sembrada directo por SQL (mismo criterio que el
+  // resto de este archivo: `pg.query` corre como superusuario, sin pasar por la compuerta del portal).
+  await pg.query(
+    `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug, keyword_principal,
+                            intencion, evidencia, approved)
+     values ($1, $2, $3, gen_random_uuid(), 'landing_local', $4, 'kw segunda', 'local', 'datos_mercado', true)`,
+    [tenantA, runId, clientA, "/segunda-pagina"],
+  );
+
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_posts");
+  assert.ok(decisionId);
+
+  let intento = 0;
+  const espia = depsFalsas([]);
+  const deps = {
+    ...espia.deps,
+    postProvider: {
+      generar: async () => {
+        intento++;
+        if (intento === 1) throw new Error("OpenAI caído");
+        return { titulo: "T", cuerpo: "<p>C</p>" };
+      },
+    },
+  };
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, deps);
+  assert.equal(resultado.resultado, "completado", "1 de 2 generado igual cierra completado");
+
+  const { rows } = await pg.query<{ n: number }>(
+    "select count(*)::int as n from kr_pages where run_id = $1 and post_titulo is not null",
+    [runId],
+  );
+  assert.equal(rows[0]!.n, 1, "solo la página que NO falló tiene post guardado");
+});
+
+test("🔴 workflowDecision: crear_posts con TODAS las páginas fallando cierra 'error'", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_posts");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  const deps = {
+    ...espia.deps,
+    postProvider: { generar: async () => { throw new Error("OpenAI caído"); } },
+  };
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, deps);
+  assert.equal(resultado.resultado, "error", "🔴 cero posts generados no puede cerrar 'completado'");
+
+  const { rows } = await pg.query<{ detalle_error: string | null }>(
+    "select detalle_error from kr_run_decisiones where id = $1",
+    [decisionId],
+  );
+  assert.ok(rows[0]?.detalle_error?.includes("Falló la generación"));
+});
+
+test("🔴 workflowDecision: crear_posts con la página desaprobada DESPUÉS de registrar la decisión cierra 'error' (defensa en profundidad)", async () => {
+  // Mismo escenario que "editar una página aprobada REVOCA su aprobación" (crear_web) —
+  // registrarDecision ya exige página aprobada al momento de registrar, así que "sin ninguna
+  // aprobada" en el camino normal no puede pasar. Esto prueba la defensa en profundidad: una página
+  // puede desaprobarse editándola DESPUÉS.
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_posts");
+  assert.ok(decisionId);
+
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  await store.editPage(humano(tenantA), rows[0]!.id, { url_slug: "/otro-slug" }); // revoca approved
+
+  let generarLlamado = false;
+  const espia = depsFalsas([]);
+  const deps = {
+    ...espia.deps,
+    postProvider: {
+      generar: async () => {
+        generarLlamado = true;
+        return { titulo: "T", cuerpo: "C" };
+      },
+    },
+  };
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, deps);
+
   assert.equal(resultado.resultado, "error");
+  assert.equal(generarLlamado, false, "🔴 sin páginas aprobadas no se llama al provider ni una vez");
+});
+
+test("🔴 workflowDecision: crear_posts con el cliente archivado DESPUÉS de registrar la decisión cierra 'error' (defensa en profundidad)", async () => {
+  // Mismo criterio que ya prueba crear_web contra un cliente archivado a mitad de camino.
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_posts");
+  assert.ok(decisionId);
+
+  await pg.query("update clients set archived_at = now() where id = $1", [clientA]);
+
+  let generarLlamado = false;
+  const espia = depsFalsas([]);
+  const deps = {
+    ...espia.deps,
+    postProvider: {
+      generar: async () => {
+        generarLlamado = true;
+        return { titulo: "T", cuerpo: "C" };
+      },
+    },
+  };
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, deps);
+
+  assert.equal(resultado.resultado, "error");
+  assert.equal(generarLlamado, false, "🔴 cliente archivado: no se llama al provider ni una vez");
 });
 
 /**
