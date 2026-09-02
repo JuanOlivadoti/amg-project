@@ -580,14 +580,27 @@ test("🔴 aprobar con un destino que no califica → 409 TRANSICION_INVALIDA", 
   assert.equal(eventos.length, 0);
 });
 
-test("🔴 aprobar con destino crear_posts → 501, sin tocar la base ni emitir evento", async () => {
-  await req("POST", `/pages/${pageA1}/approve`, { user: equipoA, tenant: tenantA });
+test("aprobar con destino crear_posts registra la decisión y emite research/aprobado (ya no 501)", async () => {
+  // Sub-proyecto 3, Task 10 Step 0.1: el 501 temporal que dejó el sub-proyecto 2 se retiró — con las
+  // Tasks 1-9 de este sub-proyecto ya implementadas, `crear_posts` tiene un camino real para activarse.
+  const { runId, pageId } = await runNacidoDelPipeline();
+  await req("POST", `/pages/${pageId}/approve`, { user: equipoA, tenant: tenantA });
   eventos.length = 0;
-  const res = await req("POST", `/runs/${runA1}/approve`, { user: equipoA, tenant: tenantA, body: { destino: "crear_posts" } });
-  assert.equal(res.status, 501);
-  assert.equal(eventos.length, 0);
-  const [row] = await sql<{ n: string }>("select count(*)::text as n from kr_run_decisiones where run_id = $1", [runA1]);
-  assert.equal(row!.n, "0");
+
+  const res = await req("POST", `/runs/${runId}/approve`, {
+    user: equipoA, tenant: tenantA, body: { destino: "crear_posts" },
+  });
+  assert.equal(res.status, 200);
+  const cuerpo = (await res.json()) as { ok: boolean; decisionId: string };
+  assert.ok(cuerpo.decisionId);
+
+  const [decision] = await sql<{ destino: string }>(
+    "select destino from kr_run_decisiones where run_id = $1",
+    [runId],
+  );
+  assert.equal(decision!.destino, "crear_posts");
+  assert.equal(eventos.length, 1);
+  assert.deepEqual(eventos[0]!.data, { tenantId: tenantA, decisionId: cuerpo.decisionId, aprobadoPor: equipoA });
 });
 
 // Hallazgo Minor de la ronda de Codex: agregar cobertura de body ausente/malformado.

@@ -21,7 +21,7 @@ import type { GoogleOAuthProvider } from "./google-oauth.js";
 import { firmarEstado, verificarEstado, type EstadoOAuth } from "./oauth-state.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
-import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA, NO_IMPLEMENTADO } from "./codigos.js";
+import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from "./codigos.js";
 
 /**
  * Todo lo que la API necesita, INYECTADO. Ni el store, ni el emisor, ni la verificación del token se
@@ -376,20 +376,13 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     const body = await c.req.json<{ destino?: string }>().catch(() => null);
     const destino = body?.destino;
 
-    // TEMPORAL — retirado por el sub-proyecto 3 (docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md,
-    // Task 10 Step 0.1), agregado durante la revisión conjunta de los tres sub-proyectos (2026-08-26):
-    // sin ese Step, crear_posts queda inalcanzable para siempre pese a que el sub-proyecto 3 implementa
-    // el resto del mecanismo (hallazgo Critical de Codex sobre esa revisión). Si estás implementando
-    // ESTE sub-proyecto (el 2) en aislamiento, dejalo así — el bloque se retira cuando le toque el
-    // turno al sub-proyecto 3, no antes.
-    if (destino === "crear_posts") {
-      return c.json(
-        { error: "Destino 'crear_posts' todavía no está implementado.", codigo: NO_IMPLEMENTADO },
-        501,
-      );
-    }
-    if (destino !== "crear_web" && destino !== "solo_informe") {
-      return c.json({ error: "destino tiene que ser 'crear_web' o 'solo_informe'." }, 400);
+    // El 501 temporal de `crear_posts` (sub-proyecto 2) se retiró acá (sub-proyecto 3, Task 10 Step
+    // 0.1): el resto del mecanismo (Tasks 1-9 de docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md)
+    // ya está implementado, así que el destino queda habilitado de verdad. `registrarDecision` (Task 3)
+    // ya acepta `"crear_posts"` en su tipo desde el sub-proyecto 2 y exige página aprobada para él,
+    // igual que para `crear_web`.
+    if (destino !== "crear_web" && destino !== "solo_informe" && destino !== "crear_posts") {
+      return c.json({ error: "destino tiene que ser 'crear_web', 'solo_informe' o 'crear_posts'." }, 400);
     }
 
     const decisionId = await deps.store.registrarDecision(ctx, runId, destino, ctx.userId ?? undefined);
