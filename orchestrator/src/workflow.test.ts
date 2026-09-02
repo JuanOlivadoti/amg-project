@@ -272,6 +272,14 @@ function depsFalsas(paginas: ProposedPage[]): Espia {
       obtenerActualizaciones: () => Promise.reject(new Error("workflowResearch no pollea Telegram")),
       enviarMensaje: () => Promise.reject(new Error("workflowResearch no manda alertas de Telegram")),
     },
+    // Mismo motivo: ni `workflowResearch` ni `workflowDecision` (en los tests que no ejercitan
+    // `crear_posts`) generan ni publican posts de blog. El stub existe solo para satisfacer `Deps`.
+    postProvider: {
+      generar: () => Promise.reject(new Error("no genera posts en este test")),
+    },
+    postPublisher: {
+      publicar: () => Promise.reject(new Error("no publica posts en este test")),
+    },
   };
 
   return espia;
@@ -1012,8 +1020,8 @@ test("workflowDecision: guard de reproceso — llamar dos veces sobre la misma d
 
 /**
  * `crear_posts`: un post por cada página aprobada del run, generado con `deps.postProvider`
- * (sub-proyecto 3). `depsFalsas` no trae `postProvider` por default (no lo necesita ninguna otra
- * rama), así que cada test acá extiende el `deps` base con uno propio.
+ * (sub-proyecto 3). El `postProvider` de `depsFalsas` es solo un stub que rechaza (Task 9: `Deps` lo
+ * exige, y ninguna otra rama lo necesita), así que cada test acá extiende el `deps` base con uno propio.
  */
 test("workflowDecision: crear_posts genera un post por cada página aprobada y cierra 'completado'", async () => {
   const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA, { urlSlug: "/pizza-al-horno" });

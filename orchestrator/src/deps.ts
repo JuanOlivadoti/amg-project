@@ -14,6 +14,8 @@ import { leerConfig, type ConfigOrquestador } from "./config.js";
 import { getGoogleReviewsProvider } from "./google/provider.js";
 import { getBorradorProvider } from "./borrador/provider.js";
 import { getTelegramProvider } from "./telegram/provider.js";
+import { getPostProvider } from "./post-blog/provider.js";
+import { MockBlogPublisher } from "./post-blog/mock-publisher.js";
 import type { Deps, KeywordParaGuardar } from "./workflow.js";
 
 /**
@@ -201,6 +203,14 @@ export function crearDeps(cx: Conexiones): Deps {
 
     // Mismo criterio que los dos anteriores.
     telegramProvider: getTelegramProvider(),
+
+    // Mismo criterio que borradorProvider: el selector lee su propio default de leerConfig(), acá
+    // NO se relee el entorno.
+    postProvider: getPostProvider(),
+
+    // Sin selector: solo hay implementación mock (ver "Global Constraints" del plan). Cuando exista
+    // una plataforma real confirmada, este wiring pasa a un selector como los de arriba.
+    postPublisher: new MockBlogPublisher(),
 
     log: (msg) => console.log(msg),
   };

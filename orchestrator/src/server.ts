@@ -21,6 +21,7 @@ import {
   crearFuncionBarrido,
   crearFuncionDecision,
   crearFuncionPollingResenas,
+  crearFuncionPublicarPost,
   crearFuncionPublicarResena,
   crearFuncionResearch,
   crearFuncionVincularTelegram,
@@ -49,12 +50,12 @@ const config = leerConfig({ obtenerModoPublicacion: modoPublicacion });
 
 const cx = await crearConexiones(config);
 const deps = crearDeps(cx);
-// Seis: el workflow del research, el workflow de la decisión (aprobar y bifurcar por destino), el
+// Siete: el workflow del research, el workflow de la decisión (aprobar y bifurcar por destino), el
 // barrido programado, el polling de reseñas de Google, la publicación de la respuesta de vuelta en
-// Google (Bloque F, fase 2, segunda pieza) y la vinculación de Telegram (Bloque F, fase 2, alertas).
-// `/_health` reporta el número, así que tras desplegar esto tiene que decir `funciones: 6` — y en el
-// panel de Inngest se ven ocho, porque cuenta el `onFailure` de research y el de decision, cada uno,
-// como una función aparte.
+// Google (Bloque F, fase 2, segunda pieza), la vinculación de Telegram (Bloque F, fase 2, alertas) y
+// la publicación de posts en el blog externo del cliente (sub-proyecto 3). `/_health` reporta el
+// número, así que tras desplegar esto tiene que decir `funciones: 7` — y en el panel de Inngest se ven
+// nueve, porque cuenta el `onFailure` de research y el de decision, cada uno, como una función aparte.
 const funciones = [
   crearFuncionResearch(deps),
   crearFuncionDecision(deps),
@@ -62,6 +63,7 @@ const funciones = [
   crearFuncionPollingResenas(deps),
   crearFuncionPublicarResena(deps),
   crearFuncionVincularTelegram(deps),
+  crearFuncionPublicarPost(deps),
 ];
 
 /*
@@ -73,6 +75,7 @@ const funciones = [
 const publicacion = modoPublicacion();
 const prosa = modoProsa();
 const borrador = config.borradorResenas;
+const postBlog = config.postBlog;
 
 const server = crearServidor({
   // La `signingKey` validada viaja acá dentro. Si se dejara al SDK releer el entorno, lo comprobado
@@ -86,6 +89,7 @@ const server = crearServidor({
   publicacion,
   prosa,
   borrador,
+  postBlog,
   // La sonda va por el STORE, no por el pool: así recorre el mismo `set local role app_service` que
   // hace el trabajo real, y no solo el TCP. Ver `salud.ts` y `PgStore.comprobarAcceso`.
   sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso() }),
@@ -107,6 +111,7 @@ server.listen(config.puerto, () => {
   console.log(`  Publicación: ${publicacion}${aviso}`);
   console.log(`  Prosa: ${prosa}${prosa === "openai" ? " ⚠️  GASTA DINERO al publicar" : ""}`);
   console.log(`  Borrador IA: ${borrador}${borrador === "openai" ? " ⚠️  GASTA DINERO al generar borradores" : ""}`);
+  console.log(`  Post-blog IA: ${postBlog}${postBlog === "openai" ? " ⚠️  GASTA DINERO al generar posts" : ""}`);
 });
 
 const apagar = async () => {

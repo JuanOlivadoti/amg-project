@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { serve } from "inngest/node";
 import type { ModoProsa, ModoPublicacion } from "web-builder";
-import type { ConfigOrquestador, ModoBorrador, ModoPipeline } from "./config.js";
+import type { ConfigOrquestador, ModoBorrador, ModoPipeline, ModoPostBlog } from "./config.js";
 import type { Salud } from "./salud.js";
 
 /**
@@ -86,6 +86,11 @@ export interface OpcionesServidor {
    */
   borrador: ModoBorrador;
   /**
+   * Con qué se genera el post de blog con IA (sub-proyecto 3). Mismo motivo que `borrador`: es un
+   * tercer eje que puede facturar sin que `pipeline`/`publicacion`/`prosa` lo digan.
+   */
+  postBlog: ModoPostBlog;
+  /**
    * Comprueba las dependencias sin las que este proceso no sirve (hoy: Postgres). Ver `salud.ts`
    * para las tres decisiones —200 aunque esté degradado, el log de la transición, la cache—.
    *
@@ -98,7 +103,8 @@ export interface OpcionesServidor {
 const ARRANQUE = Date.now();
 
 export function crearServidor(opciones: OpcionesServidor): Server {
-  const { manejadorInngest, funciones, modo, pipeline, publicacion, prosa, borrador, sonda } = opciones;
+  const { manejadorInngest, funciones, modo, pipeline, publicacion, prosa, borrador, postBlog, sonda } =
+    opciones;
 
   return createServer((req, res) => {
     /*
@@ -136,6 +142,7 @@ export function crearServidor(opciones: OpcionesServidor): Server {
           // El tercer modo, y el único de los tres que puede facturar en el paso de publicación.
           prosa,
           borrador,
+          postBlog,
           uptimeSegundos: Math.round((Date.now() - ARRANQUE) / 1000),
           // Ausente cuando todo responde. Un `degradado: []` obligaría a leer el array para saber
           // que está sano, y lo que se quiere es que la presencia del campo sea la señal.

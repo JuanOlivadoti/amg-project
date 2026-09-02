@@ -4,6 +4,8 @@ import type { PgStore, TenantContext, PageRow, RunSummary } from "db";
 import type { GoogleReviewsProvider } from "./google/provider.js";
 import type { BorradorProvider } from "./borrador/provider.js";
 import type { TelegramProvider } from "./telegram/provider.js";
+import type { PostProvider } from "./post-blog/provider.js";
+import type { BlogPublisher } from "./post-blog/publisher.js";
 
 /**
  * El workflow del research, de punta a punta: pipeline → persistencia → compuerta humana →
@@ -68,6 +70,10 @@ export interface Deps {
   /** Las alertas por Telegram de reseñas 1-3★ (Bloque F, fase 2). No lo usa `workflowResearch` --
    * lo usan `vincularTelegramPendientes` y el bloque de alerta de `pollearResenas`. */
   telegramProvider: TelegramProvider;
+  /** Genera el post de blog con IA (sub-proyecto 3). Lo usa `workflowDecision` (rama `crear_posts`). */
+  postProvider: PostProvider;
+  /** Publica el post en el blog externo del cliente (sub-proyecto 3). Lo usa `publicarPost`. */
+  postPublisher: BlogPublisher;
   log?: (msg: string) => void;
 }
 
