@@ -1092,6 +1092,14 @@ test("🔴 workflowDecision: crear_posts con TODAS las páginas fallando cierra 
     [decisionId],
   );
   assert.ok(rows[0]?.detalle_error?.includes("Falló la generación"));
+
+  // Hallazgo Critical de la revisión de la Task 8 (mismo patrón que crear_web, ver el test
+  // "cliente archivado a mitad de camino no publica"): si esta era la PRIMERA decisión del run,
+  // cerrarla en error sin revertir kr_runs.status lo deja 'approved' sin ninguna decisión
+  // 'completado' — bricked para siempre. La página sigue aprobada (generar el post falló, no
+  // desaprobó nada), así que crear_web vuelve a calificar.
+  const decisionRetomada = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionRetomada, "el run vuelve a ser decidible tras el error — no queda bricked");
 });
 
 test("🔴 workflowDecision: crear_posts con la página desaprobada DESPUÉS de registrar la decisión cierra 'error' (defensa en profundidad)", async () => {
@@ -1122,6 +1130,14 @@ test("🔴 workflowDecision: crear_posts con la página desaprobada DESPUÉS de 
 
   assert.equal(resultado.resultado, "error");
   assert.equal(generarLlamado, false, "🔴 sin páginas aprobadas no se llama al provider ni una vez");
+
+  // Mismo hallazgo que el test "editar revoca la aprobación" (crear_web): el cierre en error de
+  // esta rama pasa por compensarAprobacionFallida, que revierte kr_runs.status a
+  // 'pending_approval' cuando esta era la primera decisión del run. La página quedó desaprobada
+  // por la edición, así que crear_web ya no calificaría — se usa solo_informe, que no exige
+  // página aprobada.
+  const decisionRetomada = await store.registrarDecision(humano(tenantA), runId, "solo_informe");
+  assert.ok(decisionRetomada, "el run vuelve a ser decidible tras el error — no queda bricked");
 });
 
 test("🔴 workflowDecision: crear_posts con el cliente archivado DESPUÉS de registrar la decisión cierra 'error' (defensa en profundidad)", async () => {
@@ -1148,6 +1164,13 @@ test("🔴 workflowDecision: crear_posts con el cliente archivado DESPUÉS de re
 
   assert.equal(resultado.resultado, "error");
   assert.equal(generarLlamado, false, "🔴 cliente archivado: no se llama al provider ni una vez");
+
+  // Mismo hallazgo que el test "editar revoca la aprobación" (crear_web): el cierre en error de
+  // esta rama pasa por compensarAprobacionFallida, que revierte kr_runs.status a
+  // 'pending_approval' cuando esta era la primera decisión del run. La página sigue aprobada
+  // (archivar el cliente no la toca), así que crear_web vuelve a calificar.
+  const decisionRetomada = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionRetomada, "el run vuelve a ser decidible tras el error — no queda bricked");
 });
 
 /**

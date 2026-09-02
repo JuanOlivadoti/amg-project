@@ -350,10 +350,12 @@ export async function workflowDecision(
       const todas = await deps.store.getRunPages(ctx, decision.run_id);
       const paginas = todas.filter((p) => p.approved);
       if (paginas.length === 0) {
-        await deps.store.cerrarDecision(ctx, decisionId, {
-          resultado: "error",
-          detalleError: "El run no tiene páginas publicables.",
-        });
+        // `compensarAprobacionFallida` y no `cerrarDecision`: si ESTA es la primera decisión del
+        // run, cerrarla en 'error' sin revertir `kr_runs.status` lo deja 'approved' sin ninguna
+        // decisión 'completado' — y `registrarDecision` nunca vuelve a calificarlo (bricked, ver
+        // el comentario de cabecera del método en `db/src/store.ts`). Mismo motivo que la rama
+        // `crear_web`, más abajo.
+        await deps.store.compensarAprobacionFallida(ctx, decisionId, "El run no tiene páginas publicables.");
         return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
       }
 
@@ -362,10 +364,13 @@ export async function workflowDecision(
       // puede archivarse entre que la decisión se registró y que esta rama corre. Sin este chequeo,
       // crear_posts seguía generando (y gastando el LLM) para un cliente ya archivado.
       if (!cliente || cliente.archived_at !== null) {
-        await deps.store.cerrarDecision(ctx, decisionId, {
-          resultado: "error",
-          detalleError: "El cliente fue archivado o ya no es visible: no se generan posts.",
-        });
+        // `compensarAprobacionFallida` — mismo motivo que el caso de arriba: sin la reversión, un
+        // run cuya PRIMERA decisión cae acá queda bricked.
+        await deps.store.compensarAprobacionFallida(
+          ctx,
+          decisionId,
+          "El cliente fue archivado o ya no es visible: no se generan posts.",
+        );
         return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
       }
 
@@ -395,10 +400,13 @@ export async function workflowDecision(
       // 'completado' acá significa "hay al menos un borrador esperando revisión" — NUNCA "publicados".
       // Distinto de crear_web, donde 'completado' sí significa publicado.
       if (generados === 0) {
-        await deps.store.cerrarDecision(ctx, decisionId, {
-          resultado: "error",
-          detalleError: `Falló la generación de los ${paginas.length} posts del run — ver logs.`,
-        });
+        // `compensarAprobacionFallida` — mismo motivo que los dos casos de arriba: sin la
+        // reversión, un run cuya PRIMERA decisión cae acá queda bricked.
+        await deps.store.compensarAprobacionFallida(
+          ctx,
+          decisionId,
+          `Falló la generación de los ${paginas.length} posts del run — ver logs.`,
+        );
         return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
       }
       await deps.store.cerrarDecision(ctx, decisionId, { resultado: "completado" });
