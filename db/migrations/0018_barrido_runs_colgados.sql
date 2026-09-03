@@ -9,8 +9,8 @@
 -- falta hace: su única acción es `failRun()`, o sea **escribir en la misma base que no responde**.
 -- La red de seguridad comparte su punto de fallo con lo que protege.
 --
--- Ya no hay ningún plazo de aprobación embebido (el desacople de 2026-08-26 quitó la espera dentro
--- del workflow): si el workflow no arranca, no hay reloj. Hace falta un reloj de afuera.
+-- El único plazo del sistema, `PLAZO_APROBACION` (`orchestrator/src/workflow.ts`), vive DENTRO del
+-- workflow: si el workflow no arranca, no hay reloj. Hace falta un reloj de afuera.
 --
 -- ## Por qué una función `security definer` y no un `select` desde el store
 --
