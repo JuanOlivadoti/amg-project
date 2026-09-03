@@ -7,6 +7,61 @@
 > en [**15-plan-plataforma.md**](15-plan-plataforma.md) — nueve bloques, con qué archivos toca cada
 > uno y cómo se verifica.
 >
+> 🧭 **Nuevo (2026-09-03): sub-proyecto 3 (publicar posts en blog externo) — IMPLEMENTADO, en rama sin
+> mergear. Es el tercero y último de la iniciativa de generalización en tener código real.** Las 12
+> tasks del [plan](../superpowers/plans/2026-08-26-publicar-posts-blog-externo.md) ejecutadas con
+> `superpowers:subagent-driven-development` sobre una **rama simple** desde el `main` local
+> (`sub-proyecto-3-publicar-posts-blog-externo`, **sin worktree** — pedido explícito del usuario para
+> poder levantar la app en local sin la indirección de un directorio aparte), implementador y revisor
+> independiente por task. Migración `0031_posts_blog_externo.sql`: columnas de post en `kr_pages`
+> (`post_titulo/cuerpo/generado_en/solicitado_en/publicado_en/url_externa/error_en`) y de blog externo
+> en `clients` (`blog_externo_tipo/url/credencial`), rol cross-tenant confinado `app_posts` (mismo
+> molde que `app_resenas`) con tres funciones `security definer` (`post_para_publicar`,
+> `marcar_post_publicado`, `marcar_post_fallido`). `workflowDecision` genera un post por página
+> aprobada con `PostProvider` (mock + OpenAI, mismo molde que `BorradorProvider` de reseñas) dentro de
+> la rama `crear_posts` (retirado el stub del sub-proyecto 2); publicarlo es un evento cross-tenant
+> (`posts/publicacion.solicitada`, solo `pageId`, ADR-18) que `publicarPost` resuelve con
+> `BlogPublisher` (**solo mock** — sin plataforma real confirmada) y confirma contra la base antes de
+> marcar `post_publicado_en`. El portal suma una pantalla nueva (`pages/posts/`, ruta
+> `clientes/:id/research/:runId/posts`) con una máquina de 4 estados (generando/publicando/falló/
+> editable-o-publicada) y un botón "Copiar" (HTML enriquecido + texto plano, Clipboard API) para que
+> el staff publique a mano mientras no haya integración real — agregado el 2026-08-31 en una enmienda
+> de flujo acordada con el usuario, junto con abrir `blog_externo_tipo` a texto libre (antes forzaba
+> `"wordpress"`). `destinoPosts` queda encendido SOLO en `environment.ts` (dev); `environment.prod.ts`
+> sigue en `false`, decisión de lanzamiento separada.
+>
+> **Un hallazgo Critical real, encontrado por la revisión de la Task 8 y no anticipado por ninguna
+> ronda externa previa sobre este plan:** los tres caminos de error de la rama `crear_posts` cerraban
+> la decisión con `cerrarDecision`, que no revierte `kr_runs.status` — si esa era la primera decisión
+> del run, quedaba `approved` sin ninguna decisión `completado` y **bricked para siempre** (el mismo
+> bug que ya había sido Critical, y ya estaba resuelto, para la rama vecina `crear_web` del sub-proyecto
+> 2 — el brief de esta task no había replicado ese arreglo). El revisor lo reprodujo empíricamente
+> contra PGlite antes de reportarlo. Corregido cambiando los tres caminos a
+> `compensarAprobacionFallida` (mismo patrón que `crear_web`), con el assert de "no queda bricked"
+> agregado a los tres tests de error correspondientes — re-revisado y aprobado.
+>
+> **Otro patrón que se repitió, esta vez benigno:** dos implementadores (Task 1 y Task 10) terminaron
+> su turno diciendo que iban a esperar el resultado de un proceso que ellos mismos habían lanzado en
+> background, sin darse cuenta de que ese proceso no notifica a la sesión coordinadora (son contextos
+> distintos) — quedaron con trabajo real sin commitear y sin informe hasta que la sesión principal los
+> retomó explícitamente pidiéndoles correr todo en foreground. Ninguno de los dos perdió trabajo, pero
+> costó una ronda de mensajes cada vez.
+>
+> `npm run verificar --con-portal`: **1861 tests del monorepo** (sube de 1779) + **328 `node:test`**
+> (sube de 304) y **266 Karma** (sube de 238) en el portal, todos en verde. Typecheck limpio en los 7
+> paquetes + `scripts/` + portal, sin secretos. **Hueco explícito, documentado y no oculto: el Step 3
+> del plan (manejar el flujo completo en un navegador real) no se pudo hacer** — `chrome-devtools-mcp`
+> no conectó en esta sesión (`CONNECT_TIMEOUT`, reintentado); el resto del ritual de verificación
+> (tests, typecheck, secretos) sí se corrió completo. Confirmado con el usuario seguir sin ese paso y
+> dejarlo anotado. **Migración `0031` aplicada solo en PGlite — todavía NO desplegada a producción.**
+>
+> **Qué sigue:** revisión externa de Codex sobre el código de la rama (ANTES de mergear a `main`, a
+> diferencia del sub-proyecto 1 — igual que el 2), corregir lo que encuentre, y recién ahí mergear a
+> `main` con confirmación del usuario. Con esto cerrado, los tres sub-proyectos de la iniciativa de
+> generalización quedan con código implementado — falta coordinar el despliegue a producción de las
+> seis migraciones pendientes (`0027`-`0031`, más la `0021`/`0022` si siguieran sin desplegar) y la
+> decisión de negocio de encender `destinoPosts`/multi-vertical en `environment.prod.ts`.
+>
 > 🧭 **Nuevo (2026-08-30): sub-proyecto 1 (multi-vertical de clientes) — IMPLEMENTADO Y CERRADO. Es
 > el segundo de los tres de la iniciativa de generalización en tener código real.** Las 14 tasks del
 > [plan](../superpowers/plans/2026-08-26-multivertical-clientes.md) (Tasks 1-5 ya venían de una
@@ -62,8 +117,8 @@
 > `0029_clientes_vertical.sql`/`0030_nap_publico_vertical.sql` aplicadas solo en PGlite — todavía NO
 > desplegadas a producción**, a propósito: pendiente de coordinar con el usuario.
 >
-> **Qué sigue:** arrancar el sub-proyecto 3 (publicar posts en blog externo) — spec+plan completos,
-> revisión conjunta ya procesada, ninguna task ejecutada todavía.
+> **Qué sigue (superado, ver la entrada del 2026-09-03 arriba):** el sub-proyecto 3 ya está
+> implementado, pendiente de revisión de Codex y merge a `main`.
 >
 > 🧭 **Nuevo (2026-08-28): sub-proyecto 2 (desacoplar keyword research de creación de webs) —
 > IMPLEMENTADO Y CERRADO. Es el primero de los tres de la iniciativa de generalización en tener

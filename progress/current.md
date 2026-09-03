@@ -7,13 +7,12 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** iniciativa nueva — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.
-**En curso (2026-08-31): sub-proyecto 2 CERRADO (con su revisión final). Sub-proyecto 1
-(multi-vertical de clientes) CERRADO — las 15 tasks completas, mergeadas a `main` y PUSHEADAS, y su
-revisión de Codex sobre el código (16ª ronda, tanda 22) también CERRADA: 2 hallazgos, ambos
-verificados y corregidos con un commit directo sobre `main` (rojo→fix→mutación→verde, detalle en
-`docs/proyecto/08-testing-calidad.md` § Tanda 22).** Se decidió partir el pedido en **tres
-sub-proyectos independientes**, cada uno con su propio spec → plan → revisión externa (Codex),
-ejecutados en serie:
+**En curso (2026-09-03): los TRES sub-proyectos tienen código implementado. Sub-proyecto 3 (publicar
+posts en blog externo) IMPLEMENTADO — las 12 tasks completas y revisadas sobre la rama
+`sub-proyecto-3-publicar-posts-blog-externo` (simple, sin worktree), 1 fix Critical aplicado y
+re-revisado (Task 8), verificación final en verde salvo el paso de navegador (hueco documentado,
+`chrome-devtools-mcp` no conectó). Falta: revisión externa de Codex sobre el código (antes de
+mergear a `main`, según la enmienda de flujo) y el merge en sí.** Los otros dos:
 
 1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **CERRADO
    (2026-08-30), revisión de código CERRADA (2026-08-31).** Las 15 tasks del
@@ -21,22 +20,23 @@ ejecutados en serie:
    mergeadas a `main` (commit `a26f1e3`) y pusheadas. La 16ª review de Codex sobre el código
    implementado encontró la carrera de `idVigente` en `cliente-seguros-card.ts` (Major) y el
    `ItemList.position` no-global en `json-ld.ts` (Minor) — los dos corregidos con tests rojos +
-   verificación por mutación, commit pendiente de hacer en esta sesión. Detalle completo en la
-   sección del sub-proyecto 1 abajo.
+   verificación por mutación. Detalle completo en la sección del sub-proyecto 1 abajo.
 2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28),
    con una revisión final (2026-08-29) que encontró 4 hallazgos más — los cuatro corregidos, ver
    la sección del sub-proyecto 2 abajo.**
-3. **Publicar posts a un blog ya existente en otra plataforma** — **diseño y plan completos, con una
-   enmienda de flujo acordada (2026-08-31). Es el próximo paso, arranca en una sesión nueva.**
+3. **Publicar posts a un blog ya existente en otra plataforma** — **IMPLEMENTADO (2026-09-03), en
+   rama sin mergear. Ver la sección del sub-proyecto 3 abajo para el detalle completo, task por
+   task.**
 
 Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
-ya cerrada). **Qué sigue:** arrancar el sub-proyecto 3 en una sesión nueva — ver "## Próximo paso".
+ya cerrada). **Qué sigue:** revisión de Codex sobre el sub-proyecto 3 y merge a `main` — ver
+"## Próximo paso".
 
 ## En vuelo (sin commitear)
 
-Nada — working tree limpio en `main`, sincronizado con `origin/main` (`6bd805a`). El fix de la 16ª
-review (tanda 22) y la enmienda de flujo del plan del sub-proyecto 3 ya están commiteados y
-pusheados (ver "Decisiones tomadas" para el detalle de la enmienda).
+Nada en la rama del sub-proyecto 3 — working tree limpio, las 14 commits de las 12 tasks (más 2
+commits de fix: el lockfile de la Task 2 y el fix Critical de la Task 8) están todos commiteados. La
+rama NO está pusheada a `origin` todavía — pendiente de la revisión de Codex primero.
 
 El worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
 worktree remove`); quedó un directorio huérfano con `node_modules` que no se pudo borrar del disco
@@ -46,29 +46,30 @@ bloquea termine.
 
 ## Próximo paso
 
-1. **Arrancar el sub-proyecto 3** (publicar posts en blog externo) en una sesión nueva, con
-   `superpowers:subagent-driven-development` sobre
-   `docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md` (12 tasks + la Task 11 Step
-   3.5 nueva). Flujo acordado con el usuario el 2026-08-31 (detalle completo en "Decisiones
-   tomadas" y en el propio plan, sección "Enmienda de flujo"):
-   - **Rama simple desde el `main` LOCAL, NO worktree** — a pedido explícito del usuario, para poder
-     levantar la app en local sin la indirección de un directorio de worktree aparte. Mientras dure
-     la implementación, el checkout de `c:\Users\oliva\Documents\projects\AMG` va a estar sobre esa
-     rama, no sobre `main`.
-   - La revisión externa de Codex corre **antes** de mergear a `main` (a diferencia del sub-proyecto
-     1, que se revisó después).
-   - La migración ya está confirmada en `0031` en el propio plan — no hace falta re-verificar salvo
-     que algo la haya tomado entre el 2026-08-31 y el arranque real.
+1. **Revisión externa de Codex sobre el código del sub-proyecto 3** (rama
+   `sub-proyecto-3-publicar-posts-blog-externo`, 16 commits sobre `main`) — usar la skill
+   `codex-review`. Corre ANTES de mergear a `main` (enmienda de flujo del 2026-08-31, confirmada con
+   el usuario). Corregir lo que encuentre (rojo→fix→mutación→verde, mismo criterio que el resto del
+   proyecto), y recién ahí mergear a `main` con confirmación explícita del usuario.
 2. **Migraciones pendientes de desplegar a producción, coordinarlo con el usuario, no asumirlo:**
-   `0027_kr_run_decisiones.sql`, `0028_client_row_archived_at.sql` (sub-proyecto 2) y
-   `0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql` (sub-proyecto 1) — las cuatro
-   aplicadas solo en PGlite hasta ahora.
-3. **Lección de proceso para llevar a cualquier trabajo futuro con comandos backgrounded largos:** el
+   `0027_kr_run_decisiones.sql`, `0028_client_row_archived_at.sql` (sub-proyecto 2),
+   `0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql` (sub-proyecto 1), y
+   `0031_posts_blog_externo.sql` (sub-proyecto 3) — las cinco aplicadas solo en PGlite hasta ahora.
+3. **Decisión de negocio pendiente, no de esta sesión:** encender `destinoPosts`/multi-vertical en
+   `environment.prod.ts` cuando corresponda — hoy los dos quedan apagados en producción a propósito.
+4. **Lección de proceso para llevar a cualquier trabajo futuro con comandos backgrounded largos:** el
    cwd del bash tool de esta sesión se reseteó solo al checkout `main` varias veces durante la Task
    15 del sub-proyecto 1, sin ningún error visible — ver "## Callejones sin salida" para el patrón
    que lo blinda (confirmar `pwd`/`git rev-parse HEAD` DENTRO del mismo `bash -c` que corre el
    comando real, nunca confiar en el cwd persistido entre llamadas cuando hay de por medio una
-   notificación de tarea en background).
+   notificación de tarea en background). **Nuevo patrón visto en el sub-proyecto 3, mismo género de
+   problema:** dos implementadores (Tasks 1 y 10) terminaron su turno diciendo que iban a "esperar la
+   notificación" de un proceso que ellos mismos habían lanzado en background — pero esa notificación
+   solo llega a SU propio contexto, nunca a la sesión coordinadora, así que quedaron con trabajo real
+   sin commitear y sin informe hasta que la sesión principal los retomó explícitamente. **Instrucción
+   a repetir en futuros dispatches:** pedir de entrada que corran todo en foreground, un comando a la
+   vez, y que nunca terminen el turno con "voy a esperar" — si algo tarda, que se quede corriéndolo en
+   foreground hasta el resultado real.
 
 **Decisión de secuencia (2026-08-26, confirmada con el usuario):** los tres sub-proyectos se diseñan
 uno por uno (spec + plan + revisión de Codex, igual que el 1) **sin implementar** hasta tener los tres
@@ -296,6 +297,76 @@ depende del orden de implementación de arriba, no está fijo en el documento.
     (Task 10, exige string no vacío ≤100 caracteres), con sus tests ajustados.
   - **Migración confirmada `0031`** (no `0028` como asumía el plan) — las 15 referencias ya
     reemplazadas en el archivo.
+
+### Implementación (2026-09-02/03): las 12 tasks completas y revisadas, rama sin mergear
+
+Ejecutada con `superpowers:subagent-driven-development` sobre la rama simple
+`sub-proyecto-3-publicar-posts-blog-externo` (creada desde el `main` local, sin worktree — tal como
+acordó la enmienda de flujo). Implementador + revisor independiente por task, ledger en
+`.superpowers/sdd/progress.md` (flat, no por-plan — la convención por-plan de sesiones previas no
+está en la versión instalada de la skill, se usó la que el script real produce).
+
+- **Tasks 1-7 (db + orchestrator, piezas aisladas):** sin hallazgos bloqueantes.
+  - Task 1 (`b5ed78e`): migración `0031` — columnas de post/blog externo, rol `app_posts`, tres
+    funciones `security definer`. 2 Minor no bloqueantes (discrepancia de conteo de tests en el
+    reporte; falta un test positivo de que `app_user` puede escribir `blog_externo_credencial`).
+    **Tropiezo de proceso:** el implementador terminó su primer turno diciendo que iba a "esperar la
+    notificación" de un test que él mismo había lanzado en background — nunca llegó a la sesión
+    coordinadora, hubo que retomarlo explícitamente.
+  - Task 2 (`676dc1b`): `sanitizarHtml` (allowlist con `sanitize-html`). Sin hallazgos. El lockfile
+    raíz que `npm install` actualizó quedó afuera del commit del implementador — cerrado con un
+    commit de la sesión principal (`676dc1b` en sí, el implementador dejó `6a8d763`).
+  - Task 3 (`6cac5b3`): los 7 métodos nuevos de `PgStore` (`guardarPost`/`editarPost`/
+    `solicitarPublicacionPost`/`postParaPublicar`/`marcarPostPublicado`/`marcarPostFallido`/
+    `getPost`). Sin hallazgos bloqueantes — 1 observación Minor (editar un post ya publicado no
+    re-dispara la publicación, pero el propio plan ya lo declara fuera de alcance en la Task 11).
+  - Task 4 (`81a410d`): `PostProvider` (mock + OpenAI), molde calcado de `BorradorProvider`. Sin
+    hallazgos.
+  - Task 5 (`28bb6ee`): `BlogPublisher` (solo mock). Sin hallazgos — el manejo de barras dobles en
+    la URL (slugs reales empiezan con `/`) confirmado con test dedicado.
+  - Task 6 (`1b05241`): evento `posts/publicacion.solicitada`. Trivial, sin hallazgos.
+  - Task 7 (`8e2bd4e`): `publicarPost`/`crearFuncionPublicarPost`. Sin hallazgos bloqueantes — 1
+    Minor (falta test dedicado para la rama `marcarPostPublicado → false`).
+- **Task 8 (`3d7833f` + fix `42e9736`): `workflowDecision` — la rama `crear_posts` real.** **1
+  hallazgo Critical real**, no anticipado por ninguna ronda de Codex sobre el plan: los tres caminos
+  de error cerraban la decisión con `cerrarDecision`, que no revierte `kr_runs.status` — si esa era
+  la PRIMERA decisión del run, quedaba `approved` sin ninguna decisión `completado`, **bricked para
+  siempre** (el mismo bug que ya había sido Critical, y ya estaba resuelto, para la rama vecina
+  `crear_web` del sub-proyecto 2 — el brief de esta task no había replicado ese arreglo). El revisor
+  lo reprodujo empíricamente contra PGlite antes de reportarlo. Corregido cambiando los tres caminos
+  a `compensarAprobacionFallida` (mismo patrón que `crear_web`), con el assert de "no queda bricked"
+  agregado a los tres tests de error — re-revisado y aprobado.
+- **Task 9 (`b4b90e3`): wiring de `postProvider`/`postPublisher`.** Sin hallazgos — verificado con
+  cuidado especial que las SIETE funciones Inngest quedaran en el array de `server.ts` (incluida
+  `crearFuncionDecision`, del sub-proyecto 2), porque esta misma task ya había tenido ese Critical
+  una vez en su propia ronda de revisión del PLAN (antes de implementarse). Typecheck del monorepo
+  entero limpio a partir de acá.
+- **Task 10 (`fc89c21`/`7f96e17`/`f4201c5`): API — configurar blog externo, retirar el 501 de
+  `crear_posts`, `PATCH /pages/:id` por forma exacta + `GET /pages/:id/post`.** Sin hallazgos
+  bloqueantes — 1 Minor (`NO_IMPLEMENTADO` quedó huérfano en `codigos.ts` tras retirar el 501). Los
+  cuatro combos peligrosos que motivaron la reescritura del dispatch en la ronda de Codex sobre el
+  plan confirmados uno por uno, trazando el código real. **Mismo tropiezo de proceso que la Task 1:**
+  el implementador quedó esperando dos procesos en background propios sin cerrar el turno — retomado
+  dos veces, la segunda con instrucción explícita de correr todo en foreground.
+- **Task 11 (`fbe9459`): portal — pantalla de posts (`pages/posts/`, ruta
+  `clientes/:id/research/:runId/posts`).** Máquina de 4 estados (`posts-estado.ts`, puro), botón
+  Copiar con HTML+texto plano y fallback (`html-a-texto.ts`, puro), rol cliente sin controles de
+  escritura. Sin hallazgos bloqueantes — 2 Minor (un test de `environment.prod.test.ts` con un
+  comentario desactualizado que no forma parte de esta task; falta un test de Karma para "campos
+  editables en estado publicada", ya correcto por lectura del backend). El implementador (agente
+  `front`) no commiteó por su propio contrato de rol — lo hizo la sesión principal tras correr los
+  tests dos veces por su cuenta (328/328 `node:test` + 266/266 Karma). **El Step 5 (navegador) no se
+  pudo hacer**: `chrome-devtools-mcp` no conectó ni en la sesión del implementador ni en la de la
+  sesión principal — documentado como pendiente, no simulado.
+- **Task 12 (verificación final): hecha, salvo el navegador.** `npm run verificar --con-portal`:
+  **1861 tests del monorepo** + **328 `node:test`** y **266 Karma** del portal, todos en verde.
+  Typecheck limpio en los 7 paquetes + `scripts/` + portal, sin secretos. El Step 3 (flujo completo
+  en un navegador real) no se pudo verificar por la misma razón que la Task 11 — confirmado con el
+  usuario seguir sin ese paso, documentado como hueco explícito. Documentación actualizada (este
+  archivo y `docs/proyecto/09-estado-y-roadmap.md`) en esta misma pasada. **Falta el Step 5 del plan
+  (commit final + push) — pendiente de la revisión de Codex primero** (ver "## Próximo paso" al
+  principio de este archivo), no de un commit de cierre separado: las 12 tasks ya están commiteadas
+  task por task, no hay un "commit de cierre" adicional que hacer más allá de la documentación.
 
 ## Revisión exhaustiva conjunta de los tres sub-proyectos (2026-08-26) — en curso
 
