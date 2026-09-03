@@ -53,11 +53,8 @@ abierto (una decisión de negocio, no una tarea) y qué hacer si no hay instrucc
 
 ## En vuelo (sin commitear)
 
-Seis archivos, todos sobre `main` (`f8be04a`): el cierre de los 2 hallazgos informativos —
-`db/src/store.ts` (fix), `db/src/posts-blog.test.ts` (test), `portal/src/app/pages/posts/posts.spec.ts`
-(test) — más la documentación (`docs/proyecto/08-testing-calidad.md`,
-`docs/proyecto/09-estado-y-roadmap.md`, este archivo). `bash ./scripts/verificar.sh --con-portal` y
-Karma ya corridos en verde (ver "## Verificaciones"). Falta el commit + push.
+Nada — working tree limpio en `main`, sincronizado con `origin/main` (`d36956b`: el commit que cierra
+los 2 hallazgos informativos, ya pusheado).
 
 El worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
 worktree remove`); quedó un directorio huérfano con `node_modules` que no se pudo borrar del disco
@@ -69,8 +66,7 @@ bloquea termine.
 
 **No hay tarea de desarrollo pendiente de esta iniciativa — quedó cerrada de punta a punta el
 2026-09-03** (código, migraciones, el flag `destinoPosts` en producción, verificación en navegador
-real y los 2 hallazgos informativos cerrados — falta commitear y pushear este último cierre, ver
-"## En vuelo").
+real y los 2 hallazgos informativos cerrados, commit `d36956b` ya pusheado a `origin/main`).
 
 1. Si no hay instrucción nueva del usuario: preguntar con qué seguir. Único candidato que queda: el
    Bloque A3/A4 y el resto de `docs/proyecto/15-plan-plataforma.md` (trabajo previo a esta iniciativa,
@@ -547,12 +543,9 @@ cerrado, quedan el 1 y el 3, spec+plan completos, listos para implementar en ser
   orquestador es `new PgStore(pool, "app_service")`, igual que `orchestrator/src/deps.ts:103`. Dueño
   de la función ≠ quién puede ejecutarla — confundir los dos hace perder un ciclo entero.
 
-## Archivos calientes
-
-`db/src/store.ts:1889-1917` (`editarPost`, ahora exige `post_titulo is not null`) y
-`portal/src/app/pages/posts/posts.ts:370-390` (`copiar()`, sin cambios de código — ganó el test que
-faltaba) — los dos hallazgos informativos de la revisión final del sub-proyecto 3, cerrados
-2026-09-03, sin commitear todavía (ver "## En vuelo").
+— Nada en vuelo. `db/src/store.ts:1889-1917` (`editarPost`) y
+`portal/src/app/pages/posts/posts.ts:370-390` (`copiar()`) son los archivos que tocó el cierre de los
+2 hallazgos informativos (2026-09-03, commit `d36956b`, ya pusheado) — quedan solo como referencia.
 
 ## Verificaciones
 
