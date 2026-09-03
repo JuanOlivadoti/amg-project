@@ -46,11 +46,8 @@ abierto (una decisión de negocio, no una tarea) y qué hacer si no hay instrucc
 
 ## En vuelo (sin commitear)
 
-Cuatro archivos, todos sobre `main` (`47c576a`), el cambio de encender `destinoPosts` en producción:
-`portal/src/environments/environment.prod.ts` (el flag), `portal/src/environments/environment.prod.test.ts`
-(el test que lo fija), `portal/src/app/pages/brief/brief.spec.ts` (comentario desactualizado que
-citaba el valor viejo) y `progress/current.md` (este archivo). `npm run verificar --con-portal` y
-Karma ya corridos en verde sobre este cambio (ver "## Verificaciones"). Falta el commit + push.
+Nada — working tree limpio en `main`, sincronizado con `origin/main` (`981aef7`: el commit que
+enciende `destinoPosts` en producción, ya pusheado).
 
 El worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
 worktree remove`); quedó un directorio huérfano con `node_modules` que no se pudo borrar del disco
@@ -61,9 +58,8 @@ bloquea termine.
 ## Próximo paso
 
 **No hay tarea de desarrollo pendiente de esta iniciativa — quedó cerrada de punta a punta el
-2026-09-03** (código, migraciones y el flag `destinoPosts` en producción, ver arriba). Falta commit +
-push de este último cambio (`destinoPosts` en `environment.prod.ts` + su test +
-`brief.spec.ts` + docs) — ver "## En vuelo" arriba.
+2026-09-03** (código, migraciones y el flag `destinoPosts` en producción, commit `981aef7` ya
+pusheado a `origin/main`).
 
 1. Si no hay instrucción nueva del usuario: preguntar con qué seguir. Candidatos ya identificados en
    esta sesión (ninguno urgente, todos opcionales): los 2 hallazgos informativos que quedaron como
