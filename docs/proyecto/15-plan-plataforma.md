@@ -10,11 +10,12 @@
 > restauración) tiene los TRES sub-proyectos IMPLEMENTADOS Y MERGEADOS A MAIN** — multi-vertical de
 > clientes (2026-08-30), desacoplar keyword research de creación de webs (2026-08-28) y publicar
 > posts en blog externo (2026-09-03, revisión final de rama en vez de Codex por indisponibilidad,
-> APROBADO sin bloqueantes). Falta coordinar con el usuario el despliegue a producción de las seis
-> migraciones pendientes (`0027`-`0031`, ver `09-estado-y-roadmap.md`) y encender `destinoPosts`/
-> multi-vertical en `environment.prod.ts` cuando corresponda (decisión de negocio, no de esta
-> iniciativa). El detalle vive en `progress/current.md`, no acá — este archivo no se reestructura
-> para la iniciativa porque los "bloques" de abajo son trabajo previo, casi todo cerrado.
+> APROBADO sin bloqueantes). **Las migraciones `0027`-`0031` ya están desplegadas a producción**
+> (el usuario las corrió el mismo día, verificado contra `app.migraciones_aplicadas`). Solo queda una
+> decisión de negocio, no de esta iniciativa: encender `destinoPosts`/multi-vertical en
+> `environment.prod.ts` cuando corresponda. El detalle vive en `progress/current.md`, no acá — este
+> archivo no se reestructura para la iniciativa porque los "bloques" de abajo son trabajo previo,
+> casi todo cerrado.
 
 ---
 
@@ -111,13 +112,15 @@ es el mismo defecto un piso más arriba. Lo que sí existe son los **logs de Rai
   primero rojo; hacer la sonda con `query()` suelto en vez de `Tx` deja rojo el que niega el rol.
 - **Coste:** pieza chica, un solo paquete.
 
-### A2. Un run no puede quedarse en `running` para siempre — ✅ **el código, hecho el 2026-08-07**
+### A2. Un run no puede quedarse en `running` para siempre — ✅ **hecho y desplegado**
 
-> **Hecho, con una casilla operativa abierta.** La guarda de `finishRun` (`29625e6`) y el barrido
-> completo —migración `0018`, `app.expirar_runs_colgados`, `PLAZO_RUN_COLGADO = "3 hours"` y la función
-> programada de Inngest cada hora— están en `main` con 16 tests y sus mutaciones verificadas.
-> **Falta desplegar la `0018`**: hasta entonces el barrido está en el código y no corre. Es un paso de
-> Juan (`migrate:deploy` toca Supabase). Lo de abajo queda como el razonamiento que produjo el diseño.
+> **Hecho de punta a punta.** La guarda de `finishRun` (`29625e6`) y el barrido completo —migración
+> `0018`, `app.expirar_runs_colgados`, `PLAZO_RUN_COLGADO = "3 hours"` y la función programada de
+> Inngest cada hora— están en `main` con 16 tests y sus mutaciones verificadas. **La `0018` está
+> aplicada en producción desde el 2026-08-08** (`aplicada_en` confirmado contra el registro real,
+> `app.migraciones_aplicadas`, el 2026-09-03) — la casilla operativa que faltaba ya no queda abierta;
+> esta nota se corrigió porque llevaba semanas desactualizada. Lo de abajo queda como el razonamiento
+> que produjo el diseño.
 
 **El problema, medido.** El `onFailure` del workflow existe para que un run no quede colgado, y su
 única acción es `failRun()` — o sea **escribir en Postgres**. Cuando el workflow muere porque no

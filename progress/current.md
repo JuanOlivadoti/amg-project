@@ -52,18 +52,17 @@ bloquea termine.
 
 ## Próximo paso
 
-1. **Push del cierre a `origin/main`** (commit de merge `5a8b663` + los commits de documentación de
-   este cierre) — pendiente de confirmación explícita del usuario antes de pushear, por la disciplina
-   de acciones que afectan estado compartido. Después, borrar la rama local ya mergeada
-   (`git branch -d sub-proyecto-3-publicar-posts-blog-externo`).
-2. **Migraciones pendientes de desplegar a producción, coordinarlo con el usuario, no asumirlo:**
-   `0027_kr_run_decisiones.sql`, `0028_client_row_archived_at.sql` (sub-proyecto 2),
-   `0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql` (sub-proyecto 1), y
-   `0031_posts_blog_externo.sql` (sub-proyecto 3) — las seis aplicadas solo en PGlite hasta ahora.
-   Antes de correr `migrate:deploy`, tener presente el bug de la `0018` recién resuelto en `main`
-   (`3aa68cf`, checksum roto por un comentario editado en una migración ya aplicada) — ya arreglado,
-   pero es la clase de bug que puede repetirse si alguien vuelve a tocar un comentario de una
-   migración vieja.
+1. ~~Push del cierre a `origin/main`~~ — **hecho** (commit de merge `5a8b663`, cierre `90dd851`,
+   pusheados; rama local borrada).
+2. ~~Migraciones pendientes de desplegar a producción~~ — **YA DESPLEGADAS, verificado el
+   2026-09-03 contra el registro real de producción** (`select nombre, aplicada_en from
+   app.migraciones_aplicadas`, vía MCP de Supabase — no el sistema de migraciones de la CLI de
+   Supabase, que es otra cosa y mira una tabla distinta): `0027_kr_run_decisiones.sql`,
+   `0028_client_row_archived_at.sql`, `0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql` y
+   `0031_posts_blog_externo.sql`, las cinco con `aplicada_en` del 2026-09-03 14:56:58 UTC (mismo lote,
+   corridas fuera de Claude Code por el usuario, después del fix del bloqueo de la `0018`). El
+   despliegue no lo hizo esta sesión — `npm run migrate:deploy` está denegado por
+   `.claude/settings.json` a propósito.
 3. **Decisión de negocio pendiente, no de esta sesión:** encender `destinoPosts`/multi-vertical en
    `environment.prod.ts` cuando corresponda — hoy los dos quedan apagados en producción a propósito.
 4. **Lección de proceso para llevar a cualquier trabajo futuro con comandos backgrounded largos:** el
