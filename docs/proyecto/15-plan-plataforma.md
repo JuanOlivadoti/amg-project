@@ -1327,11 +1327,12 @@ contra la API real, con consola limpia y contraste verificado en tema oscuro.
 
 `npm run verificar`: **1700 tests del monorepo** (+61: capa de acceso y endpoints en `db`/`api`,
 provider y funciones de Inngest en `orchestrator`) + **301 `node:test`** y **201 Karma** en el portal
-(+3/+5), typecheck limpio en los 7 paquetes. **La migración `0026` quedó commiteada pero sin
-desplegar** — pendiente del mismo procedimiento manual que la `0025` (`npm run migrate:deploy -w db`),
-fuera del alcance de esta sesión. También pendiente, y fuera de lo que ingeniería puede resolver:
-Juan tiene que crear el bot real con `@BotFather` y poner `TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live`
-donde corresponda antes de que una alerta real le llegue a un CM.
+(+3/+5), typecheck limpio en los 7 paquetes. **La migración `0026` está desplegada en producción desde
+el 2026-08-24** (`aplicada_en` confirmado contra `app.migraciones_aplicadas` el 2026-09-03 — esta nota
+decía "sin desplegar" y quedó desactualizada). Lo único pendiente acá, y fuera de lo que ingeniería
+puede resolver: Juan tiene que crear el bot real con `@BotFather` y poner
+`TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live` donde corresponda antes de que una alerta real le llegue a
+un CM.
 
 **Lo que sigue siendo fase 2, sin empezar, y por qué:** el acceso real a la Business Profile API
 (`GOOGLE_REVIEWS_MODO=live`, trámite externo de Juan con Google) bloquea, en cascada, "limpiar la
@@ -1448,6 +1449,10 @@ des-expone, lo que devuelve la seguridad es **rotar**.
 
 **Pospuesto por decisión de Juan el 2026-08-04.** Sigue abierto, no cerrado. La lista priorizada vive
 fuera del repo (`docs/private/rotacion-credenciales.md`).
+
+> Este ítem, y las demás decisiones/trámites de este documento que dependen de Juan (no de una sesión
+> de desarrollo), están reunidos en un checklist para completar de una sentada:
+> [`16-pendientes-juan.md`](16-pendientes-juan.md) (2026-09-04).
 
 ---
 

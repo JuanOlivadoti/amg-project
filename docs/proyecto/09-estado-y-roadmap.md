@@ -328,6 +328,9 @@
 > puede arrancar hoy — nada de esto lo bloquea. Un beta con gente nueva de afuera debería esperar a
 > que se cierre el punto 1.
 >
+> **Actualización (2026-09-04): estos cuatro puntos, más otros que fueron apareciendo, están reunidos
+> en un checklist para completar de una sentada:** [`16-pendientes-juan.md`](16-pendientes-juan.md).
+>
 > 🧭 **Nuevo (2026-08-23): Bloque G — la invalidación multi-instancia no era una brecha de código.**
 > Juan confirmó una conversación de SLA real que hace urgente este bloque. Al investigar el ítem
 > ("más de una instancia rompe la invalidación, el webhook llega a UNA"), resultó que `CACHE_TTL_MS`
