@@ -17,9 +17,11 @@ import { environment as prod } from './environment.prod';
  * nadie mueva estos valores sin enterarse. Por eso siguen fijados, y una vuelta atrás accidental cae
  * acá igual.
  *
- * `destinoPosts` es el tercero, y AL REVÉS: se fija en `false` porque el sub-proyecto que lo
- * necesita (publicar en un blog externo) todavía no existe. Encenderlo sin que exista mostraría una
- * opción del selector de destino que la API rechazaría siempre.
+ * `destinoPosts` estuvo en `false` hasta el 2026-09-03: el sub-proyecto que lo necesita (publicar
+ * en un blog externo) todavía no existía, y encenderlo sin que exista habría mostrado una opción
+ * del selector de destino que la API rechazaría siempre. Con el sub-proyecto mergeado a `main` y su
+ * migración desplegada en producción, se encendió — el motivo de este test es el mismo que el de
+ * los otros dos: que nadie mueva el valor sin enterarse.
  */
 
 test('producción es production:true', () => {
@@ -50,10 +52,10 @@ test('aprobarRun está ENCENDIDO en producción (hay orquestador desde el 2026-0
  * ese test prohibía ya no es un problema.
  */
 
-test('destinoPosts está APAGADO en producción (sub-proyecto 3 no existe todavía)', () => {
+test('destinoPosts está ENCENDIDO en producción (sub-proyecto 3 mergeado y desplegado)', () => {
   assert.equal(
     prod.features.destinoPosts,
-    false,
-    'encenderlo mostraría una opción del selector que la API todavía no puede cumplir',
+    true,
+    'apagarlo esconde la opción para todo el equipo: si es a propósito, cambiá también este test',
   );
 });

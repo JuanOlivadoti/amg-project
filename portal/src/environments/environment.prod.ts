@@ -39,10 +39,9 @@ export const environment = {
      * `environment.prod.test.ts`, y el retiro de `RunSinWorkflowError` / el gate `tiene_workflow`).
      */
     aprobarRun: true,
-    /** La opción "crear_posts" del selector de destino. `false` a propósito: el sub-proyecto de
-     *  publicación en blog externo todavía no existe, así que no hay a dónde publicar un post. Es
-     *  una decisión de LANZAMIENTO separada de encenderla en dev — se queda en `false` acá aunque
-     *  ese sub-proyecto la encienda en `environment.ts`. */
-    destinoPosts: false,
+    /** Encendido el 2026-09-03: el sub-proyecto de publicación en blog externo ya está mergeado a
+     *  `main` y su migración (`0031`) desplegada en producción — la opción "crear_posts" del
+     *  selector de destino ya tiene a dónde publicar un post. */
+    destinoPosts: true,
   },
 };

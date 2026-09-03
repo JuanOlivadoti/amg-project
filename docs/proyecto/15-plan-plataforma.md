@@ -11,11 +11,11 @@
 > clientes (2026-08-30), desacoplar keyword research de creación de webs (2026-08-28) y publicar
 > posts en blog externo (2026-09-03, revisión final de rama en vez de Codex por indisponibilidad,
 > APROBADO sin bloqueantes). **Las migraciones `0027`-`0031` ya están desplegadas a producción**
-> (el usuario las corrió el mismo día, verificado contra `app.migraciones_aplicadas`). Solo queda una
-> decisión de negocio, no de esta iniciativa: encender `destinoPosts`/multi-vertical en
-> `environment.prod.ts` cuando corresponda. El detalle vive en `progress/current.md`, no acá — este
-> archivo no se reestructura para la iniciativa porque los "bloques" de abajo son trabajo previo,
-> casi todo cerrado.
+> (el usuario las corrió el mismo día, verificado contra `app.migraciones_aplicadas`), y
+> **`destinoPosts` ya está encendido en `environment.prod.ts`** (2026-09-03, decisión del usuario) —
+> la iniciativa queda cerrada de punta a punta, sin ningún punto abierto. El detalle vive en
+> `progress/current.md`, no acá — este archivo no se reestructura para la iniciativa porque los
+> "bloques" de abajo son trabajo previo, casi todo cerrado.
 
 ---
 

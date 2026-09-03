@@ -7,17 +7,24 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** iniciativa nueva — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.
-**CERRADA (2026-09-03): los TRES sub-proyectos tienen código implementado, revisado y MERGEADO A
-MAIN.** Sub-proyecto 3 (publicar posts en blog externo): las 12 tasks completas sobre la rama
-`sub-proyecto-3-publicar-posts-blog-externo` (simple, sin worktree), 1 fix Critical aplicado y
-re-revisado (Task 8). **Codex no estaba disponible** para la revisión final de rama que exigía la
-enmienda de flujo — se sustituyó por una revisión adversarial del agente `revisor` sobre el mismo
-diff (`890490e..815edcb`): **APROBADO, sin hallazgos bloqueantes**, 2 informativos no bloqueantes
-(detalle en la sección del sub-proyecto 3 abajo). Mergeado a `main` con `--no-ff` (commit `5a8b663`),
-re-verificado sobre el resultado del merge: **1861 tests del monorepo + 328 `node:test` + 266 Karma**,
-todos en verde, typecheck limpio, sin secretos. Falta un solo paso, y es de coordinación con el
-usuario, no de código: desplegar a producción las seis migraciones pendientes y decidir cuándo
-encender `destinoPosts`/multi-vertical en `environment.prod.ts`. Los otros dos:
+**CERRADA POR COMPLETO (2026-09-03): los TRES sub-proyectos tienen código implementado, revisado,
+MERGEADO A MAIN y sus migraciones YA DESPLEGADAS A PRODUCCIÓN.** Sub-proyecto 3 (publicar posts en
+blog externo): las 12 tasks completas sobre la rama `sub-proyecto-3-publicar-posts-blog-externo`
+(simple, sin worktree), 1 fix Critical aplicado y re-revisado (Task 8). **Codex no estaba disponible**
+para la revisión final de rama que exigía la enmienda de flujo — se sustituyó por una revisión
+adversarial del agente `revisor` sobre el mismo diff (`890490e..815edcb`): **APROBADO, sin hallazgos
+bloqueantes**, 2 informativos no bloqueantes (detalle en la sección del sub-proyecto 3 abajo).
+Mergeado a `main` con `--no-ff` (commit `5a8b663`), re-verificado sobre el resultado del merge:
+**1861 tests del monorepo + 328 `node:test` + 266 Karma**, todos en verde, typecheck limpio, sin
+secretos. Las migraciones `0027`-`0031` (de los tres sub-proyectos) están **confirmadas aplicadas en
+producción** desde el mismo día, `aplicada_en 2026-09-03 14:56:58 UTC` las cinco — verificado
+consultando `app.migraciones_aplicadas` vía MCP de Supabase (`execute_sql`, no `list_migrations`, que
+mira el sistema de migraciones de la CLI de Supabase y no el registro propio de este proyecto).
+**Actualización (2026-09-03, mismo día): el usuario decidió encender `destinoPosts` en
+`environment.prod.ts`** — cambio de una línea más su test (`environment.prod.test.ts`) y un
+comentario desactualizado en `brief.spec.ts`, `npm run verificar --con-portal` corrido de nuevo
+(1861/328 + 266 Karma, verde). **La iniciativa queda cerrada de punta a punta, sin ningún punto
+abierto** — ver "## Próximo paso". Los otros dos:
 
 1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **CERRADO
    (2026-08-30), revisión de código CERRADA (2026-08-31).** Las 15 tasks del
@@ -34,15 +41,16 @@ encender `destinoPosts`/multi-vertical en `environment.prod.ts`. Los otros dos:
    para el detalle completo, task por task.
 
 Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
-ya cerrada). **Qué sigue:** nada de código — coordinar con el usuario el despliegue a producción de
-las migraciones pendientes, ver "## Próximo paso".
+ya cerrada). **Qué sigue:** nada de esta iniciativa — ver "## Próximo paso" para el único punto
+abierto (una decisión de negocio, no una tarea) y qué hacer si no hay instrucción nueva del usuario.
 
 ## En vuelo (sin commitear)
 
-Nada — working tree limpio en `main`, sincronizado con `origin/main` hasta antes de este cierre. La
-rama `sub-proyecto-3-publicar-posts-blog-externo` ya está mergeada (`--no-ff`, commit `5a8b663`) pero
-**todavía sin pushear** — falta el `git push origin main` y, opcionalmente, borrar la rama local ya
-mergeada (`git branch -d sub-proyecto-3-publicar-posts-blog-externo`).
+Cuatro archivos, todos sobre `main` (`47c576a`), el cambio de encender `destinoPosts` en producción:
+`portal/src/environments/environment.prod.ts` (el flag), `portal/src/environments/environment.prod.test.ts`
+(el test que lo fija), `portal/src/app/pages/brief/brief.spec.ts` (comentario desactualizado que
+citaba el valor viejo) y `progress/current.md` (este archivo). `npm run verificar --con-portal` y
+Karma ya corridos en verde sobre este cambio (ver "## Verificaciones"). Falta el commit + push.
 
 El worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
 worktree remove`); quedó un directorio huérfano con `node_modules` que no se pudo borrar del disco
@@ -52,20 +60,20 @@ bloquea termine.
 
 ## Próximo paso
 
-1. ~~Push del cierre a `origin/main`~~ — **hecho** (commit de merge `5a8b663`, cierre `90dd851`,
-   pusheados; rama local borrada).
-2. ~~Migraciones pendientes de desplegar a producción~~ — **YA DESPLEGADAS, verificado el
-   2026-09-03 contra el registro real de producción** (`select nombre, aplicada_en from
-   app.migraciones_aplicadas`, vía MCP de Supabase — no el sistema de migraciones de la CLI de
-   Supabase, que es otra cosa y mira una tabla distinta): `0027_kr_run_decisiones.sql`,
-   `0028_client_row_archived_at.sql`, `0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql` y
-   `0031_posts_blog_externo.sql`, las cinco con `aplicada_en` del 2026-09-03 14:56:58 UTC (mismo lote,
-   corridas fuera de Claude Code por el usuario, después del fix del bloqueo de la `0018`). El
-   despliegue no lo hizo esta sesión — `npm run migrate:deploy` está denegado por
-   `.claude/settings.json` a propósito.
-3. **Decisión de negocio pendiente, no de esta sesión:** encender `destinoPosts`/multi-vertical en
-   `environment.prod.ts` cuando corresponda — hoy los dos quedan apagados en producción a propósito.
-4. **Lección de proceso para llevar a cualquier trabajo futuro con comandos backgrounded largos:** el
+**No hay tarea de desarrollo pendiente de esta iniciativa — quedó cerrada de punta a punta el
+2026-09-03** (código, migraciones y el flag `destinoPosts` en producción, ver arriba). Falta commit +
+push de este último cambio (`destinoPosts` en `environment.prod.ts` + su test +
+`brief.spec.ts` + docs) — ver "## En vuelo" arriba.
+
+1. Si no hay instrucción nueva del usuario: preguntar con qué seguir. Candidatos ya identificados en
+   esta sesión (ninguno urgente, todos opcionales): los 2 hallazgos informativos que quedaron como
+   deuda menor de la revisión del sub-proyecto 3 (`editarPost` sin exigir post ya generado —
+   `db/src/store.ts:1889-1917`; falta test de Karma para el permiso de portapapeles denegado en
+   `copiar()` — `portal/src/app/pages/posts/posts.ts:386-389`); el paso de navegador real de la
+   Task 11 del sub-proyecto 3, todavía sin verificar porque `chrome-devtools-mcp` no conectó; o el
+   Bloque A3/A4 y el resto de `docs/proyecto/15-plan-plataforma.md` (trabajo previo a esta iniciativa,
+   mayormente pendiente de decisiones de Juan).
+2. **Lección de proceso para llevar a cualquier trabajo futuro con comandos backgrounded largos:** el
    cwd del bash tool de esta sesión se reseteó solo al checkout `main` varias veces durante la Task
    15 del sub-proyecto 1, sin ningún error visible — ver "## Callejones sin salida" para el patrón
    que lo blinda (confirmar `pwd`/`git rev-parse HEAD` DENTRO del mismo `bash -c` que corre el
@@ -507,35 +515,42 @@ cerrado, quedan el 1 y el 3, spec+plan completos, listos para implementar en ser
   `ng serve`, cualquier harness desechable) apenas se termina de usarlos en el navegador, no
   dejarlos corriendo "por si acaso" mientras se corre la verificación pesada — cada uno compite por
   CPU con los tests.
+- **`mcp__supabase__list_migrations` NO sirve para saber si las migraciones de este proyecto están
+  aplicadas — mira el sistema de migraciones de la CLI de Supabase, una tabla completamente distinta
+  del registro propio que usa `db/src/deploy.ts` (`app.migraciones_aplicadas`).** Este proyecto nunca
+  usó el runner de la CLI de Supabase, así que `list_migrations` devuelve `{"migrations":[]}`
+  SIEMPRE, esté lo que esté aplicado de verdad — vacío no significa "nada desplegado". La forma
+  correcta: `mcp__supabase__execute_sql` con `select nombre, aplicada_en from
+  app.migraciones_aplicadas order by nombre desc` (read-only, seguro de correr). Además, `npm run
+  migrate:deploy` está denegado por `.claude/settings.json` a propósito — ni para "solo comprobar"
+  vale la pena correr `db/src/cli/deploy.ts` directo con `tsx` para esquivar el deny: ese script no es
+  de solo lectura, aplica lo que encuentre pendiente.
 
 ## Archivos calientes
 
-- [portal/src/app/pages/clientes/cliente-seguros-card.ts:179-233](../portal/src/app/pages/clientes/cliente-seguros-card.ts#L179-L233) —
-  `cargar()`/`guardar()`, el fix de la carrera de `idVigente` (hallazgo 1 de la tanda 22). Sin
-  commitear.
-- [web-builder/src/render/json-ld.ts:150-165](../web-builder/src/render/json-ld.ts#L150-L165) —
-  `catalogoLd`, el contador global de `position` (hallazgo 2 de la tanda 22). Sin commitear.
-- `docs/proyecto/08-testing-calidad.md` § Tanda 22 — la ronda documentada; es la referencia si algo
-  de esto se toca de nuevo.
+— Nada en vuelo. Si se retoma algo de esta iniciativa, los puntos de referencia son
+`db/src/store.ts:1889-1917` (`editarPost`, primer hallazgo informativo de la revisión final del
+sub-proyecto 3) y `portal/src/app/pages/posts/posts.ts:386-389` (`copiar()`, el segundo hallazgo
+informativo) — ver "## Próximo paso".
 
 ## Verificaciones
 
-- **16ª review de Codex (tanda 22), post-fix: VERDE de punta a punta, confirmado con
-  `PWD-CHECK`/`HEAD-CHECK` en el mismo log que corrió cada comando (2026-08-31).**
-  - Rojo primero (verificado antes de tocar el componente/función): los 2 tests nuevos de
-    `cliente-seguros-card.spec.ts` fallaban exactamente como predecía el hallazgo 1; el test nuevo de
-    `html.test.ts` (posiciones `[1,2,1]`) fallaba exactamente como predecía el hallazgo 2.
-  - Mutación: reintroducir cada bug por separado tumba exactamente su(s) test(s) — verificado en tres
-    pasadas (reset de `cargar()`, guard de `guardar()`, contador de `catalogoLd`), ninguna arrastró
-    una regresión en otro test.
-  - `npm --prefix portal run test:components`: **240/240** (sube de 238, los 2 tests nuevos).
-  - `npm run verificar` (`bash ./scripts/verificar.sh`, porque `npm run verificar` a secas sigue
-    resolviendo vía `cmd.exe` en esta sesión de Git Bash y falla con `./scripts/verificar.sh` no
-    reconocido): **1780 tests del monorepo** (sube de 1779, el nuevo test de `json-ld.ts`), typecheck
-    limpio en los 7 paquetes + `scripts/` + portal, sin secretos, **304 `node:test`** del portal sin
-    cambio (los 2 tests nuevos son Karma, no `node:test`).
-  - Documentado en `docs/proyecto/08-testing-calidad.md` § Tanda 22 y sincronizado en el `09`.
-    **Falta el commit** — ver "## Próximo paso".
+- **`bash ./scripts/verificar.sh --con-portal` sobre el cambio de `destinoPosts` (working tree sobre
+  `main`, `47c576a`, 2026-09-03): VERDE.** 1861 tests del monorepo + 328 `node:test` del portal,
+  typecheck limpio en los 7 paquetes + `scripts/` + portal, sin secretos — confirmado `pwd`/`git
+  rev-parse HEAD` antes de correrlo. `npm --prefix portal run test:components`: **266/266 Karma**
+  (corrido dos veces: una vez filtrado a `brief.spec.ts`, 43/43, y una vez la suite completa).
+  Mismas cifras que la corrida post-merge de abajo — sin regresión.
+- **Post-merge del sub-proyecto 3 (commit `5a8b663`), 2026-09-03: VERDE de punta a punta**, confirmado
+  con `PWD-CHECK`/`HEAD-CHECK` en el mismo log que corrió cada comando.
+  - `bash ./scripts/verificar.sh --con-portal`: **1861 tests del monorepo** + **328 `node:test`** del
+    portal, typecheck limpio en los 7 paquetes + `scripts/` + portal, sin secretos.
+  - `npm --prefix portal run test:components`: **266/266 Karma**.
+  - Re-verificado sobre el RESULTADO del merge, no solo sobre la rama — mismas cifras que la revisión
+    final de rama del `revisor` había medido antes de mergear (sin regresión).
+- **Migraciones `0027`-`0031`: confirmadas aplicadas en producción** (2026-09-03, consultado
+  `app.migraciones_aplicadas` vía `mcp__supabase__execute_sql`) — ver "## Callejones sin salida" para
+  la trampa de `list_migrations` que hace falta evitar la próxima vez que se necesite chequear esto.
 
 ## Deuda no relacionada, heredada de antes de esta iniciativa (sin tocar, no bloquea)
 

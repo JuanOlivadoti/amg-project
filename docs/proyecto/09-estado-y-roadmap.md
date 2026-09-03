@@ -28,8 +28,8 @@
 > editable-o-publicada) y un botón "Copiar" (HTML enriquecido + texto plano, Clipboard API) para que
 > el staff publique a mano mientras no haya integración real — agregado el 2026-08-31 en una enmienda
 > de flujo acordada con el usuario, junto con abrir `blog_externo_tipo` a texto libre (antes forzaba
-> `"wordpress"`). `destinoPosts` queda encendido SOLO en `environment.ts` (dev); `environment.prod.ts`
-> sigue en `false`, decisión de lanzamiento separada.
+> `"wordpress"`). `destinoPosts` estuvo encendido solo en `environment.ts` (dev) hasta el 2026-09-03,
+> cuando se encendió también en `environment.prod.ts` — ver el cierre de esta entrada.
 >
 > **Un hallazgo Critical real, encontrado por la revisión de la Task 8 y no anticipado por ninguna
 > ronda externa previa sobre este plan:** los tres caminos de error de la rama `crear_posts` cerraban
@@ -82,8 +82,16 @@
 > `app.migraciones_aplicadas`, vía MCP de Supabase (`execute_sql`, no `list_migrations` — esa
 > herramienta mira el sistema de migraciones de la CLI de Supabase, una tabla distinta que este
 > proyecto no usa, y por eso devuelve vacío): las cinco con `aplicada_en` del mismo lote,
-> `2026-09-03 14:56:58 UTC`. Queda una sola decisión pendiente, de negocio y no de esta iniciativa:
-> encender `destinoPosts`/multi-vertical en `environment.prod.ts` cuando corresponda.
+> `2026-09-03 14:56:58 UTC`.
+>
+> **Actualización (2026-09-03, mismo día): `destinoPosts` encendido en `environment.prod.ts`.** El
+> usuario decidió activarlo — el código y la migración `0031` ya están en producción, así que la
+> opción "crear_posts" del selector de destino ya tiene a dónde publicar un post. Cambio de una línea
+> (`portal/src/environments/environment.prod.ts`) más el test que fija el valor
+> (`environment.prod.test.ts`) y el comentario de `brief.spec.ts` que documentaba el valor viejo, los
+> tres actualizados juntos; `npm run verificar --con-portal` corrido de nuevo tras el cambio (mismas
+> cifras: 1861/328 + 266 Karma, todos en verde). **Con esto, la iniciativa de generalización queda
+> cerrada de punta a punta: código, migraciones y flag de lanzamiento, sin ningún punto abierto.**
 >
 > 🧭 **Nuevo (2026-08-30): sub-proyecto 1 (multi-vertical de clientes) — IMPLEMENTADO Y CERRADO. Es
 > el segundo de los tres de la iniciativa de generalización en tener código real.** Las 14 tasks del

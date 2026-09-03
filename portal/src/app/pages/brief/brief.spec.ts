@@ -250,10 +250,10 @@ describe('BriefPage — selector de destino y retiro del gate tiene_workflow', (
   });
 
   it('"crear_posts" NO aparece con el flag apagado', async () => {
-    // Explícito acá y no apoyado en el default del environment: desde la Task 11,
-    // `environment.ts` (dev) trae `destinoPosts: true` — solo `environment.prod.ts` se queda en
-    // `false` (decisión de lanzamiento separada, `environment.prod.test.ts` la fija). Sin este test,
-    // un flag que se prende solo (o un typo) pasaría en verde.
+    // Explícito acá y no apoyado en el default del environment: desde el 2026-09-03,
+    // `environment.ts` (dev) Y `environment.prod.ts` traen `destinoPosts: true`
+    // (`environment.prod.test.ts` fija ese valor). Sin este test, un flag que se prende solo (o un
+    // typo) pasaría en verde.
     environment.features.destinoPosts = false;
     const el = await render(true, true);
     expect(selectDestino(el)!.querySelector('option[value="crear_posts"]')).toBeNull();
