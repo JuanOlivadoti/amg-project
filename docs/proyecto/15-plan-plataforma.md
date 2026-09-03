@@ -6,15 +6,15 @@
 >
 > Escrito el **2026-08-07**, el día que se cerró Fase 2.
 >
-> 🧭 **Nuevo (2026-08-30): además de los bloques de abajo (mayormente hechos), hay una iniciativa
-> nueva en marcha — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.** Partida
-> en tres sub-proyectos independientes (multi-vertical de clientes, desacoplar keyword research de
-> creación de webs, publicar posts en blog externo). **Los sub-proyectos 2 y 1 ya están IMPLEMENTADOS
-> Y CERRADOS** (desacoplar keyword research, 2026-08-28; multi-vertical de clientes — restauración +
-> correduría de seguros, 2026-08-30) — queda el 3 (publicar posts en blog externo), con spec+plan
-> completos y revisión conjunta ya procesada, listo para implementar. El detalle vive en
-> `progress/current.md`, no acá — este archivo no se reestructura para la iniciativa nueva porque los
-> "bloques" de abajo son trabajo previo, casi todo cerrado.
+> 🧭 **Nuevo (2026-09-03): la iniciativa de generalizar AMG OS a cualquier tipo de cliente (no solo
+> restauración) tiene los TRES sub-proyectos IMPLEMENTADOS Y MERGEADOS A MAIN** — multi-vertical de
+> clientes (2026-08-30), desacoplar keyword research de creación de webs (2026-08-28) y publicar
+> posts en blog externo (2026-09-03, revisión final de rama en vez de Codex por indisponibilidad,
+> APROBADO sin bloqueantes). Falta coordinar con el usuario el despliegue a producción de las seis
+> migraciones pendientes (`0027`-`0031`, ver `09-estado-y-roadmap.md`) y encender `destinoPosts`/
+> multi-vertical en `environment.prod.ts` cuando corresponda (decisión de negocio, no de esta
+> iniciativa). El detalle vive en `progress/current.md`, no acá — este archivo no se reestructura
+> para la iniciativa porque los "bloques" de abajo son trabajo previo, casi todo cerrado.
 
 ---
 

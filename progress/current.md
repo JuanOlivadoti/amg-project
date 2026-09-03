@@ -7,12 +7,17 @@
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
 **Sesión:** iniciativa nueva — generalizar AMG OS a cualquier tipo de cliente, no solo restauración.
-**En curso (2026-09-03): los TRES sub-proyectos tienen código implementado. Sub-proyecto 3 (publicar
-posts en blog externo) IMPLEMENTADO — las 12 tasks completas y revisadas sobre la rama
+**CERRADA (2026-09-03): los TRES sub-proyectos tienen código implementado, revisado y MERGEADO A
+MAIN.** Sub-proyecto 3 (publicar posts en blog externo): las 12 tasks completas sobre la rama
 `sub-proyecto-3-publicar-posts-blog-externo` (simple, sin worktree), 1 fix Critical aplicado y
-re-revisado (Task 8), verificación final en verde salvo el paso de navegador (hueco documentado,
-`chrome-devtools-mcp` no conectó). Falta: revisión externa de Codex sobre el código (antes de
-mergear a `main`, según la enmienda de flujo) y el merge en sí.** Los otros dos:
+re-revisado (Task 8). **Codex no estaba disponible** para la revisión final de rama que exigía la
+enmienda de flujo — se sustituyó por una revisión adversarial del agente `revisor` sobre el mismo
+diff (`890490e..815edcb`): **APROBADO, sin hallazgos bloqueantes**, 2 informativos no bloqueantes
+(detalle en la sección del sub-proyecto 3 abajo). Mergeado a `main` con `--no-ff` (commit `5a8b663`),
+re-verificado sobre el resultado del merge: **1861 tests del monorepo + 328 `node:test` + 266 Karma**,
+todos en verde, typecheck limpio, sin secretos. Falta un solo paso, y es de coordinación con el
+usuario, no de código: desplegar a producción las seis migraciones pendientes y decidir cuándo
+encender `destinoPosts`/multi-vertical en `environment.prod.ts`. Los otros dos:
 
 1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **CERRADO
    (2026-08-30), revisión de código CERRADA (2026-08-31).** Las 15 tasks del
@@ -24,19 +29,20 @@ mergear a `main`, según la enmienda de flujo) y el merge en sí.** Los otros do
 2. **Desacoplar keyword research de creación de webs** — **implementado y cerrado (2026-08-28),
    con una revisión final (2026-08-29) que encontró 4 hallazgos más — los cuatro corregidos, ver
    la sección del sub-proyecto 2 abajo.**
-3. **Publicar posts a un blog ya existente en otra plataforma** — **IMPLEMENTADO (2026-09-03), en
-   rama sin mergear. Ver la sección del sub-proyecto 3 abajo para el detalle completo, task por
-   task.**
+3. **Publicar posts a un blog ya existente en otra plataforma** — **IMPLEMENTADO, REVISADO (revisor,
+   no Codex — indisponible) Y MERGEADO A MAIN (2026-09-03).** Ver la sección del sub-proyecto 3 abajo
+   para el detalle completo, task por task.
 
 Los tres tuvieron spec+plan revisados por Codex, más una revisión exhaustiva conjunta (ver más abajo,
-ya cerrada). **Qué sigue:** revisión de Codex sobre el sub-proyecto 3 y merge a `main` — ver
-"## Próximo paso".
+ya cerrada). **Qué sigue:** nada de código — coordinar con el usuario el despliegue a producción de
+las migraciones pendientes, ver "## Próximo paso".
 
 ## En vuelo (sin commitear)
 
-Nada en la rama del sub-proyecto 3 — working tree limpio, las 14 commits de las 12 tasks (más 2
-commits de fix: el lockfile de la Task 2 y el fix Critical de la Task 8) están todos commiteados. La
-rama NO está pusheada a `origin` todavía — pendiente de la revisión de Codex primero.
+Nada — working tree limpio en `main`, sincronizado con `origin/main` hasta antes de este cierre. La
+rama `sub-proyecto-3-publicar-posts-blog-externo` ya está mergeada (`--no-ff`, commit `5a8b663`) pero
+**todavía sin pushear** — falta el `git push origin main` y, opcionalmente, borrar la rama local ya
+mergeada (`git branch -d sub-proyecto-3-publicar-posts-blog-externo`).
 
 El worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
 worktree remove`); quedó un directorio huérfano con `node_modules` que no se pudo borrar del disco
@@ -46,15 +52,18 @@ bloquea termine.
 
 ## Próximo paso
 
-1. **Revisión externa de Codex sobre el código del sub-proyecto 3** (rama
-   `sub-proyecto-3-publicar-posts-blog-externo`, 16 commits sobre `main`) — usar la skill
-   `codex-review`. Corre ANTES de mergear a `main` (enmienda de flujo del 2026-08-31, confirmada con
-   el usuario). Corregir lo que encuentre (rojo→fix→mutación→verde, mismo criterio que el resto del
-   proyecto), y recién ahí mergear a `main` con confirmación explícita del usuario.
+1. **Push del cierre a `origin/main`** (commit de merge `5a8b663` + los commits de documentación de
+   este cierre) — pendiente de confirmación explícita del usuario antes de pushear, por la disciplina
+   de acciones que afectan estado compartido. Después, borrar la rama local ya mergeada
+   (`git branch -d sub-proyecto-3-publicar-posts-blog-externo`).
 2. **Migraciones pendientes de desplegar a producción, coordinarlo con el usuario, no asumirlo:**
    `0027_kr_run_decisiones.sql`, `0028_client_row_archived_at.sql` (sub-proyecto 2),
    `0029_clientes_vertical.sql`, `0030_nap_publico_vertical.sql` (sub-proyecto 1), y
-   `0031_posts_blog_externo.sql` (sub-proyecto 3) — las cinco aplicadas solo en PGlite hasta ahora.
+   `0031_posts_blog_externo.sql` (sub-proyecto 3) — las seis aplicadas solo en PGlite hasta ahora.
+   Antes de correr `migrate:deploy`, tener presente el bug de la `0018` recién resuelto en `main`
+   (`3aa68cf`, checksum roto por un comentario editado en una migración ya aplicada) — ya arreglado,
+   pero es la clase de bug que puede repetirse si alguien vuelve a tocar un comentario de una
+   migración vieja.
 3. **Decisión de negocio pendiente, no de esta sesión:** encender `destinoPosts`/multi-vertical en
    `environment.prod.ts` cuando corresponda — hoy los dos quedan apagados en producción a propósito.
 4. **Lección de proceso para llevar a cualquier trabajo futuro con comandos backgrounded largos:** el
@@ -362,11 +371,48 @@ está en la versión instalada de la skill, se usó la que el script real produc
   **1861 tests del monorepo** + **328 `node:test`** y **266 Karma** del portal, todos en verde.
   Typecheck limpio en los 7 paquetes + `scripts/` + portal, sin secretos. El Step 3 (flujo completo
   en un navegador real) no se pudo verificar por la misma razón que la Task 11 — confirmado con el
-  usuario seguir sin ese paso, documentado como hueco explícito. Documentación actualizada (este
-  archivo y `docs/proyecto/09-estado-y-roadmap.md`) en esta misma pasada. **Falta el Step 5 del plan
-  (commit final + push) — pendiente de la revisión de Codex primero** (ver "## Próximo paso" al
-  principio de este archivo), no de un commit de cierre separado: las 12 tasks ya están commiteadas
-  task por task, no hay un "commit de cierre" adicional que hacer más allá de la documentación.
+  usuario seguir sin ese paso, documentado como hueco explícito.
+
+### Revisión final de rama (2026-09-03): APROBADO — sustituye a Codex, indisponible
+
+Codex no funcionó cuando el usuario intentó usarlo, así que la revisión final de rama que exigía la
+enmienda de flujo (antes de mergear) la hizo el agente `revisor` en su lugar, sobre el mismo diff
+(`890490e..815edcb`, 16 commits) y con el mismo nivel de exigencia adversarial pedido explícitamente
+en el encargo — no el checklist mecánico de `CHECKPOINTS.md` sin más. Informe completo (no
+versionado): `progress/informes/revisor-sub-proyecto-3-rama-final.md`.
+
+**Veredicto: APROBADO, sin hallazgos bloqueantes.** Re-verificó los tres cambios de la enmienda de
+flujo contra el código real (migración `0031`, `blog_externo_tipo` texto libre, botón Copiar),
+re-confirmó que el fix Critical de la Task 8 es correcto y completo (sin una variante sin corregir en
+`crear_web`/`solo_informe`), y evaluó uno por uno los 6 Minor ya conocidos de las tasks — ninguno subió
+de severidad, la mayoría son huecos de cobertura de test, no bugs. 2 hallazgos nuevos, informativos y
+no bloqueantes: `editarPost` (`db/src/store.ts:1889-1917`) no exige que ya exista un post generado
+(no alcanzable desde el portal, y `solicitarPublicacionPost` lo rechazaría después igual); el camino
+de "permiso de portapapeles denegado" en `copiar()` (`portal/.../posts.ts:386-389`) no lo ejercita
+ningún test (mismo género de hueco que el navegador real, ya aceptado). El usuario eligió mergear tal
+cual, dejando los dos como deuda menor documentada en vez de otra vuelta de fix.
+
+**Incidente operativo durante la revisión, sin impacto en el resultado:** el worktree aislado del
+`revisor` quedó en una rama distinta a la revisada; el propio agente lo detectó por una contradicción
+en sus resultados, lo diagnosticó, y desde ahí usó `git show <commit>:<ruta>` contra el checkout
+compartido para todo — documentado en su propio informe como una instancia real de "evidencia que se
+sentía como medir y no lo era" (`CHECKPOINTS.md`, C1). Además, el informe se escribió primero en el
+propio worktree del agente, que se autoeliminó apenas terminó (por estar `progress/informes/`
+gitignoreado, git lo vio como "sin cambios" y lo limpió) — se recuperó pidiéndole al agente que lo
+reescribiera en la ruta compartida del repo, resumido (no reconstruido de memoria por la sesión
+principal).
+
+### Mergeado a `main` (2026-09-03)
+
+`git merge --no-ff sub-proyecto-3-publicar-posts-blog-externo` → commit `5a8b663`, tras traer primero
+a la rama el commit `3aa68cf` (ya en `origin/main`, no relacionado: revierte un comentario de la
+migración `0018` que rompía `migrate:deploy` en producción por un checksum cambiado, causa raíz de un
+500 en `GET /clients`) — sin conflictos. Re-verificado sobre el RESULTADO del merge, no solo sobre la
+rama: `bash ./scripts/verificar.sh --con-portal` (**1861 tests + 328 `node:test`**, typecheck limpio,
+sin secretos) y `npm --prefix portal run test:components` (**266/266 Karma**) — mismas cifras que
+antes del merge, sin regresión. Los dos con `PWD-CHECK`/`HEAD-CHECK` contra `5a8b663` en el propio
+log. **Falta: push a `origin/main`, con confirmación explícita del usuario** — ver "## Próximo paso"
+al principio de este archivo.
 
 ## Revisión exhaustiva conjunta de los tres sub-proyectos (2026-08-26) — en curso
 
