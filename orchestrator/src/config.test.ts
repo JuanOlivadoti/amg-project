@@ -38,6 +38,7 @@ const VARS = [
   "DATAFORSEO_MODE",
   "GOOGLE_REVIEWS_MODO",
   "BORRADOR_RESENAS_MODO",
+  "POST_BLOG_MODO",
   "OPENAI_API_KEY",
   "TELEGRAM_MODO",
   "TELEGRAM_BOT_TOKEN",
@@ -583,6 +584,33 @@ test("en producción, sin BORRADOR_RESENAS_MODO ni key arranca igual (default mo
   assert.equal(c.borradorResenas, "mock");
 });
 
+// -------------------------------------------- POST_BLOG_MODO: default derivado de OPENAI_API_KEY,
+// -------------------------------------------- mismo molde EXACTO que BORRADOR_RESENAS_MODO
+
+test("postBlog: default 'openai' si hay OPENAI_API_KEY, 'mock' si no", () => {
+  conEntorno({ OPENAI_API_KEY: "sk-x" });
+  assert.equal(leerConfig().postBlog, "openai");
+  conEntorno({});
+  assert.equal(leerConfig().postBlog, "mock");
+});
+
+test("POST_BLOG_MODO=mock explícito gana aunque haya key (declarar manda sobre el default)", () => {
+  conEntorno({ OPENAI_API_KEY: "sk-de-mentira", POST_BLOG_MODO: "mock" });
+  const c = leerConfig();
+  assert.equal(c.postBlog, "mock");
+});
+
+test("🔴 POST_BLOG_MODO inválido lanza", () => {
+  conEntorno({ POST_BLOG_MODO: "algo-raro" });
+  assert.throws(() => leerConfig(), /POST_BLOG_MODO inválido/);
+});
+
+test("en producción, sin POST_BLOG_MODO ni key arranca igual (default mock, no se exige)", () => {
+  conEntorno(PROD_COMPLETO);
+  const c = leerConfig();
+  assert.equal(c.postBlog, "mock");
+});
+
 // ------------------------------------------------------- fuera de producción, nada cambia
 
 /**
@@ -644,6 +672,7 @@ test("🔴 crearConexiones rechaza PGlite en memoria si la config dice producci�
         pipeline: "mock",
         resenasGoogle: "mock",
         borradorResenas: "mock",
+        postBlog: "mock",
         telegram: "mock",
         persistencia: { tipo: "pglite-en-memoria" },
       }),
@@ -661,6 +690,7 @@ test("crearConexiones abre PGlite en memoria fuera de producción", async () => 
     pipeline: "mock",
     resenasGoogle: "mock",
     borradorResenas: "mock",
+    postBlog: "mock",
     telegram: "mock",
     persistencia: { tipo: "pglite-en-memoria" },
   });

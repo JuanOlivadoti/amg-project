@@ -4,6 +4,8 @@ import type { PgStore, TenantContext, PageRow, RunSummary } from "db";
 import type { GoogleReviewsProvider } from "./google/provider.js";
 import type { BorradorProvider } from "./borrador/provider.js";
 import type { TelegramProvider } from "./telegram/provider.js";
+import type { PostProvider } from "./post-blog/provider.js";
+import type { BlogPublisher } from "./post-blog/publisher.js";
 
 /**
  * El workflow del research, de punta a punta: pipeline → persistencia → compuerta humana →
@@ -68,6 +70,10 @@ export interface Deps {
   /** Las alertas por Telegram de reseñas 1-3★ (Bloque F, fase 2). No lo usa `workflowResearch` --
    * lo usan `vincularTelegramPendientes` y el bloque de alerta de `pollearResenas`. */
   telegramProvider: TelegramProvider;
+  /** Genera el post de blog con IA (sub-proyecto 3). Lo usa `workflowDecision` (rama `crear_posts`). */
+  postProvider: PostProvider;
+  /** Publica el post en el blog externo del cliente (sub-proyecto 3). Lo usa `publicarPost`. */
+  postPublisher: BlogPublisher;
   log?: (msg: string) => void;
 }
 
@@ -341,15 +347,78 @@ export async function workflowDecision(
   }
 
   if (decision.destino === "crear_posts") {
-    // Nunca debería llegar acá — la API lo rechaza con 501 antes de emitir el evento (Task 10). Si
-    // llega igual (evento emitido a mano, bug), falla cerrado y explícito.
-    await paso.run("cerrar-no-implementado", () =>
-      deps.store.cerrarDecision(ctx, decisionId, {
-        resultado: "error",
-        detalleError: "Destino 'crear_posts' todavía no está implementado (sub-proyecto 3).",
-      }),
-    );
-    return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" };
+    return paso.run("generar-posts", async () => {
+      // getRunPages ya existe y trae `id`/`approved` — no hace falta un método nuevo. registrarDecision
+      // (sub-proyecto 2, enmendado 2026-08-26) ya garantizó que el run tiene al menos una página
+      // aprobada antes de llegar acá — el filtro de abajo es sobre CUÁLES, no una repetición de esa
+      // garantía: una página puede desaprobarse editándola DESPUÉS de que la decisión ya calificó
+      // (defensa en profundidad, mismo criterio que la rama crear_web).
+      const todas = await deps.store.getRunPages(ctx, decision.run_id);
+      const paginas = todas.filter((p) => p.approved);
+      if (paginas.length === 0) {
+        // `compensarAprobacionFallida` y no `cerrarDecision`: si ESTA es la primera decisión del
+        // run, cerrarla en 'error' sin revertir `kr_runs.status` lo deja 'approved' sin ninguna
+        // decisión 'completado' — y `registrarDecision` nunca vuelve a calificarlo (bricked, ver
+        // el comentario de cabecera del método en `db/src/store.ts`). Mismo motivo que la rama
+        // `crear_web`, más abajo.
+        await deps.store.compensarAprobacionFallida(ctx, decisionId, "El run no tiene páginas publicables.");
+        return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
+      }
+
+      const cliente = await deps.store.getClient(ctx, decision.client_id);
+      // Defensa en profundidad (revisión conjunta de los tres sub-proyectos, 2026-08-26): un cliente
+      // puede archivarse entre que la decisión se registró y que esta rama corre. Sin este chequeo,
+      // crear_posts seguía generando (y gastando el LLM) para un cliente ya archivado.
+      if (!cliente || cliente.archived_at !== null) {
+        // `compensarAprobacionFallida` — mismo motivo que el caso de arriba: sin la reversión, un
+        // run cuya PRIMERA decisión cae acá queda bricked.
+        await deps.store.compensarAprobacionFallida(
+          ctx,
+          decisionId,
+          "El cliente fue archivado o ya no es visible: no se generan posts.",
+        );
+        return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
+      }
+
+      let generados = 0;
+      for (const pagina of paginas) {
+        // Falla puntual: si el LLM revienta en UNA página, las demás se generan igual — try/catch POR
+        // PÁGINA, no uno solo para el loop entero. Sin reintento automático acá.
+        try {
+          const post = await deps.postProvider.generar({
+            contentBrief: pagina.content_brief,
+            keywordPrincipal: pagina.keyword_principal,
+            perfilCliente: cliente.business_profile,
+            vertical: cliente.vertical,
+          });
+          // `generados` solo cuenta si guardarPost devuelve `true`: un UPDATE que no afecta ninguna
+          // fila (la página desapareció entre leerla y escribirle) no cuenta como generado.
+          if (await deps.store.guardarPost(ctx, pagina.id, post)) {
+            generados++;
+          } else {
+            log(`[decision ${decisionId}] guardarPost no encontró la página ${pagina.url_slug} — no cuenta como generado`);
+          }
+        } catch (e) {
+          log(`[decision ${decisionId}] falló la generación del post para ${pagina.url_slug}: ${(e as Error).message}`);
+        }
+      }
+
+      // 'completado' acá significa "hay al menos un borrador esperando revisión" — NUNCA "publicados".
+      // Distinto de crear_web, donde 'completado' sí significa publicado.
+      if (generados === 0) {
+        // `compensarAprobacionFallida` — mismo motivo que los dos casos de arriba: sin la
+        // reversión, un run cuya PRIMERA decisión cae acá queda bricked.
+        await deps.store.compensarAprobacionFallida(
+          ctx,
+          decisionId,
+          `Falló la generación de los ${paginas.length} posts del run — ver logs.`,
+        );
+        return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "error" as const };
+      }
+      await deps.store.cerrarDecision(ctx, decisionId, { resultado: "completado" });
+      log(`[decision ${decisionId}] generados ${generados} de ${paginas.length} post(s)`);
+      return { decisionId, runId: decision.run_id, destino: decision.destino, resultado: "completado" as const };
+    });
   }
 
   if (decision.destino === "solo_informe") {

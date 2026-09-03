@@ -487,3 +487,75 @@ export function crearFuncionPublicarResena(deps: Deps) {
       step.run("publicar", () => publicarRespuestaResena(deps, event.data.resenaId, console.log)),
   );
 }
+
+// ---------------------------------------------------------------- publicar el post (sub-proyecto 3, Task 7)
+
+/**
+ * Sin reintentos de Inngest: mismo criterio que `publicar-respuesta-resena` — el reintento real es
+ * que el staff vuelva a apretar "Publicar", que pisa `post_solicitado_en` y remite el evento.
+ * Exportada como constante (Codex, ronda 1 sobre el plan, hallazgo Minor: el default vivía inline,
+ * sin ningún test que lo ejerciera — cambiarlo a `5` no hacía caer nada) para que el test de abajo
+ * la pueda fijar sin inspeccionar el objeto interno que arma `inngest.createFunction`.
+ */
+export const REINTENTOS_PUBLICAR_POST = 0;
+
+/**
+ * Publica el post en el blog externo. Reacciona a `posts/publicacion.solicitada`, que NO PORTA
+ * AUTORIDAD (ver events.ts): la fila ya quedó marcada bajo RLS por la API antes de emitirlo
+ * (ADR-18), y esta función vuelve a preguntarle a la base qué publicar (`postParaPublicar`) en vez
+ * de confiar en el evento.
+ *
+ * Todo camino de fallo llama a `marcarPostFallido` (Task 3/1) para que la fila NUNCA quede
+ * "solicitada" sin que nadie sepa si sigue en curso o ya reventó (Codex, ronda 1 sobre el plan,
+ * hallazgo Major "publicación fallida bloquea el post para siempre") — incluido el caso `!info`
+ * (best-effort: si no había nada que limpiar, el WHERE de `marcarPostFallido` no toca nada).
+ */
+export async function publicarPost(
+  deps: Pick<Deps, "store" | "postPublisher">,
+  pageId: string,
+  log: (msg: string) => void = () => {},
+): Promise<{ publicada: boolean }> {
+  const info = await deps.store.postParaPublicar(pageId);
+  if (!info) {
+    log(`[publicar-post] ${pageId}: la solicitud ya no aplica (publicada, sin post, credenciales incompletas, o inexistente)`);
+    await deps.store.marcarPostFallido(pageId);
+    return { publicada: false };
+  }
+
+  let resultado: { url: string; publicado: boolean };
+  try {
+    resultado = await deps.postPublisher.publicar(
+      { titulo: info.titulo, cuerpo: info.cuerpo, slug: info.slug },
+      info.pageId,
+      { tipo: info.blogTipo, url: info.blogUrl, credencial: info.blogCredencial },
+    );
+  } catch (e) {
+    log(`[publicar-post] ${pageId}: el publisher lanzó: ${(e as Error).message}`);
+    await deps.store.marcarPostFallido(pageId);
+    return { publicada: false };
+  }
+
+  if (!resultado.publicado) {
+    log(`[publicar-post] ${pageId}: el publisher no confirmó la publicación`);
+    await deps.store.marcarPostFallido(pageId);
+    return { publicada: false };
+  }
+
+  const ok = await deps.store.marcarPostPublicado(pageId, resultado.url);
+  if (!ok) {
+    log(`[publicar-post] ${pageId}: publicado externamente pero la confirmación no pisó ninguna fila`);
+  }
+  return { publicada: ok };
+}
+
+export function crearFuncionPublicarPost(deps: Deps) {
+  return inngest.createFunction(
+    {
+      id: "publicar-post-blog",
+      retries: REINTENTOS_PUBLICAR_POST,
+    },
+    { event: "posts/publicacion.solicitada" },
+    async ({ event, step }) =>
+      step.run("publicar", () => publicarPost(deps, event.data.pageId, console.log)),
+  );
+}

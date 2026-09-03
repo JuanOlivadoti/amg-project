@@ -84,6 +84,16 @@ export interface ConfigOrquestador {
    * `resenasGoogle`): si falta el token, `getTelegramProvider` lanza al construir el provider, no acá.
    */
   readonly telegram: ModoTelegram;
+  /**
+   * En qué modo se genera el post de blog con IA (sub-proyecto 3, publicar posts en blog externo).
+   * **Opcional, con default derivado**: mismo criterio EXACTO que `borradorResenas` — `openai` si hay
+   * `OPENAI_API_KEY`, `mock` si no. Un despliegue en modo mock nunca produce un research falso (a
+   * diferencia de `PIPELINE_MODO`), pero SÍ podía producir un post de relleno indistinguible de uno
+   * de OpenAI para quien lo edita en el portal — por eso `MockPostProvider` lleva un prefijo
+   * inconfundible (ver `post-blog/mock-provider.ts`) en vez de replicar la máquina de
+   * `verificarCoherencia` acá.
+   */
+  readonly postBlog: ModoPostBlog;
 }
 
 const PUERTO_DEFECTO = 3100;
@@ -107,6 +117,13 @@ const MODOS_BORRADOR: readonly string[] = ["mock", "openai"];
  */
 export type ModoTelegram = "mock" | "live";
 const MODOS_TELEGRAM: readonly string[] = ["mock", "live"];
+
+/**
+ * Igual forma que `ModoBorrador`: `openai` es la única implementación real, con default derivado de
+ * `OPENAI_API_KEY` — ver `post-blog/provider.ts`.
+ */
+export type ModoPostBlog = "mock" | "openai";
+const MODOS_POST_BLOG: readonly string[] = ["mock", "openai"];
 
 /**
  * ¿Estamos en producción? **Se le pregunta al SDK; no se reimplementa su heurística.**
@@ -169,6 +186,7 @@ export function leerConfig(
   const resenasGoogle = leerModoResenasGoogle();
   const borradorResenas = leerModoBorrador();
   const telegram = leerModoTelegram();
+  const postBlog = leerModoPostBlog();
 
   const urlOrquestador = process.env["DATABASE_URL_ORQUESTADOR"]?.trim();
   const urlCache = process.env["DATABASE_URL_CACHE"]?.trim();
@@ -232,6 +250,7 @@ export function leerConfig(
       resenasGoogle,
       borradorResenas,
       telegram,
+      postBlog,
     };
   }
 
@@ -263,6 +282,7 @@ export function leerConfig(
     resenasGoogle,
     borradorResenas,
     telegram,
+    postBlog,
     ...(signingKey ? { inngestSigningKey: signingKey } : {}),
   };
 
@@ -341,6 +361,26 @@ function validarModoBorrador(crudo: string): ModoBorrador {
 function leerModoBorrador(): ModoBorrador {
   const crudo = process.env["BORRADOR_RESENAS_MODO"]?.trim();
   if (crudo) return validarModoBorrador(crudo);
+  return process.env["OPENAI_API_KEY"]?.trim() ? "openai" : "mock";
+}
+
+function validarModoPostBlog(crudo: string): ModoPostBlog {
+  if (!MODOS_POST_BLOG.includes(crudo)) {
+    throw new Error(
+      `POST_BLOG_MODO inválido: "${crudo}". Los únicos valores son \`mock\` y \`openai\`.`,
+    );
+  }
+  return crudo as ModoPostBlog;
+}
+
+/**
+ * `POST_BLOG_MODO`, con default DERIVADO de si hay `OPENAI_API_KEY` — mismo molde EXACTO que
+ * `leerModoBorrador`: `openai` SÍ está implementado, así que cargar la key sin declarar la variable
+ * ya empieza a gastar.
+ */
+function leerModoPostBlog(): ModoPostBlog {
+  const crudo = process.env["POST_BLOG_MODO"]?.trim();
+  if (crudo) return validarModoPostBlog(crudo);
   return process.env["OPENAI_API_KEY"]?.trim() ? "openai" : "mock";
 }
 

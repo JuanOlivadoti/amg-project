@@ -1,5 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { TestDb, seed } from "./testdb.js";
 import type { Seed } from "./testdb.js";
 
@@ -291,4 +292,258 @@ test("RLS: FORCE está activo — ni el dueño de la tabla salta las políticas"
     assert.equal(r.relrowsecurity, true, `${r.relname}: RLS no está habilitado`);
     assert.equal(r.relforcerowsecurity, true, `${r.relname}: falta FORCE (el owner saltaría RLS)`);
   }
+});
+
+// ================================================================
+// Publicar posts en blog externo (0031): mismo molde que app_resenas (0022), aplicado a columnas de
+// kr_pages en vez de una tabla nueva. Solo la PUBLICACIÓN es cross-tenant (el evento
+// `posts/publicacion.solicitada` solo trae `pageId`, ADR-18); la generación corre dentro de
+// workflowDecision, que ya tiene contexto de tenant y no necesita ningún rol nuevo.
+// ================================================================
+
+/** El run_id ya sembrado para ese cliente (uno por cliente en el seed de este archivo). */
+async function runIdDe(clientId: string): Promise<string> {
+  const [run] = await db.asService<{ id: string }>(
+    "select id from kr_runs where client_id = $1 limit 1",
+    [clientId],
+  );
+  return run!.id;
+}
+
+/**
+ * Configura el blog externo del cliente y crea una kr_page con post listo y con la publicación
+ * SOLICITADA (post_solicitado_en). El slug es aleatorio para no chocar con el `unique (run_id,
+ * url_slug)` de kr_pages entre llamadas del mismo test.
+ */
+async function sembrarPaginaConPostSolicitado(
+  clientId: string,
+  tenantId: string,
+  credencial = "secreto-test",
+): Promise<string> {
+  await db.asService(
+    `update clients set blog_externo_tipo = 'wordpress', blog_externo_url = 'https://blog.example.com',
+       blog_externo_credencial = $2 where id = $1`,
+    [clientId, credencial],
+  );
+  const runId = await runIdDe(clientId);
+  const [page] = await db.asService<{ id: string }>(
+    `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug, keyword_principal,
+        intencion, evidencia, post_titulo, post_cuerpo, post_solicitado_en)
+     values ($1, $2, $3, gen_random_uuid(), 'landing_local', $4, 'kw post test',
+        'local', 'datos_mercado', 'Título de prueba', 'Cuerpo de prueba', now())
+     returning id`,
+    [tenantId, runId, clientId, `/post-test-${randomUUID()}`],
+  );
+  return page!.id;
+}
+
+/**
+ * Igual, pero ya CONFIRMADO publicado. `post_solicitado_en` queda CON valor -- mismo criterio que
+ * `respuesta_solicitada_en` en resenas_google (0025): `marcar_post_publicado` no lo limpia, solo
+ * `marcar_post_fallido` lo hace. Sembrar esta fila con `post_solicitado_en` NULL (como hacía una
+ * primera versión de este helper) escondía el guard `post_publicado_en is null` del WHERE de
+ * `marcar_post_fallido`: sin él, la fila ya fallaba por `post_solicitado_en is not null` y la
+ * mutación que quita el guard real no tumbaba ningún test.
+ */
+async function sembrarPaginaConPostPublicado(clientId: string, tenantId: string): Promise<string> {
+  const runId = await runIdDe(clientId);
+  const [page] = await db.asService<{ id: string }>(
+    `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug, keyword_principal,
+        intencion, evidencia, post_titulo, post_cuerpo, post_solicitado_en, post_publicado_en, post_url_externa)
+     values ($1, $2, $3, gen_random_uuid(), 'landing_local', $4, 'kw post publicado',
+        'local', 'datos_mercado', 'Título publicado', 'Cuerpo publicado', now(), now(),
+        'https://blog.example.com/post-publicado')
+     returning id`,
+    [tenantId, runId, clientId, `/post-test-${randomUUID()}`],
+  );
+  return page!.id;
+}
+
+// ---------------------------------------------------------------- la credencial: clients.blog_externo_credencial
+
+test("🔴 app_service NO puede leer clients.blog_externo_credencial por SQL directo", async () => {
+  // `asOrquestador` es el rol app_service DE VERDAD (sujeto a RLS y a los grants) -- no confundir
+  // con `asService`, el superusuario de infraestructura que saltea grants por definición y por eso
+  // nunca sirve para probar un `permission denied`.
+  await assert.rejects(
+    () =>
+      db.asOrquestador({ tenantId: s.tenantA }, "select blog_externo_credencial from clients limit 1"),
+    /permission denied/i,
+  );
+});
+
+test("🔴 app_user NO puede leer clients.blog_externo_credencial por SQL directo (solo escribirla)", async () => {
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: s.equipoA },
+        "select blog_externo_credencial from clients limit 1",
+      ),
+    /permission denied/i,
+  );
+});
+
+test("blog_externo_credencial no aparece en business_profile_publico", async () => {
+  // Defensa en profundidad (ADR-19): la allowlist del renderizador se genera desde
+  // `business_profile`, una columna sin relación con `blog_externo_credencial` -- este test fija que
+  // eso siga siendo así si algún día alguien "amplía" la allowlist sin mirar de dónde sale cada campo.
+  const [row] = await db.asService<{ business_profile_publico: Record<string, unknown> }>(
+    "select business_profile_publico from clients where id = $1",
+    [s.clientA1],
+  );
+  assert.ok(!JSON.stringify(row?.business_profile_publico ?? {}).includes("secreto"));
+});
+
+// ---------------------------------------------------------------- app.post_para_publicar
+
+test("app.post_para_publicar devuelve la fila cuando hay una solicitud pendiente", async () => {
+  const pageId = await sembrarPaginaConPostSolicitado(s.clientA1, s.tenantA);
+  const [row] = await db.asService<{ titulo: string; blog_credencial: string }>(
+    "select * from app.post_para_publicar($1)",
+    [pageId],
+  );
+  assert.ok(row);
+  assert.equal(row.blog_credencial, "secreto-test");
+});
+
+test("app.post_para_publicar devuelve cero filas si ya está publicado", async () => {
+  const pageId = await sembrarPaginaConPostPublicado(s.clientA1, s.tenantA);
+  const rows = await db.asService("select * from app.post_para_publicar($1)", [pageId]);
+  assert.equal(rows.length, 0);
+});
+
+test("🔴 app.post_para_publicar devuelve cero filas si al cliente le falta blog_externo_credencial", async () => {
+  const pageId = await sembrarPaginaConPostSolicitado(s.clientA1, s.tenantA);
+  await db.asService("update clients set blog_externo_credencial = null where id = $1", [s.clientA1]);
+  const rows = await db.asService("select * from app.post_para_publicar($1)", [pageId]);
+  assert.equal(rows.length, 0, "🔴 credenciales incompletas es 'ya no aplica', no un crash más adelante");
+});
+
+test("🔴 app_user NO puede ejecutar app.post_para_publicar (42501)", async () => {
+  const pageId = await sembrarPaginaConPostSolicitado(s.clientA1, s.tenantA);
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: s.equipoA },
+        "select * from app.post_para_publicar($1)",
+        [pageId],
+      ),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre post_para_publicar",
+  );
+});
+
+// ---------------------------------------------------------------- app.marcar_post_publicado
+
+test("app.marcar_post_publicado marca la fila y limpia post_error_en", async () => {
+  const pageId = await sembrarPaginaConPostSolicitado(s.clientA1, s.tenantA);
+  const [resultado] = await db.asService<{ marcar_post_publicado: boolean }>(
+    "select app.marcar_post_publicado($1, $2) as marcar_post_publicado",
+    [pageId, "https://blog.example.com/post-final"],
+  );
+  assert.equal(resultado?.marcar_post_publicado, true);
+
+  const [row] = await db.asService<{
+    post_publicado_en: string | null;
+    post_url_externa: string | null;
+  }>("select post_publicado_en, post_url_externa from kr_pages where id = $1", [pageId]);
+  assert.ok(row!.post_publicado_en);
+  assert.equal(row!.post_url_externa, "https://blog.example.com/post-final");
+});
+
+test("🔴 app.marcar_post_publicado sobre una fila sin solicitud no toca nada (idempotente)", async () => {
+  const runId = await runIdDe(s.clientA1);
+  const [page] = await db.asService<{ id: string }>(
+    `insert into kr_pages (tenant_id, run_id, client_id, cluster_id, tipo, url_slug, keyword_principal,
+        intencion, evidencia)
+     values ($1, $2, $3, gen_random_uuid(), 'landing_local', $4, 'kw sin solicitud', 'local', 'datos_mercado')
+     returning id`,
+    [s.tenantA, runId, s.clientA1, `/post-test-${randomUUID()}`],
+  );
+  const [resultado] = await db.asService<{ marcar_post_publicado: boolean }>(
+    "select app.marcar_post_publicado($1, $2) as marcar_post_publicado",
+    [page!.id, "https://blog.example.com/no-deberia"],
+  );
+  assert.equal(resultado?.marcar_post_publicado, false, "🔴 el WHERE rechaza post_solicitado_en null");
+});
+
+test("🔴 app_user NO puede ejecutar app.marcar_post_publicado (42501)", async () => {
+  const pageId = await sembrarPaginaConPostSolicitado(s.clientA1, s.tenantA);
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: s.equipoA },
+        "select app.marcar_post_publicado($1, $2)",
+        [pageId, "https://blog.example.com/x"],
+      ),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre marcar_post_publicado",
+  );
+});
+
+// ---------------------------------------------------------------- app.marcar_post_fallido
+
+test("app.marcar_post_fallido limpia post_solicitado_en y marca post_error_en", async () => {
+  const pageId = await sembrarPaginaConPostSolicitado(s.clientA1, s.tenantA);
+  const [resultado] = await db.asService<{ marcar_post_fallido: boolean }>(
+    "select app.marcar_post_fallido($1) as marcar_post_fallido",
+    [pageId],
+  );
+  assert.equal(resultado?.marcar_post_fallido, true);
+
+  const [row] = await db.asService<{
+    post_solicitado_en: string | null;
+    post_error_en: string | null;
+  }>("select post_solicitado_en, post_error_en from kr_pages where id = $1", [pageId]);
+  assert.equal(row!.post_solicitado_en, null, "queda libre para reintentar/editar");
+  assert.ok(row!.post_error_en, "queda el rastro del fallo");
+});
+
+test("🔴 app.marcar_post_fallido sobre una fila ya publicada no toca nada (idempotente)", async () => {
+  const pageId = await sembrarPaginaConPostPublicado(s.clientA1, s.tenantA);
+  // ::text explícito: PGlite devuelve timestamptz como Date, y dos instancias del MISMO instante
+  // no son `===` -- comparar por valor, no por referencia.
+  const [antes] = await db.asService<{ post_publicado_en: string }>(
+    "select post_publicado_en::text from kr_pages where id = $1",
+    [pageId],
+  );
+  const [resultado] = await db.asService<{ marcar_post_fallido: boolean }>(
+    "select app.marcar_post_fallido($1) as marcar_post_fallido",
+    [pageId],
+  );
+  assert.equal(resultado?.marcar_post_fallido, false, "🔴 el WHERE rechaza post_publicado_en not null");
+
+  const [despues] = await db.asService<{ post_publicado_en: string }>(
+    "select post_publicado_en::text from kr_pages where id = $1",
+    [pageId],
+  );
+  assert.equal(despues!.post_publicado_en, antes!.post_publicado_en, "no se tocó nada");
+});
+
+test("🔴 app_user NO puede ejecutar app.marcar_post_fallido (42501)", async () => {
+  const pageId = await sembrarPaginaConPostSolicitado(s.clientA1, s.tenantA);
+  await assert.rejects(
+    () =>
+      db.asUser(
+        { tenantId: s.tenantA, userId: s.equipoA },
+        "select app.marcar_post_fallido($1)",
+        [pageId],
+      ),
+    /permission denied for function|42501/,
+    "🔴 el rol de la API no tiene execute sobre marcar_post_fallido",
+  );
+});
+
+// ---------------------------------------------------------------- credenciales del rol app_posts
+
+test("🔴 credenciales: app_posts no tiene login concedible (SET) a ningún rol con login", async () => {
+  // Mismo test que la 0022 fija para app_resenas (store.test.ts) -- ninguno de los cuatro logins de
+  // producción puede asumir el rol cross-tenant, así que la única forma de alcanzarlo es llamando a
+  // las tres funciones `security definer` de arriba.
+  const rows = await db.asService<{ login: string; puede: boolean }>(
+    `select rolname as login, pg_has_role(rolname, 'app_posts', 'SET') as puede
+       from pg_roles where rolname in ('amg_api','amg_orquestador','amg_cache','amg_render')`,
+  );
+  assert.equal(rows.length, 4, "los cuatro logins existen (si no, este test no comprueba nada)");
+  for (const r of rows) assert.equal(r.puede, false, `🔴 ${r.login} NO puede asumir app_posts`);
 });

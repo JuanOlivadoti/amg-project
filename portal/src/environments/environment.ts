@@ -20,8 +20,10 @@ export const environment = {
     /** Aprobar el run (emite el evento de publicación). En dev hay orquestador de mentira; en Fase 1
      *  prod se apaga porque no hay consumidor y "publicar" no publicaría. Ver §A.5 / 10ª review #2. */
     aprobarRun: true,
-    /** La opción "crear_posts" del selector de destino. `false` hasta que exista el sub-proyecto de
-     *  publicación en blog externo — ese sub-proyecto la enciende acá, en DEV. */
-    destinoPosts: false,
+    /** La opción "crear_posts" del selector de destino, y la pantalla de posts que consume (Task 11).
+     *  Encendida en DEV: es lo que permite probar el flujo completo en el navegador. `environment.prod.ts`
+     *  se queda en `false` a propósito — encenderla para clientes reales es una decisión de lanzamiento
+     *  separada (confirmado con el usuario, 2026-08-26). */
+    destinoPosts: true,
   },
 };

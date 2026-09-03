@@ -75,6 +75,13 @@ export const routes: Routes = [
             loadComponent: () => import('./pages/informe/informe').then((m) => m.InformePage),
           },
           {
+            // Mismo motivo de orden que `research/:runId/informe`, arriba. Task 11 (sub-proyecto de
+            // publicación en blog externo): los posts generados por un run `crear_posts`, enlazados
+            // desde `brief.ts` — mismo patrón que el link "Ver el informe del research →".
+            path: 'research/:runId/posts',
+            loadComponent: () => import('./pages/posts/posts').then((m) => m.PostsPage),
+          },
+          {
             // Placeholder deliberado: el Bloque F (respondedor de reseñas de Google) todavía no
             // tiene ni código ni spec. El tab existe para que el hueco se vea y se pueda nombrar.
             path: 'resenas',

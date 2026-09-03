@@ -1,4 +1,5 @@
 import type { DbPool, Tx } from "./pool.js";
+import { sanitizarHtml } from "./sanitizar-html.js";
 
 /**
  * Capa de acceso a datos de un research (`kr_runs` / `kr_keywords` / `kr_pages`).
@@ -219,6 +220,37 @@ export interface CambiosPagina {
   seo?: Record<string, unknown>;
   content_brief?: Record<string, unknown>;
   preguntas_frecuentes?: string[];
+}
+
+/** El post generado por IA para una página — lo que persisten `guardarPost`/`editarPost`. */
+export interface PostBlog {
+  titulo: string;
+  cuerpo: string;
+}
+
+/** Lo que el orquestador necesita para publicar UNA página, vía `app.post_para_publicar` (0031). */
+export interface PostParaPublicar {
+  pageId: string;
+  clientId: string;
+  tenantId: string;
+  titulo: string;
+  cuerpo: string;
+  slug: string;
+  blogTipo: string;
+  blogUrl: string;
+  blogCredencial: string;
+}
+
+/** El post de una página, tal como lo ve el portal (`GET /pages/:id/post`). */
+export interface PostDePagina {
+  titulo: string | null;
+  cuerpo: string | null;
+  generadoEn: string | null;
+  solicitadoEn: string | null;
+  publicadoEn: string | null;
+  urlExterna: string | null;
+  /** Cuando el ÚLTIMO intento de publicación falló. Ver el comentario de la columna, migración 0031. */
+  errorEn: string | null;
 }
 
 export interface RunSummary {
@@ -1824,6 +1856,181 @@ export class PgStore {
         [runId],
       );
       return rows;
+    });
+  }
+
+  /**
+   * Guarda el post generado por IA para una página — dentro de `workflowDecision` (ADR-06, segunda
+   * compuerta: el humano lo revisa después). `ctx` ya tiene el tenant del run: a diferencia de
+   * reseñas, esto NO es cross-tenant (la generación corre adentro de un `workflowDecision` con
+   * contexto). `post_cuerpo` se sanitiza ACÁ, antes de persistir — nunca se guarda HTML crudo del LLM.
+   */
+  async guardarPost(ctx: TenantContext, pageId: string, post: PostBlog): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update kr_pages
+            set post_titulo = $2, post_cuerpo = $3, post_generado_en = now()
+          where id = $1
+          returning id`,
+        [pageId, post.titulo, sanitizarHtml(post.cuerpo)],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
+   * Edita el post generado — a diferencia de `editPage`, NO revoca `approved`: editar el TEXTO del
+   * post no es editar el BRIEF que la página aprobó (son cosas distintas). Rechaza (`false`, sin
+   * lanzar) si hay una publicación en curso sin confirmar todavía —
+   * `post_solicitado_en is not null and post_publicado_en is null` — para que lo que se publique sea
+   * exactamente lo que el humano tenía delante cuando pidió "Publicar". `post_cuerpo` se sanitiza acá
+   * si viene presente, mismo criterio que `guardarPost`.
+   */
+  async editarPost(
+    ctx: TenantContext,
+    pageId: string,
+    cambios: { postTitulo?: string; postCuerpo?: string },
+  ): Promise<boolean> {
+    const sets: string[] = [];
+    const params: unknown[] = [pageId];
+    if (cambios.postTitulo !== undefined) {
+      params.push(cambios.postTitulo);
+      sets.push(`post_titulo = $${params.length}`);
+    }
+    if (cambios.postCuerpo !== undefined) {
+      params.push(sanitizarHtml(cambios.postCuerpo));
+      sets.push(`post_cuerpo = $${params.length}`);
+    }
+    if (sets.length === 0) return false;
+
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update kr_pages
+            set ${sets.join(", ")}
+          where id = $1
+            and (post_solicitado_en is null or post_publicado_en is not null)
+          returning id`,
+        params,
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
+   * Pide publicar el post en el blog externo — comando compuesto (ADR-18). `false` sin lanzar si la
+   * página no existe, no es de este tenant, no tiene post, no está aprobada, está retirada, ya está
+   * publicada, el cliente no configuró su blog, o `puede_escribir()` da falso — el WHERE decide. Un
+   * segundo llamado sobre una fila ya solicitada pero no publicada REINTENTA (pisa el timestamp de
+   * nuevo) — mismo criterio que `solicitarPublicacion` en `resenas.ts`. Limpia `post_error_en`: un
+   * reintento explícito borra el rastro del intento anterior (Codex, ronda 1 sobre el plan, hallazgo
+   * Major "publicación fallida bloquea el post para siempre").
+   *
+   * El `join` con `clients` exige `blog_externo_tipo`/`blog_externo_url` — las DOS columnas que
+   * `app_user` puede leer (Task 1, `grant select`). NO se puede exigir `blog_externo_credencial` acá
+   * (no seleccionable por `app_user`, a propósito): esa validación completa vive en
+   * `app.post_para_publicar` (0031), que sí puede leerla porque corre como `app_posts`.
+   */
+  async solicitarPublicacionPost(ctx: TenantContext, pageId: string): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update kr_pages p set post_solicitado_en = now(), post_error_en = null
+         from clients c
+         where p.id = $1
+           and c.id = p.client_id
+           and p.approved
+           and not p.retirada
+           and p.post_titulo is not null
+           and p.post_cuerpo is not null
+           and p.post_publicado_en is null
+           and c.blog_externo_tipo is not null
+           and c.blog_externo_url is not null
+         returning p.id`,
+        [pageId],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
+   * Lo que el orquestador necesita para publicar UNA página, vía `app.post_para_publicar` (0031).
+   * `null` si la solicitud ya no aplica — el evento que dispara esto no porta autoridad (ADR-18), esta
+   * consulta es la que decide. Cross-tenant por el mismo motivo que `resenaParaPublicar`: el evento
+   * solo trae el `pageId`, sin contexto de tenant. Solo funciona con `this.rol === "app_service"`
+   * (mismo patrón que `resenaParaPublicar` — la función `security definer` solo le concede `execute` a
+   * ese rol).
+   */
+  async postParaPublicar(pageId: string): Promise<PostParaPublicar | null> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{
+        page_id: string; client_id: string; tenant_id: string; titulo: string; cuerpo: string;
+        slug: string; blog_tipo: string; blog_url: string; blog_credencial: string;
+      }>("select * from app.post_para_publicar($1)", [pageId]);
+      const r = rows[0];
+      if (!r) return null;
+      return {
+        pageId: r.page_id, clientId: r.client_id, tenantId: r.tenant_id, titulo: r.titulo,
+        cuerpo: r.cuerpo, slug: r.slug, blogTipo: r.blog_tipo, blogUrl: r.blog_url,
+        blogCredencial: r.blog_credencial,
+      };
+    });
+  }
+
+  /**
+   * Confirma que se publicó, vía `app.marcar_post_publicado` (0031). `false` si nadie la pidió o ya
+   * estaba publicada — el WHERE de la función decide.
+   */
+  async marcarPostPublicado(pageId: string, urlExterna: string): Promise<boolean> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ marcar_post_publicado: boolean }>(
+        "select app.marcar_post_publicado($1, $2) as marcar_post_publicado",
+        [pageId, urlExterna],
+      );
+      return rows[0]?.marcar_post_publicado ?? false;
+    });
+  }
+
+  /**
+   * Cierra un intento de publicación que falló (excepción del publisher, `publicado: false`, o
+   * credenciales incompletas — ver `postParaPublicar`), vía `app.marcar_post_fallido` (0031). Limpia
+   * `post_solicitado_en` (desbloquea `editarPost` y un nuevo intento) y marca `post_error_en` (rastro
+   * para el portal). `false` si la fila ya no estaba "en curso" — no lanza. Cross-tenant, mismo motivo
+   * que `postParaPublicar`/`marcarPostPublicado`.
+   */
+  async marcarPostFallido(pageId: string): Promise<boolean> {
+    return this.sinTenant(async (tx) => {
+      const { rows } = await tx.query<{ marcar_post_fallido: boolean }>(
+        "select app.marcar_post_fallido($1) as marcar_post_fallido",
+        [pageId],
+      );
+      return rows[0]?.marcar_post_fallido ?? false;
+    });
+  }
+
+  /**
+   * El post de una página, para `GET /pages/:id/post`. `null` si la página no existe O si nunca se
+   * generó un post — las dos cosas dan el mismo 404 en la API: "sin post generado" no distingue "no
+   * hay página" de "hay página pero no se generó nada todavía" (movido acá desde la Task 10 original:
+   * es un método de lectura de `db/`, no de `api/`).
+   */
+  async getPost(ctx: TenantContext, pageId: string): Promise<PostDePagina | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{
+        post_titulo: string | null; post_cuerpo: string | null; post_generado_en: string | null;
+        post_solicitado_en: string | null; post_publicado_en: string | null; post_url_externa: string | null;
+        post_error_en: string | null;
+      }>(
+        `select post_titulo, post_cuerpo, post_generado_en, post_solicitado_en, post_publicado_en,
+                post_url_externa, post_error_en
+         from kr_pages where id = $1`,
+        [pageId],
+      );
+      const r = rows[0];
+      if (!r || r.post_titulo === null) return null;
+      return {
+        titulo: r.post_titulo, cuerpo: r.post_cuerpo, generadoEn: r.post_generado_en,
+        solicitadoEn: r.post_solicitado_en, publicadoEn: r.post_publicado_en,
+        urlExterna: r.post_url_externa, errorEn: r.post_error_en,
+      };
     });
   }
 }

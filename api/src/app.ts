@@ -21,7 +21,7 @@ import type { GoogleOAuthProvider } from "./google-oauth.js";
 import { firmarEstado, verificarEstado, type EstadoOAuth } from "./oauth-state.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
-import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA, NO_IMPLEMENTADO } from "./codigos.js";
+import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from "./codigos.js";
 
 /**
  * Todo lo que la API necesita, INYECTADO. Ni el store, ni el emisor, ni la verificación del token se
@@ -344,15 +344,94 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return ok ? c.json({ ok: true }) : c.json({ error: "Página no encontrada." }, 404);
   });
 
-  /** PATCH /pages/:id — corrige una página propuesta. Editar REVOCA la aprobación, siempre (ADR-06). */
+  /**
+   * PATCH /pages/:id — dirige por FORMA EXACTA del body (conjunto de claves Y tipos), nunca por "¿tiene
+   * al menos un campo de esta familia?": un body que no calza con NINGUNA de las tres formas exactas
+   * de abajo es 400, no se "adivina" la intención (Codex, ronda 1 sobre el plan de este sub-proyecto,
+   * hallazgo Major: la versión anterior dejaba pasar combinaciones mezcladas o con tipos inválidos —
+   * `{post_titulo, publicar_post:true}` editaba e ignoraba la publicación, `{post_titulo,
+   * claveDesconocida}` daba 200 ignorando la clave, `{post_titulo: 7}` terminaba en 404 en vez de 400,
+   * `{publicar_post:false, post_titulo}` editaba igual). Mismo criterio que ya usa
+   * `PATCH /clients/:id/resenas/:resenaId` más abajo.
+   *  - Subconjunto no vacío de {url_slug, keyword_principal, seo, content_brief,
+   *    preguntas_frecuentes}, SIN ninguna otra clave → editPage (revoca approved, ADR-06).
+   *  - Subconjunto no vacío de {post_titulo, post_cuerpo} (ambos string si están), SIN ninguna otra
+   *    clave → editarPost (NO revoca approved: editar el TEXTO no es editar el BRIEF que se aprobó).
+   *  - Exactamente {publicar_post: true} → comando compuesto (ADR-18): la fila se marca bajo RLS
+   *    primero, y solo si cambió se emite el evento — que no porta autoridad, lleva únicamente el
+   *    `pageId` (el orquestador vuelve a preguntarle a la base qué publicar).
+   */
   app.patch("/pages/:id", async (c) => {
     const ctx = c.get("ctx");
+    const pageId = c.req.param("id");
     const body = await c.req.json().catch(() => null);
-    if (!body || typeof body !== "object") return c.json({ error: "Body inválido." }, 400);
-    const ok = await deps.store.editPage(ctx, c.req.param("id"), filtrarCambios(body));
-    return ok
-      ? c.json({ ok: true })
-      : c.json({ error: "Página no encontrada, retirada, o sin cambios válidos." }, 404);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "Body inválido." }, 400);
+    const b = body as Record<string, unknown>;
+    const claves = Object.keys(b);
+
+    const CLAVES_BRIEF = new Set(["url_slug", "keyword_principal", "seo", "content_brief", "preguntas_frecuentes"]);
+    const CLAVES_POST = new Set(["post_titulo", "post_cuerpo"]);
+
+    const esPublicar = claves.length === 1 && b["publicar_post"] === true;
+    const esBrief = claves.length > 0 && claves.every((k) => CLAVES_BRIEF.has(k));
+    const esPost =
+      claves.length > 0 &&
+      claves.every((k) => CLAVES_POST.has(k)) &&
+      claves.every((k) => typeof b[k] === "string");
+
+    if (esPublicar) {
+      const ok = await deps.store.solicitarPublicacionPost(ctx, pageId);
+      if (!ok) {
+        return c.json(
+          {
+            error:
+              "Página no encontrada, no aprobada, retirada, sin post, ya publicada, el cliente no " +
+              "configuró su blog, o sin permiso.",
+          },
+          404,
+        );
+      }
+      await deps.emisor.send({
+        name: "posts/publicacion.solicitada",
+        data: ctx.userId ? { pageId, solicitadoPor: ctx.userId } : { pageId },
+      });
+      return c.json({ ok: true });
+    }
+
+    if (esPost) {
+      const cambios: { postTitulo?: string; postCuerpo?: string } = {};
+      if (typeof b["post_titulo"] === "string") cambios.postTitulo = b["post_titulo"];
+      if (typeof b["post_cuerpo"] === "string") cambios.postCuerpo = b["post_cuerpo"];
+      const ok = await deps.store.editarPost(ctx, pageId, cambios);
+      return ok
+        ? c.json({ ok: true })
+        : c.json({ error: "Página no encontrada, sin permiso, o con una publicación en curso." }, 404);
+    }
+
+    if (esBrief) {
+      const ok = await deps.store.editPage(ctx, pageId, filtrarCambios(b));
+      return ok
+        ? c.json({ ok: true })
+        : c.json({ error: "Página no encontrada, retirada, o sin cambios válidos." }, 404);
+    }
+
+    return c.json(
+      { error: "El body no coincide con ninguna combinación válida de campos (brief, post, o publicar_post)." },
+      400,
+    );
+  });
+
+  /**
+   * GET /pages/:id/post — ver el borrador del post (staff y cliente, solo lectura para cliente, mismo
+   * criterio de RLS que GET /runs/:id). `getPost` (`db/src/store.ts`) devuelve `null` tanto si la
+   * página no existe como si nunca se generó un post — las dos dan el mismo 404 acá, a propósito
+   * (Codex, ronda 1 sobre el plan, hallazgo Minor: una versión anterior devolvía 200 con un objeto de
+   * puros `null` para una página sin post, y eso es truthy).
+   */
+  app.get("/pages/:id/post", async (c) => {
+    const ctx = c.get("ctx");
+    const post = await deps.store.getPost(ctx, c.req.param("id"));
+    return post ? c.json({ post }) : c.json({ error: "Página no encontrada, o sin post generado." }, 404);
   });
 
   /*
@@ -376,20 +455,13 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     const body = await c.req.json<{ destino?: string }>().catch(() => null);
     const destino = body?.destino;
 
-    // TEMPORAL — retirado por el sub-proyecto 3 (docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md,
-    // Task 10 Step 0.1), agregado durante la revisión conjunta de los tres sub-proyectos (2026-08-26):
-    // sin ese Step, crear_posts queda inalcanzable para siempre pese a que el sub-proyecto 3 implementa
-    // el resto del mecanismo (hallazgo Critical de Codex sobre esa revisión). Si estás implementando
-    // ESTE sub-proyecto (el 2) en aislamiento, dejalo así — el bloque se retira cuando le toque el
-    // turno al sub-proyecto 3, no antes.
-    if (destino === "crear_posts") {
-      return c.json(
-        { error: "Destino 'crear_posts' todavía no está implementado.", codigo: NO_IMPLEMENTADO },
-        501,
-      );
-    }
-    if (destino !== "crear_web" && destino !== "solo_informe") {
-      return c.json({ error: "destino tiene que ser 'crear_web' o 'solo_informe'." }, 400);
+    // El 501 temporal de `crear_posts` (sub-proyecto 2) se retiró acá (sub-proyecto 3, Task 10 Step
+    // 0.1): el resto del mecanismo (Tasks 1-9 de docs/superpowers/plans/2026-08-26-publicar-posts-blog-externo.md)
+    // ya está implementado, así que el destino queda habilitado de verdad. `registrarDecision` (Task 3)
+    // ya acepta `"crear_posts"` en su tipo desde el sub-proyecto 2 y exige página aprobada para él,
+    // igual que para `crear_web`.
+    if (destino !== "crear_web" && destino !== "solo_informe" && destino !== "crear_posts") {
+      return c.json({ error: "destino tiene que ser 'crear_web', 'solo_informe' o 'crear_posts'." }, 400);
     }
 
     const decisionId = await deps.store.registrarDecision(ctx, runId, destino, ctx.userId ?? undefined);
@@ -481,11 +553,30 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return c.json({ cliente });
   });
 
-  /** PATCH /clients/:id — allowlist de campos en el borde HTTP, mismo criterio que PATCH /pages/:id. */
+  /**
+   * PATCH /clients/:id — allowlist de campos en el borde HTTP, mismo criterio que PATCH /pages/:id.
+   *
+   * `blog_externo_tipo` (0031, sub-proyecto 3) es la ÚNICA de las columnas de esta ruta que necesita
+   * una validación de FORMA además de tipo: `filtrarCamposCliente` es una función pura (sin `c`, sin
+   * poder devolver un 400 por su cuenta), así que ese chequeo vive ACÁ. Ya NO está restringido a
+   * "wordpress" -- hoy la publicación real es manual (el staff copia el post y lo pega donde
+   * corresponda), así que el campo es una ETIQUETA informativa para que el staff sepa dónde va cada
+   * cliente, no un selector que active lógica distinta (ver el comentario de la columna, migración
+   * 0031). Se valida forma (string no vacío, largo razonable), no un valor cerrado.
+   */
   app.patch("/clients/:id", async (c) => {
     const ctx = c.get("ctx");
     const body = await c.req.json().catch(() => null);
     if (!body || typeof body !== "object") return c.json({ error: "Body inválido." }, 400);
+    const tipoBlog = (body as Record<string, unknown>)["blog_externo_tipo"];
+    if (tipoBlog !== undefined && tipoBlog !== null) {
+      if (typeof tipoBlog !== "string" || tipoBlog.trim().length === 0 || tipoBlog.length > 100) {
+        return c.json(
+          { error: "blog_externo_tipo debe ser texto no vacío (máx. 100 caracteres) o null." },
+          400,
+        );
+      }
+    }
     const ok = await deps.clientes.actualizarCliente(ctx, c.req.param("id"), filtrarCamposCliente(body));
     return ok
       ? c.json({ ok: true })
@@ -1040,5 +1131,17 @@ function filtrarCamposCliente(body: Record<string, unknown>): CambiosCliente {
   }
   if (esObjeto(body["contacto"])) campos.contacto = body["contacto"];
   if (typeof body["origen"] === "string" || body["origen"] === null) campos.origen = body["origen"] as string | null;
+  // Blog externo (0031, sub-proyecto 3). Sin validar el VALOR de "tipo" acá -- eso es responsabilidad
+  // del handler de PATCH /clients/:id (tiene `c`, esta función no); acá solo se filtra la FORMA
+  // (string o null), mismo criterio que el resto de esta función.
+  if (typeof body["blog_externo_tipo"] === "string" || body["blog_externo_tipo"] === null) {
+    campos.blog_externo_tipo = body["blog_externo_tipo"] as string | null;
+  }
+  if (typeof body["blog_externo_url"] === "string" || body["blog_externo_url"] === null) {
+    campos.blog_externo_url = body["blog_externo_url"] as string | null;
+  }
+  if (typeof body["blog_externo_credencial"] === "string" || body["blog_externo_credencial"] === null) {
+    campos.blog_externo_credencial = body["blog_externo_credencial"] as string | null;
+  }
   return campos;
 }

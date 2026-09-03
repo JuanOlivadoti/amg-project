@@ -3,6 +3,7 @@ import type {
   CambioRolMiembro,
   CambiosClienteAgencia,
   CambiosPagina,
+  CambiosPost,
   ClienteAgencia,
   EstadoIdea,
   IdeaDetalle,
@@ -13,6 +14,7 @@ import type {
   NuevoClienteAgencia,
   NuevoRun,
   PerfilSeguros,
+  PostDePagina,
   ResenaGoogle,
   RunSummary,
 } from './models';
@@ -238,15 +240,36 @@ export interface ClienteApi {
   aprobarPagina(pageId: string): Promise<void>;
   editarPagina(pageId: string, cambios: CambiosPagina): Promise<void>;
   /**
+   * El post de blog de una página, para la pantalla de posts (Task 11). `null` en 404 —que unifica
+   * "la página no existe" y "existe pero nunca se generó un post", indistinguibles a propósito, mismo
+   * criterio que `getPost` en `db/`— para que la pantalla pueda mostrar "Generando…" sin envolver
+   * cada llamado en un `try/catch`.
+   */
+  verPost(pageId: string): Promise<PostDePagina | null>;
+  /**
+   * Edita título/cuerpo del post — un ÚNICO `PATCH /pages/:id` con `{post_titulo, post_cuerpo}`, NO
+   * dos requests separados. NO revoca `approved` (editar el TEXTO no es editar el BRIEF aprobado) y
+   * el servidor la rechaza con 404 mientras hay una publicación en curso (`solicitadoEn !== null`) —
+   * la pantalla deshabilita los campos en ese estado por UX, pero el servidor la rechazaría igual.
+   */
+  editarPost(pageId: string, cambios: CambiosPost): Promise<void>;
+  /**
+   * Pide publicar el post en el blog externo del cliente — comando compuesto (ADR-18): la fila se
+   * marca bajo RLS primero, y el evento (sin autoridad) sale después. Sirve tanto para el primer
+   * intento como para reintentar uno que falló (`errorEn !== null`): el servidor limpia
+   * `post_error_en` al reintentar (`marcarPostFallido`/`solicitarPublicacionPost`, `db/`).
+   */
+  solicitarPublicacionPost(pageId: string): Promise<void>;
+  /**
    * Decide el destino de un run en `pending_approval` (o retoma uno con última decisión
    * `solo_informe`/`completado` hacia otro destino). `destino` es OBLIGATORIO — a diferencia del
    * viejo "Aprobar" sin argumentos, el servidor ya no tiene un único camino que asumir.
    *
-   * TEMPORAL: solo dos valores en este sub-proyecto (`docs/superpowers/plans/2026-08-26-desacoplar-kr-web.md`,
-   * Task 11). El sub-proyecto de publicación en blog externo amplía este tipo a incluir
-   * `'crear_posts'` cuando exista.
+   * Los tres valores existen desde el sub-proyecto de publicación en blog externo (Task 11): antes
+   * de esa Task, `crear_posts` estaba tipado afuera a propósito —la pantalla que lo consume todavía
+   * no existía— y el selector de `brief.ts` la mostraba deshabilitada.
    */
-  aprobarRun(runId: string, destino: 'crear_web' | 'solo_informe'): Promise<void>;
+  aprobarRun(runId: string, destino: 'crear_web' | 'solo_informe' | 'crear_posts'): Promise<void>;
 
   listarClientes(): Promise<ClienteAgencia[]>;
   verCliente(id: string): Promise<ClienteAgencia>;
@@ -487,6 +510,25 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     },
     async editarPagina(pageId, cambios) {
       await pedir('PATCH', `/pages/${encodeURIComponent(pageId)}`, cambios);
+    },
+    async verPost(pageId) {
+      try {
+        const { post } = await pedir<{ post: PostDePagina }>('GET', `/pages/${encodeURIComponent(pageId)}/post`);
+        return post;
+      } catch (e) {
+        // Solo el 404 se traduce a `null` — mismo criterio que `obtenerIdea`: cualquier otro status
+        // (401, 500, …) se relanza tal cual, no se disfraza de "no hay post todavía".
+        if ((e as ApiError).status === 404) return null;
+        throw e;
+      }
+    },
+    async editarPost(pageId, cambios) {
+      await pedir('PATCH', `/pages/${encodeURIComponent(pageId)}`, cambios);
+    },
+    async solicitarPublicacionPost(pageId) {
+      // Objeto armado a mano, mismo criterio que `marcarResenaVista`: el endpoint compara la forma
+      // EXACTA del body (`api/src/app.ts`), así que el código dice, mirándolo, que nunca viaja nada más.
+      await pedir('PATCH', `/pages/${encodeURIComponent(pageId)}`, { publicar_post: true });
     },
     async aprobarRun(runId, destino) {
       await pedir('POST', `/runs/${encodeURIComponent(runId)}/approve`, { destino });

@@ -162,6 +162,27 @@ test('el informe hereda el authGuard del shell y carga la pantalla del informe',
   assert.equal((cargado as { name?: string })?.name, 'InformePage');
 });
 
+test('los posts (Task 11) cuelgan del brief, heredan el authGuard y cargan PostsPage', async () => {
+  // Mismo motivo que el informe: cuelga del shell (no de la raíz, a diferencia del entregable), así
+  // que no lleva `canActivate` propio — lo hereda. Y el `loadComponent` perezoso se paga acá una vez.
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const ficha = (shell?.children ?? []).find((r) => r.path === 'clientes/:id');
+  const posts = (ficha?.children ?? []).find((r) => r.path === 'research/:runId/posts');
+  assert.ok(posts, 'no encontré la ruta de los posts');
+  assert.equal(posts?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+
+  const cargado = await posts?.loadComponent?.();
+  assert.equal((cargado as { name?: string })?.name, 'PostsPage');
+
+  // Va DESPUÉS de `research/:runId/informe`, mismo criterio de legibilidad (comentario en
+  // `app.routes.ts`): el router no hace prefijo parcial con una ruta sin hijas.
+  const tabs = (ficha?.children ?? []).map((r) => r.path);
+  assert.ok(
+    tabs.indexOf('research/:runId/informe') < tabs.indexOf('research/:runId/posts'),
+    'research/:runId/posts debe ir después de research/:runId/informe',
+  );
+});
+
 test('el brief cuelga del tab research y carga BriefPage', async () => {
   // Mismo motivo que el del informe: el `loadComponent` es perezoso y un import mal escrito se rompe
   // al navegar, no al compilar. La pantalla del brief es la puerta a las otras dos.
@@ -254,6 +275,7 @@ test('«Mi Portal» (clientes/:id/ver) se retiró: sus secciones son tabs de la 
     'research',
     'research/:runId',
     'research/:runId/informe',
+    'research/:runId/posts',
     'resenas',
     'ideas',
     'ideas/:ideaId',
