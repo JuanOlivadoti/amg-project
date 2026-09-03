@@ -1883,8 +1883,11 @@ export class PgStore {
    * post no es editar el BRIEF que la página aprobó (son cosas distintas). Rechaza (`false`, sin
    * lanzar) si hay una publicación en curso sin confirmar todavía —
    * `post_solicitado_en is not null and post_publicado_en is null` — para que lo que se publique sea
-   * exactamente lo que el humano tenía delante cuando pidió "Publicar". `post_cuerpo` se sanitiza acá
-   * si viene presente, mismo criterio que `guardarPost`.
+   * exactamente lo que el humano tenía delante cuando pidió "Publicar". También rechaza si nunca se
+   * generó un post (`post_titulo is null`): no hay nada que "editar" todavía — sin este chequeo, un
+   * caller que se salteara la pantalla de posts podía sembrar un título/cuerpo sin `post_generado_en`,
+   * un estado que la propia UI no sabe representar (revisión final del sub-proyecto 3, hallazgo
+   * informativo). `post_cuerpo` se sanitiza acá si viene presente, mismo criterio que `guardarPost`.
    */
   async editarPost(
     ctx: TenantContext,
@@ -1908,6 +1911,7 @@ export class PgStore {
         `update kr_pages
             set ${sets.join(", ")}
           where id = $1
+            and post_titulo is not null
             and (post_solicitado_en is null or post_publicado_en is not null)
           returning id`,
         params,

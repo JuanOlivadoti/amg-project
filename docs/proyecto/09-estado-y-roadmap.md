@@ -63,12 +63,10 @@
 > exigencia adversarial. **Veredicto: APROBADO, sin hallazgos bloqueantes.** Re-verificó los tres
 > cambios de la enmienda de flujo contra el código real, re-confirmó el fix Critical de la Task 8 (y
 > que no se repite en `crear_web`/`solo_informe`), y evaluó uno por uno los 6 Minor ya conocidos —
-> ninguno subió de severidad. 2 hallazgos nuevos, informativos y no bloqueantes, quedan como deuda
-> menor: `editarPost` no exige que ya exista un post generado (no alcanzable desde el portal, y
-> `solicitarPublicacionPost` igual lo rechazaría después); el camino de "permiso de portapapeles
-> denegado" en el botón Copiar no lo ejercita ningún test (mismo género de hueco que el paso de
-> navegador real ya aceptado). Informe completo (no versionado):
-> `progress/informes/revisor-sub-proyecto-3-rama-final.md`.
+> ninguno subió de severidad. 2 hallazgos nuevos, informativos y no bloqueantes (**los dos cerrados el
+> 2026-09-03, ver más abajo**): `editarPost` no exigía que ya existiera un post generado; el camino de
+> "permiso de portapapeles denegado" en el botón Copiar no lo ejercitaba ningún test. Informe completo
+> (no versionado): `progress/informes/revisor-sub-proyecto-3-rama-final.md`.
 >
 > **Mergeado a `main` con `--no-ff`** (commit `5a8b663`, tras traer primero el fix no relacionado
 > `3aa68cf` — un checksum de la migración `0018` que bloqueaba `migrate:deploy` en producción y
@@ -105,8 +103,21 @@
 > a "Publicando…", campos deshabilitados), el botón "Copiar" (HTML enriquecido + texto plano, leído
 > del portapapeles), "Reintentar publicación", el rechazo `404` de republicar una página ya publicada,
 > y "Guardar" sobre un post ya publicado. Detalle completo en `progress/current.md § Verificaciones`.
-> **Con esto, la iniciativa de generalización queda cerrada de punta a punta: código, migraciones,
-> flag de lanzamiento y verificación en navegador real, sin ningún punto abierto.**
+>
+> **Actualización (2026-09-03, mismo día): cerrados los 2 hallazgos informativos que había dejado la
+> revisión final de rama.** `editarPost` (`db/src/store.ts:1889-1917`) ahora exige `post_titulo is
+> not null` en el `WHERE` — sin post generado no hay nada que "editar", y sin este chequeo un caller
+> que se salteara la pantalla de posts podía sembrar un título/cuerpo sin `post_generado_en`, un
+> estado que la propia UI no sabe representar. Test rojo primero (`db/src/posts-blog.test.ts`),
+> mutación confirmada (sacar la cláusula hace caer exactamente ese test, ninguno más). El botón
+> "Copiar" (`portal/src/app/pages/posts/posts.ts:370-390`) ya manejaba el rechazo del portapapeles
+> (permiso denegado) con un `catch` silencioso — lo que faltaba era el test que lo probara; agregado
+> en `portal/src/app/pages/posts/posts.spec.ts`, con la misma disciplina de mutación (sacar el
+> `try/catch` hace caer exactamente ese test). `npm run verificar --con-portal` en verde: **1862
+> tests del monorepo** (sube de 1861) + 328 `node:test` + **267 Karma** (sube de 266). **Con esto, la
+> iniciativa de generalización queda cerrada de punta a punta: código, migraciones, flag de
+> lanzamiento, verificación en navegador real y los dos hallazgos informativos, sin ningún punto
+> abierto.**
 >
 > 🧭 **Nuevo (2026-08-30): sub-proyecto 1 (multi-vertical de clientes) — IMPLEMENTADO Y CERRADO. Es
 > el segundo de los tres de la iniciativa de generalización en tener código real.** Las 14 tasks del

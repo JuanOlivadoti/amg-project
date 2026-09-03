@@ -23,8 +23,15 @@ mira el sistema de migraciones de la CLI de Supabase y no el registro propio de 
 **Actualización (2026-09-03, mismo día): el usuario decidió encender `destinoPosts` en
 `environment.prod.ts`** — cambio de una línea más su test (`environment.prod.test.ts`) y un
 comentario desactualizado en `brief.spec.ts`, `npm run verificar --con-portal` corrido de nuevo
-(1861/328 + 266 Karma, verde). **La iniciativa queda cerrada de punta a punta, sin ningún punto
-abierto** — ver "## Próximo paso". Los otros dos:
+(1861/328 + 266 Karma, verde). **Actualización (mismo día): flujo completo verificado en un
+navegador real** (dev-servers + script desechable con métodos reales de `PgStore` para los estados
+que requieren el orquestador — detalle en "## Verificaciones"). **Actualización (mismo día): cerrados
+los 2 hallazgos informativos que había dejado la revisión final de rama** — `editarPost`
+(`db/src/store.ts`) ahora exige `post_titulo is not null`, y `copiar()` del portal ganó el test que
+faltaba para el camino de portapapeles denegado; los dos con rojo→fix→mutación,
+`npm run verificar --con-portal` + Karma corridos de nuevo (**1862/328 + 267 Karma**, verde). **La
+iniciativa queda cerrada de punta a punta, sin ningún punto abierto** — ver "## Próximo paso". Los
+otros dos:
 
 1. **Multi-vertical de clientes** (restauración + correduría de seguros) — **CERRADO
    (2026-08-30), revisión de código CERRADA (2026-08-31).** Las 15 tasks del
@@ -46,8 +53,11 @@ abierto (una decisión de negocio, no una tarea) y qué hacer si no hay instrucc
 
 ## En vuelo (sin commitear)
 
-Nada — working tree limpio en `main`, sincronizado con `origin/main` (`981aef7`: el commit que
-enciende `destinoPosts` en producción, ya pusheado).
+Seis archivos, todos sobre `main` (`f8be04a`): el cierre de los 2 hallazgos informativos —
+`db/src/store.ts` (fix), `db/src/posts-blog.test.ts` (test), `portal/src/app/pages/posts/posts.spec.ts`
+(test) — más la documentación (`docs/proyecto/08-testing-calidad.md`,
+`docs/proyecto/09-estado-y-roadmap.md`, este archivo). `bash ./scripts/verificar.sh --con-portal` y
+Karma ya corridos en verde (ver "## Verificaciones"). Falta el commit + push.
 
 El worktree `.claude/worktrees/multivertical-clientes` ya se mergeó y se removió del todo (`git
 worktree remove`); quedó un directorio huérfano con `node_modules` que no se pudo borrar del disco
@@ -58,17 +68,14 @@ bloquea termine.
 ## Próximo paso
 
 **No hay tarea de desarrollo pendiente de esta iniciativa — quedó cerrada de punta a punta el
-2026-09-03** (código, migraciones y el flag `destinoPosts` en producción, commit `981aef7` ya
-pusheado a `origin/main`).
+2026-09-03** (código, migraciones, el flag `destinoPosts` en producción, verificación en navegador
+real y los 2 hallazgos informativos cerrados — falta commitear y pushear este último cierre, ver
+"## En vuelo").
 
-1. Si no hay instrucción nueva del usuario: preguntar con qué seguir. Candidatos ya identificados en
-   esta sesión (ninguno urgente, todos opcionales): los 2 hallazgos informativos que quedaron como
-   deuda menor de la revisión del sub-proyecto 3 (`editarPost` sin exigir post ya generado —
-   `db/src/store.ts:1889-1917`; falta test de Karma para el permiso de portapapeles denegado en
-   `copiar()` — `portal/src/app/pages/posts/posts.ts:386-389`); o el Bloque A3/A4 y el resto de
-   `docs/proyecto/15-plan-plataforma.md` (trabajo previo a esta iniciativa, mayormente pendiente de
-   decisiones de Juan). **El paso de navegador real del sub-proyecto 3 (Task 11/12) ya se hizo
-   (2026-09-03, ver "## Verificaciones") — sale de esta lista.**
+1. Si no hay instrucción nueva del usuario: preguntar con qué seguir. Único candidato que queda: el
+   Bloque A3/A4 y el resto de `docs/proyecto/15-plan-plataforma.md` (trabajo previo a esta iniciativa,
+   mayormente pendiente de decisiones de Juan). Los otros dos candidatos que estaban acá (el paso de
+   navegador real, los 2 hallazgos informativos) ya se hicieron el 2026-09-03 — ver "## Verificaciones".
 2. **Lección de proceso para llevar a cualquier trabajo futuro con comandos backgrounded largos:** el
    cwd del bash tool de esta sesión se reseteó solo al checkout `main` varias veces durante la Task
    15 del sub-proyecto 1, sin ningún error visible — ver "## Callejones sin salida" para el patrón
@@ -542,13 +549,27 @@ cerrado, quedan el 1 y el 3, spec+plan completos, listos para implementar en ser
 
 ## Archivos calientes
 
-— Nada en vuelo. Si se retoma algo de esta iniciativa, los puntos de referencia son
-`db/src/store.ts:1889-1917` (`editarPost`, primer hallazgo informativo de la revisión final del
-sub-proyecto 3) y `portal/src/app/pages/posts/posts.ts:386-389` (`copiar()`, el segundo hallazgo
-informativo) — ver "## Próximo paso".
+`db/src/store.ts:1889-1917` (`editarPost`, ahora exige `post_titulo is not null`) y
+`portal/src/app/pages/posts/posts.ts:370-390` (`copiar()`, sin cambios de código — ganó el test que
+faltaba) — los dos hallazgos informativos de la revisión final del sub-proyecto 3, cerrados
+2026-09-03, sin commitear todavía (ver "## En vuelo").
 
 ## Verificaciones
 
+- **Los 2 hallazgos informativos de la revisión final del sub-proyecto 3 (2026-09-03): cerrados con
+  rojo→fix→mutación.** `editarPost` (`db/src/store.ts:1889-1917`): agregado `and post_titulo is not
+  null` al `WHERE` — sin esto, se podía sembrar título/cuerpo en una página sin post generado, un
+  estado que la UI no sabe representar. Test rojo primero
+  (`db/src/posts-blog.test.ts`, "editarPost rechaza si nunca se generó un post"), mutación
+  confirmada: sacar la cláusula hace caer exactamente ese test (495 tests de `db` corridos, 1 falla,
+  el resto verde). `copiar()` (`portal/src/app/pages/posts/posts.ts:370-390`): el código YA manejaba
+  el rechazo del portapapeles con un `catch` silencioso — lo que faltaba era el test. Agregado en
+  `portal/src/app/pages/posts/posts.spec.ts` (rechazo de `navigator.clipboard.write` con
+  `NotAllowedError`, confirma que no explota y que "Copiado ✓" nunca aparece); mutación confirmada:
+  sacar el `try/catch` hace caer exactamente ese test (23 tests de `posts.spec.ts`, 1 falla el resto
+  verde). `bash ./scripts/verificar.sh --con-portal`: **1862 tests del monorepo** (sube de 1861) +
+  **328 `node:test`**, typecheck limpio, sin secretos. `npm --prefix portal run test:components`:
+  **267/267 Karma** (sube de 266).
 - **Flujo completo del sub-proyecto 3 en un navegador real (2026-09-03): hecho, cierra el hueco
   documentado desde la Task 11/12.** `chrome-devtools-mcp` no conectaba por un lock de perfil de
   Chrome (otra sesión en esta máquina tenía el perfil tomado — error explícito, no el

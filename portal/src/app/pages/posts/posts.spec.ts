@@ -474,6 +474,28 @@ describe('PostsPage', () => {
     }
   }));
 
+  it('🔴 "Copiar" con el portapapeles bloqueado (permiso denegado) no explota y nunca muestra "Copiado ✓"', fakeAsync(() => {
+    const { fixture } = crear({ verPost: jasmine.createSpy('verPost').and.resolveTo(post()) });
+    fixture.detectChanges();
+    tick();
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    spyOn(navigator.clipboard, 'write').and.rejectWith(new DOMException('Permiso denegado', 'NotAllowedError'));
+
+    expect(() => {
+      botones(el, 'Copiar')[0]!.click();
+      tick();
+      fixture.detectChanges();
+    })
+      .withContext('el catch de copiar() tiene que absorber el rechazo, no dejarlo sin manejar')
+      .not.toThrow();
+
+    expect(botones(el, 'Copiado ✓').length)
+      .withContext('sin confirmación de escritura, no hay que mostrar "Copiado ✓"')
+      .toBe(0);
+    expect(botones(el, 'Copiar').length).toBe(1);
+  }));
+
   // -------------------------------------------------------------------------------- la carrera de runs
 
   it('🔴 la respuesta que llega tarde NO pisa la lista: cuando A contesta, el :runId vigente ya es B', async () => {

@@ -151,6 +151,20 @@ test("editarPost sin cambios (objeto vacío) devuelve false y no toca la fila", 
   assert.equal(ok, false);
 });
 
+test("🔴 editarPost rechaza si nunca se generó un post (post_titulo null)", async () => {
+  const pageId = await crearPaginaAprobada(s.clientA1, s.tenantA);
+  // Sin guardarPost: la página está aprobada pero no hay post generado todavía.
+  const ok = await store.editarPost({ tenantId: s.tenantA, userId: s.equipoA }, pageId, {
+    postTitulo: "Título inventado sin post generado",
+  });
+  assert.equal(ok, false, "🔴 el WHERE debe exigir post_titulo is not null, igual que exige la ausencia de publicación en curso");
+  const [row] = await db.asService<{ post_titulo: string | null }>(
+    "select post_titulo from kr_pages where id = $1",
+    [pageId],
+  );
+  assert.equal(row?.post_titulo, null, "no se escribió nada sobre una página sin post generado");
+});
+
 // ============================================================ solicitarPublicacionPost
 
 test("solicitarPublicacionPost devuelve true con post generado en una página aprobada", async () => {
