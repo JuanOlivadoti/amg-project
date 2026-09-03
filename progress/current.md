@@ -65,10 +65,10 @@ pusheado a `origin/main`).
    esta sesión (ninguno urgente, todos opcionales): los 2 hallazgos informativos que quedaron como
    deuda menor de la revisión del sub-proyecto 3 (`editarPost` sin exigir post ya generado —
    `db/src/store.ts:1889-1917`; falta test de Karma para el permiso de portapapeles denegado en
-   `copiar()` — `portal/src/app/pages/posts/posts.ts:386-389`); el paso de navegador real de la
-   Task 11 del sub-proyecto 3, todavía sin verificar porque `chrome-devtools-mcp` no conectó; o el
-   Bloque A3/A4 y el resto de `docs/proyecto/15-plan-plataforma.md` (trabajo previo a esta iniciativa,
-   mayormente pendiente de decisiones de Juan).
+   `copiar()` — `portal/src/app/pages/posts/posts.ts:386-389`); o el Bloque A3/A4 y el resto de
+   `docs/proyecto/15-plan-plataforma.md` (trabajo previo a esta iniciativa, mayormente pendiente de
+   decisiones de Juan). **El paso de navegador real del sub-proyecto 3 (Task 11/12) ya se hizo
+   (2026-09-03, ver "## Verificaciones") — sale de esta lista.**
 2. **Lección de proceso para llevar a cualquier trabajo futuro con comandos backgrounded largos:** el
    cwd del bash tool de esta sesión se reseteó solo al checkout `main` varias veces durante la Task
    15 del sub-proyecto 1, sin ningún error visible — ver "## Callejones sin salida" para el patrón
@@ -521,6 +521,24 @@ cerrado, quedan el 1 y el 3, spec+plan completos, listos para implementar en ser
   migrate:deploy` está denegado por `.claude/settings.json` a propósito — ni para "solo comprobar"
   vale la pena correr `db/src/cli/deploy.ts` directo con `tsx` para esquivar el deny: ese script no es
   de solo lectura, aplica lo que encuentre pendiente.
+- **`chrome-devtools-mcp` puede fallar por DOS motivos distintos, y el mensaje de error los
+  distingue:** un `CONNECT_TIMEOUT` (visto en la Task 11 del sub-proyecto 3, dos veces, nunca
+  resuelto) es un problema de arranque genérico; un error explícito "The browser is already running
+  for `<perfil>`... Use `--isolated`" (visto el 2026-09-03) significa que OTRO proceso —casi seguro
+  otra sesión de Claude Code en esta misma máquina— ya tiene el perfil de Chrome
+  (`C:\Users\oliva\.cache\chrome-devtools-mcp\chrome-profile`) abierto. La segunda forma SÍ tiene
+  arreglo: matar los `chrome.exe` que lo tienen tomado (confirmado con el usuario antes de hacerlo,
+  porque le corta el navegador a esa otra sesión sin avisarle) y reintentar conecta. La primera forma
+  (`CONNECT_TIMEOUT`) sigue sin diagnóstico — no se sabe si es el mismo problema con otro síntoma.
+- **Para escribir un script desechable que llame a `PgStore` con las funciones cross-tenant
+  `security definer` de una migración (ej. `post_para_publicar`/`marcar_post_publicado`/
+  `marcar_post_fallido` de la 0031), el rol de conexión correcto es el que tiene el GRANT EXECUTE, no
+  el dueño de la función.** `new PgStore(pool)` sin segundo argumento usa `app_user` por defecto — da
+  `permission denied for function marcar_post_publicado`. La migración hace `alter function ...
+  owner to app_posts` pero el `grant execute` va a `app_service` (mismo patrón que
+  `resenaParaPublicar`/`marcarResenaPublicada`) — el rol correcto para un store que simula al
+  orquestador es `new PgStore(pool, "app_service")`, igual que `orchestrator/src/deps.ts:103`. Dueño
+  de la función ≠ quién puede ejecutarla — confundir los dos hace perder un ciclo entero.
 
 ## Archivos calientes
 
@@ -531,6 +549,37 @@ informativo) — ver "## Próximo paso".
 
 ## Verificaciones
 
+- **Flujo completo del sub-proyecto 3 en un navegador real (2026-09-03): hecho, cierra el hueco
+  documentado desde la Task 11/12.** `chrome-devtools-mcp` no conectaba por un lock de perfil de
+  Chrome (otra sesión en esta máquina tenía el perfil tomado — error explícito, no el
+  `CONNECT_TIMEOUT` de las dos veces anteriores); confirmado con el usuario, se cerraron esos
+  `chrome.exe` y conectó. Con `npm run dev:server -w api` + `npm start -w portal` reales:
+  configuré `blog_externo_tipo/url/credencial` de Borcelle Burger vía `PATCH /clients/:id` (API
+  real), aprobé un run con destino **"Crear posts" desde el selector del portal** (confirmando que
+  `destinoPosts: true` en `environment.prod.ts` — el cambio de esta misma sesión — se ve y funciona
+  en la pantalla real), y confirmé el estado "Generando…" para la página recién aprobada. Como este
+  harness (igual que en el sub-proyecto 2, hueco ya aceptado) no corre el orquestador/Inngest, la
+  generación real por IA no dispara sola — así que para ver los otros 4 estados escribí un script
+  desechable (`api/src/tmp-verificar-posts.mts`, NUNCA commiteado, borrado al terminar) que arma un
+  run con 5 páginas aprobadas y llama a los métodos REALES de `PgStore`
+  (`guardarPost`/`solicitarPublicacionPost`/`marcarPostPublicado`/`marcarPostFallido`, estas tres
+  últimas con el store en rol `app_service` — no `app_posts`, que es DUEÑO de las funciones pero no
+  tiene `execute`, lo mismo que usa `orchestrator/src/deps.ts`; primer intento con el rol por defecto
+  dio `permission denied for function marcar_post_publicado`, corregido). Con los 5 estados en
+  pantalla (generando/editable/publicando/publicada/fallida) confirmé: los cinco renders correctos
+  (campos deshabilitados en "publicando", link real en "publicada", "Reintentar publicación" en
+  "fallida"); clic en "Publicar" sobre el post editable transiciona a "Publicando…" con los campos
+  deshabilitados (`PATCH /pages/:id {"publicar_post":true}` real); el botón "Copiar" escribe
+  `text/html` (el cuerpo sanitizado tal cual) Y `text/plain` (título + texto plano) al portapapeles —
+  verificado leyendo `navigator.clipboard.read()` después del clic; "Reintentar publicación" sobre el
+  post en estado "falló" vuelve a "Publicando…"; reintentar publicar la página YA publicada vía API
+  directa da `404` con el mensaje esperado (Task 12 Step 3.6 del plan); editar título en el post
+  publicado y "Guardar" persiste el cambio (releído desde la API). Cero errores de consola más allá
+  del `404` esperado de `GET /pages/:id/post` sobre la página todavía sin post generado. **Lo único
+  que este harness no ejercita —igual que en el sub-proyecto 2— es el disparo real del evento por
+  Inngest/orquestador: eso queda cubierto por los tests de `orchestrator/src/functions.test.ts` y
+  `workflow.test.ts` contra PGlite, no por este paso.** Dev-servers (`api` puerto 3000, `portal`
+  puerto 4200) parados al terminar.
 - **`bash ./scripts/verificar.sh --con-portal` sobre el cambio de `destinoPosts` (working tree sobre
   `main`, `47c576a`, 2026-09-03): VERDE.** 1861 tests del monorepo + 328 `node:test` del portal,
   typecheck limpio en los 7 paquetes + `scripts/` + portal, sin secretos — confirmado `pwd`/`git

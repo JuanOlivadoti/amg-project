@@ -50,8 +50,9 @@
 >
 > `npm run verificar --con-portal`: **1861 tests del monorepo** (sube de 1779) + **328 `node:test`**
 > (sube de 304) y **266 Karma** (sube de 238) en el portal, todos en verde. Typecheck limpio en los 7
-> paquetes + `scripts/` + portal, sin secretos. **Hueco explícito, documentado y no oculto: el Step 3
-> del plan (manejar el flujo completo en un navegador real) no se pudo hacer** — `chrome-devtools-mcp`
+> paquetes + `scripts/` + portal, sin secretos. **Hueco cerrado el 2026-09-03** (ver más abajo el
+> cierre de esta entrada): el Step 3 del plan (manejar el flujo completo en un navegador real) no se
+> pudo hacer en su momento — `chrome-devtools-mcp`
 > no conectó en esta sesión (`CONNECT_TIMEOUT`, reintentado); el resto del ritual de verificación
 > (tests, typecheck, secretos) sí se corrió completo. Confirmado con el usuario seguir sin ese paso y
 > dejarlo anotado.
@@ -90,8 +91,22 @@
 > (`portal/src/environments/environment.prod.ts`) más el test que fija el valor
 > (`environment.prod.test.ts`) y el comentario de `brief.spec.ts` que documentaba el valor viejo, los
 > tres actualizados juntos; `npm run verificar --con-portal` corrido de nuevo tras el cambio (mismas
-> cifras: 1861/328 + 266 Karma, todos en verde). **Con esto, la iniciativa de generalización queda
-> cerrada de punta a punta: código, migraciones y flag de lanzamiento, sin ningún punto abierto.**
+> cifras: 1861/328 + 266 Karma, todos en verde).
+>
+> **Actualización (2026-09-03, mismo día): cerrado el hueco de navegador que quedaba de la Task 12
+> del sub-proyecto 3.** `chrome-devtools-mcp` no conectaba por un lock de perfil de Chrome tomado por
+> otra sesión en la misma máquina (confirmado con el usuario, se cerró y reconectó). Con `api` y
+> `portal` reales en local: configuré el blog externo de un cliente vía `PATCH /clients/:id`, aprobé
+> un run con **"Crear posts" desde el selector del portal** (confirmando que `destinoPosts: true` ya
+> funciona en pantalla), y confirmé el estado "Generando…". Como este harness no corre el
+> orquestador/Inngest (mismo hueco ya aceptado en el sub-proyecto 2), generé los otros 4 estados con
+> un script desechable que llama a los métodos reales de `PgStore` (nunca commiteado, borrado al
+> terminar) — con eso confirmé en el navegador real los 5 renders del estado, "Publicar" (transición
+> a "Publicando…", campos deshabilitados), el botón "Copiar" (HTML enriquecido + texto plano, leído
+> del portapapeles), "Reintentar publicación", el rechazo `404` de republicar una página ya publicada,
+> y "Guardar" sobre un post ya publicado. Detalle completo en `progress/current.md § Verificaciones`.
+> **Con esto, la iniciativa de generalización queda cerrada de punta a punta: código, migraciones,
+> flag de lanzamiento y verificación en navegador real, sin ningún punto abierto.**
 >
 > 🧭 **Nuevo (2026-08-30): sub-proyecto 1 (multi-vertical de clientes) — IMPLEMENTADO Y CERRADO. Es
 > el segundo de los tres de la iniciativa de generalización en tener código real.** Las 14 tasks del
