@@ -75,7 +75,7 @@ describe('BriefPage — selector de destino y retiro del gate tiene_workflow', (
    * pasa en los tests que pulsan el botón — el resto ni lo llama.
    */
   type ApiDoble = {
-    aprobarRun?: (id: string, destino: 'crear_web' | 'solo_informe') => Promise<void>;
+    aprobarRun?: (id: string, destino: 'crear_web' | 'solo_informe' | 'crear_posts') => Promise<void>;
   };
 
   /**
@@ -239,19 +239,22 @@ describe('BriefPage — selector de destino y retiro del gate tiene_workflow', (
 
   // ---------------------------------------------------------------------- "crear_posts", con su flag
 
-  it('🔴 "crear_posts" aparece DESHABILITADA cuando el flag destinoPosts está encendido', async () => {
+  it('🔴 con destinoPosts=true, la opción crear_posts NO está deshabilitada (Task 11: la pantalla ya existe)', async () => {
     environment.features.destinoPosts = true;
     const el = await render(true, true);
     const opcion = selectDestino(el)!.querySelector<HTMLOptionElement>('option[value="crear_posts"]');
     expect(opcion).withContext('la opción crear_posts no está en el selector').not.toBeNull();
     expect(opcion!.disabled)
-      .withContext('el sub-proyecto que la habilita todavía no existe: no puede parecer usable')
-      .toBe(true);
+      .withContext('la pantalla de posts que la consume ya existe: puede quedar usable')
+      .toBe(false);
   });
 
-  it('"crear_posts" NO aparece con el flag apagado (default de este sub-proyecto)', async () => {
-    // `environment.ts`/`environment.prod.ts` la dejan en `false`: ningún despliegue de este
-    // sub-proyecto la enciende. Sin este test, un flag que se prende solo (o un typo) pasaría en verde.
+  it('"crear_posts" NO aparece con el flag apagado', async () => {
+    // Explícito acá y no apoyado en el default del environment: desde la Task 11,
+    // `environment.ts` (dev) trae `destinoPosts: true` — solo `environment.prod.ts` se queda en
+    // `false` (decisión de lanzamiento separada, `environment.prod.test.ts` la fija). Sin este test,
+    // un flag que se prende solo (o un typo) pasaría en verde.
+    environment.features.destinoPosts = false;
     const el = await render(true, true);
     expect(selectDestino(el)!.querySelector('option[value="crear_posts"]')).toBeNull();
   });
@@ -316,6 +319,37 @@ describe('BriefPage — selector de destino y retiro del gate tiene_workflow', (
     // mejor que un link que aparece y desaparece según quién mira.
     const el = await render(false, false);
     expect(el.querySelector('a[href="/clientes/c1/research/run-1/informe"]')).not.toBeNull();
+  });
+
+  /*
+   * El link a los POSTS generados (Task 11, sub-proyecto de publicación en blog externo). Mismo
+   * criterio que el del informe (aparece para CUALQUIER rol) y NO el del entregable (equipo-only):
+   * la pantalla de posts explica sus propios estados y el rol cliente tiene contenido legítimo de
+   * solo lectura ahí. A diferencia de los dos anteriores, la condición no es "run/páginas
+   * aprobables" sino la ÚLTIMA DECISIÓN del run: solo aparece si alguien aprobó con "crear_posts".
+   */
+  it('🔴 el link a los posts NO aparece sin una decisión crear_posts (ultimaDecision null)', async () => {
+    const el = await render(true, false);
+    expect(el.querySelector('a[href="/clientes/c1/research/run-1/posts"]')).toBeNull();
+  });
+
+  it('🔴 el link a los posts NO aparece si la última decisión fue OTRO destino', async () => {
+    const el = await render(true, false, conUltimaDecision('crear_web', 'completado'));
+    expect(el.querySelector('a[href="/clientes/c1/research/run-1/posts"]')).toBeNull();
+  });
+
+  it('🔴 el link a los posts aparece cuando la última decisión fue crear_posts, apuntando a research/:runId/posts', async () => {
+    const el = await render(true, false, conUltimaDecision('crear_posts', 'pendiente'));
+    const link = el.querySelector<HTMLAnchorElement>('a[href="/clientes/c1/research/run-1/posts"]');
+    expect(link).withContext('no encontré el link a los posts generados').not.toBeNull();
+    expect(link!.textContent).toContain('Ver los posts generados');
+  });
+
+  it('el link a los posts aparece también para un rol que NO es equipo', async () => {
+    // El rol cliente tiene contenido legítimo en la pantalla de posts (solo lectura, Step 3) — a
+    // diferencia del entregable, no se le esconde que la función existe.
+    const el = await render(false, false, conUltimaDecision('crear_posts', 'completado'));
+    expect(el.querySelector('a[href="/clientes/c1/research/run-1/posts"]')).not.toBeNull();
   });
 
   /*

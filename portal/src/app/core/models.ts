@@ -149,6 +149,37 @@ export interface CambiosPagina {
   preguntas_frecuentes?: string[];
 }
 
+/**
+ * El post de blog de una página, tal como lo devuelve `GET /pages/:id/post` (Task 11, sub-proyecto de
+ * publicación en blog externo). Espeja `PostDePagina` de `db/src/store.ts` — mismo criterio que el
+ * resto de este archivo: el portal no importa `db` (ADR-21), así que este tipo es la copia manual.
+ *
+ * `titulo`/`cuerpo` son `| null` solo por simetría de forma con el resto de los campos — en la
+ * práctica, si esta interfaz llegó a existir es porque la API respondió 200 (un post SIN generar da
+ * 404, y `ClienteApi.verPost` lo traduce a `null` entero, no a este objeto con campos nulos).
+ *
+ * `cuerpo` ya es HTML SANITIZADO por el allowlist de `db/src/sanitizar-html.ts` (p, br, strong, em, b,
+ * i, u, h2-4, ul, ol, li, blockquote, a — sin atributos salvo `href`) — nunca markup crudo. La
+ * pantalla de posts lo copia TAL CUAL al portapapeles (botón "Copiar"), nunca reconstruido a mano.
+ */
+export interface PostDePagina {
+  titulo: string | null;
+  cuerpo: string | null;
+  generadoEn: string | null;
+  solicitadoEn: string | null;
+  publicadoEn: string | null;
+  urlExterna: string | null;
+  /** Cuando el ÚLTIMO intento de publicación falló. La señal que distingue "publicando ahora mismo"
+   *  de "el intento anterior falló" — sin ella, un fallo dejaba el botón deshabilitado para siempre. */
+  errorEn: string | null;
+}
+
+/** Lo que se puede editar del post de una página, en un único `PATCH /pages/:id` (Task 3/10). */
+export interface CambiosPost {
+  post_titulo?: string;
+  post_cuerpo?: string;
+}
+
 export interface NuevoRun {
   clientId: string;
   prompt: string;

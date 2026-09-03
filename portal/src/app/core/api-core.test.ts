@@ -234,6 +234,66 @@ test('aprobarPagina / editarPagina / aprobarRun usan el método y la ruta correc
   }
 });
 
+test("aprobarRun acepta destino 'crear_posts'", async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).aprobarRun('run-9', 'crear_posts');
+  assert.equal(capturado.method, 'POST');
+  assert.equal(capturado.url, 'http://api.test/runs/run-9/approve');
+  assert.deepEqual(JSON.parse(capturado.body!), { destino: 'crear_posts' });
+});
+
+// ------------------------------------------------------- el post de una página (Task 11, sub-proyecto 3)
+
+test('verPost pega a GET /pages/:id/post y devuelve el post', async () => {
+  const post = {
+    titulo: 'Pizza napolitana en Madrid',
+    cuerpo: '<p>Hola</p>',
+    generadoEn: '2026-09-01T00:00:00.000Z',
+    solicitadoEn: null,
+    publicadoEn: null,
+    urlExterna: null,
+    errorEn: null,
+  };
+  const { fn, capturado } = fakeFetch({ body: { post } });
+  const res = await crearApi(opts(fn)).verPost('p1');
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/pages/p1/post');
+  assert.deepEqual(res, post);
+});
+
+test('🔴 verPost devuelve null en 404 (página sin post generado), no lanza', async () => {
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Página no encontrada, o sin post generado.' } });
+  const res = await crearApi(opts(fn)).verPost('p-sin-post');
+  assert.equal(res, null);
+});
+
+test('verPost relanza cualquier error que NO sea 404', async () => {
+  const { fn } = fakeFetch({ status: 500, body: { error: 'Falló la base.' } });
+  await assert.rejects(() => crearApi(opts(fn)).verPost('p1'), (e: ApiError) => {
+    assert.equal(e.status, 500);
+    return true;
+  });
+});
+
+test('editarPost manda UN solo PATCH con post_titulo y post_cuerpo', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).editarPost('p1', { post_titulo: 'Nuevo título', post_cuerpo: '<p>Nuevo cuerpo</p>' });
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/pages/p1');
+  assert.deepEqual(JSON.parse(capturado.body!), {
+    post_titulo: 'Nuevo título',
+    post_cuerpo: '<p>Nuevo cuerpo</p>',
+  });
+});
+
+test('solicitarPublicacionPost manda EXACTAMENTE {publicar_post: true}', async () => {
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).solicitarPublicacionPost('p1');
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/pages/p1');
+  assert.deepEqual(JSON.parse(capturado.body!), { publicar_post: true });
+});
+
 // ---------------------------------------------------------------- el informe (KR-2b)
 
 test('verInforme pega a GET /runs/:id/informe con el id escapado', async () => {

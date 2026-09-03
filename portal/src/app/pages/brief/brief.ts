@@ -73,6 +73,26 @@ import { POLL_MS } from '../../core/brief-polling';
             Ver el informe del research →
           </a>
           <!--
+            Los posts generados (Task 11, sub-proyecto de publicación en blog externo) — MISMO
+            criterio que el link al informe de arriba y no el del entregable de abajo: se muestra a
+            CUALQUIER rol que vea este run, porque la pantalla de posts explica sus propios estados
+            con palabras (ver posts.ts) y el rol "cliente" SÍ tiene algo legítimo que mirar ahí
+            (contenido de solo lectura, Step 3 del brief) — a diferencia del entregable, que es una
+            hoja que la agencia le manda al restaurante y no una pantalla del cliente.
+
+            La condición es la ÚLTIMA DECISIÓN del run, no el flag de despliegue: una vez que alguien
+            aprobó con "crear_posts", el link tiene que seguir estando aunque destinoPosts se apague
+            después (mismo motivo por el que puedeAprobar() no controla el link al informe).
+          -->
+          @if (ultimaDecision()?.destino === 'crear_posts') {
+            <a
+              [routerLink]="['/clientes', clienteId(), 'research', b.run.id, 'posts']"
+              class="mt-1 block w-fit text-sm text-texto hover:underline"
+            >
+              Ver los posts generados →
+            </a>
+          }
+          <!--
             El entregable del restaurante, SOLO para el equipo — y acá el criterio es al revés que en
             el link de arriba, a propósito.
 
@@ -136,9 +156,10 @@ import { POLL_MS } from '../../core/brief-polling';
 
             · POR QUÉ UN <select> Y NO EL BOTÓN DE ANTES: "aprobar" dejó de ser una sola acción — el
               servidor exige «destino» en el body (POST /runs/:id/approve, Task 10), así que la
-              pantalla tiene que preguntarlo. «crear_posts» se muestra DESHABILITADA y no escondida:
-              avisa que la opción existe sin prometer que funciona (el sub-proyecto que la habilita
-              todavía no existe — mostrarDestinoPostsUI()).
+              pantalla tiene que preguntarlo. «crear_posts» estuvo DESHABILITADA (visible, avisando
+              que la opción existía sin prometer que funcionaba) hasta la Task 11, que construyó la
+              pantalla de posts que la consume — mostrarDestinoPostsUI() sigue siendo el mismo gate
+              equipo+flag, ahora habilitando la opción de verdad en vez de solo mostrarla.
             · [ngModel]/(ngModelChange) y no [(ngModel)]: destinoElegido es un signal, no una
               propiedad de dos vías — mismo patrón que edKeyword/edSlug más abajo.
             · POR QUÉ EL MOTIVO SALE DE UNA FUNCIÓN: motivoNoAprobar() (core/aprobar-run.ts) ahora
@@ -172,7 +193,7 @@ import { POLL_MS } from '../../core/brief-polling';
                 <option value="crear_web">Crear la web</option>
                 <option value="solo_informe">Solo quedarme con el informe</option>
                 @if (mostrarDestinoPostsUI()) {
-                  <option value="crear_posts" disabled>Crear posts (próximamente)</option>
+                  <option value="crear_posts">Crear posts</option>
                 }
               </select>
               <div>
@@ -351,6 +372,9 @@ export class BriefPage implements OnInit, OnDestroy {
   readonly error = signal('');
   readonly trabajando = signal(false);
 
+  /** La última decisión de este run, o `null` si todavía no se decidió nada. Ver el link a "posts". */
+  readonly ultimaDecision = computed(() => this.brief()?.run.ultimaDecision ?? null);
+
   readonly editando = signal<string | null>(null);
   readonly edKeyword = signal('');
   readonly edSlug = signal('');
@@ -380,9 +404,13 @@ export class BriefPage implements OnInit, OnDestroy {
   );
 
   /** Qué destino va a pedir el botón "Confirmar". `crear_web` por defecto: es el camino más común. */
-  readonly destinoElegido = signal<'crear_web' | 'solo_informe'>('crear_web');
+  readonly destinoElegido = signal<'crear_web' | 'solo_informe' | 'crear_posts'>('crear_web');
 
-  /** ¿Se muestra la opción "crear_posts", deshabilitada? Sub-proyecto de blog externo, todavía no existe. */
+  /**
+   * ¿Se muestra la opción "crear_posts"? Equipo + flag propio (Task 11, sub-proyecto de publicación
+   * en blog externo). Hasta esa Task la opción existía en el `<select>` pero SIEMPRE `disabled` —
+   * ahora que la pantalla de posts existe, calificar el gate alcanza para habilitarla de verdad.
+   */
   readonly mostrarDestinoPostsUI = computed(() =>
     mostrarDestinoPosts(this.membresia.esEquipo(), environment.features.destinoPosts),
   );
