@@ -882,6 +882,44 @@ export class PgStore {
   }
 
   /**
+   * Registra un INTENTO de publicación (0032) — cuándo se intentó, cuántas páginas se mandaron y
+   * cuántas confirmó el proveedor. NO afirma que se publicó: eso lo sigue diciendo `published_at`
+   * por página (`marcarPublicadas`, arriba). Se llama SIEMPRE, en los tres modos (`mock`, `dry-run`,
+   * `live`) — no solo en `dry-run` — para que el rastro sea uniforme y el llamador no tenga que
+   * decidir si vale la pena registrar.
+   *
+   * `modo` viaja como `string` a propósito: el `check` de la tabla es la única validación de los
+   * tres valores permitidos, y duplicarla acá en un union type sería un segundo lugar de verdad que
+   * se puede desincronizar del primero.
+   */
+  async registrarIntentoPublicacion(
+    ctx: TenantContext,
+    args: {
+      decisionId: string;
+      clientId: string;
+      modo: string;
+      paginasEnviadas: number;
+      paginasConfirmadas: number;
+    },
+  ): Promise<void> {
+    await this.withTenant(ctx, async (tx) => {
+      await tx.query(
+        `insert into kr_publicacion_intentos
+           (decision_id, tenant_id, client_id, modo, paginas_enviadas, paginas_confirmadas)
+         values ($1, $2, $3, $4, $5, $6)`,
+        [
+          args.decisionId,
+          ctx.tenantId,
+          args.clientId,
+          args.modo,
+          args.paginasEnviadas,
+          args.paginasConfirmadas,
+        ],
+      );
+    });
+  }
+
+  /**
    * Cierra el run: pasa a `pending_approval` y queda esperando a un humano (ADR-06).
    *
    * ## Pero SOLO si todavía estaba corriendo — la simetría con `failRun`

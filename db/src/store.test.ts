@@ -1260,6 +1260,92 @@ test("marcarPublicadas registra el hecho externo (story_id + cuándo)", async ()
   assert.ok(rows[0]!.published_at, "queda la marca temporal");
 });
 
+// ---------------------------------------------------------------- registrarIntentoPublicacion (0032)
+
+/** El intento de publicación cuelga de una decisión (kr_run_decisiones), no directo del run. */
+async function decisionDePrueba(ctx: TenantContext, clientId: string): Promise<string> {
+  const runId = await runPendienteDeAprobacion(ctx, clientId);
+  const decisionId = await store.registrarDecision(ctx, runId, "solo_informe");
+  assert.ok(decisionId, "la decisión de prueba tiene que calificar");
+  return decisionId!;
+}
+
+test("registrarIntentoPublicacion: queda la marca (modo, enviadas, confirmadas) SIN afirmar publicación", async () => {
+  const decisionId = await decisionDePrueba(ctxA(), clientA1);
+
+  await storeServicio.registrarIntentoPublicacion(ctxServicio(), {
+    decisionId,
+    clientId: clientA1,
+    modo: "dry-run",
+    paginasEnviadas: 3,
+    paginasConfirmadas: 0,
+  });
+
+  const { rows } = await pg.query<{
+    modo: string;
+    paginas_enviadas: number;
+    paginas_confirmadas: number;
+    intentado_at: string;
+  }>(
+    `select modo, paginas_enviadas, paginas_confirmadas, intentado_at
+     from kr_publicacion_intentos where decision_id = $1`,
+    [decisionId],
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.modo, "dry-run");
+  assert.equal(rows[0]!.paginas_enviadas, 3);
+  assert.equal(rows[0]!.paginas_confirmadas, 0);
+  assert.ok(rows[0]!.intentado_at, "queda la marca temporal del intento");
+});
+
+test("registrarIntentoPublicacion: se escribe también en modo 'live' y en 'mock' (rastro uniforme)", async () => {
+  const decisionLive = await decisionDePrueba(ctxA(), clientA1);
+  await storeServicio.registrarIntentoPublicacion(ctxServicio(), {
+    decisionId: decisionLive,
+    clientId: clientA1,
+    modo: "live",
+    paginasEnviadas: 2,
+    paginasConfirmadas: 2,
+  });
+
+  const decisionMock = await decisionDePrueba(ctxA(), clientA1);
+  await storeServicio.registrarIntentoPublicacion(ctxServicio(), {
+    decisionId: decisionMock,
+    clientId: clientA1,
+    modo: "mock",
+    paginasEnviadas: 1,
+    paginasConfirmadas: 1,
+  });
+
+  const { rows } = await pg.query<{ modo: string }>(
+    "select modo from kr_publicacion_intentos where decision_id = any($1::uuid[]) order by modo",
+    [[decisionLive, decisionMock]],
+  );
+  assert.deepEqual(
+    rows.map((r) => r.modo),
+    ["live", "mock"],
+  );
+});
+
+test("🔴 registrarIntentoPublicacion: el rol app_user (sin grant) no puede escribir la marca", async () => {
+  const decisionId = await decisionDePrueba(ctxA(), clientA1);
+
+  // `store` (sin segundo argumento al construirlo, arriba en `before`) asume app_user, que NO tiene
+  // grant sobre kr_publicacion_intentos (migración 0032: SOLO app_service). No es una comprobación
+  // de TypeScript: Postgres rechaza el insert con 42501 antes de evaluar la política.
+  await assert.rejects(
+    () =>
+      store.registrarIntentoPublicacion(ctxA(), {
+        decisionId,
+        clientId: clientA1,
+        modo: "dry-run",
+        paginasEnviadas: 1,
+        paginasConfirmadas: 0,
+      }),
+    /permission denied/i,
+  );
+});
+
 // =============================================================================
 // El barrido de runs colgados (migración 0018)
 //

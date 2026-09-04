@@ -59,7 +59,14 @@ export interface Deps {
   publicar: (
     brief: unknown,
     destino: DestinoPublicacion,
-  ) => Promise<Array<{ slug: string; location: string; published: boolean }>>;
+  ) => Promise<{
+    /** En qué modo publicó el proceso (mock/dry-run/live) — string a propósito, NO un import del tipo
+     *  de web-builder. No es la misma frontera que `brief: unknown` (esa protege una revalidación real
+     *  con Zod; acá el `check` de Postgres ya es la única validación que importa) — es más simple:
+     *  este archivo hoy no importa NADA de `web-builder`, y esto no le agrega el primero. */
+    modo: string;
+    resultados: Array<{ slug: string; location: string; published: boolean }>;
+  }>;
   /** Valida el brief contra el contrato del M1 (Zod). Lanza si no cuadra. */
   validarContrato: (raw: unknown) => unknown;
   /** El polling de reseñas de Google (Bloque F). No lo usa `workflowResearch` -- lo usa `pollearResenas`. */
@@ -471,7 +478,7 @@ export async function workflowDecision(
     if (!actual) throw new Error(`El run ${decision.run_id} no es visible para este tenant.`);
 
     const briefValidado = deps.validarContrato(briefDesdeLaBase(actual, paginas));
-    const resultados = await deps.publicar(briefValidado, {
+    const { modo, resultados } = await deps.publicar(briefValidado, {
       clientId: cliente.id,
       vertical: cliente.vertical,
       storyblokSpaceId: cliente.storyblok_space_id,
@@ -480,6 +487,22 @@ export async function workflowDecision(
 
     const publicadas = resultados.filter((p) => p.published);
     const enDraft = resultados.length - publicadas.length;
+
+    /*
+     * La marca se escribe SIEMPRE — mock, dry-run o live — y ANTES de `marcarPublicadas`, en el mismo
+     * step `publicar`: si el step revienta después de acá, el reintento vuelve a escribir la misma
+     * marca (no hay nada que duplicar salvo la fila, que no tiene índice único por decisión — ver
+     * `docs/proyecto/15-plan-plataforma.md`, bloque C-1). Es el rastro que hoy falta en dry-run: el
+     * publisher reporta `published: false` correctamente y por eso no se escribe nada más, dejando el
+     * único rastro en un `log()` dentro del contenedor.
+     */
+    await deps.store.registrarIntentoPublicacion(ctx, {
+      decisionId,
+      clientId: decision.client_id,
+      modo,
+      paginasEnviadas: resultados.length,
+      paginasConfirmadas: publicadas.length,
+    });
 
     if (publicadas.length > 0) {
       await deps.store.marcarPublicadas(

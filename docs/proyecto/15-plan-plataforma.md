@@ -529,7 +529,30 @@ La consecuencia incómoda es que **el modo que existe para ensayar es el único 
 se puede observar**, y que la verificación depende de mirar el panel de un tercero. Lo que
 corresponde es que el intento de publicación deje una marca nuestra —cuándo se intentó, cuántas
 páginas se mandaron y cuántas confirmó el proveedor— **sin afirmar que se publicó**, que es la
-distinción que el código ya defiende bien. Diseño pendiente; no se improvisa acá.
+distinción que el código ya defiende bien.
+
+> 🧭 **Diseño cerrado, 2026-09-04 — en implementación.** Tabla nueva `kr_publicacion_intentos`
+> (migración `0032`): `decision_id`, `tenant_id`, `client_id`, `modo` (`mock`/`dry-run`/`live`,
+> siempre se escribe, no solo en dry-run — trazo uniforme en los tres modos),
+> `paginas_enviadas`, `paginas_confirmadas` (`<=` enviadas) y `intentado_at`. Se escribe SIEMPRE en
+> el paso `publicar` de `workflowDecision` (`orchestrator/src/workflow.ts:439-506`, la llamada en la
+> línea `498`), antes de `marcarPublicadas` — así que en `live` conviven las dos marcas (esta más
+> `published_at` por página) y en `dry-run`/`mock` sin páginas confirmadas esta es la ÚNICA.
+> `Deps.publicar` pasa a devolver `{ modo, resultados }` en vez del array pelado — `modo` sale de
+> `modoPublicacion()` (`web-builder`, la misma fuente que ya usa `/_health` en C-0, nunca una
+> relectura propia) y viaja por `workflow.ts` como `string` sin importar el tipo de `web-builder`:
+> no es la misma frontera que `brief: unknown` (esa protege una revalidación real con Zod; `modo` es
+> solo tres literales) sino una más simple — `workflow.ts` hoy no importa NADA de `web-builder`
+> (verificado, cero imports), y esto no le agrega el primero. Solo `app_service` tiene grant sobre
+> la tabla — no hay endpoint de API ni pantalla del portal que la necesite todavía; si aparece una,
+> ahí se agrega el grant de `app_user`.
+>
+> **Nota de retención, señalada por `revisor` (2026-09-04):** el insert no es idempotente frente a un
+> reintento del step `publicar` (a diferencia de `marcarPublicadas`/`cerrarDecision`, que son no-op en
+> un reintento) — un segundo intento del mismo step agrega una fila nueva, no la actualiza. Acotado
+> por `retries: 1`: como mucho dos filas por decisión. Sin consecuencia hoy (nadie lee la tabla
+> todavía); relevante el día que alguien cuente filas para un panel — ahí "una fila" es "una ejecución
+> del step", no "un intento lógico".
 
 Mientras tanto el paso 3 lo cierra Juan mirando **Inngest → Runs** (o el token de solo lectura de
 Railway del bloque **A3**, que serviría para lo mismo por los logs).
@@ -582,11 +605,24 @@ C0 eligió. La decisión se mantiene.
    vacía, o sea que la API no lo lanzó— y la redacción ya no finge más. **Un test impide que la
    afirmación fuerte vuelva**, con las cuatro formas de escribirla y un control positivo que exige el
    matiz: sin él, una frase que no mencione la publicación pasaría sin decir nada.
-3. **Y el barrido no cancela el workflow.** `barrerRunsColgados` marca la fila `running → failed` y
-   nada más ([`functions.ts:131`](../../orchestrator/src/functions.ts#L131)): un workflow puede
-   seguir vivo sobre un run que la base ya dio por muerto, y las dos verdades conviven sin que nada
-   avise. No es un bug del barrido —cancelar en Inngest es otra cosa, y meterla a las apuradas es
-   peor— pero es una asimetría que hay que decidir a propósito.
+3. **Y el barrido no cancela el workflow** — ✅ **decidido el 2026-09-04: NO se cancela.**
+   `barrerRunsColgados` marca la fila `running → failed` y nada más
+   ([`functions.ts:131`](../../orchestrator/src/functions.ts#L131)): un workflow puede seguir vivo
+   sobre un run que la base ya dio por muerto, y las dos verdades conviven sin que nada avise.
+   Cancelar con `cancelOn` exigiría que el orquestador **emita** un evento propio (`research/expirado`),
+   y **el orquestador no emite eventos de Inngest, a propósito**: es un invariante probado
+   (`scripts/env-sync.test.mts:64`, `"el orquestador no emite eventos (medido: no hay send)"`) y
+   documentado (`docs/proyecto/14-runbook-despliegue.md:834`) — su credencial de despliegue ni
+   siquiera lleva `INNGEST_EVENT_KEY`. Revertirlo para este caso metería una superficie de fallo nueva
+   (el mismo crash-loop por falta de `INNGEST_EVENT_KEY` que ya sufrió la API,
+   `14-runbook-despliegue.md:1138`) a cambio de un beneficio acotado: `retries: 1` en
+   `crearFuncionResearch` limita a un segundo intento, y **todo** lo que ese intento podría escribir ya
+   está guardado contra la asimetría —`finishRun`/`failRun` solo tocan la fila `where status =
+   'running'`, así que un workflow zombi que complete tarde no pisa el `failed` que ya escribió el
+   barrido (ver el comentario de `finishRun`, `db/src/store.ts:946` en adelante)—. Lo único que se pierde es
+   compute ya en curso, no dinero adicional de proveedor (research: el checkpoint del dataset ya
+   persistió lo pagado) ni integridad de datos. La asimetría queda, pero acotada y documentada; no se
+   cierra con más código, se cierra con esta nota.
 
 ---
 

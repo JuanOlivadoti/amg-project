@@ -5,6 +5,7 @@ import {
   applyProse,
   briefToStories,
   getPublisher,
+  modoPublicacion,
   parseBrief,
   parseProfile,
   renderStory,
@@ -190,7 +191,14 @@ export function crearDeps(cx: Conexiones): Deps {
         stories.map((s) => [s.slug, renderStory(s, perfil, destino.vertical, brief.market.language_code)]),
       );
 
-      return getPublisher(destino.storyblokSpaceId).publish(stories, html);
+      /*
+       * `modo` sale de `modoPublicacion()` — la MISMA fuente que ya usa `/_health` (bloque C-0 del
+       * plan), nunca una relectura propia de `process.env`: si fueran dos lecturas, la marca de
+       * `kr_publicacion_intentos` podría decir `dry-run` mientras se publicó de verdad, la forma
+       * exacta en que la clave de firma de Inngest ya mordió (ver comentario en `app.ts`).
+       */
+      const resultados = await getPublisher(destino.storyblokSpaceId).publish(stories, html);
+      return { modo: modoPublicacion(), resultados };
     },
 
     // El selector lee `leerConfig().resenasGoogle` -- mismo criterio que `getPublisher`: acá NO se

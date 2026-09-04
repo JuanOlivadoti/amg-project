@@ -11,6 +11,42 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-04 — Editor de contenido del portal (cierra el Bloque E) y la marca de intento de publicación (C-1)
+
+Dos piezas cerradas el mismo día, después de que la iniciativa de generalizar AMG OS terminara (ver la
+entrada de abajo). Las dos siguieron el mismo patrón: contrato fijado por la sesión principal antes de
+delegar, `datos`+`pipeline` (o `datos`+`front`) trabajando **en paralelo** sobre ese contrato —
+desviación deliberada de la regla general de `AGENTS.md` ("se delega en serie cuando comparten
+contrato"), segura acá porque el contrato ya estaba cerrado antes del despacho — y `revisor` sobre el
+diff completo antes de cerrar.
+
+**Editor de contenido** (commits `4a23782`/`e66b9a6`): la última pieza abierta del Bloque E de
+`docs/proyecto/15-plan-plataforma.md` — que la agencia edite `bienvenida`/`destacados`/`testimonios`
+desde el portal sin tocar SQL a mano. Mismo mecanismo que `/menu`: `GET`/`PATCH /clients/:id/contenido`,
+`contenidoPatchSchema` con las tres claves obligatorias, sin migración nueva (reusa `client_write` de
+la `0001`). Sexto card de `/clientes/:id/perfil`, sin condicional de vertical (a diferencia del de
+seguros) porque los tres campos son genéricos de cualquier negocio. `revisor` dio CAMBIOS_PEDIDOS por
+un hallazgo puramente documental (el plan no reflejaba la pieza terminada) — cero hallazgos de código.
+
+**C-1: la marca de intento de publicación** (sin commitear al cerrar esta entrada — ver
+`docs/proyecto/15-plan-plataforma.md` § C-1 para el diseño completo): hasta ahora, publicar un run en
+modo `dry-run` no dejaba ningún rastro en la base — el publisher reporta `published: false`
+correctamente y por eso no escribía nada, dejando el único rastro en un `log()` del contenedor. Tabla
+nueva `kr_publicacion_intentos` (migración `0032`, sin desplegar todavía) + `PgStore.registrarIntentoPublicacion`,
+llamado SIEMPRE (mock/dry-run/live) desde el paso `publicar` de `workflowDecision`, antes de
+`marcarPublicadas`. De paso se cerró **C-2 punto 3** (si el barrido de runs colgados debería cancelar
+el workflow de Inngest correspondiente) como una **decisión documentada de NO hacerlo**: cancelar
+exigiría que el orquestador emita eventos, y "el orquestador no emite eventos" es un invariante
+probado (`scripts/env-sync.test.mts:64`) y documentado — revertirlo para un beneficio acotado (los
+guards `where status='running'` ya impiden que un workflow zombi corrompa datos) no valía la
+superficie de fallo nueva. `revisor` dio CAMBIOS_PEDIDOS por un hallazgo bloqueante (mismo patrón que
+el del editor de contenido: `09-estado-y-roadmap.md` sin actualizar) más tres no bloqueantes (dos
+citas de línea rotas en el plan, una nota de retención faltante sobre que el insert no es idempotente
+frente a un reintento del step, y un argumento de diseño débil sobre por qué `modo` viaja como
+`string`) — cero hallazgos de código ni de seguridad. Los cuatro, corregidos antes de commitear.
+
+---
+
 ## 2026-09-03/04 — Cierra la iniciativa de generalizar AMG OS a cualquier tipo de cliente
 
 Objetivo: que la plataforma sirva a cualquier vertical, no solo restauración, sin reescribir lo que ya

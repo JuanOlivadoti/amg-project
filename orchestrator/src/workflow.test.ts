@@ -121,6 +121,40 @@ class StoreQueAnota extends PgStore {
     this.orden.push("cerrar-run");
     return movio;
   }
+
+  /**
+   * La marca de C-1 (`kr_publicacion_intentos`, bloque C-1 de `docs/proyecto/15-plan-plataforma.md`).
+   * Se anota el argumento completo, no solo el orden: los tests de más abajo verifican que
+   * `decisionId`/`clientId`/`modo`/`paginasEnviadas`/`paginasConfirmadas` lleguen exactos, y eso una
+   * lista de nombres de step no lo puede probar.
+   */
+  readonly intentosPublicacion: RegistrarIntentoPublicacionArgs[] = [];
+
+  override async registrarIntentoPublicacion(
+    ctx: TenantContext,
+    args: RegistrarIntentoPublicacionArgs,
+  ): Promise<void> {
+    await super.registrarIntentoPublicacion(ctx, args);
+    this.intentosPublicacion.push(args);
+    this.orden.push("registrar-intento-publicacion");
+  }
+}
+
+/**
+ * El tipo exacto que pide `PgStore.registrarIntentoPublicacion` (db/src/store.ts, escrito en paralelo
+ * por el agente `datos` sobre el mismo contrato — ver el bloque C-1 del plan). Se declara acá, suelto,
+ * porque al momento de escribir esto el método todavía no existe en `db/src/store.ts`: referenciarlo
+ * como `Parameters<PgStore["registrarIntentoPublicacion"]>[1]` fallaría en `tsc` aunque `tsx` (que no
+ * type-checkea) lo corra igual. `npm run typecheck -w orchestrator` va a fallar de todos modos hasta
+ * que `datos` termine, por el `override` de más abajo — este tipo suelto es lo más cerca que se puede
+ * estar del contrato real sin bloquear la ejecución de los tests.
+ */
+interface RegistrarIntentoPublicacionArgs {
+  decisionId: string;
+  clientId: string;
+  modo: string;
+  paginasEnviadas: number;
+  paginasConfirmadas: number;
 }
 
 /**
@@ -204,6 +238,13 @@ interface Espia {
   destinos: DestinoPublicacion[];
   /** Si es `true`, el publisher devuelve `published: false` (draft): nada quedó publicado de verdad. */
   simularDraft: boolean;
+  /**
+   * El `modo` que `deps.publicar` devuelve junto a `resultados` (C-1). Configurable por test para
+   * comprobar que `workflowDecision` lo pasa TAL CUAL a `registrarIntentoPublicacion`, sin tocarlo —
+   * un `string` desnudo, no el `ModoPublicacion` de `web-builder` (ver el comentario de `Deps.publicar`
+   * en `workflow.ts`).
+   */
+  modo: string;
 }
 
 function depsFalsas(paginas: ProposedPage[]): Espia {
@@ -214,6 +255,7 @@ function depsFalsas(paginas: ProposedPage[]): Espia {
     keywordsGuardadas: 0,
     destinos: [],
     simularDraft: false,
+    modo: "dry-run",
     deps: undefined as never,
   };
 
@@ -246,13 +288,16 @@ function depsFalsas(paginas: ProposedPage[]): Espia {
       const slugs = b.paginas_propuestas.map((p) => p.url_slug);
       espia.publicadas.push(slugs);
       espia.destinos.push(destino);
-      return slugs.map((s) => ({
-        slug: s,
-        location: `story-${s}`,
-        // El publisher real puede dejar la story en DRAFT. Si eso pasa, la base NO puede decir
-        // que está publicada.
-        published: !espia.simularDraft,
-      }));
+      return {
+        modo: espia.modo,
+        resultados: slugs.map((s) => ({
+          slug: s,
+          location: `story-${s}`,
+          // El publisher real puede dejar la story en DRAFT. Si eso pasa, la base NO puede decir
+          // que está publicada.
+          published: !espia.simularDraft,
+        })),
+      };
     },
     // `workflowResearch`/`workflowDecision` no tocan el polling de reseñas -- eso vive en
     // `pollearResenas` (`functions.test.ts`). El stub existe solo para satisfacer el tipo `Deps`.
@@ -875,6 +920,111 @@ test("🔴 si la story queda en DRAFT, la base NO dice que está publicada", asy
     [runId],
   );
   assert.equal(rows[0]!.n, 0, "published_at NO se escribe para una story que quedó en draft");
+});
+
+// ================================================================
+// workflowDecision: publicar — la marca de C-1 (`registrarIntentoPublicacion`)
+//
+// El bug que el bloque C-1 del plan arregla: en dry-run puro, `published: false` en TODAS las
+// páginas es correcto (la base no puede afirmar lo que el proveedor no confirmó), pero eso dejaba
+// CERO rastro nuestro — el único indicio era un `log()` dentro del contenedor. La marca tiene que
+// escribirse SIEMPRE, no solo cuando `publicadas.length > 0`.
+// ================================================================
+
+/**
+ * El caso que este bloque existía para arreglar: dry-run puro, NADA confirmado. Si alguien
+ * reintrodujera el bug —envolver `registrarIntentoPublicacion` dentro del `if (publicadas.length >
+ * 0)`—, este test es el que cae: `intentosPublicacion` quedaría vacío.
+ */
+test("workflowDecision: crear_web registra el intento SIEMPRE — 0 páginas confirmadas (dry-run puro)", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  espia.simularDraft = true; // el proveedor no confirma NINGUNA página
+  espia.modo = "dry-run";
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
+
+  assert.equal(resultado.paginasPublicadas, 0);
+  assert.equal(
+    espia.store.intentosPublicacion.length,
+    1,
+    "se escribe la marca AUNQUE nada se confirme — es el rastro que dry-run no dejaba",
+  );
+  assert.deepEqual(espia.store.intentosPublicacion[0], {
+    decisionId: decisionId!,
+    clientId: clientA,
+    modo: "dry-run",
+    paginasEnviadas: 1,
+    paginasConfirmadas: 0,
+  });
+});
+
+test("workflowDecision: crear_web registra el intento — TODAS las páginas confirmadas (live)", async () => {
+  const runId = await crearRunConPaginaAprobada(tenantA, clientA, equipoA);
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  espia.modo = "live";
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, espia.deps);
+
+  assert.equal(resultado.paginasPublicadas, 1);
+  assert.equal(espia.store.intentosPublicacion.length, 1);
+  assert.deepEqual(espia.store.intentosPublicacion[0], {
+    decisionId: decisionId!,
+    clientId: clientA,
+    modo: "live",
+    paginasEnviadas: 1,
+    paginasConfirmadas: 1,
+  });
+});
+
+/**
+ * El caso intermedio: dos páginas enviadas, el proveedor confirma UNA sola. `deps.publicar` real
+ * puede devolver esta mezcla (una story queda en draft y la otra no), así que el conteo tiene que
+ * venir de contar `published: true` en `resultados`, no de un booleano todo-o-nada.
+ */
+test("workflowDecision: crear_web registra el intento — ALGUNAS páginas confirmadas", async () => {
+  const runId = await crearRunComoHumano(tenantA, clientA, equipoA);
+  const espiaSetup = depsFalsas([
+    paginaFalsa({ url_slug: "/pizza-napolitana-madrid" }),
+    paginaFalsa({ url_slug: "/menu-del-dia", keyword_principal: "menú del día" }),
+  ]);
+  await workflowResearch(new MotorPasos(), entrada(runId, tenantA), espiaSetup.deps);
+
+  const { rows } = await pg.query<{ id: string }>("select id from kr_pages where run_id = $1", [runId]);
+  for (const r of rows) await store.approvePage(humano(tenantA), r.id);
+
+  const decisionId = await store.registrarDecision(humano(tenantA), runId, "crear_web");
+  assert.ok(decisionId);
+
+  const espia = depsFalsas([]);
+  espia.modo = "live";
+  const publicarOriginal = espia.deps.publicar;
+  const deps: Deps = {
+    ...espia.deps,
+    publicar: async (...args: Parameters<typeof publicarOriginal>) => {
+      const { modo, resultados } = await publicarOriginal(...args);
+      // La primera queda confirmada, la segunda no: la mezcla real de un publish parcial.
+      return { modo, resultados: resultados.map((r, i) => (i === 0 ? r : { ...r, published: false })) };
+    },
+  };
+
+  const resultado = await workflowDecision(new MotorPasos(), { tenantId: tenantA, decisionId: decisionId! }, deps);
+
+  assert.equal(resultado.paginasPublicadas, 1);
+  assert.equal(espia.store.intentosPublicacion.length, 1);
+  assert.deepEqual(espia.store.intentosPublicacion[0], {
+    decisionId: decisionId!,
+    clientId: clientA,
+    modo: "live",
+    paginasEnviadas: 2,
+    paginasConfirmadas: 1,
+  });
 });
 
 // ================================================================
