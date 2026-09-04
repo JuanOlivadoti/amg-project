@@ -5,6 +5,7 @@ import type {
   CambiosPagina,
   CambiosPost,
   ClienteAgencia,
+  Contenido,
   EstadoIdea,
   IdeaDetalle,
   IdeaResumen,
@@ -341,6 +342,19 @@ export interface ClienteApi {
   /** Reemplaza el perfil de seguros completo. Mismo criterio que guardarMenu: manda siempre el objeto
    *  entero, el servidor no hace merge parcial de campo por campo. */
   actualizarPerfilSeguros(clientId: string, datos: PerfilSeguros): Promise<void>;
+
+  /**
+   * El contenido editorial de la home (bienvenida + destacados + testimonios), para CUALQUIER
+   * vertical (Bloque E, última pieza). Mismo criterio que `obtenerMenu`: los tres campos siempre
+   * presentes, arrays nunca `null`. Lanza 404 si el cliente no existe o no es visible — no se
+   * traduce a `null` acá, mismo criterio que `obtenerMenu`/`obtenerPerfilSeguros` (que tampoco lo
+   * hacen): un cliente sin nada cargado igual responde 200 con los defaults, así que un 404 real
+   * solo puede significar "el cliente en sí no existe/no es visible".
+   */
+  obtenerContenido(clientId: string): Promise<Contenido>;
+  /** Reemplaza el contenido completo. Mismo criterio que `guardarMenu`/`actualizarPerfilSeguros`:
+   *  manda SIEMPRE las tres claves juntas — el servidor no hace merge parcial de campo por campo. */
+  actualizarContenido(clientId: string, datos: Contenido): Promise<void>;
 }
 
 export function crearApi(opts: ApiOpts): ClienteApi {
@@ -636,6 +650,13 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     },
     async actualizarPerfilSeguros(clientId, datos) {
       await pedir('PATCH', `/clients/${encodeURIComponent(clientId)}/seguros`, datos);
+    },
+
+    async obtenerContenido(clientId) {
+      return pedir<Contenido>('GET', `/clients/${encodeURIComponent(clientId)}/contenido`);
+    },
+    async actualizarContenido(clientId, datos) {
+      await pedir('PATCH', `/clients/${encodeURIComponent(clientId)}/contenido`, datos);
     },
   };
 }

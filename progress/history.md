@@ -11,6 +11,58 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-03/04 — Cierra la iniciativa de generalizar AMG OS a cualquier tipo de cliente
+
+Objetivo: que la plataforma sirva a cualquier vertical, no solo restauración, sin reescribir lo que ya
+funciona. Se partió en tres sub-proyectos, cada uno con spec + plan + revisión de Codex antes de
+implementar, y una revisión conjunta (esta sesión + Codex) sobre los tres a la vez antes de arrancar
+código — encontró dos dependencias reales que ninguna revisión individual veía: el sub-proyecto 1
+dependía sin saberlo del `workflowDecision` que introduce el 2, y los tres numeraban migraciones
+`0027`/`0028` sin cruzarse. Orden de implementación fijado por eso: 2 primero, 1 y 3 después, siempre
+en serie (comparten archivos aunque no dependan lógicamente entre sí).
+
+1. **Multi-vertical de clientes** (restauración + correduría de seguros) — 15 tasks, cerrado
+   2026-08-30. `Vertical`/`PerfilSeguros` en el modelo, `juegoDe(vertical)` eligiendo receta/nav/datos
+   de contacto por vertical en vez de por plantilla de marca, defensa en profundidad en las cuatro
+   fronteras (un dato de restauración nunca se filtra a una web de seguros). Mergeado a `main`
+   (`a26f1e3`). Una 16ª revisión de Codex sobre el código ya mergeado encontró una carrera de
+   `idVigente` en `cliente-seguros-card.ts` (Major) y `ItemList.position` no-global en `json-ld.ts`
+   (Minor) — los dos corregidos con test rojo + mutación.
+2. **Desacoplar keyword research de creación de webs** — 12 tasks, cerrado 2026-08-28. Partió
+   `workflowResearch` (investigar) de `workflowDecision` (bifurcar por destino: crear la web, quedarse
+   con el informe, o publicar posts), retirando el mecanismo viejo de aprobación-y-publicación-inline.
+   Un hallazgo real no anticipado por Codex: un fallo de `emisor.send()` después de insertar la
+   decisión la dejaba `pendiente` para siempre — cerrado con `compensarAprobacionFallida`. Una revisión
+   final (2026-08-29) encontró 4 hallazgos más (1 Critical: runs "bricked" de verdad en tres ramas de
+   cierre en error), los cuatro corregidos.
+3. **Publicar posts en un blog externo** — 12 tasks, implementado 2026-09-02/03 sobre una rama simple
+   (no worktree, pedido explícito del usuario), mergeado 2026-09-03 (`5a8b663`). Un hallazgo Critical
+   real en la Task 8: el mismo bug de "run bricked" del sub-proyecto 2, sin replicar en la rama
+   `crear_posts` — corregido con el mismo patrón. **Codex no estaba disponible** para la revisión final
+   de rama que exigía la enmienda de flujo acordada con el usuario (mock-only pero con un botón
+   "Copiar" HTML+texto plano para publicar a mano) — sustituida por una revisión adversarial del
+   agente `revisor` con el mismo nivel de exigencia: APROBADO, 2 hallazgos informativos.
+
+**Después del merge**, mismo día y el siguiente: las migraciones `0027`-`0031` se verificaron
+desplegadas en producción (el usuario las corrió fuera de Claude Code) consultando
+`app.migraciones_aplicadas` directamente — `mcp__supabase__list_migrations` resultó inútil para esto,
+mira el sistema de la CLI de Supabase que este proyecto nunca usó, y siempre devuelve vacío. El usuario
+decidió encender `destinoPosts` en `environment.prod.ts`. El flujo completo se verificó en un navegador
+real (el intento anterior había fallado dos veces por `chrome-devtools-mcp`; esta vez el bloqueo fue un
+lock de perfil de Chrome de otra sesión en la misma máquina, resuelto cerrando esos procesos con
+confirmación del usuario). Los 2 hallazgos informativos de la revisión de `revisor` (`editarPost` sin
+exigir post generado; el camino de portapapeles denegado sin test) se cerraron con rojo→fix→mutación.
+
+Con todo eso cerrado, se auditó la documentación restante del proyecto (`09`/`15`) contra el código
+real a pedido del usuario — cero discrepancias nuevas, salvo una nota vieja sobre la migración `0026`
+("sin desplegar") que en realidad estaba en producción desde el 2026-08-24. Se armó
+[`docs/proyecto/16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md), un checklist de las
+decisiones/trámites que dependen del usuario (rotación de credenciales, acceso a Google, bot de
+Telegram, SLA de caché, plan de Railway, OBS-04, precio de salida gestionada), consolidando lo que ya
+estaba escrito pero disperso entre `09` y `15`.
+
+---
+
 ## 2026-08-24 — Migración `0026` desplegada a producción
 
 Juan corrió `npm run migrate:deploy -w db` y pegó el output real: se aplicó sola (era la única

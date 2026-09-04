@@ -397,6 +397,68 @@ export class PgClientes {
   }
 
   /**
+   * El contenido editorial del cliente: `bienvenida` + `destacados` + `testimonios`, tal como viven
+   * dentro de `business_profile` (Bloque E) — mismo mecanismo que `obtenerMenu` de arriba, con tres
+   * claves en vez de dos. `bienvenida` se extrae con `->>` (texto, no jsonb) porque es un escalar:
+   * `coalesce(..., '')` la deja en `''` si la clave no está o el perfil es NULL — nunca `null` suelto,
+   * mismo criterio que `destacados`/`testimonios` con `[]`.
+   *
+   * `null` (todo el retorno) es "cliente no encontrado o no visible" — mismo criterio que `obtenerMenu`.
+   */
+  async obtenerContenido(
+    ctx: TenantContext,
+    id: string,
+  ): Promise<{ bienvenida: string; destacados: unknown[]; testimonios: unknown[] } | null> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{
+        bienvenida: string;
+        destacados: unknown[];
+        testimonios: unknown[];
+      }>(
+        `select coalesce(business_profile->>'bienvenida', '') as bienvenida,
+                coalesce(business_profile->'destacados', '[]'::jsonb) as destacados,
+                coalesce(business_profile->'testimonios', '[]'::jsonb) as testimonios
+         from clients where id = $1`,
+        [id],
+      );
+      return rows[0] ?? null;
+    });
+  }
+
+  /**
+   * Reemplaza `bienvenida`/`destacados`/`testimonios` COMPLETOS dentro de `business_profile`, sin
+   * tocar ninguna otra clave del perfil — mismo mecanismo que `actualizarMenu`, incluido el
+   * `coalesce(business_profile, '{}'::jsonb)` para el cliente recién creado cuya columna es NULL (sin
+   * él, el `||` de jsonb sobre NULL da NULL y el UPDATE "funcionaría" sin guardar nada).
+   *
+   * `datos.bienvenida` es un `string` (no un array, a diferencia de los otros dos): `jsonb_build_object`
+   * lo convierte a un string JSON él solo a partir del `::text` — no hace falta `JSON.stringify`.
+   * `datos.destacados`/`datos.testimonios` ya pasaron `contenidoPatchSchema` en la API antes de esta
+   * llamada (frontera 2), así que acá no se vuelve a validar — solo se serializa y se escribe.
+   */
+  async actualizarContenido(
+    ctx: TenantContext,
+    id: string,
+    datos: { bienvenida: string; destacados: unknown[]; testimonios: unknown[] },
+  ): Promise<boolean> {
+    return this.withTenant(ctx, async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(
+        `update clients
+         set business_profile = coalesce(business_profile, '{}'::jsonb)
+           || jsonb_build_object(
+                'bienvenida', $1::text,
+                'destacados', $2::jsonb,
+                'testimonios', $3::jsonb
+              )
+         where id = $4
+         returning id`,
+        [datos.bienvenida, JSON.stringify(datos.destacados), JSON.stringify(datos.testimonios), id],
+      );
+      return rows.length > 0;
+    });
+  }
+
+  /**
    * La extensión de perfil de seguros (`numeroLicencia`/`anosExperiencia`/`redAfiliacion`), tal como
    * vive dentro de `business_profile.seguros` (validada por `perfilSegurosSchema` en
    * `web-builder/contract` ANTES de llegar acá — mismo criterio que `actualizarMenu` con

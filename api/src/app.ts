@@ -13,7 +13,7 @@ import type {
   FiltrosIdeas,
   PgResenas,
 } from "db";
-import { menuPatchSchema, perfilSegurosSchema } from "web-builder/contract";
+import { contenidoPatchSchema, menuPatchSchema, perfilSegurosSchema } from "web-builder/contract";
 import { validarCambiosIdea, serializarResumen, serializarDetalle } from "./ideas-http.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { autenticar, type VerificadorToken, type Variables } from "./auth.js";
@@ -607,6 +607,33 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       return c.json({ error: "El menú no es válido.", campos }, 400);
     }
     const ok = await deps.clientes.actualizarMenu(ctx, c.req.param("id"), parsed.data);
+    return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
+  });
+
+  /** GET /clients/:id/contenido — bienvenida + destacados + testimonios, tal como viven en business_profile. */
+  app.get("/clients/:id/contenido", async (c) => {
+    const ctx = c.get("ctx");
+    const resultado = await deps.clientes.obtenerContenido(ctx, c.req.param("id"));
+    if (!resultado) return c.json({ error: "Cliente no encontrado." }, 404);
+    return c.json(resultado);
+  });
+
+  /**
+   * PATCH /clients/:id/contenido — reemplaza bienvenida + destacados + testimonios COMPLETOS.
+   *
+   * Las tres claves del body son OBLIGATORIAS (`contenidoPatchSchema`, `web-builder/contract`): el
+   * portal manda siempre su copia completa, `bienvenida: ""` incluida (significa "usar el default de
+   * plantilla", no un valor inválido) — mismo criterio que `PATCH /clients/:id/menu`.
+   */
+  app.patch("/clients/:id/contenido", async (c) => {
+    const ctx = c.get("ctx");
+    const body = await c.req.json().catch(() => null);
+    const parsed = contenidoPatchSchema.safeParse(body);
+    if (!parsed.success) {
+      const campos = parsed.error.issues.map((i) => ({ ruta: i.path.join("."), mensaje: i.message }));
+      return c.json({ error: "El contenido no es válido.", campos }, 400);
+    }
+    const ok = await deps.clientes.actualizarContenido(ctx, c.req.param("id"), parsed.data);
     return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
   });
 

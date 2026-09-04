@@ -672,6 +672,23 @@ Hay tres piezas, con spec escrita y **sin empezar**:
    > y [2026-08-17-editor-menu-portal.md](../superpowers/plans/2026-08-17-editor-menu-portal.md).
    > `npm run verificar`: 1538 tests del monorepo + 291 (`node:test`) y 176 (Karma) del portal, todos
    > en verde.
+   >
+   > 🧭 **Editor de contenido en el portal, 2026-09-04 — cierra el Bloque E.** Sexto card de
+   > `/clientes/:id/perfil` (`ClienteContenidoCardComponent`, sin condicional de vertical): la agencia
+   > ya edita `bienvenida` (el párrafo de la home, string con default de plantilla si queda vacío),
+   > `destacados` (motivos "por qué nosotros", máx 6) y `testimonios` (reseñas de clientes, máx 12)
+   > sin SQL a mano — los tres campos ya cruzaban las cuatro fronteras desde la Etapa 3 de esta
+   > entrega; lo que faltaba era solo el camino de escritura. `GET`/`PATCH /clients/:id/contenido`
+   > sobre `PgClientes`, mismo mecanismo que el editor de menú (sin migración nueva, reusa
+   > `client_write` de la 0001). Implementado en paralelo por los agentes `datos` y `front` sobre un
+   > contrato fijado por la sesión principal (`contenidoPatchSchema` en `web-builder/src/contract.ts`),
+   > revisado por el agente `revisor` (CAMBIOS_PEDIDOS por un solo hallazgo documental — esta misma
+   > nota — sin hallazgos de código). Verificado en un navegador real (dev-server + portal): PATCH con
+   > las tres claves inspeccionado en la pestaña de red, persistencia confirmada tras reload, los dos
+   > temas. `bash ./scripts/verificar.sh --con-portal`: **1876 tests del monorepo** + **332
+   > `node:test`** del portal, typecheck limpio; `npm --prefix portal run test:components`: **277
+   > Karma**. **Con esto, el Bloque E queda completo — las tres piezas (plantillas, manual de marca,
+   > carta) y ahora también el editor de contenido, sin ningún punto abierto.**
 
 ### 🟡 Entrega 3 — piezas nuevas y arreglos visuales (A ✅, C ✅, B a medias)
 
@@ -1145,10 +1162,8 @@ Los defaults de `bienvenida` y `destacados` **hablan de la página, no del negoc
 un test con una lista de palabras prohibidas (`temporada`, `mercado`, `artesan`, `desde 19`, `mejor`,
 `premi`…) en vez de la buena memoria de quien edite el texto.
 
-⏭️ **Lo que falta y no es de esta etapa: las pantallas del portal** para que la agencia cargue los tres
-campos. Hasta que existan, solo se pueden escribir a mano en `business_profile` — que es lo que hace
-al default aceptable **y temporal**: un default que el cliente no puede cambiar deja de ser una
-propuesta. Es trabajo del agente `front`.
+✅ **Las pantallas del portal para que la agencia cargue los tres campos, hechas el 2026-09-04** — ver
+el `> 🧭` más arriba en esta sección. Ya no se escriben a mano en `business_profile`.
 
 ## Bloque F — módulo 3: respondedor de reseñas de Google
 

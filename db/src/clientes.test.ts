@@ -760,6 +760,159 @@ test("🔴 actualizarMenu con rol cliente (duenoA1) no escribe — client_write/
   assert.deepEqual(menu, { menu: [{ name: "Margherita" }], menu_categorias: [] }, "el menú no cambió");
 });
 
+// ---------------------------------------------------------------- contenido editorial (editor del portal)
+
+test("obtenerContenido de un cliente sin business_profile devuelve bienvenida vacía y arrays vacíos, no null ni excepción", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Sin contenido", vertical: "restauracion" },
+  );
+
+  const contenido = await clientes.obtenerContenido({ tenantId: s.tenantA, userId: s.equipoA }, id);
+
+  assert.deepEqual(contenido, { bienvenida: "", destacados: [], testimonios: [] });
+});
+
+test("obtenerContenido de un cliente inexistente (o de otro tenant) devuelve null", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo A", vertical: "restauracion" },
+  );
+
+  const contenido = await clientes.obtenerContenido({ tenantId: s.tenantB, userId: s.equipoB }, id);
+
+  assert.equal(contenido, null);
+});
+
+test("actualizarContenido sobre un cliente con business_profile NULL lo guarda igual (no se pierde en silencio)", async () => {
+  // Mismo caso que `actualizarMenu`: `crearCliente` nunca escribe `business_profile`, así que la
+  // columna queda en su default NULL — el `coalesce(business_profile, '{}'::jsonb)` tiene que cubrirlo.
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Perfil vacío", vertical: "restauracion" },
+  );
+
+  const ok = await clientes.actualizarContenido({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    bienvenida: "Bienvenidos a nuestro restaurante",
+    destacados: [{ titulo: "Terraza" }],
+    testimonios: [{ texto: "Excelente", autor: "Ana" }],
+  });
+  assert.equal(ok, true);
+
+  const contenido = await clientes.obtenerContenido({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(contenido, {
+    bienvenida: "Bienvenidos a nuestro restaurante",
+    destacados: [{ titulo: "Terraza" }],
+    testimonios: [{ texto: "Excelente", autor: "Ana" }],
+  });
+});
+
+test("actualizarContenido toca SOLO bienvenida/destacados/testimonios — el resto de business_profile sobrevive", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Con perfil", vertical: "restauracion" },
+  );
+  await db.asService(
+    "update clients set business_profile = $1::jsonb where id = $2",
+    [
+      JSON.stringify({
+        name: "Con perfil",
+        brand: { colores: { primario: "#0a7d34" } },
+        fotos: [{ src: "https://a.storyblok.com/f/1/x.jpg" }],
+      }),
+      id,
+    ],
+  );
+
+  const ok = await clientes.actualizarContenido({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    bienvenida: "Hola",
+    destacados: [],
+    testimonios: [],
+  });
+  assert.equal(ok, true);
+
+  const [fila] = await db.asService(
+    "select business_profile from clients where id = $1",
+    [id],
+  );
+  assert.deepEqual((fila as { business_profile: Record<string, unknown> }).business_profile.brand, {
+    colores: { primario: "#0a7d34" },
+  });
+  assert.deepEqual((fila as { business_profile: Record<string, unknown> }).business_profile.fotos, [
+    { src: "https://a.storyblok.com/f/1/x.jpg" },
+  ]);
+});
+
+test("actualizarContenido con bienvenida:'' la guarda como string vacío, no como ausente", async () => {
+  // `bienvenida: ""` es un valor válido a propósito (ver contenidoPatchSchema): significa "usar el
+  // default de plantilla". Si el `''` se perdiera en el camino (p.ej. un `||` que tratara `''` como
+  // falsy), el GET volvería a mostrar lo que había antes en vez de la cadena vacía que se pidió.
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Con bienvenida", vertical: "restauracion" },
+  );
+  await clientes.actualizarContenido({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    bienvenida: "Texto viejo",
+    destacados: [],
+    testimonios: [],
+  });
+
+  const ok = await clientes.actualizarContenido({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    bienvenida: "",
+    destacados: [],
+    testimonios: [],
+  });
+  assert.equal(ok, true);
+
+  const contenido = await clientes.obtenerContenido({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.equal(contenido?.bienvenida, "", "bienvenida quedó en '', no en el valor viejo");
+});
+
+test("actualizarContenido de un cliente de OTRO tenant no afecta ninguna fila", async () => {
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Solo de A", vertical: "restauracion" },
+  );
+
+  const ok = await clientes.actualizarContenido({ tenantId: s.tenantB, userId: s.equipoB }, id, {
+    bienvenida: "Intento de fuga",
+    destacados: [],
+    testimonios: [],
+  });
+  assert.equal(ok, false);
+
+  const contenido = await clientes.obtenerContenido({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.deepEqual(
+    contenido,
+    { bienvenida: "", destacados: [], testimonios: [] },
+    "el contenido de A no cambió",
+  );
+});
+
+test("🔴 actualizarContenido con rol cliente (duenoA1) no escribe — client_write/app.puede_escribir() lo bloquea", async () => {
+  // Misma política que ya cubre `actualizarMenu` (`client_write`, 0001) — acá el test es directo
+  // sobre `actualizarContenido`, no solo transitivo vía los tests de `PATCH /clients/:id`.
+  const id = await clientes.crearCliente(
+    { tenantId: s.tenantA, userId: s.equipoA },
+    { nombre: "Con contenido", vertical: "restauracion" },
+  );
+  await clientes.actualizarContenido({ tenantId: s.tenantA, userId: s.equipoA }, id, {
+    bienvenida: "Original",
+    destacados: [],
+    testimonios: [],
+  });
+
+  const ok = await clientes.actualizarContenido({ tenantId: s.tenantA, userId: s.duenoA1 }, id, {
+    bienvenida: "Intento de fuga",
+    destacados: [],
+    testimonios: [],
+  });
+  assert.equal(ok, false);
+
+  const contenido = await clientes.obtenerContenido({ tenantId: s.tenantA, userId: s.equipoA }, id);
+  assert.equal(contenido?.bienvenida, "Original", "el contenido no cambió");
+});
+
 // ---------------------------------------------------------------- perfil de seguros (editor del portal)
 //
 // Mismo mecanismo que `menu`/`menu_categorias` arriba (`obtenerPerfilSeguros`/`actualizarPerfilSeguros`

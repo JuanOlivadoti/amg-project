@@ -486,6 +486,44 @@ export interface PerfilSeguros {
   redAfiliacion?: string;
 }
 
+/**
+ * Un motivo "por qué nosotros" del bloque de destacados de la home (`business_profile.destacados`),
+ * tal como lo validan `GET`/`PATCH /clients/:id/contenido` (Bloque E, última pieza de
+ * `docs/proyecto/15-plan-plataforma.md`). Máximo 6 — lo impone el servidor; el portal repite el
+ * límite solo como UX en `cliente-contenido-card.ts` (deshabilitar "agregar"), nunca como la única
+ * defensa. A diferencia de `PerfilSeguros`, `titulo` es OBLIGATORIO: un destacado sin título no tiene
+ * sentido en el render público.
+ */
+export interface Destacado {
+  titulo: string;
+  texto?: string;
+}
+
+/**
+ * Una reseña de cliente para la home (`business_profile.testimonios`), tal como la validan
+ * `GET`/`PATCH /clients/:id/contenido`. Máximo 12. Deliberadamente SIN campo de puntuación/estrellas
+ * — una reseña con valoración numérica inventada en la propia web sería publicidad engañosa, es una
+ * decisión de producto y no se agrega acá. `texto` es obligatorio, `autor` opcional.
+ */
+export interface Testimonio {
+  texto: string;
+  autor?: string;
+}
+
+/**
+ * El contenido editorial de la home, tal como lo devuelve `GET /clients/:id/contenido` y acepta
+ * `PATCH` (Bloque E, última pieza). A diferencia de `PerfilSeguros`, vale para CUALQUIER vertical —
+ * el card que lo edita se monta sin condicional en `cliente-perfil.ts`. Los tres campos SIEMPRE
+ * presentes: `destacados`/`testimonios` nunca `null`, arrays vacíos si no hay nada cargado todavía.
+ * `bienvenida: ''` significa "usar el texto por defecto de la plantilla" — lo resuelve el
+ * renderizador; el portal no necesita conocer cuál es ese default para mostrar/editar el campo.
+ */
+export interface Contenido {
+  bienvenida: string;
+  destacados: Destacado[];
+  testimonios: Testimonio[];
+}
+
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */
 export interface Sesion {
   accessToken: string;

@@ -1320,6 +1320,95 @@ test("equivalencia: el mismo set de casos límite se acepta/rechaza igual en men
   }
 });
 
+// ---------------------------------------------------------------- contenido editorial (editor del portal)
+
+test("GET /clients/:id/contenido de un cliente sin contenido devuelve bienvenida vacía y arrays vacíos", async () => {
+  const res = await req("GET", `/clients/${clientA1}/contenido`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { bienvenida: "", destacados: [], testimonios: [] });
+});
+
+test("GET /clients/:id/contenido de OTRO tenant → 404", async () => {
+  const res = await req("GET", `/clients/${clientA1}/contenido`, { user: equipoB, tenant: tenantB });
+  assert.equal(res.status, 404);
+});
+
+test("PATCH /clients/:id/contenido guarda bienvenida/destacados/testimonios válidos y GET los devuelve igual", async () => {
+  const contenido = {
+    bienvenida: "Bienvenidos a nuestro restaurante",
+    destacados: [{ titulo: "Terraza", texto: "Vistas al mar" }],
+    testimonios: [{ texto: "Excelente atención", autor: "Ana" }],
+  };
+  const resPatch = await req("PATCH", `/clients/${clientA1}/contenido`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: contenido,
+  });
+  assert.equal(resPatch.status, 200);
+  assert.deepEqual(await resPatch.json(), { ok: true });
+
+  const resGet = await req("GET", `/clients/${clientA1}/contenido`, { user: equipoA, tenant: tenantA });
+  assert.deepEqual(await resGet.json(), contenido);
+});
+
+test("PATCH /clients/:id/contenido sin testimonios → 400 (las tres claves son obligatorias)", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}/contenido`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { bienvenida: "Hola", destacados: [] },
+  });
+  assert.equal(res.status, 400);
+  const cuerpo = (await res.json()) as { campos: Array<{ ruta: string; mensaje: string }> };
+  assert.ok(cuerpo.campos.some((c) => c.ruta === "testimonios"));
+});
+
+test("PATCH /clients/:id/contenido con un destacado sin título → 400 con la ruta exacta del campo", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}/contenido`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { bienvenida: "Hola", destacados: [{ texto: "Sin título" }], testimonios: [] },
+  });
+  assert.equal(res.status, 400);
+  const cuerpo = (await res.json()) as { error: string; campos: Array<{ ruta: string; mensaje: string }> };
+  assert.ok(cuerpo.campos.some((c) => c.ruta === "destacados.0.titulo"));
+});
+
+test("PATCH /clients/:id/contenido con bienvenida:'' es válido (default de plantilla, no un rechazo)", async () => {
+  const res = await req("PATCH", `/clients/${clientA1}/contenido`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { bienvenida: "", destacados: [], testimonios: [] },
+  });
+  assert.equal(res.status, 200);
+});
+
+test("🔴 PATCH /clients/:id/contenido de OTRO tenant → 404 con el MISMO mensaje que un id inexistente (no revela existencia)", async () => {
+  const contenido = { bienvenida: "Fuga", destacados: [], testimonios: [] };
+  const resOtroTenant = await req("PATCH", `/clients/${clientA1}/contenido`, {
+    user: equipoB,
+    tenant: tenantB,
+    body: contenido,
+  });
+  assert.equal(resOtroTenant.status, 404);
+  const cuerpoOtroTenant = await resOtroTenant.json();
+
+  const resInexistente = await req("PATCH", "/clients/00000000-0000-4000-8000-000000000000/contenido", {
+    user: equipoA,
+    tenant: tenantA,
+    body: contenido,
+  });
+  assert.equal(resInexistente.status, 404);
+  const cuerpoInexistente = await resInexistente.json();
+
+  assert.deepEqual(cuerpoOtroTenant, cuerpoInexistente, "el 404 no distingue 'de otro tenant' de 'no existe'");
+
+  const filas = await sql<{ business_profile: Record<string, unknown> | null }>(
+    "select business_profile from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(filas[0]?.business_profile, null, "el tenant B no pudo tocar el cliente de A");
+});
+
 // ---------------------------------------------------------------- perfil de seguros (editor del portal)
 
 test("GET /clients/:id/seguros de un cliente sin la clave cargada devuelve seguros: null", async () => {

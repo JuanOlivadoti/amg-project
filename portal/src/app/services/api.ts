@@ -65,4 +65,7 @@ export class ApiService {
 
   readonly obtenerPerfilSeguros = this.cliente.obtenerPerfilSeguros;
   readonly actualizarPerfilSeguros = this.cliente.actualizarPerfilSeguros;
+
+  readonly obtenerContenido = this.cliente.obtenerContenido;
+  readonly actualizarContenido = this.cliente.actualizarContenido;
 }

@@ -860,6 +860,66 @@ test('actualizarPerfilSeguros manda PATCH /clients/:id/seguros con el body compl
   assert.deepEqual(JSON.parse(capturado.body!), datos);
 });
 
+// ---------------------------------------------------------------- contenido de la home (Bloque E)
+
+test('obtenerContenido pide GET /clients/:id/contenido y devuelve los tres campos tal cual', async () => {
+  const contenido = {
+    bienvenida: 'Bienvenidos a Pizza Nonna.',
+    destacados: [{ titulo: 'Horno de leña', texto: 'Desde 1987.' }],
+    testimonios: [{ texto: 'La mejor pizza de Madrid.', autor: 'Marta G.' }],
+  };
+  const { fn, capturado } = fakeFetch({ body: contenido });
+  const res = await crearApi(opts(fn)).obtenerContenido('c1');
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/contenido');
+  assert.deepEqual(res, contenido);
+});
+
+test('🔴 obtenerContenido NO traduce el 404 a un contenido vacío: lo propaga (cliente inexistente/no visible)', async () => {
+  // A diferencia de obtenerIdea/verPost, acá el 404 NO puede significar "sin contenido cargado" —
+  // eso ya lo cubre el 200 con bienvenida:'' y arrays vacíos. Si este 404 se tragara y devolviera un
+  // contenido vacío, la pantalla de un cliente que no existe mostraría el card en blanco en vez de
+  // un error, invitando a "guardar" contra un cliente que no está.
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Cliente no encontrado o sin acceso.' } });
+  await assert.rejects(() => crearApi(opts(fn)).obtenerContenido('c1'), /Cliente no encontrado/);
+});
+
+test('actualizarContenido manda PATCH /clients/:id/contenido con las tres claves, con el id escapado', async () => {
+  const datos = {
+    bienvenida: '',
+    destacados: [{ titulo: 'Horno de leña' }],
+    testimonios: [{ texto: 'La mejor pizza de Madrid.', autor: 'Marta G.' }],
+  };
+  const { fn, capturado } = fakeFetch({ body: { ok: true } });
+  await crearApi(opts(fn)).actualizarContenido('c1/../otro', datos);
+  assert.equal(capturado.method, 'PATCH');
+  assert.equal(capturado.url, 'http://api.test/clients/c1%2F..%2Fotro/contenido');
+  assert.deepEqual(JSON.parse(capturado.body!), datos);
+});
+
+test('🔴 actualizarContenido propaga el error del servidor (400 con campos) sin envolverlo', async () => {
+  const { fn } = fakeFetch({
+    status: 400,
+    body: {
+      error: 'El contenido no es válido.',
+      campos: [{ ruta: 'destacados.0.titulo', mensaje: 'Required' }],
+    },
+  });
+  await assert.rejects(
+    () =>
+      crearApi(opts(fn)).actualizarContenido('c1', {
+        bienvenida: '',
+        destacados: [{}],
+        testimonios: [],
+      } as never),
+    (err: unknown) => {
+      assert.match((err as Error).message, /El contenido no es válido/);
+      assert.deepEqual((err as { campos?: unknown }).campos, [{ ruta: 'destacados.0.titulo', mensaje: 'Required' }]);
+      return true;
+    },
+  );
+});
+
 test('🔴 actualizarPerfilSeguros propaga el error del servidor (400 con campos) sin envolverlo', async () => {
   const { fn } = fakeFetch({
     status: 400,

@@ -288,6 +288,19 @@ export const menuPatchSchema = z.object({
   menu_categorias: z.array(menuCategoriaSchema).max(MAX_CATEGORIAS),
 });
 
+/**
+ * El contrato de `PATCH /clients/:id/contenido` (Bloque E, pantallas del portal para
+ * `bienvenida`/`destacados`/`testimonios`): las TRES claves obligatorias, mismo criterio que
+ * `menuPatchSchema` — el portal manda siempre su copia completa. `bienvenida` acepta `""` a
+ * propósito: es la forma de "volver al default de plantilla" (ver `bienvenida.ts`,
+ * `.trim() || BIENVENIDA_DEFAULT`), no un valor inválido.
+ */
+export const contenidoPatchSchema = z.object({
+  bienvenida: z.string(),
+  destacados: z.array(destacadoSchema).max(MAX_DESTACADOS),
+  testimonios: z.array(testimonioSchema).max(MAX_TESTIMONIOS),
+});
+
 /** Valida el perfil de negocio. Lanza si el JSON existe pero está mal formado. */
 export function parseProfile(raw: unknown): BusinessProfile {
   const parsed = businessProfileSchema.safeParse(raw);

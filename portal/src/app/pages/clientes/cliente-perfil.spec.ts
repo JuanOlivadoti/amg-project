@@ -56,6 +56,9 @@ interface Mocks {
   /** Solo lo usa el card de Seguros (Task 14), y solo si `vertical === 'correduria_seguros'` —
    *  para el resto de los tests (todos con un cliente de restauración) ese card ni se instancia. */
   obtenerPerfilSegurosSpy: jasmine.Spy;
+  /** Usa el card de Contenido (Bloque E), que a diferencia de Seguros se monta SIEMPRE — todos los
+   *  tests de este archivo lo instancian, sea cual sea el vertical del cliente de prueba. */
+  obtenerContenidoSpy: jasmine.Spy;
 }
 
 /**
@@ -74,6 +77,9 @@ function crear(
     errorSignal: overrides.errorSignal ?? signal(''),
     obtenerPerfilSegurosSpy:
       overrides.obtenerPerfilSegurosSpy ?? jasmine.createSpy('obtenerPerfilSeguros').and.resolveTo(null),
+    obtenerContenidoSpy:
+      overrides.obtenerContenidoSpy ??
+      jasmine.createSpy('obtenerContenido').and.resolveTo({ bienvenida: '', destacados: [], testimonios: [] }),
   };
 
   TestBed.configureTestingModule({
@@ -95,6 +101,8 @@ function crear(
         useValue: {
           obtenerPerfilSeguros: mocks.obtenerPerfilSegurosSpy,
           actualizarPerfilSeguros: jasmine.createSpy('actualizarPerfilSeguros').and.resolveTo(undefined),
+          obtenerContenido: mocks.obtenerContenidoSpy,
+          actualizarContenido: jasmine.createSpy('actualizarContenido').and.resolveTo(undefined),
         },
       },
     ],
@@ -169,8 +177,9 @@ describe('ClientePerfilPage', () => {
     const botonesEditar = Array.from(el.querySelectorAll('button')).filter(
       (b) => b.textContent?.trim() === 'Editar',
     );
-    // Info, Dirección, Meta, Recursos: el de Dirección es el segundo botón "Editar" en el DOM.
-    expect(botonesEditar.length).toBe(4);
+    // Info, Dirección, Meta, Recursos, Contenido: el de Dirección es el segundo botón "Editar" en el
+    // DOM. Cinco y no cuatro desde que Contenido (Bloque E) se monta siempre, al final.
+    expect(botonesEditar.length).toBe(5);
     botonesEditar[1]!.click();
     fixture.detectChanges();
     await fixture.whenStable();
@@ -206,8 +215,8 @@ describe('ClientePerfilPage', () => {
     const botonesEditar = Array.from(el.querySelectorAll('button')).filter(
       (b) => b.textContent?.trim() === 'Editar',
     );
-    // Info, Dirección, Meta, Recursos: el de Meta es el tercer botón "Editar" en el DOM.
-    expect(botonesEditar.length).toBe(4);
+    // Info, Dirección, Meta, Recursos, Contenido: el de Meta es el tercer botón "Editar" en el DOM.
+    expect(botonesEditar.length).toBe(5);
     botonesEditar[2]!.click();
     fixture.detectChanges();
     await fixture.whenStable();
@@ -245,8 +254,8 @@ describe('ClientePerfilPage', () => {
     const botonesEditar = Array.from(el.querySelectorAll('button')).filter(
       (b) => b.textContent?.trim() === 'Editar',
     );
-    // Info, Dirección, Meta, Recursos: el de Recursos es el cuarto botón "Editar" en el DOM.
-    expect(botonesEditar.length).toBe(4);
+    // Info, Dirección, Meta, Recursos, Contenido: el de Recursos es el cuarto botón "Editar" en el DOM.
+    expect(botonesEditar.length).toBe(5);
     botonesEditar[3]!.click();
     fixture.detectChanges();
     await fixture.whenStable();
@@ -290,5 +299,21 @@ describe('ClientePerfilPage', () => {
     const el = await estabilizar(fixture);
 
     expect(el.querySelector('app-cliente-seguros-card')).withContext('NO debería montarse para restauracion').toBeNull();
+  });
+
+  it('monta el card de Contenido para restauracion (sin condicional de vertical)', async () => {
+    const { fixture, mocks } = crear(clienteDePrueba({ vertical: 'restauracion' }));
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('app-cliente-contenido-card')).withContext('Contenido debería montarse para cualquier vertical').not.toBeNull();
+    expect(mocks.obtenerContenidoSpy).toHaveBeenCalledWith('c1');
+  });
+
+  it('monta el card de Contenido para correduria_seguros también (junto con Seguros)', async () => {
+    const { fixture } = crear(clienteDePrueba({ vertical: 'correduria_seguros' }));
+    const el = await estabilizar(fixture);
+
+    expect(el.querySelector('app-cliente-contenido-card')).withContext('Contenido debería montarse igual con Seguros presente').not.toBeNull();
+    expect(el.querySelector('app-cliente-seguros-card')).not.toBeNull();
   });
 });
