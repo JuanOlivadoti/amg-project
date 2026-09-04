@@ -26,29 +26,15 @@ estar terminada. Corregido en el mismo cierre (`15`, `09`, `08-testing-calidad.m
 
 ## En vuelo (sin commitear)
 
-Once archivos, todos sobre `main` (`7ce8730`): `web-builder/src/contract.ts` (el contrato,
-`contenidoPatchSchema`), `db/src/clientes.ts` + `db/src/clientes.test.ts` (`obtenerContenido`/
-`actualizarContenido`, 7 tests), `api/src/app.ts` + `api/src/app.test.ts` (los dos endpoints, 7
-tests), `portal/src/app/core/models.ts` (`Destacado`/`Testimonio`/`Contenido`),
-`portal/src/app/core/api-core.ts` + `api-core.test.ts` (4 tests) + `portal/src/app/services/api.ts`,
-`portal/src/app/pages/clientes/cliente-contenido-card.ts` (nuevo, el sexto card de
-`/clientes/:id/perfil`, sin condicional de vertical) + `cliente-contenido-card.spec.ts` (nuevo, 9
-tests Karma), `portal/src/app/pages/clientes/cliente-perfil.ts` + `cliente-perfil.spec.ts` (monta el
-card nuevo). Más las tres actualizaciones de documentación de este cierre (`08`, `09`, `15`).
-
-`bash ./scripts/verificar.sh --con-portal` y Karma ya corridos en verde por la sesión principal
-después de la revisión del `revisor` (ver "## Verificaciones"). Falta el commit + push.
+Nada — working tree limpio en `main`, sincronizado con `origin/main` (`4a23782`: el commit que cierra
+el editor de contenido del Bloque E, ya pusheado).
 
 ## Próximo paso
 
-1. **Commit + push**, con confirmación explícita del usuario antes del push (disciplina de acciones
-   que afectan estado compartido). Un solo commit para los 11 archivos de código + otro para la
-   documentación, o todo junto — a criterio de quien cierre, no hay una convención estricta acá
-   siempre que el mensaje describa las dos partes.
-2. Si no hay instrucción nueva del usuario después de cerrar esto: preguntar con qué seguir. El
-   candidato que queda en el backlog general es el Bloque A3/A4 y el resto de
-   `docs/proyecto/15-plan-plataforma.md` — mayormente pendiente de decisiones de Juan, consolidadas en
-   [`16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md).
+**No hay tarea de desarrollo pendiente de este cierre.** Si no hay instrucción nueva del usuario:
+preguntar con qué seguir. El candidato que queda en el backlog general es el Bloque A3/A4 y el resto
+de `docs/proyecto/15-plan-plataforma.md` — mayormente pendiente de decisiones de Juan, consolidadas en
+[`16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md).
 
 ## Decisiones tomadas
 
