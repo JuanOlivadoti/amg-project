@@ -31,10 +31,24 @@ el editor de contenido del Bloque E, ya pusheado).
 
 ## Próximo paso
 
-**No hay tarea de desarrollo pendiente de este cierre.** Si no hay instrucción nueva del usuario:
-preguntar con qué seguir. El candidato que queda en el backlog general es el Bloque A3/A4 y el resto
-de `docs/proyecto/15-plan-plataforma.md` — mayormente pendiente de decisiones de Juan, consolidadas en
-[`16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md).
+**No hay tarea de desarrollo pendiente de este cierre — working tree limpio, sincronizado con
+`origin/main` (`e66b9a6`).** Se le preguntó al usuario "con qué seguimos" (2026-09-04) y ofrecí dos
+candidatos técnicos sin bloqueo (todo lo demás del backlog general depende de Juan, ver
+[`16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md)); **todavía sin respuesta del
+usuario** cuando se cortó esta sesión:
+
+1. **Diseñar C-1/C-2** (`docs/proyecto/15-plan-plataforma.md` § Bloque C, líneas ~513-589): qué
+   registrar de un intento de publicación en dry-run (hoy no deja rastro en la base, solo un `log()`
+   dentro del contenedor — confirmado contra código el 2026-09-04, sigue así); y si el barrido de runs
+   colgados debería cancelar el workflow de Inngest correspondiente (hoy no lo hace). Recomendado por
+   la sesión principal — más sustancial, cierra un hueco de observabilidad real del circuito
+   aprobar→publicar.
+2. **Unificar la sonda del modo del SDK**, duplicada entre `api/src/deps.ts:184-194`
+   (`exigirEventKeySiEsCloud`) y `orchestrator/src/config.ts:152-169` (`esModoProduccion`) — cada una
+   crea su propio cliente `Inngest` y nada las mantiene sincronizadas. Deuda menor, bajo riesgo, bajo
+   valor (Bloque I).
+
+Si al retomar sigue sin haber instrucción nueva, repetir la pregunta en vez de asumir una opción.
 
 ## Decisiones tomadas
 
