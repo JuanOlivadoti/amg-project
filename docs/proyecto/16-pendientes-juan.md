@@ -27,18 +27,31 @@ Trámite externo con Google, necesario para `GOOGLE_REVIEWS_MODO=live` (hoy todo
 funciona con datos mock). Bloquea en cascada: detectar cuándo un cliente revoca el `refresh_token`.
 Fuente: `15-plan-plataforma.md § Bloque F`, línea ~1336.
 
+**Diagnóstico (2026-09-04):** el proyecto de Cloud "AMG AUTOMATION" (número `546581198843`) tiene la
+API habilitada pero cuota `0` (`GET /v1/accounts` de la Account Management API devuelve `429
+RESOURCE_EXHAUSTED`, `quota_limit_value: "0"`) — Google no aprobó el acceso todavía; habilitar la API
+en la consola y que te aprueben el acceso son dos trámites separados. Falta enviar la **"Application
+for Basic API Access"** desde `support.google.com/business/contact/api_default`. Requisito a
+verificar antes de aplicar: el perfil de Business de AMG tiene que estar **verificado y activo hace
+60+ días, con un sitio web cargado en la ficha** — si no cumple, Google rechaza la solicitud por
+antigüedad. Aprobación: días a semanas, no bloquea desarrollo mientras tanto.
+
 **Estado del trámite:** ___________________________
 
 ---
 
-## 3. Bot de Telegram real para las alertas
+## 3. ~~Bot de Telegram real para las alertas~~ — RESUELTO (ya estaba, desde 2026-08-24)
 
-El código de alertas por reseñas 1-3★ está hecho, en `main` y desplegado (migración `0026`, confirmada
-en producción el 2026-08-24). Falta la parte que no es código: crear el bot con `@BotFather` y poner
-`TELEGRAM_BOT_TOKEN` + `TELEGRAM_MODO=live` donde corresponda. Sin esto, ningún CM recibe una alerta
-real todavía. Fuente: `15-plan-plataforma.md § Bloque F`, línea ~1333.
+`09-estado-y-roadmap.md` ya documentaba esto como cerrado desde el 2026-08-24: bot creado con
+`@BotFather`, `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_MODO=live` cargadas en Railway
+(API y orquestador), ambos servicios levantando bien. `15-plan-plataforma.md` tenía una nota vieja
+sin sincronizar que decía "pendiente" — de ahí que este checklist (generado 2026-09-04) lo listara de
+nuevo; ya corregida. Lo del 2026-09-05 fue Juan reconfirmando/resincronizando `TELEGRAM_BOT_TOKEN` y
+`TELEGRAM_MODO` en local (`env:sync`) — no tocó Railway, así que no cambia el estado de producción.
 
-**¿Bot creado? Token puesto?:** ___________________________
+**Pendiente de verificar, bajo riesgo:** si `docs/private/credenciales.env` local tiene también
+`TELEGRAM_BOT_USERNAME` (va en `api/.env.example`, no en `orchestrator/`) — si falta, el entorno
+local queda inconsistente con Railway, pero no afecta producción.
 
 ---
 
@@ -96,3 +109,29 @@ Fuente: `15-plan-plataforma.md § A3`, línea ~178.
 
 **¿Se corrigieron? Si no lo sabés, correr `npm run auditar:railway` (de solo lectura, compara nombres
 y hashes cortos, nunca valores) y decirme el resultado:** ___________________________
+
+---
+
+## 9. ~~Desplegar la migración `0032`~~ — RESUELTO 2026-09-05
+
+Corrida por vos (`npm run env:sync` + `npm run migrate:deploy -w db`, fuera de Claude Code):
+`+ 0032_intento_publicacion.sql` / `✔ Aplicadas 1 migración(es)`. `kr_publicacion_intentos` ya existe
+en producción — 32/32 migraciones al día.
+
+---
+
+## 10. Rotar credenciales de Google OAuth expuestas en el chat (2026-09-05)
+
+Durante la prueba del acceso a la Business Profile API (ítem #2) se pegaron en esta conversación,
+sin querer, el `client_secret` de OAuth del proyecto de Cloud "AMG AUTOMATION", y un `access_token` +
+`refresh_token` completos (obtenidos vía OAuth Playground con la cuenta
+`argentinosporespana@gmail.com`). Se avisó en el momento; falta confirmar que se hizo.
+
+**Hacé esto:**
+
+1. Cloud Console → APIs y servicios → Credenciales → el Client ID de "AMG AUTOMATION" → agregar un
+   secreto nuevo y borrar el viejo (`GOCSPX-...` que quedó en el chat).
+2. `myaccount.google.com/permissions` con la cuenta `argentinosporespana@gmail.com` → "AMG
+   AUTOMATION" → Quitar acceso (invalida el `access_token` y el `refresh_token` juntos).
+
+**¿Rotado?:** ___________________________

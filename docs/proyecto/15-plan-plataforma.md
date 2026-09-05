@@ -1380,10 +1380,11 @@ contra la API real, con consola limpia y contraste verificado en tema oscuro.
 provider y funciones de Inngest en `orchestrator`) + **301 `node:test`** y **201 Karma** en el portal
 (+3/+5), typecheck limpio en los 7 paquetes. **La migración `0026` está desplegada en producción desde
 el 2026-08-24** (`aplicada_en` confirmado contra `app.migraciones_aplicadas` el 2026-09-03 — esta nota
-decía "sin desplegar" y quedó desactualizada). Lo único pendiente acá, y fuera de lo que ingeniería
-puede resolver: Juan tiene que crear el bot real con `@BotFather` y poner
-`TELEGRAM_BOT_TOKEN`/`TELEGRAM_MODO=live` donde corresponda antes de que una alerta real le llegue a
-un CM.
+decía "sin desplegar" y quedó desactualizada). Esta nota también decía que faltaba crear el bot de
+Telegram, y quedó desactualizada apenas se hizo: **cerrado desde el 2026-08-24** (ver
+[09-estado-y-roadmap.md](09-estado-y-roadmap.md)) — bot real creado con `@BotFather`,
+`TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_MODO=live` cargadas en Railway (API y
+orquestador), ambos servicios levantaron bien.
 
 **Lo que sigue siendo fase 2, sin empezar, y por qué:** el acceso real a la Business Profile API
 (`GOOGLE_REVIEWS_MODO=live`, trámite externo de Juan con Google) bloquea, en cascada, "limpiar la
