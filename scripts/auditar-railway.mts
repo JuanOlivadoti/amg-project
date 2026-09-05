@@ -65,7 +65,22 @@ export const ROL: Record<Servicio, string> = {
  */
 export const OBLIGATORIAS: Record<Servicio, readonly string[]> = {
   // api/src/deps.ts:51 — y `INNGEST_EVENT_KEY`, que en modo cloud hace lanzar a `send()` (deps.ts:135).
-  "amg-project": ["DATABASE_URL_API", "SUPABASE_JWT_ISS", "CORS_ORIGINS", "INNGEST_EVENT_KEY"],
+  // `OAUTH_STATE_SECRET` y `TELEGRAM_BOT_USERNAME` se sumaron al `faltan` de `leerConfig`
+  // (deps.ts:91-111) con la conexión OAuth de Google y la vinculación de Telegram (Bloque F) y nunca
+  // se agregaron acá — medido el 2026-09-05 con una corrida real de `auditar:railway`, que las marcó
+  // "sin declarar" aunque sin ellas la API no arranca. `NPM_CONFIG_PRODUCTION` no sale de `leerConfig`
+  // (es de ANTES: sin ella Railway instala sin devDependencies y `tsx` no se encuentra), pero el
+  // efecto es el mismo — sin ella no arranca — y está documentada como obligatoria en
+  // `14-runbook-despliegue.md:241,255,1123`.
+  "amg-project": [
+    "DATABASE_URL_API",
+    "SUPABASE_JWT_ISS",
+    "CORS_ORIGINS",
+    "INNGEST_EVENT_KEY",
+    "OAUTH_STATE_SECRET",
+    "TELEGRAM_BOT_USERNAME",
+    "NPM_CONFIG_PRODUCTION",
+  ],
   /*
    * orchestrator/src/config.ts: las cuatro que el `faltan` de producción exige, con `PIPELINE_MODO` sin
    * default a propósito. **Ya NO es `[...MAPA.orchestrator]`**: ese array creció con
@@ -119,6 +134,12 @@ export const SEGUN_MODO: Record<Servicio, Readonly<Record<string, string>>> = {
     GOOGLE_REVIEWS_MODO: "sin ella lee reseñas de Google en **mock** (Bloque F fase 1; `live` no está implementado)",
     BORRADOR_RESENAS_MODO:
       "sin ella, el borrador se genera en `openai` si hay OPENAI_API_KEY, o en `mock` si no (Bloque F fase 2)",
+    TELEGRAM_MODO:
+      "sin ella pollea Telegram en **mock** — default FIJO, a diferencia de BORRADOR_RESENAS_MODO: " +
+      "enviar un mensaje no cuesta dinero, así que no hay gasto silencioso que evitar con un default derivado",
+    TELEGRAM_BOT_TOKEN:
+      "sin él, con `TELEGRAM_MODO=live`, quien revienta es `getTelegramProvider` al construir el " +
+      "provider real — no `leerConfig`",
   },
   "amg-renderer": {
     PREVIEW_SECRET: "sin él no hay enlaces firmados de preview: el Visual Editor no puede previsualizar",
@@ -131,6 +152,9 @@ export const SEGUN_MODO: Record<Servicio, Readonly<Record<string, string>>> = {
     BUSINESS_PROFILE_PATH: "solo el `demo-server`",
     CACHE_TTL_MS: "sin ella, el TTL por defecto de la cache",
     TRUST_PROXY: "si no es `1`, no se confía en `X-Forwarded-For`",
+    DOMINIO_PREVIEW:
+      "sin ella no se emite `X-Robots-Tag: noindex` para subdominios de demo — no rompe nada, solo " +
+      "deja de proteger que una demo indexe en vez de la web real del cliente",
   },
 };
 
@@ -165,6 +189,14 @@ export const EXTRA_JUSTIFICADO: Record<string, string> = {
     "payload real y NO lo manda. No está en el `MAPA` porque en local el modo por defecto ya es mock.",
   CACHE_TTL_MS: "Ajuste de la cache del renderizador. No es un secreto y no se reparte.",
   TRUST_PROXY: "Si se confía en `X-Forwarded-For`. Depende del despliegue, no de la fuente.",
+  NPM_CONFIG_PRODUCTION:
+    "Sin ella, Railway instala con `npm ci --production` y omite devDependencies — la API corre con " +
+    "`tsx`, que es una de ellas, y el arranque falla con `tsx: not found`. No es config de la app, es " +
+    "config de CÓMO Railway instala: no va por el `MAPA` (`14-runbook-despliegue.md:241,1123`).",
+  DOMINIO_PREVIEW:
+    "Config de despliegue, no credencial — se pone a mano en Railway a propósito y no por `env:sync` " +
+    "(el comentario en `renderer/.env.example` la deja documentada SIN el `=` para no entrar en el " +
+    "contrato del MAPA). Sin ella, ningún host recibe `noindex` — fallo silencioso, no un error.",
 };
 
 // ---------------------------------------------------------------- comparación (pura)

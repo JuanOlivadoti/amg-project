@@ -17,6 +17,12 @@
 **el objeto sigue en el historial de GitHub** — purgar no des-expone, rotar sí. Pospuesto por vos el
 2026-08-04. Fuente: `15-plan-plataforma.md § Riesgo abierto`.
 
+**2026-09-05: dijiste "lo he eliminado" — ojo, eso NO cierra el ítem.** Borrar el archivo del árbol
+actual (de nuevo, si ya se había sacado del índice el 2026-08-04) no lo saca del historial de git:
+sigue recuperable desde cualquier commit viejo. Lo único que cierra esto de verdad es rotar las
+credenciales que estaban DENTRO del zip — pendiente de confirmar qué contenía y si esas credenciales
+puntuales ya se rotaron.
+
 **Tu respuesta / fecha en que lo hacés:** ___________________________
 
 ---
@@ -48,10 +54,8 @@ antigüedad. Aprobación: días a semanas, no bloquea desarrollo mientras tanto.
 sin sincronizar que decía "pendiente" — de ahí que este checklist (generado 2026-09-04) lo listara de
 nuevo; ya corregida. Lo del 2026-09-05 fue Juan reconfirmando/resincronizando `TELEGRAM_BOT_TOKEN` y
 `TELEGRAM_MODO` en local (`env:sync`) — no tocó Railway, así que no cambia el estado de producción.
-
-**Pendiente de verificar, bajo riesgo:** si `docs/private/credenciales.env` local tiene también
-`TELEGRAM_BOT_USERNAME` (va en `api/.env.example`, no en `orchestrator/`) — si falta, el entorno
-local queda inconsistente con Railway, pero no afecta producción.
+Confirmado el 2026-09-05: `TELEGRAM_BOT_USERNAME` también está en `docs/private/credenciales.env`
+local — sin inconsistencia con Railway. Sin salvedades pendientes.
 
 ---
 
@@ -125,7 +129,8 @@ en producción — 32/32 migraciones al día.
 Durante la prueba del acceso a la Business Profile API (ítem #2) se pegaron en esta conversación,
 sin querer, el `client_secret` de OAuth del proyecto de Cloud "AMG AUTOMATION", y un `access_token` +
 `refresh_token` completos (obtenidos vía OAuth Playground con la cuenta
-`argentinosporespana@gmail.com`). Se avisó en el momento; falta confirmar que se hizo.
+`argentinosporespana@gmail.com`). Se avisó en el momento. **En progreso (2026-09-05):** confirmaste
+que lo estás haciendo ahora — falta que confirmes que ya está hecho.
 
 **Hacé esto:**
 
