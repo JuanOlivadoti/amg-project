@@ -1488,6 +1488,13 @@ ni una línea. Con OBS-01 cerrada, eso ya no es una incógnita sino una decisió
 | **Verificar si Railway ofrece un token de SOLO LECTURA** | El token ya está en `credenciales.env` (2026-08-08) y con eso **A3 está desbloqueado**. Lo que queda es una decisión suya: hasta donde sabemos Railway no tiene scope read-only, así que lo guardado podría ser un token **con escritura** sobre la infraestructura — y eso cambia el riesgo, más con la exposición de credenciales abierta. La alternativa sin credencial nueva es que el comparador use la sesión del CLI | — |
 | **Rotar las credenciales expuestas** | Solo él puede. Pospuesto por decisión propia el 2026-08-04; sigue abierto, no cerrado | — |
 
+> **Actualización (2026-09-05): las dos filas de arriba están CERRADAS.** Juan puso `RAILWAY_API_TOKEN`
+> en `credenciales.env` (un token de proyecto, con escritura — decidió usarlo igual pese al riesgo
+> señalado) y `npm run auditar:railway` corrió real contra los tres servicios: `✔ Los tres servicios
+> coinciden con la fuente` (detalle en `docs/proyecto/16-pendientes-juan.md` § 8). Y confirmó haber
+> rotado las credenciales que estaban dentro de `docs/private.zip` (§ 1 del mismo checklist) — por su
+> palabra, sin verificación propia posible desde una sesión de Claude Code.
+
 ~~**Desplegar el orquestador** (tramo B)~~ — ✅ **hecho el 2026-08-07.** Era la última pieza de Fase 2
 sin desplegar; con ella, el pipeline real corrió en producción por primera vez.
 

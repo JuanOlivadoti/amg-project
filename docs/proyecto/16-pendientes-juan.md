@@ -11,19 +11,17 @@
 
 ---
 
-## 1. Rotación de credenciales expuestas
+## 1. ~~Rotación de credenciales expuestas~~ — RESUELTO 2026-09-05 (según vos)
 
 `docs/private.zip` estuvo commiteado en el repo público desde el 2026-08-01. Se sacó del índice, pero
 **el objeto sigue en el historial de GitHub** — purgar no des-expone, rotar sí. Pospuesto por vos el
 2026-08-04. Fuente: `15-plan-plataforma.md § Riesgo abierto`.
 
-**2026-09-05: dijiste "lo he eliminado" — ojo, eso NO cierra el ítem.** Borrar el archivo del árbol
-actual (de nuevo, si ya se había sacado del índice el 2026-08-04) no lo saca del historial de git:
-sigue recuperable desde cualquier commit viejo. Lo único que cierra esto de verdad es rotar las
-credenciales que estaban DENTRO del zip — pendiente de confirmar qué contenía y si esas credenciales
-puntuales ya se rotaron.
-
-**Tu respuesta / fecha en que lo hacés:** ___________________________
+Dijiste primero "lo he eliminado" (que no alcanza — el objeto sigue en el historial de git) y después
+confirmaste que rotaste las credenciales que estaban DENTRO del zip. Marco resuelto por tu palabra —
+no tengo forma de verificar desde acá qué contenía el archivo ni si la rotación fue completa, así que
+si más adelante aparece algo que dependía de esas credenciales fallando, este es el primer lugar a
+revisar.
 
 ---
 
@@ -99,20 +97,19 @@ cliente después de terminar el servicio. Fuente: `15-plan-plataforma.md § Bloq
 
 ---
 
-## 8. Confirmar si los hallazgos de `npm run auditar:railway` ya se corrigieron
+## 8. ~~Confirmar si los hallazgos de `npm run auditar:railway` ya se corrigieron~~ — RESUELTO 2026-09-05
 
-La corrida del 2026-08-08 encontró tres cosas en el Railway real (no en el código, así que ninguna
-sesión de desarrollo puede confirmarlas sola):
-- La API tenía credenciales de los otros dos procesos (`DATABASE_URL_ORQUESTADOR`, etc.) — riesgo real,
-  no solo prolijidad.
-- El renderizador no tenía ningún token de Storyblok — sin eso, el Visual Editor no puede andar.
+La corrida del 2026-08-08 había encontrado tres cosas en el Railway real:
+
+- La API tenía credenciales de los otros dos procesos (`DATABASE_URL_ORQUESTADOR`, etc.) — **resuelto**.
+- El renderizador no tenía ningún token de Storyblok — **resuelto**.
 - Tres variables del orquestador diferían del panel vs. `credenciales.env` (`PIPELINE_MODO`,
-  `WEB_PUBLISH_MODE`, `STORYBLOK_DRY_RUN`).
+  `WEB_PUBLISH_MODE`, `STORYBLOK_DRY_RUN`) — **resuelto** (de paso apareció una cuarta, `CORS_ORIGINS`
+  en la API, también reconciliada).
 
-Fuente: `15-plan-plataforma.md § A3`, línea ~178.
-
-**¿Se corrigieron? Si no lo sabés, correr `npm run auditar:railway` (de solo lectura, compara nombres
-y hashes cortos, nunca valores) y decirme el resultado:** ___________________________
+Corrida real del 2026-09-05 (una vez agregado `RAILWAY_API_TOKEN` a `credenciales.env` y corregido el
+inventario del script, que tenía ruido por variables del Bloque F nunca agregadas — commit `008537b`):
+`✔ Los tres servicios coinciden con la fuente.` Fuente: `15-plan-plataforma.md § A3`, línea ~178.
 
 ---
 
@@ -124,19 +121,11 @@ en producción — 32/32 migraciones al día.
 
 ---
 
-## 10. Rotar credenciales de Google OAuth expuestas en el chat (2026-09-05)
+## 10. ~~Rotar credenciales de Google OAuth expuestas en el chat~~ — RESUELTO 2026-09-05 (según vos)
 
 Durante la prueba del acceso a la Business Profile API (ítem #2) se pegaron en esta conversación,
 sin querer, el `client_secret` de OAuth del proyecto de Cloud "AMG AUTOMATION", y un `access_token` +
 `refresh_token` completos (obtenidos vía OAuth Playground con la cuenta
-`argentinosporespana@gmail.com`). Se avisó en el momento. **En progreso (2026-09-05):** confirmaste
-que lo estás haciendo ahora — falta que confirmes que ya está hecho.
-
-**Hacé esto:**
-
-1. Cloud Console → APIs y servicios → Credenciales → el Client ID de "AMG AUTOMATION" → agregar un
-   secreto nuevo y borrar el viejo (`GOCSPX-...` que quedó en el chat).
-2. `myaccount.google.com/permissions` con la cuenta `argentinosporespana@gmail.com` → "AMG
-   AUTOMATION" → Quitar acceso (invalida el `access_token` y el `refresh_token` juntos).
-
-**¿Rotado?:** ___________________________
+`argentinosporespana@gmail.com`). Confirmaste la rotación del `client_secret` y la revocación del
+acceso en `myaccount.google.com/permissions`. Marco resuelto por tu palabra — no tengo forma de
+verificarlo desde acá.
