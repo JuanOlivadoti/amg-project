@@ -11,6 +11,75 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-10 — Se cierra el checklist de decisiones de Juan (OBS-04 incluida) y se fija el orden que sigue
+
+Sesión sin desarrollo. Arrancó con una pregunta de Juan —*"qué falta para completar la plataforma que
+no dependa de la aprobación de Google"*— y terminó recorriendo, una por una, las cinco decisiones que
+seguían abiertas en [`16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md).
+
+La respuesta a la pregunta original resultó ser más corta de lo que parecía: **Google bloquea sólo dos
+cosas** (`GOOGLE_REVIEWS_MODO=live` y, en cascada, detectar un `refresh_token` revocado). Con los
+bloques C, D, E y J cerrados, **el alcance base del PRD —los tres módulos— está completo salvo ese modo
+live**. La pregunta dejó de ser "qué falta para completar la plataforma" y pasó a ser "con qué
+seguimos".
+
+**Lo decidido:**
+
+| Ítem | Decisión |
+|---|---|
+| **#4 `CACHE_TTL_MS`** | **60 s** (`CACHE_TTL_MS=60000`) |
+| **#5 Dominios custom de Railway** | **Esperar**, con disparador escrito: subir el plan el día que se firme un **tercer** cliente con dominio propio |
+| **#6 OBS-04** | **(a) edita solo la agencia**, con **(c) desde el portal** nombrado como único camino de crecimiento y **(b) un seat en Storyblok** descartado |
+| **#7 Salida gestionada** | **Pago único + cuota mensual**, con mínimo alto explícito. Los dos importes siguen pendientes |
+| **#2 Business Profile API** | **En pausa** — no se manda la solicitud por ahora |
+
+**Con OBS-04 cerrada, las cuatro observaciones quedan cerradas y ADR-11 se puede reescribir**:
+«handoff editable» nombra ahora, sin ambigüedad, una capacidad que el cliente **gana en la baja**. Y el
+número de seats de Storyblok, que la nota de costo del `09` declaraba inestimable hasta cerrar esta
+observación, **ya es estimable**: pocos y fijos.
+
+**Tres hallazgos salieron de decidir, y ninguno de los tres estaba en el plan.**
+
+1. **El TTL no era lo que la documentación creía.** El bloque G lo trataba como el techo de propagación
+   entre instancias. Pero el webhook de invalidación lo dispara **sólo Storyblok**, mientras que la
+   home, `/menu`, la nav y el pie se sintetizan desde `clients.business_profile` (Postgres) y se
+   **hornean dentro del HTML cacheado** (`renderer/src/app.ts:373-404`): **un cambio hecho desde el
+   portal no invalida nada** y aparece sólo al vencer el TTL. O sea que el TTL era, sin que nadie lo
+   hubiera escrito, el tiempo de respuesta del editor de la agencia. De ahí que 60 s le gane a los 5
+   min por default, y de ahí el candidato de roadmap que quedó anotado sin decidir: invalidar desde
+   `PATCH /clients/:id/*`.
+2. **⚠️ Hay una trampa armada en producción.** `crearFuncionPollingResenas` está registrada
+   **incondicionalmente** (`orchestrator/src/server.ts:63`). No hace nada mientras ningún cliente tenga
+   conexión de Google guardada — pero el día que alguien pulse «Conectar Google» estando en
+   `GOOGLE_REVIEWS_MODO=mock`: **dos reseñas inventadas** en la base **real**
+   (`orchestrator/src/google/mock-provider.ts`), una **alerta de Telegram de verdad** al CM por la de
+   2★ (`TELEGRAM_MODO=live` desde el 2026-08-24) y una **llamada real a OpenAI** para el borrador de la
+   de 5★. Acotado —el `googleReviewId` del mock es determinista, así que se insertan una sola vez— pero
+   permanente. **Como el trámite quedó en pausa, la trampa no caduca sola**, y por eso el guardarraíl
+   encabeza el roadmap en vez de quedar en la cola.
+3. **La variante (b1) de ADR-11 no es posible tal como está redactada.** «El cliente lo hostea» se
+   escribió cuando el plan era un frontend Next.js entregable; hoy el renderizador es un servicio
+   **multi-tenant que lee de la base de AMG**, así que un cliente que se lleve su space se lleva el
+   contenido y nada que lo renderice. Es la misma clase de vacío que la actualización de 2026-07-14
+   detectó para el Next.js, sólo que del lado del cliente. O (b1) sale del ADR, o alguien construye un
+   modo standalone del renderizador.
+
+**Y una conexión que no era obvia:** cada «salida gestionada» ocupa un **slot de dominio custom**, que
+la decisión #5 acababa de declarar capacidad escasa. Un ex-cliente hosteado consume el mismo cupo que
+un cliente que paga el servicio completo — por eso la cuota mensual lleva un mínimo alto explícito, no
+por codicia sino para que retener a un ex-cliente sea una decisión y no una inercia.
+
+**El orden que sigue, decidido el mismo día:** un **lote corto de cierre** —el guardarraíl de «Conectar
+Google» en mock, la reescritura de ADR-11 y verificar el snapshot estático como entregable— y después
+la pieza grande, **comparativas de seguros** (spec aprobada desde el 2026-09-04, falta el plan). El
+criterio para ese orden: decidir quedarse en mock indefinidamente y *no* poner el guardarraíl en la
+misma semana era la peor combinación disponible.
+
+Sin cambios de código: `bash ./scripts/verificar.sh --rapido` en verde (entorno, arnés, higiene de
+secretos, typecheck limpio en 7 paquetes + `scripts/`).
+
+---
+
 ## 2026-09-04 — Editor de contenido del portal (cierra el Bloque E) y la marca de intento de publicación (C-1)
 
 Dos piezas cerradas el mismo día, después de que la iniciativa de generalizar AMG OS terminara (ver la

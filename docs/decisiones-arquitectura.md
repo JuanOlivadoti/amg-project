@@ -34,7 +34,7 @@
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | ✅ **CERRADA** (2026-07-19) — manda `docs/historia/contexto-proyecto-frank.md`; el PRD queda como visión |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 | OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
-| OBS-04 | **Quién edita la web no lo gobierna nuestro RBAC**: el portal y Storyblok son dos identidades que no se cruzan | 🔴 **ABIERTA** (2026-08-01) — bloquea reescribir ADR-11 |
+| OBS-04 | **Quién edita la web no lo gobierna nuestro RBAC**: el portal y Storyblok son dos identidades que no se cruzan | ✅ **CERRADA** (2026-09-10) — (a) edita solo la agencia; desbloquea reescribir ADR-11 |
 
 ---
 
@@ -287,6 +287,30 @@
 > antes decidir **quién edita durante el servicio**. Si el cliente nunca tuvo acceso al Visual Editor,
 > "editable" nombra dos cosas distintas —una capacidad que gana en la baja, o una que ya tenía— y el
 > precio de la salida no es el mismo en cada caso.
+>
+> ### 🔓 Actualización (2026-09-10) — OBS-04 cerrada: este ADR ya se puede reescribir
+>
+> El bloqueo de arriba **cayó**: OBS-04 se cerró en **(a) edita solo la agencia**. Con eso «handoff
+> editable» nombra, sin ambigüedad, **una capacidad que el cliente gana en la baja** — nunca tuvo
+> acceso de edición durante el servicio. La reescritura del ADR queda desbloqueada y va al roadmap.
+>
+> **La forma comercial de la "salida gestionada" también quedó decidida** (mismo día, mismo
+> checklist): **pago único de salida + cuota mensual**, con la cuota a un mínimo alto explícito. El
+> pago único cubre el trabajo de la baja, que ocurre una sola vez (transferir el space, reapuntar el
+> DNS, verificar que quedó sirviendo); la cuota cubre el hosting, el dominio y **el slot de dominio
+> custom de Railway**, que es capacidad de venta finita: un ex-cliente hosteado ocupa el mismo cupo
+> que un cliente que paga el servicio completo. **Los dos números concretos siguen pendientes de
+> Juan** (`16-pendientes-juan.md` § 7).
+>
+> ### ⚠️ Y un hallazgo que la reescritura tiene que resolver, y no es de precio
+>
+> **La variante (b1) —«el cliente lo hostea»— no es posible tal como está redactada arriba.** Se
+> escribió cuando el plan era un frontend Next.js entregable. Hoy el renderizador es **un servicio
+> multi-tenant que lee de la base de AMG** (`clients`, vía `app_render`): un cliente que se lleve su
+> space de Storyblok se lleva el **contenido** y nada que lo renderice. Es la misma clase de vacío que
+> la actualización de 2026-07-14 detectó para el Next.js, sólo que ahora del lado del cliente. O (b1)
+> **sale del ADR**, o alguien construye un **modo standalone** del renderizador — alcance nuevo y nada
+> trivial. No se decide acá: se anota para que la reescritura no lo herede sin mirarlo.
 
 ---
 
@@ -1281,7 +1305,7 @@ eliminando opcionalidad, una tras otra).
 
 ---
 
-## OBS-04 — Quién edita la web no lo gobierna nuestro RBAC 🔴 ABIERTA
+## OBS-04 — Quién edita la web no lo gobierna nuestro RBAC ✅ CERRADA (2026-09-10)
 
 **Observación (2026-08-01).** Con el Visual Editor ya operativo en producción, aparece una frontera
 que ningún ADR nombró: **hay dos sistemas de identidad y no se cruzan.** El nuestro —Supabase Auth +
@@ -1338,6 +1362,36 @@ space — que hoy es el eslabón débil. No sustituye el seat: Storyblok pide su
 **Riesgo si no se decide:** el vencimiento largo se queda por inercia y se convierte en el diseño; y
 la cláusula de offboarding se firma sin que nadie haya dicho qué compra el cliente cuando compra
 "editable".
+
+> ### ✅ CERRADA el 2026-09-10 — (a): edita solo la agencia
+>
+> **Decisión de Juan**, tomada al recorrer el checklist de
+> [`16-pendientes-juan.md`](proyecto/16-pendientes-juan.md):
+>
+> - **Durante el servicio, el cliente NO edita.** Ve su web y aprueba desde el portal en modo lectura
+>   (ADR-20). Los seats de Storyblok quedan **pocos y fijos** — el número entra limpio en la propuesta
+>   en vez de crecer con la cartera, que era justo la incógnita que la nota de «Costo de Storyblok»
+>   del `09` no podía estimar hasta cerrar esta observación.
+> - **Si alguna vez un cliente tiene que editar, el camino es (c) —desde el portal, bajo nuestro
+>   RBAC— y NUNCA (b)**, un seat suyo en Storyblok. Se nombra ahora, con la decisión fría, para que el
+>   día de la presión nadie elija (b) por ser la de una tarde.
+> - **Lo que cuesta (c), medido al decidir, para que no se subestime:** el rol `cliente` hoy no puede
+>   escribir NADA en `clients` — `app.puede_escribir()` es `maestro/equipo/servicio`
+>   ([`0001_init.sql:387-390`](../db/migrations/0001_init.sql#L387-L390)) y `client_write` la usa.
+>   Abrirlo es una migración de escritura acotada **por columna** sobre la propia fila, con su tanda de
+>   tests de aislamiento; y es exactamente el terreno donde la `0021`/`0022` ya encontraron que un
+>   `revoke select` por columna **no angosta** un `grant` de tabla ya concedido. No es un flag.
+> - **Por qué (b) queda descartada:** movería el aislamiento entre clientes desde Postgres a la lista
+>   de colaboradores por space de Storyblok — un sistema que no controlamos ni podemos testear. Es
+>   precisamente lo que ADR-15 y ADR-17 vinieron a impedir.
+>
+> **Lo que esto desbloquea:** ADR-11 se puede reescribir. «Handoff editable» nombra ahora, sin
+> ambigüedad, una capacidad que el cliente **gana en la baja**, no una que ya tenía.
+>
+> **Lo que sigue abierto y NO es esta observación:** el botón «Editar la web» que firme el enlace de
+> preview al vuelo (retira la URL de larga duración pegada en el space, que es el eslabón débil que
+> esta observación identificó) y el clic-para-editar del Visual Editor (`desShapeBlok()` descarta
+> `_editable`). Los dos son trabajo de roadmap, no decisiones.
 
 ---
 

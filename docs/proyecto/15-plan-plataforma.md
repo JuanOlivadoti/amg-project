@@ -1393,11 +1393,70 @@ conocer la forma real del error de revocación de Google, así que construir esa
 adivinar contra una API que todavía no existe en este proyecto. Las alertas ya no son parte de este
 bloqueo — quedaron resueltas por Telegram.
 
+> ### ⏸️ Decisión del 2026-09-10 — el trámite queda EN PAUSA, y eso arma una trampa
+>
+> **Juan decidió no mandar por ahora la "Application for Basic API Access"**: hoy nadie reclama el
+> módulo de reseñas, así que el coste de esperar es bajo y la solicitud puede hacerse cuando aparezca
+> un cliente que lo pida. **Consecuencia asumida:** el módulo 3 queda como **demo permanente** mientras
+> dure — sin acceso real no hay ni una reseña real.
+>
+> ⚠️ **Lo que esa pausa deja armado, detectado el mismo día.** `crearFuncionPollingResenas` está
+> registrada **incondicionalmente** en el orquestador
+> ([`server.ts:63`](../../orchestrator/src/server.ts#L63)). No hace nada mientras ningún cliente tenga
+> conexión de Google guardada — pero **el día que alguien pulse «Conectar Google» en producción estando
+> en `GOOGLE_REVIEWS_MODO=mock`**:
+>
+> - se insertan **dos reseñas inventadas** en la base **real** («Cliente Mock Insatisfecho» 2★ y
+>   «Cliente Mock Contento» 5★, [`mock-provider.ts`](../../orchestrator/src/google/mock-provider.ts));
+> - se dispara una **alerta de Telegram de verdad** al CM por la de 2★ (`TELEGRAM_MODO=live` desde el
+>   2026-08-24);
+> - y se gasta una **llamada real a OpenAI** generando el borrador de la de 5★.
+>
+> El radio está **acotado** —el `googleReviewId` del mock es determinista, así que `registrarResenaGoogle`
+> las inserta una sola vez y no hay inundación— pero quedan permanentes en producción.
+>
+> **No verificado:** si hoy existe algún cliente con conexión de Google en producción. Vale la pena
+> mirarlo.
+>
+> **El arreglo, priorizado en el roadmap:** que «Conectar Google» **falle explícitamente** cuando el
+> modo es `mock` y el entorno es producción — misma doctrina que `verificarPublicacion()`
+> (`orchestrator/src/config.ts`) ya aplica con `PIPELINE_MODO`: **un modo que miente no debería poder
+> arrancar en producción**. Quedarse en mock indefinidamente hace este guardarraíl MÁS importante, no
+> menos.
+
 ---
 
 ## Bloque G — lo que ADR-19 dejó a medias
 
 Nada de esto bloquea hoy; **todo bloquea un SLA**.
+
+> ### ✅ Decisiones del 2026-09-10 (checklist de Juan) — dos de las cuatro filas quedan resueltas
+>
+> **`CACHE_TTL_MS` = 60 000 (60 s).** Y la razón no es la que este bloque suponía. El webhook de
+> invalidación lo dispara **solo Storyblok**; la home, `/menu`, la nav y el pie se sintetizan desde
+> `clients.business_profile` (Postgres) y se **hornean dentro del HTML cacheado**
+> ([`renderer/src/app.ts:373-404`](../../renderer/src/app.ts#L373-L404)), así que **un cambio hecho
+> desde el portal —carta, perfil, contenido— no invalida nada: aparece sólo cuando vence el TTL**. Con
+> el default de 5 min ([`cache.ts:55`](../../renderer/src/cache.ts#L55)) la agencia editaba y esperaba
+> sin forma de forzarlo. O sea que el TTL no era sólo el techo de propagación entre instancias: era el
+> tiempo de respuesta del editor. Se acepta a cambio un colchón más corto ante una caída de la CDA
+> (60 s en vez de 5 min); el tráfico actual hace que las peticiones extra sean despreciables.
+> **Falta que Juan lo ponga en Railway** (servicio del renderizador).
+>
+> **El dominio propio del cliente: ESPERAR, con disparador escrito.** El día que se firme un **tercer
+> cliente con dominio propio** se sube el plan de Railway — un cambio de plan, no un proyecto, así que
+> el riesgo de esperar es bajo. Hoy los dos cupos están tomados por la **API** (`api.dinamicseo.es`) y
+> el **renderizador**; el portal vive en Hostinger y no consume cupo.
+>
+> **La CDN se saca a propósito de esa decisión.** El límite de dominios es un síntoma, no la razón para
+> construirla: la CDN se justifica sola por el borde (ADR-19) y por el colchón de disponibilidad, y
+> merece su propio diseño. **La trampa que ese diseño va a tener que tratar, anotada ahora para que no
+> se descubra tarde:** la clave de cache **tiene que incluir el `Host`** — ADR-19 dice que el dominio
+> ES la autorización, y una cache que lo ignore serviría la web de un cliente bajo el dominio de otro.
+>
+> **Candidato de roadmap que salió de decidir el TTL, NO decidido:** que `PATCH /clients/:id/*`
+> invalide la cache del renderizador desde nuestro lado (mismo mecanismo que el webhook de Storyblok,
+> disparado por la API). Con eso el TTL volvería a ser una red de seguridad y no el mecanismo principal.
 
 - **Una CDN delante del renderizador.** ADR-19 dice "cache en el borde"; lo construido es una cache
   **en proceso**. El borde es una decisión de despliegue.
@@ -1423,6 +1482,34 @@ Nada de esto bloquea hoy; **todo bloquea un SLA**.
 ## Bloque H — offboarding (ADR-11) y OBS-04
 
 **ADR-11 no se puede firmar todavía**, y lo que falta no es código:
+
+> ### ✅ Actualización 2026-09-10 — OBS-04 cerrada y la salida gestionada, con forma
+>
+> **OBS-04 se cerró en (a): edita solo la agencia.** Durante el servicio el cliente no edita — ve su
+> web y aprueba desde el portal en modo lectura (ADR-20). Seats de Storyblok **pocos y fijos**. Si
+> algún día un cliente tiene que editar, el camino es **(c), desde el portal bajo nuestro RBAC**, y
+> **nunca (b)**, un seat suyo en Storyblok. Detalle y el porqué de descartar (b), en el propio
+> [OBS-04](../decisiones-arquitectura.md).
+>
+> **Lo que (c) cuesta de verdad, medido al decidir:** el rol `cliente` hoy no puede escribir NADA en
+> `clients` — `app.puede_escribir()` es `maestro/equipo/servicio`
+> ([`0001_init.sql:387-390`](../../db/migrations/0001_init.sql#L387-L390)). Abrirlo es una migración de
+> escritura acotada **por columna** sobre la propia fila, con tests de aislamiento, en el mismo terreno
+> donde la `0021`/`0022` ya encontraron que un `revoke select` por columna no angosta un `grant` de
+> tabla ya concedido. No es un flag.
+>
+> **La "salida gestionada" tiene forma: pago único de salida + cuota mensual**, con la cuota a un
+> mínimo alto explícito — porque cada salida gestionada ocupa un **slot de dominio custom**, que la
+> decisión de arriba acaba de declarar capacidad escasa. **Los dos números siguen pendientes de Juan.**
+>
+> **Con esto ADR-11 se puede reescribir**, y esa reescritura entra en el roadmap. **Sigue faltando
+> verificar el snapshot estático como entregable** — es trabajo, no decisión.
+>
+> ⚠️ **Y un hallazgo que la reescritura tiene que resolver:** la variante **(b1) «el cliente lo
+> hostea» no es posible** tal como ADR-11 la redacta. Se escribió cuando el plan era un frontend
+> Next.js entregable; hoy el renderizador es un servicio **multi-tenant que lee de la base de AMG**, así
+> que un cliente que se lleve su space se lleva el contenido y nada que lo renderice. O (b1) sale del
+> ADR, o alguien construye un modo standalone del renderizador — alcance nuevo, nada trivial.
 
 - **OBS-04 está ABIERTA**: quién edita la web durante el servicio no lo gobierna nuestro RBAC. De eso
   depende qué significa "editable" en la baja.
@@ -1509,6 +1596,40 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 ---
 
 ## El orden que recomiendo, y por qué
+
+> ### 🧭 El orden vigente, decidido el 2026-09-10 con Juan
+>
+> Lo de más abajo (los puntos 0 a 7) es **historia**: describe el orden de agosto, ya recorrido. Con
+> el checklist de [`16-pendientes-juan.md`](16-pendientes-juan.md) cerrado —salvo los dos números del
+> precio de salida—, el orden que rige es éste.
+>
+> **Primero, un lote corto de cierre.** Son días, no semanas, y lo que arregla es exactamente lo que
+> quedó al descubierto al tomar las decisiones de hoy:
+>
+> 1. **El guardarraíl de «Conectar Google» en modo mock.** Que falle explícitamente en producción
+>    cuando `GOOGLE_REVIEWS_MODO=mock`. Sube de prioridad **porque** el trámite quedó en pausa: la
+>    trampa del Bloque F no caduca sola.
+> 2. **Reescribir ADR-11.** Desbloqueado hoy al cerrar OBS-04. Tiene que resolver de paso el hallazgo
+>    de **(b1)** —«el cliente lo hostea» no es posible con un renderizador multi-tenant— y dejar el
+>    hueco de los dos números del precio, no inventarlos.
+> 3. **Verificar el snapshot estático como entregable.** Sale de `renderStory()`, que ya existe; nadie
+>    lo ha usado nunca como entregable de salida. Es la última pieza de trabajo del Bloque H.
+>
+> **Y después, la pieza grande: comparativas de seguros.** Spec aprobada
+> ([`2026-09-04-comparativas-seguros-design.md`](../superpowers/specs/2026-09-04-comparativas-seguros-design.md)),
+> falta el `writing-plans` y la implementación. Es lo único abierto que agrega capacidad vendible, y le
+> da herramienta operativa a la vertical `correduria_seguros`, que hoy tiene catálogo de pólizas y nada
+> para el día a día. **Dos cosas a mirar con lupa al planificarla:** el **preflight de presupuesto** del
+> provider real (es una llamada facturable nueva, y la doctrina de este proyecto es abortar de más antes
+> que gastar de más) y el **parsing de formato libre** — un LLM interpretando columnas arbitrarias es
+> justo donde un test que prueba la implementación en vez del contrato se ve verde sin probar nada.
+>
+> **La cola, sin orden fijado todavía:** el botón «Editar la web» que firme el preview al vuelo (retira
+> la URL de larga duración del space, eslabón débil de OBS-04) · invalidar el `nonce` del `state` de
+> OAuth tras el primer uso (necesita migración) · la invalidación de cache desde la API al cambiar el
+> perfil · la CDN del Bloque G · el MCP local para Claude Desktop
+> ([spec](../superpowers/specs/2026-09-05-mcp-claude-desktop-design.md)) · el ingreso real de ideas por
+> n8n (la pantalla existe y enseña el seed) · y la deuda menor del Bloque I.
 
 > ### ✅ Del 0 al 4, hechos (2026-08-07 / 08). Se sigue por el **5**
 >
