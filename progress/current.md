@@ -6,17 +6,38 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión (2026-09-10 → 11):** dos piezas. Primero se recorrió con Juan, decisión por decisión, el
+**Sesión (2026-09-10 → 11):** tres piezas. Primero se recorrió con Juan, decisión por decisión, el
 checklist de [`16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md) — commiteado en
 `428571b`. Después, el **primer ítem del lote corto** que salió de ahí: el **guardarraíl de «Conectar
-Google» en modo mock + producción**.
+Google» en modo mock + producción** (commiteado en `c82399f`). Y tercero, el **segundo ítem del lote
+corto: la reescritura de ADR-11**, que es lo que está en vuelo ahora.
 
 ## En vuelo (sin commitear)
 
-**El guardarraíl, terminado y revisado.** Implementado por el agente `datos` sobre un contrato fijado
-por la sesión principal; el portal, `codigos.ts`, el inventario de `auditar-railway` y la
-documentación, por la sesión principal. Revisión de `revisor`: **CAMBIOS_PEDIDOS con 2 bloqueantes**,
-los dos corregidos (ver abajo). Falta commitear.
+**La reescritura de ADR-11.** Solo documentación (`docs/decisiones-arquitectura.md` + la
+sincronización del `09`, el `15` y el `16`). El ADR tiene ahora una sección **«versión vigente»**, que
+es la que se lleva a un contrato; el cuerpo viejo queda marcado como historia en vez de reescrito.
+
+Lo que dice: **snapshot estático incluido**; **salida gestionada de pago** (pago único + cuota
+mensual, importes pendientes de Juan); y **«editable» = una capacidad que el cliente GANA en la
+baja**, nunca una que ya tenía — que es lo que OBS-04, al cerrarse en (a), desambiguó.
+
+**(b1) «el cliente lo hostea» se RETIRA de la oferta**, y conviene leer con cuidado cómo: se retira
+diciendo *«hoy no se ofrece»*, **no** *«no se puede»*. La primera lectura de la sesión principal fue
+que era imposible; al verificarlo resultó impreciso. `demo-server.ts` corre el renderizador **entero**
+contra PGlite en memoria sembrado desde un JSON de perfil (`renderer/src/demo-server.ts:22-87`), así
+que la forma que funcionaría —renderizador + PGlite sembrado + el space propio del cliente + su token
+de CDA— **ya tiene todas las piezas**; lo que no existe es el empaquetado, la documentación y el
+soporte. **Es una decisión de Juan si quiere que se ofrezca**, y quedó anotada como pregunta en el
+`16` § 7.
+
+**Para firmar ADR-11 faltan exactamente dos cosas:** los dos importes (Juan) y **verificar el snapshot
+estático como entregable** — el tercer y último ítem del lote corto.
+
+### Lo anterior de esta sesión, ya commiteado
+
+- `428571b` — el checklist de decisiones de Juan (OBS-04 incluida).
+- `c82399f` — el guardarraíl de «Conectar Google», con las correcciones de la revisión dentro.
 
 ## Qué hace el guardarraíl
 
@@ -77,11 +98,10 @@ proceso.
 
 ## Próximo paso
 
-1. **Commit + push** de esta etapa.
-2. **Lo que sigue del lote corto:** reescribir **ADR-11** (desbloqueado al cerrar OBS-04; tiene que
-   resolver el hallazgo de **(b1)** —«el cliente lo hostea» no es posible con un renderizador
-   multi-tenant— y dejar el hueco de los dos importes) y **verificar el snapshot estático** como
-   entregable, que sale de `renderStory()`.
+1. **Commit + push** de la reescritura de ADR-11.
+2. **Lo que queda del lote corto: verificar el snapshot estático como entregable.** Sale de
+   `renderStory()`, que ya existe; nadie lo usó nunca como entregable de salida, así que hoy esa línea
+   del contrato describe una intención. Es lo único de código que separa a ADR-11 de ser firmable.
 3. **Después: comparativas de seguros.** Falta el `writing-plans` sobre la spec aprobada.
 4. **Lo que espera de Juan:** los dos importes de la salida gestionada; poner `CACHE_TTL_MS=60000` en
    Railway; y comprobar si hay algún cliente con conexión de Google en producción.

@@ -17,7 +17,7 @@
 | ADR-08 | Mercado del Módulo 2: **ES-first, diseño market-aware** | Aceptada |
 | ADR-09 | LLM: **proveedor abstracto** (OpenAI/Anthropic); embeddings OpenAI | Aceptada |
 | ADR-10 | Endurecimiento del esquema del Módulo 2 (post-review) | Aceptada |
-| ADR-11 | Política de salida/offboarding de webs de cliente | ⚠️ **Hay que reescribirla** en términos de ADR-19 antes de llevarla a un contrato |
+| ADR-11 | Política de salida/offboarding de webs de cliente | ✅ **REESCRITA el 2026-09-11** en términos de ADR-19 (ver *«versión vigente»* al final de la entrada). Firmable en cuanto Juan ponga los dos importes y se verifique el snapshot estático |
 | ADR-12 | Orquestador durable (Inngest): el evento dispara, la base decide | Aceptada |
 | ADR-13 | El acceso a la base es SOLO por transacción con conexión reservada | Aceptada |
 | ADR-14 | Idempotencia por `payload_hash` (con registro durable OBLIGATORIO en prod) + método Standard donde se puede (SERP/SV) | Aceptada · ampliada 2026-07-15 |
@@ -225,6 +225,11 @@
 > **Cumplido a medias el 2026-08-02.** La normalización por percentiles **existe** (`VOLUMEN_PERCENTIL_TOPE = 0.9`, nearest-rank, con winsorización), pero es el percentil **del run**, no el del mercado que pedía la review: arregla el aplastamiento por un outlier, no la comparabilidad entre corridas. Y **no está calibrada con datos reales**: el dataset de la corrida de producción se perdió (KR-1). SERP-overlap ponderado y hub/spoke siguen diferidos.
 
 ## ADR-11 — Política de salida/offboarding de webs de cliente
+
+> ⚠️ **El cuerpo de abajo es HISTORIA.** La decisión vigente es la sección **«ADR-11, versión vigente
+> — reescrita el 2026-09-11»**, al final de esta entrada. Lo que sigue se conserva porque explica cómo
+> se llegó hasta ahí, no porque siga valiendo.
+
 **Contexto.** En headless, "una web" = contenido (Storyblok) + frontend (Next.js). Entregar solo el space de Storyblok NO deja una web funcionando: falta el render. Hay que definir qué se lleva un cliente al darse de baja.
 **Decisión.**
 - **Salida por defecto (incluida): snapshot estático.** Build estático (Next.js SSG export) de las páginas del cliente → HTML/CSS/JS plano, hosteable en cualquier lado, sin dependencia de AMG OS ni de Storyblok. Web **online pero congelada** (sin edición).
@@ -313,6 +318,85 @@
 > trivial. No se decide acá: se anota para que la reescritura no lo herede sin mirarlo.
 
 ---
+
+---
+
+> ## 📌 ADR-11, versión vigente — reescrita el 2026-09-11
+>
+> **Todo lo de arriba queda como historia.** Estaba redactado sobre un frontend Next.js que ADR-16
+> eliminó, y con «handoff editable» significando dos cosas distintas hasta que OBS-04 se cerró. Esta
+> sección es la que se lleva a un contrato; cuando choque con el cuerpo de arriba, **gana ésta**.
+>
+> ### Qué se le entrega a un cliente que se da de baja
+>
+> **1. Salida por defecto, incluida: el snapshot estático.** El HTML que ya produce `renderStory()`,
+> autocontenido —tipografías servidas desde el propio documento, sin hojas de terceros, sin JS de
+> ninguna plataforma—, hosteable en cualquier lado. La web queda **online pero congelada**: sin
+> edición y sin que nadie la republique. Cubre lo que la clientela realmente quiere («que no se me
+> caiga la web») a coste casi nulo.
+>
+> ⚠️ **Sigue sin verificarse como entregable.** Se puede sacar de `renderStory()`, pero **nadie lo ha
+> hecho nunca**: no existe el comando, ni se ha comprobado que el resultado abra en un navegador
+> desconectado de AMG. Es trabajo pendiente del Bloque H, no una promesa cumplida — y hasta que se
+> haga, esta línea del contrato describe una intención.
+>
+> **2. Salida editable, de pago: la salida gestionada.** AMG **transfiere el space de Storyblok** a la
+> cuenta del cliente (ADR-04 ya obliga a un space por cliente, justamente para que la transferencia
+> sea limpia) y **sigue sirviendo la web** desde el renderizador. El cliente pasa a poder editar; el
+> hosting, el dominio y el render los sigue operando AMG.
+>
+> **Precio: pago único de salida + cuota mensual**, con la cuota a un mínimo alto explícito (decidido
+> el 2026-09-10; los dos importes los pone Juan, `16-pendientes-juan.md` § 7). El pago único cubre el
+> trabajo que ocurre una sola vez —transferir el space, reapuntar el DNS, verificar que quedó
+> sirviendo—; la cuota cubre el hosting, el dominio y **el slot de dominio custom**, que es capacidad
+> de venta finita: un ex-cliente hosteado ocupa el mismo cupo que uno que paga el servicio completo.
+>
+> ### Qué significa «editable», ahora que OBS-04 está cerrada
+>
+> **Una capacidad que el cliente GANA en la baja, nunca una que ya tenía.** OBS-04 se cerró el
+> 2026-09-10 en **(a): durante el servicio edita sólo la agencia**. El cliente ve su web y aprueba
+> desde el portal en modo lectura (ADR-20), y no tiene acceso al Visual Editor. Por eso la salida
+> editable es un **upgrade** que se cobra, y no la devolución de algo que se le estaba reteniendo —
+> que era justo la ambigüedad que impedía redactar esta cláusula.
+>
+> ### La variante que se RETIRA, y por qué
+>
+> El ADR original ofrecía **(b1) «el cliente lo hostea»**. Se retira de la oferta, y no por una
+> decisión comercial sino porque **no hay nada que entregar que renderice**: el renderizador es un
+> servicio **multi-tenant que lee de la base de AMG** (`clients`, vía `app_render`, ADR-19). Un
+> cliente que se lleve su space se lleva el **contenido** y nada que lo dibuje. Es la misma clase de
+> vacío que la actualización de 2026-07-14 detectó para el Next.js, sólo que del lado del cliente.
+>
+> **Lo que NO se está diciendo es que sea imposible.** Medido al reescribir esto: `demo-server.ts`
+> corre el renderizador entero **contra PGlite en memoria, sembrado desde un JSON de perfil**
+> (`renderer/src/demo-server.ts:22-87`). O sea que la forma que funcionaría —renderizador + PGlite
+> sembrado + el space propio del cliente + su token de CDA— **ya tiene todas las piezas**; lo que no
+> existe es el empaquetado, la documentación y el soporte de eso. Retirar (b1) es decir *«hoy no se
+> ofrece»*, no *«no se puede»*. Reponerla es un ADR nuevo con alcance propio, y el disparador
+> razonable sería un cliente que lo pida y esté dispuesto a pagarlo.
+>
+> ### Lo que este ADR ya NO promete, y antes sí
+>
+> - Un **frontend Next.js** entregable: no existe (ADR-16).
+> - Que el cliente **pueda hostear** su web por su cuenta: retirado arriba.
+> - Que el snapshot estático esté **probado**: no lo está.
+>
+> ### Lo que sigue siendo cierto, y se verificó
+>
+> - **Archivar al cliente APAGA su web**, sin ningún paso extra: la política de `app_render` exige
+>   `archived_at is null`. El «offboarding en <5 min» del PRD no depende de que alguien se acuerde de
+>   tocar el renderizador.
+> - **El dominio es único y no se libera solo.** Si un cliente se va y otro toma su dominio, tiene que
+>   ser un acto explícito, no una carrera que resuelve el `order by` de una query.
+> - **Un space de Storyblok por cliente** (ADR-04), que es lo que hace limpia la transferencia.
+>
+> ### Qué falta para llevarlo a un contrato
+>
+> 1. **Los dos importes** (Juan).
+> 2. **Verificar el snapshot estático** como entregable real — la única pieza de código que queda.
+>
+> Con eso, ADR-11 pasa de «en revisión» a firmable. **No antes:** una cláusula que promete un
+> entregable que nadie produjo nunca es exactamente lo que este ADR lleva dos años arrastrando.
 
 ## ADR-12 — Orquestador durable (Inngest): el evento dispara, la base decide
 

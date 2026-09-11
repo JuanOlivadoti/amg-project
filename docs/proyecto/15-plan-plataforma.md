@@ -1665,9 +1665,17 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 >    el composition root, el campo obligatorio en `ApiDeps`, los dos puntos de aplicación (incluido el
 >    del callback, por el `state` firmado antes del despliegue), el 409 sin `codigo`, el test que
 >    impide bloquear `desconectar`, y el `try/catch` que le faltaba al portal.
-> 2. **Reescribir ADR-11.** Desbloqueado hoy al cerrar OBS-04. Tiene que resolver de paso el hallazgo
->    de **(b1)** —«el cliente lo hostea» no es posible con un renderizador multi-tenant— y dejar el
->    hueco de los dos números del precio, no inventarlos.
+> 2. ~~**Reescribir ADR-11.**~~ ✅ **HECHO el 2026-09-11.** El ADR tiene ahora una sección **«versión
+>    vigente»** que es la que se lleva a un contrato; el cuerpo viejo queda marcado como historia. Dos
+>    cosas que salieron al escribirla: **(b1) «el cliente lo hostea» se RETIRA de la oferta** —el
+>    renderizador es multi-tenant y lee de la base de AMG, así que quien se lleve su space se lleva el
+>    contenido y nada que lo dibuje—, pero se retira diciendo *«hoy no se ofrece»*, **no «no se
+>    puede»**: medido al escribirlo, `demo-server.ts` corre el renderizador entero contra **PGlite en
+>    memoria sembrado desde un JSON de perfil** (`renderer/src/demo-server.ts:22-87`), así que la forma
+>    que funcionaría ya tiene las piezas — lo que falta es empaquetado, documentación y soporte.
+>    Reponerla sería un ADR nuevo, con un cliente que lo pida como disparador. Y **«editable» quedó
+>    definido sin ambigüedad**: una capacidad que el cliente **gana en la baja**, porque OBS-04 se
+>    cerró en (a). Los dos importes quedan como hueco explícito, sin inventar.
 > 3. **Verificar el snapshot estático como entregable.** Sale de `renderStory()`, que ya existe; nadie
 >    lo ha usado nunca como entregable de salida. Es la última pieza de trabajo del Bloque H.
 >

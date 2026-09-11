@@ -208,12 +208,20 @@ en (a), son pocos y fijos, no crecen con la cartera.
 
 **Cuota mensual (€):** ************___************
 
-> ⚠️ **Hallazgo que la reescritura de ADR-11 va a tener que resolver, y que no es de precio.** La
-> variante **(b1) "el cliente lo hostea" no es posible tal como está redactada**: el ADR la escribió
+> ✅ **RESUELTO en la reescritura de ADR-11 del 2026-09-11 — pero te deja UNA pregunta (abajo).** La
+> variante **(b1) "el cliente lo hostea" no era posible tal como estaba redactada**: el ADR la escribió
 > cuando el plan era un frontend Next.js entregable, y hoy el renderizador es un servicio
 > **multi-tenant que lee de la base de AMG** (`clients`, vía `app_render`). Un cliente que se lleve su
 > space se lleva el contenido y nada que lo renderice. O (b1) sale del ADR, o alguien construye un
-> modo standalone del renderizador — alcance nuevo, nada trivial.
+> modo standalone del renderizador. **La reescritura la RETIRA de la oferta**, pero diciendo *"hoy no
+> se ofrece"* y no *"no se puede"*: medido al escribirla, `demo-server.ts` ya corre el renderizador
+> entero contra **PGlite en memoria sembrado desde un JSON de perfil**
+> (`renderer/src/demo-server.ts:22-87`), así que las piezas existen — lo que falta es empaquetado,
+> documentación y soporte. Reponerla sería un ADR nuevo, con un cliente que la pida como disparador.
+> **Si querés que la salida self-hosted SÍ se ofrezca, decímelo: es una decisión tuya, no mía.**
+>
+> **Lo demás de ADR-11 ya está escrito** (sección *"versión vigente"* del ADR). Para firmarlo faltan
+> solo tus dos importes de acá arriba y verificar el snapshot estático como entregable.
 
 ---
 

@@ -11,6 +11,48 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-11 — ADR-11 reescrita: el offboarding deja de prometer un frontend que no existe
+
+Segundo ítem del lote corto. El ADR arrastraba desde el **2026-07-14** un cartel de *"hay que
+reescribirlo en estos términos antes de llevarlo a un contrato"*, y llevaba ahí casi dos meses por
+una razón concreta: no se podía escribir sin decidir **quién edita durante el servicio**, que era
+OBS-04, cerrada el día anterior.
+
+**La forma de la reescritura.** No se tocó el cuerpo viejo: se le puso encima un cartel de *"esto es
+historia"* y se agregó al final una sección **«ADR-11, versión vigente»** que es la que se lleva a un
+contrato. Un ADR reescrito en el sitio pierde el registro de por qué decía lo que decía, que es la
+mitad de para qué existe.
+
+**Lo que la versión vigente dice.** Snapshot estático incluido; salida gestionada de pago (pago único
++ cuota mensual, con los importes como hueco explícito y no inventados); y **«editable» = una
+capacidad que el cliente GANA en la baja**, nunca una que ya tenía — que es exactamente lo que OBS-04,
+al cerrarse en (a), permitió afirmar sin ambigüedad. Esa frase era el bloqueo entero.
+
+**La variante que se retira, y una corrección propia que importa.** El ADR ofrecía **(b1) «el cliente
+lo hostea»**, escrita cuando el plan era un frontend Next.js entregable. Se retira, porque hoy el
+renderizador es un servicio **multi-tenant que lee de la base de AMG**: quien se lleve su space se
+lleva el contenido y nada que lo dibuje.
+
+Pero la primera lectura de la sesión principal fue *«(b1) no es posible»*, y al verificarlo antes de
+escribir el ADR resultó **impreciso**: `demo-server.ts` corre el renderizador **entero** contra PGlite
+en memoria sembrado desde un JSON de perfil (`renderer/src/demo-server.ts:22-87`). O sea que la forma
+que funcionaría —renderizador + PGlite sembrado + el space propio del cliente + su token de CDA— **ya
+tiene todas las piezas**; lo que no existe es el empaquetado, la documentación y el soporte. Así que
+se retira diciendo **«hoy no se ofrece»**, no **«no se puede»**, y queda como pregunta abierta para
+Juan en el `16` § 7. La diferencia no es semántica: una cierra una puerta, la otra la deja con precio.
+
+**Lo que impide firmarlo, y es poco.** Los dos importes (Juan) y **verificar el snapshot estático como
+entregable** — la única pieza de código que queda del Bloque H. Se puede sacar de `renderStory()`,
+pero **nadie lo hizo nunca**: no existe el comando ni se comprobó que el resultado abra en un
+navegador desconectado de AMG. Mientras eso no se haga, esa línea del contrato describe una intención,
+y el ADR lo dice con esas palabras en vez de disimularlo.
+
+Sin cambios de código: `bash ./scripts/verificar.sh --rapido` en verde (entorno, arnés, higiene de
+secretos, typecheck limpio en 7 paquetes + `scripts/`). La tanda completa se había corrido en verde
+unas horas antes, con el commit del guardarraíl (`c82399f`, 1900 + 332 + 278).
+
+---
+
 ## 2026-09-11 — Guardarraíl: no se puede conectar Google en producción con el módulo en mock
 
 Primer ítem del lote corto que salió del checklist de decisiones del día anterior, y se hizo **por
