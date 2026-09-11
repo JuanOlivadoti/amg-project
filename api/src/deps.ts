@@ -60,6 +60,13 @@ export interface ConfigApi {
    * (`t.me/undefined?start=...`); mejor no arrancar.
    */
   telegramBotUsername: string;
+  /**
+   * ¿Este despliegue tiene que RECHAZAR la conexión de Google? Ver el comentario del campo homónimo
+   * en `ApiDeps` (`app.ts`) para la trampa concreta que evita. Acá solo importa de dónde sale:
+   * `esModoProduccion() && modoResenasGoogle === "mock"`, calculado UNA sola vez al arrancar y en
+   * el único archivo que toca `process.env` -- ningún handler relee el entorno.
+   */
+  conectarGoogleBloqueado: boolean;
 }
 
 /** Igual forma que `orchestrator/src/config.ts` (`ModoResenasGoogle`), pero es un módulo distinto. */
@@ -133,10 +140,30 @@ export function leerConfig(): ConfigApi {
   // Valida y canoniza acá, al arrancar: si el issuer está mal, la API no levanta. Es preferible a
   // levantar y rechazar todos los logins, que es como se ve el mismo error desde afuera.
   const emisor = emisorSupabase(issCrudo as string);
+  // Una sola sonda al SDK para las DOS decisiones que dependen de "¿esto es producción?": la event
+  // key obligatoria y el guardarraíl de abajo. Preguntar dos veces no sería incorrecto, pero deja
+  // dos lecturas que podrían divergir si alguien toca una y no la otra.
+  const esProduccion = esModoProduccion();
   // Mismo razonamiento para Inngest: sin event key en cloud, `POST /runs` falla en cada petición.
-  const inngestEventKey = exigirEventKeySiEsCloud();
+  const inngestEventKey = exigirEventKeySiEsCloud(esProduccion);
   // Falla tan cerrado como el orquestador ante un GOOGLE_REVIEWS_MODO mal escrito (ver la función).
   const modoResenasGoogle = leerModoResenasGoogle();
+  /*
+   * GUARDARRAÍL: un modo que MIENTE no puede operar en producción.
+   *
+   * Con `GOOGLE_REVIEWS_MODO=mock`, "Conectar Google" no habla con Google: el mock devuelve un
+   * refresh token inventado, el polling del orquestador siembra DOS reseñas falsas en la base REAL
+   * (`orchestrator/src/google/mock-provider.ts`), la de 2★ dispara una alerta de Telegram de verdad
+   * al CM (`TELEGRAM_MODO=live` en producción desde el 2026-08-24) y la de 5★ gasta una llamada
+   * real a OpenAI para el borrador. Las filas quedan permanentes, y no hay nada en el flujo que le
+   * avise a quien pulsó el botón que lo que acaba de "conectar" es ficción.
+   *
+   * Misma doctrina que `verificarPublicacion()` en `orchestrator/src/config.ts` para
+   * `PIPELINE_MODO`: la combinación se rechaza al borde, no se confía en que nadie pulse el botón.
+   * En dev y en los tests `esProduccion` es `false`, así que el flujo mock se sigue ejercitando
+   * entero -- que es justo lo que hace que un default seguro no exista y el campo sea obligatorio.
+   */
+  const conectarGoogleBloqueado = esProduccion && modoResenasGoogle === "mock";
   return {
     databaseUrl: databaseUrl as string,
     emisor,
@@ -144,20 +171,19 @@ export function leerConfig(): ConfigApi {
     oauthStateSecret: oauthStateSecret as string,
     telegramBotUsername: telegramBotUsername as string,
     modoResenasGoogle,
+    conectarGoogleBloqueado,
     ...(aud ? { jwtAudience: aud } : {}),
     ...(inngestEventKey ? { inngestEventKey } : {}),
   };
 }
 
 /**
- * Si el SDK de Inngest va a hablar con Inngest **Cloud**, `INNGEST_EVENT_KEY` es obligatoria: sin
- * ella `inngest.send()` LANZA en cada llamada (`components/Inngest.js`: `if (this.mode.isCloud &&
- * !this.eventKeySet()) throw`).
+ * ¿Este proceso corre en un despliegue de verdad (un PaaS), o en un portátil / los tests?
  *
- * Por qué al arrancar y no en el primer `POST /runs`: es exactamente el argumento que ya está escrito
- * arriba para el issuer. Un despliegue sin esta variable **levanta sano** —`/health` responde 200, el
- * PaaS lo da por bueno— y falla recién cuando alguien pide un research; y como la fila del run se crea
- * ANTES de emitir (ADR-18), cada intento deja un run que nace muerto. Mejor no levantar.
+ * Es la sonda que antes vivía dentro de `exigirEventKeySiEsCloud`, extraída porque ahora hay **dos**
+ * decisiones que dependen de la misma pregunta: la event key obligatoria y el guardarraíl de
+ * `conectarGoogleBloqueado`. El comentario se mueve entero con ella, porque el razonamiento es lo
+ * único que impide que alguien la "simplifique" a un `if` propio.
  *
  * ## Cómo se decide "es cloud", y por qué NO se reimplementa
  *
@@ -180,18 +206,40 @@ export function leerConfig(): ConfigApi {
  * Lo que ata la duplicación que así no hace falta: los tests de `deps.test.ts` no simulan el modo —
  * ponen `RAILWAY_GIT_BRANCH` y `NODE_ENV=production` de verdad y dejan que el SDK decida. Si el SDK
  * cambia cómo infiere, o dónde guarda el modo, esos tests se ponen rojos.
+ *
+ * ⚠️ **`INNGEST_DEV=1` fuerza `false` acá**, y ahora eso apaga DOS cosas, no una: la exigencia de la
+ * event key y el guardarraíl de Google. Es la misma escotilla de siempre (arrancar local contra el
+ * dev server de Inngest) y sigue siendo una decisión explícita de quien pone la variable — pero
+ * ponerla en el servicio de producción de Railway deja las dos puertas abiertas a la vez.
  */
-function exigirEventKeySiEsCloud(): string | undefined {
-  const eventKey = process.env["INNGEST_EVENT_KEY"]?.trim();
+function esModoProduccion(): boolean {
   const sonda = new Inngest({ id: "amg-os-sonda-de-modo" });
   const modo = (sonda as unknown as { mode?: { isCloud?: unknown } }).mode;
   if (typeof modo?.isCloud !== "boolean") {
     throw new Error(
       "No se pudo leer el modo del SDK de Inngest (`mode.isCloud` ya no está donde se lo esperaba). " +
-        "Revisá `exigirEventKeySiEsCloud` en api/src/deps.ts contra la versión instalada de `inngest`.",
+        "Revisá `esModoProduccion` en api/src/deps.ts contra la versión instalada de `inngest`.",
     );
   }
-  if (modo.isCloud && !eventKey) {
+  return modo.isCloud;
+}
+
+/**
+ * Si el SDK de Inngest va a hablar con Inngest **Cloud**, `INNGEST_EVENT_KEY` es obligatoria: sin
+ * ella `inngest.send()` LANZA en cada llamada (`components/Inngest.js`: `if (this.mode.isCloud &&
+ * !this.eventKeySet()) throw`).
+ *
+ * Por qué al arrancar y no en el primer `POST /runs`: es exactamente el argumento que ya está escrito
+ * arriba para el issuer. Un despliegue sin esta variable **levanta sano** —`/health` responde 200, el
+ * PaaS lo da por bueno— y falla recién cuando alguien pide un research; y como la fila del run se crea
+ * ANTES de emitir (ADR-18), cada intento deja un run que nace muerto. Mejor no levantar.
+ *
+ * El "¿es cloud?" lo decide `esModoProduccion` (arriba), donde está escrito por qué se le pregunta al
+ * SDK en vez de copiar su lista de variables.
+ */
+function exigirEventKeySiEsCloud(esProduccion: boolean): string | undefined {
+  const eventKey = process.env["INNGEST_EVENT_KEY"]?.trim();
+  if (esProduccion && !eventKey) {
     throw new Error(
       "Falta INNGEST_EVENT_KEY: el SDK de Inngest está en modo cloud y sin esa clave `send()` lanza, " +
         "así que POST /runs fallaría en cada petición.\n" +
@@ -276,6 +324,10 @@ export async function crearDeps(
 
   return {
     deps: {
+      // Ya calculado por `leerConfig` (`esModoProduccion() && modo === "mock"`): acá NO se vuelve a
+      // mirar `process.env`, por lo mismo que la event key viaja explícita — lo comprobado al
+      // arrancar y lo que aplica el handler tienen que ser el MISMO valor.
+      conectarGoogleBloqueado: config.conectarGoogleBloqueado,
       store,
       clientes,
       membresias,

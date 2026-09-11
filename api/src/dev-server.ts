@@ -162,6 +162,11 @@ const app = createApp({
   ideas,
   resenas,
   googleOAuth: new MockGoogleOAuthProvider(),
+  // `false` a propósito: este harness ES el sitio donde el flujo mock tiene que funcionar de punta a
+  // punta (conectar → callback → redirect al portal, en un navegador). El guardarraíl que `deps.ts`
+  // calcula existe para el despliegue REAL en modo mock, no para esto -- y el `throw` de arriba ya
+  // impide que este archivo corra con NODE_ENV=production.
+  conectarGoogleBloqueado: false,
   // FIJO a propósito, y NUNCA en producción (ver el `throw` de arriba): un secreto real vive en
   // OAUTH_STATE_SECRET, que `leerConfig` exige y este archivo no lee. Este valor solo firma states
   // dentro de un proceso que se reinicia con datos en memoria.

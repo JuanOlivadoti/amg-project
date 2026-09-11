@@ -50,6 +50,29 @@ export interface ApiDeps {
   /** Conexión OAuth con Google (mock/live) — ver `google-oauth.ts`. Bloque F fase 1 es mock-first. */
   googleOAuth: GoogleOAuthProvider;
   /**
+   * ¿Rechazar la conexión de Google en este despliegue? Lo que evita NO es un fallo: es que
+   * "Conectar Google" **funcione** con datos inventados contra la base de producción.
+   *
+   * Con `GOOGLE_REVIEWS_MODO=mock` nadie habla con Google. El botón parece andar, y a partir de ahí
+   * el cliente queda en `clientesConectadosGoogle()`, así que el polling del orquestador
+   * (`crearFuncionPollingResenas`, registrada SIEMPRE en `orchestrator/src/server.ts`) empieza a
+   * traer las fixtures de `orchestrator/src/google/mock-provider.ts`: dos reseñas INVENTADAS que se
+   * insertan en la base REAL, la de 2★ dispara una alerta de Telegram de verdad al CM
+   * (`TELEGRAM_MODO=live` en producción desde el 2026-08-24) y la de 5★ gasta una llamada real a
+   * OpenAI para el borrador. Las filas quedan permanentes y nada avisa que son ficción.
+   *
+   * **Obligatorio, sin default, y es la parte importante del diseño.** Un default seguro no existe:
+   * en dev y en los tests conectar TIENE que funcionar (el flujo mock se ejercita entero), así que
+   * cualquier default sería `false` y un cableado olvidado dejaría la trampa armada en silencio.
+   * Siendo obligatorio, el typecheck obliga a cada composition root a decidirlo — el mismo criterio
+   * que `orchestrator/src/deps.ts` con su literal de rol, y por el mismo motivo.
+   *
+   * Esto **no es autorización** y no viola ADR-15: no mira quién llama ni qué rol tiene. Es una
+   * regla de CONFIGURACIÓN del despliegue —la misma clase que `verificarPublicacion()` para
+   * `PIPELINE_MODO`—, calculada en `deps.ts` y aplicada acá con un 409.
+   */
+  conectarGoogleBloqueado: boolean;
+  /**
    * Secreto con el que se firma/verifica el `state` de OAuth (`oauth-state.ts`). `POST
    * /clients/:id/google/conectar` (autenticado) FIRMA la identidad de quien conecta dentro del
    * `state`; `GET .../google/callback` (anónimo, fuera de `autenticar()`) la VERIFICA — es lo único
@@ -85,6 +108,28 @@ export interface ApiDeps {
    */
   telegramBotUsername: string;
 }
+
+/**
+ * El cuerpo del 409 de `conectarGoogleBloqueado`, compartido por los DOS puntos de aplicación
+ * (`POST .../google/conectar` y `GET .../google/callback`). Uno solo a propósito: son la misma
+ * regla, y dos textos que se contradicen mandarían a operaciones a buscar dos problemas distintos.
+ *
+ * Dice qué está pasando y qué hay que cambiar, porque quien lo va a leer es un operador mirando la
+ * respuesta cruda de una API, no un usuario del portal.
+ *
+ * **409 y no 403**: en este repo el 403 está reservado para `42501`/autorización (ver el `onError`),
+ * y esto no le niega nada a NADIE por quién es — el despliegue entero está en un estado en el que la
+ * operación no corresponde. Es la misma familia que los 409 que ya existen.
+ */
+export const CONECTAR_GOOGLE_BLOQUEADO =
+  "El módulo de reseñas está en modo mock (GOOGLE_REVIEWS_MODO=mock) y este despliegue es de " +
+  "producción: conectar sembraría reseñas INVENTADAS en la base real, dispararía alertas de " +
+  "Telegram al CM y gastaría llamadas a OpenAI generando borradores para clientes que no existen. " +
+  "Esto es lo esperado hoy, no un fallo del despliegue: el acceso a la Business Profile API de " +
+  "Google está en trámite (en pausa desde el 2026-09-10) y el provider `live` TODAVÍA NO EXISTE. " +
+  "NO pongas GOOGLE_REVIEWS_MODO=live para desbloquearlo: `getGoogleOAuthProvider` lanza con ese " +
+  "valor y la API no arrancaría. Hasta que Google apruebe el acceso y se implemente el provider, " +
+  "el módulo de reseñas es una demo y conectar está bloqueado a propósito.";
 
 export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
   const app = new Hono<{ Variables: Variables }>();
@@ -142,6 +187,24 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
    * sin que `emitidoEn` esté dentro de la ventana), el callback ni siquiera llega a construir un `ctx`.
    */
   app.get("/clients/:id/google/callback", async (c) => {
+    /*
+     * El guardarraíl mock-en-producción, otra vez y ANTES de leer nada: defensa en profundidad con un
+     * motivo CONCRETO, no por simetría. Un `state` firmado ANTES de desplegar este cambio sigue
+     * siendo válido durante su ventana de 10 minutos (`VENTANA_ESTADO_MS`), así que cortar solo en
+     * `conectar` dejaría esa rendija abierta justo durante el despliegue que la viene a cerrar.
+     *
+     * Va antes de `verificarEstado` y de `intercambiarCode`, o sea antes de CUALQUIER escritura:
+     * lo que no se puede permitir es que `conectarGoogle` toque la fila.
+     *
+     * Responde JSON como los otros CUATRO cortes de error de este handler (tres 400 y un 404, más
+     * abajo) y no un redirect: el redirect es el camino de ÉXITO. Quien golpea esto sin pasar por el
+     * portal —o con un state viejo— ve el motivo, en vez de aterrizar en una pantalla de reseñas
+     * que le diría que se conectó.
+     */
+    if (deps.conectarGoogleBloqueado) {
+      return c.json({ error: CONECTAR_GOOGLE_BLOQUEADO }, 409);
+    }
+
     const clientId = c.req.param("id");
     const code = c.req.query("code");
     const stateCrudo = c.req.query("state");
@@ -702,6 +765,12 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
 
   /** POST /clients/:id/google/conectar — arma la URL de consentimiento (mock: apunta al propio callback). */
   app.post("/clients/:id/google/conectar", async (c) => {
+    // ANTES de `firmarEstado`: no se acuña un `state` que no se va a poder usar. Un state es una
+    // credencial de 10 minutos —lleva tenantId/userId firmados—, y emitir credenciales para una
+    // operación que este despliegue rechaza es gratis solo hasta que alguien cambia el modo.
+    if (deps.conectarGoogleBloqueado) {
+      return c.json({ error: CONECTAR_GOOGLE_BLOQUEADO }, 409);
+    }
     const ctx = c.get("ctx");
     const clientId = c.req.param("id");
     const estado: EstadoOAuth = {

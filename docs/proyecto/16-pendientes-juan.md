@@ -55,8 +55,9 @@ el módulo de reseñas se queda en `mock`. Hoy nadie reclama el módulo, así qu
 bajo — y la aprobación puede pedirse cuando aparezca un cliente que lo pida.
 
 **Lo que esta decisión NO cambia, y por eso se anota acá:** el módulo 3 queda como **demo permanente**
-mientras dure (sin acceso real no hay ni una reseña real), y **la trampa del polling en mock sigue
-armada** — ver abajo. Quedarse en mock indefinidamente hace el guardarraíl MÁS importante, no menos.
+mientras dure (sin acceso real no hay ni una reseña real). La trampa del polling en mock **se desarmó
+el 2026-09-10** (ver abajo) — precisamente porque quedarse en mock indefinidamente lo hacía MÁS
+importante, no menos.
 
 > ⚠️ **Trampa armada en producción, detectada el 2026-09-10.** `crearFuncionPollingResenas` está
 > registrada **incondicionalmente** en el orquestador (`orchestrator/src/server.ts:63`). No hace nada
@@ -71,7 +72,20 @@ armada** — ver abajo. Quedarse en mock indefinidamente hace el guardarraíl M�
 > **No verificado:** si hoy hay algún cliente con conexión de Google en producción (el MCP de Supabase
 > de esa sesión no estaba autenticado). Vale la pena mirarlo.
 >
-> **El arreglo, en el roadmap:** que "Conectar Google" falle explícitamente cuando el modo es `mock` y
+> ✅ **DESARMADA el 2026-09-10 — pero solo para conexiones NUEVAS.** "Conectar Google" falla ahora con
+> **409** cuando el modo es `mock` y el entorno es producción, en los DOS puntos del camino: `POST
+> .../google/conectar` (antes de acuñar el `state`) y `GET .../google/callback` (antes de toda
+> escritura — un `state` firmado antes del despliegue sigue vivo 10 minutos). La regla se calcula en
+> `api/src/deps.ts` y el campo de `ApiDeps` es obligatorio, así que el typecheck no deja ningún
+> arranque sin decidir.
+>
+> ⚠️ **Lo que el guardarraíl NO deshace: una fila que YA esté conectada.** Corta el camino de
+> *conectar*; no toca `clientesConectadosGoogle()` ni el polling. Si hoy existe un cliente con
+> `google_refresh_token` en producción, **sigue produciendo reseñas falsas en cada ciclo**. Por eso la
+> comprobación de arriba sigue abierta y es tuya. `desconectar` NO está bloqueado, a propósito y con
+> un test que lo impone: es justo el remedio que hace falta si aparece una.
+>
+> **El texto original de este punto decía:** que "Conectar Google" falle explícitamente cuando el modo es `mock` y
 > el entorno es producción — misma doctrina que `verificarPublicacion()` ya aplica con `PIPELINE_MODO`:
 > un modo que miente no debería poder arrancar en producción.
 

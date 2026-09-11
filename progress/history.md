@@ -11,6 +11,74 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-11 — Guardarraíl: no se puede conectar Google en producción con el módulo en mock
+
+Primer ítem del lote corto que salió del checklist de decisiones del día anterior, y se hizo **por
+eso mismo**: la decisión de dejar el trámite de Google en pausa convertía una trampa latente en una
+trampa permanente.
+
+**La trampa.** `crearFuncionPollingResenas` está registrada **incondicionalmente**
+(`orchestrator/src/server.ts:63`). No hace nada mientras ningún cliente tenga conexión guardada —
+pero el día que alguien pulse «Conectar Google» en producción estando en `GOOGLE_REVIEWS_MODO=mock`,
+se insertan dos reseñas inventadas en la base **real**, se dispara una alerta de Telegram **de
+verdad** al CM y se gasta una llamada **real** a OpenAI. Acotado (el `googleReviewId` del mock es
+determinista) pero permanente.
+
+**Lo que se construyó, y la decisión de diseño que lo separa de su precedente.** La doctrina ya
+existía en el repo —`verificarPublicacion()` impide que `PIPELINE_MODO` mienta en producción— pero
+aquella **aborta el arranque**, y acá eso habría estado mal: quedarse en mock es una decisión tomada,
+así que un `throw` en `leerConfig` dejaría la API sin levantar. Se bloquea **el camino que arma la
+trampa**, no el proceso.
+
+- La regla vive en el composition root (`api/src/deps.ts`), con `esModoProduccion()` **extraída** de
+  `exigirEventKeySiEsCloud` para no dejar dos lecturas que puedan divergir.
+- `ApiDeps.conectarGoogleBloqueado` es **obligatorio sin default**. No es rigor decorativo: fuera de
+  producción el valor correcto es `false`, así que cualquier default sería `false` y un cableado
+  olvidado dejaría la trampa armada en silencio. Siendo obligatorio, **es el typecheck** el que
+  obliga a cada arranque a decidir.
+- **Dos cortes, no uno.** `conectar` corta antes de acuñar el `state`; el `callback` corta antes de
+  toda escritura. El segundo no es simetría: **un `state` firmado antes de desplegar el guardarraíl
+  sigue vivo durante su ventana de 10 minutos**, así que cortar sólo en `conectar` dejaría esa
+  rendija abierta justo durante el despliegue que viene a cerrarla. El test lo ejercita en vez de
+  describirlo: firma el `state` con la app *sin* guardarraíl y se lo presenta a la app *con*
+  guardarraíl.
+- **`desconectar` NO se bloquea, y hay un test que lo impone** — una mutación *en el otro sentido*
+  (agregar la guarda de más hace caer exactamente ese test). Bloquear el remedio dejaría a un cliente
+  conectado por error sin forma de limpiarse desde el portal, que es justo lo que hace falta cuando
+  un guardarraíl llega tarde. No estaba en el contrato: lo agregó el agente `datos` por su cuenta.
+
+**El hallazgo de la revisión que más vale la pena recordar, porque es el bug de esta etapa dentro de
+la etapa.** El mensaje del 409 terminaba diciéndole al operador *"Poné `GOOGLE_REVIEWS_MODO=live`"*.
+Pero `leerConfig` acepta ese valor **y `getGoogleOAuthProvider("live")` lanza** —el provider real no
+existe todavía— y `crearDeps` lo construye al arrancar: quien siguiera la instrucción a las tres de
+la mañana **tiraba la API entera**. O sea: el texto que existía para evitar un modo que miente
+prescribía, él mismo, romper producción. Lo encontró el `revisor`; ninguna otra pasada lo vio.
+Corregido, y **atado con un test que se cura solo**: si el mensaje prescribe `live` mientras
+`getGoogleOAuthProvider("live")` siga lanzando, el test cae; el día que se implemente el provider,
+deja de objetar sin que nadie lo toque.
+
+La revisión encontró además que **tres documentos seguían diciendo que el guardarraíl estaba
+pendiente** —y que `progress/current.md` afirmaba *"todo commiteado"* con quince archivos
+modificados—, y que la nota de `api/src/codigos.ts` que yo había *"corregido"* en el mismo cambio
+afirmaba **otras dos cosas falsas**: que el 501 de `crear_posts` existe (se retiró en el
+sub-proyecto 3) y que "todos los 409 de hoy llevan código" (el `onError` ya devolvía un 409 pelado
+desde antes). Las dos correcciones mías eran, cada una, un error nuevo introducido al arreglar el
+anterior — que es exactamente la razón por la que quien implementa no se autoaprueba.
+
+**Un matiz que la revisión obligó a escribir, y que el título alegre escondía:** lo desarmado es la
+conexión **nueva**. El guardarraíl no toca `clientesConectadosGoogle()` ni el polling, así que una
+fila que ya esté conectada en producción sigue sembrando reseñas falsas en cada ciclo — y eso **no
+está verificado**, porque ninguna sesión de Claude Code tiene acceso autenticado a esa base. Queda
+como comprobación de Juan.
+
+`bash ./scripts/verificar.sh --con-portal` y `npm --prefix portal run test:components` en verde, con
+las cifras en `09-estado-y-roadmap.md`. Mutaciones: la del `try/catch` del portal la hizo la sesión
+principal (cae exactamente su test, y el mensaje del fallo enseña el bug real — la pantalla sigue
+mostrando el botón como si nada); las de las guardas de `app.ts` y la regla de `deps.ts` las
+**re-hizo el `revisor`** en vez de creerle al informe del agente que las implementó.
+
+---
+
 ## 2026-09-10 — Se cierra el checklist de decisiones de Juan (OBS-04 incluida) y se fija el orden que sigue
 
 Sesión sin desarrollo. Arrancó con una pregunta de Juan —*"qué falta para completar la plataforma que

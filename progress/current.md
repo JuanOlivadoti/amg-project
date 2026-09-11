@@ -6,87 +6,96 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión (2026-09-10):** sin desarrollo — se recorrió con Juan, decisión por decisión, el checklist de
-[`16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md) y se fijó el orden de trabajo
-siguiente. Arrancó con la pregunta "qué falta para completar la plataforma que no dependa de la
-aprobación de Google".
-
-## Lo que se decidió
-
-| Ítem | Decisión |
-|---|---|
-| **#4 `CACHE_TTL_MS`** | **60 s** (`CACHE_TTL_MS=60000`) |
-| **#5 Dominios custom de Railway** | **Esperar**, con disparador escrito: subir el plan el día que se firme un **tercer** cliente con dominio propio. La CDN se saca a propósito de esta decisión |
-| **#6 OBS-04** | **(a) edita solo la agencia**; **(c) desde el portal** como único camino de crecimiento, **(b) un seat en Storyblok** descartado. **Cierra OBS-04** |
-| **#7 Salida gestionada** | **Pago único + cuota mensual**, con mínimo alto explícito. **Faltan los dos importes** |
-| **#2 Business Profile API** | **En pausa** — no se manda la solicitud por ahora |
-| **Roadmap** | **Lote corto de cierre** (guardarraíl de «Conectar Google» en mock · reescribir ADR-11 · verificar el snapshot estático) y después **comparativas de seguros** |
-
-## Los dos hallazgos que salieron de decidir
-
-1. **El TTL no era lo que la documentación creía.** El webhook de invalidación lo dispara **solo
-   Storyblok**, pero la home, `/menu`, la nav y el pie se sintetizan desde `clients.business_profile`
-   (Postgres) y se **hornean dentro del HTML cacheado** (`renderer/src/app.ts:373-404`) — así que **un
-   cambio hecho desde el portal no invalida nada** y aparece sólo al vencer el TTL. El TTL era el
-   tiempo de respuesta del editor, no sólo el techo de propagación entre instancias. De ahí el 60 s.
-2. **⚠️ Trampa armada en producción.** `crearFuncionPollingResenas` está registrada
-   **incondicionalmente** (`orchestrator/src/server.ts:63`). El día que alguien pulse «Conectar
-   Google» estando en `GOOGLE_REVIEWS_MODO=mock`: dos **reseñas inventadas** en la base **real**
-   (`orchestrator/src/google/mock-provider.ts`), una **alerta de Telegram de verdad** (2★,
-   `TELEGRAM_MODO=live`) y una **llamada real a OpenAI** (borrador de la 5★). Acotado —el
-   `googleReviewId` del mock es determinista— pero permanente. Como el trámite quedó en pausa, **no
-   caduca solo**: el guardarraíl encabeza el roadmap.
-
-También se anotó, leyendo ADR-11 para la pregunta del precio, que **la variante (b1) «el cliente lo
-hostea» no es posible** tal como está redactada: se escribió para un frontend Next.js entregable, y hoy
-el renderizador es multi-tenant y lee de la base de AMG. La reescritura del ADR tiene que resolverlo.
+**Sesión (2026-09-10 → 11):** dos piezas. Primero se recorrió con Juan, decisión por decisión, el
+checklist de [`16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md) — commiteado en
+`428571b`. Después, el **primer ítem del lote corto** que salió de ahí: el **guardarraíl de «Conectar
+Google» en modo mock + producción**.
 
 ## En vuelo (sin commitear)
 
-Nada — todo commiteado al cerrar la sesión.
+**El guardarraíl, terminado y revisado.** Implementado por el agente `datos` sobre un contrato fijado
+por la sesión principal; el portal, `codigos.ts`, el inventario de `auditar-railway` y la
+documentación, por la sesión principal. Revisión de `revisor`: **CAMBIOS_PEDIDOS con 2 bloqueantes**,
+los dos corregidos (ver abajo). Falta commitear.
+
+## Qué hace el guardarraíl
+
+`GOOGLE_REVIEWS_MODO=mock` + entorno de producción ⇒ **409** en `POST /clients/:id/google/conectar` y
+en `GET /clients/:id/google/callback`. **No aborta el arranque**, a diferencia de
+`verificarPublicacion()` con `PIPELINE_MODO`: quedarse en mock es una decisión tomada, así que un
+`throw` en `leerConfig` dejaría la API sin levantar. Se bloquea el camino que arma la trampa, no el
+proceso.
+
+- La regla se calcula en `api/src/deps.ts` (el único archivo que toca `process.env`), con
+  `esModoProduccion()` **extraída** de `exigirEventKeySiEsCloud` para no tener dos lecturas que
+  diverjan.
+- `ApiDeps.conectarGoogleBloqueado` es **obligatorio sin default**: fuera de producción el valor
+  correcto es `false`, así que cualquier default sería `false` y un cableado olvidado dejaría la
+  trampa armada. Siendo obligatorio, **es el typecheck** el que obliga a decidir a cada arranque.
+- **Dos cortes.** `conectar` corta antes de `firmarEstado` (no se acuña un `state`, que es una
+  credencial de 10 minutos). El `callback` corta antes de toda escritura, porque **un `state` firmado
+  antes del despliegue sigue vivo 10 minutos** — hay un test que lo firma con la app *sin* guardarraíl
+  y lo presenta a la app *con* guardarraíl.
+- **`desconectar` NO se bloquea**, con un test que lo impone (mutación *en el otro sentido*):
+  bloquear el remedio dejaría a un cliente conectado por error sin salida.
+
+## Lo que corrigió la revisión
+
+1. **[Bloqueante] El mensaje del 409 prescribía un remedio que tira la API.** Terminaba con *"Poné
+   `GOOGLE_REVIEWS_MODO=live`"*, pero `leerConfig` acepta ese valor y `getGoogleOAuthProvider("live")`
+   **lanza** (el provider real no existe), y `crearDeps` lo construye al arrancar: un operador
+   siguiendo el mensaje tiraba la API entera. Era el mismo modo de fallo que la etapa venía a cerrar,
+   del otro lado. Reescrito, y **atado con un test que se cura solo**: si el mensaje prescribe `live`
+   y `getGoogleOAuthProvider("live")` lanza, el test cae; el día que se implemente el provider, el
+   test deja de objetar sin tocarlo.
+2. **[Bloqueante] Tres documentos seguían diciendo que el guardarraíl estaba pendiente**, y este
+   archivo afirmaba *"todo commiteado"* con 15 archivos modificados. Corregido acá, en
+   `16-pendientes-juan.md` y con la entrada de `history.md`.
+3. **[Menor] La nota de `codigos.ts` que yo había "corregido" afirmaba otras dos cosas falsas**: que
+   el 501 de `crear_posts` existe (se retiró en el sub-proyecto 3 — `NO_IMPLEMENTADO` es hoy una
+   constante que no emite nadie) y que "todos los 409 de hoy llevan código" (el `onError` ya devolvía
+   un 409 pelado desde antes). Reescrita entera.
+4. **[Menor] `INNGEST_DEV=1` apaga el guardarraíl** y no lo fijaba ningún test — era el comportamiento
+   de producción más sensible del cambio sostenido solo por un comentario. Test agregado.
+5. **[Menores]** `GOOGLE_REVIEWS_MODO` en `api/README.md`; indentación en dos archivos de test; y el
+   docblock de `conectar()` ahora dice que poner `error` **se lleva puesto el CTA** (las ramas de la
+   plantilla son excluyentes) — correcto para este 409, pero no es lo que uno espera de un "mostrá el
+   error" genérico.
+
+## Deuda que queda anotada, no cerrada
+
+- **El guardarraíl no deshace una fila YA conectada.** Corta *conectar*, no el polling. Si existe un
+  cliente con `google_refresh_token` en producción sigue sembrando reseñas falsas — **sin verificar**:
+  es una comprobación de Juan (ninguna sesión de Claude Code tiene acceso autenticado a esa base).
+- **`crearDeps` no tiene test propio** del cableado `config.conectarGoogleBloqueado →
+  deps.conectarGoogleBloqueado` (construye un `Pool` de `pg`, no se ejercita en la suite). Lo
+  sostienen el campo obligatorio y que el valor no se transforma.
+- **No se manejó la app en un navegador** para este cambio: reproducir el 409 exige editar a mano el
+  literal de `dev-server.ts`, que está en `false` a propósito para que el flujo mock funcione.
+- **`NO_IMPLEMENTADO`** quedó como constante exportada que nadie emite. Retirarla exige tocar la copia
+  del portal en el mismo cambio (`deepEqual` entre las dos); es otra etapa.
 
 ## Próximo paso
 
-1. **Lo que espera de Juan** (no es desarrollo): los **dos importes** de la salida gestionada; poner
-   **`CACHE_TTL_MS=60000`** en Railway; y comprobar si hay algún cliente con conexión de Google en
-   producción.
-2. **El lote corto de cierre**, en este orden: (a) guardarraíl de «Conectar Google» cuando el modo es
-   `mock` y el entorno es producción — misma doctrina que `verificarPublicacion()` con `PIPELINE_MODO`;
-   (b) reescribir **ADR-11** con OBS-04 cerrada, resolviendo el hallazgo de (b1) y dejando el hueco de
-   los importes; (c) verificar el **snapshot estático** como entregable, que sale de `renderStory()`.
-3. **Después: comparativas de seguros.** Falta el `writing-plans` sobre la spec aprobada
-   (`docs/superpowers/specs/2026-09-04-comparativas-seguros-design.md`). Dos cosas a mirar con lupa al
-   planificar: el **preflight de presupuesto** del provider real (llamada facturable nueva) y el
-   **parsing de formato libre** — un LLM interpretando columnas arbitrarias es donde un test que prueba
-   la implementación en vez del contrato se ve verde sin probar nada.
-
-## Decisiones tomadas
-
-- **La CDN se separó de la decisión de dominios a propósito.** El límite de Railway es un síntoma, no
-  la razón para construirla: se justifica sola por el borde (ADR-19) y por el colchón de
-  disponibilidad. Anotado para su diseño futuro: **la clave de cache tiene que incluir el `Host`** —
-  el dominio ES la autorización, y una cache que lo ignore serviría la web de un cliente bajo el
-  dominio de otro.
-- **Se nombró (c) como camino de crecimiento de OBS-04 con la decisión fría**, para que el día de la
-  presión nadie elija (b) por ser la de una tarde. Y se midió lo que (c) cuesta de verdad: el rol
-  `cliente` no puede escribir nada en `clients` (`app.puede_escribir()`, `0001_init.sql:387-390`), así
-  que es una migración de escritura por columna con tests de aislamiento, no un flag.
-- **Candidato de roadmap NO decidido:** invalidar la cache del renderizador desde `PATCH
-  /clients/:id/*`. Con eso el TTL volvería a ser red de seguridad y no el mecanismo principal.
-
-## Callejones sin salida
-
-— Ninguno: no hubo desarrollo.
-
-## Archivos calientes
-
-- `docs/proyecto/16-pendientes-juan.md` — el checklist, ahora cerrado salvo los dos importes del § 7.
-- `docs/decisiones-arquitectura.md` — OBS-04 cerrada; ADR-11 con la nota de desbloqueo y el hallazgo (b1).
-- `docs/proyecto/15-plan-plataforma.md` — bloques F, G y H actualizados + el orden vigente.
-- `docs/proyecto/09-estado-y-roadmap.md` — resumen ejecutivo, riesgos, roadmap y costo de Storyblok.
+1. **Commit + push** de esta etapa.
+2. **Lo que sigue del lote corto:** reescribir **ADR-11** (desbloqueado al cerrar OBS-04; tiene que
+   resolver el hallazgo de **(b1)** —«el cliente lo hostea» no es posible con un renderizador
+   multi-tenant— y dejar el hueco de los dos importes) y **verificar el snapshot estático** como
+   entregable, que sale de `renderStory()`.
+3. **Después: comparativas de seguros.** Falta el `writing-plans` sobre la spec aprobada.
+4. **Lo que espera de Juan:** los dos importes de la salida gestionada; poner `CACHE_TTL_MS=60000` en
+   Railway; y comprobar si hay algún cliente con conexión de Google en producción.
 
 ## Verificaciones
 
-- **`npm run verificar -- --rapido`** — corrido tras los cambios (solo tocan `docs/` y `progress/`):
-  entorno, arnés y higiene de secretos, más typecheck. Sin cambios de código, así que no aplica la
-  tanda completa de tests.
+- `bash ./scripts/verificar.sh --con-portal`: **1900 tests del monorepo** en verde, typecheck limpio
+  (7 paquetes + `scripts/`), sin secretos, 332 `node:test` del portal. **Re-corrido DESPUÉS de las
+  correcciones de la revisión**, que agregaron dos tests (1898 → 1900): el que ata el texto del 409 a
+  `getGoogleOAuthProvider` y el de la escotilla `INNGEST_DEV=1`.
+- `npm --prefix portal run test:components`: **278 SUCCESS** (Karma).
+- **Mutación del `try/catch` del portal**, hecha por la sesión principal: `1 FAILED / 277 SUCCESS`,
+  y el caído es exactamente `🔴 si conectar falla (409 del guardarraíl de mock)…`. El mensaje del
+  fallo enseña el bug real: la pantalla sigue mostrando el botón "Conectar Google" como si nada.
+- **Mutaciones re-hechas por el `revisor`** (no tomadas del informe de `datos`): quitar la guarda del
+  callback ⇒ cae solo su test; quitarle `esProduccion` a la regla ⇒ cae solo `mock + dev`; poner la
+  regla en `false` ⇒ caen exactamente los dos que afirman `true`.

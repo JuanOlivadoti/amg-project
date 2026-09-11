@@ -145,6 +145,7 @@ describe("GET /runs/:id/entregable.md", () => {
       ideas: new PgIdeas(pool),
       resenas: new PgResenas(pool),
       googleOAuth: new MockGoogleOAuthProvider(),
+      conectarGoogleBloqueado: false,
       oauthStateSecret: "secreto-de-test-no-para-produccion",
       telegramBotUsername: "AMGReviewsBotTest",
       emisor,

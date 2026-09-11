@@ -178,6 +178,39 @@ describe('ClienteResenasPage', () => {
     expect(conectarGoogleSpy).toHaveBeenCalledWith('c1');
   });
 
+  it('🔴 si conectar falla (409 del guardarraíl de mock), el motivo se PINTA — no falla en silencio', async () => {
+    /*
+     * Desde el 2026-09-10 `POST /clients/:id/google/conectar` puede responder 409: el despliegue es
+     * de producción y el módulo está en `GOOGLE_REVIEWS_MODO=mock`, así que conectar sembraría
+     * reseñas inventadas en la base real. Sin el `try/catch` de `conectar()` la promesa se rechaza
+     * sin que nadie la mire y el botón NO HACE NADA VISIBLE — el peor resultado posible para un
+     * guardarraíl: quien lo pulsa concluye que la app está rota en vez de leer el motivo.
+     *
+     * Este test no navega (el spy rechaza antes de `window.location.href`), así que no corre el
+     * riesgo de recarga que documenta el test de arriba.
+     */
+    const MENSAJE =
+      'El módulo de reseñas está en modo mock (GOOGLE_REVIEWS_MODO=mock) y este despliegue es de producción.';
+    const conectarGoogleSpy = jasmine.createSpy('conectarGoogle').and.rejectWith(new Error(MENSAJE));
+    const { fixture } = crear({
+      cliente: clienteDePrueba({ google_conectado_en: null }),
+      esEquipo: true,
+      conectarGoogle: conectarGoogleSpy,
+    });
+    const el = await estabilizar(fixture);
+
+    const boton = Array.from(el.querySelectorAll('button')).find((b) =>
+      b.textContent!.includes('Conectar Google'),
+    );
+    boton!.click();
+    const despues = await estabilizar(fixture);
+
+    expect(conectarGoogleSpy).toHaveBeenCalledWith('c1');
+    expect(despues.textContent)
+      .withContext('el mensaje del 409 tiene que llegar a la pantalla')
+      .toContain(MENSAJE);
+  });
+
   it('conectado sin esEquipo: no se ve el botón "Desconectar Google"', async () => {
     const { fixture } = crear({ esEquipo: false });
     const el = await estabilizar(fixture);

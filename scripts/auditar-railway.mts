@@ -112,6 +112,11 @@ export const SEGUN_MODO: Record<Servicio, Readonly<Record<string, string>>> = {
     SUPABASE_JWT_AUD: "sin ella, el `aud` esperado es `authenticated` (el default de Supabase)",
     SUPABASE_JWT_SECRET:
       "red de rollback: la exige el código VIEJO de la API. Hoy no se lee (se verifica contra el JWKS)",
+    GOOGLE_REVIEWS_MODO:
+      "sin ella el módulo de reseñas es **mock**, y desde el 2026-09-10 eso además BLOQUEA " +
+      "`POST /clients/:id/google/conectar` con 409 en producción (guardarraíl: conectar en mock " +
+      "sembraría reseñas inventadas en la base real). La API la lee desde el Bloque F fase 1; " +
+      "faltaba en este inventario",
   },
   "amg-orchestrator": {
     WEB_PUBLISH_MODE: "sin ella publica en **mock**: no toca Storyblok pero reporta `published: true`",
@@ -150,7 +155,10 @@ export const SEGUN_MODO: Record<Servicio, Readonly<Record<string, string>>> = {
     DEMO_DOMAIN: "el dominio de la demo, para el mapeo dominio → cliente",
     BRIEF_PATH: "solo el `demo-server`",
     BUSINESS_PROFILE_PATH: "solo el `demo-server`",
-    CACHE_TTL_MS: "sin ella, el TTL por defecto de la cache",
+    CACHE_TTL_MS:
+      "sin ella el TTL cae al default de 5 min. **Decidido el 2026-09-10: 60000 (60 s)** — no es " +
+      "sólo el techo de propagación entre instancias: el webhook lo dispara SÓLO Storyblok, así que " +
+      "un cambio de carta/perfil hecho desde el portal aparece únicamente al vencer este TTL",
     TRUST_PROXY: "si no es `1`, no se confía en `X-Forwarded-For`",
     DOMINIO_PREVIEW:
       "sin ella no se emite `X-Robots-Tag: noindex` para subdominios de demo — no rompe nada, solo " +

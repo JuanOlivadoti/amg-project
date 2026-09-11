@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
 import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
 import type { TenantContext } from "db";
-import { createApp } from "./app.js";
+import { createApp, CONECTAR_GOOGLE_BLOQUEADO } from "./app.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
 import { TRANSICION_INVALIDA } from "./codigos.js";
-import { MockGoogleOAuthProvider } from "./google-oauth.js";
+import { MockGoogleOAuthProvider, getGoogleOAuthProvider } from "./google-oauth.js";
 import { firmarEstado, type EstadoOAuth } from "./oauth-state.js";
 import { menuItemSchema, parseProfile } from "web-builder/contract";
 
@@ -87,6 +87,7 @@ beforeEach(async () => {
     ideas,
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
+    conectarGoogleBloqueado: false,
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
     telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
     emisor,
@@ -433,6 +434,7 @@ test("🔴 POST /runs: si el evento no se puede emitir, el run NO queda huérfan
     ideas,
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
+    conectarGoogleBloqueado: false,
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
     telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
     verificar,
@@ -707,6 +709,7 @@ test("🔴 si emisor.send() falla, la decisión se cierra en 'error' — no qued
     ideas,
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
+    conectarGoogleBloqueado: false,
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
     telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
     verificar,
@@ -1665,6 +1668,7 @@ test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", 
     ideas,
     resenas,
     googleOAuth: new MockGoogleOAuthProvider(),
+    conectarGoogleBloqueado: false,
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
     telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
     emisor: emisorInerte,
@@ -1900,6 +1904,141 @@ test("🔴 GET /clients/:id/google/callback de OTRO tenant → 404, sin escribir
     [clientA1],
   );
   assert.equal(fila!.google_conectado_en, null, "el tenant B no pudo conectar el cliente de A");
+});
+
+// ------------------------------- guardarraíl: modo mock + producción NO puede conectar Google
+//
+// La trampa que esto cierra no es un fallo, es que el botón FUNCIONE con datos inventados contra la
+// base real: en `GOOGLE_REVIEWS_MODO=mock` nadie habla con Google, pero el cliente queda "conectado"
+// y el polling del orquestador siembra dos reseñas falsas, dispara una alerta de Telegram DE VERDAD
+// al CM por la de 2★ y gasta una llamada real a OpenAI por la de 5★. Filas permanentes en producción.
+
+/**
+ * La MISMA app y los MISMOS stores del `beforeEach`, con el único campo que cambia puesto en `true`.
+ * Se construye aparte (y no con un flag mutable) para que ningún otro test de este archivo pueda
+ * heredar el guardarraíl encendido -- mismo criterio que `emisorQueLanza` más arriba.
+ */
+function appBloqueada(): ReturnType<typeof createApp> {
+  return createApp({
+    store,
+    clientes,
+    membresias,
+    ideas,
+    resenas,
+    googleOAuth: new MockGoogleOAuthProvider(),
+    conectarGoogleBloqueado: true,
+    oauthStateSecret: OAUTH_STATE_SECRET_TEST,
+    telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
+    emisor: { send: async () => ({}) },
+    verificar,
+    portalUrl: PORTAL_URL_TEST,
+  });
+}
+
+/** Las tres columnas de la conexión, leídas con el superusuario: lo que quedó ESCRITO, no lo que devolvió la API. */
+async function conexionDe(clientId: string) {
+  const [fila] = await sql<{
+    google_refresh_token: string | null;
+    google_location_id: string | null;
+    google_conectado_en: string | null;
+  }>(
+    "select google_refresh_token, google_location_id, google_conectado_en from clients where id = $1",
+    [clientId],
+  );
+  return fila!;
+}
+
+test("🔴 mock+producción: POST .../google/conectar da 409 y NO acuña ningún state (y sin el flag, 200)", async () => {
+  const res = await appBloqueada().request(`/clients/${clientA1}/google/conectar`, {
+    method: "POST",
+    headers: { authorization: `Bearer valid:${equipoA}`, "x-amg-tenant": tenantA },
+  });
+  assert.equal(res.status, 409, "409 y no 403: es una regla de CONFIGURACIÓN, no de autorización (42501)");
+  const body = (await res.json()) as Record<string, unknown>;
+  assert.match(String(body["error"]), /mock/i, "el mensaje tiene que decir POR QUÉ, no un 'no se puede'");
+  // La prueba de que no se acuñó nada: la respuesta no lleva NADA más que el error. Un `state` es una
+  // credencial de 10 minutos con tenantId/userId firmados dentro -- si viajara, el callback lo
+  // aceptaría después, que es exactamente la rendija que el corte antes de `firmarEstado` cierra.
+  assert.deepEqual(Object.keys(body), ["error"], "ni url ni state: no se emitió ninguna credencial");
+
+  // Control positivo: la MISMA petición contra la app normal (`conectarGoogleBloqueado: false`)
+  // sigue dando la URL de consentimiento. Lo único distinto entre las dos mitades es el flag.
+  const ok = await req("POST", `/clients/${clientA1}/google/conectar`, { user: equipoA, tenant: tenantA });
+  assert.equal(ok.status, 200);
+  assert.ok(new URL(((await ok.json()) as { url: string }).url).searchParams.get("state"));
+});
+
+test("🔴 mock+producción: un state ya firmado NO sirve — el callback corta en 409 sin escribir nada", async () => {
+  /*
+   * El motivo concreto de la segunda guarda, y por qué no es simetría: este `state` se firma con la
+   * app SIN el guardarraíl, o sea es exactamente un state acuñado ANTES de desplegar el arreglo.
+   * Sigue siendo válido durante su ventana de 10 minutos (`VENTANA_ESTADO_MS`), así que cortar solo
+   * en `conectar` dejaría esa rendija abierta justo durante el despliegue que la viene a cerrar.
+   */
+  const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
+
+  const res = await appBloqueada().request(`/clients/${clientA1}/google/callback?code=viejo&state=${state}`);
+  assert.equal(res.status, 409);
+
+  // No se asume: se LEE la fila. El corte va antes de `intercambiarCode` y de `conectarGoogle`.
+  const tras409 = await conexionDe(clientA1);
+  assert.equal(tras409.google_refresh_token, null, "no se escribió el token del mock");
+  assert.equal(tras409.google_location_id, null);
+  assert.equal(tras409.google_conectado_en, null, "el cliente NO quedó en clientesConectadosGoogle()");
+
+  // Control positivo: el MISMO state, contra la app normal, completa el flujo como hasta hoy. Que
+  // el 409 de arriba no venga de un state roto lo demuestra este 302.
+  const ok = await app.request(`/clients/${clientA1}/google/callback?code=viejo&state=${state}`);
+  assert.equal(ok.status, 302);
+  assert.ok(ok.headers.get("location")?.startsWith(PORTAL_URL_TEST));
+  assert.equal((await conexionDe(clientA1)).google_refresh_token, "mock-refresh-viejo");
+});
+
+test("🔴 el guardarraíl NO alcanza a desconectar: el remedio tiene que seguir siendo alcanzable", async () => {
+  // Bloquear desconectar dejaría a un cliente conectado por error SIN forma de limpiarse desde el
+  // portal -- justo la operación que hay que poder hacer cuando el guardarraíl se estrena tarde.
+  await sql(
+    `update clients set google_refresh_token = 'secreto', google_location_id = 'loc-1',
+                        google_conectado_en = now() where id = $1`,
+    [clientA1],
+  );
+  const res = await appBloqueada().request(`/clients/${clientA1}/google/desconectar`, {
+    method: "POST",
+    headers: { authorization: `Bearer valid:${equipoA}`, "x-amg-tenant": tenantA },
+  });
+  assert.equal(res.status, 200);
+  assert.equal((await conexionDe(clientA1)).google_refresh_token, null, "desconectar limpió la fila igual");
+});
+
+test("🔴 el mensaje del 409 NO puede prescribir un modo que `getGoogleOAuthProvider` todavía rechaza", () => {
+  /*
+   * La primera versión de este mensaje terminaba con "Poné GOOGLE_REVIEWS_MODO=live … antes de
+   * conectar", y era una instrucción que ROMPE producción: `leerConfig` acepta `"live"` como valor
+   * válido, pero `getGoogleOAuthProvider("live")` LANZA (el provider real no existe), y `crearDeps`
+   * lo construye al arrancar — o sea que un operador siguiendo el mensaje a las 3 de la mañana
+   * tiraba la API entera. Es el mismo modo de fallo que este guardarraíl vino a cerrar, del otro
+   * lado: una instrucción operativa que el código contradice. Lo encontró el `revisor`.
+   *
+   * Este test ata el texto al código en vez de confiar en que nadie lo reescriba, y **se cura solo**:
+   * el día que alguien implemente el provider `live`, `liveConstruye` pasa a ser `true` y prescribir
+   * `live` vuelve a estar permitido sin tocar el test.
+   */
+  const prescribeLive = /pon[ée]\s*(?:\w+\s+)?GOOGLE_REVIEWS_MODO\s*=\s*live/i.test(CONECTAR_GOOGLE_BLOQUEADO);
+  let liveConstruye = true;
+  try {
+    getGoogleOAuthProvider("live");
+  } catch {
+    liveConstruye = false;
+  }
+  assert.ok(
+    !prescribeLive || liveConstruye,
+    "el 409 le dice al operador que ponga GOOGLE_REVIEWS_MODO=live, pero con ese valor " +
+      "`getGoogleOAuthProvider` lanza y la API no arranca: el mensaje prescribe romper producción",
+  );
+  // Control de no-vacuidad: sin esto el test pasaría feliz si el mensaje quedara vacío o si alguien
+  // renombrara la constante a otra cosa que nadie lee.
+  assert.match(CONECTAR_GOOGLE_BLOQUEADO, /mock/i);
+  assert.ok(CONECTAR_GOOGLE_BLOQUEADO.length > 100, "el mensaje tiene que explicar, no solo negar");
 });
 
 // ---------------------------------------------------------------- GET/PATCH de reseñas (Bloque F, fase 1)

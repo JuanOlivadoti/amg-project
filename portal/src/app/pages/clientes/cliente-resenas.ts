@@ -216,10 +216,32 @@ export class ClienteResenasPage implements OnInit, OnDestroy {
     }
   }
 
-  /** Navega DE VERDAD a la URL de consentimiento — no es un `fetch` que espere JSON de Google. */
+  /**
+   * Navega DE VERDAD a la URL de consentimiento — no es un `fetch` que espere JSON de Google.
+   *
+   * El `try/catch` no es ceremonia: desde el 2026-09-10 este endpoint puede responder **409** cuando
+   * el despliegue es de producción y el módulo está en `GOOGLE_REVIEWS_MODO=mock` (el guardarraíl
+   * que impide sembrar reseñas inventadas en la base real). Sin capturarlo, la promesa se rechaza sin
+   * que nadie la mire y el botón **no hace nada visible**: el peor resultado posible para un
+   * guardarraíl, porque quien lo pulsa concluye que la app está rota en vez de leer el motivo.
+   *
+   * Mismo patrón que `cargar()`: el mensaje del servidor va al signal `error`, que la plantilla ya
+   * pinta. No se ramifica por código de error a propósito — no hay nada que decidir, solo que mostrar.
+   *
+   * **Efecto que conviene saber**: poner `error` además **se lleva puesto el CTA**, porque las ramas
+   * de la plantilla son excluyentes (`@else if (error())` viene ANTES de `@else if (!conectado())`) y
+   * el error solo se limpia al cambiar de cliente. Para este 409 es lo correcto —va a seguir
+   * rechazando hasta que cambie la configuración del despliegue, así que dejar el botón invitaría a
+   * pulsarlo en vano—, pero no es lo que uno espera de un "mostrá el error" genérico. Lo señaló el
+   * `revisor`.
+   */
   async conectar(): Promise<void> {
-    const { url } = await this.api.conectarGoogle(this.clienteId());
-    window.location.href = url;
+    try {
+      const { url } = await this.api.conectarGoogle(this.clienteId());
+      window.location.href = url;
+    } catch (e) {
+      this.error.set((e as Error).message);
+    }
   }
 
   /**

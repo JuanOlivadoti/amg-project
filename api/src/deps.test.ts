@@ -221,3 +221,68 @@ test("🔴 GOOGLE_REVIEWS_MODO con un valor que no es mock/live NO cae a 'mock' 
   conEntorno({ ...BASE, CORS_ORIGINS: CORS, GOOGLE_REVIEWS_MODO: "liv" });
   assert.throws(() => leerConfig(), /GOOGLE_REVIEWS_MODO inválido/);
 });
+
+// ------------------------------------------- conectarGoogleBloqueado (mock que MIENTE en producción)
+//
+// La regla: `esModoProduccion() && modoResenasGoogle === "mock"`. Lo que evita no es un fallo sino que
+// "Conectar Google" FUNCIONE con datos inventados contra la base real: el mock devuelve un refresh
+// token de mentira, el cliente queda conectado, y el polling del orquestador siembra dos reseñas
+// falsas permanentes, dispara una alerta de Telegram DE VERDAD al CM y gasta una llamada a OpenAI.
+// Misma doctrina que `verificarPublicacion()` con `PIPELINE_MODO`: un modo que miente no opera en prod.
+//
+// Igual que los tests de la event key de arriba, NINGUNO simula el modo: ponen `RAILWAY_GIT_BRANCH` /
+// `NODE_ENV=production` de verdad y dejan que el SDK decida. Es lo que ata que `esModoProduccion` siga
+// preguntándole al SDK en vez de reimplementar su lista de variables en un `if` que se desincroniza.
+//
+// `INNGEST_EVENT_KEY` viaja en los casos de producción solo porque sin ella `leerConfig` lanza antes de
+// llegar a esta regla — no tiene nada que ver con Google.
+const EN_PRODUCCION = { ...BASE_INFERIDO, CORS_ORIGINS: CORS, RAILWAY_GIT_BRANCH: "main", INNGEST_EVENT_KEY: "clave" };
+
+test("🔴 mock + producción ⇒ conectarGoogleBloqueado: el despliegue que HOY corre no puede conectar Google", () => {
+  conEntorno({ ...EN_PRODUCCION, GOOGLE_REVIEWS_MODO: "mock" });
+  assert.equal(leerConfig().conectarGoogleBloqueado, true);
+});
+
+test("🔴 mock + producción también se detecta por NODE_ENV, no solo por Railway", () => {
+  // El otro lado de "no reimplementes la heurística": si acá hubiera un `if (RAILWAY_GIT_BRANCH)`
+  // escrito a mano, este test quedaría rojo hasta que alguien agregara el segundo `if`.
+  const { RAILWAY_GIT_BRANCH: _sinRailway, ...sinPaaS } = EN_PRODUCCION;
+  conEntorno({ ...sinPaaS, NODE_ENV: "production", GOOGLE_REVIEWS_MODO: "mock" });
+  assert.equal(leerConfig().conectarGoogleBloqueado, true);
+});
+
+test("mock + dev ⇒ NO bloqueado: en un portátil y en los tests el flujo mock se ejercita entero", () => {
+  // Este es el motivo por el que un default seguro no existe y el campo de `ApiDeps` es obligatorio:
+  // el valor correcto fuera de producción es `false`, así que cualquier default sería `false` y un
+  // cableado olvidado dejaría la trampa armada sin que nada avise.
+  conEntorno({ ...BASE_INFERIDO, CORS_ORIGINS: CORS, GOOGLE_REVIEWS_MODO: "mock" });
+  assert.equal(leerConfig().conectarGoogleBloqueado, false);
+});
+
+test("live + producción ⇒ NO bloqueado: con credenciales reales de Google conectar es lo que hay que hacer", () => {
+  conEntorno({ ...EN_PRODUCCION, GOOGLE_REVIEWS_MODO: "live" });
+  assert.equal(leerConfig().conectarGoogleBloqueado, false);
+});
+
+test("🔴 INNGEST_DEV=1 APAGA el guardarraíl aunque el PaaS diga producción — la escotilla, atada", () => {
+  /*
+   * Es la única forma de que el guardarraíl quede apagado en un despliegue de producción, o sea el
+   * comportamiento de producción más sensible de todo este cambio, y hasta acá lo sostenía sólo un
+   * comentario (`deps.ts`, el aviso de `esModoProduccion`). Lo señaló el `revisor`.
+   *
+   * Que exista este test NO aprueba la escotilla: la fija. `INNGEST_DEV=1` existe para arrancar local
+   * contra el dev server de Inngest, y su gemela ya estaba atada para la event key ("INNGEST_DEV=1
+   * desactiva la exigencia aunque el PaaS diga producción", arriba). Al compartir las dos la misma
+   * sonda, apagar una apaga la otra — y eso es exactamente lo que este test hace imposible de
+   * cambiar por accidente: si alguien separa las lecturas, o le da al guardarraíl su propia
+   * heurística, este test se pone rojo y obliga a decidirlo a propósito.
+   *
+   * `BASE` (y no `BASE_INFERIDO`) es el que trae `INNGEST_DEV=1`.
+   */
+  conEntorno({ ...BASE, CORS_ORIGINS: CORS, RAILWAY_GIT_BRANCH: "main", GOOGLE_REVIEWS_MODO: "mock" });
+  assert.equal(
+    leerConfig().conectarGoogleBloqueado,
+    false,
+    "INNGEST_DEV=1 fuerza `esModoProduccion() === false`, así que el guardarraíl no se aplica",
+  );
+});

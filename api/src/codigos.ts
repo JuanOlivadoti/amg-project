@@ -11,10 +11,26 @@
  *
  * ## Alcance, para no prometer de más
  *
- * **Solo los 409 y el 501 de `crear_posts` los llevan.** Los 400/403/404 que ya existían siguen
- * respondiendo `{ error }` a secas: agregarles código sería un refactor de toda la superficie, y
- * ninguno lo necesita todavía — el portal no ramifica sobre ellos. Cuando alguno lo necesite, se
- * agrega ahí y esta nota se corrige.
+ * **El criterio es si el portal RAMIFICA, no el status.** Nada más. Un código que nadie usa para
+ * decidir es una entrada que hay que mantener sincronizada en dos copias a cambio de nada.
+ *
+ * Este párrafo decía *"solo los 409 y el 501 de `crear_posts` los llevan"*, y **era falso por partida
+ * doble** (lo destapó el `revisor` el 2026-09-11, al revisar el guardarraíl de «Conectar Google»):
+ *
+ * 1. **Ese 501 ya no existe.** Se retiró en el sub-proyecto 3 (ver `app.ts`, donde estaba el
+ *    `crear_posts` temporal). `NO_IMPLEMENTADO`, abajo, quedó como una constante que **no emite
+ *    nadie** — se conserva porque retirarla exige tocar la copia del portal en el mismo cambio
+ *    (`portal/src/app/core/codigos.ts`, atada por un `deepEqual`), y eso es otra etapa. Queda dicho
+ *    en vez de disimulado.
+ * 2. **Nunca fue cierto que todos los 409 llevaran código.** El `onError` ya devolvía un 409 pelado
+ *    para *"ya existe y no pertenece"* desde mucho antes de esto. Así que la regla real siempre fue
+ *    la de la primera línea de este comentario, no una sobre el status.
+ *
+ * El 409 del guardarraíl de «Conectar Google» (`CONECTAR_GOOGLE_BLOQUEADO`, en `app.ts`) tampoco
+ * lleva código, por el mismo criterio: el portal solo muestra su mensaje, no decide nada con él.
+ *
+ * Los 400/403/404 siguen respondiendo `{ error }` a secas. Cuando alguno necesite que el portal
+ * ramifique, se agrega ahí — y en las dos copias a la vez.
  *
  * Los valores son `SCREAMING_SNAKE` y **estables**: son parte del contrato HTTP, así que renombrar
  * uno rompe al portal aunque `tsc` no diga nada (el portal no importa este archivo — está fuera del

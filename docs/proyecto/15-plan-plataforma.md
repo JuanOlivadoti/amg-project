@@ -1418,11 +1418,65 @@ bloqueo — quedaron resueltas por Telegram.
 > **No verificado:** si hoy existe algún cliente con conexión de Google en producción. Vale la pena
 > mirarlo.
 >
-> **El arreglo, priorizado en el roadmap:** que «Conectar Google» **falle explícitamente** cuando el
-> modo es `mock` y el entorno es producción — misma doctrina que `verificarPublicacion()`
-> (`orchestrator/src/config.ts`) ya aplica con `PIPELINE_MODO`: **un modo que miente no debería poder
-> arrancar en producción**. Quedarse en mock indefinidamente hace este guardarraíl MÁS importante, no
-> menos.
+> ### ✅ La trampa quedó DESARMADA el 2026-09-10 — para conexiones NUEVAS
+>
+> Misma doctrina que `verificarPublicacion()` (`orchestrator/src/config.ts`) con `PIPELINE_MODO`: **un
+> modo que miente no puede operar en producción.** Con una diferencia deliberada respecto de aquél —
+> **no aborta el arranque**. Quedarse en `mock` es una decisión tomada (§ 2 del checklist), así que un
+> `throw` en `leerConfig` dejaría la API sin levantar; lo que se bloquea es el **camino que arma la
+> trampa**, no el proceso.
+>
+> ⚠️ **Y por eso el título dice «para conexiones NUEVAS», no «cerrada».** El guardarraíl corta el
+> camino de *conectar*; **no toca `clientesConectadosGoogle()` ni el polling**. Si hoy ya existe un
+> cliente con `google_refresh_token` en producción, **sigue produciendo reseñas falsas en cada ciclo**
+> — y eso **no está verificado**: la comprobación sigue abierta en `16-pendientes-juan.md` § 2, porque
+> es de Juan (ninguna sesión de Claude Code tiene acceso autenticado a esa base). El remedio, si
+> aparece una, es `desconectar`, que **no** está bloqueado a propósito y tiene un test que lo impone.
+>
+> - **La regla vive en el composition root**, el único archivo que toca `process.env`:
+>   `conectarGoogleBloqueado = esProduccion && modoResenasGoogle === "mock"` (`api/src/deps.ts`).
+>   `esProduccion` sale de `esModoProduccion()` —la sonda del SDK de Inngest, **extraída** de
+>   `exigirEventKeySiEsCloud` para no tener dos lecturas que puedan divergir—, y **no** de un `if`
+>   sobre variables de PaaS escrito a mano: eso se desincronizaría del SDK en el próximo `npm update`,
+>   en silencio y hacia el lado inseguro.
+> - **`ApiDeps.conectarGoogleBloqueado` es OBLIGATORIO, sin default.** Un default seguro no existe: en
+>   dev y en los tests el valor correcto es `false` (el flujo mock se ejercita entero), así que
+>   cualquier default sería `false` y un cableado olvidado dejaría la trampa armada sin que nada avise.
+>   Siendo obligatorio, **es el typecheck** el que obliga a cada composition root a decidir.
+> - **Dos puntos de aplicación, una sola regla y un solo texto.** `POST …/google/conectar` corta
+>   **antes de `firmarEstado`** (no se acuña un `state`, que es una credencial de 10 minutos con
+>   `tenantId`/`userId` firmados dentro); `GET …/google/callback` corta **antes de toda escritura**. El
+>   segundo no es simetría: **un `state` firmado antes de desplegar el guardarraíl sigue vivo durante
+>   su ventana de 10 minutos**, así que cortar sólo en `conectar` dejaría esa rendija abierta justo
+>   durante el despliegue que viene a cerrarla. Hay un test que firma el `state` con la app *sin*
+>   guardarraíl y lo presenta a la app *con* guardarraíl.
+> - **409, no 403.** En este repo el 403 está reservado a `42501`/autorización (ver el `onError`): esto
+>   no le niega nada a nadie por quién es, el despliegue entero está en un estado donde la operación no
+>   corresponde. El 409 **no lleva `codigo`**, y por eso se corrigió la nota de alcance de
+>   `api/src/codigos.ts`: el criterio siempre fue *si el portal ramifica*, no el status — acá el portal
+>   sólo muestra el mensaje.
+> - **`desconectar` NO se bloquea, y hay un test que lo impone.** Bloquearlo dejaría a un cliente
+>   conectado por error sin forma de limpiarse desde el portal — justo la operación que hace falta
+>   cuando el guardarraíl llega tarde. Es una mutación *en el otro sentido* (agregar la guarda de más
+>   hace caer exactamente ese test).
+> - **El portal ya no falla en silencio.** `conectar()` (`portal/src/app/pages/clientes/cliente-resenas.ts`)
+>   no tenía `try/catch`: con el 409 la promesa se rechazaba sin que nadie la mirara y **el botón no
+>   hacía nada visible**, el peor resultado posible para un guardarraíl. Ahora el mensaje va al signal
+>   `error`, que la plantilla ya pintaba, con su test de componente.
+> - **`scripts/auditar-railway.mts` declara ahora `GOOGLE_REVIEWS_MODO` para el servicio de la API.**
+>   Faltaba desde el Bloque F fase 1, y su ausencia dejó de ser inocua: significa `mock`, y en
+>   producción eso ahora **bloquea** conectar.
+>
+> ⚠️ **Escotilla que hay que conocer:** `INNGEST_DEV=1` fuerza `esModoProduccion() === false`, así que
+> ahora apaga **dos** cosas a la vez — la exigencia de `INNGEST_EVENT_KEY` **y** este guardarraíl.
+> Sigue siendo la misma escotilla explícita de siempre (arrancar local contra el dev server de
+> Inngest), pero ponerla en el servicio de producción de Railway abre las dos puertas juntas.
+>
+> **Deuda que queda anotada, no cerrada:** el cableado `config.conectarGoogleBloqueado →
+> deps.conectarGoogleBloqueado` en `crearDeps` no tiene test propio (construye un `Pool` de `pg` y no
+> se ejercita en la suite). Lo sostienen el campo obligatorio y que el valor no se transforma, pero un
+> `false` escrito a mano ahí pasaría typecheck y tests. Misma clase de hueco que la 13ª review encontró
+> un nivel más abajo en `orchestrator/src/deps.ts`.
 
 ---
 
@@ -1606,9 +1660,11 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 > **Primero, un lote corto de cierre.** Son días, no semanas, y lo que arregla es exactamente lo que
 > quedó al descubierto al tomar las decisiones de hoy:
 >
-> 1. **El guardarraíl de «Conectar Google» en modo mock.** Que falle explícitamente en producción
->    cuando `GOOGLE_REVIEWS_MODO=mock`. Sube de prioridad **porque** el trámite quedó en pausa: la
->    trampa del Bloque F no caduca sola.
+> 1. ~~**El guardarraíl de «Conectar Google» en modo mock.**~~ ✅ **HECHO el 2026-09-10** — el mismo
+>    día que se decidió la pausa, que era justo el punto. Detalle en el Bloque F, arriba: la regla en
+>    el composition root, el campo obligatorio en `ApiDeps`, los dos puntos de aplicación (incluido el
+>    del callback, por el `state` firmado antes del despliegue), el 409 sin `codigo`, el test que
+>    impide bloquear `desconectar`, y el `try/catch` que le faltaba al portal.
 > 2. **Reescribir ADR-11.** Desbloqueado hoy al cerrar OBS-04. Tiene que resolver de paso el hallazgo
 >    de **(b1)** —«el cliente lo hostea» no es posible con un renderizador multi-tenant— y dejar el
 >    hueco de los dos números del precio, no inventarlos.
