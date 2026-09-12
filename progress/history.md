@@ -11,6 +11,67 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-11/12 — El snapshot estático existe: ADR-11 deja de prometer un entregable que nadie produjo
+
+Tercera y última etapa del lote corto. Con ella **el Bloque H se queda sin trabajo de código** y a
+ADR-11 le falta una sola cosa, que no es código: los dos importes de Juan.
+
+    npm run snapshot -w renderer -- <dominio> <directorio-destino>
+
+**Las imágenes se descargan** (decisión de Juan). Sin eso la cláusula de ADR-11 —«sin dependencia de
+AMG OS ni de Storyblok»— habría sido falsa: la web del ex-cliente se quedaría sin una sola foto el día
+que el space caducara, y el fallo sería silencioso y diferido.
+
+**La decisión de diseño que más va a durar: la paridad se impone por construcción.** El contrato decía
+«renderiza con el mismo código, nunca una reimplementación», y copiar las reglas de `app.ts` habría
+cumplido la letra y fallado a los seis meses — una regla nueva se cambia en un sitio y el snapshot se
+desincroniza **sin error y sin log**. Así que la decisión «qué HTML le toca a cada slug» se **extrajo**
+del handler a `renderer/src/pagina.ts` y ahora la comparten el servicio vivo y el snapshot. Los 178
+tests del renderizador siguieron en verde sin tocar ninguno, que es la prueba de que la extracción no
+cambió comportamiento en el **único servicio expuesto a internet anónimo**.
+
+**Los emisores de `<img>` eran cuatro, no tres.** El contrato enumeraba tres y avisaba de que esa
+multiplicidad ya había mordido al proyecto en el Bloque E. Faltaba `renderVideo`, que emite `<video
+src>` **y** `poster`. El escaneo final no va por emisor sino por **posición fetchable**, así que el
+quinto entra solo.
+
+**Y lo que más enseñó esta etapa fueron las mutaciones que NO hicieron caer nada.**
+
+Dos las encontró el implementador: el test de `og:image` pasaba por una coincidencia del contenido (el
+JSON-LD trae la misma URL, así que la reescritura la alcanzaba por el otro camino), y el filtro del
+índice de la home **no lo fijaba ningún test, ni antes ni después** — el de paridad no lo ve, porque
+una mutación en el código *compartido* mueve los dos lados igual. Es la debilidad conocida de un test
+de paridad, ahora escrita en vez de sabida.
+
+Otras tres las encontró el `revisor`, y son del tipo que este repo persigue por escrito: mutó
+`PLAZO_DESCARGA_MS = 15000 → 1`, `MAX_REDIRECCIONES = 3 → 0` y el nombre del informe, y **la suite
+siguió verde en las tres**. La causa es literalmente la que nombra `CHECKPOINTS.md`: los tests que
+cubrían esos caminos **elegían el parámetro**, así que ejercitaban la mecánica y no el valor que corre
+en producción; y el del informe importaba la constante y la componía, comparándose consigo mismo — el
+mismo patrón que el docstring de las tipografías ya denuncia en ese archivo. Con `PLAZO_DESCARGA_MS =
+1`, **todo snapshot real habría salido con las fotos rotas y el arnés en verde.**
+
+De paso se extrajo la **precedencia de clase** (`contenido` > `social`) a su propia función: es la
+decisión de seguridad más sutil del archivo —si una URL aparece como `<img>` y como `og:image`, manda
+la allowlist estricta— y estaba sostenida solo por su comentario, porque en las fixturas las dos URLs
+son siempre distintas y el caso no se ejercitaba jamás.
+
+**Dos correcciones de la sesión principal, y la segunda es la que conviene recordar.** La primera:
+actualizó «El orden que recomiendo» del plan pero no la sección del Bloque H, así que el `15` se
+contradecía consigo mismo y el checklist seguía diciéndole a Juan que faltaban dos cosas para firmar
+ADR-11 cuando faltaba una. La segunda: presentó `brand.tema` —que hoy hace que **ningún cliente pueda
+tener modo oscuro**— como hallazgo fresco del navegador, y **ya estaba declarado como deuda el
+2026-08-10 en el mismo archivo**, además con tres fronteras rotas y no dos. Como lo dijo el `revisor`:
+una deuda declarada hace un mes que reaparece como hallazgo borra el dato más importante que tiene,
+**que ya se conocía y se dejó pasar**. Corregido, y la fila nueva del `15` enlaza en vez de duplicar.
+
+`bash ./scripts/verificar.sh --con-portal`: **1947 tests del monorepo** en verde, typecheck limpio, sin
+secretos, 332 `node:test` del portal (`renderer`: 178 → **225**). Karma sin re-correr y sin mentir: la
+etapa no tocó un solo archivo de `portal/`. Verificado **en un navegador**: 6 páginas, 10 imágenes, 7
+tipografías, cero peticiones a hosts externos y cero JavaScript ejecutable.
+
+---
+
 ## 2026-09-11 — ADR-11 reescrita: el offboarding deja de prometer un frontend que no existe
 
 Segundo ítem del lote corto. El ADR arrastraba desde el **2026-07-14** un cartel de *"hay que

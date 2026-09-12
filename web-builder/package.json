@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./fixtures": "./src/fixtures.ts",
     "./fuentes": "./src/render/fuentes.ts",
+    "./imagenes": "./src/render/imagenes.ts",
     "./contract": "./src/contract.ts"
   },
   "scripts": {

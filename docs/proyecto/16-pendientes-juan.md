@@ -220,8 +220,11 @@ en (a), son pocos y fijos, no crecen con la cartera.
 > documentación y soporte. Reponerla sería un ADR nuevo, con un cliente que la pida como disparador.
 > **Si querés que la salida self-hosted SÍ se ofrezca, decímelo: es una decisión tuya, no mía.**
 >
-> **Lo demás de ADR-11 ya está escrito** (sección *"versión vigente"* del ADR). Para firmarlo faltan
-> solo tus dos importes de acá arriba y verificar el snapshot estático como entregable.
+> **Lo demás de ADR-11 ya está escrito y hecho.** La sección *"versión vigente"* del ADR se escribió
+> el 2026-09-11, y el **snapshot estático quedó verificado como entregable** el mismo día
+> (`npm run snapshot -w renderer -- <dominio> <destino>`: imágenes descargadas, cero peticiones a
+> hosts externos, comprobado en un navegador). **Para firmar ADR-11 falta UNA sola cosa: los dos
+> importes de acá arriba.**
 
 ---
 

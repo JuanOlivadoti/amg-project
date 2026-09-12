@@ -335,10 +335,35 @@
 > edición y sin que nadie la republique. Cubre lo que la clientela realmente quiere («que no se me
 > caiga la web») a coste casi nulo.
 >
-> ⚠️ **Sigue sin verificarse como entregable.** Se puede sacar de `renderStory()`, pero **nadie lo ha
-> hecho nunca**: no existe el comando, ni se ha comprobado que el resultado abra en un navegador
-> desconectado de AMG. Es trabajo pendiente del Bloque H, no una promesa cumplida — y hasta que se
-> haga, esta línea del contrato describe una intención.
+> ✅ **Verificado como entregable el 2026-09-11.** Este párrafo decía que nadie lo había producido
+> nunca y que la línea describía una intención. Ya no:
+>
+>     npm run snapshot -w renderer -- <dominio> <directorio-destino>
+>
+> Produce `index.html`, `<slug>/index.html` por cada página, `_assets/fonts/` y `_assets/img/`. **Las
+> imágenes SE DESCARGAN** (decisión del 2026-09-11): el entregable no depende de que siga viva ninguna
+> cuenta de Storyblok, que es lo que esta cláusula promete. Renderiza con **el mismo código que sirve
+> el sitio vivo** —la decisión «qué HTML le toca a cada slug» se extrajo a `renderer/src/pagina.ts` y
+> la comparten los dos, con un test que compara el HTML de los dos caminos— porque un snapshot que se
+> vea distinto del sitio vivo sería otro producto, y la cláusula dice «tu web».
+>
+> **Comprobado en un navegador**, que es lo que esta promesa exige y ningún test ve: 6 páginas, 10
+> imágenes, 7 tipografías, **cero peticiones a un host externo** y **cero JavaScript ejecutable** —
+> los únicos `<script>` son los dos que el sitio vivo ya emite: el JSON-LD y el
+> `<script type="application/json" id="research-trace">` de las landings, que viaja con el entregable
+> porque es la traza de evidencia del research de ese mismo cliente.
+>
+> **Tres límites que el contrato tiene que decir, porque son del entregable y no del comando:**
+>
+> 1. **Hace falta un hosting estático; el doble clic sobre `index.html` no sirve.** Las rutas son
+>    absolutas (`/menu`, `/_assets/…`) a propósito: es lo que preserva las URLs y evita reescribir los
+>    enlaces. Cualquier hosting estático vale, `file://` no.
+> 2. **Si alguna imagen no se puede bajar, el snapshot se entrega igual pero el comando falla
+>    ruidosamente**: deja `_snapshot-informe.txt` con cuáles faltaron, lo imprime, y sale con código
+>    `2`. Una foto rota no bloquea una entrega; un snapshot incompleto no puede parecer completo.
+> 3. **El directorio de destino no se limpia.** Regenerar sobre uno usado deja páginas de una corrida
+>    anterior que ya no existen — usar un directorio nuevo. Borrar recursivamente una ruta que nos
+>    pasan por argumento es destructivo sobre algo que no controlamos.
 >
 > **2. Salida editable, de pago: la salida gestionada.** AMG **transfiere el space de Storyblok** a la
 > cuenta del cliente (ADR-04 ya obliga a un space por cliente, justamente para que la transferencia
@@ -392,11 +417,13 @@
 >
 > ### Qué falta para llevarlo a un contrato
 >
-> 1. **Los dos importes** (Juan).
-> 2. **Verificar el snapshot estático** como entregable real — la única pieza de código que queda.
+> 1. **Los dos importes** (Juan). **Es lo único que queda.**
+> 2. ~~Verificar el snapshot estático como entregable real.~~ ✅ **Hecho el 2026-09-11** — ver arriba.
+>    Era la última pieza de código.
 >
 > Con eso, ADR-11 pasa de «en revisión» a firmable. **No antes:** una cláusula que promete un
-> entregable que nadie produjo nunca es exactamente lo que este ADR lleva dos años arrastrando.
+> entregable que nadie produjo nunca es exactamente lo que este ADR lleva dos años arrastrando — y ese
+> era, literalmente, el estado del snapshot hasta el 2026-09-11.
 
 ## ADR-12 — Orquestador durable (Inngest): el evento dispara, la base decide
 

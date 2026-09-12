@@ -16,6 +16,14 @@ export type { Cda, Version, PeticionStory, FetchLike } from "./cda.js";
 export { Coalescedor, CacheNegativa, Semaforo, Saturado } from "./limites.js";
 export { perfilValido } from "./perfil.js";
 
+/** Qué HTML le toca a cada slug. Lo comparten el servicio vivo y el snapshot: ver `pagina.ts`. */
+export { renderPagina, slugsDelSitio, SLUG_HOME, SLUG_BLOG } from "./pagina.js";
+export type { EntradaPagina } from "./pagina.js";
+
+/** El snapshot estático de salida (ADR-11). El CLI está en `src/cli/snapshot.ts`. */
+export { generarSnapshot, correrSnapshot, codigoDeSalida } from "./snapshot.js";
+export type { DepsSnapshot, ResultadoSnapshot, FalloSnapshot } from "./snapshot.js";
+
 export { normalizarHost, hostDeLaPeticion } from "./dominio.js";
 export { firmarPreview, previewAutorizado, PARAM_FIRMA, PARAM_VENCE } from "./preview.js";
 export { firmaValida, parsearEvento, HEADER_FIRMA } from "./webhook.js";

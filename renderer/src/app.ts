@@ -2,14 +2,13 @@ import { createHash } from "node:crypto";
 import type { SitioResolver, Sitio } from "db";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { catalogoSlug, renderBlogIndex, renderCatalogo, renderHome, renderStory } from "web-builder";
 import type { NavItem } from "web-builder";
 import { ErrorCda, type Cda } from "./cda.js";
 import { CacheRender } from "./cache.js";
 import { esDominioDePreview, hostDeLaPeticion } from "./dominio.js";
 import { CACHE_FUENTES, cargarFuentes } from "./fuentes-servidas.js";
 import { CacheNegativa, Coalescedor, Saturado, Semaforo } from "./limites.js";
-import { perfilValido } from "./perfil.js";
+import { SLUG_HOME, renderPagina } from "./pagina.js";
 import { previewAutorizado, scriptBridge } from "./preview.js";
 import { firmaValida, HEADER_FIRMA, parsearEvento } from "./webhook.js";
 
@@ -56,17 +55,6 @@ export interface RendererDeps {
    */
   dominioPreview?: string;
 }
-
-/** El slug que se sirve cuando alguien entra a la raíz del dominio. */
-const SLUG_HOME = "home";
-
-/**
- * El otro slug fijo que el renderizador sabe sintetizar. Una story real con ese slug siempre gana.
- *
- * El de catálogo NO es fijo: varía por vertical (`catalogoSlug(sitio.vertical)` — "menu" para
- * restauración, "polizas" para correduría de seguros), así que no tiene una constante acá.
- */
-const SLUG_BLOG = "blog";
 
 /**
  * Tope del cuerpo del webhook: 256 KB. Un evento de Storyblok pesa menos de 1 KB.
@@ -370,40 +358,12 @@ export function createApp(deps: RendererDeps) {
           blogDe(sitio!, esPreview),
         ]);
 
-        const perfil = perfilValido(sitio!.businessProfile);
-        const hayBlog = blog.length > 0;
-        const conBridge = (html: string) =>
-          esPreview ? html.replace("</body>", `${scriptBridge()}</body>`) : html;
-
-        if (story) {
-          // No autoenlazar `/blog` cuando la story que se está sirviendo ES `/blog`: el fix anterior
-          // solo cubrió `renderBlogIndex` (la síntesis) — una story REAL con ese slug se sirve por
-          // acá, y sin este chequeo no sabía que el slug activo ya es el destino del enlace.
-          const blogAquí = slug === SLUG_BLOG;
-          return conBridge(
-            renderStory(story, perfil, sitio!.vertical, sitio!.languageCode, hayBlog && !blogAquí),
-          );
-        }
-
-        // Sin story: las tres páginas que el renderizador sabe sintetizar. Cualquier otro slug
-        // ausente es un 404 legítimo.
-        const slugCatalogo = catalogoSlug(sitio!.vertical);
-        if (slug === SLUG_HOME) {
-          // El índice de la home son las landings de research: la home no se lista a sí misma, y los
-          // artículos viven en /blog (si estuvieran también acá, cada post aparecería dos veces).
-          const slugsBlog = new Set(blog.map((b) => b.slug));
-          const indice = nav.filter(
-            (n) => n.slug !== SLUG_HOME && n.slug !== SLUG_BLOG && n.slug !== slugCatalogo && !slugsBlog.has(n.slug),
-          );
-          return conBridge(renderHome(perfil, indice, sitio!.vertical, sitio!.languageCode, hayBlog));
-        }
-        if (slug === slugCatalogo && perfil?.menu?.length) {
-          return conBridge(renderCatalogo(perfil, sitio!.vertical, sitio!.languageCode, hayBlog));
-        }
-        if (slug === SLUG_BLOG && hayBlog) {
-          return conBridge(renderBlogIndex(perfil, blog, sitio!.vertical, sitio!.languageCode));
-        }
-        return null;
+        // **La decisión vive en `pagina.ts`, compartida con el snapshot estático** (ADR-11): el
+        // entregable de un cliente que se da de baja tiene que ser SU web, no una versión suya. Acá
+        // queda lo que es del servicio vivo: conseguir los ingredientes y meter el Bridge.
+        const html = renderPagina({ slug, story, nav, blog, sitio: sitio! });
+        if (html === null) return null;
+        return esPreview ? html.replace("</body>", `${scriptBridge()}</body>`) : html;
       }
     } catch (e) {
       if (e instanceof Saturado) {

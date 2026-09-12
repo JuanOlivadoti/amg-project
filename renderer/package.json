@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "sql:demo": "tsx src/cli/sql-demo.ts",
-    "preview:firmar": "tsx --env-file-if-exists=.env src/cli/firmar-preview.ts"
+    "preview:firmar": "tsx --env-file-if-exists=.env src/cli/firmar-preview.ts",
+    "snapshot": "tsx --env-file-if-exists=.env src/cli/snapshot.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

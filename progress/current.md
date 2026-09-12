@@ -6,116 +6,128 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión (2026-09-10 → 11):** tres piezas. Primero se recorrió con Juan, decisión por decisión, el
-checklist de [`16-pendientes-juan.md`](../docs/proyecto/16-pendientes-juan.md) — commiteado en
-`428571b`. Después, el **primer ítem del lote corto** que salió de ahí: el **guardarraíl de «Conectar
-Google» en modo mock + producción** (commiteado en `c82399f`). Y tercero, el **segundo ítem del lote
-corto: la reescritura de ADR-11**, que es lo que está en vuelo ahora.
+**Sesión (2026-09-10 → 12):** el checklist de decisiones de Juan, y después **el lote corto entero**
+que salió de él. **Las tres etapas están hechas y revisadas**; la tercera es la que se commitea ahora.
 
-## En vuelo (sin commitear)
+| | Etapa | Commit |
+|---|---|---|
+| — | Checklist de decisiones de Juan (cierra **OBS-04**) | `428571b` |
+| 1 | Guardarraíl de «Conectar Google» en modo mock | `c82399f` |
+| 2 | Reescritura de **ADR-11** | `223abb2` |
+| 3 | **Snapshot estático como entregable** | revisado y corregido; se commitea con este cambio |
 
-**La reescritura de ADR-11.** Solo documentación (`docs/decisiones-arquitectura.md` + la
-sincronización del `09`, el `15` y el `16`). El ADR tiene ahora una sección **«versión vigente»**, que
-es la que se lleva a un contrato; el cuerpo viejo queda marcado como historia en vez de reescrito.
+**Con la etapa 3, el Bloque H se queda sin trabajo de código y a ADR-11 le falta UNA sola cosa: los
+dos importes de Juan.**
 
-Lo que dice: **snapshot estático incluido**; **salida gestionada de pago** (pago único + cuota
-mensual, importes pendientes de Juan); y **«editable» = una capacidad que el cliente GANA en la
-baja**, nunca una que ya tenía — que es lo que OBS-04, al cerrarse en (a), desambiguó.
+## En vuelo (se commitea ahora)
 
-**(b1) «el cliente lo hostea» se RETIRA de la oferta**, y conviene leer con cuidado cómo: se retira
-diciendo *«hoy no se ofrece»*, **no** *«no se puede»*. La primera lectura de la sesión principal fue
-que era imposible; al verificarlo resultó impreciso. `demo-server.ts` corre el renderizador **entero**
-contra PGlite en memoria sembrado desde un JSON de perfil (`renderer/src/demo-server.ts:22-87`), así
-que la forma que funcionaría —renderizador + PGlite sembrado + el space propio del cliente + su token
-de CDA— **ya tiene todas las piezas**; lo que no existe es el empaquetado, la documentación y el
-soporte. **Es una decisión de Juan si quiere que se ofrezca**, y quedó anotada como pregunta en el
-`16` § 7.
+El **snapshot estático de salida** (ADR-11). Implementado por un subagente sobre un contrato fijado
+por la sesión principal; la documentación, por la sesión principal.
 
-**Para firmar ADR-11 faltan exactamente dos cosas:** los dos importes (Juan) y **verificar el snapshot
-estático como entregable** — el tercer y último ítem del lote corto.
+    npm run snapshot -w renderer -- <dominio> <directorio-destino>
 
-### Lo anterior de esta sesión, ya commiteado
+Produce `index.html`, `<slug>/index.html`, `_assets/fonts/` y `_assets/img/`, **con las imágenes
+descargadas** — decisión del usuario, y es lo que hace honesta la cláusula: el entregable no depende
+de que siga viva ninguna cuenta de Storyblok.
 
-- `428571b` — el checklist de decisiones de Juan (OBS-04 incluida).
-- `c82399f` — el guardarraíl de «Conectar Google», con las correcciones de la revisión dentro.
+**Lo que más importa de cómo se hizo:** la paridad con el sitio vivo se impone **por construcción**.
+La decisión «qué HTML le toca a cada slug» se **extrajo** del handler de `app.ts` a
+`renderer/src/pagina.ts`, y ahora la comparten el servicio y el snapshot. Copiar las reglas habría
+cumplido la letra del contrato y fallado a los seis meses: una regla nueva se cambia en un sitio y el
+snapshot se desincroniza **sin error y sin log**. Los 178 tests del renderizador siguieron en verde
+sin tocar ninguno, que es la prueba de que la extracción no cambió comportamiento.
 
-## Qué hace el guardarraíl
+**Verificado en un navegador** (lo que ningún test ve, y en esta pieza el entregable ES lo que se ve):
+6 páginas, 10 imágenes, 7 tipografías, **cero peticiones a hosts externos** y **cero JavaScript
+ejecutable**. (Esta frase decía «ni un `<script>` que no sea `application/ld+json`», y el `revisor` la
+comprobó en cinco segundos contra los artefactos: es falsa. Hay **dos** tipos de `<script>` — el
+JSON-LD y el `<script type="application/json" id="research-trace">` de las landings. Ninguno es
+ejecutable y el sitio vivo ya los emite, pero la frase no se sostenía.)
 
-`GOOGLE_REVIEWS_MODO=mock` + entorno de producción ⇒ **409** en `POST /clients/:id/google/conectar` y
-en `GET /clients/:id/google/callback`. **No aborta el arranque**, a diferencia de
-`verificarPublicacion()` con `PIPELINE_MODO`: quedarse en mock es una decisión tomada, así que un
-`throw` en `leerConfig` dejaría la API sin levantar. Se bloquea el camino que arma la trampa, no el
-proceso.
+## Los hallazgos
 
-- La regla se calcula en `api/src/deps.ts` (el único archivo que toca `process.env`), con
-  `esModoProduccion()` **extraída** de `exigirEventKeySiEsCloud` para no tener dos lecturas que
-  diverjan.
-- `ApiDeps.conectarGoogleBloqueado` es **obligatorio sin default**: fuera de producción el valor
-  correcto es `false`, así que cualquier default sería `false` y un cableado olvidado dejaría la
-  trampa armada. Siendo obligatorio, **es el typecheck** el que obliga a decidir a cada arranque.
-- **Dos cortes.** `conectar` corta antes de `firmarEstado` (no se acuña un `state`, que es una
-  credencial de 10 minutos). El `callback` corta antes de toda escritura, porque **un `state` firmado
-  antes del despliegue sigue vivo 10 minutos** — hay un test que lo firma con la app *sin* guardarraíl
-  y lo presenta a la app *con* guardarraíl.
-- **`desconectar` NO se bloquea**, con un test que lo impone (mutación *en el otro sentido*):
-  bloquear el remedio dejaría a un cliente conectado por error sin salida.
+1. **Los emisores de `<img>` eran CUATRO, no tres.** El contrato enumeraba tres y avisaba de que esa
+   multiplicidad ya había sorprendido al proyecto (Bloque E). Faltaba `renderVideo`, que emite
+   `<video src>` **y** `poster`. El escaneo final no va por emisor sino por **posición fetchable**, así
+   que el quinto entra solo.
+2. **Dos mutaciones no hicieron caer nada**, y las dos destaparon tests que pasaban por el motivo
+   equivocado: el de `og:image` (lo salvaba que el JSON-LD trae la misma URL) y el filtro del índice
+   de la home, que **no lo fijaba ningún test, ni antes ni después**. El de paridad no lo ve: una
+   mutación en el código *compartido* mueve los dos lados igual. Es la debilidad conocida de un test
+   de paridad, ahora escrita. Los dos tests que faltaban, agregados.
+3. **🔴 `brand.tema` no cruza TRES de las cuatro fronteras: hoy ningún cliente puede tener modo
+   oscuro.** No es del snapshot **y no es nueva**: estaba **declarada como deuda desde el 2026-08-10**
+   en el `15` (Bloque E, Etapa 1), sin arreglar. La sesión principal la presentó primero como hallazgo
+   fresco y con dos fronteras en vez de tres; lo corrigió el `revisor`, y tenía razón en lo que
+   importa: **el dato no es que se descubrió, es que se conocía y se dejó pasar un mes.** El CSS
+   oscuro existe y `ensamblarCss` lo emite solo con `brand.tema === "auto"`, pero `tema` no está en el
+   `brandSchema` de Zod, ni lo construye la allowlist de `app.nap_publico`, ni lo copia `perfilValido`.
+   Sube a `09` § Deuda conocida con dueño; la fila del `15` Bloque I ahora **enlaza** en vez de
+   duplicar. **No se arregló acá**: son los tres arreglos que la nota de agosto ya enumeraba.
 
-## Lo que corrigió la revisión
 
-1. **[Bloqueante] El mensaje del 409 prescribía un remedio que tira la API.** Terminaba con *"Poné
-   `GOOGLE_REVIEWS_MODO=live`"*, pero `leerConfig` acepta ese valor y `getGoogleOAuthProvider("live")`
-   **lanza** (el provider real no existe), y `crearDeps` lo construye al arrancar: un operador
-   siguiendo el mensaje tiraba la API entera. Era el mismo modo de fallo que la etapa venía a cerrar,
-   del otro lado. Reescrito, y **atado con un test que se cura solo**: si el mensaje prescribe `live`
-   y `getGoogleOAuthProvider("live")` lanza, el test cae; el día que se implemente el provider, el
-   test deja de objetar sin tocarlo.
-2. **[Bloqueante] Tres documentos seguían diciendo que el guardarraíl estaba pendiente**, y este
-   archivo afirmaba *"todo commiteado"* con 15 archivos modificados. Corregido acá, en
-   `16-pendientes-juan.md` y con la entrada de `history.md`.
-3. **[Menor] La nota de `codigos.ts` que yo había "corregido" afirmaba otras dos cosas falsas**: que
-   el 501 de `crear_posts` existe (se retiró en el sub-proyecto 3 — `NO_IMPLEMENTADO` es hoy una
-   constante que no emite nadie) y que "todos los 409 de hoy llevan código" (el `onError` ya devolvía
-   un 409 pelado desde antes). Reescrita entera.
-4. **[Menor] `INNGEST_DEV=1` apaga el guardarraíl** y no lo fijaba ningún test — era el comportamiento
-   de producción más sensible del cambio sostenido solo por un comentario. Test agregado.
-5. **[Menores]** `GOOGLE_REVIEWS_MODO` en `api/README.md`; indentación en dos archivos de test; y el
-   docblock de `conectar()` ahora dice que poner `error` **se lleva puesto el CTA** (las ramas de la
-   plantilla son excluyentes) — correcto para este 409, pero no es lo que uno espera de un "mostrá el
-   error" genérico.
+## Lo que corrigió la revisión (CAMBIOS_PEDIDOS, 4 bloqueantes)
 
-## Deuda que queda anotada, no cerrada
+Veredicto textual del `revisor`: *«el código está bien; lo que no está cerrado es la documentación de
+la propia etapa y tres constantes de producción que ninguna mutación tumba»*.
 
-- **El guardarraíl no deshace una fila YA conectada.** Corta *conectar*, no el polling. Si existe un
-  cliente con `google_refresh_token` en producción sigue sembrando reseñas falsas — **sin verificar**:
-  es una comprobación de Juan (ninguna sesión de Claude Code tiene acceso autenticado a esa base).
-- **`crearDeps` no tiene test propio** del cableado `config.conectarGoogleBloqueado →
-  deps.conectarGoogleBloqueado` (construye un `Pool` de `pg`, no se ejercita en la suite). Lo
-  sostienen el campo obligatorio y que el valor no se transforma.
-- **No se manejó la app en un navegador** para este cambio: reproducir el 409 exige editar a mano el
-  literal de `dev-server.ts`, que está en `false` a propósito para que el flujo mock funcione.
-- **`NO_IMPLEMENTADO`** quedó como constante exportada que nadie emite. Retirarla exige tocar la copia
-  del portal en el mismo cambio (`deepEqual` entre las dos); es otra etapa.
+1. **[Bloqueante] Tres defaults de producción sin test.** Mutó `PLAZO_DESCARGA_MS = 15000 → 1`,
+   `MAX_REDIRECCIONES = 3 → 0` y `ARCHIVO_INFORME → "otro-nombre.txt"`, y **no cayó ni un test** en las
+   tres. La causa es literalmente la de `CHECKPOINTS.md`: los tests que cubrían esos caminos **elegían
+   el parámetro** (`plazoMs: 30`, un solo salto rechazado), así que ejercitaban la mecánica y no el
+   valor de producción; y el del informe **importaba la constante y la componía**, comparándose consigo
+   mismo. Consecuencia real: con `PLAZO_DESCARGA_MS = 1` todo snapshot de producción habría salido con
+   código 2 y las fotos rotas, con el arnés en verde. Los tres fijados por valor, mutación confirmada.
+2. **[Bloqueante] El `15` se contradecía consigo mismo.** La etapa actualizó «El orden que recomiendo»
+   pero **no la sección del Bloque H**, que es la que trata este trabajo — y `16-pendientes-juan.md`
+   seguía diciéndole a Juan que faltaban **dos** cosas para firmar ADR-11 cuando falta una.
+3. **[Bloqueante] `brand.tema` presentada como hallazgo nuevo, y con el conteo mal.** Ver arriba.
+4. **[Bloqueante] ADR-11 promete el nombre `_snapshot-informe.txt` y ningún test lo fijaba.** Incluido
+   en el punto 1.
+
+**Menores corregidos:** la frase de los `<script>` (ver arriba); la **precedencia de clase
+`contenido` > `social`** no tenía test —era la decisión de seguridad más sutil del archivo, sostenida
+solo por su comentario, porque en las fixturas las dos URLs son siempre distintas— así que se extrajo
+a `referenciasDe()` para poder ejercitarla, con su mutación; y se incorporó al docstring de
+`hostAlcanzable` la **medición** del `revisor` (las formas decimal, hexadecimal, octal y corta de una
+IPv4 las normaliza `new URL` antes de llegar, así que la regex no se esquiva) para que no se
+re-litigue en cada revisión.
+
+**Lo que el `revisor` dio por bueno con evidencia propia:** la extracción `app.ts` → `pagina.ts` es
+fiel caso por caso (comparó el bloque borrado contra el nuevo línea a línea, y confirmó que el
+`conBridge` invertido es equivalente porque la única rama que no lo llevaba era la del `null`); siete
+de sus nueve mutaciones cayeron exactamente donde debían; y auditó los artefactos reales del navegador
+en vez de creerle al relato.
+## Deuda que queda anotada
+
+- **`file://` no sirve**: las rutas son absolutas a propósito (es lo que evita reescribir enlaces).
+  Cualquier hosting estático vale.
+- **El directorio de destino no se limpia**: regenerar sobre uno usado deja páginas viejas. Borrar
+  recursivamente una ruta que nos pasan por argumento es destructivo sobre algo que no controlamos.
+- **El camino feliz del CLI con credenciales reales** no lo cubre ningún test de subproceso — no se
+  puede sin credenciales. Sí está cubierto todo lo demás, con dependencias inyectadas.
+- **El `favicon.ico` da 404**, en el snapshot y en la web viva. Preexistente, pero en un entregable a
+  cliente se nota más.
 
 ## Próximo paso
 
-1. **Commit + push** de la reescritura de ADR-11.
-2. **Lo que queda del lote corto: verificar el snapshot estático como entregable.** Sale de
-   `renderStory()`, que ya existe; nadie lo usó nunca como entregable de salida, así que hoy esa línea
-   del contrato describe una intención. Es lo único de código que separa a ADR-11 de ser firmable.
-3. **Después: comparativas de seguros.** Falta el `writing-plans` sobre la spec aprobada.
-4. **Lo que espera de Juan:** los dos importes de la salida gestionada; poner `CACHE_TTL_MS=60000` en
-   Railway; y comprobar si hay algún cliente con conexión de Google en producción.
+1. Verificación completa, **`revisor`**, y commit + push.
+2. **Después: comparativas de seguros** — el `writing-plans` sobre la spec aprobada
+   (`docs/superpowers/specs/2026-09-04-comparativas-seguros-design.md`). Dos cosas a mirar con lupa:
+   el **preflight de presupuesto** del provider real y el **parsing de formato libre**.
+3. **Lo que espera de Juan:** los dos importes de la salida gestionada (lo único que separa a ADR-11
+   de ser firmable); poner `CACHE_TTL_MS=60000` en Railway; comprobar si hay algún cliente con
+   conexión de Google en producción; y, opcional, si quiere que la salida self-hosted se ofrezca.
 
 ## Verificaciones
 
-- `bash ./scripts/verificar.sh --con-portal`: **1900 tests del monorepo** en verde, typecheck limpio
-  (7 paquetes + `scripts/`), sin secretos, 332 `node:test` del portal. **Re-corrido DESPUÉS de las
-  correcciones de la revisión**, que agregaron dos tests (1898 → 1900): el que ata el texto del 409 a
-  `getGoogleOAuthProvider` y el de la escotilla `INNGEST_DEV=1`.
-- `npm --prefix portal run test:components`: **278 SUCCESS** (Karma).
-- **Mutación del `try/catch` del portal**, hecha por la sesión principal: `1 FAILED / 277 SUCCESS`,
-  y el caído es exactamente `🔴 si conectar falla (409 del guardarraíl de mock)…`. El mensaje del
-  fallo enseña el bug real: la pantalla sigue mostrando el botón "Conectar Google" como si nada.
-- **Mutaciones re-hechas por el `revisor`** (no tomadas del informe de `datos`): quitar la guarda del
-  callback ⇒ cae solo su test; quitarle `esProduccion` a la regla ⇒ cae solo `mock + dev`; poner la
-  regla en `false` ⇒ caen exactamente los dos que afirman `true`.
+- `bash ./scripts/verificar.sh --con-portal`: **1947 tests del monorepo** en verde (sube de 1900),
+  typecheck limpio (7 paquetes + `scripts/`), sin secretos, 332 `node:test` del portal. Confirmado con
+  la salida real. `renderer` pasó de 178 a **225** (219 del subagente + 6 al corregir la revisión).
+- **Karma NO se re-corrió, y es correcto**: esta etapa no tocó ni un archivo de `portal/`. Sigue en
+  278 desde el commit del guardarraíl.
+- **Revisión del código de descarga hecha por la sesión principal**, no solo por el informe:
+  redirecciones manuales revalidadas en cada salto, tope por `content-length` declarado **y** por
+  bytes reales del stream, plazo con `Promise.race` (no solo la señal), y el guard de hosts internos
+  **declarado como parcial** —no hay resolución de DNS, así que un nombre que resuelva a 127.0.0.1
+  pasa igual— en vez de vendido como completo.

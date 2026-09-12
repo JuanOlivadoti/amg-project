@@ -1556,18 +1556,29 @@ Nada de esto bloquea hoy; **todo bloquea un SLA**.
 > mínimo alto explícito — porque cada salida gestionada ocupa un **slot de dominio custom**, que la
 > decisión de arriba acaba de declarar capacidad escasa. **Los dos números siguen pendientes de Juan.**
 >
-> **Con esto ADR-11 se puede reescribir**, y esa reescritura entra en el roadmap. **Sigue faltando
-> verificar el snapshot estático como entregable** — es trabajo, no decisión.
+> **Con esto ADR-11 se puede reescribir**, y esa reescritura ✅ **se hizo el 2026-09-11**. ~~Sigue
+> faltando verificar el snapshot estático como entregable.~~ ✅ **También hecho, el 2026-09-11**:
+> `npm run snapshot -w renderer -- <dominio> <destino>`, con las imágenes descargadas y cero terceros
+> comprobado en un navegador.
 >
-> ⚠️ **Y un hallazgo que la reescritura tiene que resolver:** la variante **(b1) «el cliente lo
-> hostea» no es posible** tal como ADR-11 la redacta. Se escribió cuando el plan era un frontend
-> Next.js entregable; hoy el renderizador es un servicio **multi-tenant que lee de la base de AMG**, así
-> que un cliente que se lleve su space se lleva el contenido y nada que lo renderice. O (b1) sale del
-> ADR, o alguien construye un modo standalone del renderizador — alcance nuevo, nada trivial.
+> **Con eso el Bloque H se queda SIN trabajo de código.** Lo único que separa a ADR-11 de ser
+> firmable son **los dos importes de Juan**.
+>
+> ⚠️ **El hallazgo que la reescritura tenía que resolver, y cómo quedó:** la variante **(b1) «el
+> cliente lo hostea» no es posible** tal como ADR-11 la redactaba. Se escribió cuando el plan era un
+> frontend Next.js entregable; hoy el renderizador es un servicio **multi-tenant que lee de la base de
+> AMG**, así que un cliente que se lleve su space se lleva el contenido y nada que lo renderice. **La
+> reescritura la RETIRA de la oferta**, pero como *«hoy no se ofrece»* y no *«no se puede»*:
+> `demo-server.ts` ya corre el renderizador contra PGlite sembrado desde un JSON, así que las piezas
+> existen y lo que falta es empaquetado. Reponerla sería un ADR nuevo — **decisión abierta de Juan**,
+> anotada en `16-pendientes-juan.md` § 7.
 
-- **OBS-04 está ABIERTA**: quién edita la web durante el servicio no lo gobierna nuestro RBAC. De eso
-  depende qué significa "editable" en la baja.
-- **Falta verificar el snapshot estático como entregable** y ponerle precio a la "salida gestionada".
+- ~~**OBS-04 está ABIERTA**: quién edita la web durante el servicio no lo gobierna nuestro RBAC. De eso
+  depende qué significa "editable" en la baja.~~ ✅ **CERRADA el 2026-09-10** en (a): edita solo la
+  agencia. Con eso «editable» nombra una capacidad que el cliente **gana en la baja**.
+- ~~**Falta verificar el snapshot estático como entregable**~~ ✅ **hecho el 2026-09-11** ~~y ponerle
+  precio a la "salida gestionada"~~ ✅ **forma decidida el 2026-09-10** (pago único + cuota mensual).
+  **Lo único que queda son los dos importes concretos de Juan.**
 - ~~**El enlace de preview del Visual Editor se emite a mano**~~ ✅ **Resuelto el 2026-08-22.**
   `npm run preview:firmar -w renderer -- <dominio> [minutos]` (`renderer/src/cli/firmar-preview.ts`,
   5 tests, verificado por mutación) envuelve `firmarPreview()` en un comando del repo, versionado y
@@ -1625,6 +1636,7 @@ pantalla se ve funcionando con datos sembrados, y el ingreso real de ideas se de
 | **Sin tests de integración** del camino live | — | DataForSEO, OpenAI y Storyblok se ejercitaron a mano |
 | ~~`env:sync` avisa de 4 claves «sin destino» y no distingue~~ | `scripts/` | **Resuelto 2026-08-18.** `clasificarSobrantes()` nueva en `env-sync.mts` separa `SUPABASE_JWT_SECRET` del resto con su propio aviso (⚠️, no el genérico): sigue siendo un riesgo real —puede acuñar un `service_role` que bypassea RLS— hasta que se revoque en Supabase, y no se puede revocar todavía porque el portal firma su `apikey` de login con el mismo secreto (`12-credenciales.md`). Las otras claves sin destino no se identificaron una por una (viven en `docs/private/`, fuera de mi alcance de lectura); quedan en el aviso genérico sin distinguir |
 | ~~El CLI de despliegue **no dice en qué punto falló**~~ | `db/src/cli/` | **Resuelto 2026-08-21.** La fase de preparación de `migrarConRegistro` (`db/src/deploy.ts`: `asegurarAuthStandIn` + `create schema`/`create table` del registro + el `select` inicial, todo ANTES del bucle) ahora va en su propio try/catch que re-lanza con `"Falló preparando el registro de migraciones, antes de aplicar ninguna: …"`, conservando el mensaje original del driver. Antes salía crudo, indistinguible de un fallo dentro de una migración (que ya venía envuelto con el nombre del archivo). Test rojo→verde en `deploy.test.ts` con una `ConexionReservada` cuyo primer `query` explota; verificado por mutación (sacar el try/catch tumba exactamente ese test) |
+| 🔴 **`brand.tema` no cruza tres de las cuatro fronteras** — ningún cliente puede tener modo oscuro | `web-builder/`, `db/`, `renderer/` | **Sube de categoría, no es un hallazgo nuevo**: la declaró la **Etapa 1 del Bloque E el 2026-08-10** (arriba en este mismo archivo, § «Deuda declarada»), y sigue sin arreglarse. El navegador del snapshot volvió a tropezar con ella el 2026-09-11. **El detalle y el dueño viven en el [`09` § Deuda conocida](09-estado-y-roadmap.md)** — acá solo el puntero, para no tener dos copias del mismo estado. Los tres arreglos que hacen falta ya estaban enumerados en 2026-08-10: Zod, la allowlist de la `0014` y `perfilValido` |
 | La **sonda del modo del SDK está duplicada** | `api/`, `orchestrator/` | Los dos chequeos son equivalentes hoy y nada los mantiene sincronizados. Unificar no es trivial: el único paquete compartido es `contrato/`, que solo depende de `zod` |
 | ~~🔴 `PIPELINE_MODO` solo se contrasta contra **DataForSEO**~~ **Resuelto (2026-08-18)** | `orchestrator/` | `verificarPublicacion()` en `orchestrator/src/config.ts` exige, cuando `PIPELINE_MODO=live`, que `modoPublicacion()` (de `web-builder`) sea `"live"` o `"dry-run"` — nunca `"mock"` — en los dos entornos, igual que `verificarCoherencia`. `dry-run` no aborta (reporta `published: false` con honestidad); el DEFAULT sin `WEB_PUBLISH_MODE` sí (es `mock` y miente). La función se inyecta como parámetro (`obtenerModoPublicacion`) en vez de importarse en `config.ts`, para no arrastrar el `import "dotenv/config"` de `web-builder` a los tests del orquestador. `server.ts` la conecta con el `modoPublicacion` que ya importaba para `/_health`. Tests en `config.test.ts` (seis nuevos, § "PIPELINE_MODO x publicación") |
 | ~~`cartera-portal.test.ts` dejó de cubrir `intencion`~~ | `db/` | **Resuelto 2026-08-21.** El test comparaba el mock contra `PAGINAS_DEMO` (la fuente en TypeScript, español), no contra la fila real de `kr_pages` (inglés desde la `0017`) — dos eslabones que dicen lo mismo salvo en `intencion`, así que la deriva quedaba invisible. Ahora siembra con `sembrarDemo` y lee la fila bajo RLS (`asUser`, rol staff) para los 9 campos comparados; los nombres de columna no coinciden 1:1 con los del mock (`url_slug`↔`slug`, `opportunity_score`↔`score`, `score_confidence`↔`confianza`), mapeados explícitamente. Verificado por mutación: forzar `intencion: "transactional"` en `aPaginaPropuesta` (valor válido del contrato pero equivocado) tumba exactamente el test de comparación, señalando la página y el campo |
@@ -1676,8 +1688,28 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 >    Reponerla sería un ADR nuevo, con un cliente que lo pida como disparador. Y **«editable» quedó
 >    definido sin ambigüedad**: una capacidad que el cliente **gana en la baja**, porque OBS-04 se
 >    cerró en (a). Los dos importes quedan como hueco explícito, sin inventar.
-> 3. **Verificar el snapshot estático como entregable.** Sale de `renderStory()`, que ya existe; nadie
->    lo ha usado nunca como entregable de salida. Es la última pieza de trabajo del Bloque H.
+> 3. ~~**Verificar el snapshot estático como entregable.**~~ ✅ **HECHO el 2026-09-11.**
+>    `npm run snapshot -w renderer -- <dominio> <destino>`. **Con esto el lote corto queda cerrado
+>    entero**, y el Bloque H se queda sin trabajo de código: lo único que le falta a ADR-11 para ser
+>    firmable son los dos importes de Juan.
+>
+>    Tres cosas de cómo se hizo que valen más que el comando:
+>
+>    - **La paridad con el sitio vivo se impone por construcción, no por disciplina.** La decisión
+>      «qué HTML le toca a cada slug» se **extrajo** del handler de `app.ts` a `renderer/src/pagina.ts`
+>      y ahora la comparten el servicio y el snapshot. Copiar las reglas habría cumplido la letra del
+>      contrato y fallado a los seis meses: una regla nueva se cambia en un sitio y el snapshot se
+>      desincroniza **sin error y sin log**. Los 178 tests del renderizador siguieron en verde sin
+>      tocar ninguno, que es la prueba de que la extracción no cambió comportamiento.
+>    - **Los emisores de `<img>` eran CUATRO, no tres.** El contrato enumeraba tres y avisaba de que
+>      esa multiplicidad ya había sorprendido al proyecto. Faltaba `renderVideo`, que emite `<video
+>      src>` **y** `poster`. El escaneo final no va por emisor sino por **posición fetchable**, así que
+>      el quinto entra solo.
+>    - **Dos mutaciones no hicieron caer nada**, y las dos destaparon tests que pasaban por el motivo
+>      equivocado: el de `og:image` (lo salvaba que el JSON-LD trae la misma URL) y el filtro del
+>      índice de la home (que **no lo fijaba ningún test, ni antes ni después** — el de paridad no lo
+>      ve, porque una mutación en el código compartido mueve los dos lados igual). Es la debilidad
+>      conocida de un test de paridad, y conviene tenerla escrita.
 >
 > **Y después, la pieza grande: comparativas de seguros.** Spec aprobada
 > ([`2026-09-04-comparativas-seguros-design.md`](../superpowers/specs/2026-09-04-comparativas-seguros-design.md)),
