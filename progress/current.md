@@ -6,6 +6,127 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
+**Sesión (2026-09-10 → 13):** el checklist de decisiones de Juan, el **lote corto entero** que salió
+de él (3 etapas, cerradas y pusheadas a `main`), y ahora **la ejecución del plan de comparativas de
+seguros** con `superpowers:subagent-driven-development` — implementador + revisor por tarea, en la
+rama `feature/comparativas-seguros`.
+
+**Dónde está AHORA:** van **2 de 9 tareas** cerradas con revisión limpia. La **Task 3 está a medio
+hacer**: un subagente la está implementando en segundo plano y ya dejó dos archivos sin commitear.
+
+| | Etapa / Tarea | Commit |
+|---|---|---|
+| — | Checklist de decisiones de Juan (cierra **OBS-04**) | `428571b` (en `main`) |
+| — | Guardarraíl de «Conectar Google» en modo mock | `c82399f` (en `main`) |
+| — | Reescritura de **ADR-11** | `223abb2` (en `main`) |
+| — | Snapshot estático de salida (cierra el lote corto) | `68132bf` (en `main`) |
+| — | Plan de comparativas de seguros, 9 tareas | `8f666dd` (en `main`) |
+| pre | Corrección del plan en el pre-flight | `cc1d610` |
+| 1 | Migración `0033` + `PgComparativasSeguros` | `be6a8ca` ✅ revisada |
+| 2 | Parser de CSV + topes | `6adb0e9..5d1bc4f` ✅ revisada |
+| 3 | Bajar el Google Sheet | ⏳ **en vuelo** |
+
+## En vuelo (sin commitear)
+
+**Task 3, implementándose en segundo plano.** `git status --short` da exactamente dos archivos sin
+trackear, los dos creados por ese subagente:
+
+- `api/src/comparativas/sheet.ts` — el módulo que convierte un link de Google Sheet en su URL de
+  export CSV y lo baja.
+- `api/src/comparativas/sheet.test.ts` — sus tests.
+
+**No los toques mientras el subagente corre.** Si la sesión se cortó y esos archivos quedaron
+huérfanos, comprobá si compilan y pasan (`npx tsx --test api/src/comparativas/sheet.test.ts`); si
+están a medias, es más limpio borrarlos y relanzar la Task 3 desde su brief que adivinar qué falta.
+
+Todo lo demás está commiteado. Nada pusheado: la rama es local.
+
+## Próximo paso
+
+1. **Esperar el informe de la Task 3** (subagente en segundo plano). Cuando llegue: generar el
+   paquete de revisión con
+   `bash "$HOME/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package" 5d1bc4f HEAD`
+   y despachar al agente `revisor` con el brief, el informe y ese diff.
+2. **Seguir el ciclo con las tareas 4 a 9**, en orden, sin pararse entre medias. Los briefs se sacan
+   con el script `task-brief` del mismo directorio, sobre
+   `docs/superpowers/plans/2026-09-12-comparativas-seguros.md`, y se mueven a
+   `.superpowers/sdd/2026-09-12-comparativas-seguros/`.
+3. **El ledger manda sobre la memoria**:
+   `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md`. Tras un `/compact`, una tarea
+   marcada `[x]` ahí está hecha — no la relances.
+4. **Al terminar las nueve**: review final de rama (modelo más capaz), manejar la app en un navegador
+   con el provider mock, actualizar `09`/`15`, y recién ahí merge a `main` con `--no-ff`.
+
+## Decisiones tomadas
+
+*(Se añaden, no se borran. Las de las etapas anteriores siguen más abajo en este archivo.)*
+
+- **La ejecución va en rama simple `feature/comparativas-seguros`, sin worktree** (2026-09-12, Juan).
+  Es lo que ya hicieron el módulo de Ideas y el sub-proyecto 3; el worktree se descartó por la
+  indirección que Juan pidió evitar para poder levantar la app en local.
+- **El `.xlsx` lo convierte el NAVEGADOR; la API nunca recibe un binario** (2026-09-12, Juan). Misma
+  doctrina que el PDF (2026-08-07). Se descartó meter una librería de parsing de binarios en el
+  servicio autenticado. El link de Google Sheet es la excepción y lo baja el servidor, porque **CORS
+  impide al navegador hacerlo** — pero baja texto, no un binario.
+- **`parsearCsv` LANZA ante una comilla sin cerrar** (2026-09-13, al revisar la Task 2). Sin cambiar
+  su firma. Se descartó documentar la limitación: fusionar filas en silencio le daría al LLM datos
+  mezclados sin que nada avise, que es el fallo que el propio plan prohíbe («media comparativa que
+  parece completa es peor que un error, porque un corredor la manda»).
+- **`CASOS_CSV` y `CASOS_CSV_INVALIDOS` viven en `filas.test.ts`, no en `filas.ts`** — una fixture no
+  va en el código que se despliega, y el test cruzado de la Task 7 vive en ese mismo archivo.
+- **Sonnet como modelo por defecto de los implementadores.** Opus se agotó por límite de sesión el
+  2026-09-12 (se restablece a las 22:20 de Madrid) y además la skill dice usar el modelo más barato
+  que sirva: los briefs de este plan llevan el código, así que la mayoría son transcripción más
+  verificación. Reservar lo caro para la Task 5 y el review final de rama.
+
+## Callejones sin salida
+
+*(Se añaden, no se borran.)*
+
+- **Despachar la Task 1 con Opus falló por límite de sesión** (2026-09-12). No dejó nada a medias: el
+  árbol quedó limpio, sin archivos ni commits. Relanzada con Sonnet, salió bien a la primera. **No
+  reintentes con Opus antes de que el límite se restablezca** — el agente muere sin escribir informe.
+- **El agente `render` NO está registrado en esta sesión**, aunque `.claude/agents/render.md` existe y
+  `verificar.sh` cuenta los 5 agentes. Se usó `general-purpose` cargándole las skills del área
+  (`render-seguridad`, `render-plantillas`, `render-cda-cache`) y funcionó. Para que aparezca hay que
+  reiniciar la sesión.
+- **Un heredoc de bash para escribir el plan se rompió** con las comillas y backticks del contenido.
+  Para documentos con bloques de código, usar la herramienta `Write`, no `cat <<EOF`.
+
+## Archivos calientes
+
+- `docs/superpowers/plans/2026-09-12-comparativas-seguros.md` — el plan, 9 tareas. Es la fuente de
+  los briefs.
+- `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md` — **el ledger**. Manda sobre la
+  memoria tras un `/compact`. Gitignoreado (`.gitignore:67`).
+- `api/src/comparativas/filas.ts` — el parser ya cerrado. **Lanza** ante comilla sin cerrar; la Task 3
+  lo consume y la Task 7 lo duplica en el portal con un test cruzado.
+- `api/src/comparativas/sheet.ts` — lo que está escribiendo el subagente ahora mismo.
+- `renderer/src/snapshot.ts` — el molde de defensas de red (allowlist exacta, tope doble de bytes,
+  `Promise.race`, redirecciones revalidadas). La Task 3 lo copia.
+- `db/src/comparativas-seguros.ts` — la capa de acceso de la Task 1, con el menor pendiente del
+  docstring de `crear` (ver el ledger).
+
+## Verificaciones
+
+- **`npm run verificar`: NO corrido en este estado**, y a propósito: hay un subagente escribiendo
+  archivos ahora mismo, así que una corrida completa mediría un árbol a medias y competiría por la
+  máquina. Correrlo cuando la Task 3 cierre.
+- **Último verde completo conocido:** `bash ./scripts/verificar.sh --con-portal` sobre `main`
+  (`68132bf`): **1947** tests del monorepo, typecheck limpio, sin secretos, **332** `node:test` del
+  portal. Karma: **278**.
+- **Verde por tarea en esta rama, con salida real:** Task 1 → `db` 522/522 y typecheck limpio;
+  Task 2 → `npx tsx --test api/src/comparativas/filas.test.ts` 13/13 (corrido por la sesión
+  principal, no tomado del informe).
+
+---
+
+# Historial de esta sesión (etapas ya cerradas y pusheadas a `main`)
+
+> Lo que sigue es el registro de las etapas **ya cerradas y pusheadas** de esta sesión. Se conserva
+> porque explica decisiones que siguen vigentes, pero **no describe el estado actual**: para eso, la
+> parte de arriba.
+
 **Sesión (2026-09-10 → 12):** el checklist de decisiones de Juan, y después **el lote corto entero**
 que salió de él. **Las tres etapas están hechas y revisadas**; la tercera es la que se commitea ahora.
 
@@ -19,7 +140,7 @@ que salió de él. **Las tres etapas están hechas y revisadas**; la tercera es 
 **Con la etapa 3, el Bloque H se queda sin trabajo de código y a ADR-11 le falta UNA sola cosa: los
 dos importes de Juan.**
 
-## En vuelo (se commitea ahora)
+### Etapa 3 del lote corto — el snapshot estático (ya commiteado en `68132bf`)
 
 El **snapshot estático de salida** (ADR-11). Implementado por un subagente sobre un contrato fijado
 por la sesión principal; la documentación, por la sesión principal.
@@ -44,7 +165,7 @@ comprobó en cinco segundos contra los artefactos: es falsa. Hay **dos** tipos d
 JSON-LD y el `<script type="application/json" id="research-trace">` de las landings. Ninguno es
 ejecutable y el sitio vivo ya los emite, pero la frase no se sostenía.)
 
-## Los hallazgos
+### Hallazgos del snapshot estático
 
 1. **Los emisores de `<img>` eran CUATRO, no tres.** El contrato enumeraba tres y avisaba de que esa
    multiplicidad ya había sorprendido al proyecto (Bloque E). Faltaba `renderVideo`, que emite
@@ -66,7 +187,7 @@ ejecutable y el sitio vivo ya los emite, pero la frase no se sostenía.)
    duplicar. **No se arregló acá**: son los tres arreglos que la nota de agosto ya enumeraba.
 
 
-## Lo que corrigió la revisión (CAMBIOS_PEDIDOS, 4 bloqueantes)
+### Lo que corrigió la revisión del snapshot (CAMBIOS_PEDIDOS, 4 bloqueantes)
 
 Veredicto textual del `revisor`: *«el código está bien; lo que no está cerrado es la documentación de
 la propia etapa y tres constantes de producción que ninguna mutación tumba»*.
@@ -98,7 +219,7 @@ fiel caso por caso (comparó el bloque borrado contra el nuevo línea a línea, 
 `conBridge` invertido es equivalente porque la única rama que no lo llevaba era la del `null`); siete
 de sus nueve mutaciones cayeron exactamente donde debían; y auditó los artefactos reales del navegador
 en vez de creerle al relato.
-## Deuda que queda anotada
+### Deuda que dejó el snapshot estático
 
 - **`file://` no sirve**: las rutas son absolutas a propósito (es lo que evita reescribir enlaces).
   Cualquier hosting estático vale.
@@ -109,7 +230,7 @@ en vez de creerle al relato.
 - **El `favicon.ico` da 404**, en el snapshot y en la web viva. Preexistente, pero en un entregable a
   cliente se nota más.
 
-## Próximo paso
+### (histórico) El próximo paso de entonces, ya hecho
 
 1. Verificación completa, **`revisor`**, y commit + push.
 2. ✅ **El plan de comparativas de seguros está escrito** (2026-09-12):
@@ -121,7 +242,7 @@ en vez de creerle al relato.
    de ser firmable); poner `CACHE_TTL_MS=60000` en Railway; comprobar si hay algún cliente con
    conexión de Google en producción; y, opcional, si quiere que la salida self-hosted se ofrezca.
 
-## Verificaciones
+### Verificaciones de aquella etapa
 
 - `bash ./scripts/verificar.sh --con-portal`: **1947 tests del monorepo** en verde (sube de 1900),
   typecheck limpio (7 paquetes + `scripts/`), sin secretos, 332 `node:test` del portal. Confirmado con
