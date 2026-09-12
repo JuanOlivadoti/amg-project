@@ -48,8 +48,3 @@ export function getComparativaProvider(modo: "mock" | "openai"): LlmComparativaP
   }
   return new MockComparativaProvider();
 }
-
-/**
- * Se exporta para que los tests puedan verificar que el informe se identifica como mock.
- */
-export const PREFIJO_MOCK_COMPARATIVA = "[COMPARATIVA MOCK — no generada por IA]";

@@ -1,12 +1,17 @@
 import type { OpcionSeguro } from "db";
 import type { LlmComparativaProvider, Comparativa } from "./provider.js";
-import { PREFIJO_MOCK_COMPARATIVA } from "./provider.js";
 
 /**
- * Texto determinista de fixture para comparativas de seguros — nunca sale a internet.
- * Mismo criterio que `MockBorradorProvider` (`orchestrator/src/borrador/mock-provider.ts`):
- * prefijo que hace que no se confunda con un informe real cuando alguien lo edita en el portal.
+ * El prefijo que hace que un informe o un mail mock NUNCA se confunda con un entregable real cuando
+ * el corredor lo imprime o lo copia para mandárselo al cliente final — mismo criterio que
+ * `PREFIJO_MOCK_BORRADOR` (`orchestrator/src/borrador/mock-provider.ts`). En v1 no hay edición de
+ * contenido (revisar es confirmar, no corregir: la spec lo deja fuera de alcance), así que la única
+ * defensa contra confundir una demo con un entregable real es que la marca sea visible a simple
+ * vista en el informe y en el mail — el mail en particular se copia literalmente con un botón, sin
+ * pasar por la vista del informe.
  */
+export const PREFIJO_MOCK_COMPARATIVA = "[COMPARATIVA MOCK — no generada por IA]";
+
 export class MockComparativaProvider implements LlmComparativaProvider {
   async generar(filas: string[][], clienteFinal: string): Promise<Comparativa> {
     // Simular un análisis de filas para extraer opciones de seguro (mock determinista).
@@ -29,9 +34,13 @@ ${recomendada ? `### Recomendación Principal\n\nTras analizar las opciones, rec
 ${opciones.map((o) => `- **${o.aseguradora} ${o.producto}**: $${o.prima.toLocaleString("es-ES")} | Cobertura: ${o.cobertura}${o.condiciones ? ` | Condiciones: ${o.condiciones}` : ""}`).join("\n")}
 `;
 
-    // Mail determinista.
-    const mailAsunto = `Comparativa de Seguros - ${clienteFinal}`;
-    const mailCuerpoMd = `Estimado,
+    // Mail determinista. El mail es, con el informe, uno de los dos entregables que llegan al
+    // cliente final — y el que se copia literalmente con un botón, sin pasar por la vista del
+    // informe. Por eso lleva la misma marca de mock en las dos partes, no solo en el cuerpo.
+    const mailAsunto = `${PREFIJO_MOCK_COMPARATIVA} Comparativa de Seguros - ${clienteFinal}`;
+    const mailCuerpoMd = `${PREFIJO_MOCK_COMPARATIVA}
+
+Estimado,
 
 Adjuntamos el análisis comparativo de opciones de seguro solicitado. Hemos evaluado ${opciones.length} alternativas considerando cobertura, deducibles y precio.
 
