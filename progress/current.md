@@ -112,7 +112,9 @@ en vez de creerle al relato.
 ## Próximo paso
 
 1. Verificación completa, **`revisor`**, y commit + push.
-2. **Después: comparativas de seguros** — el `writing-plans` sobre la spec aprobada
+2. ✅ **El plan de comparativas de seguros está escrito** (2026-09-12):
+   `docs/superpowers/plans/2026-09-12-comparativas-seguros.md`, 9 tareas. Falta **ejecutarlo**. Lo
+   anterior decía: el `writing-plans` sobre la spec aprobada
    (`docs/superpowers/specs/2026-09-04-comparativas-seguros-design.md`). Dos cosas a mirar con lupa:
    el **preflight de presupuesto** del provider real y el **parsing de formato libre**.
 3. **Lo que espera de Juan:** los dos importes de la salida gestionada (lo único que separa a ADR-11
