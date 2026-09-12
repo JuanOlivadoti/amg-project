@@ -22,6 +22,27 @@ export interface CasoCsv {
   esperado: Filas;
 }
 
+/**
+ * Casos que `parsearCsv` debe RECHAZAR (comilla sin cerrar): no tienen un `esperado: Filas` posible
+ * porque no hay filas correctas que devolver — el texto está malformado o truncado. Se exportan junto
+ * a `CASOS_CSV` por el mismo motivo: el test cruzado de Task 7 le va a exigir este mismo rechazo al
+ * parser del portal.
+ */
+export interface CasoCsvInvalido {
+  nombre: string;
+  entrada: string;
+  /** Línea (1-indexada) donde abrió la comilla que nunca se cerró. El mensaje de error debe nombrarla. */
+  lineaComillaAbierta: number;
+}
+
+export const CASOS_CSV_INVALIDOS: CasoCsvInvalido[] = [
+  {
+    nombre: "comilla sin cerrar absorbe el resto del texto, incluida una fila entera",
+    entrada: `a,"b,c\nd,e`,
+    lineaComillaAbierta: 1,
+  },
+];
+
 export const CASOS_CSV: CasoCsv[] = [
   { nombre: "fila simple sin comillas", entrada: "a,b,c", esperado: [["a", "b", "c"]] },
   {
@@ -55,6 +76,11 @@ export const CASOS_CSV: CasoCsv[] = [
     esperado: [["solo"], ["una"], ["columna"]],
   },
   { nombre: "texto vacío no produce filas", entrada: "", esperado: [] },
+  {
+    nombre: "termina con salto de línea no produce una fila vacía espuria",
+    entrada: "a,b\n",
+    esperado: [["a", "b"]],
+  },
 ];
 
 test("campos entre comillas con coma adentro no se parten", () => {
@@ -81,6 +107,34 @@ test("CASOS_CSV: la batería completa reusada por el test cruzado con el portal"
   for (const caso of CASOS_CSV) {
     assert.deepEqual(parsearCsv(caso.entrada), caso.esperado, caso.nombre);
   }
+});
+
+test("🔴 una comilla sin cerrar lanza en vez de corromper filas en silencio", () => {
+  // Caso exacto del revisor: sin el arreglo, esto devolvía [["a","b,c\nd,e"]] — la fila "d,e" quedaba
+  // absorbida dentro del campo de la primera fila, y validarFilas nunca se enteraba de que faltaba.
+  assert.throws(() => parsearCsv(`a,"b,c\nd,e`), /línea 1/);
+});
+
+test("CASOS_CSV_INVALIDOS: la batería de comillas sin cerrar, reusada por el test cruzado con el portal", () => {
+  for (const caso of CASOS_CSV_INVALIDOS) {
+    assert.throws(
+      () => parsearCsv(caso.entrada),
+      new RegExp(`línea ${caso.lineaComillaAbierta}\\b`),
+      caso.nombre,
+    );
+  }
+});
+
+test("control: un campo entrecomillado bien CERRADO que contiene saltos de línea sigue funcionando", () => {
+  // El arreglo de la comilla sin cerrar no puede romper este caso, que es legítimo y ya cubierto
+  // arriba por CASOS_CSV — se repite acá con nombre explícito para que quede junto a la mutación.
+  assert.deepEqual(parsearCsv(`a,"linea1\nlinea2\nlinea3",c`), [["a", "linea1\nlinea2\nlinea3", "c"]]);
+});
+
+test("una fila entera después de la comilla sin cerrar no se filtra en silencio", () => {
+  // Antes del arreglo: parsearCsv(`a,"b,c\nd,e`) devolvía UNA fila con el texto fusionado, y
+  // validarFilas nunca veía que faltaban dos filas. Ahora tiene que lanzar, no devolver datos parciales.
+  assert.throws(() => parsearCsv(`nombre,precio\n"corredor,x\n99`));
 });
 
 test("🔴 MAX_FILAS es 200 — default de PRODUCCIÓN, no un parámetro del test", () => {
