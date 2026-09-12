@@ -34,11 +34,24 @@ import { MAX_BYTES_ENTRADA } from "./filas.js";
 /** El único host del que se acepta bajar algo. Un Set: la comparación es de igualdad exacta. */
 const HOSTS_PERMITIDOS = new Set(["docs.google.com"]);
 
-/** Saltos de redirección que se siguen, revalidando el host permitido en cada uno. */
-const MAX_REDIRECCIONES = 5;
+/**
+ * Saltos de redirección que se siguen, revalidando el host permitido en cada uno.
+ *
+ * Exportado por el mismo motivo que `PLAZO_DESCARGA_MS`: el único test que hoy toca redirecciones
+ * prueba el camino RECHAZADO (un salto a un host ajeno), donde el tope da igual sin importar su
+ * valor — no fija el número de producción.
+ */
+export const MAX_REDIRECCIONES = 5;
 
-/** Plazo para la respuesta COMPLETA, cuerpo incluido. */
-const PLAZO_DESCARGA_MS = 15_000;
+/**
+ * Plazo para la respuesta COMPLETA, cuerpo incluido.
+ *
+ * Exportado a propósito: es lo que permite que `sheet.test.ts` fije el valor de producción por
+ * literal, sin pasar por `deps.plazoMs` (que solo fija que el mecanismo de inyección funciona, no
+ * qué corre en prod — la lección de `renderer/src/snapshot.ts`, `describe("los defaults de
+ * producción del snapshot", …)`).
+ */
+export const PLAZO_DESCARGA_MS = 15_000;
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 

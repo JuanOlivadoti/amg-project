@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { describe, it, test } from "node:test";
 import { MAX_BYTES_ENTRADA } from "./filas.js";
-import { bajarSheet, urlDeExport } from "./sheet.js";
+import { MAX_REDIRECCIONES, PLAZO_DESCARGA_MS, bajarSheet, urlDeExport } from "./sheet.js";
 
 const LINK = "https://docs.google.com/spreadsheets/d/ABC123/edit#gid=0";
 
@@ -80,7 +80,7 @@ test("🔴 el tope de bytes corta por lo DECLARADO (content-length) sin leer el 
   assert.match((r as { motivo: string }).motivo, new RegExp(`${MAX_BYTES_ENTRADA + 1}`));
 });
 
-test("🔴 el tope de bytes corta por lo REAL cuando no se declaró (o se mintió para abajo)", async () => {
+test("🔴 el tope de bytes corta por lo REAL cuando no se declaró content-length", async () => {
   // No declara content-length, y va soltando más bytes de los que dice el tope: lo corta la
   // lectura acotada del stream, no el content-length (que acá ni está).
   const trozo = 8 * 1024; // 8 KiB
@@ -95,6 +95,27 @@ test("🔴 el tope de bytes corta por lo REAL cuando no se declaró (o se minti�
           },
         }),
         { status: 200 },
+      ),
+  });
+  assert.equal(r.ok, false);
+  assert.match((r as { motivo: string }).motivo, /supera el tope/);
+});
+
+test("🔴 el tope de bytes corta por lo REAL aunque el content-length declarado mienta para abajo", async () => {
+  // Declara un content-length chico (pasa el corte barato, que solo mira lo declarado) y después
+  // manda de verdad más bytes que el tope: si el corte confiara en lo declarado, esto pasaría.
+  const trozo = 8 * 1024; // 8 KiB
+  const trozos = Math.ceil((MAX_BYTES_ENTRADA + trozo) / trozo);
+  const r = await bajarSheet(LINK, {
+    fetch: async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            for (let i = 0; i < trozos; i++) c.enqueue(new Uint8Array(trozo));
+            c.close();
+          },
+        }),
+        { status: 200, headers: { "content-length": "1" } },
       ),
   });
   assert.equal(r.ok, false);
@@ -147,4 +168,23 @@ test("🔴 un signal abortado no basta: el plazo corta aunque el origen no respo
   });
   assert.equal(r.ok, false);
   assert.match((r as { motivo: string }).motivo, /no completó/);
+});
+
+describe("los defaults de producción de sheet.ts", () => {
+  it("🔴 PLAZO_DESCARGA_MS son 15 s: el único test que toca el plazo inyecta plazoMs y nunca ejercita este valor", () => {
+    // Sin este test, `= 1` deja la suite en verde: `sheet.test.ts` solo prueba el plazo con
+    // `plazoMs: 20` inyectado, así que nunca compara el literal de producción. Con `= 1`, cualquier
+    // descarga real (Sheets tarda más de 1 ms en responder) fallaría siempre.
+    assert.equal(PLAZO_DESCARGA_MS, 15_000);
+    assert.ok(PLAZO_DESCARGA_MS >= 5_000 && PLAZO_DESCARGA_MS <= 60_000);
+  });
+
+  it("🔴 MAX_REDIRECCIONES son 5: el único test de redirección prueba el camino RECHAZADO, donde el tope da igual", () => {
+    // El test de "redirección a host ajeno" pasa con cualquier valor >= 1, porque rechaza en el
+    // primer salto. `= 0` no lo tumba: tumbaría en cambio una redirección LEGÍTIMA de Google (el
+    // export CSV a veces redirige antes de servir el archivo), que hoy no está cubierta con más de
+    // un salto.
+    assert.equal(MAX_REDIRECCIONES, 5);
+    assert.ok(MAX_REDIRECCIONES >= 1, "sin al menos un salto, cualquier redirección legítima de Google rompe la descarga");
+  });
 });
