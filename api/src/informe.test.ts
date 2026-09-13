@@ -1,7 +1,17 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
+import {
+  aplicarMigraciones,
+  PglitePool,
+  PgStore,
+  PgClientes,
+  PgMembresias,
+  PgIdeas,
+  PgResenas,
+  PgComparativasSeguros,
+} from "db";
+import { MockComparativaProvider } from "./comparativas/mock-provider.js";
 import { createApp } from "./app.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { MockGoogleOAuthProvider } from "./google-oauth.js";
@@ -168,6 +178,8 @@ describe("GET /runs/:id/informe y /informe.md", () => {
       membresias: new PgMembresias(pool),
       ideas: new PgIdeas(pool),
       resenas: new PgResenas(pool),
+      comparativasSeguros: new PgComparativasSeguros(pool),
+      comparativas: new MockComparativaProvider(),
       googleOAuth: new MockGoogleOAuthProvider(),
       conectarGoogleBloqueado: false,
       oauthStateSecret: "secreto-de-test-no-para-produccion",

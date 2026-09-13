@@ -1,8 +1,18 @@
 import { test, describe, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
+import {
+  aplicarMigraciones,
+  PglitePool,
+  PgStore,
+  PgClientes,
+  PgMembresias,
+  PgIdeas,
+  PgResenas,
+  PgComparativasSeguros,
+} from "db";
 import type { DatosEntregable, PageRow } from "db";
+import { MockComparativaProvider } from "./comparativas/mock-provider.js";
 import { renderReport } from "contrato";
 import { createApp } from "./app.js";
 import { briefDelEntregable } from "./entregable.js";
@@ -144,6 +154,8 @@ describe("GET /runs/:id/entregable.md", () => {
       membresias: new PgMembresias(pool),
       ideas: new PgIdeas(pool),
       resenas: new PgResenas(pool),
+      comparativasSeguros: new PgComparativasSeguros(pool),
+      comparativas: new MockComparativaProvider(),
       googleOAuth: new MockGoogleOAuthProvider(),
       conectarGoogleBloqueado: false,
       oauthStateSecret: "secreto-de-test-no-para-produccion",

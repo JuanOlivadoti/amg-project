@@ -8,6 +8,7 @@ import {
   PgMembresias,
   PgIdeas,
   PgResenas,
+  PgComparativasSeguros,
   ConexionReservada,
   sembrarDemo,
   migrarConRegistro,
@@ -15,6 +16,7 @@ import {
 import type { ResultadoSeed } from "db";
 import { createApp } from "./app.js";
 import { MockGoogleOAuthProvider } from "./google-oauth.js";
+import { MockComparativaProvider } from "./comparativas/mock-provider.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { VerificadorToken } from "./auth.js";
 
@@ -50,6 +52,8 @@ beforeEach(async () => {
   const membresias = new PgMembresias(new PglitePool(pg));
   const ideas = new PgIdeas(new PglitePool(pg));
   const resenas = new PgResenas(new PglitePool(pg));
+  const comparativasSeguros = new PgComparativasSeguros(new PglitePool(pg));
+  const comparativas = new MockComparativaProvider();
   const emisor: EmisorEventos = { send: async () => ({}) };
   app = createApp({
     store,
@@ -57,6 +61,8 @@ beforeEach(async () => {
     membresias,
     ideas,
     resenas,
+    comparativasSeguros,
+    comparativas,
     googleOAuth: new MockGoogleOAuthProvider(),
     conectarGoogleBloqueado: false,
     oauthStateSecret: "secreto-de-test-no-para-produccion",
