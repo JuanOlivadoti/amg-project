@@ -1,5 +1,6 @@
 import type { OpcionSeguro } from "db";
 import { MockComparativaProvider } from "./mock-provider.js";
+import { OpenAIComparativaProvider } from "./openai-provider.js";
 
 /**
  * Resultado de la generación de una comparativa: informe, recomendación, y draft de mail
@@ -35,16 +36,16 @@ export interface LlmComparativaProvider {
 }
 
 /**
- * El selector de provider. Mismo patrón que `getBorradorProvider`:
+ * El selector de provider. Mismo patrón que `getBorradorProvider`
+ * (`orchestrator/src/borrador/provider.ts`):
  * - `"mock"` devuelve un mock determinista, sin costo, para desarrollo y tests.
- * - `"openai"` devuelve la implementación con OpenAI (Task 5).
+ * - `"openai"` devuelve la implementación real (Task 5): preflight de gasto ANTES de llamar, y
+ *   rechazo explícito de la comparativa entera si el LLM no puede sostenerla con confianza.
+ *
+ * Import estático, no dinámico: `openai` ya es una dependencia real de `api/package.json` (estaba en
+ * el monorepo vía `orchestrator`), así que no hay nada que evitar cargar — mismo criterio que
+ * `getBorradorProvider`, que importa `OpenAIBorradorProvider` arriba del archivo.
  */
 export function getComparativaProvider(modo: "mock" | "openai"): LlmComparativaProvider {
-  // Por ahora solo mock; OpenAI se implementa en Task 5.
-  // El loader dinámico aquí evita que el módulo de OpenAI sea obligatorio.
-  if (modo === "openai") {
-    // Task 5 lo implementará. Aquí soltamos un error descriptivo mientras tanto.
-    throw new Error("OpenAI provider no implementado aún (Task 5)");
-  }
-  return new MockComparativaProvider();
+  return modo === "openai" ? new OpenAIComparativaProvider() : new MockComparativaProvider();
 }
