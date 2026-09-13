@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { MAX_BYTES_ENTRADA, MAX_FILAS, parsearCsv, validarFilas, type Filas } from "./filas.js";
 
 /**
@@ -156,4 +157,58 @@ test("validarFilas: exactamente MAX_FILAS se acepta (el borde, no el exceso)", (
   const r = validarFilas(filas);
   assert.equal(r.ok, true);
   assert.deepEqual((r as { filas: Filas }).filas, filas);
+});
+
+/*
+ * Test cruzado con el portal (Task 7). `portal/` está fuera del monorepo a propósito y no puede
+ * importar de `api/`, así que el parser de CSV está DUPLICADO en `portal/src/app/core/csv.ts`
+ * (`parsearCsvPortal`). Un puntero en un comentario no es una garantía de que los dos parsers se
+ * mantengan iguales — esto sí lo es: importa el archivo del portal por ruta, en runtime, y exige el
+ * MISMO comportamiento que `parsearCsv` sobre el MISMO cuerpo de casos (`CASOS_CSV`,
+ * `CASOS_CSV_INVALIDOS`), con el mecanismo de `contrato/src/una-sola-fuente.test.ts:102-106`
+ * (`import(pathToFileURL(RUTA).href)`).
+ */
+test("🔴 el parser del portal (parsearCsvPortal) y el de la API (parsearCsv) se comportan IGUAL sobre los mismos casos", async () => {
+  const RUTA = fileURLToPath(new URL("../../../portal/src/app/core/csv.ts", import.meta.url));
+  let parsearCsvPortal: (t: string) => Filas;
+  try {
+    ({ parsearCsvPortal } = (await import(pathToFileURL(RUTA).href)) as {
+      parsearCsvPortal: (t: string) => Filas;
+    });
+  } catch (e) {
+    throw new Error(
+      `no pude cargar el parser del portal en ${RUTA}: ${(e as Error).message}\n` +
+        "Si el portal se movió, actualizá la ruta — pero NO borres este test: es lo único que ata " +
+        "los dos parsers de CSV entre sí.",
+    );
+  }
+
+  // Control de no-vacuidad: un barrido de cero casos pasa feliz, y eso sería un guard que nadie
+  // verifica — la mitad de "peor que no tenerlo".
+  assert.ok(CASOS_CSV.length >= 5, "control de no-vacuidad: CASOS_CSV no puede estar vacío");
+  assert.ok(
+    CASOS_CSV_INVALIDOS.length >= 1,
+    "control de no-vacuidad: CASOS_CSV_INVALIDOS no puede estar vacío",
+  );
+
+  for (const caso of CASOS_CSV) {
+    assert.deepEqual(
+      parsearCsvPortal(caso.entrada),
+      parsearCsv(caso.entrada),
+      `divergen en "${caso.nombre}": ${JSON.stringify(caso.entrada)}`,
+    );
+  }
+
+  for (const caso of CASOS_CSV_INVALIDOS) {
+    assert.throws(
+      () => parsearCsv(caso.entrada),
+      undefined,
+      `parsearCsv (API) tendría que lanzar en "${caso.nombre}"`,
+    );
+    assert.throws(
+      () => parsearCsvPortal(caso.entrada),
+      undefined,
+      `parsearCsvPortal (portal) tendría que lanzar en "${caso.nombre}", igual que la API`,
+    );
+  }
 });
