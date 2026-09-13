@@ -12,10 +12,12 @@ seguros** con `superpowers:subagent-driven-development` — implementador + revi
 rama `feature/comparativas-seguros`.
 
 **Dónde está AHORA:** van **6 de 9 tareas** cerradas con revisión limpia. La **Task 7** (el navegador
-convierte `.csv`/`.xlsx` a filas) **está despachada** al agente `front` desde `BASE = b4533bb` y todavía
-no dejó archivos: el árbol está limpio. Los briefs de las Tasks 8 y 9 ya están extraídos. La revisión
-de la Task 6 confirmó una **carrera real en `revisar`** que no bloqueó la tarea pero hay que arreglar
-antes del merge (ver Próximo paso, punto 4).
+convierte `.csv`/`.xlsx` a filas) **está implementada y commiteada** (`3f05e23`) y **su revisión está
+corriendo** en segundo plano con el agente `revisor`. Esta vez la verificación propia quedó completa y
+con conteo de tests nuevos. La librería de `.xlsx` elegida es `read-excel-file@9.3.10`, confirmada con
+`npm view`, con dos señales de cadena de suministro que se le pidió mirar al revisor. Los briefs de las
+Tasks 8 y 9 ya están extraídos. Sigue pendiente, para antes del merge, la **carrera real en `revisar`**
+que confirmó la revisión de la Task 6.
 
 | | Etapa / Tarea | Commit |
 |---|---|---|
@@ -34,57 +36,56 @@ antes del merge (ver Próximo paso, punto 4).
 | — | (progreso, no es tarea) | `3cfb647`, `c71c032` |
 | 6 | Los cuatro endpoints | `7edafe7` ✅ revisada |
 | — | (progreso, no es tarea) | `8638ca5`, `b4533bb` |
-| 7 | El navegador convierte la hoja | `3f05e23` 🔍 **en revisión** (`BASE = b4533bb`) |
+| 7 | El navegador convierte la hoja | `3f05e23` ✅ revisada |
+| — | (progreso, no es tarea) | `89e0a16` |
 
-Los 15 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
+Los 17 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
 
 ## En vuelo (sin commitear)
 
 **Nada de la sesión principal: working tree limpio** (`git status --short` vacío al escribir esto),
 salvo este mismo archivo mientras se actualiza.
 
-La Task 7 corre en segundo plano. Cuando escriba, va a tocar `portal/src/app/core/csv.ts` (nuevo, el
-parser puro), `portal/src/app/core/hoja-a-filas.ts` (nuevo), sus tests, `portal/package.json`,
-`portal/package-lock.json`, y **el test cruzado** en `api/src/comparativas/filas.test.ts`. **No los
-toques mientras corre.** Si la sesión se corta y quedan a medias: correr `npm --prefix portal test` y
-`npx tsx --test api/src/comparativas/filas.test.ts`; si no pasan, descartar con
-`git checkout -- portal/ api/src/comparativas/filas.test.ts` y borrar los archivos nuevos sin trackear
-de `portal/src/app/core/`, y relanzar la Task 7 desde su brief.
+**Ojo, un estado que va y viene:** mientras corre la revisión de la Task 7, el `revisor` muta y restaura
+`portal/src/app/core/csv.ts` y `portal/src/app/core/hoja-a-filas.ts` para comprobar los tests (se le
+pidió romper `parsearCsvPortal` de dos formas y quitar el error de extensión desconocida). Si aparecen
+modificados, **no los toques ni los commitees**: los restaura él. Si la sesión se corta y quedan
+modificados, `git checkout -- portal/src/app/core/` — `3f05e23` tiene la versión buena.
 
 ## Próximo paso
 
-1. **Esperar el informe de la Task 7** en
-   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-7-report.md`. Cuando llegue:
-   - si el agente terminó el turno **esperando un proceso en background** (ya pasó dos veces), retomarlo
-     con `SendMessage` pidiéndole foreground y el commit;
-   - **confirmar la librería de `.xlsx` que eligió** con la evidencia de `npm view` del informe: tiene que
-     estar mantenida, pensada para el navegador, sin `postinstall`, y **no** ser el paquete `xlsx` del
-     registro de npm. Si la elección no convence, es decisión a consultar con Juan antes de seguir;
-   - verificar con salida propia `npm --prefix portal test` y
-     `npx tsx --test api/src/comparativas/filas.test.ts`, **contando que el número de tests nuevos coincida
-     con el del informe**;
-   - generar el paquete:
-     `bash "$HOME/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package" b4533bb HEAD`;
-   - despachar al agente `revisor` con el brief, el informe y ese diff.
+1. **Leer el veredicto de la revisión de la Task 7** en
+   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-7-review.md`.
+   - Mirar primero **qué concluyó sobre la librería**: las dependencias transitivas `worker-f` y
+     `unzipper-esm`, y la ráfaga de versiones 9.3.6 → 9.3.10 del 2026-08-07 al 2026-08-10. Si encontró
+     algo concreto, **es decisión de Juan** si se sigue con `read-excel-file` o se cambia.
+   - Si es **CAMBIOS_PEDIDOS**: despachar **un solo** subagente de fix (agente `front`) con todos los
+     bloqueantes, pidiéndole foreground y qué suites correr (`npm --prefix portal test`,
+     `npx tsx --test api/src/comparativas/filas.test.ts`, `npm --prefix portal run typecheck`); después
+     `bash "$HOME/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package" b4533bb HEAD`
+     y re-revisar.
+   - Si es **APROBADO**: marcar la Task 7 `[x]` en el ledger, commitear `progress/current.md`, y anotar el
+     `HEAD` como `BASE` de la Task 8.
 2. **Task 8** (pantalla de carga): brief en
-   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-8-brief.md`, agente `front`. Antes de
-   despachar: commitear `progress/current.md` y anotar el `HEAD` como `BASE`.
+   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-8-brief.md`, agente `front`. Consume
+   `hojaAFilas` (Task 7) y `POST /clients/:id/comparativas-seguros` (Task 6: 400 entrada mala, 409
+   vertical, 422 el provider se niega). En el prompt: el error del servidor **se pinta**, foreground, y
+   qué suites correr.
 3. **Task 9** (resultado imprimible + gate de revisión + historial): brief en
    `.superpowers/sdd/2026-09-12-comparativas-seguros/task-9-brief.md`, agente `front`.
 4. **Ronda de fixes antes del merge** — un solo subagente con la lista completa del ledger, después del
    review final de rama:
-   - **la carrera de `revisar` (no es menor):** con dos `revisar` concurrentes, las dos peticiones leen
-     `revisadoEn: null`, pasan el `if` de la API y la segunda pisa quién revisó. Arreglo: añadir
-     `and revisado_en is null` al `where` del `update` en `db/src/comparativas-seguros.ts:176` y usar
-     `rows.length > 0`; test en `db/`, y `npm test -w db`;
+   - **la carrera de `revisar` (no es menor):** con dos `revisar` concurrentes, la segunda pisa quién
+     revisó. Arreglo: `and revisado_en is null` en el `where` del `update` de
+     `db/src/comparativas-seguros.ts:176` y `rows.length > 0`; test en `db/` y `npm test -w db`;
    - una prima `<= 0` pasa la validación (`api/src/comparativas/openai-provider.ts:212-213`);
    - los demás menores del ledger.
 5. **Pendientes de integración:** repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/` en
    `scripts/env-sync.mts`, y calibrar la proporción caracteres/token del preflight con una corrida real
    (cuesta dinero: la corre Juan o la autoriza).
-6. **Cierre:** review final de rama con el modelo más capaz disponible, manejar la app en un navegador
-   con el provider mock, `bash ./scripts/verificar.sh --con-portal` y Karma, actualizar `09`/`15`, y
-   merge a `main` con `--no-ff`.
+6. **Cierre:** review final de rama con el modelo más capaz disponible; confirmar la librería de `.xlsx`;
+   manejar la app en un navegador con el provider mock; `bash ./scripts/verificar.sh --con-portal` y
+   Karma; actualizar `09`/`15`; y merge a `main` con `--no-ff`.
 
 **El ledger manda sobre la memoria**:
 `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md`. Una tarea marcada `[x]` ahí está hecha —
@@ -149,9 +150,12 @@ no la relances.
   despachar la Task 7). El test cruzado corre en Node e importa ese archivo por ruta; si viviera en el
   mismo archivo que usa la librería de `.xlsx`, el `import` desde Node podría reventar antes de probar
   nada. El plan decía importar `hoja-a-filas.ts`; se cambió por esta razón técnica.
-- **La librería de `.xlsx` del portal se elige con evidencia, no por costumbre** (2026-09-13). Se le
-  pidió al implementador evitar el paquete `xlsx` del registro de npm (SheetJS dejó de publicar ahí) y
-  justificar la elección con `npm view`. La confirma la sesión principal antes del merge.
+- **La librería de `.xlsx` del portal es `read-excel-file@9.3.10`** (2026-09-13, Task 7), import
+  `read-excel-file/universal`. Elegida con evidencia de `npm view`, confirmada por la sesión principal:
+  MIT, 4 dependencias directas, sin scripts de instalación. Se descartaron `xlsx` (su última versión en
+  el registro de npm es del 2022-03-24; SheetJS dejó de publicar ahí) y `exceljs` (9 dependencias, no
+  pensada para el navegador). **Queda a confirmar antes del merge** según lo que diga el revisor sobre
+  sus dependencias transitivas.
 
 ## Callejones sin salida
 
@@ -179,9 +183,10 @@ no la relances.
   constante que ningún test fija porque los tests eligen el parámetro.
 - **Advertir en el brief contra el background NO alcanza** (Task 5, 2026-09-13). El brief lo prohibía
   en mayúsculas y el implementador igual lanzó `npm test -w api` en background y terminó el turno
-  esperándolo. Lo que funciona es acotar qué suite correr (ver Decisiones). En cambio, **nombrar el
-  patrón de las constantes de producción sí funcionó**: el test que fija `MAX_COSTO_USD` por literal
-  apareció a la primera (`api/src/comparativas/provider.test.ts:233`).
+  esperándolo. Lo que funciona es acotar qué suite correr (ver Decisiones): desde la Task 6, con la
+  lista explícita de suites, ningún implementador volvió a colgarse. En cambio, **nombrar el patrón de
+  las constantes de producción sí funcionó**: el test que fija `MAX_COSTO_USD` por literal apareció a la
+  primera (`api/src/comparativas/provider.test.ts:233`).
 - **"El árbol está limpio" puede dejar de ser cierto entre dos comandos mientras corre un revisor**
   (2026-09-13). El `revisor` muta y restaura archivos para comprobar los tests: se vio
   `api/src/comparativas/openai-provider.ts` modificado a mitad de una mutación y, un comando después,
@@ -196,19 +201,22 @@ no la relances.
   2026-09-13). `--test-name-pattern="comparativa"` sobre `api/src/app.test.ts` agarró 4 tests, cuando la
   tarea agregó 20: muchos no llevan esa palabra en el título. Pasó en verde y parecía verificado. Lo
   cubrió el revisor corriendo el archivo entero. **Contar primero cuántos tests nuevos declara el
-  informe y comprobar que la corrida filtrada dé ese número; si no, correr el archivo entero.**
+  informe y comprobar que la corrida dé ese número.** En la Task 7 se aplicó y cuadró: 332 + 11 = 343.
 
 ## Archivos calientes
 
 - `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md` — **el ledger**, con la lista de fixes
-  para antes del merge, los menores y los pendientes de integración. Manda sobre la memoria tras un
-  `/compact` o un reinicio. Gitignoreado (`.gitignore:67`).
-- `.superpowers/sdd/2026-09-12-comparativas-seguros/task-7-brief.md` — los requisitos de la tarea en
-  curso; `task-8-brief.md` y `task-9-brief.md`, ya extraídos.
-- `api/src/comparativas/filas.test.ts` — `CASOS_CSV` y `CASOS_CSV_INVALIDOS`, y donde la Task 7 agrega
-  el test cruzado contra el parser del portal.
-- `contrato/src/una-sola-fuente.test.ts:102-106` — el molde del `import` por ruta en runtime que usa ese
-  test cruzado.
+  para antes del merge, los menores, los pendientes de integración y las notas sobre la librería.
+  Manda sobre la memoria tras un `/compact` o un reinicio. Gitignoreado (`.gitignore:67`).
+- `.superpowers/sdd/2026-09-12-comparativas-seguros/task-7-review.md` — el veredicto que se espera ahora
+  (no existe mientras corre la revisión).
+- `.superpowers/sdd/2026-09-12-comparativas-seguros/task-8-brief.md` y `task-9-brief.md` — listos para
+  despachar en orden.
+- `portal/src/app/core/csv.ts` y `portal/src/app/core/hoja-a-filas.ts` — lo que se está revisando: el
+  parser puro del portal y la conversión de `.xlsx` con `read-excel-file/universal`.
+- `api/src/comparativas/filas.test.ts` — el test cruzado contra el parser del portal, agregado al final
+  del archivo.
+- `portal/package.json` y `portal/package-lock.json` — la dependencia nueva `read-excel-file@^9.3.10`.
 - `db/src/comparativas-seguros.ts:176` — el `update` de `marcarRevisada` sin `and revisado_en is null`:
   la raíz de la carrera de `revisar`, a arreglar antes del merge.
 - `api/src/comparativas/openai-provider.ts:212-213` — la validación de "opción sin prima", que deja pasar
@@ -229,8 +237,11 @@ no la relances.
   `npx tsx --test api/src/comparativas/provider.test.ts` 5/5; Task 5 → el mismo comando, 23/23.
 - **Task 6:** `npx tsx --test api/src/deps.test.ts` 30/30 corrido por la sesión principal. La corrida
   propia filtrada de `app.test.ts` solo agarró 4 tests; el archivo **entero, 155/155 con 20 tests
-  nuevos, lo corrió el revisor** (`npx tsx --test api/src/app.test.ts`, en foreground), no la sesión
-  principal.
+  nuevos, lo corrió el revisor**, no la sesión principal.
+- **Task 7, verificación propia COMPLETA y con conteo:** `npm --prefix portal test` **343/343** (332 base
+  + 11 nuevos: 7 en `csv.test.ts`, 4 en `hoja-a-filas.test.ts`); `npx tsx --test
+  api/src/comparativas/filas.test.ts` **14/14** (13 + 1, el test cruzado). El typecheck del portal
+  (`npm --prefix portal run typecheck`) lo reportó limpio el implementador; no se corrió de nuevo.
 
 ---
 
