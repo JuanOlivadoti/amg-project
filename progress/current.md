@@ -11,12 +11,11 @@ de él (3 etapas, cerradas y pusheadas a `main`), y ahora **la ejecución del pl
 seguros** con `superpowers:subagent-driven-development` — implementador + revisor por tarea, en la
 rama `feature/comparativas-seguros`.
 
-**Dónde está AHORA:** van **4 de 9 tareas** cerradas con revisión limpia. La **Task 5 está
-implementada y commiteada** (`8a13953`: provider real de OpenAI, preflight de gasto y regla de fallar
-en vez de inventar) y **su revisión está corriendo** en segundo plano con el agente `revisor`. No hay
-nada a medio escribir: el árbol está limpio. La Task 5 costó tres intentos — dos con Opus murieron por
-límite de sesión sin dejar archivos, el tercero con Sonnet salió — y el implementador volvió a quedarse
-esperando un proceso en background; hubo que retomarlo con `SendMessage` para que commiteara.
+**Dónde está AHORA:** van **5 de 9 tareas** cerradas con revisión limpia. La **Task 6 (los cuatro
+endpoints) está despachada** y un subagente la implementa en segundo plano, desde `BASE = c71c032`.
+Todavía no dejó archivos: el árbol está limpio. La Task 5 quedó aprobada en el primer intento de
+revisión, con dos menores anotados en el ledger, y uno de ellos se señaló para el review final porque
+roza la doctrina del módulo: una prima `<= 0` pasa la validación.
 
 | | Etapa / Tarea | Commit |
 |---|---|---|
@@ -32,48 +31,50 @@ esperando un proceso en background; hubo que retomarlo con `SendMessage` para qu
 | — | (progreso, no es tarea) | `c25128a` |
 | 4 | Provider: interfaz + mock | `c914a5c..89aef3d` ✅ revisada |
 | 5 | Provider OpenAI + preflight de gasto | `8a13953` ✅ revisada |
-| — | (progreso, no es tarea) | `3cfb647` |
+| — | (progreso, no es tarea) | `3cfb647`, `c71c032` |
+| 6 | Los cuatro endpoints | ⏳ **despachada, sin archivos todavía** (`BASE = c71c032`) |
 
-Los 11 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
+Los 12 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
 
 ## En vuelo (sin commitear)
 
-**Nada de la sesión principal: working tree limpio** salvo `progress/current.md`, que se está
-actualizando ahora. **Ojo, un estado que va y viene:** mientras la revisión de la Task 5 corre, el
-agente `revisor` muta y restaura `api/src/comparativas/openai-provider.ts` para comprobar los tests
-(se lo vio a mitad de la mutación de "aceptar confianza baja", `if (false && json["confianza"] !== "alta")`,
-con respaldo en `$TEMP/openai-provider.ts.bak`; un comando después ya estaba restaurado a `HEAD`).
-**No lo toques ni lo commitees si aparece modificado.** Si la sesión se corta y queda modificado:
-`git checkout -- api/src/comparativas/openai-provider.ts` — `8a13953` tiene la versión buena.
+**Nada, working tree limpio** (`git status --short` vacío, `git diff --stat` vacío).
 
-Lo único en vuelo es la **revisión de la Task 5**. No commitea nada, pero sí toca el árbol mientras muta y
-restaura archivos para comprobar los tests (ver arriba). Su informe va a
-`.superpowers/sdd/2026-09-12-comparativas-seguros/task-5-review.md` (gitignoreado).
+La Task 6 corre en segundo plano y todavía no creó archivos. Cuando lo haga, va a tocar
+`api/src/app.ts` (los endpoints y el campo `comparativas` de `ApiDeps`), `api/src/deps.ts`
+(`COMPARATIVAS_MODO` y el cableado), `api/src/app.test.ts` y `api/src/deps.test.ts`. **No los toques
+mientras corre.** Si la sesión se corta y aparecen a medias: correr
+`node --import tsx --test --test-name-pattern="comparativa" api/src/app.test.ts`; si no pasan, es más
+limpio descartarlos con `git checkout -- api/` y relanzar la Task 6 desde su brief que adivinar qué
+falta.
 
 ## Próximo paso
 
-1. **Leer el veredicto de la revisión de la Task 5** en
-   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-5-review.md`.
-   - Si es **CAMBIOS_PEDIDOS**: despachar **un solo** subagente de fix con todos los hallazgos
-     bloqueantes, pidiéndole foreground y **qué suite correr** (`npx tsx --test
-     api/src/comparativas/provider.test.ts` y `npm run typecheck`, **no** `npm test -w api`). Después,
-     regenerar el paquete con `review-package 89aef3d HEAD` y re-revisar.
-   - Si es **APROBADO**: marcar la Task 5 `[x]` en el ledger.
-2. **Despachar la Task 6** (los cuatro endpoints). **El brief ya está extraído** en
-   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-6-brief.md`. Anotar el `HEAD` antes de
-   despachar: es el `BASE` del paquete de revisión. Agente `datos`, modelo `sonnet`. En el prompt:
-   foreground obligatorio, **no correr `npm test -w api` entero** sino los tests de los endpoints
-   nuevos, y el patrón de las constantes de producción si declara alguna.
-3. **Seguir con las tareas 7 a 9** con el mismo ciclo. Los briefs se sacan con el script `task-brief`
-   (`$HOME/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/`)
-   sobre `docs/superpowers/plans/2026-09-12-comparativas-seguros.md`.
-4. **Antes del cierre, dos pendientes de integración que dejó la Task 5** (anotados en el ledger):
-   agregar `OPENAI_API_KEY`/`OPENAI_MODEL` al reparto de `scripts/env-sync.mts` hacia `api/`, y calibrar
+1. **Esperar el informe de la Task 6** en
+   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-6-report.md`. Cuando llegue:
+   - si el agente terminó el turno **esperando un proceso en background** (ya pasó dos veces), retomarlo
+     con `SendMessage` pidiéndole foreground y el commit;
+   - verificarlo con salida propia:
+     `node --import tsx --test --test-name-pattern="comparativa" api/src/app.test.ts` y
+     `npx tsx --test api/src/deps.test.ts`;
+   - generar el paquete con
+     `bash "$HOME/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package" c71c032 HEAD`;
+   - despachar al agente `revisor` con el brief, el informe y ese diff.
+2. **Despachar la Task 7** (el navegador convierte `.xlsx`/`.csv` a filas). **El brief ya está
+   extraído** en `.superpowers/sdd/2026-09-12-comparativas-seguros/task-7-brief.md`. Es trabajo de
+   `portal/`, así que va con el agente `front`. En el prompt: el **test cruzado** contra
+   `CASOS_CSV` y `CASOS_CSV_INVALIDOS` de `api/src/comparativas/filas.test.ts`, que exija al parser
+   del portal el mismo parseo **y el mismo rechazo**; foreground; y qué suites correr.
+3. **Seguir con las tareas 8 y 9** con el mismo ciclo, extrayendo los briefs con `task-brief` sobre
+   `docs/superpowers/plans/2026-09-12-comparativas-seguros.md`.
+4. **Antes del cierre, los pendientes de integración anotados en el ledger:** repartir
+   `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/` en `scripts/env-sync.mts` (el SDK no lanza con
+   `apiKey: ""`, así que una key ausente falla en la primera comparativa, no al arrancar), y calibrar
    la proporción caracteres/token del preflight con una corrida real (cuesta dinero: la corre Juan o la
    autoriza).
-5. **Al terminar las nueve**: review final de rama con el modelo más capaz disponible, manejar la app
-   en un navegador con el provider mock, `bash ./scripts/verificar.sh --con-portal`, actualizar `09`/`15`,
-   y merge a `main` con `--no-ff`.
+5. **Al terminar las nueve**: review final de rama con el modelo más capaz disponible, apuntándolo a
+   la lista de menores del ledger; manejar la app en un navegador con el provider mock;
+   `bash ./scripts/verificar.sh --con-portal`; actualizar `09`/`15`; y merge a `main` con `--no-ff`.
 
 **El ledger manda sobre la memoria**:
 `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md`. Una tarea marcada `[x]` ahí está hecha —
@@ -110,12 +111,23 @@ no la relances.
   defaults** (2026-09-13, revisión de la Task 3), con rangos tomados del criterio de `snapshot.test.ts`.
 - **La Task 5 se relanza con Sonnet y no se espera a Opus** (2026-09-13). Esperar al reset bloqueaba el
   plan entero por una tarea; se compensa exigiéndole a la revisión más dureza que a las demás.
-- **Los commits de progreso van DESPUÉS del commit de la tarea, nunca en medio de su rango** (2026-09-13).
-  En la Task 3 uno quedó dentro del rango revisado y hubo que avisarle al revisor que lo ignorara; en la
-  Task 5 se commiteó `progress/current.md` recién tras `8a13953`.
+- **Los commits de progreso van FUERA del rango revisado** (2026-09-13). En la Task 3 uno quedó dentro
+  y hubo que avisarle al revisor que lo ignorara. Desde la Task 5: se commitea `progress/current.md`
+  después del commit de la tarea y **antes** de despachar la siguiente, y el `BASE` de la siguiente es
+  ese commit de progreso.
 - **Los briefs dicen QUÉ suite correr, no solo "en foreground"** (2026-09-13). La suite entera de `api`
   tarda decenas de minutos, ninguna tarea la necesita y es la que los implementadores mandan a
-  background. Se corre una sola vez al cerrar el plan con `verificar.sh`.
+  background. Se corre una sola vez al cerrar el plan con `verificar.sh`. Para `app.test.ts`, filtrar
+  con `--test-name-pattern` mientras se itera.
+- **`COMPARATIVAS_MODO` elige el provider** (2026-09-13, resuelto al despachar la Task 6 porque el plan
+  no lo fijaba): valores `mock|openai`, leída en `leerConfig` de `api/src/deps.ts`, **default `mock`** y
+  un valor inválido **lanza al arrancar** (mismo criterio que `GOOGLE_REVIEWS_MODO`). Se descartó un
+  default derivado de la API key, como el de `BORRADOR_RESENAS_MODO`: acá el default tiene que ser el que
+  no gasta, y el mock ya se marca como mock en informe y mail.
+- **Orden del `POST /clients/:id/comparativas-seguros`: lo que no gasta, primero** (2026-09-13): forma
+  del body (400 si vienen las dos formas o ninguna) → vertical (409, **antes** de bajar nada o llamar al
+  LLM) → filas → provider → `crear` **solo si el provider salió bien**. Entrada mala es 400, el provider
+  negándose es 422, nunca 500 y nunca una fila huérfana.
 
 ## Callejones sin salida
 
@@ -146,24 +158,27 @@ no la relances.
   esperándolo. Lo que funciona es acotar qué suite correr (ver Decisiones). En cambio, **nombrar el
   patrón de las constantes de producción sí funcionó**: el test que fija `MAX_COSTO_USD` por literal
   apareció a la primera (`api/src/comparativas/provider.test.ts:233`).
+- **"El árbol está limpio" puede dejar de ser cierto entre dos comandos mientras corre un revisor**
+  (2026-09-13). El `revisor` muta y restaura archivos para comprobar los tests: se vio
+  `api/src/comparativas/openai-provider.ts` modificado a mitad de una mutación y, un comando después,
+  ya restaurado. No commitear ni tocar un archivo de código que aparezca modificado mientras hay una
+  revisión en curso; y al documentar, escribir el estado de forma que sobreviva a eso.
 
 ## Archivos calientes
 
-- `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md` — **el ledger**. Manda sobre la
-  memoria tras un `/compact` o un reinicio. Gitignoreado (`.gitignore:67`).
-- `.superpowers/sdd/2026-09-12-comparativas-seguros/task-5-review.md` — el veredicto que se espera
-  ahora (todavía no existe mientras corre la revisión).
-- `.superpowers/sdd/2026-09-12-comparativas-seguros/task-6-brief.md` — ya extraído, listo para
-  despachar en cuanto la Task 5 quede aprobada.
-- `api/src/comparativas/openai-provider.ts` — lo que se está revisando: el preflight y la validación
-  de la respuesta del LLM.
-- `api/src/comparativas/provider.test.ts:233` — el test que fija `MAX_COSTO_USD` por literal.
-- `api/src/comparativas/provider.ts` — el selector `getComparativaProvider`; la Task 5 cableó el
-  camino `"openai"`.
-- `scripts/env-sync.mts` — donde falta repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/` (pendiente
-  de integración de la Task 5).
-- `db/src/comparativas-seguros.ts` — la capa de acceso de la Task 1, con un menor pendiente en el
-  docstring de `crear` (anotado en el ledger para el review final).
+- `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md` — **el ledger**, con la lista de
+  menores para el review final y los pendientes de integración. Manda sobre la memoria tras un
+  `/compact` o un reinicio. Gitignoreado (`.gitignore:67`).
+- `.superpowers/sdd/2026-09-12-comparativas-seguros/task-6-brief.md` — los requisitos de la tarea en
+  curso.
+- `.superpowers/sdd/2026-09-12-comparativas-seguros/task-7-brief.md` — ya extraído, listo para
+  despachar en cuanto la Task 6 quede aprobada.
+- `api/src/app.ts` y `api/src/deps.ts` — lo que está escribiendo la Task 6 ahora mismo.
+- `api/src/comparativas/openai-provider.ts:212-213` — la validación de "opción sin prima" que deja
+  pasar una prima `<= 0`; menor anotado para el review final.
+- `api/src/comparativas/filas.test.ts` — `CASOS_CSV` y `CASOS_CSV_INVALIDOS`, que la Task 7 tiene que
+  reusar en su test cruzado.
+- `scripts/env-sync.mts` — donde falta repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/`.
 
 ## Verificaciones
 
@@ -176,7 +191,8 @@ no la relances.
   informes): Task 1 → `db` 522/522 y typecheck limpio; Task 2 →
   `npx tsx --test api/src/comparativas/filas.test.ts` 13/13; Task 3 →
   `npx tsx --test api/src/comparativas/sheet.test.ts` 17/17; Task 4 →
-  `npx tsx --test api/src/comparativas/provider.test.ts` 5/5; Task 5 → el mismo comando, 23/23.
+  `npx tsx --test api/src/comparativas/provider.test.ts` 5/5; Task 5 → el mismo comando, 23/23 (y el
+  revisor, con su propia corrida, lo mismo más `npm run typecheck` limpio).
 
 ---
 
