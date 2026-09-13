@@ -11,8 +11,11 @@ de él (3 etapas, cerradas y pusheadas a `main`), y ahora **la ejecución del pl
 seguros** con `superpowers:subagent-driven-development` — implementador + revisor por tarea, en la
 rama `feature/comparativas-seguros`.
 
-**Dónde está AHORA:** van **2 de 9 tareas** cerradas con revisión limpia. La **Task 3 está a medio
-hacer**: un subagente la está implementando en segundo plano y ya dejó dos archivos sin commitear.
+**Dónde está AHORA:** van **4 de 9 tareas** cerradas con revisión limpia. La **Task 5 acaba de
+despacharse** (provider real de OpenAI + preflight de gasto + regla de fallar en vez de inventar) y
+todavía no escribió nada: el árbol está limpio. Es su **tercer intento** — los dos primeros, con Opus,
+murieron por límite de sesión sin dejar archivos; éste va con Sonnet. La sesión de Claude Code se
+reinició en medio: el estado se recuperó del ledger y de `git log`, no de memoria.
 
 | | Etapa / Tarea | Commit |
 |---|---|---|
@@ -24,38 +27,45 @@ hacer**: un subagente la está implementando en segundo plano y ya dejó dos arc
 | pre | Corrección del plan en el pre-flight | `cc1d610` |
 | 1 | Migración `0033` + `PgComparativasSeguros` | `be6a8ca` ✅ revisada |
 | 2 | Parser de CSV + topes | `6adb0e9..5d1bc4f` ✅ revisada |
-| 3 | Bajar el Google Sheet | ⏳ **en vuelo** |
+| 3 | Bajar el Google Sheet | `476f90b..889e290` ✅ revisada |
+| — | (progreso, no es tarea) | `c25128a` |
+| 4 | Provider: interfaz + mock | `c914a5c..89aef3d` ✅ revisada |
+| 5 | Provider OpenAI + preflight de gasto | ⏳ **despachada, sin archivos todavía** |
+
+Los 9 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
 
 ## En vuelo (sin commitear)
 
-**Task 3, implementándose en segundo plano.** `git status --short` da exactamente dos archivos sin
-trackear, los dos creados por ese subagente:
+**Nada, working tree limpio** (`git status --short` vacío, `git diff --stat` vacío).
 
-- `api/src/comparativas/sheet.ts` — el módulo que convierte un link de Google Sheet en su URL de
-  export CSV y lo baja.
-- `api/src/comparativas/sheet.test.ts` — sus tests.
-
-**No los toques mientras el subagente corre.** Si la sesión se cortó y esos archivos quedaron
-huérfanos, comprobá si compilan y pasan (`npx tsx --test api/src/comparativas/sheet.test.ts`); si
-están a medias, es más limpio borrarlos y relanzar la Task 3 desde su brief que adivinar qué falta.
-
-Todo lo demás está commiteado. Nada pusheado: la rama es local.
+La Task 5 está corriendo en segundo plano pero todavía no creó archivos. Cuando lo haga, va a tocar
+`api/src/comparativas/openai-provider.ts` (nuevo), `api/src/comparativas/provider.test.ts`,
+`api/src/comparativas/provider.ts` (el camino `"openai"` del selector) y `api/package.json`. **No los
+toques mientras corre.** Si la sesión se corta y aparecen a medias: correr
+`npx tsx --test api/src/comparativas/provider.test.ts`; si no pasan, es más limpio borrarlos y
+relanzar la Task 5 desde su brief que adivinar qué falta.
 
 ## Próximo paso
 
-1. **Esperar el informe de la Task 3** (subagente en segundo plano). Cuando llegue: generar el
-   paquete de revisión con
-   `bash "$HOME/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package" 5d1bc4f HEAD`
-   y despachar al agente `revisor` con el brief, el informe y ese diff.
-2. **Seguir el ciclo con las tareas 4 a 9**, en orden, sin pararse entre medias. Los briefs se sacan
-   con el script `task-brief` del mismo directorio, sobre
+1. **Esperar el informe de la Task 5**, que se escribe en
+   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-5-report.md`. Cuando llegue:
+   - verificarlo con salida propia: `npx tsx --test api/src/comparativas/provider.test.ts`;
+   - **comprobar que exista un test de defaults que fije `MAX_COSTO_USD` por literal** sin pasar por un
+     parámetro inyectable (es el patrón que ya falló tres veces, ver Callejones);
+   - generar el paquete: `bash "$HOME/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package" 89aef3d HEAD`;
+   - despachar al agente `revisor` con el brief, el informe y ese diff, **mirando con más dureza que al
+     resto**: es la tarea con más juicio y la hizo Sonnet, no Opus.
+2. **Seguir con las tareas 6 a 9**, en orden y sin pararse entre medias. Los briefs se sacan con el
+   script `task-brief` del mismo directorio sobre
    `docs/superpowers/plans/2026-09-12-comparativas-seguros.md`, y se mueven a
-   `.superpowers/sdd/2026-09-12-comparativas-seguros/`.
+   `.superpowers/sdd/2026-09-12-comparativas-seguros/`. En cada brief: **pedir foreground** y **nombrar
+   el patrón de las constantes de producción** si la tarea declara alguna.
 3. **El ledger manda sobre la memoria**:
-   `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md`. Tras un `/compact`, una tarea
-   marcada `[x]` ahí está hecha — no la relances.
-4. **Al terminar las nueve**: review final de rama (modelo más capaz), manejar la app en un navegador
-   con el provider mock, actualizar `09`/`15`, y recién ahí merge a `main` con `--no-ff`.
+   `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md`. Una tarea marcada `[x]` ahí está
+   hecha — no la relances.
+4. **Al terminar las nueve**: review final de rama con el modelo más capaz disponible (Opus vuelve a
+   las 3:30 de Madrid), manejar la app en un navegador con el provider mock, actualizar `09`/`15`, y
+   recién ahí merge a `main` con `--no-ff`.
 
 ## Decisiones tomadas
 
@@ -74,10 +84,20 @@ Todo lo demás está commiteado. Nada pusheado: la rama es local.
   parece completa es peor que un error, porque un corredor la manda»).
 - **`CASOS_CSV` y `CASOS_CSV_INVALIDOS` viven en `filas.test.ts`, no en `filas.ts`** — una fixture no
   va en el código que se despliega, y el test cruzado de la Task 7 vive en ese mismo archivo.
-- **Sonnet como modelo por defecto de los implementadores.** Opus se agotó por límite de sesión el
-  2026-09-12 (se restablece a las 22:20 de Madrid) y además la skill dice usar el modelo más barato
-  que sirva: los briefs de este plan llevan el código, así que la mayoría son transcripción más
-  verificación. Reservar lo caro para la Task 5 y el review final de rama.
+- **Sonnet como modelo por defecto de los implementadores.** Opus se agotó por límite de sesión y
+  además la skill dice usar el modelo más barato que sirva: los briefs de este plan llevan el código,
+  así que la mayoría son transcripción más verificación.
+- **La Task 4 se hizo con Haiku** (2026-09-13): el brief traía la interfaz y los tests escritos. Salió
+  bien — no redeclaró `OpcionSeguro`, que era el riesgo real — y lo que se le escapó (el mail sin marca
+  de mock) lo cazó la revisión. El corte de modelo fue correcto para esa tarea.
+- **La marca de mock va en el informe Y en el mail, asunto y cuerpo** (2026-09-13, revisión de la Task 4).
+  El mail es el entregable que se copia con un botón y sale al cliente final sin pasar por la vista del
+  informe. Se reusó la misma constante `PREFIJO_MOCK_COMPARATIVA` en vez de un tag corto aparte, con
+  `PREFIJO_MOCK_POST` como precedente; la re-revisión lo dio por bueno.
+- **`PLAZO_DESCARGA_MS` y `MAX_REDIRECCIONES` de `sheet.ts` se fijan por literal en un `describe` de
+  defaults** (2026-09-13, revisión de la Task 3), con rangos tomados del criterio de `snapshot.test.ts`.
+- **La Task 5 se relanza con Sonnet y no se espera a Opus** (2026-09-13). Esperar a las 3:30 bloqueaba
+  el plan entero por una tarea; se compensa exigiéndole a la revisión más dureza que a las demás.
 
 ## Callejones sin salida
 
@@ -92,32 +112,49 @@ Todo lo demás está commiteado. Nada pusheado: la rama es local.
   reiniciar la sesión.
 - **Un heredoc de bash para escribir el plan se rompió** con las comillas y backticks del contenido.
   Para documentos con bloques de código, usar la herramienta `Write`, no `cat <<EOF`.
+- **La Task 5 con Opus falló DOS veces más por límite de sesión** (2026-09-12 y 2026-09-13; el último
+  aviso dice que se restablece a las 3:30 de Madrid). Ningún intento dejó archivos. Opus no es
+  confiable en esta ventana: no planificar nada crítico que dependa de él hasta después del reset.
+- **Un subagente que lanza un proceso con `run_in_background` NO recibe su notificación** (Task 3,
+  2026-09-13). Se quedó esperando `npm test -w api`, terminó el turno sin commitear ni escribir informe,
+  y hubo que retomarlo con `SendMessage` pidiéndole foreground. Es el mismo patrón que el `09` ya
+  documentó en el sub-proyecto 3. **Pedir foreground explícito en todo brief.**
+- **Tener el molde delante no transmite la salvaguarda** (Task 3, 2026-09-13). El implementador copió
+  de `renderer/src/snapshot.ts` el `plazoMs` inyectable pero no el `describe` de defaults que ese mismo
+  archivo tiene para fijar el valor de producción. **Tercera vez en tres días** del mismo fallo: una
+  constante que ningún test fija porque los tests eligen el parámetro. Solo se evita nombrándolo en el
+  brief.
 
 ## Archivos calientes
 
-- `docs/superpowers/plans/2026-09-12-comparativas-seguros.md` — el plan, 9 tareas. Es la fuente de
-  los briefs.
 - `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md` — **el ledger**. Manda sobre la
-  memoria tras un `/compact`. Gitignoreado (`.gitignore:67`).
-- `api/src/comparativas/filas.ts` — el parser ya cerrado. **Lanza** ante comilla sin cerrar; la Task 3
-  lo consume y la Task 7 lo duplica en el portal con un test cruzado.
-- `api/src/comparativas/sheet.ts` — lo que está escribiendo el subagente ahora mismo.
-- `renderer/src/snapshot.ts` — el molde de defensas de red (allowlist exacta, tope doble de bytes,
-  `Promise.race`, redirecciones revalidadas). La Task 3 lo copia.
-- `db/src/comparativas-seguros.ts` — la capa de acceso de la Task 1, con el menor pendiente del
-  docstring de `crear` (ver el ledger).
+  memoria tras un `/compact` o un reinicio. Gitignoreado (`.gitignore:67`).
+- `.superpowers/sdd/2026-09-12-comparativas-seguros/task-5-brief.md` — los requisitos de la tarea en
+  curso.
+- `docs/superpowers/plans/2026-09-12-comparativas-seguros.md` — el plan, fuente de los briefs de las
+  tareas 6 a 9.
+- `api/src/comparativas/provider.ts` — el contrato `LlmComparativaProvider` y el selector
+  `getComparativaProvider`; la Task 5 cablea ahí el camino `"openai"`.
+- `api/src/comparativas/mock-provider.ts` — el mock y `PREFIJO_MOCK_COMPARATIVA`, ya marcando informe
+  y mail.
+- `api/src/comparativas/filas.ts` — `MAX_BYTES_ENTRADA`, que el preflight de la Task 5 consume.
+- `orchestrator/src/borrador/openai-provider.ts` — el molde del provider real (cliente inyectable,
+  `timeout`, `maxRetries: 1`, tabla de precios).
+- `db/src/comparativas-seguros.ts` — la capa de acceso de la Task 1, con un menor pendiente en el
+  docstring de `crear` (anotado en el ledger para el review final).
 
 ## Verificaciones
 
-- **`npm run verificar`: NO corrido en este estado**, y a propósito: hay un subagente escribiendo
-  archivos ahora mismo, así que una corrida completa mediría un árbol a medias y competiría por la
-  máquina. Correrlo cuando la Task 3 cierre.
+- **`npm run verificar`: NO corrido en esta rama.** Se deja para cuando cierre la Task 5: con un
+  subagente escribiendo, una corrida completa mediría un árbol a medias y competiría por la máquina.
 - **Último verde completo conocido:** `bash ./scripts/verificar.sh --con-portal` sobre `main`
   (`68132bf`): **1947** tests del monorepo, typecheck limpio, sin secretos, **332** `node:test` del
   portal. Karma: **278**.
-- **Verde por tarea en esta rama, con salida real:** Task 1 → `db` 522/522 y typecheck limpio;
-  Task 2 → `npx tsx --test api/src/comparativas/filas.test.ts` 13/13 (corrido por la sesión
-  principal, no tomado del informe).
+- **Verde por tarea en esta rama, corrido por la sesión principal con salida real** (no tomado de los
+  informes): Task 1 → `db` 522/522 y typecheck limpio; Task 2 →
+  `npx tsx --test api/src/comparativas/filas.test.ts` 13/13; Task 3 →
+  `npx tsx --test api/src/comparativas/sheet.test.ts` 17/17; Task 4 →
+  `npx tsx --test api/src/comparativas/provider.test.ts` 5/5.
 
 ---
 
