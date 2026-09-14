@@ -51,6 +51,7 @@ app en un navegador, actualizar `09`/`15`, y el merge.
 | 8 | Pantalla de carga + `ApiService` | `88ed782` ✅ revisada |
 | 9 | Resultado + gate + historial + tab + rutas | `f3d1399` ✅ revisada |
 | — | Ronda de fixes antes del merge (carrera de `revisar`, prima ≤0, menores del portal) | `70dcf27` |
+| — | `OPENAI_API_KEY`/`OPENAI_MODEL`/`COMPARATIVAS_MODO` reparten hacia `api/` | `98cd8c1` |
 
 Los 18 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
 
@@ -61,10 +62,10 @@ actualiza. Las 9 tareas y la ronda de fixes están commiteadas y verificadas jun
 
 ## Próximo paso
 
-1. **Pendientes de integración:** repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/` en
-   `scripts/env-sync.mts` (con su test, `scripts/env-sync.test.mts`); y calibrar la proporción
-   caracteres/token del preflight de gasto con una corrida real (cuesta dinero: la corre Juan o la
-   autoriza — no correrla sin su ok).
+1. ✅ **`OPENAI_API_KEY`/`OPENAI_MODEL`/`COMPARATIVAS_MODO` ya reparten hacia `api/`** (commit
+   `98cd8c1`, `env-sync.test.mts` 21/21). Queda **pendiente y cuesta dinero — la corre Juan o la
+   autoriza, no se corre sola:** calibrar la proporción caracteres/token del preflight de gasto contra
+   una corrida real de OpenAI.
 2. **Cierre del plan:**
    - Review final de rama con el modelo más capaz disponible (a diferencia de las revisiones por
      tarea, esta se lo merece — así lo pide la skill `subagent-driven-development`).
