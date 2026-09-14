@@ -11,17 +11,23 @@ de él (3 etapas, cerradas y pusheadas a `main`), y ahora **la ejecución del pl
 seguros** con `superpowers:subagent-driven-development` — implementador + revisor por tarea, en la
 rama `feature/comparativas-seguros`.
 
-**Dónde está AHORA:** **las 9 tareas del plan están cerradas** con revisión limpia (APROBADO spec +
-calidad, las 9). La Task 9 — la última — quedó **APROBADO** (`f3d1399`, spec CUMPLE, calidad BUENA):
-el revisor corrió todo de nuevo (portal `node:test` 357/357, Karma 303/303, typecheck limpio) y rehizo
-las dos mutaciones pedidas con restauración verificada — sin `revisado()` cae 1 test (el del gate en
-`resultado.ts`), sin el guard de vertical caen 3. Confirmó los dos bugs de navegador que había
-encontrado el implementador (colisión de rutas `/comparativas/cargar` vs `:cid`; `resultado.ts` sin
-`MembresiaService` resuelto fuera del shell) leyendo el código real. Un hallazgo menor, no bloqueante:
-un comentario en `resultado.ts` (`ngOnInit`, línea ~1283) sobreestima lo que `MembresiaService.resolver()`
-deduplica — solo dedupe llamadas concurrentes, no evita un segundo `GET` si se entra desde el historial
-después de que el shell ya resolvió membresía. **No hay Task 10.** Sigue la ronda de fixes antes del
-merge, encabezada por la carrera real en `revisar`.
+**Dónde está AHORA:** **las 9 tareas del plan están cerradas** con revisión limpia, Y **la ronda de
+fixes antes del merge también está cerrada** (commit `70dcf27`). Despachados dos subagentes en
+paralelo sin cruce de archivos (`datos` para `db/`+`api/`, `front` para `portal/`): la carrera de
+`revisar` arreglada con `and revisado_en is null` en el `where` de `marcarRevisada`, la prima `<= 0`
+rechazada en el provider de OpenAI, y los cuatro menores del portal (dead code de `Subscription`,
+destructuración redundante, XOR simétrico, comentario de `MembresiaService.resolver()`). Los dos
+agentes verificaron sus mutaciones con restauración confirmada. Al correr el gate completo, la sesión
+principal encontró y arregló DOS problemas de integración que ninguno de los dos agentes había tocado:
+el test nuevo de la carrera comparaba `revisadoEn` como `string` (su tipo declarado) cuando en runtime
+es un `Date` (el driver de `pg` lo devuelve así para `timestamptz` — discrepancia preexistente, ahora
+documentada inline, no arreglada de raíz); y `filas.test.ts` (Task 7) tenía un `assert.throws` con un
+`undefined` de más que rompía el typecheck y que ninguna revisión anterior había cazado porque
+`npx tsx --test` no typechequea. **Verificación final conjunta, todo verde:**
+`bash ./scripts/verificar.sh --con-portal` → 2035 tests del monorepo, typecheck limpio, 357 `node:test`
+del portal; Karma 305/305 (303 + 2, del test del XOR). **No hay Task 10.** Falta cerrar el plan: los
+pendientes de integración (env-sync, calibración del preflight), el review final de rama, manejar la
+app en un navegador, actualizar `09`/`15`, y el merge.
 
 | | Etapa / Tarea | Commit |
 |---|---|---|
@@ -44,35 +50,34 @@ merge, encabezada por la carrera real en `revisar`.
 | — | (progreso, no es tarea) | `89e0a16`, `f05a8ab` |
 | 8 | Pantalla de carga + `ApiService` | `88ed782` ✅ revisada |
 | 9 | Resultado + gate + historial + tab + rutas | `f3d1399` ✅ revisada |
+| — | Ronda de fixes antes del merge (carrera de `revisar`, prima ≤0, menores del portal) | `70dcf27` |
 
 Los 18 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
 
 ## En vuelo (sin commitear)
 
 **Nada, working tree limpio** (`git status --short` vacío), salvo este mismo archivo mientras se
-actualiza. Las 9 tareas están commiteadas y revisadas; falta la ronda de fixes antes del merge, todavía
-sin despachar.
+actualiza. Las 9 tareas y la ronda de fixes están commiteadas y verificadas juntas (`70dcf27`).
 
 ## Próximo paso
 
-1. **Ronda de fixes antes del merge** — un solo subagente con la lista completa del ledger:
-   - **la carrera de `revisar` (no es menor):** con dos `revisar` concurrentes la segunda pisa quién
-     revisó. Arreglo: `and revisado_en is null` en el `where` del `update` de
-     `db/src/comparativas-seguros.ts:176` y `rows.length > 0`; test en `db/` y `npm test -w db`;
-   - una prima `<= 0` pasa la validación (`api/src/comparativas/openai-provider.ts:212-213`);
-   - dead code de `Subscription` sin usar en `portal/src/app/pages/comparativas/form.ts:3,120,132`;
-   - destructuración redundante en `crearComparativa` (`portal/src/app/core/api-core.ts:270-277`);
-   - asimetría de UX en la XOR archivo/link en `form.ts:137-139` (menor, Task 8);
-   - el comentario de `ngOnInit()` en `resultado.ts` (línea ~1283) sobreestima la deduplicación de
-     `MembresiaService.resolver()` (menor, Task 9) — corregir el texto o, si se prefiere evitar el
-     `GET` redundante de verdad, agregar el chequeo de "ya resuelto para este usuario";
-   - los demás menores del ledger.
-2. **Pendientes de integración:** repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/` en
-   `scripts/env-sync.mts`, y calibrar la proporción caracteres/token del preflight con una corrida real
-   (cuesta dinero: la corre Juan o la autoriza).
-3. **Cierre:** review final de rama con el modelo más capaz disponible; manejar la app en un navegador
-   con el provider mock; `bash ./scripts/verificar.sh --con-portal` y Karma; actualizar `09`/`15`;
-   mencionarle a Juan el riesgo de bus-factor de `read-excel-file`; y merge a `main` con `--no-ff`.
+1. **Pendientes de integración:** repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/` en
+   `scripts/env-sync.mts` (con su test, `scripts/env-sync.test.mts`); y calibrar la proporción
+   caracteres/token del preflight de gasto con una corrida real (cuesta dinero: la corre Juan o la
+   autoriza — no correrla sin su ok).
+2. **Cierre del plan:**
+   - Review final de rama con el modelo más capaz disponible (a diferencia de las revisiones por
+     tarea, esta se lo merece — así lo pide la skill `subagent-driven-development`).
+   - Manejar la app en un navegador real con el provider mock (MCP chrome-devtools): subir un CSV y un
+     `.xlsx`, probar el link de Google Sheet, revisar una comparativa, confirmar el gate, probar
+     "Copiar mail" e "Imprimir", navegar desde el historial. Esto es lo que ningún test ve.
+   - `bash ./scripts/verificar.sh --con-portal` + Karma otra vez, ya sobre el estado final (el último
+     verde conocido es de ANTES de la review final y del manejo en navegador — si algo cambia, re-correr).
+   - Actualizar `docs/proyecto/09-estado-y-roadmap.md` y `docs/proyecto/15-plan-plataforma.md` (el
+     ritual de `AGENTS.md`, paso 3).
+   - Mencionarle a Juan el riesgo de bus-factor de `read-excel-file` (toda la cadena de dependencias
+     depende de una sola cuenta de npm).
+   - Merge a `main` con `--no-ff`. Push a `main`.
 
 **El ledger manda sobre la memoria**:
 `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md`. Una tarea marcada `[x]` ahí está hecha —
@@ -150,6 +155,23 @@ no la relances.
   `['/clientes', clienteId, 'comparativas', id]`. La Task 8 no toca `app.routes.ts` para no pisar a la 9;
   su test solo comprueba el `router.navigate`. Además: todo error se pinta (un rechazo de `hojaAFilas`
   corta antes de llamar a la API), y el botón se deshabilita en vuelo porque cada generación cuesta.
+- **La ronda de fixes se despachó en DOS subagentes en paralelo, no uno solo** (2026-09-14): `datos`
+  para `db/`+`api/`, `front` para `portal/`. Los archivos no se cruzaban, así que corrieron a la vez sin
+  riesgo de pisarse. Se descartó un único subagente transversal: hubiera tenido que cargar las
+  convenciones de las tres áreas a la vez sin ganar nada.
+- **El chequeo de "ya resuelto" en `MembresiaService.resolver()` se descartó, no se implementó**
+  (2026-09-14, Fix 4 de la ronda pre-merge). `refrescar()` (usado por `cambiarRol`) reutiliza
+  `resolver()` invalidando solo `enVuelo`, no un hipotético `_resueltoPara`: un chequeo de "ya resuelto
+  para este userId" en `resolver()` habría hecho que `refrescar()` devolviera sin pedir nada, rompiendo
+  la re-lectura de membresía tras cambiar un rol. Se corrigió el comentario que sobreestimaba la
+  deduplicación en vez de arreglar el código a medias — documentado en
+  `portal/src/app/pages/comparativas/resultado.ts:241-250`.
+- **La discrepancia de tipo en `revisadoEn` (declarado `string`, runtime `Date`) NO se corrigió de
+  raíz** (2026-09-14, al integrar la ronda de fixes). Es preexistente a este plan, el cast
+  `as Parameters<typeof aComparativa>[0]` en `db/src/comparativas-seguros.ts` la esconde, y arreglarla
+  bien implica revisar todo lo que consume `ComparativaSeguros.revisadoEn` (serialización JSON hacia el
+  portal incluida) — fuera del alcance de una ronda de fixes acotada. Se documentó inline en el test
+  afectado y queda como deuda conocida, no como bloqueante.
 
 ## Callejones sin salida
 
@@ -200,49 +222,44 @@ no la relances.
   tarea agregó 20: muchos no llevan esa palabra en el título. Pasó en verde y parecía verificado. Lo
   cubrió el revisor corriendo el archivo entero. **Contar primero cuántos tests nuevos declara el
   informe y comprobar que la corrida dé ese número.** En la Task 7 se aplicó y cuadró: 332 + 11 = 343.
+- **Confiar en el tipo declarado de un campo, sin verificar el runtime, rompió un fix** (ronda pre-merge,
+  2026-09-14). El agente `datos` escribió un test que comparaba `revisadoEn` como si fuera un `Date`
+  (`getTime()`), correcto. La sesión principal, al ver que el TYPECHECK decía `revisadoEn: string |
+  null`, "corrigió" el test a comparación directa de string — y rompió el test en runtime, porque el
+  driver de `pg` sí devuelve un `Date` para `timestamptz`, pese al tipo declarado. El typecheck y el
+  runtime no siempre cuentan la misma historia cuando hay un `as` de por medio (acá,
+  `as Parameters<typeof aComparativa>[0]`). **Lección:** cuando el typecheck y el comportamiento
+  observado en la corrida real se contradicen, confiar en la corrida real y tratar el tipo declarado
+  como sospechoso, no al revés.
+- **Un subagente de un área puede introducir un typecheck roto que su propio `npx tsx --test`
+  filtrado no detecta** (ronda pre-merge, 2026-09-14). `tsx --test` corre sin typechequear; el
+  `assert.throws(fn, undefined, msg)` de la Task 7 (preexistente, no de esta ronda) solo salió a la luz
+  al correr `npm run verificar` completo. Ningún brief de esta ronda pedía typecheck explícito porque
+  se asumía que ya estaba limpio de tareas anteriores — no lo estaba. **Correr el typecheck completo es
+  parte del cierre, no algo que se pueda inferir de que los tests pasen.**
 
 ## Archivos calientes
 
-- `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md` — **el ledger**, con la lista de fixes
-  para antes del merge, los menores, los pendientes de integración y la confirmación de la librería.
-  Manda sobre la memoria tras un `/compact` o un reinicio. Gitignoreado (`.gitignore:67`).
-- `.superpowers/sdd/2026-09-12-comparativas-seguros/task-8-brief.md` — los requisitos de la tarea en
-  curso; `task-9-brief.md`, ya extraído y listo.
-- `portal/src/app/pages/comparativas/` y `portal/src/app/core/api-core.ts` — lo que está escribiendo la
-  Task 8 ahora mismo.
-- `portal/src/app/core/hoja-a-filas.ts:57-58` — la conversión de celdas de `.xlsx` (fechas ISO, números
-  con `String`), que consume la pantalla de carga.
-- `db/src/comparativas-seguros.ts:176` — el `update` de `marcarRevisada` sin `and revisado_en is null`:
-  la raíz de la carrera de `revisar`, a arreglar antes del merge.
-- `api/src/comparativas/openai-provider.ts:212-213` — la validación de "opción sin prima", que deja pasar
-  una prima `<= 0`; va en la ronda de fixes.
-- `scripts/env-sync.mts` — donde falta repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/`.
+- `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md` — **el ledger**, ya con la ronda de
+  fixes cerrada documentada. Manda sobre la memoria tras un `/compact` o un reinicio. Gitignoreado
+  (`.gitignore:67`).
+- `progress/informes/fix-premerge-datos.md` y `fix-premerge-front.md` — los informes de los dos
+  subagentes de la ronda de fixes, con el detalle de cada mutación. Gitignoreados.
+- `scripts/env-sync.mts` — donde falta repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/`. Es lo
+  próximo que falta tocar.
+- `db/src/comparativas-seguros.ts:39` — el tipo `revisadoEn: string | null` que en runtime es un
+  `Date` (deuda documentada, no arreglada — ver Decisiones).
 
 ## Verificaciones
 
-- **`npm run verificar`: NO corrido en esta rama.** Se deja para el cierre del plan: la suite entera
-  de `api` tarda decenas de minutos y no aporta por tarea.
-- **Último verde completo conocido:** `bash ./scripts/verificar.sh --con-portal` sobre `main`
-  (`68132bf`): **1947** tests del monorepo, typecheck limpio, sin secretos, **332** `node:test` del
-  portal. Karma: **278**.
-- **Verde por tarea en esta rama, corrido por la sesión principal con salida real** (no tomado de los
-  informes): Task 1 → `db` 522/522 y typecheck limpio; Task 2 →
-  `npx tsx --test api/src/comparativas/filas.test.ts` 13/13; Task 3 →
-  `npx tsx --test api/src/comparativas/sheet.test.ts` 17/17; Task 4 →
-  `npx tsx --test api/src/comparativas/provider.test.ts` 5/5; Task 5 → el mismo comando, 23/23.
-- **Task 6:** `npx tsx --test api/src/deps.test.ts` 30/30 corrido por la sesión principal. El archivo
-  `app.test.ts` **entero, 155/155 con 20 tests nuevos, lo corrió el revisor**, no la sesión principal.
-- **Task 7, verificación propia completa y con conteo:** `npm --prefix portal test` **343/343** (332 base
-  + 11 nuevos) y `npx tsx --test api/src/comparativas/filas.test.ts` **14/14** (13 + 1, el test cruzado).
-  El typecheck del portal lo corrió en limpio el revisor, además del implementador.
-- **Task 8, verificación propia completa con salida real:** `npm --prefix portal test` **350/350**
-  (343 + 7 nuevos — el informe del implementador decía "+8", no cuadraba). Karma **283/283** (278 + 5).
-  Confirmado que no tocó `app.routes.ts` ni `cliente-ficha.ts`.
-- **Task 9, verificación propia Y del revisor, coinciden:** `npm --prefix portal test` **357/357**
-  (350 + 7), Karma **303/303** (283 + 20), typecheck limpio. El revisor lo corrió todo de nuevo por su
-  cuenta y confirmó las mismas cifras — no las tomó del informe.
-- **Con las 9 tareas cerradas, falta correr `npm run verificar` completo (sin `--rapido`) para el
-  cierre del plan** — no se corrió todavía en esta rama.
+- **Último verde completo, DESPUÉS de la ronda de fixes (commit `70dcf27`):**
+  `bash ./scripts/verificar.sh --con-portal` → **2035** tests del monorepo, typecheck limpio (7
+  paquetes + `scripts/` + portal), sin secretos, **357** `node:test` del portal. Karma, corrido aparte:
+  **305/305** (303 + 2, los del Fix 3 del XOR simétrico).
+- **`npm test -w db`** (tras el fix de la carrera): **523/523**. **`npx tsx --test
+  api/src/comparativas/provider.test.ts`** (tras el fix de la prima): **25/25**.
+- Falta, para el cierre del plan: manejar la app en un navegador real (MCP chrome-devtools) y volver a
+  correr `verificar.sh --con-portal` + Karma sobre el estado final, después de la review final de rama.
 
 ---
 
