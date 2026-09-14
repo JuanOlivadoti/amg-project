@@ -216,6 +216,12 @@ function validarOpcion(o: unknown, idx: number): OpcionSeguro {
         "Nunca se guarda una comparativa a medias.",
     );
   }
+  if (prima <= 0) {
+    throw new Error(
+      `La comparativa no se generó: la opción "${aseguradora}" trae una prima inválida (${prima}). ` +
+        "Una prima cero o negativa no es un dato real, y nunca se guarda una comparativa a medias.",
+    );
+  }
   return {
     aseguradora,
     producto: typeof o["producto"] === "string" ? o["producto"] : "",

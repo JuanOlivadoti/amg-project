@@ -1,6 +1,5 @@
-import { Component, OnInit, OnDestroy, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import type { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api';
 import { ClientesService } from '../../services/clientes';
 import { hojaAFilas } from '../../core/hoja-a-filas';
@@ -86,7 +85,7 @@ import { hojaAFilas } from '../../core/hoja-a-filas';
                 type="url"
                 placeholder="https://docs.google.com/spreadsheets/d/..."
                 [value]="googleSheetUrl()"
-                (input)="googleSheetUrl.set($any($event.target).value)"
+                (input)="seleccionarGoogleSheetUrl($any($event.target).value)"
                 class="w-full rounded-md border border-borde bg-fondo p-2 text-sm text-texto"
               />
             </div>
@@ -105,7 +104,7 @@ import { hojaAFilas } from '../../core/hoja-a-filas';
     </div>
   `,
 })
-export class ComparativasFormPage implements OnInit, OnDestroy {
+export class ComparativasFormPage implements OnInit {
   private readonly api = inject(ApiService);
   private readonly clientesService = inject(ClientesService);
   private readonly router = inject(Router);
@@ -117,7 +116,6 @@ export class ComparativasFormPage implements OnInit, OnDestroy {
   readonly enviando = signal(false);
   readonly error = signal('');
 
-  private sub: Subscription | null = null;
   private clienteId = signal('');
 
   ngOnInit(): void {
@@ -128,14 +126,19 @@ export class ComparativasFormPage implements OnInit, OnDestroy {
     }
   }
 
-  ngOnDestroy(): void {
-    this.sub?.unsubscribe();
-  }
-
   seleccionarArchivo(archivo: File | undefined): void {
     if (archivo) {
       this.archivoSeleccionado.set(archivo);
       this.googleSheetUrl.set(''); // Limpiar el link si había
+      this.error.set('');
+    }
+  }
+
+  /** Camino inverso de `seleccionarArchivo`: el XOR es simétrico, la limpieza también. */
+  seleccionarGoogleSheetUrl(valor: string): void {
+    this.googleSheetUrl.set(valor);
+    if (valor.trim() !== '') {
+      this.archivoSeleccionado.set(null); // Limpiar el archivo si había
       this.error.set('');
     }
   }

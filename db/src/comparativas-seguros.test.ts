@@ -113,6 +113,35 @@ test("marcarRevisada pone los dos campos del gate", async () => {
   assert.equal(c!.revisadoPor, s.equipoA);
 });
 
+test("🔴 marcarRevisada NO es re-entrante: la segunda llamada no pisa la primera (carrera)", async () => {
+  const id = await comparativas.crear(ctxA, s.clientA1, DATOS);
+
+  const primera = await comparativas.marcarRevisada(ctxA, s.clientA1, id);
+  assert.equal(primera, true);
+  const c1 = await comparativas.obtener(ctxA, s.clientA1, id);
+  const revisadoEn1 = c1!.revisadoEn;
+  const revisadoPor1 = c1!.revisadoPor;
+  assert.ok(revisadoEn1);
+  assert.equal(revisadoPor1, s.equipoA);
+
+  // Simula la segunda petición concurrente (mismo caller, como sería el segundo request de la carrera).
+  const segunda = await comparativas.marcarRevisada(ctxA, s.clientA1, id);
+  assert.equal(segunda, false, "ya estaba revisada: no vuelve a 'revisar'");
+
+  const c2 = await comparativas.obtener(ctxA, s.clientA1, id);
+  // El tipo declara `revisadoEn: string | null`, pero en runtime el driver de pg devuelve un `Date`
+  // para las columnas `timestamptz` (el cast `as Parameters<typeof aComparativa>[0]` de la línea 72
+  // no lo fuerza a string) -- discrepancia preexistente, fuera del alcance de este fix. Dos `Date`
+  // con el mismo instante NO son el mismo objeto, así que se compara por valor (getTime()): lo que
+  // importa es que Postgres NO reescribió la fila con la segunda llamada, no la identidad del objeto.
+  assert.equal(
+    (c2!.revisadoEn as unknown as Date)?.getTime(),
+    (revisadoEn1 as unknown as Date)?.getTime(),
+    "revisado_en NO cambió con la segunda llamada",
+  );
+  assert.equal(c2!.revisadoPor, revisadoPor1, "revisado_por sigue siendo el de la PRIMERA llamada");
+});
+
 // ============================================================ 🔴 Seguridad
 
 test("🔴 el tenant B no ve la comparativa del tenant A", async () => {

@@ -184,6 +184,31 @@ describe('ComparativasFormPage', () => {
     expect(crearComparativaSpy).not.toHaveBeenCalled();
   });
 
+  it('🔴 escribir un link de Google Sheet limpia el archivo seleccionado (XOR simétrico)', () => {
+    const { fixture } = crear();
+    const component = fixture.componentInstance;
+    const archivo = new File(['a,b'], 'datos.csv', { type: 'text/csv' });
+
+    component.seleccionarArchivo(archivo);
+    expect(component.archivoSeleccionado()).toBe(archivo);
+
+    component.seleccionarGoogleSheetUrl('https://docs.google.com/spreadsheets/d/1abc');
+
+    expect(component.archivoSeleccionado()).toBeNull();
+    expect(component.googleSheetUrl()).toBe('https://docs.google.com/spreadsheets/d/1abc');
+  });
+
+  it('escribir un valor vacío en el link NO limpia el archivo seleccionado', () => {
+    const { fixture } = crear();
+    const component = fixture.componentInstance;
+    const archivo = new File(['a,b'], 'datos.csv', { type: 'text/csv' });
+
+    component.seleccionarArchivo(archivo);
+    component.seleccionarGoogleSheetUrl('');
+
+    expect(component.archivoSeleccionado()).toBe(archivo);
+  });
+
   it('se requiere archivo o link, pero no ambos', async () => {
     const { fixture, crearComparativaSpy } = crear();
     const component = fixture.componentInstance;

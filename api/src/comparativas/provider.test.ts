@@ -162,6 +162,26 @@ test("🔴 una opción sin prima invalida la comparativa ENTERA", async () => {
   await assert.rejects(() => p.generar(FILAS_OK, "Ana"), /prima/i);
 });
 
+test("🔴 una opción con prima 0 invalida la comparativa ENTERA (no es un dato real)", async () => {
+  const p = new OpenAIComparativaProvider(
+    clienteQueDevuelve({
+      ...COMPARATIVA_VALIDA,
+      opciones: [{ aseguradora: "Mapfre", prima: 0 }],
+    }),
+  );
+  await assert.rejects(() => p.generar(FILAS_OK, "Ana"), /prima/i);
+});
+
+test("🔴 una opción con prima negativa invalida la comparativa ENTERA", async () => {
+  const p = new OpenAIComparativaProvider(
+    clienteQueDevuelve({
+      ...COMPARATIVA_VALIDA,
+      opciones: [{ aseguradora: "Mapfre", prima: -300 }],
+    }),
+  );
+  await assert.rejects(() => p.generar(FILAS_OK, "Ana"), /prima/i);
+});
+
 test("🔴 cero opciones también es error: 'no encontré nada' no se guarda como comparativa", async () => {
   const p = new OpenAIComparativaProvider(clienteQueDevuelve({ confianza: "alta", opciones: [] }));
   await assert.rejects(() => p.generar(FILAS_OK, "Ana"));

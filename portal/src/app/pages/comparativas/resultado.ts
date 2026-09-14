@@ -243,8 +243,11 @@ export class ComparativaResultadoPage implements OnInit, OnDestroy {
     // `effect` de `app-shell.ts` que resuelve `MembresiaService` — sin este llamado, `nombreRevisor()`
     // caería SIEMPRE al uuid en una carga directa de esta URL (medido en el navegador: entrando desde
     // el historial de la propia sesión el nombre aparecía, porque el shell ya lo había resuelto antes;
-    // recargando esta página sola, no). `resolver()` deduplica sola (`MembresiaService`), así que
-    // pedirla de nuevo si el shell ya la trajo no cuesta un segundo GET.
+    // recargando esta página sola, no). `resolver()` (`MembresiaService`) solo deduplica llamadas
+    // concurrentes/solapadas — mientras hay una promesa en vuelo — no evita un segundo `GET` si el
+    // shell ya terminó de resolver membresía en una navegación previa: entrar acá desde el historial
+    // de la sesión (sin recargar) SÍ dispara un `GET /members` real de más. Sin efecto funcional, solo
+    // red: se acepta a cambio de no complicar `MembresiaService` con un caché de "ya resuelto".
     void this.membresia.resolver();
     this.sub = this.route.paramMap.subscribe((params) => {
       this.clienteId.set(params.get('id') ?? '');

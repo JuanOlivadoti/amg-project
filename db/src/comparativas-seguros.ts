@@ -174,7 +174,7 @@ export class PgComparativasSeguros {
     return this.withTenant(ctx, async (tx: Tx) => {
       const { rows } = await tx.query<{ id: string }>(
         `update comparativas_seguros set revisado_en = now(), revisado_por = $1
-         where id = $2 and client_id = $3
+         where id = $2 and client_id = $3 and revisado_en is null
          returning id`,
         [ctx.userId ?? "", id, clientId],
       );

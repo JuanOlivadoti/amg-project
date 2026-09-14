@@ -702,12 +702,11 @@ export function crearApi(opts: ApiOpts): ClienteApi {
       await pedir('PATCH', `/clients/${encodeURIComponent(clientId)}/contenido`, datos);
     },
     async crearComparativa(clientId, cuerpo) {
-      const { id, ...comparativa } = await pedir<ComparativaSeguros & { id: string }>(
+      return pedir<ComparativaSeguros>(
         'POST',
         `/clients/${encodeURIComponent(clientId)}/comparativas-seguros`,
         cuerpo,
       );
-      return { id, ...comparativa };
     },
     async listarComparativas(clientId) {
       const { comparativas } = await pedir<{ comparativas: ComparativaSeguros[] }>(

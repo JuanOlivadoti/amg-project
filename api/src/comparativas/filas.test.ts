@@ -202,12 +202,10 @@ test("🔴 el parser del portal (parsearCsvPortal) y el de la API (parsearCsv) s
   for (const caso of CASOS_CSV_INVALIDOS) {
     assert.throws(
       () => parsearCsv(caso.entrada),
-      undefined,
       `parsearCsv (API) tendría que lanzar en "${caso.nombre}"`,
     );
     assert.throws(
       () => parsearCsvPortal(caso.entrada),
-      undefined,
       `parsearCsvPortal (portal) tendría que lanzar en "${caso.nombre}", igual que la API`,
     );
   }
