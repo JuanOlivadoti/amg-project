@@ -11,15 +11,14 @@ de él (3 etapas, cerradas y pusheadas a `main`), y ahora **la ejecución del pl
 seguros** con `superpowers:subagent-driven-development` — implementador + revisor por tarea, en la
 rama `feature/comparativas-seguros`.
 
-**Dónde está AHORA:** van **7 de 9 tareas** cerradas con revisión limpia. La **Task 8** (la pantalla de
-carga del portal y los métodos de `ApiService`) **está implementada y commiteada** (`88ed782`, con
-**Haiku** tras dos intentos fallidos por límite de sesión de Opus y Sonnet) y **su revisión está
-corriendo** en segundo plano. Verificación propia completa con salida real: portal `node:test`
-**350/350** (343 + 7 nuevos — el informe decía "+8", no cuadraba, y no era así) y Karma **283/283**
-(278 + 5). No tocó `app.routes.ts` ni `cliente-ficha.ts`, confirmado. La revisión de la Task 7
-**confirmó la librería de `.xlsx`** (`read-excel-file@9.3.10`), con un riesgo residual de bus-factor
-para mencionar al merge. Después de la 8 queda la **Task 9**, con el brief ya extraído, y antes del
-merge una **ronda de fixes** encabezada por la carrera real en `revisar`.
+**Dónde está AHORA:** van **8 de 9 tareas** cerradas con revisión limpia. La **Task 8** (la pantalla de
+carga del portal, con **Haiku** tras dos intentos fallidos por límite de sesión de Opus y Sonnet)
+quedó **APROBADA** — el revisor confirmó con línea real los 4 puntos pedidos: el `try/catch` cubre los
+dos orígenes de error, el botón se rehabilita también en éxito, la forma XOR solo se valida al enviar
+(cubierto por test, no bloqueante) y no hay HTML crudo. Tres menores anotados para limpieza, ninguno
+bloqueante. Queda **una sola tarea: la Task 9** (resultado imprimible + gate + historial + tab + rutas),
+todavía sin despachar. Después: la ronda de fixes antes del merge, encabezada por la carrera real en
+`revisar`.
 
 | | Etapa / Tarea | Commit |
 |---|---|---|
@@ -46,47 +45,30 @@ Los 18 commits de la rama están **sin pushear** (`git log --oneline origin/main
 
 ## En vuelo (sin commitear)
 
-**Nada de la sesión principal: working tree limpio** (`git status --short` vacío al escribir esto),
-salvo este mismo archivo mientras se actualiza.
-
-**Ojo, un estado que va y viene:** mientras corre la revisión de la Task 8, el `revisor` muta y restaura
-`portal/src/app/pages/comparativas/form.ts` y `portal/src/app/core/api-core.ts` para comprobar los
-tests (se le pidió quitar el `try/catch` del envío y no deshabilitar el botón en vuelo). Si aparecen
-modificados, **no los toques ni los commitees**: los restaura él. Si la sesión se corta y quedan
-modificados, `git checkout -- portal/src/app/` — `88ed782` tiene la versión buena.
-
-Cuando escriba, va a tocar `portal/src/app/pages/comparativas/` (la pantalla de carga y su spec),
-`portal/src/app/core/api-core.ts` y su test. **No los toques mientras corre.** Si la sesión se corta y
-quedan a medias: correr `npm --prefix portal test` y `npm --prefix portal run test:components`; si no
-pasan, descartar con `git checkout -- portal/src/app/core/` y borrar lo nuevo sin trackear de
-`portal/src/app/pages/comparativas/`, y relanzar la Task 8 desde su brief.
+**Nada, working tree limpio** (`git status --short` vacío), salvo este mismo archivo mientras se
+actualiza. La Task 8 está commiteada y aprobada; todavía no se despachó la Task 9.
 
 ## Próximo paso
 
-1. **Esperar el informe de la Task 8** en
-   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-8-report.md`. Cuando llegue:
-   - si el agente terminó el turno **esperando un proceso en background**, retomarlo con `SendMessage`
-     pidiéndole foreground y el commit;
-   - verificar con salida propia `npm --prefix portal test` y `npm --prefix portal run test:components`,
-     **contando los tests nuevos contra la base de 343 `node:test` y 278 Karma** y comparando con lo que
-     declara el informe;
-   - comprobar que **no tocó `app.routes.ts` ni `cliente-ficha.ts`** (son de la Task 9) y que tras crear
-     navega a `['/clientes', clienteId, 'comparativas', id]`;
-   - generar el paquete:
-     `bash "$HOME/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/review-package" f05a8ab HEAD`;
-   - despachar al agente `revisor` con el brief, el informe y ese diff.
-2. **Task 9** (resultado imprimible + gate de revisión + historial + tab en la ficha + rutas): brief en
-   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-9-brief.md`, agente `front`. Antes de
-   despachar: commitear `progress/current.md` y anotar el `HEAD` como `BASE`. En el prompt: **registrar
-   la ruta `clientes/:id/comparativas/:cid`** a la que ya navega la pantalla de la Task 8; el gate
-   (Imprimir y Copiar deshabilitados sin revisar) se relee del servidor, no se recuerda en pantalla; y
-   las celdas llegan con fechas ISO y números en decimal de JS.
+1. **Despachar la Task 9** (resultado imprimible + gate de revisión + historial + tab en la ficha +
+   rutas): brief en `.superpowers/sdd/2026-09-12-comparativas-seguros/task-9-brief.md`, agente `front`.
+   `BASE` para su paquete de revisión: el `HEAD` de este momento (el último commit de progreso tras
+   aprobar la Task 8). En el prompt: **registrar la ruta `clientes/:id/comparativas/:cid`** a la que ya
+   navega la pantalla de la Task 8; el gate (Imprimir y Copiar deshabilitados sin revisar) se relee del
+   servidor, no se recuerda en pantalla; y las celdas llegan con fechas ISO y números en decimal de JS.
+   Como en las tareas anteriores: foreground obligatorio, qué suites correr, y contar los tests nuevos
+   contra la base de **350 `node:test` y 283 Karma**.
+2. Cuando llegue su informe: si el agente terminó esperando un proceso en background, retomarlo con
+   `SendMessage`; verificar con salida propia; generar el paquete con `review-package <BASE> HEAD`;
+   despachar al `revisor`. Es la **última** tarea — después de aprobada, no queda ninguna más.
 3. **Ronda de fixes antes del merge** — un solo subagente con la lista completa del ledger, después del
    review final de rama:
    - **la carrera de `revisar` (no es menor):** con dos `revisar` concurrentes la segunda pisa quién
      revisó. Arreglo: `and revisado_en is null` en el `where` del `update` de
      `db/src/comparativas-seguros.ts:176` y `rows.length > 0`; test en `db/` y `npm test -w db`;
    - una prima `<= 0` pasa la validación (`api/src/comparativas/openai-provider.ts:212-213`);
+   - dead code de `Subscription` sin usar en `portal/src/app/pages/comparativas/form.ts:3,120,132`;
+   - destructuración redundante en `crearComparativa` (`portal/src/app/core/api-core.ts:270-277`);
    - los demás menores del ledger.
 4. **Pendientes de integración:** repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/` en
    `scripts/env-sync.mts`, y calibrar la proporción caracteres/token del preflight con una corrida real
