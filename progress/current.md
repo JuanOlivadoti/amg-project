@@ -11,14 +11,17 @@ de él (3 etapas, cerradas y pusheadas a `main`), y ahora **la ejecución del pl
 seguros** con `superpowers:subagent-driven-development` — implementador + revisor por tarea, en la
 rama `feature/comparativas-seguros`.
 
-**Dónde está AHORA:** van **8 de 9 tareas** cerradas con revisión limpia. La **Task 8** (la pantalla de
-carga del portal, con **Haiku** tras dos intentos fallidos por límite de sesión de Opus y Sonnet)
-quedó **APROBADA** — el revisor confirmó con línea real los 4 puntos pedidos: el `try/catch` cubre los
-dos orígenes de error, el botón se rehabilita también en éxito, la forma XOR solo se valida al enviar
-(cubierto por test, no bloqueante) y no hay HTML crudo. Tres menores anotados para limpieza, ninguno
-bloqueante. Queda **una sola tarea: la Task 9** (resultado imprimible + gate + historial + tab + rutas),
-todavía sin despachar. Después: la ronda de fixes antes del merge, encabezada por la carrera real en
-`revisar`.
+**Dónde está AHORA:** van **8 de 9 tareas** cerradas con revisión limpia. La **Task 9 — la última —**
+está **implementada y commiteada** (`f3d1399`) y **en revisión**. Verificación propia completa con
+salida real: portal `node:test` **357/357** (350 + 7) y Karma **303/303** (283 + 20), los dos
+confirman lo declarado. `form.ts` (Task 8) no fue tocado. **`markdown-render.ts` NO duplica el molde**:
+`resultado.ts` sigue usando `parsearMarkdown` de `core/markdown.ts` para pintar el informe; el archivo
+nuevo es un módulo distinto para el HTML/texto del botón "Copiar mail" (nunca se pinta en el DOM, por
+eso `sin-html-crudo.test.ts` no lo cubre a propósito). El implementador encontró y arregló **dos bugs
+reales solo visibles en el navegador**: una colisión de rutas (`/comparativas/cargar` caía en
+`resultado.ts` con `cid='cargar'`) y `resultado.ts` sin `MembresiaService` resuelto fuera del shell (un
+F5 mostraba el UUID de quien revisó en vez del nombre). Después de aprobada: la ronda de fixes antes
+del merge, encabezada por la carrera real en `revisar`.
 
 | | Etapa / Tarea | Commit |
 |---|---|---|
@@ -40,28 +43,31 @@ todavía sin despachar. Después: la ronda de fixes antes del merge, encabezada 
 | 7 | El navegador convierte la hoja | `3f05e23` ✅ revisada |
 | — | (progreso, no es tarea) | `89e0a16`, `f05a8ab` |
 | 8 | Pantalla de carga + `ApiService` | `88ed782` ✅ revisada |
+| 9 | Resultado + gate + historial + tab + rutas | `f3d1399` 🔍 **en revisión** (`BASE = 1a54bbd`) |
 
 Los 18 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
 
 ## En vuelo (sin commitear)
 
 **Nada, working tree limpio** (`git status --short` vacío), salvo este mismo archivo mientras se
-actualiza. La Task 8 está commiteada y aprobada; todavía no se despachó la Task 9.
+actualiza. La Task 9 está commiteada (`f3d1399`) y su revisión corriendo en segundo plano.
+
+**Ojo, un estado que va y viene:** mientras corre la revisión, el `revisor` puede mutar y restaurar
+archivos de `portal/src/app/pages/comparativas/` para comprobar los tests (se le pidió romper el gate
+—habilitar sin revisar— y confirmar que el estado se relee del servidor). Si aparecen modificados,
+**no los toques ni los commitees**: los restaura él. Si la sesión se corta y quedan modificados,
+`git checkout -- portal/src/app/` — `f3d1399` tiene la versión buena.
 
 ## Próximo paso
 
-1. **Despachar la Task 9** (resultado imprimible + gate de revisión + historial + tab en la ficha +
-   rutas): brief en `.superpowers/sdd/2026-09-12-comparativas-seguros/task-9-brief.md`, agente `front`.
-   `BASE` para su paquete de revisión: el `HEAD` de este momento (el último commit de progreso tras
-   aprobar la Task 8). En el prompt: **registrar la ruta `clientes/:id/comparativas/:cid`** a la que ya
-   navega la pantalla de la Task 8; el gate (Imprimir y Copiar deshabilitados sin revisar) se relee del
-   servidor, no se recuerda en pantalla; y las celdas llegan con fechas ISO y números en decimal de JS.
-   Como en las tareas anteriores: foreground obligatorio, qué suites correr, y contar los tests nuevos
-   contra la base de **350 `node:test` y 283 Karma**.
-2. Cuando llegue su informe: si el agente terminó esperando un proceso en background, retomarlo con
-   `SendMessage`; verificar con salida propia; generar el paquete con `review-package <BASE> HEAD`;
-   despachar al `revisor`. Es la **última** tarea — después de aprobada, no queda ninguna más.
-3. **Ronda de fixes antes del merge** — un solo subagente con la lista completa del ledger, después del
+1. **Leer el veredicto de la revisión de la Task 9** en
+   `.superpowers/sdd/2026-09-12-comparativas-seguros/task-9-review.md`.
+   - Si es **CAMBIOS_PEDIDOS**: despachar un solo subagente de fix (agente `front`) con todos los
+     bloqueantes, foreground obligatorio y qué suites correr; después regenerar el paquete
+     (`review-package 1a54bbd HEAD`) y re-revisar.
+   - Si es **APROBADO**: marcar la Task 9 `[x]` en el ledger y commitear `progress/current.md`. **Con
+     eso, las 9 tareas del plan quedan cerradas** — no hay una Task 10.
+2. **Ronda de fixes antes del merge** — un solo subagente con la lista completa del ledger, después del
    review final de rama:
    - **la carrera de `revisar` (no es menor):** con dos `revisar` concurrentes la segunda pisa quién
      revisó. Arreglo: `and revisado_en is null` en el `where` del `update` de
@@ -70,10 +76,10 @@ actualiza. La Task 8 está commiteada y aprobada; todavía no se despachó la Ta
    - dead code de `Subscription` sin usar en `portal/src/app/pages/comparativas/form.ts:3,120,132`;
    - destructuración redundante en `crearComparativa` (`portal/src/app/core/api-core.ts:270-277`);
    - los demás menores del ledger.
-4. **Pendientes de integración:** repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/` en
+3. **Pendientes de integración:** repartir `OPENAI_API_KEY`/`OPENAI_MODEL` hacia `api/` en
    `scripts/env-sync.mts`, y calibrar la proporción caracteres/token del preflight con una corrida real
    (cuesta dinero: la corre Juan o la autoriza).
-5. **Cierre:** review final de rama con el modelo más capaz disponible; manejar la app en un navegador
+4. **Cierre:** review final de rama con el modelo más capaz disponible; manejar la app en un navegador
    con el provider mock; `bash ./scripts/verificar.sh --con-portal` y Karma; actualizar `09`/`15`;
    mencionarle a Juan el riesgo de bus-factor de `read-excel-file`; y merge a `main` con `--no-ff`.
 
@@ -162,9 +168,9 @@ no la relances.
   árbol quedó limpio, sin archivos ni commits. Relanzada con Sonnet, salió bien a la primera. **No
   reintentes con Opus antes de que el límite se restablezca** — el agente muere sin escribir informe.
 - **Sonnet TAMBIÉN se agotó por límite de sesión** (2026-09-14), no solo Opus. El primer intento de la
-  Task 8 murió sin dejar archivos, igual que los de Opus en la Task 5. Reset a las 17:20 de Madrid.
-  Relanzada con **Haiku**, el único modelo con cupo. Si también falla, esperar al reset — no hay un
-  cuarto modelo al que bajar.
+  Task 8 murió sin dejar archivos, igual que los de Opus en la Task 5. Reset avisado a las 17:20 de
+  Madrid. Relanzada con **Haiku**, el único modelo con cupo en ese momento — salió bien. **Confirmado
+  que el límite ya se restableció**: la Task 9 se despachó con Sonnet sin problema y está corriendo.
 - **El agente `render` NO está registrado en esta sesión**, aunque `.claude/agents/render.md` existe y
   `verificar.sh` cuenta los 5 agentes. Se usó `general-purpose` cargándole las skills del área
   (`render-seguridad`, `render-plantillas`, `render-cda-cache`) y funcionó. Para que aparezca hay que
@@ -238,7 +244,10 @@ no la relances.
 - **Task 7, verificación propia completa y con conteo:** `npm --prefix portal test` **343/343** (332 base
   + 11 nuevos) y `npx tsx --test api/src/comparativas/filas.test.ts` **14/14** (13 + 1, el test cruzado).
   El typecheck del portal lo corrió en limpio el revisor, además del implementador.
-- **Base para contar los tests nuevos de la Task 8:** 343 `node:test` y 278 Karma.
+- **Task 8, verificación propia completa con salida real:** `npm --prefix portal test` **350/350**
+  (343 + 7 nuevos — el informe del implementador decía "+8", no cuadraba). Karma **283/283** (278 + 5).
+  Confirmado que no tocó `app.routes.ts` ni `cliente-ficha.ts`.
+- **Base para contar los tests nuevos de la Task 9 (última):** 350 `node:test` y 283 Karma.
 
 ---
 
