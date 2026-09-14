@@ -281,8 +281,64 @@ test('«Mi Portal» (clientes/:id/ver) se retiró: sus secciones son tabs de la 
     'ideas/:ideaId',
     'menu',
     'menu/:index',
+    'comparativas',
+    'comparativas/cargar',
     '',
   ]);
+});
+
+test('las comparativas de seguros (Task 9): el resultado vive en la raíz, el historial y la carga cuelgan del cliente', async () => {
+  // El resultado imprimible es fuera del shell, mismo molde que el entregable: sin sidebar, con su
+  // propio authGuard.
+  const iResultado = routes.findIndex((r) => r.path === 'clientes/:id/comparativas/:cid');
+  const iShell = routes.findIndex((r) => r.path === '' && r.children);
+  assert.ok(iResultado >= 0, 'no encontré la ruta del resultado de una comparativa');
+  /*
+   * A DIFERENCIA del entregable, esta ruta va DESPUÉS del shell y no antes — es load-bearing, medido
+   * en el navegador (probado con `npm start` + mock): puesta antes de `''`, capturaba
+   * `/clientes/:id/comparativas/cargar` con `:cid = 'cargar'` y montaba esta pantalla en vez de la de
+   * carga (Task 8), porque el Router prueba las rutas del array top-level EN ORDEN, no por
+   * especificidad, y esta ruta y el hijo literal `comparativas/cargar` de la ficha tienen la misma
+   * forma de cuatro segmentos. Puesta DESPUÉS, el Router prueba primero el shell —que agota su árbol
+   * de hijos, y ahí SÍ gana el literal `comparativas/cargar`— y solo llega acá cuando ningún hijo del
+   * shell matcheó (cualquier otro `:cid`).
+   */
+  assert.ok(
+    iResultado > iShell,
+    'el resultado de la comparativa debe declararse DESPUÉS de la ruta del shell (ver el comentario ' +
+      'en app.routes.ts): antes, se traga /comparativas/cargar como si "cargar" fuera un :cid',
+  );
+  assert.deepEqual(
+    routes[iResultado]?.canActivate,
+    [authGuard],
+    'fuera del shell no hereda: necesita su propio authGuard',
+  );
+  const cargadoResultado = await routes[iResultado]?.loadComponent?.();
+  assert.equal((cargadoResultado as { name?: string })?.name, 'ComparativaResultadoPage');
+
+  // El historial (tab) y la carga (Task 8) cuelgan del cliente, dentro del shell, y heredan el
+  // authGuard del padre.
+  const shell = routes.find((r) => r.path === '' && r.children);
+  const ficha = (shell?.children ?? []).find((r) => r.path === 'clientes/:id');
+  const listado = (ficha?.children ?? []).find((r) => r.path === 'comparativas');
+  assert.ok(listado, 'no encontré el tab de comparativas');
+  assert.equal(listado?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+  assert.equal(
+    ((await listado?.loadComponent?.()) as { name?: string })?.name,
+    'ComparativasListadoPage',
+  );
+
+  const form = (ficha?.children ?? []).find((r) => r.path === 'comparativas/cargar');
+  assert.ok(form, 'no encontré la ruta de carga de comparativas');
+  assert.equal(form?.canActivate, undefined, 'hereda el authGuard del padre, no lo repite');
+  assert.equal(((await form?.loadComponent?.()) as { name?: string })?.name, 'ComparativasFormPage');
+
+  // Va DESPUÉS de `comparativas`, mismo criterio de legibilidad que `menu/:index` después de `menu`.
+  const tabs = (ficha?.children ?? []).map((r) => r.path);
+  assert.ok(
+    tabs.indexOf('comparativas') < tabs.indexOf('comparativas/cargar'),
+    'comparativas/cargar debe ir después de comparativas',
+  );
 });
 
 test('los tabs resenas, ideas y menu cargan sus pantallas de verdad', async () => {

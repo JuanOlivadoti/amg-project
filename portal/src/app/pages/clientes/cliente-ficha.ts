@@ -23,15 +23,25 @@ const TABS_FIJOS: readonly TabFicha[] = [
 ];
 
 /**
- * Los CINCO tabs de la ficha: los cuatro fijos más el del catálogo, cuya ETIQUETA depende del
- * `vertical` del cliente (Task 12) — "Menú" para restauración, "Pólizas y coberturas" para
- * correduría de seguros. La RUTA interna sigue siendo `menu` para los dos rubros a propósito: no hay
- * ninguna razón para que el contrato interno (la URL, lo que pide `cliente-menu.ts`) sepa de
- * verticales, y renombrarla solo por vertical rompería cualquier link guardado.
+ * Los tabs de la ficha: los cuatro fijos más el del catálogo, cuya ETIQUETA depende del `vertical`
+ * del cliente (Task 12) — "Menú" para restauración, "Pólizas y coberturas" para correduría de
+ * seguros. La RUTA interna sigue siendo `menu` para los dos rubros a propósito: no hay ninguna razón
+ * para que el contrato interno (la URL, lo que pide `cliente-menu.ts`) sepa de verticales, y
+ * renombrarla solo por vertical rompería cualquier link guardado.
+ *
+ * **El sexto tab, "Comparativas", solo aparece para `correduria_seguros`** (Task 9) — a diferencia
+ * del de catálogo, que existe siempre y solo cambia de etiqueta, éste directamente no se ofrece para
+ * los demás verticales: el módulo entero (`POST …/comparativas-seguros`) rechaza con 409 a cualquier
+ * cliente que no sea de seguros (Task 6), así que un tab visible para restauración prometería una
+ * acción que el servidor va a rechazar.
  */
 export function tabsFicha(vertical: Vertical | undefined): readonly TabFicha[] {
   const etiquetaCatalogo = vertical === 'correduria_seguros' ? 'Pólizas y coberturas' : 'Menú';
-  return [...TABS_FIJOS, { etiqueta: etiquetaCatalogo, ruta: 'menu' }];
+  const tabs = [...TABS_FIJOS, { etiqueta: etiquetaCatalogo, ruta: 'menu' }];
+  if (vertical === 'correduria_seguros') {
+    tabs.push({ etiqueta: 'Comparativas', ruta: 'comparativas' });
+  }
+  return tabs;
 }
 
 /**
