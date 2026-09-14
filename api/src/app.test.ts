@@ -2525,6 +2525,46 @@ test("POST con más de MAX_FILAS filas → 400, y NO se llama al provider ni se 
   assert.equal(await contarComparativas(), "0");
 });
 
+test("🔴 clienteFinalNombre de 201 caracteres → 400 ANTES de llamar al provider (mismo tope que la migración)", async () => {
+  let llamadas = 0;
+  const providerQueCuenta: LlmComparativaProvider = {
+    generar: async (filas, clienteFinal) => {
+      llamadas += 1;
+      return new MockComparativaProvider().generar(filas, clienteFinal);
+    },
+  };
+  const app2 = appConComparativas(providerQueCuenta);
+  const res = await reqA(app2, "POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { ...CUERPO_OK, clienteFinalNombre: "a".repeat(201) },
+  });
+  assert.equal(res.status, 400);
+  assert.equal(llamadas, 0, "un nombre demasiado largo se corta ANTES de gastar en el provider");
+  assert.equal(await contarComparativas(), "0");
+});
+
+test("🔴 clienteFinalEmail de 321 caracteres → 400 ANTES de llamar al provider (mismo tope que la migración)", async () => {
+  let llamadas = 0;
+  const providerQueCuenta: LlmComparativaProvider = {
+    generar: async (filas, clienteFinal) => {
+      llamadas += 1;
+      return new MockComparativaProvider().generar(filas, clienteFinal);
+    },
+  };
+  const app2 = appConComparativas(providerQueCuenta);
+  const emailLargo = `${"a".repeat(309)}@example.com`; // 321 caracteres
+  assert.equal(emailLargo.length, 321);
+  const res = await reqA(app2, "POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { ...CUERPO_OK, clienteFinalEmail: emailLargo },
+  });
+  assert.equal(res.status, 400);
+  assert.equal(llamadas, 0, "un email demasiado largo se corta ANTES de gastar en el provider");
+  assert.equal(await contarComparativas(), "0");
+});
+
 test("POST con cliente inexistente → 404", async () => {
   const res = await req("POST", `/clients/${crypto.randomUUID()}/comparativas-seguros`, {
     user: equipoA,

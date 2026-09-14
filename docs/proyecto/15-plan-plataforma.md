@@ -1711,14 +1711,19 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 >      ve, porque una mutación en el código compartido mueve los dos lados igual). Es la debilidad
 >      conocida de un test de paridad, y conviene tenerla escrita.
 >
-> **Y después, la pieza grande: comparativas de seguros.** Spec aprobada
+> ✅ **La pieza grande, comparativas de seguros, está IMPLEMENTADA (2026-09-14).** Spec aprobada
 > ([`2026-09-04-comparativas-seguros-design.md`](../superpowers/specs/2026-09-04-comparativas-seguros-design.md)),
-> falta el `writing-plans` y la implementación. Es lo único abierto que agrega capacidad vendible, y le
-> da herramienta operativa a la vertical `correduria_seguros`, que hoy tiene catálogo de pólizas y nada
-> para el día a día. **Dos cosas a mirar con lupa al planificarla:** el **preflight de presupuesto** del
-> provider real (es una llamada facturable nueva, y la doctrina de este proyecto es abortar de más antes
-> que gastar de más) y el **parsing de formato libre** — un LLM interpretando columnas arbitrarias es
-> justo donde un test que prueba la implementación en vez del contrato se ve verde sin probar nada.
+> plan de 9 tareas ejecutado entero
+> ([`2026-09-12-comparativas-seguros.md`](../superpowers/plans/2026-09-12-comparativas-seguros.md)) en
+> `feature/comparativas-seguros`, en la última ronda de revisión antes del merge — detalle completo en
+> el resumen ejecutivo de `09-estado-y-roadmap.md`. Le da herramienta operativa a la vertical
+> `correduria_seguros`, que hasta ahora tenía catálogo de pólizas y nada para el día a día. Las dos
+> cosas que se miraron con lupa al planificarla salieron bien: el **preflight de presupuesto** del
+> provider real aborta ANTES de llamar a OpenAI si la estimación supera `MAX_COSTO_USD`, fijado por
+> test; y el **parsing de formato libre** —un LLM interpretando columnas arbitrarias es justo donde un
+> test que prueba la implementación en vez del contrato se ve verde sin probar nada— quedó cubierto por
+> el contrato que sí se puede fijar sin credenciales: el provider rechaza la comparativa ENTERA ante una
+> opción sin aseguradora, sin prima o con prima ≤ 0, nunca guarda una a medias.
 >
 > **La cola, sin orden fijado todavía:** el botón «Editar la web» que firme el preview al vuelo (retira
 > la URL de larga duración del space, eslabón débil de OBS-04) · invalidar el `nonce` del `state` de

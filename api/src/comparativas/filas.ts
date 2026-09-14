@@ -32,7 +32,14 @@ export type Filas = string[][];
 /** Filas máximas que acepta una comparativa. Encima de esto, `validarFilas` rechaza. */
 export const MAX_FILAS = 200;
 
-/** Bytes máximos del texto de entrada, antes de parsear. Lo aplica quien lee el CSV (Task 3/7). */
+/**
+ * Bytes máximos del texto de entrada, antes de parsear. HOY solo lo aplica `sheet.ts` (Task 3, la
+ * descarga del Sheet) -- el camino `filas` del `POST` (Task 6/7, filas ya parseadas por el portal) NO
+ * lo aplica. Se acepta así en v1: en modo `openai` el preflight de gasto del provider ya limita el
+ * costo de un body enorme, y el modo `mock` (el default) no gasta dinero real aunque no tenga ese
+ * respaldo. Si se agrega el tope al camino `filas`, hacerlo en `api/src/app.ts` antes del paso 4
+ * (el provider) -- no acá, este módulo no conoce HTTP.
+ */
 export const MAX_BYTES_ENTRADA = 512 * 1024;
 
 /**
@@ -133,9 +140,10 @@ export function parsearCsv(texto: string): Filas {
 }
 
 /**
- * Aplica el tope de `MAX_FILAS` sobre filas ya parseadas. El tope de `MAX_BYTES_ENTRADA` se aplica
- * antes, sobre el texto crudo (quien llama a `parsearCsv` lo mide ahí) — acá ya no hay bytes, hay
- * filas.
+ * Aplica el tope de `MAX_FILAS` sobre filas ya parseadas. El tope de `MAX_BYTES_ENTRADA` es un tope
+ * distinto, sobre el texto crudo ANTES de parsear -- HOY solo `sheet.ts` lo aplica (ver el comentario
+ * de `MAX_BYTES_ENTRADA` más arriba); el camino `filas` del `POST` llega directo a esta función sin
+ * pasar por ningún tope de bytes. Acá ya no hay bytes que medir, hay filas.
  */
 export function validarFilas(filas: Filas): { ok: true; filas: Filas } | { ok: false; motivo: string } {
   if (filas.length > MAX_FILAS) {

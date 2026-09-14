@@ -799,9 +799,20 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       return c.json({ error: "Se requiere clienteFinalNombre (texto no vacío)." }, 400);
     }
     const clienteFinalNombre = b["clienteFinalNombre"];
+    // Mismos topes que la constraint de la tabla (`db/migrations/0033_comparativas_seguros.sql:19-20`:
+    // `cliente_final_nombre` 1-200, `cliente_final_email` <=320) -- repetidos acá A PROPÓSITO, para
+    // rechazar ANTES de gastar la llamada al provider en vez de dejar que el 23514 del insert lo haga
+    // (lo barato y lo que no gasta van PRIMERO, ver el comentario de más arriba). Si cambia el tope de
+    // la migración, este literal se desincroniza en silencio -- de ahí la cita explícita.
+    if (clienteFinalNombre.length > 200) {
+      return c.json({ error: "clienteFinalNombre no puede superar los 200 caracteres." }, 400);
+    }
     const emailRaw = b["clienteFinalEmail"];
     if (emailRaw !== undefined && emailRaw !== null && typeof emailRaw !== "string") {
       return c.json({ error: "clienteFinalEmail debe ser texto o null." }, 400);
+    }
+    if (typeof emailRaw === "string" && emailRaw.length > 320) {
+      return c.json({ error: "clienteFinalEmail no puede superar los 320 caracteres." }, 400);
     }
     const clienteFinalEmail = typeof emailRaw === "string" ? emailRaw : null;
 
@@ -900,10 +911,12 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
 
   /**
    * POST /clients/:id/comparativas-seguros/:cid/revisar — cierra el gate. IDEMPOTENTE: si ya estaba
-   * revisada, no vuelve a escribir. `PgComparativasSeguros.marcarRevisada` no lleva un `where
-   * revisado_en is null` (v1 no lo necesitaba: nada más lo llamaba dos veces), así que un segundo
-   * `revisar` de otra persona PISARÍA `revisado_por` si este handler llamara al store sin mirar antes.
-   * La lectura previa es lo que deja fijo quién revisó primero.
+   * revisada, no vuelve a escribir. La garantía real la impone el `where revisado_en is null` del
+   * `update` de `PgComparativasSeguros.marcarRevisada` (`db/src/comparativas-seguros.ts`): una segunda
+   * llamada concurrente afecta 0 filas y devuelve `false`, así que NO pisa `revisado_por` aunque la
+   * lectura previa de este handler y el `update` corran en transacciones separadas y se entrelacen.
+   * La lectura previa de acá es solo un atajo para devolver 200 rápido cuando ya está revisada -- no
+   * es lo que evita la carrera.
    */
   app.post("/clients/:id/comparativas-seguros/:cid/revisar", async (c) => {
     const ctx = c.get("ctx");

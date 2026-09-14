@@ -161,6 +161,20 @@ test("🔴 el rol `cliente` NO puede crear", async () => {
   await assert.rejects(() => comparativas.crear(ctxClienteA, s.clientA1, DATOS));
 });
 
+test("🔴 el rol `cliente` NO puede marcarRevisada (el gate de revisión es solo de staff)", async () => {
+  const id = await comparativas.crear(ctxA, s.clientA1, DATOS);
+
+  const ok = await comparativas.marcarRevisada(ctxClienteA, s.clientA1, id);
+  assert.equal(ok, false, "app.puede_escribir() lo niega: 0 filas afectadas, no una excepción");
+
+  // No basta con el booleano: si la política estuviera en el `with check` en vez de en el `using`,
+  // el update podría lanzar 42501 en vez de afectar 0 filas -- pero lo que de verdad importa acá es
+  // que la fila NO haya cambiado, releída con un ctx que SÍ puede verla.
+  const c = await comparativas.obtener(ctxA, s.clientA1, id);
+  assert.equal(c!.revisadoEn, null, "revisado_en sigue en null: el cliente no cerró el gate");
+  assert.equal(c!.revisadoPor, null);
+});
+
 test("🔴 revisar NO puede corregir: app_user no tiene grant sobre informe_md", async () => {
   const id = await comparativas.crear(ctxA, s.clientA1, DATOS);
   await assert.rejects(
