@@ -60,9 +60,10 @@ export interface ConfigApi {
    * valor presente que no sea `mock`/`openai` hace fallar el arranque. El default `mock` es el que
    * evita que un despliegue sin configurar gaste dinero real en OpenAI por accidente — y el mock ya
    * marca como mock el informe y el mail (asunto y cuerpo), así que nadie lo confunde con un
-   * entregable real. `OPENAI_API_KEY` todavía no llega al `.env` de `api/` (ver el informe de la
-   * Task 5 del plan) — hasta que llegue, `COMPARATIVAS_MODO=openai` en producción construiría un
-   * cliente sin credencial, que fallaría recién al llamar, no al arrancar.
+   * entregable real. `OPENAI_API_KEY`/`OPENAI_MODEL` ya llegan al `.env` de `api/` vía `MAPA` en
+   * `scripts/env-sync.mts` — pero si `OPENAI_API_KEY` queda vacía igual, `COMPARATIVAS_MODO=openai`
+   * arranca igual (el SDK de OpenAI no lanza con `apiKey: ""`, solo con `undefined`) y falla recién
+   * al llamar, no al arrancar.
    */
   modoComparativas: ModoComparativas;
   /**
