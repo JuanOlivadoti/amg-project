@@ -63,6 +63,7 @@ import { hojaAFilas } from '../../core/hoja-a-filas';
             <div>
               <label class="block text-sm font-medium text-texto mb-2">Archivo (.csv o .xlsx)</label>
               <input
+                #archivoInput
                 type="file"
                 accept=".csv,.xlsx"
                 (change)="seleccionarArchivo($any($event.target).files?.[0])"
@@ -85,7 +86,7 @@ import { hojaAFilas } from '../../core/hoja-a-filas';
                 type="url"
                 placeholder="https://docs.google.com/spreadsheets/d/..."
                 [value]="googleSheetUrl()"
-                (input)="seleccionarGoogleSheetUrl($any($event.target).value)"
+                (input)="seleccionarGoogleSheetUrl($any($event.target).value, archivoInput)"
                 class="w-full rounded-md border border-borde bg-fondo p-2 text-sm text-texto"
               />
             </div>
@@ -134,11 +135,23 @@ export class ComparativasFormPage implements OnInit {
     }
   }
 
-  /** Camino inverso de `seleccionarArchivo`: el XOR es simétrico, la limpieza también. */
-  seleccionarGoogleSheetUrl(valor: string): void {
+  /**
+   * Camino inverso de `seleccionarArchivo`: el XOR es simétrico, la limpieza también. `inputArchivo`
+   * es el `<input type="file">` nativo (pasado desde el template, no vía `@ViewChild` -- un
+   * decorador de campo estándar rompe el `node:test` cruzado de `app.routes.test.ts`, que importa
+   * este archivo fuera del compilador de Angular, con "Standard Angular field decorators are not
+   * supported in JIT mode"). Sin resetear `inputArchivo.value`, el `<input>` recuerda su archivo
+   * elegido en el DOM aunque el signal se limpie, así que el botón seguía mostrando el nombre del
+   * archivo viejo aunque ya no contara para el envío (visto manejando la app en el navegador, ningún
+   * test lo cubría).
+   */
+  seleccionarGoogleSheetUrl(valor: string, inputArchivo?: HTMLInputElement): void {
     this.googleSheetUrl.set(valor);
     if (valor.trim() !== '') {
       this.archivoSeleccionado.set(null); // Limpiar el archivo si había
+      if (inputArchivo) {
+        inputArchivo.value = '';
+      }
       this.error.set('');
     }
   }

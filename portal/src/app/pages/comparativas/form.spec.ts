@@ -198,6 +198,25 @@ describe('ComparativasFormPage', () => {
     expect(component.googleSheetUrl()).toBe('https://docs.google.com/spreadsheets/d/1abc');
   });
 
+  it('🔴 escribir un link de Google Sheet también resetea el <input type="file"> nativo, no solo el signal', () => {
+    const { fixture } = crear();
+    const component = fixture.componentInstance;
+    const input: HTMLInputElement = fixture.nativeElement.querySelector('input[type="file"]');
+
+    // Un `<input type="file">` solo acepta que JS asigne un archivo REAL vía `DataTransfer` (o la
+    // cadena vacía) -- asignar una ruta a mano tira `InvalidStateError`. `DataTransfer` es lo que un
+    // navegador real usa al elegir un archivo, así que reproduce fielmente el "input ya tiene un
+    // archivo" que el fix tiene que limpiar.
+    const dt = new DataTransfer();
+    dt.items.add(new File(['a,b'], 'datos.csv', { type: 'text/csv' }));
+    input.files = dt.files;
+    expect(input.value).not.toBe('');
+
+    component.seleccionarGoogleSheetUrl('https://docs.google.com/spreadsheets/d/1abc', input);
+
+    expect(input.value).toBe('');
+  });
+
   it('escribir un valor vacío en el link NO limpia el archivo seleccionado', () => {
     const { fixture } = crear();
     const component = fixture.componentInstance;
