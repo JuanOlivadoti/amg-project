@@ -5,6 +5,7 @@ import type {
   CambiosPagina,
   CambiosPost,
   ClienteAgencia,
+  ComparativaSeguros,
   Contenido,
   EstadoIdea,
   IdeaDetalle,
@@ -355,6 +356,48 @@ export interface ClienteApi {
   /** Reemplaza el contenido completo. Mismo criterio que `guardarMenu`/`actualizarPerfilSeguros`:
    *  manda SIEMPRE las tres claves juntas — el servidor no hace merge parcial de campo por campo. */
   actualizarContenido(clientId: string, datos: Contenido): Promise<void>;
+
+  /**
+   * Crea una nueva comparativa de seguros a partir de un archivo CSV/XLSX o un Google Sheet.
+   * El body trae EXACTAMENTE una de dos formas:
+   * - `{ filas: string[][], clienteFinalNombre, clienteFinalEmail? }` (filas ya parseadas)
+   * - `{ googleSheetUrl: string, clienteFinalNombre, clienteFinalEmail? }` (URL del Sheet)
+   *
+   * Devuelve la comparativa creada con su `id`.
+   * Lanza con código 400 si el input es inválido, 409 si el cliente no es de correduría,
+   * o 422 si el provider de IA se negó a generar.
+   */
+  crearComparativa(
+    clientId: string,
+    cuerpo:
+      | {
+          filas: string[][];
+          clienteFinalNombre: string;
+          clienteFinalEmail?: string | null;
+        }
+      | {
+          googleSheetUrl: string;
+          clienteFinalNombre: string;
+          clienteFinalEmail?: string | null;
+        },
+  ): Promise<ComparativaSeguros>;
+
+  /**
+   * Lista las comparativas de seguros de un cliente (historial, más nueva primero).
+   */
+  listarComparativas(clientId: string): Promise<ComparativaSeguros[]>;
+
+  /**
+   * Obtiene una comparativa de seguros en detalle. `null` en 404 — que unifica
+   * "no existe", "es de otro tenant" y "no la puede ver" — para que la pantalla
+   * pueda mostrar "no encontrada" sin envolver cada llamado en un `try/catch`.
+   */
+  obtenerComparativa(clientId: string, id: string): Promise<ComparativaSeguros | null>;
+
+  /**
+   * Marca una comparativa como revisada. IDEMPOTENTE: si ya estaba revisada, no vuelve a escribir.
+   */
+  revisarComparativa(clientId: string, id: string): Promise<void>;
 }
 
 export function crearApi(opts: ApiOpts): ClienteApi {
@@ -657,6 +700,39 @@ export function crearApi(opts: ApiOpts): ClienteApi {
     },
     async actualizarContenido(clientId, datos) {
       await pedir('PATCH', `/clients/${encodeURIComponent(clientId)}/contenido`, datos);
+    },
+    async crearComparativa(clientId, cuerpo) {
+      const { id, ...comparativa } = await pedir<ComparativaSeguros & { id: string }>(
+        'POST',
+        `/clients/${encodeURIComponent(clientId)}/comparativas-seguros`,
+        cuerpo,
+      );
+      return { id, ...comparativa };
+    },
+    async listarComparativas(clientId) {
+      const { comparativas } = await pedir<{ comparativas: ComparativaSeguros[] }>(
+        'GET',
+        `/clients/${encodeURIComponent(clientId)}/comparativas-seguros`,
+      );
+      return comparativas;
+    },
+    async obtenerComparativa(clientId, id) {
+      try {
+        const { comparativa } = await pedir<{ comparativa: ComparativaSeguros }>(
+          'GET',
+          `/clients/${encodeURIComponent(clientId)}/comparativas-seguros/${encodeURIComponent(id)}`,
+        );
+        return comparativa;
+      } catch (e) {
+        if ((e as ApiError).status === 404) return null;
+        throw e;
+      }
+    },
+    async revisarComparativa(clientId, id) {
+      await pedir(
+        'POST',
+        `/clients/${encodeURIComponent(clientId)}/comparativas-seguros/${encodeURIComponent(id)}/revisar`,
+      );
     },
   };
 }
