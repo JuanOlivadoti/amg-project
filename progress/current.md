@@ -52,6 +52,7 @@ app en un navegador, actualizar `09`/`15`, y el merge.
 | 9 | Resultado + gate + historial + tab + rutas | `f3d1399` ✅ revisada |
 | — | Ronda de fixes antes del merge (carrera de `revisar`, prima ≤0, menores del portal) | `70dcf27` |
 | — | `OPENAI_API_KEY`/`OPENAI_MODEL`/`COMPARATIVAS_MODO` reparten hacia `api/` | `98cd8c1` |
+| — | Fix: el `<input type="file">` nativo no se limpiaba visualmente en el XOR (hallado en el navegador) | `8e8d4c6` |
 
 Los 18 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
 
@@ -66,19 +67,42 @@ actualiza. Las 9 tareas y la ronda de fixes están commiteadas y verificadas jun
    `98cd8c1`, `env-sync.test.mts` 21/21). Queda **pendiente y cuesta dinero — la corre Juan o la
    autoriza, no se corre sola:** calibrar la proporción caracteres/token del preflight de gasto contra
    una corrida real de OpenAI.
-2. **Cierre del plan:**
-   - Review final de rama con el modelo más capaz disponible (a diferencia de las revisiones por
-     tarea, esta se lo merece — así lo pide la skill `subagent-driven-development`).
-   - Manejar la app en un navegador real con el provider mock (MCP chrome-devtools): subir un CSV y un
-     `.xlsx`, probar el link de Google Sheet, revisar una comparativa, confirmar el gate, probar
-     "Copiar mail" e "Imprimir", navegar desde el historial. Esto es lo que ningún test ve.
-   - `bash ./scripts/verificar.sh --con-portal` + Karma otra vez, ya sobre el estado final (el último
-     verde conocido es de ANTES de la review final y del manejo en navegador — si algo cambia, re-correr).
+2. ✅ **Manejada la app en un navegador real** (MCP chrome-devtools, provider mock, `api/dev-server.ts`
+   + `portal/npm start` corriendo en local): creé un cliente nuevo con vertical `correduria_seguros`
+   (no había ninguno en el seed de `dev-server.ts`), subí un CSV, generé la comparativa, probé el gate
+   (botones deshabilitados hasta revisar, re-lectura real del servidor), "Copiar mail" (confirmado con
+   `navigator.clipboard.read()`: escribe `text/plain` Y `text/html`, los dos con el prefijo mock),
+   "Imprimir" (dispara `window.print()`, sin errores), navegación desde el historial (el nombre del
+   revisor resuelve bien, no un UUID — confirma el fix de Task 9). **Encontré y arreglé un bug real**
+   (commit `8e8d4c6`): el `<input type="file">` nativo no se limpiaba visualmente al escribir un link
+   de Google Sheet — el fix de la ronda pre-merge solo limpiaba el signal, no el DOM. Con test nuevo y
+   mutación confirmada.
+   - **Observación, NO es un bug:** el provider mock (`api/src/comparativas/mock-provider.ts:73-82`)
+     mapea CADA fila a una opción sin saltar un posible encabezado — si el CSV de prueba trae una fila
+     de encabezados (`aseguradora,producto,prima,...`), el mock genera una opción fantasma con esas
+     palabras como si fueran datos. Es coherente con la doctrina del módulo (`filas.ts:1-13`: el
+     formato es LIBRE, ninguna correduría tiene que traer encabezado, e interpretar el contenido es
+     trabajo del provider de LLM, no del parser) — el provider REAL reconocería un encabezado por ser
+     un LLM; el mock, al ser determinista y tonto, no puede. Documentado acá para que no se confunda
+     con un bug la próxima vez que alguien pruebe con un CSV que trae encabezado.
+3. **Cierre del plan, lo que falta:**
+   - Review final de rama con el modelo más capaz disponible — **ya despachada** (agente `revisor`,
+     `opus`, en curso al momento de escribir esto; base `main` (`8f666dd`), HEAD `e337405` — el review
+     package no incluye los commits `98cd8c1`/`e337405` de env-sync ni `8e8d4c6` del fix del input de
+     archivo porque son posteriores al despacho; si la revisión ya volvió, re-generar el paquete con
+     `review-package main HEAD` para cubrir todo antes de dar la rama por cerrada).
+   - `bash ./scripts/verificar.sh --con-portal` + Karma una vez más, sobre el HEAD final (después de
+     `8e8d4c6`) — el último verde conocido (357/357, 306/306, typecheck limpio) ya es post-fix, pero
+     conviene una corrida más después de leer el veredicto de la review final.
    - Actualizar `docs/proyecto/09-estado-y-roadmap.md` y `docs/proyecto/15-plan-plataforma.md` (el
      ritual de `AGENTS.md`, paso 3).
    - Mencionarle a Juan el riesgo de bus-factor de `read-excel-file` (toda la cadena de dependencias
      depende de una sola cuenta de npm).
    - Merge a `main` con `--no-ff`. Push a `main`.
+   - **Dejar corriendo o apagar:** quedaron dos procesos de desarrollo en background para la prueba
+     manual — `npm run dev:server -w api` (puerto 3000, PGlite en memoria) y `npm --prefix portal run
+     start` (puerto 4200). Ninguno de los dos afecta al cierre del plan, pero no hace falta dejarlos
+     vivos después de terminar de manejar la app.
 
 **El ledger manda sobre la memoria**:
 `.superpowers/sdd/2026-09-12-comparativas-seguros/progress.md`. Una tarea marcada `[x]` ahí está hecha —
