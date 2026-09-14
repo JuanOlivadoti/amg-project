@@ -40,7 +40,7 @@ merge una **ronda de fixes** encabezada por la carrera real en `revisar`.
 | — | (progreso, no es tarea) | `8638ca5`, `b4533bb` |
 | 7 | El navegador convierte la hoja | `3f05e23` ✅ revisada |
 | — | (progreso, no es tarea) | `89e0a16`, `f05a8ab` |
-| 8 | Pantalla de carga + `ApiService` | `88ed782` 🔍 **en revisión** (`BASE = f05a8ab`) |
+| 8 | Pantalla de carga + `ApiService` | `88ed782` ✅ revisada |
 
 Los 18 commits de la rama están **sin pushear** (`git log --oneline origin/main..HEAD`): la rama es local.
 
