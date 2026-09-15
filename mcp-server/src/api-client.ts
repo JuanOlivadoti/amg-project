@@ -14,7 +14,7 @@ export interface OpcionesApi {
 export type ResultadoLlamada<T> = { ok: true; datos: T } | { ok: false; mensaje: string };
 
 /** Si falta esto de margen o menos para que venza el access token, se refresca antes de llamar. */
-const MARGEN_REFRESH_MS = 60_000;
+export const MARGEN_REFRESH_MS = 60_000;
 
 const MSG_SIN_SESION = "Sesión no disponible. Corré `npm run mcp:login -w mcp-server`.";
 

@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { llamarApi, type OpcionesApi } from "./api-client.js";
+import { llamarApi, MARGEN_REFRESH_MS, type OpcionesApi } from "./api-client.js";
 import { escribirSesion, type Sesion } from "./session.js";
 
 const SESION_VIVA: Sesion = {
@@ -206,4 +206,51 @@ test("refresh persiste en disco: la próxima llamada ya usa el token nuevo sin r
   await llamarApi({ ...BASE, fetchFn, rutaSesion }, "/clients");
 
   assert.equal(refrescos, 1, "la segunda llamada tiene que leer la sesión YA refrescada del disco");
+});
+
+// Hallazgo del revisor (2026-09-15): MARGEN_REFRESH_MS es un default de producción — sin fijarlo por
+// valor y por comportamiento, un cambio silencioso (60_000 → 6_000) degradaría la UX sin que ningún
+// test lo note. Mismo criterio que TIMEOUT_TOKEN_MS en gotrue.test.ts.
+
+test("MARGEN_REFRESH_MS es 60 segundos", () => {
+  assert.equal(MARGEN_REFRESH_MS, 60_000);
+});
+
+test("en el límite exacto del margen: SÍ refresca (por vencer incluye el borde)", async () => {
+  const ahoraFijo = 1_000_000;
+  const rutaSesion = await conSesion({ ...SESION_VIVA, expiraEn: ahoraFijo + MARGEN_REFRESH_MS });
+  let refresco = false;
+  const fetchFn = (async (url: string | URL) => {
+    if (String(url).includes("/auth/v1/token")) {
+      refresco = true;
+      return json({
+        access_token: "access-refrescado",
+        refresh_token: "refresh-refrescado",
+        expires_in: 3600,
+        user: { id: SESION_VIVA.userId, app_metadata: { tenant_id: SESION_VIVA.tenantId } },
+      });
+    }
+    return json({ clientes: [] });
+  }) as typeof fetch;
+
+  await llamarApi({ ...BASE, fetchFn, rutaSesion, ahora: () => ahoraFijo }, "/clients");
+
+  assert.equal(refresco, true);
+});
+
+test("1ms fuera del margen: NO refresca todavía", async () => {
+  const ahoraFijo = 1_000_000;
+  const rutaSesion = await conSesion({ ...SESION_VIVA, expiraEn: ahoraFijo + MARGEN_REFRESH_MS + 1 });
+  let refresco = false;
+  const fetchFn = (async (url: string | URL) => {
+    if (String(url).includes("/auth/v1/token")) {
+      refresco = true;
+      return json({});
+    }
+    return json({ clientes: [] });
+  }) as typeof fetch;
+
+  await llamarApi({ ...BASE, fetchFn, rutaSesion, ahora: () => ahoraFijo }, "/clients");
+
+  assert.equal(refresco, false);
 });
