@@ -133,6 +133,10 @@ export const CATALOGO: Record<string, Entrada> = {
     familia: "config",
     nota: "COMPARTIDA con kr-service y web-builder (mismo valor, repartido por env:sync) — default gpt-4o-mini si no está declarada",
   },
+  COMPARATIVAS_MODO: {
+    familia: "config",
+    nota: "`mock` | `openai`, opcional (default `mock`): en qué modo genera comparativas de seguros el provider de IA del módulo de correduría (api/src/comparativas)",
+  },
   TELEGRAM_MODO: {
     familia: "config",
     nota: "`mock` | `live`, opcional (default fijo `mock`, no derivado de si hay token: enviar un mensaje de Telegram no cuesta nada): en qué modo se pollea getUpdates/sendMessage (Bloque F, fase 2, alertas por reseñas 1-3★)",

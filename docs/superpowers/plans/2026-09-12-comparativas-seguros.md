@@ -682,9 +682,36 @@ Expected: FAIL
 
 - [ ] **Step 3: implementar**
 
-Para `.csv`, `File.text()` más el mismo algoritmo de Task 2. **Está duplicado a propósito**: `api/` y
-`portal/` no comparten paquete, y el único compartido —`contrato/`— solo depende de `zod`. Escribí el
-puntero cruzado en los dos archivos, para que la deriva se vea en vez de descubrirse.
+Para `.csv`, `File.text()` más el mismo algoritmo de Task 2.
+
+⚠️ **Sí, eso duplica el parser, y la duplicación NO se resuelve con un comentario.** `portal/` está
+fuera del monorepo a propósito (su toolchain no se mezcla), así que no puede importar de `api/` ni de
+`contrato/` en tiempo de build: la duplicación es **forzada**, no una comodidad. Pero este proyecto ya
+tiene su respuesta para ese caso exacto, y hay que usarla — un puntero en un comentario es una
+intención, no una garantía.
+
+**Agregá un test cruzado**, con el mecanismo que ya existe en
+[`contrato/src/una-sola-fuente.test.ts:102-125`](../../contrato/src/una-sola-fuente.test.ts): importar
+el archivo del portal **por ruta, en runtime** (`import(pathToFileURL(RUTA).href)`) y comparar el
+comportamiento de los dos parsers sobre el **mismo cuerpo de casos** — los cuatro de comillas, CRLF y
+la última línea sin salto de Task 2.
+
+```ts
+// api/src/comparativas/filas.test.ts  (o contrato/, donde vive hoy el barrido equivalente)
+test("🔴 el parser del portal y el de la API se comportan IGUAL sobre los mismos casos", async () => {
+  const RUTA = fileURLToPath(new URL("../../../portal/src/app/core/hoja-a-filas.ts", import.meta.url));
+  const { parsearCsvPortal } = (await import(pathToFileURL(RUTA).href)) as {
+    parsearCsvPortal: (t: string) => string[][];
+  };
+  for (const caso of CASOS_CSV) {
+    assert.deepEqual(parsearCsvPortal(caso), parsearCsv(caso), `divergen en: ${JSON.stringify(caso)}`);
+  }
+  assert.ok(CASOS_CSV.length >= 5, "control de no-vacuidad: un barrido de cero casos pasa feliz");
+});
+```
+
+Exportá el parser del portal por nombre (`parsearCsvPortal`) para que el test lo alcance. La mutación
+obligatoria: cambiá **uno solo** de los dos parsers y confirmá que este test cae.
 
 - [ ] **Step 4: verde y mutación.** Run: `npm --prefix portal test`
 

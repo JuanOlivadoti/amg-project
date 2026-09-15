@@ -12,6 +12,7 @@ import type {
   PgIdeas,
   FiltrosIdeas,
   PgResenas,
+  PgComparativasSeguros,
 } from "db";
 import { contenidoPatchSchema, menuPatchSchema, perfilSegurosSchema } from "web-builder/contract";
 import { validarCambiosIdea, serializarResumen, serializarDetalle } from "./ideas-http.js";
@@ -22,6 +23,9 @@ import { firmarEstado, verificarEstado, type EstadoOAuth } from "./oauth-state.j
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
 import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from "./codigos.js";
+import type { LlmComparativaProvider } from "./comparativas/provider.js";
+import { parsearCsv, validarFilas } from "./comparativas/filas.js";
+import { bajarSheet, type FetchLike } from "./comparativas/sheet.js";
 
 /**
  * Todo lo que la API necesita, INYECTADO. Ni el store, ni el emisor, ni la verificación del token se
@@ -47,6 +51,25 @@ export interface ApiDeps {
    * `db/src/resenas.ts`.
    */
   resenas: PgResenas;
+  /**
+   * Comparativas de seguros (módulo de correduría, migración 0033). Sin parámetro de rol, como
+   * `ideas`/`resenas`: no hay ningún cruce de tenants sobre esta tabla, así que `app_user` alcanza —
+   * ver `db/src/comparativas-seguros.ts`.
+   */
+  comparativasSeguros: PgComparativasSeguros;
+  /**
+   * El provider de LLM YA CONSTRUIDO (mock u OpenAI, según `COMPARATIVAS_MODO`) — `app.ts` NO lee
+   * `process.env`, eso es solo de `deps.ts`, mismo criterio que `conectarGoogleBloqueado` de abajo.
+   */
+  comparativas: LlmComparativaProvider;
+  /**
+   * `fetch` inyectable para la descarga del Google Sheet (`bajarSheet`, `comparativas/sheet.ts`).
+   * `undefined` (el default en producción) deja que `bajarSheet` use el `fetch` global, que sale a la
+   * red de verdad. Existe SOLO para que los tests de `POST /clients/:id/comparativas-seguros` puedan
+   * simular una descarga sin salir a Internet — mismo criterio que `deps.fetch` dentro de `sheet.ts`,
+   * un nivel más arriba.
+   */
+  sheetFetch?: FetchLike;
   /** Conexión OAuth con Google (mock/live) — ver `google-oauth.ts`. Bloque F fase 1 es mock-first. */
   googleOAuth: GoogleOAuthProvider;
   /**
@@ -731,6 +754,181 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     return ok ? c.json({ ok: true }) : c.json({ error: "Cliente no encontrado." }, 404);
   });
 
+  /*
+   * Los cuatro endpoints de COMPARATIVAS DE SEGUROS (módulo de correduría, migración 0033).
+   *
+   * El orden del POST es DELIBERADO, no solo estilístico: lo barato y lo que no gasta van PRIMERO.
+   *  1) forma del body (400, sin tocar la base ni la red);
+   *  2) el cliente tiene que ser `correduria_seguros` (409, ANTES de bajar el Sheet o llamar al LLM —
+   *     no se gasta dinero ni ancho de banda por un cliente equivocado);
+   *  3) conseguir las filas, del Sheet o directas (400 si fallan);
+   *  4) el provider de IA (422 si se niega a generar);
+   *  5) SOLO si el provider devolvió bien, se inserta la fila.
+   * `crear` es el ÚLTIMO paso, no el primero: ninguno de los pasos 1-4 puede dejar una fila a medias.
+   *
+   * `creado_por` NUNCA sale del body: `PgComparativasSeguros.crear` lo toma de `ctx.userId`
+   * (`db/src/comparativas-seguros.ts`) — un body que traiga `creado_por` no tiene ni por dónde
+   * entrar, mismo criterio que `tenant_id`/`rol` en el resto de este archivo.
+   *
+   * Los fallos de ENTRADA (CSV malformado, demasiadas filas, Sheet no compartido) y los del PROVIDER
+   * (presupuesto, confianza baja, opción sin datos) se atrapan ACÁ, no en `onError`: son errores de
+   * DOMINIO de este módulo, no los `code` de Postgres que ese handler mapea. Ninguno es un 500, y en
+   * ninguno de los dos queda una fila escrita.
+   */
+
+  /**
+   * POST /clients/:id/comparativas-seguros — genera una comparativa nueva.
+   *
+   * El body trae EXACTAMENTE una de dos formas: `filas` (array de arrays de texto, ya parseado por
+   * quien llama — el portal duplica `parsearCsv` del lado del navegador, Task 7) o `googleSheetUrl`
+   * (un link que el SERVIDOR baja, porque el navegador no puede: Google no manda
+   * `Access-Control-Allow-Origin` en el export CSV). Las dos juntas, o ninguna, son 400 — la
+   * ambigüedad no se resuelve *eligiendo* una.
+   */
+  app.post("/clients/:id/comparativas-seguros", async (c) => {
+    const ctx = c.get("ctx");
+    const clientId = c.req.param("id");
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return c.json({ error: "Body inválido." }, 400);
+    }
+    const b = body as Record<string, unknown>;
+
+    // --- 1. Forma del body. --------------------------------------------------------------------------
+    if (typeof b["clienteFinalNombre"] !== "string" || b["clienteFinalNombre"].trim() === "") {
+      return c.json({ error: "Se requiere clienteFinalNombre (texto no vacío)." }, 400);
+    }
+    const clienteFinalNombre = b["clienteFinalNombre"];
+    // Mismos topes que la constraint de la tabla (`db/migrations/0033_comparativas_seguros.sql:19-20`:
+    // `cliente_final_nombre` 1-200, `cliente_final_email` <=320) -- repetidos acá A PROPÓSITO, para
+    // rechazar ANTES de gastar la llamada al provider en vez de dejar que el 23514 del insert lo haga
+    // (lo barato y lo que no gasta van PRIMERO, ver el comentario de más arriba). Si cambia el tope de
+    // la migración, este literal se desincroniza en silencio -- de ahí la cita explícita.
+    if (clienteFinalNombre.length > 200) {
+      return c.json({ error: "clienteFinalNombre no puede superar los 200 caracteres." }, 400);
+    }
+    const emailRaw = b["clienteFinalEmail"];
+    if (emailRaw !== undefined && emailRaw !== null && typeof emailRaw !== "string") {
+      return c.json({ error: "clienteFinalEmail debe ser texto o null." }, 400);
+    }
+    if (typeof emailRaw === "string" && emailRaw.length > 320) {
+      return c.json({ error: "clienteFinalEmail no puede superar los 320 caracteres." }, 400);
+    }
+    const clienteFinalEmail = typeof emailRaw === "string" ? emailRaw : null;
+
+    const tieneFilas = b["filas"] !== undefined;
+    const tieneSheet = b["googleSheetUrl"] !== undefined;
+    // La ambigüedad (las dos, o ninguna) es 400 y no se resuelve prefiriendo una: mandar las dos a la
+    // vez casi siempre es un bug de quien llama, no una preferencia que haya que adivinar.
+    if (tieneFilas === tieneSheet) {
+      return c.json(
+        { error: "Se requiere exactamente uno de filas o googleSheetUrl, no las dos ni ninguna." },
+        400,
+      );
+    }
+    if (tieneFilas && !esFilas(b["filas"])) {
+      return c.json({ error: "filas debe ser un array de arrays de texto." }, 400);
+    }
+    if (tieneSheet && typeof b["googleSheetUrl"] !== "string") {
+      return c.json({ error: "googleSheetUrl debe ser texto." }, 400);
+    }
+
+    // --- 2. El gate de vertical, ANTES de bajar nada y de llamar al provider. --------------------------
+    const cliente = await deps.clientes.obtenerCliente(ctx, clientId);
+    if (!cliente) return c.json({ error: "Cliente no encontrado." }, 404);
+    if (cliente.vertical !== "correduria_seguros") {
+      return c.json(
+        { error: "Este cliente no es de correduría de seguros: el módulo de comparativas no aplica." },
+        409,
+      );
+    }
+
+    // --- 3. Conseguir las filas. ------------------------------------------------------------------------
+    let filas: string[][];
+    if (tieneFilas) {
+      const validado = validarFilas(b["filas"] as string[][]);
+      if (!validado.ok) return c.json({ error: validado.motivo }, 400);
+      filas = validado.filas;
+    } else {
+      const bajado = await bajarSheet(
+        b["googleSheetUrl"] as string,
+        deps.sheetFetch ? { fetch: deps.sheetFetch } : {},
+      );
+      if (!bajado.ok) return c.json({ error: bajado.motivo }, 400);
+      let filasCrudas: string[][];
+      try {
+        filasCrudas = parsearCsv(bajado.csv);
+      } catch (e) {
+        // `parsearCsv` LANZA ante una comilla sin cerrar: quien llama (acá) decide que eso es un 400
+        // del cliente, no un 500 — el parser no sabe de HTTP.
+        return c.json({ error: (e as Error).message }, 400);
+      }
+      const validado = validarFilas(filasCrudas);
+      if (!validado.ok) return c.json({ error: validado.motivo }, 400);
+      filas = validado.filas;
+    }
+
+    // --- 4. El provider de IA. Se atrapa ACÁ: el mensaje del provider llega tal cual, porque quien
+    // sube la hoja necesita saber por qué no salió (preflight de gasto, confianza baja, opción sin
+    // datos — ver `openai-provider.ts`). ------------------------------------------------------------
+    let generado;
+    try {
+      generado = await deps.comparativas.generar(filas, clienteFinalNombre);
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 422);
+    }
+
+    // --- 5. SOLO si el provider devolvió bien, se escribe. `creado_por` sale de `ctx.userId` DENTRO
+    // de `crear` — nunca de este body. ---------------------------------------------------------------
+    const id = await deps.comparativasSeguros.crear(ctx, clientId, {
+      clienteFinalNombre,
+      clienteFinalEmail,
+      opciones: generado.opciones,
+      recomendacion: generado.recomendacion,
+      informeMd: generado.informeMd,
+      mailAsunto: generado.mailAsunto,
+      mailCuerpoMd: generado.mailCuerpoMd,
+      costoUsd: generado.costoUsd,
+    });
+    const comparativa = await deps.comparativasSeguros.obtener(ctx, clientId, id);
+    return c.json({ id, ...comparativa }, 201);
+  });
+
+  /** GET /clients/:id/comparativas-seguros — el historial, más nueva primero (ya lo ordena el store). */
+  app.get("/clients/:id/comparativas-seguros", async (c) => {
+    const ctx = c.get("ctx");
+    const comparativas = await deps.comparativasSeguros.listarPorCliente(ctx, c.req.param("id"));
+    return c.json({ comparativas });
+  });
+
+  /** GET /clients/:id/comparativas-seguros/:cid — una comparativa. 404 si no existe o es de otro tenant. */
+  app.get("/clients/:id/comparativas-seguros/:cid", async (c) => {
+    const ctx = c.get("ctx");
+    const comparativa = await deps.comparativasSeguros.obtener(ctx, c.req.param("id"), c.req.param("cid"));
+    if (!comparativa) return c.json({ error: "Comparativa no encontrada." }, 404);
+    return c.json({ comparativa });
+  });
+
+  /**
+   * POST /clients/:id/comparativas-seguros/:cid/revisar — cierra el gate. IDEMPOTENTE: si ya estaba
+   * revisada, no vuelve a escribir. La garantía real la impone el `where revisado_en is null` del
+   * `update` de `PgComparativasSeguros.marcarRevisada` (`db/src/comparativas-seguros.ts`): una segunda
+   * llamada concurrente afecta 0 filas y devuelve `false`, así que NO pisa `revisado_por` aunque la
+   * lectura previa de este handler y el `update` corran en transacciones separadas y se entrelacen.
+   * La lectura previa de acá es solo un atajo para devolver 200 rápido cuando ya está revisada -- no
+   * es lo que evita la carrera.
+   */
+  app.post("/clients/:id/comparativas-seguros/:cid/revisar", async (c) => {
+    const ctx = c.get("ctx");
+    const clientId = c.req.param("id");
+    const cid = c.req.param("cid");
+    const existente = await deps.comparativasSeguros.obtener(ctx, clientId, cid);
+    if (!existente) return c.json({ error: "Comparativa no encontrada." }, 404);
+    if (existente.revisadoEn) return c.json({ ok: true });
+    const ok = await deps.comparativasSeguros.marcarRevisada(ctx, clientId, cid);
+    return ok ? c.json({ ok: true }) : c.json({ error: "Comparativa no encontrada." }, 404);
+  });
+
   /** POST /clients/:id/archive — archiva (soft-delete). Mismo criterio de 404 que PATCH /clients/:id. */
   app.post("/clients/:id/archive", async (c) => {
     const ctx = c.get("ctx");
@@ -1156,6 +1354,11 @@ function filtrarCambios(body: Record<string, unknown>): CambiosPagina {
 
 function esObjeto(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/** ¿Es un array de arrays de texto? La forma que espera `validarFilas`/`parsearCsv` (`filas.ts`). */
+function esFilas(v: unknown): v is string[][] {
+  return Array.isArray(v) && v.every((fila) => Array.isArray(fila) && fila.every((celda) => typeof celda === "string"));
 }
 
 /**

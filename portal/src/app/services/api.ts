@@ -68,4 +68,9 @@ export class ApiService {
 
   readonly obtenerContenido = this.cliente.obtenerContenido;
   readonly actualizarContenido = this.cliente.actualizarContenido;
+
+  readonly crearComparativa = this.cliente.crearComparativa;
+  readonly listarComparativas = this.cliente.listarComparativas;
+  readonly obtenerComparativa = this.cliente.obtenerComparativa;
+  readonly revisarComparativa = this.cliente.revisarComparativa;
 }

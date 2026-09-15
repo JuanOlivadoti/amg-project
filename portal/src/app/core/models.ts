@@ -524,6 +524,40 @@ export interface Contenido {
   testimonios: Testimonio[];
 }
 
+/**
+ * Una opción de seguro dentro de una comparativa: una cotización de una aseguradora.
+ * Espeja `OpcionSeguro` de `db/src/comparativas-seguros.ts`.
+ */
+export interface OpcionSeguro {
+  aseguradora: string;
+  producto: string;
+  prima: number;
+  cobertura: string;
+  condiciones: string | null;
+  notas: string | null;
+}
+
+/**
+ * Una comparativa de seguros, tal como la devuelve `GET /clients/:id/comparativas-seguros/:cid`.
+ * Espeja `ComparativaSeguros` de `db/src/comparativas-seguros.ts`.
+ */
+export interface ComparativaSeguros {
+  id: string;
+  clientId: string;
+  creadoPor: string;
+  clienteFinalNombre: string;
+  clienteFinalEmail: string | null;
+  opciones: OpcionSeguro[];
+  recomendacion: string;
+  informeMd: string;
+  mailAsunto: string;
+  mailCuerpoMd: string;
+  costoUsd: number;
+  revisadoEn: string | null;
+  revisadoPor: string | null;
+  createdAt: string;
+}
+
 /** La sesión que sostiene el portal: el token que la API verifica + el tenant (coordenada). */
 export interface Sesion {
   accessToken: string;
