@@ -1,9 +1,14 @@
 import type { ResultadoLlamada } from "./api-client.js";
 
-/** La forma que el SDK de MCP espera como respuesta de una tool. */
+/**
+ * La forma que el SDK de MCP espera como respuesta de una tool. El índice `[key: string]: unknown`
+ * no lo usamos nosotros — lo exige el tipo `CallToolResult` del SDK instalado (permite campos extra
+ * como `_meta`), y sin él `tsc` rechaza la asignación aunque en runtime el objeto sea válido.
+ */
 export interface RespuestaMcp {
   content: Array<{ type: "text"; text: string }>;
   isError?: boolean;
+  [key: string]: unknown;
 }
 
 /**
