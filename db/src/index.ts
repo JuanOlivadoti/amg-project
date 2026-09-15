@@ -51,6 +51,9 @@ export type {
 export { PgResenas } from "./resenas.js";
 export type { ResenaGoogle } from "./resenas.js";
 
+export { PgComparativasSeguros } from "./comparativas-seguros.js";
+export type { ComparativaSeguros, DatosComparativa, OpcionSeguro } from "./comparativas-seguros.js";
+
 export { NodePgPool, PglitePool, ejecutorDe } from "./pool.js";
 export type { DbPool, Tx, SqlExecutor, NodePgPoolLike, NodePgClientLike } from "./pool.js";
 

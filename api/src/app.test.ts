@@ -1,7 +1,16 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
-import { aplicarMigraciones, PglitePool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
+import {
+  aplicarMigraciones,
+  PglitePool,
+  PgStore,
+  PgClientes,
+  PgMembresias,
+  PgIdeas,
+  PgResenas,
+  PgComparativasSeguros,
+} from "db";
 import type { TenantContext } from "db";
 import { createApp, CONECTAR_GOOGLE_BLOQUEADO } from "./app.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
@@ -10,6 +19,10 @@ import { TRANSICION_INVALIDA } from "./codigos.js";
 import { MockGoogleOAuthProvider, getGoogleOAuthProvider } from "./google-oauth.js";
 import { firmarEstado, type EstadoOAuth } from "./oauth-state.js";
 import { menuItemSchema, parseProfile } from "web-builder/contract";
+import type { LlmComparativaProvider } from "./comparativas/provider.js";
+import { MockComparativaProvider, PREFIJO_MOCK_COMPARATIVA } from "./comparativas/mock-provider.js";
+import { MAX_FILAS } from "./comparativas/filas.js";
+import type { FetchLike } from "./comparativas/sheet.js";
 
 /** Origen del portal para los tests del callback OAuth (`GET .../google/callback`). */
 const PORTAL_URL_TEST = "http://localhost:4200";
@@ -40,6 +53,8 @@ let clientes: PgClientes;
 let membresias: PgMembresias;
 let ideas: PgIdeas;
 let resenas: PgResenas;
+let comparativasSeguros: PgComparativasSeguros;
+let comparativas: LlmComparativaProvider;
 let eventos: Array<{ name: string; data: Record<string, unknown> }>;
 let app: ReturnType<typeof createApp>;
 
@@ -47,6 +62,7 @@ let app: ReturnType<typeof createApp>;
 let tenantA: string;
 let tenantB: string;
 let clientA1: string;
+let clientSeguros: string; // vertical 'correduria_seguros', en tenantA -- para el módulo de comparativas
 let equipoA: string; // rol equipo en A: puede escribir
 let duenoA1: string; // rol cliente en A, atado a clientA1: SOLO lectura
 let equipoB: string; // rol equipo en B
@@ -73,6 +89,8 @@ beforeEach(async () => {
   membresias = new PgMembresias(pool); // mismo login/rol
   ideas = new PgIdeas(pool); // sin parámetro de rol: la clase fija app_user (0013 no da grants a app_service)
   resenas = new PgResenas(pool); // ídem: app_service no tiene grants sobre resenas_google (0021)
+  comparativasSeguros = new PgComparativasSeguros(pool); // ídem: sin cruce de tenants sobre esta tabla
+  comparativas = new MockComparativaProvider(); // determinista, costo 0 — el provider real es Task 5
   eventos = [];
   const emisor: EmisorEventos = {
     send: async (e) => {
@@ -86,6 +104,8 @@ beforeEach(async () => {
     membresias,
     ideas,
     resenas,
+    comparativasSeguros,
+    comparativas,
     googleOAuth: new MockGoogleOAuthProvider(),
     conectarGoogleBloqueado: false,
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
@@ -106,6 +126,13 @@ beforeEach(async () => {
   [clientA1] = (
     await sql<{ id: string }>(
       "insert into clients (tenant_id, nombre, vertical) values ($1,'Bella Napoli','restauracion') returning id",
+      [tenantA],
+    )
+  ).map((r) => r.id) as [string];
+
+  [clientSeguros] = (
+    await sql<{ id: string }>(
+      "insert into clients (tenant_id, nombre, vertical) values ($1,'Corredores Test','correduria_seguros') returning id",
       [tenantA],
     )
   ).map((r) => r.id) as [string];
@@ -433,6 +460,8 @@ test("🔴 POST /runs: si el evento no se puede emitir, el run NO queda huérfan
     membresias,
     ideas,
     resenas,
+    comparativasSeguros,
+    comparativas,
     googleOAuth: new MockGoogleOAuthProvider(),
     conectarGoogleBloqueado: false,
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
@@ -708,6 +737,8 @@ test("🔴 si emisor.send() falla, la decisión se cierra en 'error' — no qued
     membresias,
     ideas,
     resenas,
+    comparativasSeguros,
+    comparativas,
     googleOAuth: new MockGoogleOAuthProvider(),
     conectarGoogleBloqueado: false,
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
@@ -1667,6 +1698,8 @@ test("🔴 si el verificador no puede comprobar, la API responde 503 y no 401", 
     membresias,
     ideas,
     resenas,
+    comparativasSeguros,
+    comparativas,
     googleOAuth: new MockGoogleOAuthProvider(),
     conectarGoogleBloqueado: false,
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
@@ -1925,6 +1958,8 @@ function appBloqueada(): ReturnType<typeof createApp> {
     membresias,
     ideas,
     resenas,
+    comparativasSeguros,
+    comparativas,
     googleOAuth: new MockGoogleOAuthProvider(),
     conectarGoogleBloqueado: true,
     oauthStateSecret: OAUTH_STATE_SECRET_TEST,
@@ -2308,4 +2343,423 @@ test("🔴 PATCH .../resenas/:id con {publicar:true, vista:true} (dos claves a l
   });
   assert.equal(res.status, 400);
   assert.equal(eventos.length, 0);
+});
+
+// =====================================================================================================
+// Comparativas de seguros (módulo de correduría, migración 0033) — los cuatro endpoints (Task 6).
+//
+// El foco es el ORDEN del POST -- forma del body (400) → el cliente tiene que ser `correduria_seguros`
+// (409, ANTES de bajar el Sheet o llamar al provider) → conseguir las filas (400 si fallan) → el
+// provider (422 si se niega) → SOLO entonces se escribe -- y que ningún paso intermedio deje una fila
+// a medias. `comparativas_seguros` (0033) no tiene rol de servicio: la única garantía de aislamiento es
+// RLS bajo `app_user`, mismo mecanismo que ya prueban `resenas`/`ideas` -- otro tenant da 404, un rol
+// `cliente` no escribe (ADR-20).
+// =====================================================================================================
+
+/** Alias legible: `clientA1` YA es el cliente de vertical `restauracion` sembrado en el `beforeEach`. */
+const clientRestaurante = (): string => clientA1;
+
+const CUERPO_OK = {
+  filas: [
+    ["Mapfre", "Auto Básico", "300", "Terceros", "", ""],
+    ["Allianz", "Auto Plus", "450", "Todo riesgo", "Franquicia 300€", ""],
+  ],
+  clienteFinalNombre: "Juan Pérez",
+};
+
+/** La MISMA app y los MISMOS stores del `beforeEach`, con el provider de comparativas reemplazado. */
+function appConComparativas(provider: LlmComparativaProvider): ReturnType<typeof createApp> {
+  return createApp({
+    store,
+    clientes,
+    membresias,
+    ideas,
+    resenas,
+    comparativasSeguros,
+    comparativas: provider,
+    googleOAuth: new MockGoogleOAuthProvider(),
+    conectarGoogleBloqueado: false,
+    oauthStateSecret: OAUTH_STATE_SECRET_TEST,
+    telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
+    emisor: { send: async () => ({}) },
+    verificar,
+    portalUrl: PORTAL_URL_TEST,
+  });
+}
+
+/** La MISMA app, con `sheetFetch` inyectado -- para probar la descarga del Sheet sin salir a Internet. */
+function appConSheetFetch(fetchFn: FetchLike): ReturnType<typeof createApp> {
+  return createApp({
+    store,
+    clientes,
+    membresias,
+    ideas,
+    resenas,
+    comparativasSeguros,
+    comparativas,
+    sheetFetch: fetchFn,
+    googleOAuth: new MockGoogleOAuthProvider(),
+    conectarGoogleBloqueado: false,
+    oauthStateSecret: OAUTH_STATE_SECRET_TEST,
+    telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
+    emisor: { send: async () => ({}) },
+    verificar,
+    portalUrl: PORTAL_URL_TEST,
+  });
+}
+
+/** Provider que SIEMPRE rechaza con el mensaje dado -- para el 422 y "el mensaje llega tal cual". */
+function comparativaProviderQueLanza(mensaje: string): LlmComparativaProvider {
+  return {
+    generar: async () => {
+      throw new Error(mensaje);
+    },
+  };
+}
+
+/** Igual que `req`, pero contra una app EXPLÍCITA (no la global del `beforeEach`). */
+async function reqA(
+  a: ReturnType<typeof createApp>,
+  method: string,
+  path: string,
+  opts: { user?: string; tenant?: string; body?: unknown } = {},
+): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (opts.user) headers["authorization"] = `Bearer valid:${opts.user}`;
+  if (opts.tenant) headers["x-amg-tenant"] = opts.tenant;
+  if (opts.body !== undefined) headers["content-type"] = "application/json";
+  return a.request(path, {
+    method,
+    headers,
+    ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
+  });
+}
+
+/** Cuenta las filas de `comparativas_seguros` (superusuario): lo que quedó ESCRITO, no lo que respondió la API. */
+async function contarComparativas(): Promise<string> {
+  const filas = await sql<{ n: string }>("select count(*)::text as n from comparativas_seguros");
+  return filas[0]!.n;
+}
+
+/** Crea una comparativa válida como `equipoA`/`tenantA` sobre `clientSeguros`, y devuelve su id. */
+async function crearComoTenantA(): Promise<string> {
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: CUERPO_OK,
+  });
+  assert.equal(res.status, 201, "el control positivo empieza por poder crear la comparativa");
+  const { id } = (await res.json()) as { id: string };
+  return id;
+}
+
+// ------------------------------------------------------------- POST: forma del body y el gate de vertical
+
+test("🔴 409 si el cliente no es correduria_seguros, y NO se crea ninguna fila", async () => {
+  const res = await req("POST", `/clients/${clientRestaurante()}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: CUERPO_OK,
+  });
+  assert.equal(res.status, 409);
+  assert.equal(await contarComparativas(), "0", "el 409 tiene que cortar ANTES de gastar y de escribir");
+});
+
+test("🔴 mandar filas Y googleSheetUrl a la vez es 400: la ambigüedad no se resuelve eligiendo una", async () => {
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { ...CUERPO_OK, googleSheetUrl: "https://docs.google.com/spreadsheets/d/A/edit" },
+  });
+  assert.equal(res.status, 400);
+  assert.equal(await contarComparativas(), "0");
+});
+
+test("🔴 no mandar ni filas ni googleSheetUrl es 400: la ambigüedad tampoco se resuelve con un default", async () => {
+  const { filas: _filas, ...sinFilas } = CUERPO_OK;
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: sinFilas,
+  });
+  assert.equal(res.status, 400);
+});
+
+test("POST sin clienteFinalNombre → 400, y no se crea nada", async () => {
+  const { clienteFinalNombre: _n, ...sinNombre } = CUERPO_OK;
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: sinNombre,
+  });
+  assert.equal(res.status, 400);
+  assert.equal(await contarComparativas(), "0");
+});
+
+test("POST con filas mal formadas (no son array de arrays de texto) → 400", async () => {
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { filas: ["Mapfre", "300"], clienteFinalNombre: "Juan Pérez" },
+  });
+  assert.equal(res.status, 400);
+});
+
+test("POST con más de MAX_FILAS filas → 400, y NO se llama al provider ni se escribe", async () => {
+  const muchas = Array.from({ length: MAX_FILAS + 1 }, (_, i) => [`Aseguradora ${i}`, "Producto", "100"]);
+  let llamadas = 0;
+  const providerQueCuenta: LlmComparativaProvider = {
+    generar: async (filas, clienteFinal) => {
+      llamadas += 1;
+      return new MockComparativaProvider().generar(filas, clienteFinal);
+    },
+  };
+  const app2 = appConComparativas(providerQueCuenta);
+  const res = await reqA(app2, "POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { filas: muchas, clienteFinalNombre: "Juan Pérez" },
+  });
+  assert.equal(res.status, 400);
+  assert.equal(llamadas, 0, "demasiadas filas se corta ANTES de gastar en el provider");
+  assert.equal(await contarComparativas(), "0");
+});
+
+test("🔴 clienteFinalNombre de 201 caracteres → 400 ANTES de llamar al provider (mismo tope que la migración)", async () => {
+  let llamadas = 0;
+  const providerQueCuenta: LlmComparativaProvider = {
+    generar: async (filas, clienteFinal) => {
+      llamadas += 1;
+      return new MockComparativaProvider().generar(filas, clienteFinal);
+    },
+  };
+  const app2 = appConComparativas(providerQueCuenta);
+  const res = await reqA(app2, "POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { ...CUERPO_OK, clienteFinalNombre: "a".repeat(201) },
+  });
+  assert.equal(res.status, 400);
+  assert.equal(llamadas, 0, "un nombre demasiado largo se corta ANTES de gastar en el provider");
+  assert.equal(await contarComparativas(), "0");
+});
+
+test("🔴 clienteFinalEmail de 321 caracteres → 400 ANTES de llamar al provider (mismo tope que la migración)", async () => {
+  let llamadas = 0;
+  const providerQueCuenta: LlmComparativaProvider = {
+    generar: async (filas, clienteFinal) => {
+      llamadas += 1;
+      return new MockComparativaProvider().generar(filas, clienteFinal);
+    },
+  };
+  const app2 = appConComparativas(providerQueCuenta);
+  const emailLargo = `${"a".repeat(309)}@example.com`; // 321 caracteres
+  assert.equal(emailLargo.length, 321);
+  const res = await reqA(app2, "POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { ...CUERPO_OK, clienteFinalEmail: emailLargo },
+  });
+  assert.equal(res.status, 400);
+  assert.equal(llamadas, 0, "un email demasiado largo se corta ANTES de gastar en el provider");
+  assert.equal(await contarComparativas(), "0");
+});
+
+test("POST con cliente inexistente → 404", async () => {
+  const res = await req("POST", `/clients/${crypto.randomUUID()}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: CUERPO_OK,
+  });
+  assert.equal(res.status, 404);
+});
+
+// ------------------------------------------------------------- POST: creado_por, y el camino feliz
+
+test("🔴 creado_por sale del TOKEN, no del body", async () => {
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { ...CUERPO_OK, creado_por: equipoB },
+  });
+  assert.equal(res.status, 201);
+  const [fila] = await sql<{ creado_por: string }>("select creado_por from comparativas_seguros");
+  assert.equal(fila!.creado_por, equipoA);
+});
+
+test("camino feliz con el provider mock: 201, fila creada, revisadoEn null, marcada como mock", async () => {
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: CUERPO_OK,
+  });
+  assert.equal(res.status, 201);
+  const cuerpo = (await res.json()) as Record<string, unknown>;
+  assert.equal(cuerpo["clientId"], clientSeguros);
+  assert.equal(cuerpo["revisadoEn"], null);
+  assert.equal(cuerpo["revisadoPor"], null);
+  assert.ok(typeof cuerpo["informeMd"] === "string" && (cuerpo["informeMd"] as string).includes(PREFIJO_MOCK_COMPARATIVA));
+  assert.ok(typeof cuerpo["mailAsunto"] === "string" && (cuerpo["mailAsunto"] as string).includes(PREFIJO_MOCK_COMPARATIVA));
+  assert.equal(await contarComparativas(), "1");
+});
+
+test("🔴 con rol 'cliente' el POST no escribe (ADR-20: solo lectura) -- RLS lo rechaza con 403, y NO queda fila", async () => {
+  const [duenoSeguros] = await sql<{ user_id: string }>(
+    `insert into memberships (tenant_id, user_id, rol, client_id)
+     values ($1, gen_random_uuid(), 'cliente'::user_role, $2) returning user_id`,
+    [tenantA, clientSeguros],
+  );
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: duenoSeguros!.user_id,
+    tenant: tenantA,
+    body: CUERPO_OK,
+  });
+  assert.equal(res.status, 403);
+  assert.equal(await contarComparativas(), "0", "RLS rechazó el insert: no queda ninguna fila a medias");
+});
+
+// ------------------------------------------------------------- POST: el provider se niega (422)
+
+test("🔴 el provider se niega (preflight/confianza baja/opción sin datos) → 422 con el mensaje tal cual, sin escribir", async () => {
+  const app2 = appConComparativas(
+    comparativaProviderQueLanza("Presupuesto insuficiente para esta comparativa: estimado $5.00, tope $0.10."),
+  );
+  const res = await reqA(app2, "POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: CUERPO_OK,
+  });
+  assert.equal(res.status, 422);
+  const cuerpo = (await res.json()) as { error: string };
+  assert.match(cuerpo.error, /Presupuesto insuficiente/);
+  assert.equal(await contarComparativas(), "0", "el provider rechazado no puede dejar una fila escrita");
+});
+
+// ------------------------------------------------------------- POST: la ruta del Google Sheet
+
+const LINK_SHEET = "https://docs.google.com/spreadsheets/d/abc123/edit";
+
+test("POST con googleSheetUrl: Sheet no compartido (403 de Google) → 400, motivo legible, nada escrito", async () => {
+  const app2 = appConSheetFetch(async () => new Response("", { status: 403 }));
+  const res = await reqA(app2, "POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { googleSheetUrl: LINK_SHEET, clienteFinalNombre: "Juan Pérez" },
+  });
+  assert.equal(res.status, 400);
+  const cuerpo = (await res.json()) as { error: string };
+  assert.match(cuerpo.error, /no está compartido/);
+  assert.equal(await contarComparativas(), "0");
+});
+
+test("🔴 POST con googleSheetUrl: CSV con comilla sin cerrar (parsearCsv lanza) → 400, nada escrito", async () => {
+  const csvMalformado = '"Mapfre,300\nAllianz,450\n';
+  const app2 = appConSheetFetch(async () => new Response(csvMalformado, { status: 200 }));
+  const res = await reqA(app2, "POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { googleSheetUrl: LINK_SHEET, clienteFinalNombre: "Juan Pérez" },
+  });
+  assert.equal(res.status, 400);
+  const cuerpo = (await res.json()) as { error: string };
+  assert.match(cuerpo.error, /comilla sin cerrar/);
+  assert.equal(await contarComparativas(), "0");
+});
+
+test("POST con googleSheetUrl válido: baja, parsea y genera -- 201", async () => {
+  const csvOk = "Mapfre,Auto Básico,300,Terceros,,\nAllianz,Auto Plus,450,Todo riesgo,Franquicia,\n";
+  const app2 = appConSheetFetch(async () => new Response(csvOk, { status: 200 }));
+  const res = await reqA(app2, "POST", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { googleSheetUrl: LINK_SHEET, clienteFinalNombre: "Juan Pérez" },
+  });
+  assert.equal(res.status, 201);
+  assert.equal(await contarComparativas(), "1");
+});
+
+// ------------------------------------------------------------- GET historial / una / revisar
+
+test("GET /clients/:id/comparativas-seguros — el historial de un cliente", async () => {
+  await crearComoTenantA();
+  await crearComoTenantA();
+  const res = await req("GET", `/clients/${clientSeguros}/comparativas-seguros`, {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(res.status, 200);
+  const { comparativas: lista } = (await res.json()) as { comparativas: unknown[] };
+  assert.equal(lista.length, 2);
+});
+
+test("GET /clients/:id/comparativas-seguros/:cid — una comparativa inexistente da 404", async () => {
+  const res = await req("GET", `/clients/${clientSeguros}/comparativas-seguros/${crypto.randomUUID()}`, {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(res.status, 404);
+});
+
+test("🔴 una comparativa de OTRO tenant da 404, no 403", async () => {
+  const id = await crearComoTenantA();
+  const res = await req("GET", `/clients/${clientSeguros}/comparativas-seguros/${id}`, {
+    user: equipoB,
+    tenant: tenantB,
+  });
+  assert.equal(res.status, 404);
+});
+
+test("POST .../revisar cierra el gate: revisadoEn/revisadoPor quedan escritos", async () => {
+  const id = await crearComoTenantA();
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros/${id}/revisar`, {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(res.status, 200);
+  const [fila] = await sql<{ revisado_en: string | null; revisado_por: string | null }>(
+    "select revisado_en, revisado_por from comparativas_seguros where id = $1",
+    [id],
+  );
+  assert.ok(fila!.revisado_en !== null);
+  assert.equal(fila!.revisado_por, equipoA);
+});
+
+test("🔴 POST .../revisar es IDEMPOTENTE: un segundo revisar no pisa quién revisó primero", async () => {
+  const id = await crearComoTenantA();
+  const primero = await req("POST", `/clients/${clientSeguros}/comparativas-seguros/${id}/revisar`, {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(primero.status, 200);
+  const [tras1] = await sql<{ revisado_en: string; revisado_por: string }>(
+    "select revisado_en, revisado_por from comparativas_seguros where id = $1",
+    [id],
+  );
+
+  // Segundo `revisar`, por OTRA persona del mismo tenant -- si pisara, `revisado_por` pasaría a `maestroA`.
+  const segundo = await req("POST", `/clients/${clientSeguros}/comparativas-seguros/${id}/revisar`, {
+    user: maestroA,
+    tenant: tenantA,
+  });
+  assert.equal(segundo.status, 200);
+  const [tras2] = await sql<{ revisado_en: string; revisado_por: string }>(
+    "select revisado_en, revisado_por from comparativas_seguros where id = $1",
+    [id],
+  );
+  assert.equal(tras2!.revisado_por, equipoA, "el segundo revisar NO pisó quién revisó primero");
+  // `revisado_en` viaja como `Date` (timestamptz): comparar por VALOR, no por referencia -- dos
+  // lecturas del mismo instante son objetos `Date` distintos aunque representen lo mismo.
+  assert.equal(
+    new Date(tras2!.revisado_en).getTime(),
+    new Date(tras1!.revisado_en).getTime(),
+    "tampoco pisó el momento de la revisión",
+  );
+});
+
+test("POST .../revisar sobre una comparativa inexistente → 404", async () => {
+  const res = await req("POST", `/clients/${clientSeguros}/comparativas-seguros/${crypto.randomUUID()}/revisar`, {
+    user: equipoA,
+    tenant: tenantA,
+  });
+  assert.equal(res.status, 404);
 });

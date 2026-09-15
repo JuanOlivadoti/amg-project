@@ -117,6 +117,22 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./pages/clientes/cliente-menu-detalle').then((m) => m.ClienteMenuDetallePage),
           },
+          {
+            // El sexto tab (Task 9), solo ofrecido a `correduria_seguros` por `tabsFicha` — ver el
+            // docblock ahí. El historial de comparativas, más nueva primero.
+            path: 'comparativas',
+            loadComponent: () =>
+              import('./pages/comparativas/listado').then((m) => m.ComparativasListadoPage),
+          },
+          {
+            // La pantalla de carga (Task 8), sin tab propio — se llega desde el botón "Nueva
+            // comparativa" del historial. Va DESPUÉS de `comparativas` por legibilidad, mismo
+            // criterio que `menu/:index` después de `menu`: el router no hace prefijo parcial con
+            // una ruta sin hijas.
+            path: 'comparativas/cargar',
+            loadComponent: () =>
+              import('./pages/comparativas/form').then((m) => m.ComparativasFormPage),
+          },
           { path: '', pathMatch: 'full', redirectTo: 'perfil' },
         ],
       },
@@ -140,6 +156,31 @@ export const routes: Routes = [
       // que ya no es lo primero que se ve al entrar.
       { path: '', pathMatch: 'full', redirectTo: 'inicio' },
     ],
+  },
+  {
+    /*
+     * El resultado imprimible de una comparativa de seguros (Task 9) — mismo motivo que el entregable
+     * de arriba: fuera del shell para poder imprimirse (sin sidebar `fixed`, sin `lg:pl-64`), pero con
+     * la URL anidada (`clientes/:id/comparativas/:cid`) para que el enlace sea coherente con el resto
+     * de la ficha. `form.ts` ya navega acá tras crear con éxito (Task 8); esta ruta es lo que hace que
+     * ese destino exista.
+     *
+     * **Va DESPUÉS del shell, y NO antes como el entregable — esto SÍ es load-bearing, medido en el
+     * navegador.** El entregable puede ir antes de `''` porque no hay ningún hijo literal del shell
+     * que choque con su forma. Acá SÍ lo hay: `clientes/:id/comparativas/cargar` (Task 8, hija de la
+     * ficha, dentro del shell) tiene la MISMA forma de cuatro segmentos que esta ruta con `:cid` en el
+     * último — y el Router prueba las rutas del array EN ORDEN y no por especificidad. Puesta antes
+     * del shell, esta ruta capturaba `cargar` como si fuera un `:cid` y montaba `resultado.ts` con
+     * `cid: 'cargar'` en vez de la pantalla de carga — silencioso, sin error de compilación ni en
+     * consola, solo la pantalla equivocada. Puesta DESPUÉS del shell, el Router prueba primero el
+     * hijo literal `comparativas/cargar` (que gana, mismo criterio que `clientes/nuevo` antes que
+     * `clientes/:id`) y solo cae acá para cualquier OTRO valor de `:cid` que ningún hijo del shell
+     * matcheó. Lleva su propio `authGuard` — al salir del shell, deja de heredarlo.
+     */
+    path: 'clientes/:id/comparativas/:cid',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./pages/comparativas/resultado').then((m) => m.ComparativaResultadoPage),
   },
   { path: '**', redirectTo: 'clientes' },
 ];

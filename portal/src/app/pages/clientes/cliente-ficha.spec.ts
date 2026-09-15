@@ -240,6 +240,31 @@ describe('ClienteFichaComponent', () => {
       .withContext('la ruta interna sigue siendo `menu` para los dos verticales — solo cambia la etiqueta')
       .toBe('Pólizas y coberturas');
   });
+
+  it('🔴 el tab "Comparativas" NO aparece para un cliente de restauración', async () => {
+    // Es el gate del tab: si esto no cae al sacar la condición de `tabsFicha`, cualquier cliente de
+    // restauración vería un tab que promete una acción que el servidor rechaza con 409.
+    const { fixture } = crear(clienteDePrueba({ vertical: 'restauracion' }));
+    const el = await estabilizar(fixture);
+    const etiquetas = [...el.querySelectorAll('nav[aria-label="Secciones del cliente"] a')].map((a) =>
+      a.textContent?.trim(),
+    );
+    expect(etiquetas).not.toContain('Comparativas');
+  });
+
+  it('🔴 el tab "Comparativas" SÍ aparece, apuntando a /comparativas, para correduría de seguros', async () => {
+    // `TestBed` no admite dos `crear()` (dos `configureTestingModule` + `createComponent`) en el
+    // mismo `it` — por eso el caso "restauracion" de arriba y éste son dos tests, no uno con dos
+    // aserciones. Juntos cubren la misma garantía que pedía el brief.
+    const { fixture } = crear(clienteDePrueba({ vertical: 'correduria_seguros' }));
+    const el = await estabilizar(fixture);
+    const tabs = [...el.querySelectorAll('nav[aria-label="Secciones del cliente"] a')];
+    const etiquetas = tabs.map((a) => a.textContent?.trim());
+    expect(etiquetas).toContain('Comparativas');
+
+    const tabComparativas = tabs.find((a) => a.textContent?.trim() === 'Comparativas');
+    expect(tabComparativas?.getAttribute('href')).toBe('/clientes/c1/comparativas');
+  });
 });
 
 describe('tabsFicha', () => {
@@ -263,6 +288,18 @@ describe('tabsFicha', () => {
 
   it('los cuatro tabs fijos no cambian con el vertical, y el orden se conserva', () => {
     const tabs = tabsFicha('correduria_seguros');
-    expect(tabs.map((t) => t.ruta)).toEqual(['perfil', 'research', 'resenas', 'ideas', 'menu']);
+    expect(tabs.map((t) => t.ruta)).toEqual([
+      'perfil',
+      'research',
+      'resenas',
+      'ideas',
+      'menu',
+      'comparativas',
+    ]);
+  });
+
+  it('🔴 sin correduria_seguros, no hay tab de comparativas (ni con undefined ni con restauracion)', () => {
+    expect(tabsFicha('restauracion').some((t) => t.ruta === 'comparativas')).toBeFalse();
+    expect(tabsFicha(undefined).some((t) => t.ruta === 'comparativas')).toBeFalse();
   });
 });

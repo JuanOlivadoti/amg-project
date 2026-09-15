@@ -22,12 +22,14 @@ import {
   PgMembresias,
   PgIdeas,
   PgResenas,
+  PgComparativasSeguros,
   sembrarDemo,
   sembrarIdeasDemo,
   IDEAS_DEMO,
 } from "db";
 import { createApp } from "./app.js";
 import { MockGoogleOAuthProvider } from "./google-oauth.js";
+import { MockComparativaProvider } from "./comparativas/mock-provider.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { VerificadorToken } from "./auth.js";
 
@@ -42,6 +44,9 @@ const clientes = new PgClientes(new PglitePool(pg));
 const membresias = new PgMembresias(new PglitePool(pg));
 const ideas = new PgIdeas(new PglitePool(pg));
 const resenas = new PgResenas(new PglitePool(pg));
+const comparativasSeguros = new PgComparativasSeguros(new PglitePool(pg));
+// Mock, siempre acá -- este harness nunca sale a la red ni gasta dinero real (ver el aviso de arriba).
+const comparativas = new MockComparativaProvider();
 
 const sql = async <T = Record<string, unknown>>(q: string, p: unknown[] = []): Promise<T[]> =>
   (await pg.query<T>(q, p)).rows;
@@ -161,6 +166,8 @@ const app = createApp({
   membresias,
   ideas,
   resenas,
+  comparativasSeguros,
+  comparativas,
   googleOAuth: new MockGoogleOAuthProvider(),
   // `false` a propósito: este harness ES el sitio donde el flujo mock tiene que funcionar de punta a
   // punta (conectar → callback → redirect al portal, en un navegador). El guardarraíl que `deps.ts`

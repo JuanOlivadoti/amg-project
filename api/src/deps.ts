@@ -1,4 +1,4 @@
-import { NodePgPool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas } from "db";
+import { NodePgPool, PgStore, PgClientes, PgMembresias, PgIdeas, PgResenas, PgComparativasSeguros } from "db";
 import { Inngest } from "inngest";
 import {
   verificadorDeEmisor,
@@ -7,6 +7,7 @@ import {
   type VerificadorToken,
 } from "./auth.js";
 import { getGoogleOAuthProvider } from "./google-oauth.js";
+import { getComparativaProvider } from "./comparativas/provider.js";
 import type { EmisorEventos } from "./solicitar.js";
 import type { ApiDeps } from "./app.js";
 
@@ -54,6 +55,18 @@ export interface ConfigApi {
    */
   modoResenasGoogle: ModoResenasGoogle;
   /**
+   * `COMPARATIVAS_MODO`, ya validada — mismo botón de operación y mismo criterio de fallo cerrado que
+   * `modoResenasGoogle` arriba: opcional, con default `mock` cuando la variable está AUSENTE, pero un
+   * valor presente que no sea `mock`/`openai` hace fallar el arranque. El default `mock` es el que
+   * evita que un despliegue sin configurar gaste dinero real en OpenAI por accidente — y el mock ya
+   * marca como mock el informe y el mail (asunto y cuerpo), así que nadie lo confunde con un
+   * entregable real. `OPENAI_API_KEY`/`OPENAI_MODEL` ya llegan al `.env` de `api/` vía `MAPA` en
+   * `scripts/env-sync.mts` — pero si `OPENAI_API_KEY` queda vacía igual, `COMPARATIVAS_MODO=openai`
+   * arranca igual (el SDK de OpenAI no lanza con `apiKey: ""`, solo con `undefined`) y falla recién
+   * al llamar, no al arrancar.
+   */
+  modoComparativas: ModoComparativas;
+  /**
    * `@username` del bot de Telegram (sin el `@`), para el deep link de `POST /me/telegram/vincular`
    * (Bloque F, fase 2, migración 0026). **Obligatoria**, sin default -- mismo criterio que
    * `DATABASE_URL_RENDER` en el renderizador: sin ella, el endpoint armaría en silencio una URL rota
@@ -92,6 +105,33 @@ function validarModoResenasGoogle(crudo: string): ModoResenasGoogle {
 function leerModoResenasGoogle(): ModoResenasGoogle {
   const crudo = process.env["GOOGLE_REVIEWS_MODO"]?.trim();
   return crudo ? validarModoResenasGoogle(crudo) : "mock";
+}
+
+/** El selector de provider de comparativas de seguros — ver `getComparativaProvider` en `comparativas/provider.ts`. */
+export type ModoComparativas = "mock" | "openai";
+const MODOS_COMPARATIVAS: readonly string[] = ["mock", "openai"];
+
+/**
+ * Falla tan cerrado como `validarModoResenasGoogle`: cualquier valor que no sea exactamente `mock` o
+ * `openai` lanza al arrancar. Un despliegue mal configurado no arranca sano y falla recién en el
+ * primer POST — mismo razonamiento que el resto de este archivo para las variables obligatorias.
+ */
+function validarModoComparativas(crudo: string): ModoComparativas {
+  if (!MODOS_COMPARATIVAS.includes(crudo)) {
+    throw new Error(
+      `COMPARATIVAS_MODO inválido: "${crudo}". Los únicos valores son \`mock\` y \`openai\`.`,
+    );
+  }
+  return crudo as ModoComparativas;
+}
+
+/**
+ * Default `mock` SOLO si la variable está ausente — así un despliegue sin configurar no gasta dinero
+ * real en OpenAI por accidente. Presente-pero-inválida lanza, no cae a `mock` en silencio.
+ */
+function leerModoComparativas(): ModoComparativas {
+  const crudo = process.env["COMPARATIVAS_MODO"]?.trim();
+  return crudo ? validarModoComparativas(crudo) : "mock";
 }
 
 /** Lee la config del entorno y **falla cerrado** si falta algo: una API a medio configurar no arranca. */
@@ -148,6 +188,8 @@ export function leerConfig(): ConfigApi {
   const inngestEventKey = exigirEventKeySiEsCloud(esProduccion);
   // Falla tan cerrado como el orquestador ante un GOOGLE_REVIEWS_MODO mal escrito (ver la función).
   const modoResenasGoogle = leerModoResenasGoogle();
+  // Mismo criterio, para el módulo de comparativas de seguros (ver `leerModoComparativas`).
+  const modoComparativas = leerModoComparativas();
   /*
    * GUARDARRAÍL: un modo que MIENTE no puede operar en producción.
    *
@@ -171,6 +213,7 @@ export function leerConfig(): ConfigApi {
     oauthStateSecret: oauthStateSecret as string,
     telegramBotUsername: telegramBotUsername as string,
     modoResenasGoogle,
+    modoComparativas,
     conectarGoogleBloqueado,
     ...(aud ? { jwtAudience: aud } : {}),
     ...(inngestEventKey ? { inngestEventKey } : {}),
@@ -290,6 +333,12 @@ export async function crearDeps(
   const ideas = new PgIdeas(new NodePgPool(pool));
   // Reseñas de Google (Bloque F, fase 1). Mismo criterio que `ideas`: sin literal de rol.
   const resenas = new PgResenas(new NodePgPool(pool));
+  // Comparativas de seguros (0033). Mismo criterio que `ideas`/`resenas`: sin literal de rol, no hay
+  // cruce de tenants sobre esta tabla.
+  const comparativasSeguros = new PgComparativasSeguros(new NodePgPool(pool));
+  // Ya validado por `leerConfig()` (falla al arrancar ante un valor que no sea `mock`/`openai`); acá
+  // NO se vuelve a leer `process.env` — mismo criterio que `googleOAuth` más abajo.
+  const comparativas = getComparativaProvider(config.modoComparativas);
 
   // Inngest como emisor. La API solo ENVÍA (`research/solicitado`, `research/aprobado`); las funciones
   // suscritas viven en el orquestador. `send({name, data})` ya cumple la interfaz `EmisorEventos`.
@@ -333,6 +382,8 @@ export async function crearDeps(
       membresias,
       ideas,
       resenas,
+      comparativasSeguros,
+      comparativas,
       googleOAuth,
       oauthStateSecret: config.oauthStateSecret,
       telegramBotUsername: config.telegramBotUsername,

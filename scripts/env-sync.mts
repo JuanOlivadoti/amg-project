@@ -32,6 +32,9 @@ export const MAPA = {
     "OAUTH_STATE_SECRET",
     "GOOGLE_REVIEWS_MODO",
     "TELEGRAM_BOT_USERNAME",
+    "COMPARATIVAS_MODO",
+    "OPENAI_API_KEY",
+    "OPENAI_MODEL",
   ],
   db: ["DATABASE_URL_ADMIN", "SEED_FRANK_USER_ID", "SEED_JUAN_USER_ID"],
   "kr-service": [

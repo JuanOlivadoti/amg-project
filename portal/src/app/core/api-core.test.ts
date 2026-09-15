@@ -980,3 +980,145 @@ test('desvincularTelegram postea a /me/telegram/desvincular y devuelve { ok }', 
   assert.equal(capturado.url, 'http://api.test/me/telegram/desvincular');
   assert.deepEqual(res, { ok: true });
 });
+
+test('crearComparativa postea a POST /clients/:id/comparativas-seguros con filas', async () => {
+  const filas = [['Aseguradora', 'Prima'], ['Seguros XYZ', '50']];
+  const comparativa = {
+    id: 'cmp1',
+    clientId: 'c1',
+    creadoPor: 'user1',
+    clienteFinalNombre: 'Juan Pérez',
+    clienteFinalEmail: 'juan@example.com',
+    opciones: [],
+    recomendacion: 'Recomendación',
+    informeMd: '# Informe',
+    mailAsunto: 'Asunto',
+    mailCuerpoMd: 'Cuerpo',
+    costoUsd: 1.5,
+    revisadoEn: null,
+    revisadoPor: null,
+    createdAt: '2026-09-12T00:00:00Z',
+  };
+  const { fn, capturado } = fakeFetch({ status: 201, body: comparativa });
+  const res = await crearApi(opts(fn)).crearComparativa('c1', {
+    filas,
+    clienteFinalNombre: 'Juan Pérez',
+    clienteFinalEmail: 'juan@example.com',
+  });
+  assert.equal(capturado.method, 'POST');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/comparativas-seguros');
+  assert.deepEqual(JSON.parse(capturado.body!), {
+    filas,
+    clienteFinalNombre: 'Juan Pérez',
+    clienteFinalEmail: 'juan@example.com',
+  });
+  assert.deepEqual(res, comparativa);
+});
+
+test('crearComparativa postea con googleSheetUrl en vez de filas', async () => {
+  const comparativa = {
+    id: 'cmp1',
+    clientId: 'c1',
+    creadoPor: 'user1',
+    clienteFinalNombre: 'Juan Pérez',
+    clienteFinalEmail: null,
+    opciones: [],
+    recomendacion: 'Recomendación',
+    informeMd: '# Informe',
+    mailAsunto: 'Asunto',
+    mailCuerpoMd: 'Cuerpo',
+    costoUsd: 1.5,
+    revisadoEn: null,
+    revisadoPor: null,
+    createdAt: '2026-09-12T00:00:00Z',
+  };
+  const { fn, capturado } = fakeFetch({ status: 201, body: comparativa });
+  const res = await crearApi(opts(fn)).crearComparativa('c1', {
+    googleSheetUrl: 'https://docs.google.com/spreadsheets/d/1abc/export?format=csv',
+    clienteFinalNombre: 'Juan Pérez',
+  });
+  assert.equal(capturado.method, 'POST');
+  assert.deepEqual(JSON.parse(capturado.body!), {
+    googleSheetUrl: 'https://docs.google.com/spreadsheets/d/1abc/export?format=csv',
+    clienteFinalNombre: 'Juan Pérez',
+  });
+  assert.equal(res.id, 'cmp1');
+});
+
+test('crearComparativa devuelve 409 cuando el cliente no es de correduría', async () => {
+  const { fn } = fakeFetch({
+    status: 409,
+    body: { error: 'Este cliente no es de correduría de seguros: el módulo de comparativas no aplica.' },
+  });
+  await assert.rejects(
+    () =>
+      crearApi(opts(fn)).crearComparativa('c1', {
+        filas: [['a']],
+        clienteFinalNombre: 'Juan',
+      }),
+    /correduría/,
+  );
+});
+
+test('listarComparativas pega a GET /clients/:id/comparativas-seguros', async () => {
+  const comparativas = [
+    {
+      id: 'cmp1',
+      clientId: 'c1',
+      creadoPor: 'user1',
+      clienteFinalNombre: 'Juan',
+      clienteFinalEmail: null,
+      opciones: [],
+      recomendacion: 'Rec',
+      informeMd: '#',
+      mailAsunto: 'Asunto',
+      mailCuerpoMd: 'Cuerpo',
+      costoUsd: 1.5,
+      revisadoEn: null,
+      revisadoPor: null,
+      createdAt: '2026-09-12T00:00:00Z',
+    },
+  ];
+  const { fn, capturado } = fakeFetch({ body: { comparativas } });
+  const res = await crearApi(opts(fn)).listarComparativas('c1');
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/comparativas-seguros');
+  assert.deepEqual(res, comparativas);
+});
+
+test('obtenerComparativa pega a GET /clients/:id/comparativas-seguros/:cid', async () => {
+  const comparativa = {
+    id: 'cmp1',
+    clientId: 'c1',
+    creadoPor: 'user1',
+    clienteFinalNombre: 'Juan',
+    clienteFinalEmail: null,
+    opciones: [],
+    recomendacion: 'Rec',
+    informeMd: '#',
+    mailAsunto: 'Asunto',
+    mailCuerpoMd: 'Cuerpo',
+    costoUsd: 1.5,
+    revisadoEn: null,
+    revisadoPor: null,
+    createdAt: '2026-09-12T00:00:00Z',
+  };
+  const { fn, capturado } = fakeFetch({ body: { comparativa } });
+  const res = await crearApi(opts(fn)).obtenerComparativa('c1', 'cmp1');
+  assert.equal(capturado.method, 'GET');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/comparativas-seguros/cmp1');
+  assert.deepEqual(res, comparativa);
+});
+
+test('obtenerComparativa devuelve null en 404', async () => {
+  const { fn } = fakeFetch({ status: 404, body: { error: 'Comparativa no encontrada.' } });
+  const res = await crearApi(opts(fn)).obtenerComparativa('c1', 'cmp-inexistente');
+  assert.equal(res, null);
+});
+
+test('revisarComparativa postea a POST /clients/:id/comparativas-seguros/:cid/revisar', async () => {
+  const { fn, capturado } = fakeFetch({ status: 204 });
+  await crearApi(opts(fn)).revisarComparativa('c1', 'cmp1');
+  assert.equal(capturado.method, 'POST');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/comparativas-seguros/cmp1/revisar');
+});

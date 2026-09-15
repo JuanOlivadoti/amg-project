@@ -25,6 +25,7 @@ function conEntorno(vars: Record<string, string>): void {
     "SUPABASE_JWT_ISS",
     "OAUTH_STATE_SECRET",
     "GOOGLE_REVIEWS_MODO",
+    "COMPARATIVAS_MODO",
     "TELEGRAM_BOT_USERNAME",
     // El SDK de Inngest infiere su modo del entorno: si la máquina que corre los tests tuviera
     // `NODE_ENV=production` o `RAILWAY_GIT_BRANCH`, la mitad de estos tests cambiaría de resultado
@@ -220,6 +221,30 @@ test("acepta GOOGLE_REVIEWS_MODO=live explícito", () => {
 test("🔴 GOOGLE_REVIEWS_MODO con un valor que no es mock/live NO cae a 'mock' en silencio: lanza", () => {
   conEntorno({ ...BASE, CORS_ORIGINS: CORS, GOOGLE_REVIEWS_MODO: "liv" });
   assert.throws(() => leerConfig(), /GOOGLE_REVIEWS_MODO inválido/);
+});
+
+// --------------------------------------------------------------------- COMPARATIVAS_MODO
+//
+// Mismo botón de operación que GOOGLE_REVIEWS_MODO, mismo criterio de fallo cerrado (Task 6 del plan
+// de comparativas de seguros): el default `mock` es lo que evita que un despliegue sin configurar
+// gaste dinero real en OpenAI, y un valor presente pero inválido tiene que lanzar al arrancar, no
+// caer a `mock` en silencio — ese sería exactamente el bug que ya se corrigió para reseñas.
+
+test("COMPARATIVAS_MODO por defecto es 'mock' si no está la variable", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: CORS });
+  const config = leerConfig();
+  assert.equal(config.modoComparativas, "mock");
+});
+
+test("acepta COMPARATIVAS_MODO=openai explícito", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: CORS, COMPARATIVAS_MODO: "openai" });
+  const config = leerConfig();
+  assert.equal(config.modoComparativas, "openai");
+});
+
+test("🔴 COMPARATIVAS_MODO con un valor que no es mock/openai NO cae a 'mock' en silencio: lanza", () => {
+  conEntorno({ ...BASE, CORS_ORIGINS: CORS, COMPARATIVAS_MODO: "opnai" });
+  assert.throws(() => leerConfig(), /COMPARATIVAS_MODO inválido/);
 });
 
 // ------------------------------------------- conectarGoogleBloqueado (mock que MIENTE en producción)
