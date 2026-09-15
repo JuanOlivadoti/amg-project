@@ -1,0 +1,22 @@
+{
+  "name": "mcp-server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Servidor MCP local: opera AMG OS desde Claude Desktop, hablando HTTP con api/ con la sesión y el rol reales de quien lo corre.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "mcp:login": "tsx src/cli/login.ts",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

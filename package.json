@@ -11,7 +11,8 @@
     "web-builder",
     "orchestrator",
     "api",
-    "renderer"
+    "renderer",
+    "mcp-server"
   ],
   "scripts": {
     "verificar": "./scripts/verificar.sh",
