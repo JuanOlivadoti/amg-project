@@ -11,6 +11,50 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-15 — El MCP local para Claude Desktop, implementado en paralelo sin pisar la otra sesión
+
+Juan pidió avanzar lo que no dependiera de él mientras otra sesión trabajaba `comparativas-seguros`
+en la rama principal. La spec del MCP local ([`2026-09-05-mcp-claude-desktop-design.md`](../docs/superpowers/specs/2026-09-05-mcp-claude-desktop-design.md))
+llevaba diez días aprobada y sin plan ni implementación — encajaba: paquete nuevo, sin agente de área
+dueño, sin tocar ningún archivo que la otra sesión pudiera estar usando.
+
+**Aislamiento primero.** Con la skill `using-git-worktrees`: un worktree nuevo (`EnterWorktree`), base
+`origin/main` fresco (no la rama sucia donde había quedado la sesión). Ningún riesgo de pisar los
+commits en vuelo de `comparativas-seguros`, que vivían en el checkout principal.
+
+**El plan, con `writing-plans`, y después ejecutado inline (no con subagentes).** A diferencia de
+`comparativas-seguros` —que sí usa `subagent-driven-development`, porque cruza áreas (`datos`/
+`front`)—, acá la sesión principal ya tenía todo el contexto recién escrito en el plan: delegarlo a un
+subagente fresco habría tirado ese contexto y no ganaba nada. Diez tareas, TDD estricto (rojo→verde en
+cada una), typecheck limpio en cada commit.
+
+**Lo que costó más no fue el diseño, fue la mecánica:**
+
+- Los imports relativos del monorepo van con extensión `.js`, no `.ts` (`moduleResolution: "Bundler"`
+  junto con `tsx` sin build) — el plan los había escrito mal y `tsc` lo cortó en la primera tarea.
+- Los tests de las tools (`tools/clientes.ts`, `tools/runs.ts`) necesitaban una sesión de verdad
+  escrita en disco antes de poder ejercitar nada — sin eso, `llamarApi` corta en "sin sesión" antes de
+  tocar la red, y el primer intento de esos dos archivos falló entero por esto, no por un bug del
+  código.
+- `assert.ok(x)` sobre una variable que un closure asíncrono reasigna angosta el tipo a `never` en
+  `tsc` (falso positivo del checker, que no sabe que el closure corrió) — se saca el `assert.ok` y se
+  deja que el `!` haga el trabajo.
+
+**Revisado por `revisor`, en un worktree propio, sobre la rama `worktree-editar-web-boton` (no
+pusheada — tuvo que traerla con `git fetch <ruta-local> rama:rama`, porque "fresco desde origin/main"
+no la tenía).** Veredicto: CAMBIOS_PEDIDOS, 1 bloqueante — el ritual de `AGENTS.md` (actualizar `09`/
+`15`) no se había cumplido, exactamente esta entrada y las de esos dos documentos. Dos menores: un
+default de producción (`MARGEN_REFRESH_MS`) sin test que fijara su *valor* —corregido, con mutación
+confirmada—; y un fallo de `npm run verificar` ajeno al paquete (Postgres 18 vs. la versión local del
+revisor, `api/src/entregable.test.ts`, sin relación con `mcp-server`).
+
+**Resultado:** 54 tests nuevos (`node:test`, sin tocar Supabase ni la API real), mutación confirmada en
+las dos barreras de seguridad (UUID obligatorio en toda tool con id; el enum cerrado de `destino` en
+`amg_aprobar_run`, la única escritura). Falta la prueba manual contra Claude Desktop real — no la
+puede hacer una sesión de Claude Code sola (spec §10). Detalle en `mcp-server/README.md`.
+
+---
+
 ## 2026-09-11/12 — El snapshot estático existe: ADR-11 deja de prometer un entregable que nadie produjo
 
 Tercera y última etapa del lote corto. Con ella **el Bloque H se queda sin trabajo de código** y a

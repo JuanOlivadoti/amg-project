@@ -1723,9 +1723,19 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 > **La cola, sin orden fijado todavía:** el botón «Editar la web» que firme el preview al vuelo (retira
 > la URL de larga duración del space, eslabón débil de OBS-04) · invalidar el `nonce` del `state` de
 > OAuth tras el primer uso (necesita migración) · la invalidación de cache desde la API al cambiar el
-> perfil · la CDN del Bloque G · el MCP local para Claude Desktop
-> ([spec](../superpowers/specs/2026-09-05-mcp-claude-desktop-design.md)) · el ingreso real de ideas por
-> n8n (la pantalla existe y enseña el seed) · y la deuda menor del Bloque I.
+> perfil · la CDN del Bloque G · el ingreso real de ideas por n8n (la pantalla existe y enseña el seed)
+> · y la deuda menor del Bloque I.
+>
+> ✅ **El MCP local para Claude Desktop salió de la cola — implementado el 2026-09-15**, en un worktree
+> aislado mientras otra sesión trabajaba `comparativas-seguros` en paralelo. Paquete nuevo `mcp-server/`
+> (workspace #8), las seis tools del [spec](../superpowers/specs/2026-09-05-mcp-claude-desktop-design.md)
+> §5, 54 tests nuevos (`node:test`, mocking de `fetch`, sin tocar Supabase ni la API real), mutación
+> confirmada en las dos barreras de seguridad (UUID en toda tool que recibe un id; el enum cerrado de
+> `destino` en `amg_aprobar_run`, la única tool de escritura). Revisado por el agente `revisor`:
+> CAMBIOS_PEDIDOS (1 bloqueante, documental — esta misma actualización — + 2 menores, uno de los cuales
+> ya se corrigió: `MARGEN_REFRESH_MS` no tenía test que fijara su valor). **Falta la prueba manual real
+> contra Claude Desktop** (spec §10) — no la puede hacer una sesión de Claude Code sola, necesita el
+> programa instalado y un login real. Detalle en `mcp-server/README.md`.
 
 > ### ✅ Del 0 al 4, hechos (2026-08-07 / 08). Se sigue por el **5**
 >
