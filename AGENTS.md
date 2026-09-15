@@ -77,6 +77,10 @@ Qué skills lleva cada uno, en qué orden se escribieron y con qué trabajo real
 [.claude/PLAN-AGENTES.md](.claude/PLAN-AGENTES.md) — **una etapa por sesión**. Al cerrar una, se
 actualiza la tabla de acá arriba.
 
+`mcp-server/` no tiene agente de área propio — no encaja en `front`, `datos`, `pipeline` ni `render`
+(spec del paquete, [`2026-09-05-mcp-claude-desktop-design.md`](docs/superpowers/specs/2026-09-05-mcp-claude-desktop-design.md)
+§9.2). Hasta que haga falta uno, lo lleva la sesión principal.
+
 **Cuándo delegar.** La sesión principal coordina, pero no es dogmática: delegar cuesta tiempo y
 tokens, y en un cambio de un archivo cuesta más que hacerlo.
 
