@@ -6,12 +6,13 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** instalador de `mcp-server` para Claude Desktop, a pedido del usuario ("no se puede tener
-un instalador?" tras el manual de conexión manual). Implementación + revisión del `revisor` (1
-bloqueante documental, corregido) ya terminadas; falta el commit + push final.
+**Sesión:** ninguna en curso. El instalador de `mcp-server` para Claude Desktop (a pedido del usuario,
+"no se puede tener un instalador?") quedó commiteado y pusheado a `main` en `d6ae22f`
+(fast-forward desde `743f3c8`).
 
-Las dos etapas previas siguen mergeadas a `main`: **comparativas de seguros** (`17b8f87`) y **MCP
-local para Claude Desktop** (`1371a25`, fast-forward desde `17b8f87`).
+Las tres etapas de `mcp-server`/comparativas-seguros están mergeadas a `main`: **comparativas de
+seguros** (`17b8f87`), **MCP local para Claude Desktop** (`1371a25`) y el **instalador**
+(`d6ae22f`).
 
 Verificación completa con el instalador adentro: `bash ./scripts/verificar.sh` → **2105 tests en
 verde en el monorepo** (8 paquetes + `scripts/`; portal sin cambios, 663 aparte — 357 `node:test` +
@@ -21,32 +22,25 @@ de JSON inválido devolviendo `{}` en vez de `throw` hizo caer exactamente 1 tes
 
 ## En vuelo (sin commitear)
 
-- `mcp-server/src/cli/instalar.ts` (nuevo) — el instalador: `rutaConfigClaudeDesktop`,
-  `resolverRutasRepo`, `construirEntradaAmg`, `mergearConfig`, `mensajeExitoInstalacion`, `main()`.
-- `mcp-server/src/cli/instalar.test.ts` (nuevo) — 13 tests.
-- `mcp-server/package.json` — script `mcp:instalar`.
-- `mcp-server/README.md` — sección 2a (instalador) / 2b (manual, la que ya existía).
-- `docs/proyecto/09-estado-y-roadmap.md`, `docs/proyecto/15-plan-plataforma.md`, `progress/history.md`
-  — actualizados en esta misma edición para cerrar el bloqueante documental del `revisor`.
-
-Falta: commitear todo lo de arriba junto (paso 3 del ritual ya hecho, falta el paso 4) y pushear a
-`main` con fast-forward, igual que las dos etapas previas.
+Nada — `git status --short` vacío, todo pusheado a `main` en `d6ae22f`.
 
 ## Próximo paso
 
-1. Commitear el instalador + la documentación actualizada (un solo commit, todo el cambio a la
-   vista) y pushear a `main`.
-2. Después de eso, no queda desarrollo pendiente de ninguna de las tres piezas (comparativas-seguros,
-   mcp-server, el instalador). Lo que sigue es manual, fuera del alcance de una sesión de Claude Code:
-   - **mcp-server**: la prueba real contra Claude Desktop instalado (login real, las seis tools
-     ejercitadas, una aprobación real que llegue a la base) — spec §10, detalle en
-     `mcp-server/README.md`. El instalador saca de encima la edición manual del JSON, pero no
-     reemplaza esta prueba.
-   - **Comparativas de seguros**: avisarle a Juan el riesgo de bus-factor de `read-excel-file`.
-   - Calibrar la proporción caracteres/token del preflight de gasto de OpenAI contra una corrida
-     real — cuesta dinero, la corre o autoriza Juan.
-   - El checklist general de Juan (`docs/proyecto/16-pendientes-juan.md`), sin relación con lo de
-     arriba.
+No hay desarrollo pendiente de ninguna de las tres piezas (comparativas-seguros, mcp-server, el
+instalador). Lo que sigue es manual, fuera del alcance de una sesión de Claude Code:
+
+1. **mcp-server**: la prueba real contra Claude Desktop instalado (login real, las seis tools
+   ejercitadas, una aprobación real que llegue a la base) — spec §10, detalle en
+   `mcp-server/README.md`. El instalador (`npm run mcp:instalar -w mcp-server`) saca de encima la
+   edición manual del JSON, pero no reemplaza esta prueba.
+2. **Comparativas de seguros**: avisarle a Juan el riesgo de bus-factor de `read-excel-file`.
+3. Calibrar la proporción caracteres/token del preflight de gasto de OpenAI contra una corrida
+   real — cuesta dinero, la corre o autoriza Juan.
+4. El checklist general de Juan (`docs/proyecto/16-pendientes-juan.md`), sin relación con lo de
+   arriba.
+
+Si alguien retoma una sesión de desarrollo, es trabajo nuevo — no hay nada a medio hacer que
+continuar.
 
 ## Decisiones tomadas
 
@@ -83,6 +77,8 @@ Falta: commitear todo lo de arriba junto (paso 3 del ritual ya hecho, falta el p
 
 ## Verificaciones
 
-- **`bash ./scripts/verificar.sh --con-portal`, sobre el resultado real del merge de las dos etapas
-  (2026-09-16): verde entero.** 2755 tests (2092 monorepo, 8 paquetes + `scripts/`, + 663 portal —
-  357 `node:test` + 306 Karma), typecheck limpio, sin secretos entre los 741 archivos versionados.
+- **`bash ./scripts/verificar.sh`, con el instalador de `mcp-server` adentro (2026-09-16): verde
+  entero.** 2105 tests en el monorepo (8 paquetes + `scripts/`; portal sin cambios, 663 aparte — 357
+  `node:test` + 306 Karma; total 2768), typecheck limpio, sin secretos entre los 739 archivos
+  versionados. `npm test -w mcp-server`: 67/67. Verificación por mutación en `mergearConfig`
+  confirmada por dos sesiones distintas (yo y el `revisor`, cada uno por su cuenta).
