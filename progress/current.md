@@ -6,41 +6,47 @@
 >
 > Si acá dice algo de hace tres semanas, está mintiendo: o se cierra o se vacía.
 
-**Sesión:** ninguna en curso. Las dos que estaban en vuelo se cerraron y ya están mergeadas a `main`
-(confirmado con `git log --oneline origin/main..HEAD` vacío y `git status --short` limpio, 2026-09-16):
+**Sesión:** instalador de `mcp-server` para Claude Desktop, a pedido del usuario ("no se puede tener
+un instalador?" tras el manual de conexión manual). Implementación + revisión del `revisor` (1
+bloqueante documental, corregido) ya terminadas; falta el commit + push final.
 
-- **Comparativas de seguros** (plan de 9 tareas, `feature/comparativas-seguros`) — mergeada a `main`
-  en `17b8f87`.
-- **MCP local para Claude Desktop** (paquete nuevo `mcp-server/`, sin plan previo, implementado en un
-  worktree aislado en paralelo con la de arriba) — mergeada a `main` en `1371a25`, fast-forward desde
-  `17b8f87`, sin reescribir nada.
+Las dos etapas previas siguen mergeadas a `main`: **comparativas de seguros** (`17b8f87`) y **MCP
+local para Claude Desktop** (`1371a25`, fast-forward desde `17b8f87`).
 
-Verificación conjunta sobre el resultado real del merge (no sobre cada rama por separado):
-`bash ./scripts/verificar.sh --con-portal` → **2755 tests en verde** (2092 monorepo, 8 paquetes +
-`scripts/`; 663 portal — 357 `node:test` + 306 Karma), typecheck limpio, sin secretos.
+Verificación completa con el instalador adentro: `bash ./scripts/verificar.sh` → **2105 tests en
+verde en el monorepo** (8 paquetes + `scripts/`; portal sin cambios, 663 aparte — 357 `node:test` +
+306 Karma; total 2768), typecheck limpio, sin secretos. `npm test -w mcp-server`: 67/67 (54
+preexistentes + 13 del instalador). Verificación por mutación en `mergearConfig` confirmada (el catch
+de JSON inválido devolviendo `{}` en vez de `throw` hizo caer exactamente 1 test).
 
 ## En vuelo (sin commitear)
 
-Nada — `git status --short` vacío.
+- `mcp-server/src/cli/instalar.ts` (nuevo) — el instalador: `rutaConfigClaudeDesktop`,
+  `resolverRutasRepo`, `construirEntradaAmg`, `mergearConfig`, `mensajeExitoInstalacion`, `main()`.
+- `mcp-server/src/cli/instalar.test.ts` (nuevo) — 13 tests.
+- `mcp-server/package.json` — script `mcp:instalar`.
+- `mcp-server/README.md` — sección 2a (instalador) / 2b (manual, la que ya existía).
+- `docs/proyecto/09-estado-y-roadmap.md`, `docs/proyecto/15-plan-plataforma.md`, `progress/history.md`
+  — actualizados en esta misma edición para cerrar el bloqueante documental del `revisor`.
+
+Falta: commitear todo lo de arriba junto (paso 3 del ritual ya hecho, falta el paso 4) y pushear a
+`main` con fast-forward, igual que las dos etapas previas.
 
 ## Próximo paso
 
-No hay desarrollo pendiente de ninguna de las dos etapas. Lo que queda es todo **manual, fuera del
-alcance de una sesión de Claude Code**:
-
-1. **mcp-server**: la prueba real contra Claude Desktop instalado (login real, las seis tools
-   ejercitadas, una aprobación real que llegue a la base) — spec §10, detalle en
-   `mcp-server/README.md`.
-2. **Comparativas de seguros**: avisarle a Juan el riesgo de bus-factor de `read-excel-file` (toda la
-   cadena de dependencias depende de una sola cuenta de npm) — informativo, no bloquea nada.
-3. Calibrar la proporción caracteres/token del preflight de gasto del provider de OpenAI de
-   comparativas-seguros contra una corrida real — cuesta dinero, la corre Juan o la autoriza. El
-   default `mock` no la necesita.
-4. El checklist general de Juan (`docs/proyecto/16-pendientes-juan.md`) sigue con ítems abiertos,
-   sin relación con ninguna de las dos etapas de arriba.
-
-Si alguien retoma una sesión de desarrollo, es trabajo nuevo — no hay nada a medio hacer que
-continuar.
+1. Commitear el instalador + la documentación actualizada (un solo commit, todo el cambio a la
+   vista) y pushear a `main`.
+2. Después de eso, no queda desarrollo pendiente de ninguna de las tres piezas (comparativas-seguros,
+   mcp-server, el instalador). Lo que sigue es manual, fuera del alcance de una sesión de Claude Code:
+   - **mcp-server**: la prueba real contra Claude Desktop instalado (login real, las seis tools
+     ejercitadas, una aprobación real que llegue a la base) — spec §10, detalle en
+     `mcp-server/README.md`. El instalador saca de encima la edición manual del JSON, pero no
+     reemplaza esta prueba.
+   - **Comparativas de seguros**: avisarle a Juan el riesgo de bus-factor de `read-excel-file`.
+   - Calibrar la proporción caracteres/token del preflight de gasto de OpenAI contra una corrida
+     real — cuesta dinero, la corre o autoriza Juan.
+   - El checklist general de Juan (`docs/proyecto/16-pendientes-juan.md`), sin relación con lo de
+     arriba.
 
 ## Decisiones tomadas
 

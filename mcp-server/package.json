@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "mcp:login": "tsx src/cli/login.ts",
+    "mcp:instalar": "tsx src/cli/instalar.ts",
     "start": "tsx src/index.ts"
   },
   "dependencies": {

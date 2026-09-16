@@ -1741,6 +1741,17 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 > ya se corrigió: `MARGEN_REFRESH_MS` no tenía test que fijara su valor). **Falta la prueba manual real
 > contra Claude Desktop** (spec §10) — no la puede hacer una sesión de Claude Code sola, necesita el
 > programa instalado y un login real. Detalle en `mcp-server/README.md`.
+>
+> ✅ **Instalador del registro en Claude Desktop, agregado el 2026-09-16** (a pedido del usuario, tras
+> explicarle que registrar `amg-os` requería editar `claude_desktop_config.json` a mano):
+> `npm run mcp:instalar -w mcp-server` (`src/cli/instalar.ts` + 13 tests) detecta el SO, escribe la
+> entrada `amg-os` con rutas **absolutas** de `node`/`tsx` (no `npx`, para no depender del `PATH` con
+> el que Claude Desktop arranca el subproceso) y mergea sin pisar otros `mcpServers` ni otras claves
+> del archivo — un JSON existente inválido se rechaza en vez de sobreescribirse, mutación confirmada.
+> Es un tercer binario, separado del login (spec §3.2): no toca `~/.amg-mcp/session.json`. Revisado
+> por `revisor`: CAMBIOS_PEDIDOS (1 bloqueante documental — esta misma actualización). `mcp-server`
+> pasa de 54 a 67 tests. La prueba manual real contra Claude Desktop (spec §10) sigue pendiente —
+> el instalador no la reemplaza, solo saca de encima la edición manual del JSON antes de esa prueba.
 
 > ### ✅ Del 0 al 4, hechos (2026-08-07 / 08). Se sigue por el **5**
 >

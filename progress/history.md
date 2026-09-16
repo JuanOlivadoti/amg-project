@@ -11,6 +11,36 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-16 — Instalador del registro en Claude Desktop para `mcp-server`
+
+El usuario preguntó, tras el manual de conexión manual, "no se puede tener un instalador?" — sí se
+podía, y se agregó como parte del paquete `mcp-server/` ya mergeado a `main` el día anterior.
+
+`npm run mcp:instalar -w mcp-server` (`src/cli/instalar.ts`, TDD, 13 tests nuevos) detecta el SO
+(`rutaConfigClaudeDesktop`: win32 vía `APPDATA`, darwin, linux — con error accionable si falta la
+variable en Windows), resuelve rutas **absolutas** al binario de `node` (`process.execPath`) y al CLI
+de `tsx` (`node_modules/tsx/dist/cli.mjs`, hoisteado por npm workspaces) en vez de `npx` — Claude
+Desktop arranca el subproceso MCP con un `PATH` que puede no incluir ninguno de los dos — y escribe la
+entrada `mcpServers["amg-os"]` en `claude_desktop_config.json`, mergeando (`mergearConfig`) sin pisar
+otros servidores MCP ni otras claves que el usuario ya tuviera en ese archivo. Un JSON existente que no
+parsea se rechaza con un error en vez de sobreescribirse en silencio — verificado por mutación (el
+`catch` devolviendo `{}` en vez de `throw` hizo caer exactamente ese test, y solo ese).
+
+Deliberadamente **separado del login** (spec §3.2, "dos binarios, no uno"): es un tercer binario que
+solo toca `claude_desktop_config.json`, nunca `~/.amg-mcp/session.json` — confirmado por el `revisor`
+con grep sobre el archivo entero.
+
+`revisor`: CAMBIOS_PEDIDOS (1 bloqueante, documental — el `09`, el `15`, `current.md` y esta misma
+entrada de `history.md` no reflejaban todavía el instalador ni la cifra de tests real). Corregido en
+la misma sesión antes de commitear. `mcp-server` pasa de 54 a 67 tests; el total del monorepo, de 2092
+a 2105 (2768 sumando los 663 del portal, sin cambios). `npm run verificar` (con tests, sin `--rapido`)
+en verde entero.
+
+Sigue pendiente, sin cambios: la prueba manual real contra Claude Desktop instalado (spec §10) — el
+instalador saca de encima la edición manual del JSON, pero no reemplaza esa prueba.
+
+---
+
 ## 2026-09-15 — El MCP local para Claude Desktop, implementado en paralelo sin pisar la otra sesión
 
 Juan pidió avanzar lo que no dependiera de él mientras otra sesión trabajaba `comparativas-seguros`

@@ -19,6 +19,23 @@ Pide email y contraseña (la contraseña **no** se enmascara en pantalla — ver
 
 ## 2. Registrar el servidor en Claude Desktop
 
+### 2a. Instalador (recomendado)
+
+```bash
+npm run mcp:instalar -w mcp-server
+```
+
+Pide `AMG_SUPABASE_URL`, `AMG_SUPABASE_ANON_KEY` y `AMG_API_URL` (Enter para `http://localhost:3000`)
+y escribe la entrada `amg-os` en el `claude_desktop_config.json` del sistema operativo detectado —
+sin pisar otros servidores MCP que ya tengas registrados ahí. Usa rutas absolutas al binario de
+`node` y al CLI de `tsx` (no `npx`), porque Claude Desktop arranca el subproceso con un `PATH` que
+puede no incluirlos.
+
+Se puede correr de nuevo para actualizar la entrada (por ejemplo, tras mover el repo o cambiar de
+`AMG_API_URL`): solo reemplaza `mcpServers["amg-os"]`, el resto del archivo queda igual.
+
+### 2b. A mano (si el instalador no aplica, o para ver exactamente qué escribe)
+
 Editá `claude_desktop_config.json` (la ubicación depende del sistema operativo; buscarla en la
 documentación de Claude Desktop) y agregá:
 
@@ -26,8 +43,11 @@ documentación de Claude Desktop) y agregá:
 {
   "mcpServers": {
     "amg-os": {
-      "command": "npx",
-      "args": ["tsx", "/ruta/absoluta/al/repo/mcp-server/src/index.ts"],
+      "command": "/ruta/absoluta/a/node",
+      "args": [
+        "/ruta/absoluta/al/repo/node_modules/tsx/dist/cli.mjs",
+        "/ruta/absoluta/al/repo/mcp-server/src/index.ts"
+      ],
       "env": {
         "AMG_API_URL": "http://localhost:3000",
         "AMG_SUPABASE_URL": "https://<tu-proyecto>.supabase.co",
@@ -42,7 +62,7 @@ documentación de Claude Desktop) y agregá:
 circuito esté probado de punta a punta. Apuntar a producción es cambiar esa única variable, un paso
 aparte y consciente.
 
-Reiniciá Claude Desktop después de editar el archivo.
+En cualquiera de los dos casos, reiniciá Claude Desktop después de tocar el archivo.
 
 ## 3. Las seis tools
 
