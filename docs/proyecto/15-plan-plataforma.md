@@ -1393,6 +1393,40 @@ conocer la forma real del error de revocación de Google, así que construir esa
 adivinar contra una API que todavía no existe en este proyecto. Las alertas ya no son parte de este
 bloqueo — quedaron resueltas por Telegram.
 
+> ### 🔄 2026-09-22 — VERIFICADO CONTRA GOOGLE: el bloqueo no era el que decía este bloque
+>
+> Todo lo de abajo parte de que falta la aprobación de la Business Profile API. **No falta: está
+> concedida.** Verificado con el `gcloud` CLI sobre el proyecto `amg-automation` (`546581198843`),
+> autenticado con `argentinosporespana@gmail.com`:
+>
+> - **`mybusiness.googleapis.com` (la v4 legacy, la única que lee y responde reseñas) está habilitada
+>   y con cuota real**: 250.000 requests/día y **10.000 update requests/día** — esta última es la que
+>   consume `reviews.updateReply`, o sea responder una reseña.
+> - El diagnóstico del 2026-09-04 que decía "cuota 0" **midió otra API**: `GET /v1/accounts` es de
+>   `mybusinessaccountmanagement` **v1**, que sigue en cero y que el módulo no necesita.
+> - En los proyectos de la otra cuenta (`dinamicseo`, `jmmoldes`) la v4 **ni aparece entre las
+>   disponibles para habilitar**: Google sólo la expone a proyectos aprobados, así que su presencia
+>   en `amg-automation` *es* la aprobación.
+>
+> **El bloqueo real es la app OAuth, y es distinto en naturaleza**: está en estado **"Prueba"**, **sin
+> ningún scope declarado** (falta `business.manage`), con el **único `redirect_uri` apuntando al OAuth
+> Playground** y el branding vacío. ⚠️ Estado "Prueba" significa **refresh tokens que caducan a los 7
+> días** — el módulo funcionaría en la demo y moriría en silencio una semana después, justo por la
+> pieza (detección de revocación) que este bloque dejó sin construir. Publicar a Producción lo
+> resuelve sin necesidad de verificación completa.
+>
+> **Nada de eso se configura por CLI**: Google apagó las APIs de administración de OAuth en marzo de
+> 2026 y deprecó `gcloud alpha iap oauth-brands`/`oauth-clients`. Es consola a mano.
+>
+> 🐛 **Y un bug de diseño que este plan no anticipó:** el callback es `/clients/:id/google/callback`,
+> con el client ID **en la ruta**. Google exige `redirect_uri` exacto y **no admite comodines de
+> path**, así que una ruta por cliente **no puede funcionar en live**. Arreglo: ruta fija
+> `/google/callback` que saque el cliente del `state` firmado — que **ya lleva `clientId`**
+> (`api/src/oauth-state.ts`). En `mock` nunca se notó porque el callback se arma solo.
+>
+> Detalle completo, con el método de medición y el hallazgo lateral del rastro de n8n, en
+> [`16-pendientes-juan.md § 2`](16-pendientes-juan.md).
+>
 > ### ⏸️ Decisión del 2026-09-10 — el trámite queda EN PAUSA, y eso arma una trampa
 >
 > **Juan decidió no mandar por ahora la "Application for Basic API Access"**: hoy nadie reclama el

@@ -11,6 +11,64 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-22 — Auditoría del acceso real a Google: el módulo 3 no estaba bloqueado por donde creíamos
+
+El usuario preguntó "qué le falta a la plataforma para responder reseñas de Google". La respuesta
+escrita en `docs/` era: falta la aprobación de la Business Profile API, trámite externo en pausa
+desde el 2026-09-10. **Resultó estar mal, y la sesión terminó corrigiendo tres documentos.**
+
+Se instaló el `gcloud` CLI (`winget install Google.CloudSDK`) para verificar en vez de asumir. Dos
+tropiezos de entorno, anotados porque van a repetirse: Git Bash hereda un `PATH` viejo y no ve el
+binario recién instalado, y `gcloud` a secas resuelve al script de bash, que busca `python` y se topa
+con el stub de la Microsoft Store — **hay que usar `gcloud.cmd`**, que usa el Python que trae el SDK.
+
+**El primer intento midió la cuenta equivocada.** `dicamic.seo@gmail.com` no tiene permiso sobre
+`amg-automation` (`546581198843`); sólo ve `dinamicseo` y `jmmoldes`. Con esa cuenta la conclusión
+habría sido "no hay acceso a nada", y habría sido falsa. La cuenta correcta es
+`argentinosporespana@gmail.com`. `gcloud` permite tener las dos a la vez y cambiar con
+`config set account` — no hace falta revocar nada.
+
+**El hallazgo:** `mybusiness.googleapis.com` (la v4 legacy, la única que lee y responde reseñas) está
+habilitada en `amg-automation` **con cuota concedida** — 250.000 requests/día y 10.000 update
+requests/día, y ésta última es la que consume `reviews.updateReply`. El diagnóstico del 2026-09-04
+que concluyó "cuota 0" había probado `GET /v1/accounts`, de `mybusinessaccountmanagement` **v1**: otra
+API, que sigue en cero y que el módulo no necesita. **De medir una API se concluyó sobre otra, y esa
+conclusión sostuvo una decisión de producto durante doce días.**
+
+Método, por si hay que repetirlo: leer `serviceusage.googleapis.com/v1beta1/projects/<n>/services/
+<api>/consumerQuotaMetrics`; un `quotaBuckets` **vacío** significa cero. Se validó contrastando contra
+BigQuery y Places en los mismos proyectos, que sí devuelven límites numéricos — sin ese control, un
+bucket vacío se podría haber leído como "la API no reporta". Confirmación independiente: en
+`dinamicseo` y `jmmoldes` la v4 **ni aparece entre las disponibles para habilitar**, porque Google
+sólo la expone a proyectos aprobados.
+
+**El bloqueo real resultó ser la app OAuth**, revisada en la consola (solo lectura, vía la extensión
+de Chrome del usuario — el navegador que maneja el MCP arranca con perfil limpio y no tiene su
+sesión). Está en estado **"Prueba"**, sin ningún scope declarado, con el único `redirect_uri`
+apuntando al **OAuth Playground** y el branding vacío. ⚠️ Estado "Prueba" significa **refresh tokens
+que caducan a los 7 días**: el módulo funcionaría en la demo y moriría en silencio una semana
+después, justo por la pieza que el Bloque F dejó sin construir (detección de revocación). Publicar a
+Producción lo resuelve sin verificación completa. Y **nada de esto se configura por CLI**: Google
+apagó las APIs de administración de OAuth en marzo de 2026, deprecando
+`gcloud alpha iap oauth-brands`/`oauth-clients`.
+
+**Bug de diseño encontrado de paso**, que el plan del Bloque F no anticipaba: el callback es
+`/clients/:id/google/callback`, con el client ID **en la ruta**. Google exige `redirect_uri` exacto y
+no admite comodines de path, así que **una ruta por cliente no puede funcionar en live**. En `mock`
+nunca se notó porque el callback se arma solo. El arreglo es chico porque `EstadoOAuth` **ya lleva
+`clientId`** dentro del `state` firmado: basta una ruta fija `/google/callback` que lo saque de ahí.
+
+**Hallazgo lateral con más consecuencias que el resto:** el cliente OAuth se creó el 2026-09-04, se
+usó ese mismo día y nunca más, y sus dominios autorizados son `n8n.cloud` y `srv1068745.hstgr.cloud`.
+Es el rastro de un prototipo del respondedor **en n8n**, no de una integración con AMG OS. Queda
+como pregunta abierta para Juan: ¿hay una implementación paralela corriendo?
+
+La lección, que es la de siempre en este proyecto: **un diagnóstico que nadie reprodujo es una
+intención, no un hecho.** Doce días de pausa salieron de una medición que apuntaba a la API
+equivocada, y bastaron dos comandos de solo lectura para verlo.
+
+---
+
 ## 2026-09-16 — Instalador del registro en Claude Desktop para `mcp-server`
 
 El usuario preguntó, tras el manual de conexión manual, "no se puede tener un instalador?" — sí se

@@ -7,6 +7,43 @@
 > en [**15-plan-plataforma.md**](15-plan-plataforma.md) — nueve bloques, con qué archivos toca cada
 > uno y cómo se verifica.
 >
+> 🔄 **Nuevo (2026-09-22): el módulo 3 NO estaba bloqueado por Google — el diagnóstico que lo puso en
+> pausa midió la API equivocada.** Verificado con el `gcloud` CLI (instalado en la máquina del usuario
+> ese día) sobre el proyecto `amg-automation` (`546581198843`), autenticado con
+> `argentinosporespana@gmail.com` — la cuenta que sí ve ese proyecto; `dicamic.seo@gmail.com`, con la
+> que se empezó, **no tiene permiso sobre él**.
+>
+> **`mybusiness.googleapis.com` (la v4 legacy, la única que lee y responde reseñas) está habilitada y
+> con cuota concedida: 250.000 requests/día y 10.000 update requests/día** — la segunda es la que
+> consume `reviews.updateReply`. El diagnóstico del 2026-09-04 que concluyó "cuota 0" probó
+> `GET /v1/accounts`, que es de `mybusinessaccountmanagement` **v1**: otra API, que sigue en cero y
+> que el módulo no necesita. Confirmación independiente: en los proyectos de la otra cuenta
+> (`dinamicseo`, `jmmoldes`) la v4 **ni siquiera aparece entre las disponibles para habilitar** —
+> Google sólo la expone a proyectos aprobados.
+>
+> ⚠️ **El bloqueo real es otro, y es peor de lo que parecía: la app OAuth está en estado "Prueba".**
+> Sin ningún scope declarado (falta `business.manage`), con el único `redirect_uri` apuntando al
+> **OAuth Playground** y el branding vacío. Estado "Prueba" significa **refresh tokens que caducan a
+> los 7 días**: el módulo funcionaría en la demo y **moriría en silencio una semana después**,
+> precisamente por la pieza que el Bloque F dejó sin construir (detección de revocación). Publicar a
+> Producción elimina esa caducidad sin necesidad de verificación completa (tope de 100 usuarios y
+> pantalla de "app no verificada", de sobra para AMG). **Nada de eso se configura por CLI**: Google
+> apagó las APIs de administración de OAuth en marzo de 2026.
+>
+> 🐛 **Bug de diseño encontrado de paso:** el callback es `/clients/:id/google/callback`, con el client
+> ID **en la ruta**. Google exige `redirect_uri` exacto y no admite comodines de path, así que **una
+> ruta por cliente no puede funcionar en live**. Arreglo: ruta fija `/google/callback` que saque el
+> cliente del `state` firmado, que **ya lleva `clientId`**. En `mock` nunca se notó porque el callback
+> se arma solo.
+>
+> 🧭 **Hallazgo lateral con consecuencias:** el cliente OAuth se creó el 2026-09-04, se usó ese mismo
+> día y nunca más, y sus dominios autorizados son **`n8n.cloud` y `srv1068745.hstgr.cloud`**. Es el
+> rastro de un prototipo del respondedor **en n8n**, no de una integración con AMG OS. **Pregunta
+> abierta para Juan antes de escribir código: ¿existe una implementación paralela en n8n?**
+>
+> Detalle completo en [`16-pendientes-juan.md § 2`](16-pendientes-juan.md) y
+> [`15-plan-plataforma.md § Bloque F`](15-plan-plataforma.md).
+>
 > 🧭 **Nuevo (2026-09-14): comparativas de seguros — IMPLEMENTADO, en la última ronda de revisión
 > antes del merge.** Las 9 tareas del plan (`docs/superpowers/plans/2026-09-12-comparativas-seguros.md`)
 > están cerradas con revisión limpia cada una, en la rama `feature/comparativas-seguros`. Le da a la

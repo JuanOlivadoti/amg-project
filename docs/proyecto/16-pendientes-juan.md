@@ -41,7 +41,157 @@ Trámite externo con Google, necesario para `GOOGLE_REVIEWS_MODO=live` (hoy todo
 funciona con datos mock). Bloquea en cascada: detectar cuándo un cliente revoca el `refresh_token`.
 Fuente: `15-plan-plataforma.md § Bloque F`, línea ~1336.
 
-**Diagnóstico (2026-09-04):** el proyecto de Cloud "AMG AUTOMATION" (número `546581198843`) tiene la
+> ### 🔄 CORREGIDO el 2026-09-22 — el acceso a la API YA ESTÁ CONCEDIDO; el bloqueo es OTRO
+>
+> **El diagnóstico de abajo (2026-09-04) midió la API equivocada y la conclusión quedó mal.**
+> Verificado con el `gcloud` CLI autenticado como `argentinosporespana@gmail.com`, que es la cuenta
+> que sí ve el proyecto `amg-automation` (`546581198843`).
+>
+> **`mybusiness.googleapis.com` — la v4 legacy, la ÚNICA que lee y responde reseñas
+> (`accounts.locations.reviews.list` / `.updateReply`) — está habilitada y con cuota real concedida:**
+>
+> | Métrica | Límite efectivo |
+> | --- | --- |
+> | Requests | **250.000/día**, 600/min |
+> | **Update requests** (lo que consume `updateReply`) | **10.000/día**, 300/min |
+> | V4 General Requests | 3.000/min |
+> | Create requests | 100/día, 60/min |
+>
+> **Por qué el diagnóstico viejo se equivocó:** probó `GET /v1/accounts`, que es de
+> `mybusinessaccountmanagement` **v1** — una API distinta, que efectivamente sigue en cuota `0`. El
+> módulo de reseñas no la necesita. De medir una API se concluyó sobre otra.
+>
+> **Confirmación independiente:** en los otros dos proyectos de la otra cuenta (`dinamicseo`,
+> `jmmoldes`) `mybusiness.googleapis.com` **ni siquiera aparece entre las APIs disponibles para
+> habilitar**. Google sólo la expone a proyectos aprobados — que esté habilitada en `amg-automation`
+> *es* la aprobación. Método de lectura de cuota: `serviceusage.googleapis.com/v1beta1/.../
+> consumerQuotaMetrics`; un bucket **vacío** significa cero (contrastado contra BigQuery y Places, que
+> sí devuelven límites numéricos en los mismos proyectos).
+>
+> ### ❌ El bloqueo REAL: la app OAuth está sin configurar
+>
+> Revisado en la consola (solo lectura) el 2026-09-22. Las dos mitades están en estados opuestos: la
+> **API** está concedida, la **app OAuth** no sirve para este uso.
+>
+> | Qué | Estado |
+> | --- | --- |
+> | Estado de publicación | **"Prueba" (Testing)** ← el problema serio |
+> | Tipo de usuario | Externo |
+> | Scopes declarados | **NINGUNO.** `business.manage` no está |
+> | Clientes OAuth | 1 (Aplicación web, `546581198843-aqkcsd0td...`) |
+> | `redirect_uri` registrados | **sólo `https://developers.google.com/oauthplayground`** |
+> | Branding | Página principal, política de privacidad y condiciones: **vacíos** |
+> | Usuarios de prueba | 2 (`amgmadridequipo@`, `argentinosporespana@`) |
+>
+> ⚠️ **Por qué "Prueba" es el hallazgo más caro.** Una app en Testing recibe refresh tokens que
+> **caducan a los 7 días**. El módulo entero depende de `clients.google_refresh_token` para pollear
+> cada 30 min: se conectaría un cliente, la demo saldría perfecta, y **una semana después el polling
+> dejaría de traer reseñas sin que nadie se entere** — porque la detección de revocación es
+> justamente la pieza que se dejó sin construir "hasta tener acceso real". Fallo silencioso, diferido
+> y en producción: la clase que ningún test ve.
+>
+> **Publicar a Producción elimina esa caducidad**, y NO hace falta la verificación completa de Google
+> para eso: una app publicada sin verificar muestra pantalla de "app no verificada" y tiene tope de
+> 100 usuarios — de sobra para AMG. La verificación completa sólo hace falta para quitar la
+> advertencia y el tope.
+>
+> **Lo que falta, todo de consola (ver § "No se puede por CLI", abajo):**
+>
+> 1. Declarar el scope `https://www.googleapis.com/auth/business.manage`.
+> 2. Completar Branding: página principal, política de privacidad y condiciones del servicio. **Hoy
+>    el botón «Publicar app» está bloqueado por esto** (aviso textual en la consola).
+> 3. Agregar el `redirect_uri` real de la API de AMG OS (hoy sólo está el OAuth Playground).
+> 4. **Publicar a Producción** — el paso que mata el problema de los 7 días.
+> 5. Mirar el aviso *"Tu app no está configurada para usar flujos OAuth seguros"*. Suele apuntar a
+>    falta de PKCE o a flujo implícito; nuestro diseño usa authorization code con `state` firmado, así
+>    que probablemente se resuelva al configurar bien el cliente.
+>
+> ### 📄 El paso 2 está más bloqueado de lo que parece: amgmadrid.com no tiene páginas legales
+>
+> Verificado el 2026-09-22 contra el HTML y el sitemap de `https://amgmadrid.com/` (WordPress). El
+> sitemap lista **20 páginas** —servicios, blog, curso, galería, newsletter, diagnóstico— y **ninguna
+> es política de privacidad, aviso legal, política de cookies ni condiciones del servicio**. Las ocho
+> rutas típicas de WordPress (`/aviso-legal/`, `/politica-de-privacidad/`, …) devuelven **404**.
+>
+> ⚠️ **Cuidado con la herramienta:** un primer `WebFetch` de la home reportó enlaces de "Aviso Legal" y
+> "Política de Cookies" en el pie. **Eran falsos** — el modelo que resume la página los inventó. No
+> están ni en los 292 KB de HTML ni en el sitemap. La lección operativa: **un resumen de `WebFetch` no
+> es evidencia; el `grep` sobre el HTML crudo sí.**
+>
+> Google exige una política de privacidad que **cargue** para dejar publicar la app, así que esto
+> bloquea el paso 4. Y va más allá de Google: la web tiene formulario de newsletter y de "diagnóstico
+> gratuito", o sea que recoge datos personales — una web española en esa situación necesita esos
+> textos por RGPD y LSSI-CE de todos modos. **No es trabajo nuestro redactarlos.**
+>
+> ### 🔐 Requisito extra que no estaba en la lista: verificar el dominio en Search Console
+>
+> Para usar `amgmadrid.com` en la pantalla de consentimiento hay que añadirlo como **dominio
+> autorizado**, y Google exige que los dominios autorizados estén **verificados en Google Search
+> Console** por un propietario del proyecto. Hoy los autorizados son `n8n.cloud` y
+> `srv1068745.hstgr.cloud`; `amgmadrid.com` **no está**.
+>
+> Secuencia real, entonces: crear las páginas legales → verificar el dominio en Search Console con la
+> cuenta del proyecto → añadirlo como dominio autorizado → completar branding → publicar.
+>
+> ### 💡 La alternativa que borra casi todo lo anterior: app INTERNAL
+>
+> Todo el camino de arriba aplica a una app **External**. Una app **Internal** no necesita política de
+> privacidad, ni verificación, ni tiene tope de 100 usuarios, **ni caduca los refresh tokens a los 7
+> días**. Elimina el problema entero.
+>
+> La condición es que **sólo consientan cuentas de un mismo Google Workspace**, y eso depende de cómo
+> trabaja AMG:
+>
+> - **Si cada restaurante conecta su propia cuenta** → son cuentas externas, **Internal no sirve**.
+> - **Si AMG tiene acceso de gestor a las fichas** desde una cuenta propia (como suelen trabajar las
+>   agencias) → sólo consiente la cuenta de AMG, e **Internal es viable** con un Workspace sobre
+>   `amgmadrid.com`.
+>
+> Las dos cuentas vistas en el proyecto (`argentinosporespana@gmail.com`, `amgmadridequipo@gmail.com`)
+> son **gmail.com**, no Workspace, así que hoy Internal no está disponible — pero si AMG tiene o puede
+> tener Workspace, es de lejos el camino más corto.
+>
+> ⚠️ **Y esto no es sólo trámite: afecta al MODELO DE DATOS.** Hoy `clients.google_refresh_token` es
+> **por cliente**, lo que asume el primer escenario (cada restaurante conecta lo suyo). Si AMG gestiona
+> todo desde una cuenta, esa columna sobra: sería **una** credencial, no N. **Decidir esto antes de
+> escribir la vía B**, o se construye para el caso equivocado.
+>
+> ❓ **Las dos preguntas para AMG**, ya enviadas en el documento de solicitud del 2026-09-25:
+> (1) ¿hay Google Workspace con correos `@amgmadrid.com`? (2) ¿cómo accede AMG a las fichas de Google
+> de sus clientes, con acceso de gestor a una cuenta propia o cada cliente la suya?
+>
+> ### 🚫 Nada de esto se puede hacer por CLI
+>
+> **Google apagó las APIs de administración de OAuth en marzo de 2026**, y con ellas quedaron
+> deprecados `gcloud alpha iap oauth-brands` y `gcloud alpha iap oauth-clients`. La pantalla de
+> consentimiento es **solo consola**: no hay API pública ni comando. Desde el CLI sólo se habilitan
+> APIs y se leen cuotas — que es exactamente lo que ya está hecho.
+>
+> ### 🧭 Y un hallazgo lateral con consecuencias: rastro de n8n
+>
+> El cliente OAuth se creó el **2026-09-04**, se usó **ese mismo día y nunca más**, su único redirect
+> es el **OAuth Playground**, y los **dominios autorizados son `n8n.cloud` y
+> `srv1068745.hstgr.cloud`**. Eso no es el rastro de alguien integrando AMG OS: es el de alguien
+> **prototipando el respondedor de reseñas en n8n**, a mano, durante una tarde — y la fecha coincide
+> con el diagnóstico que quedó escrito acá.
+>
+> ❓ **Pregunta abierta para Juan, previa a escribir código:** ¿existe una implementación paralela del
+> módulo de reseñas en n8n? Si la hay, la decisión deja de ser técnica (si AMG OS la absorbe o
+> convive con ella), y construir la vía B sin saberlo arriesga duplicar algo que ya corre.
+>
+> ### 🐛 Bug de diseño encontrado de paso (esto sí es código)
+>
+> El callback es **`/clients/:id/google/callback`** — el client ID viaja **en la ruta**
+> ([`api/src/app.ts:212`](../../api/src/app.ts#L212)). Google exige que el `redirect_uri` coincida
+> **exacto** con uno registrado y **no admite comodines en el path**, así que **una ruta por cliente
+> no puede funcionar en live**. En `mock` nunca se notó porque el callback se arma solo.
+>
+> **Arreglo limpio, ya casi hecho:** `EstadoOAuth` **ya lleva `clientId`** dentro del `state` firmado
+> ([`api/src/oauth-state.ts:14`](../../api/src/oauth-state.ts#L14)). Basta una ruta fija
+> `/google/callback` que saque el cliente del state verificado en vez del path. Cambio chico, pero
+> **el plan del Bloque F no lo mencionaba** y es de los que aparecen a mitad de implementación.
+
+**Diagnóstico (2026-09-04) — SUPERADO, ver el bloque de arriba:** el proyecto de Cloud "AMG AUTOMATION" (número `546581198843`) tiene la
 API habilitada pero cuota `0` (`GET /v1/accounts` de la Account Management API devuelve `429
 RESOURCE_EXHAUSTED`, `quota_limit_value: "0"`) — Google no aprobó el acceso todavía; habilitar la API
 en la consola y que te aprueben el acceso son dos trámites separados. Falta enviar la **"Application
@@ -50,9 +200,15 @@ verificar antes de aplicar: el perfil de Business de AMG tiene que estar **verif
 60+ días, con un sitio web cargado en la ficha** — si no cumple, Google rechaza la solicitud por
 antigüedad. Aprobación: días a semanas, no bloquea desarrollo mientras tanto.
 
-**Estado del trámite: EN PAUSA por decisión de Juan (2026-09-10).** No se manda la solicitud por ahora;
-el módulo de reseñas se queda en `mock`. Hoy nadie reclama el módulo, así que el coste de esperar es
-bajo — y la aprobación puede pedirse cuando aparezca un cliente que lo pida.
+**Estado del trámite: EN PAUSA por decisión de Juan (2026-09-10) — DECISIÓN TOMADA SOBRE UN
+DIAGNÓSTICO EQUIVOCADO, revisar.** No se manda la solicitud por ahora; el módulo de reseñas se queda
+en `mock`. Hoy nadie reclama el módulo, así que el coste de esperar es bajo — y la aprobación puede
+pedirse cuando aparezca un cliente que lo pida.
+
+> ⚠️ **2026-09-22:** la pausa se decidió creyendo que faltaba la aprobación de la Business Profile
+> API. **Esa aprobación ya estaba concedida** (ver el bloque de arriba). Lo que falta es configurar y
+> publicar la app OAuth, que es trabajo de consola de minutos, no un trámite de semanas con Google.
+> La premisa de la decisión cambió, así que la decisión merece revisarse.
 
 **Lo que esta decisión NO cambia, y por eso se anota acá:** el módulo 3 queda como **demo permanente**
 mientras dure (sin acceso real no hay ni una reseña real). La trampa del polling en mock **se desarmó
