@@ -91,7 +91,7 @@ test("🔴 un issuer de un host ajeno no arranca la API", () => {
 });
 
 test("🔴 falla cerrado si falta OAUTH_STATE_SECRET: sin él, el callback OAuth no puede confiar en el state", () => {
-  // Mismo criterio que SUPABASE_JWT_ISS arriba: sin este secreto, `GET /clients/:id/google/callback`
+  // Mismo criterio que SUPABASE_JWT_ISS arriba: sin este secreto, `GET /google/callback`
   // (anónimo, fuera de `autenticar()`) no tendría con qué verificar el `tenantId`/`userId` que trae
   // el `state` -- un valor fijo acá sería una credencial compartida entre despliegues.
   const { OAUTH_STATE_SECRET: _sinSecreto, ...sinEsteVar } = BASE;

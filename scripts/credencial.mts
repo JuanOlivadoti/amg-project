@@ -104,6 +104,22 @@ export const CATALOGO: Record<string, Entrada> = {
     familia: "tercero",
     nota: "BotFather → /newbot (o /token si el bot ya existe)",
   },
+  /*
+   * Las dos del cliente OAuth de Google, para `GOOGLE_REVIEWS_MODO=live` (Bloque F). Las emite la
+   * consola de Google Cloud —proyecto `amg-automation`— así que acá no se genera nada.
+   *
+   * Van a DOS paquetes y no es un descuido: `api/` las necesita para intercambiar el `code` del
+   * callback por un refresh token, y `orchestrator/` para cambiar ese refresh token por un access
+   * token en cada ciclo de polling. Son el mismo par de credenciales cumpliendo dos papeles.
+   */
+  GOOGLE_CLIENT_ID: {
+    familia: "tercero",
+    nota: "Google Cloud → APIs y servicios → Credenciales → ID de cliente de OAuth (aplicación web). NO es un secreto, pero viaja junto a su par.",
+  },
+  GOOGLE_CLIENT_SECRET: {
+    familia: "tercero",
+    nota: "Google Cloud → el mismo cliente OAuth → Secretos del cliente. Este SÍ es secreto.",
+  },
 
   // --- Configuración: no son secretos y un valor al azar no significaría nada. ---
   SUPABASE_JWT_ISS: { familia: "config", nota: "https://<ref>.supabase.co/auth/v1" },

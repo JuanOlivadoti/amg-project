@@ -1794,22 +1794,25 @@ test("POST /clients/:id/google/conectar devuelve una URL absoluta que apunta al 
   const res = await req("POST", `/clients/${clientA1}/google/conectar`, { user: equipoA, tenant: tenantA });
   assert.equal(res.status, 200);
   const body = (await res.json()) as { url: string };
-  assert.ok(body.url.includes(`/clients/${clientA1}/google/callback`), "apunta al propio callback, no a Google");
+  assert.ok(body.url.includes("/google/callback"), "apunta al propio callback, no a Google");
+  assert.ok(
+    !body.url.includes(`/clients/${clientA1}/`),
+    "la ruta del callback NO lleva el cliente: Google exige redirect_uri exacto, sin comodines de path",
+  );
   assert.ok(body.url.includes("code=mock-code"));
 });
 
-test("GET /clients/:id/google/callback sin code o sin state → 400", async () => {
+test("GET /google/callback sin code o sin state → 400", async () => {
   // Sin headers: esta ruta es ANÓNIMA (corre antes de `autenticar()`), así que ningún `user`/`tenant`
   // viaja en una llamada real — mandarlos no cambiaría nada, pero omitirlos es fiel al camino real.
-  const res = await req("GET", `/clients/${clientA1}/google/callback`, {});
+  const res = await req("GET", "/google/callback", {});
   assert.equal(res.status, 400);
 });
 
 /**
  * Firma un `state` como lo haría `POST /clients/:id/google/conectar`, sin pasar por HTTP — para los
- * tests que necesitan un `state` VÁLIDAMENTE firmado pero con un `clientId` que no es el de la ruta
- * (el ataque que `estado.clientId !== clientId` está para frenar). Mismo secreto que `createApp`
- * recibió en el `beforeEach`.
+ * tests que necesitan un `state` VÁLIDAMENTE firmado pero apuntando a un cliente que no es el que
+ * el test espera ver tocado. Mismo secreto que `createApp` recibió en el `beforeEach`.
  */
 function firmarStateDeTest(estado: Partial<EstadoOAuth> & { clientId: string }): string {
   return firmarEstado(
@@ -1824,18 +1827,25 @@ function firmarStateDeTest(estado: Partial<EstadoOAuth> & { clientId: string }):
   );
 }
 
-test("🔴 GET /clients/:id/google/callback con state de OTRO cliente → 400, no escribe nada", async () => {
-  // El state está firmado de VERDAD (con el secreto del proceso) -- lo que está mal es que apunta a
-  // un cliente distinto del de la ruta. Antes del fix esto se podía forjar a mano (JSON en base64url
-  // plano); ahora ni siquiera un state genuino de OTRO cliente sirve para éste.
+test("🔴 GET /google/callback: un state que nombra a OTRO cliente no escribe en éste", async () => {
+  /*
+   * Cuando el cliente viajaba en el path, el riesgo era la DISCREPANCIA: un state de A presentado en
+   * la URL de B, que `estado.clientId !== clientId` frenaba con un 400. Con la ruta fija esa
+   * discrepancia ya no puede existir — el state es la única fuente.
+   *
+   * Lo que este test sigue fijando es la propiedad de fondo, que no cambió: un state firmado que
+   * nombra a otro cliente NO puede tocar a éste. Ahora el mecanismo es otro — la escritura va al
+   * cliente que el state nombra, y a ese lo autoriza RLS (`conectarGoogle`), no un `if`.
+   */
   const stateAjeno = firmarStateDeTest({ clientId: "00000000-0000-4000-8000-000000000099" });
-  const res = await req("GET", `/clients/${clientA1}/google/callback?code=abc&state=${stateAjeno}`, {});
-  assert.equal(res.status, 400);
+  const res = await req("GET", `/google/callback?code=abc&state=${stateAjeno}`, {});
+  assert.equal(res.status, 404, "el cliente que nombra el state no existe: no hay fila que escribir");
+
   const [fila] = await sql<{ google_conectado_en: string | null }>(
     "select google_conectado_en from clients where id = $1",
     [clientA1],
   );
-  assert.equal(fila!.google_conectado_en, null, "un state que apunta a otro cliente no puede haber escrito nada");
+  assert.equal(fila!.google_conectado_en, null, "un state que nombra a otro cliente no puede haber escrito en éste");
 });
 
 /** Firma el state pasando por el endpoint REAL (`POST .../conectar`), como lo hace el portal. */
@@ -1848,13 +1858,38 @@ async function obtenerStateFirmado(clientId: string, user: string, tenant: strin
   return state as string;
 }
 
-test("🔴 GET /clients/:id/google/callback SIN Authorization completa el flujo (bug real de Task 7)", async () => {
+test("🔴 GET /google/callback — ruta FIJA, el cliente sale del state y no del path", async () => {
+  /*
+   * Por qué la ruta no puede llevar el cliente adentro: Google exige que el `redirect_uri` coincida
+   * EXACTO con uno de los registrados en la consola, y NO admite comodines de path. Con
+   * `/clients/:id/google/callback` haría falta registrar una URL por cada cliente, así que el modo
+   * `live` sería imposible; en `mock` no se notaba porque el callback se arma solo.
+   *
+   * La identidad del cliente viaja donde ya viajaba firmada: dentro del `state` (`EstadoOAuth.clientId`).
+   */
+  const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
+  const res = await req("GET", `/google/callback?code=rutafija&state=${state}`, {});
+
+  assert.equal(res.status, 302, "la ruta fija tiene que completar el flujo igual que la vieja");
+  assert.ok(
+    res.headers.get("location")?.includes(`/clientes/${clientA1}/resenas`),
+    "el redirect usa el cliente que venía en el state",
+  );
+
+  const [fila] = await sql<{ google_refresh_token: string | null }>(
+    "select google_refresh_token from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(fila!.google_refresh_token, "mock-refresh-rutafija", "escribió en el cliente del state");
+});
+
+test("🔴 GET /google/callback SIN Authorization completa el flujo (bug real de Task 7)", async () => {
   // Esta es la reproducción del bug que Task 7 encontró en un navegador real: una navegación de nivel
   // superior (`window.location.href`) NUNCA lleva el header `Authorization` -- no es un detalle de
   // esta implementación. Antes del fix, este endpoint vivía detrás de `autenticar()` y esta misma
   // llamada daba 401 "Falta el token Bearer.", rompiendo el flujo de punta a punta.
   const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
-  const res = await req("GET", `/clients/${clientA1}/google/callback?code=verificacion&state=${state}`, {});
+  const res = await req("GET", `/google/callback?code=verificacion&state=${state}`, {});
   assert.equal(res.status, 302, "el callback anónimo tiene que completar el flujo, no pedir un token que nunca llega");
   assert.ok(res.headers.get("location")?.startsWith(PORTAL_URL_TEST));
 
@@ -1867,7 +1902,7 @@ test("🔴 GET /clients/:id/google/callback SIN Authorization completa el flujo 
 
 test("🔴 el flujo completo conecta (redirect 302 de vuelta al portal) y desconectar limpia las tres columnas", async () => {
   const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
-  const conectar = await req("GET", `/clients/${clientA1}/google/callback?code=xyz&state=${state}`, {});
+  const conectar = await req("GET", `/google/callback?code=xyz&state=${state}`, {});
   assert.equal(conectar.status, 302);
   assert.ok(conectar.headers.get("location")?.startsWith(PORTAL_URL_TEST), "vuelve al ORIGEN del portal");
   assert.ok(conectar.headers.get("location")?.includes(`/clientes/${clientA1}/resenas`));
@@ -1921,16 +1956,16 @@ test("🔴 con rol 'cliente', desconectar no afecta ninguna fila (ADR-20: solo l
   assert.equal(fila!.google_refresh_token, "secreto", "el rol cliente no pudo desconectar: la fila no cambió");
 });
 
-test("🔴 GET /clients/:id/google/callback de OTRO tenant → 404, sin escribir (RLS, no un `if` de rol)", async () => {
+test("🔴 GET /google/callback de OTRO tenant → 404, sin escribir (RLS, no un `if` de rol)", async () => {
   // El `state` viaja HONESTAMENTE firmado para la identidad REAL de equipoB (tenantB) -- `POST
   // .../conectar` no comprueba a quién pertenece `clientId` (esa decisión es deliberada, ver el
   // comentario del bloque en app.ts): equipoB puede pedir un state para el cliente de OTRO tenant sin
   // que nada se lo impida acá. Lo que sí lo frena es RLS al escribir: `conectarGoogle` hace el UPDATE
-  // con `ctx.tenantId = tenantB`, y la fila de `clientA1` vive en `tenantA` -- cero filas, 404. No es
-  // el ataque de state cruzado (eso ya lo cubre el test de arriba): acá el clientId SÍ coincide con
-  // la ruta, lo que no coincide es el tenant.
+  // con `ctx.tenantId = tenantB`, y la fila de `clientA1` vive en `tenantA` -- cero filas, 404. Todo
+  // lo que trae el state es coherente y está bien firmado: el único desajuste es el tenant, y lo
+  // frena la base. Es la contraparte del test de arriba, donde lo que no existía era el cliente.
   const state = await obtenerStateFirmado(clientA1, equipoB, tenantB);
-  const res = await req("GET", `/clients/${clientA1}/google/callback?code=xyz2&state=${state}`, {});
+  const res = await req("GET", `/google/callback?code=xyz2&state=${state}`, {});
   assert.equal(res.status, 404);
   const [fila] = await sql<{ google_conectado_en: string | null }>(
     "select google_conectado_en from clients where id = $1",
@@ -2012,7 +2047,7 @@ test("🔴 mock+producción: un state ya firmado NO sirve — el callback corta 
    */
   const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
 
-  const res = await appBloqueada().request(`/clients/${clientA1}/google/callback?code=viejo&state=${state}`);
+  const res = await appBloqueada().request(`/google/callback?code=viejo&state=${state}`);
   assert.equal(res.status, 409);
 
   // No se asume: se LEE la fila. El corte va antes de `intercambiarCode` y de `conectarGoogle`.
@@ -2023,7 +2058,7 @@ test("🔴 mock+producción: un state ya firmado NO sirve — el callback corta 
 
   // Control positivo: el MISMO state, contra la app normal, completa el flujo como hasta hoy. Que
   // el 409 de arriba no venga de un state roto lo demuestra este 302.
-  const ok = await app.request(`/clients/${clientA1}/google/callback?code=viejo&state=${state}`);
+  const ok = await app.request(`/google/callback?code=viejo&state=${state}`);
   assert.equal(ok.status, 302);
   assert.ok(ok.headers.get("location")?.startsWith(PORTAL_URL_TEST));
   assert.equal((await conexionDe(clientA1)).google_refresh_token, "mock-refresh-viejo");

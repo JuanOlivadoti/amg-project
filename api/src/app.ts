@@ -114,7 +114,7 @@ export interface ApiDeps {
    */
   corsOrigins?: string | string[];
   /**
-   * Origen del PORTAL (no de la API), para el redirect final de `GET /clients/:id/google/callback`.
+   * Origen del PORTAL (no de la API), para el redirect final de `GET /google/callback`.
    * Ese endpoint lo pega el NAVEGADOR con una navegación completa (no un `fetch` del portal), así que
    * tiene que devolver un redirect real de vuelta a una pantalla — no JSON. Es el mismo dato que hoy
    * arma `corsOrigins`: quien construye `ApiDeps` (`deps.ts`/`dev-server.ts`) lo deriva de ahí, no es
@@ -192,7 +192,7 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
   app.get("/health", (c) => c.json({ status: "ok" }));
 
   /*
-   * GET /clients/:id/google/callback — SIN auth y ANTES del middleware que exige token, mismo
+   * GET /google/callback — SIN auth y ANTES del middleware que exige token, mismo
    * mecanismo que `/health` arriba (y por el mismo motivo del comentario ahí: en Hono el orden de
    * registro decide qué handlers componen la cadena de una request, y una ruta registrada antes de
    * `app.use("*", autenticar(...))` nunca pasa por ese middleware).
@@ -208,8 +208,15 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
    * /clients/:id/google/conectar`, más abajo, SÍ autenticado). `verificarEstado` es lo que impide que
    * cualquiera golpee esta URL a mano con un `tenantId`/`userId` inventado: sin la firma correcta (y
    * sin que `emitidoEn` esté dentro de la ventana), el callback ni siquiera llega a construir un `ctx`.
+   *
+   * ⚠️ LA RUTA NO LLEVA EL CLIENTE, Y ES UN REQUISITO DE GOOGLE, NO UNA PREFERENCIA. Google exige que
+   * el `redirect_uri` coincida EXACTO con uno de los registrados en la consola de Cloud, y no admite
+   * comodines de path: con `/clients/:id/google/callback` haría falta registrar una URL por cada
+   * cliente, o sea que el modo `live` sería imposible. En `mock` no se notaba porque el callback se
+   * arma solo. El cliente sale de `estado.clientId`, que ya viajaba firmado ahí desde la fase 1 —
+   * ahora es la ÚNICA fuente, así que no hay dos valores que puedan discrepar.
    */
-  app.get("/clients/:id/google/callback", async (c) => {
+  app.get("/google/callback", async (c) => {
     /*
      * El guardarraíl mock-en-producción, otra vez y ANTES de leer nada: defensa en profundidad con un
      * motivo CONCRETO, no por simetría. Un `state` firmado ANTES de desplegar este cambio sigue
@@ -228,7 +235,6 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       return c.json({ error: CONECTAR_GOOGLE_BLOQUEADO }, 409);
     }
 
-    const clientId = c.req.param("id");
     const code = c.req.query("code");
     const stateCrudo = c.req.query("state");
 
@@ -240,9 +246,11 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     if (!estado) {
       return c.json({ error: "state inválido, alterado o vencido." }, 400);
     }
-    if (estado.clientId !== clientId) {
-      return c.json({ error: "El state no corresponde a este cliente." }, 400);
-    }
+
+    // Única fuente del cliente: el state firmado. No hay `:id` en la ruta contra el que compararlo
+    // (ver el comentario de arriba), así que tampoco hay una discrepancia posible que chequear —
+    // quien no pueda escribir en este cliente lo frena RLS en `conectarGoogle`, como siempre.
+    const clientId = estado.clientId;
 
     // El ctx sale ENTERO del state firmado: acá no hay `c.get("ctx")` porque esta ruta corre ANTES
     // del middleware de auth y nunca lo va a tener. Lo que autoriza la escritura sigue siendo RLS
@@ -984,7 +992,7 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     // El origen de ESTA request, no un valor fijo: en dev la API vive en :3000, en producción en su
     // propio dominio — `urlDeConsentimiento` (mock) lo necesita para armar un callback absoluto.
     const origen = new URL(c.req.url).origin;
-    return c.json({ url: deps.googleOAuth.urlDeConsentimiento(clientId, state, origen) });
+    return c.json({ url: deps.googleOAuth.urlDeConsentimiento(state, origen) });
   });
 
   /** POST /clients/:id/google/desconectar — limpia las tres columnas. Mismo criterio de 404 que arriba. */

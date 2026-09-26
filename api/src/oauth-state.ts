@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 /**
- * El `state` de OAuth, firmado. El callback (`GET /clients/:id/google/callback`) es la ÚNICA ruta
+ * El `state` de OAuth, firmado. El callback (`GET /google/callback`) es la ÚNICA ruta
  * de la API que responde a una navegación anónima del navegador — no puede llevar ningún header, así
  * que la identidad de quien conecta (tenantId/userId) tiene que viajar DENTRO del `state`, y tiene
  * que venir firmada por este mismo proceso para que nadie pueda escribir `google_refresh_token` en
@@ -12,6 +12,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * el callback confiaría ciegamente en cualquier tenantId/userId que alguien le mande.
  */
 export interface EstadoOAuth {
+  /**
+   * El cliente de AMG que se está conectando. Es la **única** fuente: la ruta del callback es fija
+   * (`/google/callback`, sin `:id`) porque Google exige un `redirect_uri` exacto y sin comodines de
+   * path — una URL por cliente haría imposible el modo `live`.
+   */
   clientId: string;
   tenantId: string;
   userId: string;

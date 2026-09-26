@@ -12,8 +12,12 @@ export interface GoogleOAuthProvider {
    * endpoint) — en `live` se ignora, porque el `redirect_uri` real está fijado en la config de
    * Google Cloud, no en cada request; en `mock` es lo que permite simular el redirect SIN un sitio
    * externo real, apuntando al propio callback.
+   *
+   * NO recibe el cliente de AMG, a propósito: el callback es una ruta FIJA (`/google/callback`)
+   * porque Google exige un `redirect_uri` exacto y sin comodines de path, y la identidad del cliente
+   * viaja firmada dentro del `state`. Pasarlo acá además sería una segunda fuente de la misma verdad.
    */
-  urlDeConsentimiento(clientId: string, state: string, callbackBaseUrl: string): string;
+  urlDeConsentimiento(state: string, callbackBaseUrl: string): string;
   /** Intercambia el `code` del callback por un refresh token. */
   intercambiarCode(code: string): Promise<{ refreshToken: string; locationId: string }>;
 }
@@ -28,9 +32,9 @@ export interface GoogleOAuthProvider {
  * redirect al portal), sin depender de nada externo.
  */
 export class MockGoogleOAuthProvider implements GoogleOAuthProvider {
-  urlDeConsentimiento(clientId: string, state: string, callbackBaseUrl: string): string {
+  urlDeConsentimiento(state: string, callbackBaseUrl: string): string {
     const params = new URLSearchParams({ code: "mock-code", state });
-    return `${callbackBaseUrl}/clients/${encodeURIComponent(clientId)}/google/callback?${params.toString()}`;
+    return `${callbackBaseUrl}/google/callback?${params.toString()}`;
   }
 
   async intercambiarCode(code: string): Promise<{ refreshToken: string; locationId: string }> {

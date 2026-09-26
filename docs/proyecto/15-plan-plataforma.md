@@ -1424,6 +1424,57 @@ bloqueo — quedaron resueltas por Telegram.
 > `/google/callback` que saque el cliente del `state` firmado — que **ya lleva `clientId`**
 > (`api/src/oauth-state.ts`). En `mock` nunca se notó porque el callback se arma solo.
 >
+> ### ✅ 2026-09-26 — los dos cambios que NO dependían de AMG están hechos
+>
+> Son los únicos que sirven en los dos modelos de acceso (una credencial o N), así que se podían
+> escribir sin esperar las respuestas de AMG.
+>
+> **1. La ruta fija del callback.** `GET /clients/:id/google/callback` → **`GET /google/callback`**, con
+> el cliente saliendo de `estado.clientId`. Test rojo primero, y falló **por el motivo exacto**: `401`,
+> no `404` — sin la ruta registrada antes de `autenticar()`, la petición cae en el middleware y muere
+> pidiendo un Bearer que una navegación del navegador nunca lleva. Es el bug de la Task 7 reapareciendo
+> por otra puerta. **Verificación por mutación:** restaurar la ruta vieja hace caer exactamente ese
+> test, con el mismo `401 !== 302`.
+>
+> Dos consecuencias que valen más que el cambio en sí:
+>
+> - **Se fue el parámetro `clientId` de `urlDeConsentimiento`.** Quedaba muerto en los dos modos (en
+>   `live` la identidad viaja en el `state`), y dejarlo haría que la interfaz mienta sobre lo que el
+>   provider real necesita.
+> - **Un test se reescribió, no se borró.** El que probaba la discrepancia path-vs-state ya no puede
+>   existir —no hay path contra el que discrepar—, pero la propiedad de fondo sigue viva: ahora fija
+>   que un `state` que nombra a OTRO cliente no escribe en éste, y quien lo frena es **RLS**, no un
+>   `if`. Su contraparte (el test de otro tenant) se mantuvo con el comentario corregido.
+>
+> También se actualizaron las referencias obsoletas a la ruta vieja, incluida una que salía en un
+> **mensaje de error al desplegador** (`deps.ts`, el texto de `OAUTH_STATE_SECRET` ausente).
+>
+> **Verificado en el navegador** (MCP chrome-devtools, `dev:server` de `api/` en :3000 + portal en
+> :4200), que en este cambio no es un trámite: el bug original de la Task 7 **se encontró así y no con
+> tests**, porque los tests adjuntaban a mano un header que una navegación real nunca lleva. Ciclo
+> completo ejercitado: *Desconectar → Conectar Google → navegación real del navegador al callback →
+> escritura bajo RLS → redirect de vuelta a `/clientes/:id/resenas`*, con la UI pasando a «Desconectar
+> Google», **consola sin errores ni warnings**, y la persistencia confirmada server-side
+> (`google_conectado_en` con timestamp nuevo, leído por la API después del redirect — no estado de UI).
+> Antes, con `curl`: `conectar` devuelve `http://localhost:3000/google/callback?...` (sin el cliente en
+> el path) y seguirlo da `302` a `/clientes/<id>/resenas` con el id sacado del `state`.
+>
+> **2. Las credenciales del cliente OAuth, al catálogo.** `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET`,
+> familia `tercero` (las emite Google; acá no se genera nada), repartidas por `env:sync` a **`api/` y
+> `orchestrator/`** — el mismo par con dos papeles: la API intercambia el `code` del callback, el
+> orquestador refresca el token en cada ciclo de polling. Declaradas también en `auditar-railway.mts`,
+> en `SEGUN_MODO` y no en `OBLIGATORIAS`, porque su ausencia es una declaración (`mock`) y no un olvido.
+>
+> **`GOOGLE_REDIRECT_URI` NO se agregó**, a propósito: nada la lee todavía, y si debe derivarse del
+> origen de la request o venir fija en configuración es una decisión que pertenece al provider `live`.
+> Config que nadie consume invita a un default equivocado.
+>
+> **Sigue sin empezar, y sigue bloqueado por AMG:** dónde vive el refresh token (una credencial o N),
+> resolver el `locationId` con varias ubicaciones, y la detección de revocación — esta última necesita
+> ver la forma real del error de Google, no se puede adivinar. El `LiveGoogleReviewsProvider` en cambio
+> **no** está bloqueado: recibe `accessToken` y `locationId` como argumentos, así que es independiente
+> del modelo de acceso.
+>
 > Detalle completo, con el método de medición y el hallazgo lateral del rastro de n8n, en
 > [`16-pendientes-juan.md § 2`](16-pendientes-juan.md).
 >

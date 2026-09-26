@@ -117,6 +117,10 @@ export const SEGUN_MODO: Record<Servicio, Readonly<Record<string, string>>> = {
       "`POST /clients/:id/google/conectar` con 409 en producción (guardarraíl: conectar en mock " +
       "sembraría reseñas inventadas en la base real). La API la lee desde el Bloque F fase 1; " +
       "faltaba en este inventario",
+    GOOGLE_CLIENT_ID:
+      "sin él, `GOOGLE_REVIEWS_MODO=live` no puede intercambiar el `code` del callback por un " +
+      "refresh token. En `mock` no hace falta: el proveedor falso nunca sale del proceso",
+    GOOGLE_CLIENT_SECRET: "ídem — es el par del anterior, un solo cliente OAuth compartido con el orquestador",
   },
   "amg-orchestrator": {
     WEB_PUBLISH_MODE: "sin ella publica en **mock**: no toca Storyblok pero reporta `published: true`",
@@ -137,6 +141,10 @@ export const SEGUN_MODO: Record<Servicio, Readonly<Record<string, string>>> = {
     KR_BRIEF_PATH: "solo la usa el CLI del M1; el orquestador reconstruye el brief desde la base",
     BUSINESS_PROFILE_PATH: "ídem: el perfil sale de `clients.business_profile`, no de un archivo",
     GOOGLE_REVIEWS_MODO: "sin ella lee reseñas de Google en **mock** (Bloque F fase 1; `live` no está implementado)",
+    GOOGLE_CLIENT_ID:
+      "sin él, con `GOOGLE_REVIEWS_MODO=live`, el polling no puede cambiar el `google_refresh_token` " +
+      "guardado por un access token. Mismo par que recibe la API, otro papel",
+    GOOGLE_CLIENT_SECRET: "ídem — el par del anterior",
     BORRADOR_RESENAS_MODO:
       "sin ella, el borrador se genera en `openai` si hay OPENAI_API_KEY, o en `mock` si no (Bloque F fase 2)",
     TELEGRAM_MODO:

@@ -31,6 +31,9 @@ export const MAPA = {
     "INNGEST_EVENT_KEY",
     "OAUTH_STATE_SECRET",
     "GOOGLE_REVIEWS_MODO",
+    // Para intercambiar el `code` del callback por un refresh token (`GOOGLE_REVIEWS_MODO=live`).
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
     "TELEGRAM_BOT_USERNAME",
     "COMPARATIVAS_MODO",
     "OPENAI_API_KEY",
@@ -70,6 +73,10 @@ export const MAPA = {
     "INNGEST_SIGNING_KEY",
     "PIPELINE_MODO",
     "GOOGLE_REVIEWS_MODO",
+    // Mismo par que en `api`, otro papel: acá cambian el refresh token por un access token en cada
+    // ciclo de polling. Compartidas a propósito (un solo cliente OAuth), repartidas por env:sync.
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
     "BORRADOR_RESENAS_MODO",
     "OPENAI_API_KEY",
     "OPENAI_MODEL",

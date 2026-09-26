@@ -7,6 +7,24 @@
 > en [**15-plan-plataforma.md**](15-plan-plataforma.md) — nueve bloques, con qué archivos toca cada
 > uno y cómo se verifica.
 >
+> ✅ **Nuevo (2026-09-26): los dos cambios del módulo de reseñas que no dependían de AMG, HECHOS.**
+> (1) **La ruta del callback OAuth es fija**: `GET /google/callback`, con el cliente saliendo de
+> `estado.clientId` en vez del path — sin esto el modo `live` era imposible, porque Google exige
+> `redirect_uri` exacto y no admite comodines de path. Test rojo primero (falló con `401`, no `404`:
+> el bug de la Task 7 por otra puerta) y verificación por mutación (restaurar la ruta vieja hace caer
+> exactamente ese test). De paso se fue el parámetro `clientId` de `urlDeConsentimiento`, que quedaba
+> muerto en los dos modos, y se **reescribió** —no se borró— el test de discrepancia path-vs-state:
+> la propiedad que protegía sigue fijada, ahora impuesta por RLS en vez de por un `if`.
+> (2) **`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` al catálogo de credenciales**, familia `tercero`,
+> repartidas a `api/` y `orchestrator/` (el mismo par con dos papeles: intercambiar el `code` y
+> refrescar el token). `GOOGLE_REDIRECT_URI` se dejó afuera a propósito: nada la lee todavía y su
+> forma la decide el provider `live`.
+>
+> **Lo que sigue sin estar bloqueado por AMG:** el `LiveGoogleReviewsProvider` completo — recibe
+> `accessToken` y `locationId` como argumentos, así que no depende del modelo de acceso. **Lo que sí
+> lo está:** dónde vive el refresh token, el `locationId` con varias ubicaciones, y la detección de
+> revocación.
+>
 > 🔄 **Nuevo (2026-09-22): el módulo 3 NO estaba bloqueado por Google — el diagnóstico que lo puso en
 > pausa midió la API equivocada.** Verificado con el `gcloud` CLI (instalado en la máquina del usuario
 > ese día) sobre el proyecto `amg-automation` (`546581198843`), autenticado con

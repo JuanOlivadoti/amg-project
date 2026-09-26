@@ -14,10 +14,12 @@ test("🔴 intercambiarCode rechaza un code vacío", async () => {
   await assert.rejects(() => p.intercambiarCode(""));
 });
 
-test("urlDeConsentimiento apunta al propio callback de la API, con state y code de mentira", () => {
+test("urlDeConsentimiento apunta al callback FIJO de la API, con state y code de mentira", () => {
+  // La ruta no lleva el cliente adentro porque Google exige un `redirect_uri` exacto y sin comodines
+  // de path: una URL por cliente haría imposible el modo `live`. El cliente va dentro del `state`.
   const p = new MockGoogleOAuthProvider();
-  const url = p.urlDeConsentimiento("cliente-1", "el-state", "http://localhost:3000");
-  assert.equal(url, "http://localhost:3000/clients/cliente-1/google/callback?code=mock-code&state=el-state");
+  const url = p.urlDeConsentimiento("el-state", "http://localhost:3000");
+  assert.equal(url, "http://localhost:3000/google/callback?code=mock-code&state=el-state");
 });
 
 test("getGoogleOAuthProvider('mock') devuelve el mock", () => {

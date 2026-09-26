@@ -39,7 +39,7 @@ export interface ConfigApi {
   jwtAudience?: string;
   /**
    * Secreto con el que se firma/verifica el `state` de OAuth de Google (`oauth-state.ts`). Sin él,
-   * `GET /clients/:id/google/callback` no tiene forma de confiar en la identidad que trae el `state`
+   * `GET /google/callback` no tiene forma de confiar en la identidad que trae el `state`
    * —esa ruta corre ANTES del middleware de auth, así que no hay ningún `ctx` que pedirle a Hono—.
    * **Obligatorio**, sin default: un valor fijo acá sería una credencial de facto compartida entre
    * todos los despliegues, exactamente el error que ya se corrigió para `SUPABASE_JWT_SECRET`.
@@ -152,7 +152,7 @@ export function leerConfig(): ConfigApi {
     !issCrudo && "SUPABASE_JWT_ISS (https://<proy>.supabase.co/auth/v1; de acá sale el JWKS)",
     !corsRaw && "CORS_ORIGINS (origen del portal; en producción no se sirve con `*`)",
     !oauthStateSecret &&
-      "OAUTH_STATE_SECRET (firma el `state` del callback OAuth de Google; sin él, GET /clients/:id/google/callback no puede confiar en la identidad que trae)",
+      "OAUTH_STATE_SECRET (firma el `state` del callback OAuth de Google; sin él, GET /google/callback no puede confiar en la identidad que trae)",
     !telegramBotUsername &&
       "TELEGRAM_BOT_USERNAME (el @username del bot, sin el @; sin ella, POST /me/telegram/vincular armaría una URL rota)",
   ].filter((x): x is string => Boolean(x));

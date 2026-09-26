@@ -55,29 +55,33 @@ commitea al cerrar esta entrada.
 
 ## Próximo paso
 
-**Aprobado por el usuario: arrancar por los cambios 1 y 2**, los únicos que NO dependen de las
-respuestas de AMG (sirven en los dos modelos de acceso):
+✅ **Los cambios 1 y 2 están HECHOS y verificados en el navegador** (2026-09-26). Eran los únicos que
+no dependían de las respuestas de AMG. El detalle y las consecuencias de diseño, en
+[`15-plan-plataforma.md § Bloque F`](../docs/proyecto/15-plan-plataforma.md).
 
-1. **Ruta fija del callback.** `/clients/:id/google/callback` → `/google/callback`, sacando el
-   `clientId` de `estado.clientId` tras `verificarEstado`. Desaparece la comprobación de coincidencia
-   de `app.ts:243` — deja de haber dos fuentes que puedan discrepar (hoy la comprobación **existe** y
-   es correcta; el cambio la vuelve innecesaria, no arregla un agujero). Toca también
-   `MockGoogleOAuthProvider.urlDeConsentimiento` y los tests que pegan a la ruta vieja. Test rojo
-   primero, y verificación por mutación: restaurar la ruta vieja tiene que hacer caer exactamente ese
-   test. ❓ **Decisión abierta:** el parámetro `clientId` de `urlDeConsentimiento` queda sin uso en
-   los dos modos — el estilo del proyecto dice borrarlo, pero cambia la firma de la interfaz.
-2. **`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` al catálogo** (`credencial.mts`, `env-sync.mts`, los
-   `.env.example` de `api/` **y** `orchestrator/` — los dos las necesitan, uno para intercambiar el
-   `code` y el otro para refrescar). ⚠️ Trampa conocida: `env:sync` escribe `""` y un `??` no cae al
-   default ante `""` — usar `?.trim() || default`.
+Ciclo completo ejercitado con MCP chrome-devtools contra `dev:server` (:3000) y el portal (:4200):
+*Desconectar → Conectar Google → navegación real al callback → escritura bajo RLS → redirect*, con
+consola limpia y persistencia confirmada server-side. En este cambio el navegador no era un trámite:
+el bug de la Task 7 se encontró así y no con tests.
 
-Después, y todavía sin depender de AMG: **el `LiveGoogleReviewsProvider` completo** (es el bulto, y
-no depende del modelo de acceso porque recibe `accessToken` y `locationId` como argumentos; ojo con
-el `starRating`, que es un enum `ONE`…`FIVE` y no un número).
+**Lo que sigue, y tampoco depende de AMG:** el `LiveGoogleReviewsProvider` completo (`refrescarToken`,
+`listarResenas`, `publicarRespuesta`), testeable con un `fetch` inyectado, sin gastar un euro. Dos
+trampas anotadas: el `starRating` de la v4 es un enum `ONE`…`FIVE` y no un número —si se olvida, el
+filtro de 4-5★ no dispara nunca— y el cliente va con timeout explícito y **cero reintentos**, misma
+doctrina que el de OpenAI.
 
-**Sigue bloqueado y no conviene forzarlo:** dónde vive el refresh token (una credencial o N),
-resolver el `locationId` con varias ubicaciones, y la detección de revocación — esta última necesita
-ver la forma real del error de Google.
+**Lo que SÍ depende de AMG:** dónde vive el refresh token (una credencial o N), el `locationId` con
+varias ubicaciones, y la detección de revocación.
+
+### Dos decisiones que se tomaron al implementarlos
+
+- **El parámetro `clientId` de `urlDeConsentimiento` se BORRÓ.** Estaba planteado como duda; al
+  implementarlo, las dos reglas apuntaban al mismo lado (borrar lo muerto; no dejar `_vars` de
+  compatibilidad) y además la interfaz mentía: sugería que el modo `live` necesita el cliente, cuando
+  la identidad viaja firmada en el `state`.
+- **`GOOGLE_REDIRECT_URI` quedó FUERA del catálogo**, aunque estaba en el plan. Nada la lee todavía, y
+  si se deriva del origen de la request o viene fija en configuración lo decide el provider `live`.
+  Config que nadie consume invita a un default equivocado.
 
 ## Lo anterior, ya cerrado
 
