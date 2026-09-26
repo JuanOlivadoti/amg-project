@@ -64,14 +64,20 @@ Ciclo completo ejercitado con MCP chrome-devtools contra `dev:server` (:3000) y 
 consola limpia y persistencia confirmada server-side. En este cambio el navegador no era un trámite:
 el bug de la Task 7 se encontró así y no con tests.
 
-**Lo que sigue, y tampoco depende de AMG:** el `LiveGoogleReviewsProvider` completo (`refrescarToken`,
-`listarResenas`, `publicarRespuesta`), testeable con un `fetch` inyectado, sin gastar un euro. Dos
-trampas anotadas: el `starRating` de la v4 es un enum `ONE`…`FIVE` y no un número —si se olvida, el
-filtro de 4-5★ no dispara nunca— y el cliente va con timeout explícito y **cero reintentos**, misma
-doctrina que el de OpenAI.
+✅ **Y el `LiveGoogleReviewsProvider` también está HECHO** (mismo día): `GOOGLE_REVIEWS_MODO=live`
+deja de lanzar. 24 tests, dos mutaciones confirmadas, sin gastar un euro (se testea contra un
+`globalThis.fetch` sustituido). Sin verificación en navegador **a propósito**: el provider es
+inalcanzable desde la UI en modo mock.
 
-**Lo que SÍ depende de AMG:** dónde vive el refresh token (una credencial o N), el `locationId` con
-varias ubicaciones, y la detección de revocación.
+⚠️ **Lo que hay que saber antes de conectar un cliente real:** en modo `live`,
+`clients.google_location_id` tiene que guardar el **nombre de recurso completo**
+(`accounts/<id>/locations/<id>`), no un id suelto. Hoy el mock guarda un valor opaco, así que esto
+sólo se nota con credenciales reales — y está validado con una regex que falla antes de armar la URL.
+
+**Lo que SÍ depende de AMG, y es lo único que queda:** dónde vive el refresh token (una credencial o
+N), el `locationId` cuando el negocio tiene varias ubicaciones, y la detección de revocación. Esta
+última necesita ver la forma real del error de Google; el mensaje de `refrescarToken` ya conserva el
+`invalid_grant` para quien la escriba.
 
 ### Dos decisiones que se tomaron al implementarlos
 

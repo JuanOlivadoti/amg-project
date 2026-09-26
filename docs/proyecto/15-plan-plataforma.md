@@ -1469,11 +1469,53 @@ bloqueo — quedaron resueltas por Telegram.
 > origen de la request o venir fija en configuración es una decisión que pertenece al provider `live`.
 > Config que nadie consume invita a un default equivocado.
 >
-> **Sigue sin empezar, y sigue bloqueado por AMG:** dónde vive el refresh token (una credencial o N),
-> resolver el `locationId` con varias ubicaciones, y la detección de revocación — esta última necesita
-> ver la forma real del error de Google, no se puede adivinar. El `LiveGoogleReviewsProvider` en cambio
-> **no** está bloqueado: recibe `accessToken` y `locationId` como argumentos, así que es independiente
-> del modelo de acceso.
+> ### ✅ 2026-09-26 — `LiveGoogleReviewsProvider`: `GOOGLE_REVIEWS_MODO=live` deja de lanzar
+>
+> El tercer cambio que tampoco dependía de AMG, por el mismo motivo: la interfaz recibe `accessToken`
+> y `locationId` como argumentos, así que da igual de dónde salgan. Escrito y testeado entero contra
+> un `globalThis.fetch` sustituido (mismo patrón que `LiveTelegramProvider`), **sin gastar un euro ni
+> tocar Google**. 16 tests del provider + 8 del selector.
+>
+> `refrescarToken` (`POST oauth2.googleapis.com/token`), `listarResenas` (`GET v4/.../reviews`,
+> paginado) y `publicarRespuesta` (`PUT v4/.../reviews/:id/reply`). `fetch` nativo, timeout explícito
+> y **cero reintentos** — quien decide reintentar es la función de Inngest, con `retries: 0`.
+>
+> **Verificación por mutación, en las dos afirmaciones que más caro salen si son falsas:** cambiar el
+> mapeo del enum por `Number(estrella)` hace caer exactamente los dos tests del enum; quitar el
+> `!res.ok` de `publicarRespuesta` hace caer exactamente el test de «publicado significa lo que
+> confirma el proveedor» — sin ese chequeo, `marcarRespuestaPublicada` **mentiría en la base**.
+>
+> **Tres decisiones de diseño que conviene conocer antes de tocar esto:**
+>
+> 1. ⚠️ **`clients.google_location_id` tiene que guardar el NOMBRE DE RECURSO completo**
+>    (`accounts/<id>/locations/<id>`) en modo `live`: así direcciona la v4, no por un id suelto. Se
+>    valida con una regex **antes de armar la URL** — con un id suelto la petición saldría igual y
+>    volvería un 404 genérico, mucho más difícil de diagnosticar. El mock usa un valor opaco, así que
+>    la diferencia sólo aparece con credenciales reales.
+> 2. **`starRating` es un ENUM (`ONE`…`FIVE`), no un número.** Es la trampa más fácil: tratarlo como
+>    número da `NaN` y el filtro de 4-5★ que decide qué reseñas reciben borrador de IA **no dispararía
+>    nunca, en silencio**. `STAR_RATING_UNSPECIFIED` **lanza** en vez de descartarse: `puntuacion`
+>    tiene `check between 1 and 5` (0021), así que no hay número que inventar, y saltearla en silencio
+>    dejaría una reseña real que nadie responde nunca y que nadie ve. *Trade-off asumido: una reseña
+>    así traba el ciclo de ese cliente hasta que alguien mire.*
+> 3. **Un reseñador sin `displayName` cae a `"Anónimo"`.** `autor` es NOT NULL (0021) y una reseña
+>    anónima es un caso real y documentado de Google, no un dato corrupto.
+>
+> **Preparado para la pieza que sigue:** el error de `refrescarToken` **conserva el `error` de Google**
+> en el mensaje (`invalid_grant` es exactamente lo que devuelve ante una revocación), con un test que
+> lo fija. La detección de revocación sigue sin implementarse —necesita ver la forma real— pero quien
+> la escriba va a tener el dato legible en vez de adivinar otra vez.
+>
+> **Tope de 20 páginas** en la paginación: esto corre dentro de un step de Inngest, y un
+> `nextPageToken` que nunca termine colgaría el ciclo de polling entero. Al llegar al tope devuelve lo
+> juntado en vez de lanzar — perder la cola de un histórico largo es recuperable, colgar el ciclo no.
+>
+> **Sin verificación en navegador, y es deliberado:** el provider sólo se instancia con
+> `GOOGLE_REVIEWS_MODO=live` y credenciales reales; en `mock` el código nuevo es inalcanzable desde la
+> UI. Manejar el portal ejercitaría el mock, que este cambio no toca.
+>
+> **Sigue bloqueado por AMG:** dónde vive el refresh token (una credencial o N), resolver el
+> `locationId` cuando el negocio tiene varias ubicaciones, y la detección de revocación.
 >
 > Detalle completo, con el método de medición y el hallazgo lateral del rastro de n8n, en
 > [`16-pendientes-juan.md § 2`](16-pendientes-juan.md).

@@ -1,5 +1,6 @@
 import { leerConfig, type ModoResenasGoogle } from "../config.js";
 import { MockGoogleReviewsProvider } from "./mock-provider.js";
+import { LiveGoogleReviewsProvider } from "./live-provider.js";
 
 /** Una reseña tal como la devuelve la Business Profile API (o el mock que la imita). */
 export interface ReseñaCruda {
@@ -18,12 +19,15 @@ export interface ReseñaCruda {
 export interface GoogleReviewsProvider {
   /** Cambia un refresh token por un access token de corta duración. */
   refrescarToken(refreshToken: string): Promise<string>;
-  /** Las reseñas de una ubicación, tal como las devuelve la Business Profile API. */
-  listarResenas(accessToken: string, locationId: string): Promise<ReseñaCruda[]>;
   /**
-   * Publica la respuesta de vuelta en la reseña, en Google (Bloque F, fase 2, segunda pieza).
-   * `live` no la implementa todavía -- ver {@link getGoogleReviewsProvider}.
+   * Las reseñas de una ubicación, tal como las devuelve la Business Profile API.
+   *
+   * ⚠️ `locationId` es, en modo `live`, el **nombre de recurso completo** de la v4
+   * (`accounts/<id>/locations/<id>`), no un id suelto: es así como direcciona esa API. El mock usa
+   * un valor opaco, así que la diferencia sólo aparece con credenciales reales.
    */
+  listarResenas(accessToken: string, locationId: string): Promise<ReseñaCruda[]>;
+  /** Publica la respuesta de vuelta en la reseña, en Google (Bloque F, fase 2, segunda pieza). */
   publicarRespuesta(
     accessToken: string,
     locationId: string,
@@ -45,13 +49,22 @@ export interface GoogleReviewsProvider {
  */
 export function getGoogleReviewsProvider(
   modo: ModoResenasGoogle = leerConfig().resenasGoogle,
+  /*
+   * `?.trim() || undefined`, NO `??`: `env:sync` escribe `""` (no omite la clave) cuando falta en
+   * `credenciales.env`, y `??` sólo cae al default ante null/undefined. Mismo patrón, y por el mismo
+   * motivo, que `getTelegramProvider` con `TELEGRAM_BOT_TOKEN`.
+   *
+   * Viajan como argumentos (y no se leen dentro del provider) para que `LiveGoogleReviewsProvider`
+   * quede testeable sin tocar `process.env`.
+   */
+  clientId: string | undefined = process.env["GOOGLE_CLIENT_ID"]?.trim() || undefined,
+  clientSecret: string | undefined = process.env["GOOGLE_CLIENT_SECRET"]?.trim() || undefined,
 ): GoogleReviewsProvider {
   if (modo === "mock") return new MockGoogleReviewsProvider();
 
-  // Bloque F fase 1 es mock-first a propósito: sin acceso real a la Business Profile API todavía.
-  // Ver docs/superpowers/specs/2026-08-13-modulo-resenas-google-design.md.
-  throw new Error(
-    "GOOGLE_REVIEWS_MODO=live sin implementación todavía. Bloque F fase 1 es mock-first a propósito " +
-      "-- ver docs/superpowers/specs/2026-08-13-modulo-resenas-google-design.md.",
-  );
+  // Un modo que no puede operar se cae acá, al construirse, y no en la primera llamada real dentro
+  // de un ciclo de polling -- ahí el error aparecería lejos de su causa.
+  if (!clientId?.trim()) throw new Error("GOOGLE_REVIEWS_MODO=live sin GOOGLE_CLIENT_ID.");
+  if (!clientSecret?.trim()) throw new Error("GOOGLE_REVIEWS_MODO=live sin GOOGLE_CLIENT_SECRET.");
+  return new LiveGoogleReviewsProvider(clientId, clientSecret);
 }

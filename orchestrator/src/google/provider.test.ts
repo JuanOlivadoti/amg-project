@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MockGoogleReviewsProvider } from "./mock-provider.js";
+import { LiveGoogleReviewsProvider } from "./live-provider.js";
 import { getGoogleReviewsProvider } from "./provider.js";
 
 test("MockGoogleReviewsProvider.listarResenas devuelve siempre los mismos googleReviewId para la misma location", async () => {
@@ -38,14 +39,30 @@ test("getGoogleReviewsProvider('mock') devuelve el mock", () => {
 });
 
 /**
- * 🔴 Bloque F fase 1 es mock-first a propósito: `live` no tiene implementación todavía y tiene que
- * lanzar un error explícito, no un `Provider` a medio escribir que reviente en el primer uso real.
+ * `live` YA tiene implementación (2026-09-26): deja de lanzar por no existir y pasa a exigir las
+ * credenciales del cliente OAuth, mismo molde que `getTelegramProvider` con `TELEGRAM_BOT_TOKEN`.
  */
-test("🔴 getGoogleReviewsProvider('live') lanza un error explícito: fase 1 no lo implementa", () => {
-  assert.throws(
-    () => getGoogleReviewsProvider("live"),
-    /GOOGLE_REVIEWS_MODO=live sin implementación todavía/,
-  );
+test("getGoogleReviewsProvider('live') con credenciales devuelve el provider real", () => {
+  const p = getGoogleReviewsProvider("live", "un-client-id", "un-client-secret");
+  assert.ok(p instanceof LiveGoogleReviewsProvider);
+});
+
+test("🔴 getGoogleReviewsProvider('live') sin credenciales lanza nombrando la variable que falta", () => {
+  // Un modo que no puede operar tiene que caerse al construirse, no en la primera llamada real
+  // dentro de un ciclo de polling -- ahí el error aparecería lejos de su causa.
+  assert.throws(() => getGoogleReviewsProvider("live", undefined, "hay-secreto"), /GOOGLE_CLIENT_ID/);
+  assert.throws(() => getGoogleReviewsProvider("live", "hay-id", undefined), /GOOGLE_CLIENT_SECRET/);
+});
+
+test("🔴 getGoogleReviewsProvider('live'): env:sync escribe `\"\"`, y un string vacío NO es una credencial", () => {
+  /*
+   * La trampa conocida de este repo: `env:sync` escribe `""` (no omite la clave) cuando falta en
+   * `credenciales.env`, y un `??` no cae al default ante `""` -- sólo ante null/undefined. Sin el
+   * `.trim() ||`, un despliegue sin las claves construiría el provider real con credenciales vacías
+   * y fallaría recién contra Google, con un `invalid_client` que no señala a la causa.
+   */
+  assert.throws(() => getGoogleReviewsProvider("live", "   ", "hay-secreto"), /GOOGLE_CLIENT_ID/);
+  assert.throws(() => getGoogleReviewsProvider("live", "hay-id", ""), /GOOGLE_CLIENT_SECRET/);
 });
 
 /**

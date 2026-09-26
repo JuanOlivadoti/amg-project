@@ -20,10 +20,18 @@
 > refrescar el token). `GOOGLE_REDIRECT_URI` se dejó afuera a propósito: nada la lee todavía y su
 > forma la decide el provider `live`.
 >
-> **Lo que sigue sin estar bloqueado por AMG:** el `LiveGoogleReviewsProvider` completo — recibe
-> `accessToken` y `locationId` como argumentos, así que no depende del modelo de acceso. **Lo que sí
-> lo está:** dónde vive el refresh token, el `locationId` con varias ubicaciones, y la detección de
-> revocación.
+> (3) **`LiveGoogleReviewsProvider` HECHO**, el mismo día: `GOOGLE_REVIEWS_MODO=live` deja de lanzar.
+> Los tres métodos contra la v4, con `fetch` nativo, timeout y cero reintentos, testeados contra un
+> `fetch` sustituido — sin gastar un euro. Dos mutaciones confirmadas (el enum de estrellas y el
+> `!res.ok` de publicar, que sin él haría que `marcarRespuestaPublicada` mintiera en la base). ⚠️ En
+> modo `live`, `clients.google_location_id` tiene que guardar el **nombre de recurso completo**
+> (`accounts/<id>/locations/<id>`), no un id suelto. Sin verificación en navegador **a propósito**: el
+> provider es inalcanzable desde la UI en modo mock.
+>
+> **Lo que sigue bloqueado por AMG:** dónde vive el refresh token (una credencial o N), el
+> `locationId` con varias ubicaciones, y la detección de revocación — ésta necesita ver la forma real
+> del error, aunque el mensaje de `refrescarToken` ya conserva el `invalid_grant` de Google para
+> quien la escriba.
 >
 > 🔄 **Nuevo (2026-09-22): el módulo 3 NO estaba bloqueado por Google — el diagnóstico que lo puso en
 > pausa midió la API equivocada.** Verificado con el `gcloud` CLI (instalado en la máquina del usuario
