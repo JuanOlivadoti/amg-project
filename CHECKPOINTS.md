@@ -11,8 +11,10 @@ Marcá `[x]` solo con la evidencia a la vista. Si un ítem no aplica, escribí `
 
 ## C1 — El verde es real, no de memoria
 
-- [ ] `npm run verificar` termina con exit code 0, y el output está a la vista (no "me acuerdo de
-      que pasaba").
+- [ ] `npm run verificar` terminó en verde y el output está a la vista (no "me acuerdo de que
+      pasaba"). **El veredicto es la ÚLTIMA LÍNEA —`RESULTADO=VERDE (exit 0)`—, no el exit code**:
+      en cuanto alguien pipea la salida (`| tail -30`) el código que llega es el del `tail`, y el
+      2026-09-26 una corrida en rojo se reportó como `exit=0`.
 - [ ] **Toda cifra o dato de entorno que escribas viene de ESTA corrida**, no de una anterior que
       todavía se ve en el chat. Vale para el número de tests, la versión de Node, la de migraciones.
       *Por qué está acá:* el 2026-08-05 una nota afirmó "el script corre bajo Node 22" citando la

@@ -11,6 +11,51 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-26 — La compuerta que no compuertaba: dos trampas del arnés
+
+Con el módulo de reseñas cerrado y el árbol limpio, lo accionable sin depender de AMG era el paso 1
+de `current.md`: las dos trampas de `npm run verificar` que la propia sesión había tropezado.
+
+**Las dos son el mismo defecto con dos caras: la compuerta podía decir verde sin haber verificado
+nada.** (1) `"verificar": "./scripts/verificar.sh"` no corre en Windows —npm lo lanza por `cmd.exe`,
+que responde *"`.` no se reconoce como un comando"*—, así que **el comando que AGENTS.md declara
+obligatorio llevaba sin ejecutarse en esta máquina**; se corría el `.sh` a mano y nadie lo había
+anotado en el `package.json`. (2) Pipear la salida a `tail` devuelve el exit code del `tail`: una
+corrida en rojo de esta misma semana llegó como `exit=0` con el resumen diciendo FALLA.
+
+Lo interesante fue el límite de la segunda. **No tiene arreglo desde adentro del script**: el exit
+code de un pipeline lo decide el shell de quien llama, y `verificar.sh` no puede tocarlo. Lo que sí
+puede es dejar de ser la única fuente del veredicto, así que el veredicto pasó al texto —
+`RESULTADO=VERDE (exit 0)` / `RESULTADO=FALLA (exit N)` como última línea— y **ningún `exit` del
+script se la saltea**, tampoco los cinco cortes tempranos (`node` ausente, `node` viejo,
+`node_modules` ausente, workspaces incontables, el `cd` a la raíz). Ese último detalle es el que un
+test estructural fija: barre el script y falla si aparece un `exit` sin su `veredicto` dos líneas
+antes, así que el próximo corte temprano no puede nacer mudo.
+
+De paso, un tercer hueco del mismo tipo que apareció leyendo el script: le faltaba `set -o pipefail`.
+Sin él, `{ git ls-files; git diff --cached; } | sort -u | node secretos.mts` reportaba el código del
+`node` aunque el `git` hubiera muerto — la única comprobación automática de la regla más dura del
+proyecto podía dar verde sin haber mirado un solo archivo.
+
+3 tests nuevos en `scripts/arnes.test.mts`, rojo primero y **tres mutaciones confirmadas** (devolver
+el script sin intérprete, quitarle el `veredicto` al `exit` final, y sacarle el exit code al texto:
+cada una tumba exactamente su test y ninguna otra). El del veredicto no lee el script como texto —
+**saca la función con `sed` y la corre**, así que verifica el código real. Y la prueba que ningún
+test podía dar: `npm run verificar -- --rapido` corriendo de verdad en Windows, y una corrida en rojo
+forzada (moviendo `CHECKPOINTS.md` un momento) pipeada a `tail`, que **sigue devolviendo `exit=0`**
+—la trampa es real y no se puede tapar— pero ahora imprime `RESULTADO=FALLA (exit 1)` donde se ve.
+
+`bash ./scripts/verificar.sh` en verde: **2138 tests** (sube de 2135, los tres nuevos), typecheck
+limpio en 8 paquetes, sin secretos entre 745 archivos versionados. `CHECKPOINTS.md` § C1 y el ritual
+de `AGENTS.md` dejaron de decir "exit code 0" y ahora mandan leer la línea del veredicto.
+
+**Deuda que quedó a la vista y NO se tocó:** la tabla de cobertura de
+`docs/proyecto/08-testing-calidad.md` es un snapshot coherente fechado el 2026-08-13 (1395 tests,
+que es lo que suman sus filas) y hoy el monorepo tiene 2138. Actualizar una sola celda la rompería;
+remedirla entera es trabajo aparte.
+
+---
+
 ## 2026-09-22 — Auditoría del acceso real a Google: el módulo 3 no estaba bloqueado por donde creíamos
 
 El usuario preguntó "qué le falta a la plataforma para responder reseñas de Google". La respuesta

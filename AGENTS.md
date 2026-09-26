@@ -20,8 +20,9 @@ Al terminar cualquier pieza de trabajo, antes de darla por cerrada:
    ¿qué garantía escribí en un comentario en vez de imponerla con una constraint o una mutación?
    La lista concreta está en [CHECKPOINTS.md](CHECKPOINTS.md), y el agente `revisor` la recorre.
 2. **Verificación real.** Corré **`npm run verificar`** desde la raíz: entorno, archivos del arnés,
-   higiene de secretos, typecheck y tests, con exit code. Confirmá el verde con el output, no de
-   memoria. Para el renderizador o el portal, **manejá la app en un navegador** (MCP chrome-devtools):
+   higiene de secretos, typecheck y tests. Confirmá el verde con el output, no de memoria — y leé el
+   veredicto en la **última línea** (`RESULTADO=VERDE (exit 0)` / `RESULTADO=FALLA (exit N)`), **no
+   en el exit code**: si pipeás la salida, el código que llega es el del último comando del pipe. Para el renderizador o el portal, **manejá la app en un navegador** (MCP chrome-devtools):
    encuentra lo que los tests no ven — ya pasó varias veces.
 3. **Actualizá la documentación del plan.** `docs/proyecto/09-estado-y-roadmap.md` (qué se hizo, **dónde estamos**,
    **qué falta**) y `docs/proyecto/15-plan-plataforma.md`. Si el plan no menciona lo que acabás de hacer, el plan

@@ -15,13 +15,32 @@
 # que SÍ necesita tests —qué ruta es un secreto— vive en scripts/secretos.mts y se invoca desde acá,
 # después de haber comprobado que node_modules existe.
 
+# `pipefail` para que un pipe interno no esconda su fallo en el último eslabón: sin esto,
+# `{ git ls-files; } | node secretos.mts` reporta el código del `node` aunque el `git` haya muerto,
+# y la casilla de higiene de secretos daría verde sin haber mirado nada.
 set -u
-cd "$(dirname "$0")/.." || exit 1
+set -o pipefail
 
 VERDE='\033[0;32m'; ROJO='\033[0;31m'; AMARILLO='\033[0;33m'; NC='\033[0m'
 ok()   { printf "${VERDE}[OK]${NC}    %s\n" "$1"; }
 warn() { printf "${AMARILLO}[AVISO]${NC} %s\n" "$1"; }
 fail() { printf "${ROJO}[FALLA]${NC} %s\n" "$1"; }
+
+# El exit code de este script se PIERDE en cuanto alguien pipea su salida (`| tail -30`): bash
+# devuelve el del ÚLTIMO comando del pipe. Medido el 2026-09-26: una corrida en rojo llegó como
+# `exit=0` con el resumen diciendo FALLA, y confiar en ese código hace commitear sobre rojo. El
+# script no puede arreglar el pipeline de quien lo llama, así que el veredicto viaja TAMBIÉN por la
+# salida, en una línea fija y grepeable que ningún `exit` de acá abajo se saltea. **Leé esta línea,
+# no el exit code.**
+veredicto() {
+  if [ "$1" -eq 0 ]; then
+    printf 'RESULTADO=VERDE (exit 0)\n'
+  else
+    printf 'RESULTADO=FALLA (exit %s)\n' "$1"
+  fi
+}
+
+cd "$(dirname "$0")/.." || { veredicto 1; exit 1; }
 
 LOG_TYPECHECK=$(mktemp -t amg-verificar-typecheck.XXXXXX)
 LOG_TEST=$(mktemp -t amg-verificar-test.XXXXXX)
@@ -47,16 +66,17 @@ fi
 echo "── 1. Entorno ────────────────────────────────────────────"
 
 if ! command -v node >/dev/null 2>&1; then
-  fail "node no está instalado"; exit 1
+  fail "node no está instalado"; veredicto 1; exit 1
 fi
 NODE_MAYOR=$(node -p 'process.versions.node.split(".")[0]')
 if [ "$NODE_MAYOR" -lt 20 ]; then
-  fail "node $(node --version): el proyecto pide >=20.12.0"; exit 1
+  fail "node $(node --version): el proyecto pide >=20.12.0"; veredicto 1; exit 1
 fi
 ok "node $(node --version)"
 
 if [ ! -d node_modules ]; then
   fail "falta node_modules — corré 'npm install'. Sin esto los tests fallan con \"Cannot find package 'tsx'\", y NO es un bug"
+  veredicto 1
   exit 1
 fi
 ok "node_modules de la raíz"
@@ -123,6 +143,7 @@ echo "── 4. Typecheck ──────────────────
 N_PAQUETES=$(node -e 'console.log(require("./package.json").workspaces.length)')
 if ! [ "$N_PAQUETES" -ge 1 ] 2>/dev/null; then
   fail "no pude contar los workspaces del package.json de la raíz: el conteo de abajo sería una cifra inventada"
+  veredicto 1
   exit 1
 fi
 
@@ -137,6 +158,7 @@ if [ "$RAPIDO" = "1" ]; then
   warn "modo --rapido: NO se corrieron los tests. El verde de acá NO alcanza para cerrar una etapa."
   echo ""
   [ $SALIDA -eq 0 ] && ok "entorno listo" || fail "hay problemas sin resolver"
+  veredicto $SALIDA
   exit $SALIDA
 fi
 
@@ -213,4 +235,5 @@ if [ $SALIDA -eq 0 ]; then
 else
   fail "NO está listo. Resolvé lo de arriba antes de dar nada por cerrado"
 fi
+veredicto $SALIDA
 exit $SALIDA

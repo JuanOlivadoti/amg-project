@@ -44,6 +44,23 @@
 > del error, aunque el mensaje de `refrescarToken` ya conserva el `invalid_grant` de Google para
 > quien la escriba.
 >
+> 🧰 **Nuevo (2026-09-26): el arnés podía reportar verde sin haber verificado nada — ARREGLADO.**
+> Dos trampas encontradas al cerrar el Bloque F, las dos del mismo tipo. (1) **`npm run verificar` no
+> corría en Windows**: `"verificar": "./scripts/verificar.sh"` lo lanza `cmd.exe`, que responde
+> *"`.` no se reconoce como un comando"* — el shebang solo lo lee un shell POSIX. Ahora el script
+> **nombra su intérprete**. (2) **Pipear la salida devuelve el exit code del `tail`**: una corrida en
+> rojo llegó como `exit=0` con el resumen diciendo FALLA. Eso no se puede arreglar desde adentro del
+> script —el código del pipeline lo decide el shell de quien llama—, así que el veredicto **viaja por
+> la salida**: la última línea es `RESULTADO=VERDE (exit 0)` o `RESULTADO=FALLA (exit N)`, y ningún
+> `exit` del script se la saltea (los cinco cortes tempranos incluidos). De paso entró
+> `set -o pipefail`: sin él, `{ git ls-files; } | node secretos.mts` reportaba el código del `node`
+> aunque el `git` hubiera muerto, y la casilla de higiene de secretos podía dar verde sin haber
+> mirado nada. 3 tests nuevos (`scripts/arnes.test.mts`), rojo→verde→**tres mutaciones**, cada una
+> tumbando exactamente su test; más la prueba de punta a punta: `npm run verificar -- --rapido` corre
+> en Windows, y una corrida en rojo pipeada a `tail` sigue devolviendo `exit=0` pero ahora **dice**
+> `RESULTADO=FALLA (exit 1)` en el texto. `CHECKPOINTS.md` § C1 y `AGENTS.md` § ritual, actualizados:
+> el verde se lee en esa línea, no en el exit code.
+>
 > 🔄 **Nuevo (2026-09-22): el módulo 3 NO estaba bloqueado por Google — el diagnóstico que lo puso en
 > pausa midió la API equivocada.** Verificado con el `gcloud` CLI (instalado en la máquina del usuario
 > ese día) sobre el proyecto `amg-automation` (`546581198843`), autenticado con
