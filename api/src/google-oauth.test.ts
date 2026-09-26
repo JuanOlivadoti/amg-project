@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MockGoogleOAuthProvider, getGoogleOAuthProvider } from "./google-oauth.js";
+import { LiveGoogleOAuthProvider } from "./google-oauth-live.js";
 
 test("intercambiarCode devuelve un refreshToken y locationId derivados del code", async () => {
   const p = new MockGoogleOAuthProvider();
@@ -26,6 +27,14 @@ test("getGoogleOAuthProvider('mock') devuelve el mock", () => {
   assert.ok(getGoogleOAuthProvider("mock") instanceof MockGoogleOAuthProvider);
 });
 
-test("🔴 getGoogleOAuthProvider('live') todavía no está implementado: lanza explícito, no un mock silencioso", () => {
-  assert.throws(() => getGoogleOAuthProvider("live"), /live sin implementación/);
+test("getGoogleOAuthProvider('live') con las tres credenciales devuelve el provider real", () => {
+  const p = getGoogleOAuthProvider("live", "id", "secreto", "https://api.bigballs.es/google/callback");
+  assert.ok(p instanceof LiveGoogleOAuthProvider);
+});
+
+test("🔴 getGoogleOAuthProvider('live') lanza nombrando la credencial que falta", () => {
+  // Incluye el caso `""`, que es lo que escribe env:sync cuando la clave falta en credenciales.env.
+  assert.throws(() => getGoogleOAuthProvider("live", "", "s", "u"), /GOOGLE_CLIENT_ID/);
+  assert.throws(() => getGoogleOAuthProvider("live", "i", "  ", "u"), /GOOGLE_CLIENT_SECRET/);
+  assert.throws(() => getGoogleOAuthProvider("live", "i", "s", undefined), /GOOGLE_REDIRECT_URI/);
 });

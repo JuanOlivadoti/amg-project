@@ -28,6 +28,17 @@
 > (`accounts/<id>/locations/<id>`), no un id suelto. Sin verificación en navegador **a propósito**: el
 > provider es inalcanzable desde la UI en modo mock.
 >
+> (4) **`LiveGoogleOAuthProvider` HECHO**, la última pieza de código del encendido — con sólo el
+> provider de reseñas, `getGoogleOAuthProvider("live")` seguía lanzando y el módulo no podía ir a
+> producción. Lo importante es lo que salió de verificar antes de escribir:
+>
+> ⚠️ **NO es un trámite con Google, son DOS.** Conectar un cliente exige **descubrir su ficha**, y eso
+> necesita `mybusinessaccountmanagement` + `mybusinessbusinessinformation`, **las dos en cuota 0**. La
+> v4 tenía `accounts.list` pero Google la deprecó justamente en favor de la primera, así que no hay
+> camino alternativo por API. **Tener el acceso a reseñas concedido no alcanza para conectar a nadie.**
+> Alternativa que evita el bloqueo: cargar el `locationId` a mano (decisión abierta). El documento de
+> solicitud del 2026-09-25 pide un solo trámite y quedó corto.
+>
 > **Lo que sigue bloqueado por AMG:** dónde vive el refresh token (una credencial o N), el
 > `locationId` con varias ubicaciones, y la detección de revocación — ésta necesita ver la forma real
 > del error, aunque el mensaje de `refrescarToken` ya conserva el `invalid_grant` de Google para

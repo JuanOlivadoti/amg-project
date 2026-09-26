@@ -32,8 +32,10 @@ export const MAPA = {
     "OAUTH_STATE_SECRET",
     "GOOGLE_REVIEWS_MODO",
     // Para intercambiar el `code` del callback por un refresh token (`GOOGLE_REVIEWS_MODO=live`).
+    // `GOOGLE_REDIRECT_URI` es solo de la API: el orquestador no hace el flujo de consentimiento.
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REDIRECT_URI",
     "TELEGRAM_BOT_USERNAME",
     "COMPARATIVAS_MODO",
     "OPENAI_API_KEY",

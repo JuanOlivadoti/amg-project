@@ -137,6 +137,13 @@ export const CATALOGO: Record<string, Entrada> = {
     familia: "config",
     nota: "`mock` | `live`, opcional (default `mock`): en qué modo lee reseñas de Google (Bloque F, fase 1)",
   },
+  GOOGLE_REDIRECT_URI: {
+    familia: "config",
+    nota:
+      "el callback OAuth registrado en Google Cloud, p.ej. https://api.bigballs.es/google/callback. " +
+      "Tiene que coincidir EXACTO con uno de los URIs registrados (Google no admite comodines) y ser " +
+      "la ruta FIJA, no una por cliente. Solo la API; el orquestador no hace el flujo de consentimiento.",
+  },
   BORRADOR_RESENAS_MODO: {
     familia: "config",
     nota: "`mock` | `openai`, opcional (default derivado de OPENAI_API_KEY): en qué modo se genera el borrador de respuesta con IA (Bloque F, fase 2)",

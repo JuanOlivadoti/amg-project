@@ -74,10 +74,27 @@ inalcanzable desde la UI en modo mock.
 (`accounts/<id>/locations/<id>`), no un id suelto. Hoy el mock guarda un valor opaco, así que esto
 sólo se nota con credenciales reales — y está validado con una regex que falla antes de armar la URL.
 
-**Lo que SÍ depende de AMG, y es lo único que queda:** dónde vive el refresh token (una credencial o
-N), el `locationId` cuando el negocio tiene varias ubicaciones, y la detección de revocación. Esta
-última necesita ver la forma real del error de Google; el mensaje de `refrescarToken` ya conserva el
-`invalid_grant` para quien la escriba.
+✅ **Y el `LiveGoogleOAuthProvider` también** (mismo día): era la última pieza de código del
+encendido — con sólo el provider de reseñas, `getGoogleOAuthProvider("live")` seguía lanzando.
+16 tests, mutación confirmada. `GOOGLE_REDIRECT_URI` entró al catálogo (sólo `api/`).
+
+> ⚠️ **El hallazgo que más cambia las decisiones: NO es un trámite con Google, son DOS.** Conectar un
+> cliente exige descubrir su ficha, y eso necesita `mybusinessaccountmanagement` +
+> `mybusinessbusinessinformation`, **las dos en cuota 0**. La v4 tenía `accounts.list` pero Google la
+> deprecó en favor de la primera: no hay camino alternativo por API. **El acceso a reseñas, que sí
+> está concedido, no alcanza para conectar a nadie.**
+>
+> 💡 **Alternativa que destraba sin depender de Google:** cargar el `locationId` a mano (se saca de la
+> consola de Business Profile y se pega en el portal). Cuesta un campo y fricción por alta. Decisión
+> abierta: con pocos clientes gana el campo manual, con muchos el descubrimiento automático.
+>
+> 📄 **El documento de solicitud a AMG (2026-09-25) quedó corto**: pide un solo trámite. Hay que
+> regenerarlo o avisar aparte.
+
+**Lo que SÍ depende de AMG:** dónde vive el refresh token (una credencial o N), el `locationId`
+cuando el negocio tiene varias ubicaciones (hoy falla nombrando la decisión, no elige), y la
+detección de revocación. Esta última necesita ver la forma real del error de Google; el mensaje de
+`refrescarToken` ya conserva el `invalid_grant` para quien la escriba.
 
 ### Dos decisiones que se tomaron al implementarlos
 

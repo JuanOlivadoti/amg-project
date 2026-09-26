@@ -121,6 +121,9 @@ export const SEGUN_MODO: Record<Servicio, Readonly<Record<string, string>>> = {
       "sin él, `GOOGLE_REVIEWS_MODO=live` no puede intercambiar el `code` del callback por un " +
       "refresh token. En `mock` no hace falta: el proveedor falso nunca sale del proceso",
     GOOGLE_CLIENT_SECRET: "ídem — es el par del anterior, un solo cliente OAuth compartido con el orquestador",
+    GOOGLE_REDIRECT_URI:
+      "sin él, `GOOGLE_REVIEWS_MODO=live` no puede armar la URL de consentimiento. Tiene que " +
+      "coincidir EXACTO con uno de los URIs registrados en Google Cloud",
   },
   "amg-orchestrator": {
     WEB_PUBLISH_MODE: "sin ella publica en **mock**: no toca Storyblok pero reporta `published: true`",

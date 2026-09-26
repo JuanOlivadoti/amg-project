@@ -1514,8 +1514,37 @@ bloqueo — quedaron resueltas por Telegram.
 > `GOOGLE_REVIEWS_MODO=live` y credenciales reales; en `mock` el código nuevo es inalcanzable desde la
 > UI. Manejar el portal ejercitaría el mock, que este cambio no toca.
 >
+> ### ✅ 2026-09-26 — `LiveGoogleOAuthProvider`: la última pieza de código del encendido
+>
+> `getGoogleOAuthProvider("live")` dejaba de lanzar recién acá — con sólo el provider de reseñas, el
+> módulo **todavía no podía ir a producción**. 16 tests, mutación confirmada sobre el guard del
+> `refresh_token` ausente.
+>
+> ⚠️ **El hallazgo que salió de verificar antes de escribir: no es un trámite con Google, son DOS.**
+> Conectar un cliente exige **descubrir su ficha**, y eso necesita `mybusinessaccountmanagement` +
+> `mybusinessbusinessinformation`, las dos en **cuota 0**. La v4 tenía `accounts.list` pero Google la
+> deprecó justamente en favor de la primera, así que no hay camino alternativo por API. **Tener el
+> acceso a reseñas concedido no alcanza para conectar a nadie.** Detalle y la alternativa (cargar el
+> `locationId` a mano) en [`16-pendientes-juan.md § 2`](16-pendientes-juan.md).
+>
+> Por eso el provider queda **partido en dos mitades con estados distintos**, y el código lo dice:
+> `urlDeConsentimiento` y el intercambio del `code` funcionan hoy (endpoint de OAuth, sin cuota de por
+> medio); descubrir la ficha no, y su 429 se traduce a un mensaje que **nombra el trámite** en vez de
+> propagar un error de red que no explica nada.
+>
+> **El detalle que más caro habría salido: `prompt=consent`.** Sin él Google devuelve `refresh_token`
+> **sólo en el primer consentimiento**, así que reconectar un cliente lo dejaría «conectado» con un
+> access token de una hora y el polling moriría al rato **sin que nada avisara** — misma familia de
+> fallo que la caducidad de 7 días del modo Prueba: funciona en la demo, se rompe solo después. Hay un
+> test que fija el parámetro y otro que exige que un `200` sin `refresh_token` lance.
+>
+> **Y `GOOGLE_REDIRECT_URI` entró al catálogo**, ahora que tiene dueño: sólo en `api/` (el orquestador
+> no hace el flujo de consentimiento), fijo y **no derivado del origen de la request** — Google exige
+> coincidencia exacta y detrás de un proxy el origen que ve el proceso puede no ser el público.
+>
 > **Sigue bloqueado por AMG:** dónde vive el refresh token (una credencial o N), resolver el
-> `locationId` cuando el negocio tiene varias ubicaciones, y la detección de revocación.
+> `locationId` cuando el negocio tiene varias ubicaciones (hoy falla nombrando la decisión, no elige),
+> y la detección de revocación.
 >
 > Detalle completo, con el método de medición y el hallazgo lateral del rastro de n8n, en
 > [`16-pendientes-juan.md § 2`](16-pendientes-juan.md).

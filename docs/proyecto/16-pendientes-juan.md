@@ -68,6 +68,32 @@ Fuente: `15-plan-plataforma.md § Bloque F`, línea ~1336.
 > consumerQuotaMetrics`; un bucket **vacío** significa cero (contrastado contra BigQuery y Places, que
 > sí devuelven límites numéricos en los mismos proyectos).
 >
+> ### ⚠️ 2026-09-26 — NO es un trámite, son DOS: tener reseñas no alcanza para CONECTAR
+>
+> Descubierto al implementar el provider OAuth real, verificando antes de escribir. **Conectar un
+> cliente exige descubrir su ficha**, y para eso hacen falta dos APIs más:
+>
+> | API | Para qué | Cuota en `amg-automation` |
+> | --- | --- | --- |
+> | `mybusiness.googleapis.com` (v4) | leer y **responder** reseñas | ✅ 250.000/día |
+> | `mybusinessaccountmanagement` | listar las cuentas de negocio | ❌ **0** |
+> | `mybusinessbusinessinformation` | listar las fichas de una cuenta | ❌ **0** |
+>
+> **Y no hay camino alternativo:** la v4 tenía `accounts.list`, pero Google la **deprecó justamente
+> en favor de la Account Management API**
+> ([referencia](https://developers.google.com/my-business/reference/rest/v4/accounts/list)). Así que
+> el acceso a reseñas, que sí está concedido, **no alcanza para conectar a nadie**.
+>
+> **Consecuencia para el pedido a AMG:** el documento de solicitud del 2026-09-25 da por hecho un solo
+> trámite. Hay que pedir cuota también para esas dos APIs, o resolverlo por el otro camino (abajo).
+>
+> 💡 **La alternativa que evita el bloqueo entero: cargar el `locationId` a mano.** El nombre de
+> recurso (`accounts/<id>/locations/<id>`) se puede sacar de la consola de Business Profile y pegarlo
+> en el portal, sin llamar a ninguna de las dos APIs bloqueadas. Cuesta un campo en la ficha del
+> cliente y un poco de fricción por alta; a cambio, **destraba el módulo sin depender de Google**. Es
+> una decisión abierta, no una recomendación cerrada: con pocos clientes el campo manual gana, con
+> muchos gana el descubrimiento automático.
+>
 > ### ❌ El bloqueo REAL: la app OAuth está sin configurar
 >
 > Revisado en la consola (solo lectura) el 2026-09-22. Las dos mitades están en estados opuestos: la

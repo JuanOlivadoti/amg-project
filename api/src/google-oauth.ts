@@ -1,3 +1,5 @@
+import { LiveGoogleOAuthProvider } from "./google-oauth-live.js";
+
 /**
  * Conexión OAuth con Google (Bloque F, fase 1). Mismo molde mock/live que `GoogleReviewsProvider`
  * (`orchestrator/src/google/provider.ts`): separa el flujo de "quién conecta la cuenta" de si hay o
@@ -43,11 +45,27 @@ export class MockGoogleOAuthProvider implements GoogleOAuthProvider {
   }
 }
 
-/** El selector. Bloque F fase 1 es mock-first a propósito: ver `MockGoogleOAuthProvider`. */
-export function getGoogleOAuthProvider(modo: "mock" | "live"): GoogleOAuthProvider {
+/**
+ * El selector. Mismo molde que `getGoogleReviewsProvider` en el orquestador: las credenciales viajan
+ * como argumentos (no se leen dentro del provider) para que `LiveGoogleOAuthProvider` quede testeable
+ * sin tocar `process.env`.
+ *
+ * `?.trim() || undefined`, NO `??`: `env:sync` escribe `""` cuando la clave falta en
+ * `credenciales.env`, y `??` sólo cae al default ante null/undefined.
+ */
+export function getGoogleOAuthProvider(
+  modo: "mock" | "live",
+  clientId: string | undefined = process.env["GOOGLE_CLIENT_ID"]?.trim() || undefined,
+  clientSecret: string | undefined = process.env["GOOGLE_CLIENT_SECRET"]?.trim() || undefined,
+  redirectUri: string | undefined = process.env["GOOGLE_REDIRECT_URI"]?.trim() || undefined,
+): GoogleOAuthProvider {
   if (modo === "mock") return new MockGoogleOAuthProvider();
-  throw new Error(
-    "GOOGLE_REVIEWS_MODO=live sin implementación todavía (Bloque F fase 1 es mock-first) -- ver " +
-      "docs/superpowers/specs/2026-08-13-modulo-resenas-google-design.md.",
-  );
+
+  // Un modo que no puede operar se cae al construirse, no en el primer clic de «Conectar Google».
+  if (!clientId?.trim()) throw new Error("GOOGLE_REVIEWS_MODO=live sin GOOGLE_CLIENT_ID.");
+  if (!clientSecret?.trim()) throw new Error("GOOGLE_REVIEWS_MODO=live sin GOOGLE_CLIENT_SECRET.");
+  // Sin default derivado del origen de la request a propósito: Google exige coincidencia EXACTA con
+  // el URI registrado, y un valor adivinado falla con `redirect_uri_mismatch` recién en el navegador.
+  if (!redirectUri?.trim()) throw new Error("GOOGLE_REVIEWS_MODO=live sin GOOGLE_REDIRECT_URI.");
+  return new LiveGoogleOAuthProvider(clientId, clientSecret, redirectUri);
 }
