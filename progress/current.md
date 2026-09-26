@@ -9,7 +9,7 @@
 **Sesión (2026-09-22/26): encender el módulo de reseñas de Google.** Arrancó con "qué le falta a la
 plataforma para responder reseñas" y terminó con **los tres providers `live` escritos** y el
 diagnóstico del proyecto corregido. **Cuatro commits pusheados**, y encima de eso el paso 1 de lo
-accionable: **las dos trampas del arnés, arregladas** (sin commitear todavía, ver § En vuelo). No
+accionable: **las dos trampas del arnés, arregladas** y pusheadas en `b77364a`. No
 queda código a medio hacer — lo que falta del módulo espera decisiones de AMG, no trabajo.
 
 Los cuatro commits, de `git log`: `7a1fc44` (docs, corrige el diagnóstico), `3acae87` (ruta fija del
@@ -51,8 +51,10 @@ para Claude Desktop** (`1371a25`) y su **instalador** (`d6ae22f`).
 
 ## En vuelo (sin commitear)
 
-**El arreglo de las dos trampas del arnés, terminado y verificado, pendiente de commit.** Nada a
-medio hacer: los tests están en verde y la documentación, actualizada.
+Nada — `git status --short` vacío y `git log origin/main..HEAD` vacío: todo commiteado y pusheado,
+`origin/main` en `b77364a`.
+
+### Lo último que entró (`b77364a`, el arreglo del arnés)
 
 - `package.json:18` — `"verificar": "bash ./scripts/verificar.sh"`. Sin el `bash`, npm lo lanza por
   `cmd.exe` y el comando obligatorio del ritual no corría en Windows.
@@ -65,7 +67,7 @@ medio hacer: los tests están en verde y la documentación, actualizada.
   `docs/proyecto/15-plan-plataforma.md` § Bloque I, `progress/history.md` — el veredicto se lee en
   la última línea, no en el exit code.
 
-De antes: `origin/main` en `9f406ee`, con los cuatro commits del módulo ya pusheados.
+De antes, `9f406ee` y los tres commits anteriores: el módulo de reseñas.
 
 ## Próximo paso
 
