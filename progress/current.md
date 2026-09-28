@@ -313,6 +313,12 @@ Y esto es lo que hay que leer para retomar el módulo de reseñas:
 
 ## Verificaciones
 
+- **Tabla de cobertura remedida entera (2026-09-28)**, cerrando la deuda anotada el 26. Cada paquete
+  medido por separado con `npm test -w <paquete>`; **la suma da exactamente los 2164 del arnés**, que
+  es el cruce que impide que una fila quede vieja sin que nada avise. Se agregó la fila de
+  `mcp-server`, que nunca la había tenido. Cambio sólo de documentación, así que la verificación fue
+  `--rapido` (entorno, arnés, secretos, typecheck): `RESULTADO=VERDE (exit 0)`.
+
 - **`bash ./scripts/verificar.sh --con-portal` (2026-09-28, con el `locationId` a mano y los menores
   del `revisor` ya resueltos): VERDE entero.** **2155 tests** del monorepo (sube de 2138), **364** del
   portal (`node:test`) y **310** de Karma corridos aparte; typecheck limpio en 8 paquetes + el

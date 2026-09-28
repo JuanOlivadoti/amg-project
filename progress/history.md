@@ -11,6 +11,27 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-28 — La tabla de cobertura llevaba seis semanas mintiendo un 55 %
+
+Deuda anotada dos días antes y resuelta hoy. `docs/proyecto/08-testing-calidad.md` declaraba **1395
+tests del monorepo**; el arnés reporta **2164**. No era un descuido puntual: es el modo de fallo
+previsible de una tabla que se mantiene a mano y cuyas filas sólo cambian cuando alguien se acuerda.
+De paso, `mcp-server` **no tenía fila** — el paquete nació el 2026-09-15 y nunca se le agregó.
+
+**Se remidió entera y de una vez, no celda por celda**, que es la única forma de que las filas sean
+comparables: salen todas de la misma corrida. Y el contraste que vale más que las cifras: la suma de
+las filas da **exactamente** los 2164 que reporta `verificar.sh`. Sin ese cruce, una fila puede quedar
+vieja sin que nada lo note — que es justo lo que había pasado.
+
+Las cifras: `contrato` 41, `db` 534, `kr-service` 148, `web-builder` 451, `orchestrator` 202,
+`api` 395, `renderer` 225, `mcp-server` 67, `scripts` 101. El portal, fuera del monorepo: **364**
+`node:test` + **310** Karma.
+
+Dos entradas del `09` siguen diciendo 1395 y se dejaron como están **a propósito**: son narrativa
+histórica fechada, describen lo que se midió aquel día. La bitácora no se reescribe hacia atrás.
+
+---
+
 ## 2026-09-28 — El `nonce` del `state` de OAuth pasa a ser de un solo uso (migración 0034)
 
 Deuda abierta desde el Bloque F fase 1: el `nonce` se firmaba y **nunca se invalidaba**, así que un
