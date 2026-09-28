@@ -1819,7 +1819,10 @@ function firmarStateDeTest(estado: Partial<EstadoOAuth> & { clientId: string }):
     {
       tenantId: tenantA,
       userId: equipoA,
-      nonce: "nonce-de-test",
+      // Un uuid REAL y distinto por llamada, no una cadena fija: `oauth_nonces_usados` (0034) tipa
+      // el nonce como uuid, y desde que el nonce es de un solo uso una constante compartida se
+      // quemaría en el primer test y haría fallar a los siguientes por un motivo que no es el suyo.
+      nonce: crypto.randomUUID(),
       emitidoEn: Date.now(),
       ...estado,
     },
@@ -1972,6 +1975,88 @@ test("🔴 GET /google/callback de OTRO tenant → 404, sin escribir (RLS, no un
     [clientA1],
   );
   assert.equal(fila!.google_conectado_en, null, "el tenant B no pudo conectar el cliente de A");
+});
+
+/**
+ * El `nonce` de un solo uso (migración 0034). La deuda que cierra estaba abierta desde el Bloque F
+ * fase 1: `EstadoOAuth.nonce` se firmaba y NUNCA se invalidaba, así que un `state` filtrado —la
+ * barra del navegador, el historial, el log de un proxy, un `Referer`— se podía reproducir cuantas
+ * veces se quisiera durante sus 10 minutos de ventana. Y ese `state` es la ÚNICA identidad con la
+ * que este callback anónimo escribe `google_refresh_token`.
+ *
+ * Los dos tests de abajo van de punta a punta por HTTP y NO llaman a `consumirNonceOAuth` a mano:
+ * lo que hay que fijar es que el HANDLER lo consulte, no que el método funcione (eso lo prueba
+ * `db/src/resenas.test.ts`). Un test que llamara al método directamente seguiría verde con el
+ * chequeo borrado del handler.
+ */
+test("🔴 el MISMO state dos veces: la primera conecta, la segunda es 400 y no escribe", async () => {
+  const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
+
+  const primera = await req("GET", `/google/callback?code=replay-1&state=${state}`, {});
+  assert.equal(primera.status, 302, "el primer uso es el camino normal y tiene que seguir funcionando");
+  assert.equal((await conexionDe(clientA1)).google_refresh_token, "mock-refresh-replay-1");
+
+  /*
+   * Se desconecta ANTES del replay, y es lo que le da mordida al test: si la fila quedara conectada,
+   * un replay exitoso sería indistinguible de uno rechazado mirando la base. Desconectado, cualquier
+   * escritura posterior solo puede venir del segundo intercambio — y el `code` distinto hace que el
+   * token del mock también lo sea, así que la aserción final nombra exactamente qué no pudo pasar.
+   */
+  assert.equal(
+    (await req("POST", `/clients/${clientA1}/google/desconectar`, { user: equipoA, tenant: tenantA })).status,
+    200,
+  );
+
+  const segunda = await req("GET", `/google/callback?code=replay-2&state=${state}`, {});
+  assert.equal(segunda.status, 400, "el nonce ya estaba quemado: ese state no sirve una segunda vez");
+
+  const tras = await conexionDe(clientA1);
+  assert.equal(tras.google_refresh_token, null, "el replay NO escribió: no hay 'mock-refresh-replay-2'");
+  assert.equal(tras.google_conectado_en, null);
+});
+
+test("🔴 el replay ni siquiera habla con Google: el nonce se quema ANTES de intercambiarCode", async () => {
+  /*
+   * Que el corte vaya antes del intercambio no es cosmética. `intercambiarCode` en modo live es una
+   * llamada REAL a Google con el `code` del query string: dejar que un replay llegue hasta ahí sería
+   * regalar un amplificador de peticiones a quien tenga un state filtrado, y encima una petición que
+   * consume cuota de un proyecto de Cloud que ya está al límite (ver `LiveGoogleOAuthProvider`).
+   *
+   * El contador envuelve al mock en vez de reemplazarlo para que el camino feliz siga siendo el real
+   * y el test pueda distinguir "no lo llamó" de "lo llamó y falló".
+   */
+  let intercambios = 0;
+  const base = new MockGoogleOAuthProvider();
+  const appContada = createApp({
+    store,
+    clientes,
+    membresias,
+    ideas,
+    resenas,
+    comparativasSeguros,
+    comparativas,
+    googleOAuth: {
+      urlDeConsentimiento: (st: string, origen: string) => base.urlDeConsentimiento(st, origen),
+      intercambiarCode: async (code: string, loc?: string) => {
+        intercambios += 1;
+        return base.intercambiarCode(code, loc);
+      },
+    },
+    conectarGoogleBloqueado: false,
+    oauthStateSecret: OAUTH_STATE_SECRET_TEST,
+    telegramBotUsername: TELEGRAM_BOT_USERNAME_TEST,
+    emisor: { send: async () => ({}) },
+    verificar,
+    portalUrl: PORTAL_URL_TEST,
+  });
+
+  const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
+
+  assert.equal((await appContada.request(`/google/callback?code=uno&state=${state}`)).status, 302);
+  assert.equal(intercambios, 1, "control positivo: el primer uso SÍ habla con Google");
+
+  assert.equal((await appContada.request(`/google/callback?code=dos&state=${state}`)).status, 400);
+  assert.equal(intercambios, 1, "el replay se cortó ANTES del intercambio: el contador no se movió");
 });
 
 // ------------------------------- guardarraíl: modo mock + producción NO puede conectar Google

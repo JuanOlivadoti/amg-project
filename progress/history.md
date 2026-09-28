@@ -11,6 +11,64 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-28 — El `nonce` del `state` de OAuth pasa a ser de un solo uso (migración 0034)
+
+Deuda abierta desde el Bloque F fase 1: el `nonce` se firmaba y **nunca se invalidaba**, así que un
+`state` filtrado —barra del navegador, historial, log de un proxy, `Referer`— se podía reproducir
+cuantas veces se quisiera durante sus 10 minutos. Y ese `state` no es un dato cualquiera: es la única
+identidad con la que el callback **anónimo** escribe `google_refresh_token` en un cliente.
+
+**Las siete garantías del cambio viven en Postgres, ninguna en un `if`.** La unicidad la impone
+`nonce uuid primary key`, no un `select` seguido de un `insert`: dos callbacks simultáneos con el
+mismo state —la forma exacta de un replay automatizado— se resuelven dentro de la base y no en una
+carrera de TypeScript. Tres decisiones que no se leen solas:
+
+1. **`app_user` puede quemar un nonce y no puede enumerarlos**: grants `insert, delete`, sin `select`
+   y sin política de SELECT. Eso obligó a detectar el replay por el código de error `23505` en vez del
+   `on conflict … returning` idiomático del repo, porque `returning` exige privilegio de lectura.
+2. **La purga (`usado_en < now() - interval '1 hour'`) es una garantía de seguridad disfrazada de
+   limpieza.** Sin esa condición, cualquier `DELETE` que la API llegara a ejecutar podría **des-quemar
+   un nonce vigente** y reabrir el replay que la migración viene a cerrar. La retención es 1 hora y no
+   los 10 minutos de `VENTANA_ESTADO_MS` a propósito: duplicar el literal ataría dos archivos de dos
+   paquetes al mismo número, y el día que alguien ampliara la ventana la purga empezaría a borrar
+   nonces vivos. Lo que importa es la desigualdad, y eso es lo que fija un test.
+3. **La política de quemado NO lleva `app.puede_escribir()`**, al revés que toda otra política de
+   escritura del esquema. Quien completa el consentimiento puede ser un usuario con rol `cliente`: su
+   `conectarGoogle` va a fallar después por RLS, como ya falla hoy, pero **su nonce tiene que quedar
+   quemado igual** — si no, el replay sigue abierto justo para el rol menos privilegiado.
+
+El consumo va **antes de `intercambiarCode`**, y no es cosmética: en modo `live` ese intercambio es
+una llamada real a Google, así que dejar llegar un replay hasta ahí sería regalarle un amplificador de
+peticiones a quien tenga el state, contra una cuota que ya está al límite. El trade-off está dicho en
+el código porque alguien lo va a leer como un bug: el nonce se quema en el **primer** uso, así que si
+algo falla después hay que volver a pulsar «Conectar Google». Es lo correcto —quemarlo sólo cuando
+todo salió bien deja la ventana abierta justo en el escenario en que algo salió raro— y cuesta un
+clic, no datos.
+
+**El hallazgo del método, y por eso se escribe acá.** Una de las ocho mutaciones **sobrevivió**:
+quitarle la purga al método dejaba los 45 tests en verde, porque el test disparaba la limpieza con un
+`DELETE` escrito por el propio test en vez de con otro consumo. No era una línea redundante — era un
+test que faltaba, y la tabla podía crecer para siempre sin que nada se enterara. Reescrito el
+disparador, la mutación cae. Otra (mover el chequeo **después** del intercambio) deja pasar el test
+del replay y sólo tumba el que cuenta las llamadas a Google: sin ése, el orden del handler no estaría
+fijado por nada.
+
+`bash ./scripts/verificar.sh` en verde: **2164 tests del monorepo** (sube de 2155), typecheck limpio,
+sin secretos. Corrido por la sesión principal además del agente, con el mismo número.
+
+⚠️ **La `0034` no está desplegada.** Como la `0033`, espera un `npm run migrate:deploy -w db` fuera de
+Claude Code, y **el orden importa**: si se despliega el código de la API sin la migración,
+`GET /google/callback` devuelve 500 en vez de conectar.
+
+La revisión interna no llegó a correr: el `revisor` murió por el límite de sesión de la cuenta. La
+hizo la sesión principal sobre los siete puntos que le iba a dar —no es autoaprobación, porque quien
+implementó fue el agente `datos`— y quedó una deuda anotada, no un hallazgo: hoy
+`POST /clients/:id/google/conectar` es el **único** lugar que firma un `EstadoOAuth` (verificado con
+grep), pero si mañana aparece un segundo hereda dos obligaciones —validar el `locationId` y acuñar un
+nonce que alguien consuma— y nada se lo recuerda.
+
+---
+
 ## 2026-09-28 — El `locationId` a mano: el módulo de reseñas deja de esperar a Google
 
 `current.md` daba esto por bloqueado ("esperando a AMG"). **No lo estaba**, y verificarlo antes de

@@ -204,6 +204,52 @@ export class PgResenas {
     });
   }
 
+  /**
+   * Quema el `nonce` de un `state` de OAuth: `true` la PRIMERA vez que se ve, `false` si ya estaba
+   * usado. Es lo que convierte el `state` en algo de un solo uso -- sin esto, un `state` filtrado
+   * (la barra del navegador, el historial, el log de un proxy, un `Referer`) se podía reproducir
+   * cuantas veces se quisiera durante su ventana de 10 minutos, y ese `state` es la ÚNICA identidad
+   * con la que el callback anónimo escribe `google_refresh_token`.
+   *
+   * ## Por qué el replay se detecta por el ERROR 23505 y no por un `returning`
+   *
+   * La defensa es la PRIMARY KEY de `oauth_nonces_usados` (migración 0034), no una comprobación
+   * previa: dos callbacks simultáneos con el mismo state -- la forma exacta que tiene un replay
+   * automatizado -- se resuelven dentro de Postgres, no en una carrera de TypeScript. Un
+   * `on conflict do nothing returning nonce` habría sido más idiomático en este repo, pero
+   * `returning` exige privilegio de SELECT sobre la columna, y lo que se quería es justamente que
+   * `app_user` NO pueda leer esta tabla nunca. Así que el insert va pelado y el conflicto llega como
+   * excepción; cualquier otro código se re-lanza (un 23503 de tenant inexistente, por ejemplo, tiene
+   * que seguir siendo un error, no un "replay" silencioso).
+   *
+   * El `catch` va FUERA de `withTenant` a propósito: la excepción aborta la transacción, y
+   * `pool.transaction` ya se encarga del rollback antes de re-lanzar (`db/src/pool.ts`). Atraparla
+   * adentro dejaría la transacción abortada y cualquier query posterior del mismo `tx` reventaría
+   * con 25P02.
+   *
+   * La purga es el CTE `delete` SIN `where`: el where es la política `nonce_purga`, que solo deja
+   * borrar filas del propio tenant y más viejas que una hora. Va en la MISMA sentencia porque es lo
+   * más barato que existe (cero viajes extra, cero tarea programada, cero rol nuevo) y porque no
+   * necesita ser fiable: si el insert choca, el statement entero revierte y la purga simplemente
+   * ocurrirá en el próximo callback. Es limpieza, no contabilidad.
+   */
+  async consumirNonceOAuth(ctx: TenantContext, nonce: string): Promise<boolean> {
+    try {
+      await this.withTenant(ctx, async (tx: Tx) => {
+        await tx.query(
+          `with purga as (delete from oauth_nonces_usados)
+           insert into oauth_nonces_usados (nonce, tenant_id) values ($1, $2)`,
+          [nonce, ctx.tenantId],
+        );
+      });
+      return true;
+    } catch (e) {
+      // 23505 = unique_violation. Es el ÚNICO código que no es un fallo: es el replay.
+      if ((e as { code?: string }).code === "23505") return false;
+      throw e;
+    }
+  }
+
   /** Limpia las tres columnas de conexión. Mismo criterio de `false`/RLS que `conectarGoogle`. */
   async desconectarGoogle(ctx: TenantContext, clientId: string): Promise<boolean> {
     return this.withTenant(ctx, async (tx: Tx) => {

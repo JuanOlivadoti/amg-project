@@ -85,3 +85,27 @@ test("firmas de dos estados distintos no coinciden (no hay colisión trivial)", 
   const s2 = firmarEstado(estado({ nonce: "b" }), SECRETO);
   assert.notEqual(s1, s2);
 });
+
+/** La retención de `oauth_nonces_usados`, tal como la fija la política `nonce_purga` (migración 0034). */
+const RETENCION_NONCES_MS = 60 * 60 * 1000;
+
+test("🔴 la ventana del state cabe dentro de la retención de nonces de la migración 0034", () => {
+  /*
+   * Las dos duraciones viven en archivos distintos de paquetes distintos, y tienen que mantener un
+   * orden: si `VENTANA_ESTADO_MS` superara la retención, la purga empezaría a borrar nonces de states
+   * TODAVÍA VÁLIDOS, y cada uno de esos volvería a ser reproducible — justo el agujero que la 0034
+   * viene a cerrar, reabierto por una constante que alguien cambió en el otro paquete.
+   *
+   * No se unifican en un solo literal a propósito: no son el mismo número. La ventana es la caducidad
+   * OPERATIVA (cuánto tiempo tiene un humano para completar el consentimiento de Google) y la
+   * retención es un TECHO con holgura para que el registro no crezca sin fin. Lo que importa no es que
+   * coincidan, sino la desigualdad — y eso es exactamente lo que este test fija.
+   */
+  assert.ok(
+    VENTANA_ESTADO_MS < RETENCION_NONCES_MS,
+    `VENTANA_ESTADO_MS (${VENTANA_ESTADO_MS}ms) tiene que ser menor que la retención de ` +
+      `oauth_nonces_usados (${RETENCION_NONCES_MS}ms, política nonce_purga en ` +
+      `db/migrations/0034_oauth_nonce_un_solo_uso.sql). Si ampliás la ventana, ampliá el intervalo ` +
+      `de la política en una migración nueva ANTES de tocar esta constante.`,
+  );
+});

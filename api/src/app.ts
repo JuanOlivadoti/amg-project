@@ -257,6 +257,37 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     // (`conectarGoogle`, ADR-20) — este `ctx` es solo la identidad que el state trajo verificada.
     const ctx = { tenantId: estado.tenantId, userId: estado.userId };
     /*
+     * El nonce es de UN SOLO USO, y se quema ACÁ: después de `verificarEstado` y ANTES de
+     * `intercambiarCode`. Hasta la migración 0034 el nonce se firmaba y no se invalidaba nunca, así
+     * que un `state` filtrado —la barra del navegador, el historial, el log de un proxy, un
+     * `Referer`— se podía reproducir cuantas veces se quisiera durante sus 10 minutos de ventana; y
+     * este `state` no es un dato cualquiera, es la ÚNICA identidad con la que esta ruta anónima
+     * escribe `google_refresh_token` en un cliente.
+     *
+     * Que vaya ANTES del intercambio es deliberado: en modo live `intercambiarCode` es una llamada
+     * REAL a Google, así que un replay que llegara hasta ahí sería un amplificador de peticiones
+     * regalado a quien tenga el state, y encima contra una cuota que ya está al límite.
+     *
+     * Quién gana la carrera lo decide la PRIMARY KEY de `oauth_nonces_usados`, no este `if`: dos
+     * callbacks simultáneos con el mismo state se resuelven dentro de Postgres (ver
+     * `consumirNonceOAuth` en `db/src/resenas.ts`).
+     *
+     * ⚠️ EL TRADE-OFF, DICHO EN VOZ ALTA PORQUE ALGUIEN LO VA A LEER COMO UN BUG: el nonce se quema
+     * en el PRIMER uso, no al final. Si `intercambiarCode` o `conectarGoogle` fallan después, ese
+     * `state` YA NO SIRVE y hay que volver al portal y pulsar «Conectar Google» otra vez. Es lo
+     * correcto para un nonce —lo contrario, quemarlo solo cuando todo salió bien, deja la ventana
+     * abierta justo en el escenario en que algo salió raro— y el coste es un clic, no una pérdida de
+     * datos: `POST .../google/conectar` emite un state nuevo sin ningún estado que limpiar.
+     *
+     * JSON y no un redirect, como los otros cortes de este handler: el redirect es el camino de
+     * ÉXITO, y mandar a alguien a la pantalla de reseñas tras un replay le diría que se conectó.
+     */
+    const primerUso = await deps.resenas.consumirNonceOAuth(ctx, estado.nonce);
+    if (!primerUso) {
+      return c.json({ error: "Este enlace de conexión ya se usó. Volvé a pulsar «Conectar Google»." }, 400);
+    }
+
+    /*
      * `estado.locationId` (si el humano lo pegó al conectar) le dice al provider que NO descubra la
      * ficha. Acá NO se revalida el formato, y es deliberado: el `state` lo firmó este mismo proceso
      * con HMAC, y el único punto de entrada de ese campo es `POST /clients/:id/google/conectar`, que

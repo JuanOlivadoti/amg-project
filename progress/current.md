@@ -53,7 +53,18 @@ para Claude Desktop** (`1371a25`) y su **instalador** (`d6ae22f`).
 
 ## En vuelo (sin commitear)
 
-**El `locationId` a mano, terminado y verificado, pendiente de commit.** Nada a medio hacer.
+**El nonce de un solo uso (migración `0034`), terminado y verificado, pendiente de commit.** Nada a
+medio hacer. Cierra la deuda del Bloque F fase 1: un `state` filtrado ya no se puede reproducir.
+
+- `db/migrations/0034_oauth_nonce_un_solo_uso.sql` (nuevo) — tabla `oauth_nonces_usados`, RLS
+  enable + force, grants `insert, delete` **sin `select`**, y las dos políticas (`nonce_quemar`,
+  `nonce_purga`). ⚠️ **NO desplegada**: espera `migrate:deploy` fuera de Claude Code, y va **antes**
+  que el código de la API o el callback da 500.
+- `db/src/resenas.ts` — `consumirNonceOAuth`; el replay se detecta por el `23505`, no por un
+  `returning` (que exigiría privilegio de lectura sobre la tabla).
+- `api/src/app.ts` — el corte en `GET /google/callback`, **antes** de `intercambiarCode`.
+
+### Lo anterior de esta tanda: el `locationId` a mano, ya pusheado (`62ea374`)
 
 - `db/src/resenas.ts` — `NOMBRE_DE_UBICACION_GOOGLE` + `esNombreDeUbicacionGoogle`, la **fuente
   única** del formato; `orchestrator/src/google/live-provider.ts` **perdió su copia** de la regex y
@@ -71,7 +82,7 @@ para Claude Desktop** (`1371a25`) y su **instalador** (`d6ae22f`).
   ve el humano no quede mostrando una forma que la API rechaza.
 - Docs: `09`, `15` § Bloque F, `16-pendientes-juan.md` § 2, `history.md`.
 
-### Lo anterior (`b77364a`, el arreglo del arnés, ya pusheado)
+### Y antes (`b77364a`, el arreglo del arnés, ya pusheado)
 
 - `package.json:18` — `"verificar": "bash ./scripts/verificar.sh"`. Sin el `bash`, npm lo lanza por
   `cmd.exe` y el comando obligatorio del ritual no corría en Windows.
@@ -91,8 +102,10 @@ De antes, `9f406ee` y los tres commits anteriores: el módulo de reseñas.
 **Ninguna de las tres piezas de código que faltan del módulo de reseñas se puede escribir todavía**
 (esperan decisiones de AMG, ver § Bloqueado). Lo accionable sin depender de nadie, en orden:
 
-1. ~~Arreglar las dos trampas del arnés~~ — **hecho el 2026-09-26**, ver § En vuelo.
-2. **Deuda del nonce del `state`**, abierta desde el Bloque F fase 1: `EstadoOAuth.nonce`
+1. ~~Arreglar las dos trampas del arnés~~ — **hecho el 2026-09-26** (`b77364a`).
+2. ~~**Deuda del nonce del `state`**~~ — **hecha el 2026-09-28**, migración `0034`. Queda pendiente
+   **desplegarla** (`npm run migrate:deploy -w db`, fuera de Claude Code), y **antes** que el código
+   de la API. El texto viejo de este punto, para referencia:, abierta desde el Bloque F fase 1: `EstadoOAuth.nonce`
    (`api/src/oauth-state.ts:23`) se genera pero **nunca se invalida tras el primer uso**, así que la
    única defensa contra un `state` filtrado es la ventana de 10 min (`VENTANA_ESTADO_MS`,
    `api/src/oauth-state.ts:30`). Exige migración (la próxima libre es la **0034**; la última es

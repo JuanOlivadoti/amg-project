@@ -692,3 +692,150 @@ test("NOMBRE_DE_UBICACION_GOOGLE no es global: un regex con /g arrastra lastInde
   assert.equal(esNombreDeUbicacionGoogle("accounts/1/locations/2"), true);
   assert.equal(esNombreDeUbicacionGoogle("accounts/1/locations/2"), true);
 });
+
+// ---------------------------------------------------------------- nonce de OAuth de un solo uso (0034)
+//
+// La deuda que cierran estos tests estuvo abierta desde el Bloque F fase 1: `EstadoOAuth.nonce`
+// (`api/src/oauth-state.ts`) se firmaba y NUNCA se invalidaba, así que un `state` filtrado se podía
+// reproducir cuantas veces se quisiera durante sus 10 minutos de ventana — y ese `state` es la única
+// identidad con la que el callback anónimo escribe `google_refresh_token` en un cliente.
+//
+// El test de punta a punta (el mismo state dos veces, por HTTP) vive en `api/src/app.test.ts`: acá se
+// fija el contrato del método y las garantías del ESQUEMA, que es donde están impuestas.
+
+const ctxA = () => ({ tenantId: s.tenantA, userId: s.equipoA });
+const ctxB = () => ({ tenantId: s.tenantB, userId: s.equipoB });
+
+/**
+ * Un `delete from oauth_nonces_usados` PELADO, con el rol `app_user` y COMMIT — el peor caso realista
+ * del modelo de amenaza de este ámbito: alguien que consigue ejecutar SQL con el rol de la API y un
+ * contexto de tenant válido, e intenta des-quemar un nonce para poder repetir un `state`.
+ *
+ * Sin `where` a propósito: es exactamente lo que ejecuta la purga de `consumirNonceOAuth`, y también
+ * el borrado más agresivo que ese rol puede pedir. Quien decide qué filas caen es la política
+ * `nonce_purga`, no la sentencia. `TestDb.asUser` no sirve acá porque hace `rollback`: un borrado que
+ * se revierte solo no prueba si la base lo habría permitido.
+ */
+async function borrarNoncesComoAppUser(tenantId: string, userId: string): Promise<void> {
+  const pg = db.pglite;
+  await pg.exec("begin");
+  try {
+    await pg.query("select set_config('app.tenant_id', $1, true)", [tenantId]);
+    await pg.query("select set_config('app.user_id', $1, true)", [userId]);
+    await pg.exec("set local role app_user");
+    await pg.query("delete from oauth_nonces_usados");
+    await pg.exec("commit");
+  } catch (e) {
+    await pg.exec("rollback");
+    throw e;
+  }
+}
+
+test("🔴 consumirNonceOAuth: true la primera vez, false la segunda (el state es de un solo uso)", async () => {
+  const nonce = crypto.randomUUID();
+
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), nonce), true, "primer uso: el camino normal");
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), nonce), false, "replay: ya estaba quemado");
+  // Tercera vez: que no "se reabra" por haber devuelto false una vez (la purga corre en cada llamada
+  // y no debe llevarse por delante la fila que acaba de rechazar).
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), nonce), false, "sigue quemado indefinidamente");
+});
+
+test("🔴 un nonce quemado no se puede DES-quemar: la política solo deja purgar lo ya vencido", async () => {
+  /*
+   * Ésta es la garantía de fondo, y no es "limpieza": si `app_user` pudiera borrar una fila reciente,
+   * el replay volvería a estar abierto para cualquiera que llegue a ejecutar un DELETE — un bug de la
+   * API, un endpoint nuevo mal escrito. La condición de edad vive en el `using` de `nonce_purga`
+   * (migración 0034), no en el `where` de la sentencia, así que no depende de que nadie se olvide.
+   *
+   * Se mide por COMPORTAMIENTO (el nonce sigue rechazado) y no contando filas: es la propiedad que
+   * importa, y un conteo pasaría igual si el método dejara de mirar la tabla.
+   */
+  const nonce = crypto.randomUUID();
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), nonce), true);
+
+  await borrarNoncesComoAppUser(s.tenantA, s.equipoA);
+
+  assert.equal(
+    await resenas.consumirNonceOAuth(ctxA(), nonce),
+    false,
+    "el DELETE no pudo tocar la fila recién quemada: la política exige usado_en < now() - 1 hora",
+  );
+});
+
+test("la purga corre DENTRO de cada consumo y se lleva lo vencido: la tabla no crece para siempre", async () => {
+  /*
+   * Lo que dispara la purga es OTRO `consumirNonceOAuth`, no un DELETE escrito por el test. Es la
+   * diferencia entre probar la política y probar que el método la usa: la primera versión de este
+   * test llamaba a `borrarNoncesComoAppUser` y quitar el CTE `with purga as (delete ...)` de
+   * `consumirNonceOAuth` la dejaba en VERDE — o sea que nada cubría la limpieza de verdad, y la tabla
+   * podía crecer para siempre sin que ningún test se enterara. Medido, no supuesto.
+   */
+  const viejo = crypto.randomUUID();
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), viejo), true);
+
+  // Envejecer la fila es lo único que hace falta para que la purga la alcance. Se hace con la
+  // autoridad de INFRAESTRUCTURA (superusuario) porque es un artificio del test, no un camino de la
+  // app: `app_user` no tiene ningún grant de UPDATE sobre esta tabla, y eso también es deliberado.
+  await db.asService("update oauth_nonces_usados set usado_en = now() - interval '2 hours' where nonce = $1", [
+    viejo,
+  ]);
+
+  // Un consumo cualquiera, posterior: el que hace la limpieza de paso.
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), crypto.randomUUID()), true);
+
+  const quedan = await db.asService<{ n: number }>(
+    "select count(*)::int as n from oauth_nonces_usados where nonce = $1",
+    [viejo],
+  );
+  assert.equal(quedan[0]!.n, 0, "una fila más vieja que la ventana del state no aporta nada y se va");
+});
+
+test("🔴 los nonces no se filtran entre tenants: app_user no puede LEER la tabla, ni siquiera la suya", async () => {
+  const nonce = crypto.randomUUID();
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), nonce), true);
+
+  // No es "cero filas": es `permission denied`. No hay ningún grant de SELECT sobre esta tabla, y esa
+  // ausencia es la que hace que `consumirNonceOAuth` tenga que detectar el replay por el 23505 en vez
+  // de por un `returning`. Si alguien concediera el select "para poder depurar", este test cae.
+  await assert.rejects(
+    () => db.asUser(ctxB(), "select nonce from oauth_nonces_usados"),
+    /permission denied/i,
+    "el tenant B no puede enumerar nonces",
+  );
+  await assert.rejects(
+    () => db.asUser(ctxA(), "select nonce from oauth_nonces_usados"),
+    /permission denied/i,
+    "tampoco el tenant que los quemó: nadie lee esta tabla desde la API",
+  );
+});
+
+test("🔴 no se puede quemar un nonce marcándolo con el tenant de otro", async () => {
+  // El `with check` de `nonce_quemar`. Sin él, el tenant A podría sembrar filas en el registro de B
+  // —basura ajena, y una vía para que B se quede sin poder usar un nonce que todavía no acuñó.
+  await assert.rejects(
+    () =>
+      db.asUser(ctxA(), "insert into oauth_nonces_usados (nonce, tenant_id) values ($1, $2)", [
+        crypto.randomUUID(),
+        s.tenantB,
+      ]),
+    /row-level security/i,
+    "42501: la fila resultante no es del tenant que la escribe",
+  );
+});
+
+test("🔴 el nonce es único GLOBALMENTE, no por tenant: otro tenant tampoco puede repetirlo", async () => {
+  /*
+   * Deliberado, y conviene decirlo porque parece una fuga y no lo es. Un `primary key (nonce)` en vez
+   * de `(tenant_id, nonce)` significa que el tenant B, presentando el MISMO nonce, se lleva un
+   * `false`. Lo que eso le revela es que ese uuid ya se usó — nada más: no puede leer la tabla, no
+   * sabe de quién era, y un nonce quemado no sirve para nada.
+   *
+   * A cambio, la unicidad no depende de que el `tenant_id` del `state` sea el correcto. Con una clave
+   * compuesta, un `state` cuyo tenant se pudiera manipular se replayearía cambiando ese campo; hoy no
+   * se puede (viaja firmado), pero la defensa no tiene por qué apoyarse en eso.
+   */
+  const nonce = crypto.randomUUID();
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), nonce), true);
+  assert.equal(await resenas.consumirNonceOAuth(ctxB(), nonce), false, "un nonce quemado lo está para todos");
+});

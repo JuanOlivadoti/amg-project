@@ -1290,9 +1290,12 @@ RLS → redirect de vuelta al tab) persistiendo tras un refresh, rol `cliente` c
 lectura, claro y oscuro, consola limpia. `db` 352/352, `api` 211/211, `orchestrator` 92/92, `scripts`
 95/95, portal 288 `node:test` + 154 Karma.
 
-**Deuda anotada, no bloqueante:** el `nonce` del `state` no se invalida tras el primer uso — la única
+~~**Deuda anotada, no bloqueante:** el `nonce` del `state` no se invalida tras el primer uso — la única
 defensa contra un `state` filtrado es la ventana de 10 minutos; invalidarlo tras el primer uso exige
-una migración (una tabla o columna de nonces usados). Las migraciones `0021`/`0022` **desplegadas a
+una migración (una tabla o columna de nonces usados).~~ **CERRADA el 2026-09-28**: migración
+`0034_oauth_nonce_un_solo_uso.sql` (tabla `oauth_nonces_usados`; la `primary key` es la garantía, no
+un `select` previo) + `PgResenas.consumirNonceOAuth` + el corte en el callback **antes** de
+`intercambiarCode`. Pendiente de desplegar a producción. Las migraciones `0021`/`0022` **desplegadas a
 producción el 2026-08-18** (confirmado en `app.migraciones_aplicadas`).
 
 **Fase 2, primera pieza (borrador de respuesta con IA para 4-5★): ✅ COMPLETA el 2026-08-21.** Spec
@@ -1917,8 +1920,8 @@ fuera del repo (`docs/private/rotacion-credenciales.md`).
 > opción sin aseguradora, sin prima o con prima ≤ 0, nunca guarda una a medias.
 >
 > **La cola, sin orden fijado todavía:** el botón «Editar la web» que firme el preview al vuelo (retira
-> la URL de larga duración del space, eslabón débil de OBS-04) · invalidar el `nonce` del `state` de
-> OAuth tras el primer uso (necesita migración) · la invalidación de cache desde la API al cambiar el
+> la URL de larga duración del space, eslabón débil de OBS-04) · ~~invalidar el `nonce` del `state` de
+> OAuth tras el primer uso (necesita migración)~~ **hecho el 2026-09-28, migración `0034`** · la invalidación de cache desde la API al cambiar el
 > perfil · la CDN del Bloque G · el ingreso real de ideas por n8n (la pantalla existe y enseña el seed)
 > · y la deuda menor del Bloque I.
 >
