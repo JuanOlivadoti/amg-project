@@ -105,6 +105,7 @@ test("🔴 /_health con la base CAÍDA: 200 por fuera, `degradado` por dentro", 
     prosa: "mock",
     borrador: "mock",
     postBlog: "mock",
+    resenas: "mock",
     sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso(), log: () => {} }),
   });
 
@@ -146,6 +147,7 @@ test("🔴 /_health con la base sana: NI RASTRO del campo `degradado`", async ()
     prosa: "mock",
     borrador: "mock",
     postBlog: "mock",
+    resenas: "mock",
     sonda: crearSonda({ comprobar: async () => undefined }),
   });
 
@@ -192,6 +194,7 @@ test("/_health incluye postBlog", async () => {
     prosa: "mock",
     borrador: "mock",
     postBlog: "openai",
+    resenas: "mock",
   });
 
   await conServidor(server, async (base) => {
@@ -240,7 +243,7 @@ test("🔴 /_health no pasa por el manejador de Inngest", async () => {
     invocaciones += 1;
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock" });
 
   await conServidor(server, async (base) => {
     const r = await fetch(`${base}/_health`);
@@ -260,7 +263,7 @@ test("/api/inngest sigue delegando en el manejador del SDK", async () => {
     invocaciones += 1;
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock" });
 
   await conServidor(server, async (base) => {
     const r = await fetch(`${base}/api/inngest`);
@@ -315,7 +318,7 @@ async function pedirFirmado(conClaveValidada: boolean): Promise<number> {
     const manejadorInngest = serve(
       opcionesDeServe(conClaveValidada ? { inngestSigningKey: LIMPIA } : {}, cliente, [fn]),
     );
-    const server = crearServidor({ manejadorInngest, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock" });
+    const server = crearServidor({ manejadorInngest, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock" });
 
     return await conServidor(server, async (base) => {
       const ts = Math.floor(Date.now() / 1000).toString(); // el SDK lo lee en SEGUNDOS
@@ -357,10 +360,44 @@ test("cualquier otra ruta sigue siendo 404", async () => {
   const espia = (_req: IncomingMessage, res: ServerResponse) => {
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock" });
 
   await conServidor(server, async (base) => {
     assert.equal((await fetch(`${base}/`)).status, 404);
     assert.equal((await fetch(`${base}/_health/algo`)).status, 404);
+  });
+});
+
+/*
+ * `/_health` reporta en qué modo están las reseñas de Google. Lo pide un hallazgo real del
+ * 2026-09-28: para diagnosticar por qué el polling no producía nada hubo que LEER EL CÓDIGO y deducir
+ * el default, porque el endpoint informaba de cinco modos (`pipeline`, `publicacion`, `prosa`,
+ * `borrador`, `postBlog`) y justo de éste no. Y es el que hay que confirmar el día que se encienda
+ * `live`: un despliegue que se olvide de `GOOGLE_REVIEWS_MODO` cae al default `mock` y sigue
+ * pareciendo sano — reseñas INVENTADAS en la base de un cliente real, sin un solo error.
+ */
+test("🔴 /_health dice en qué modo están las reseñas de Google", async () => {
+  const deps = depsSobreBaseCaida();
+  const server = crearServidor({
+    manejadorInngest: () => {},
+    funciones: 1,
+    modo: "dev",
+    pipeline: "mock",
+    publicacion: "mock",
+    prosa: "mock",
+    borrador: "mock",
+    postBlog: "mock",
+    resenas: "live",
+    sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso(), log: () => {} }),
+  });
+
+  await conServidor(server, async (base) => {
+    const r = await fetch(`${base}/_health`);
+    const cuerpo = (await r.json()) as Record<string, unknown>;
+    assert.equal(
+      cuerpo["resenas"],
+      "live",
+      "sin este campo, confirmar el encendido de reseñas exige leer el código del despliegue",
+    );
   });
 });

@@ -11,6 +11,53 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-28 (noche) — Seis de las siete funciones de Inngest nunca existieron en producción
+
+El hallazgo más consecuente de la jornada, y no salió de leer código sino de no aceptar un cero.
+
+La cadena: el módulo de reseñas tenía **un cliente conectado** en producción y **cero reseñas**,
+cuando el provider mock devuelve dos para cualquier ficha. Se descartó, uno por uno, que el proceso
+estuviera caído (`/_health`: `funciones: 7`, `modo: cloud`), que el modo no fuera `mock` (lo es, por
+default), que el mock filtrara algo (no: dos fixtures para cualquier `locationId`, y su
+`refrescarToken` sólo falla con token vacío), que la función SQL no devolviera ese cliente (lo
+devuelve) y que `registrar_resena_google` tuviera una compuerta (no la tiene). Sólo quedaba una cosa:
+**que el cron no existiera en Inngest.** El usuario lo confirmó desde el panel — cero ejecuciones.
+
+**Y la causa estaba escrita en nuestro propio runbook desde el 2026-08-07.** Sincronizar la app es un
+`PUT` manual que manda a Inngest el **manifiesto** de funciones tal como está en ese momento. No es
+automático y no se repite solo. El runbook incluso anotaba que el panel mostraba **2 funciones**
+("nuestro código registra una, e Inngest cuenta el `onFailure` como otra") — o sea que en aquel sync
+sólo entró `research`.
+
+Desde entonces se registraron seis más en `server.ts` y **ninguna se sincronizó**: `barrido` (08-07),
+`polling-resenas-google` (08-14), `publicar-resena` (08-23), `vincular-telegram` (08-24), `decision`
+— aprobar → publicar — (08-27) y `publicar-post` (09-03). Encaja con todo lo medido: los dos únicos
+runs de producción son del **8 y el 10 de agosto**, justo después del sync, porque `research` sí
+estaba; y no hay ninguna ejecución de cron porque la única función sincronizada **no es un cron**.
+
+**Lo que esto significa, y conviene decirlo sin suavizar:** en producción no han funcionado nunca ni
+las alertas de Telegram, ni la publicación de respuestas, ni —la más seria— el workflow de
+**aprobar → publicar**. El runbook ya daba ese paso por "sin probar"; ahora sabemos que no era sólo
+que no se hubiera probado.
+
+**Por qué ningún test podía cazarlo:** los siete registros están bien en el código, y el código es lo
+único que los tests ven. La diferencia vive entre el proceso y un servicio externo. La comprobación
+que sí lo caza es comparar el `funciones: N` de `/_health` contra lo que lista el panel — y quedó
+escrita en el runbook como paso obligatorio tras cada despliegue.
+
+**Cambio de código que sale de acá:** `/_health` ahora reporta también `resenas` (el modo de
+`GOOGLE_REVIEWS_MODO`). Informaba de cinco modos y justo de éste no, que es el que hubo que deducir
+leyendo el código — y el que hay que confirmar el día del encendido: a diferencia de `PIPELINE_MODO`,
+ésta **cae a `mock`** si nadie la declara, y un despliegue así sigue pareciendo sano mientras siembra
+reseñas inventadas en la base de un cliente real. Rojo primero y mutación confirmada.
+
+**Lo que quedó sin hacer, y por qué:** el `PUT` de sincronización y la desconexión del cliente de
+mock son acciones sobre producción; el clasificador de permisos frenó la escritura en la base, y el
+orden correcto exige desconectar ANTES de sincronizar (si no, el primer ciclo del polling siembra dos
+reseñas falsas en un cliente real y dispara la alerta de la 2★).
+
+---
+
 ## 2026-09-28 (noche) — La revisión del nonce: APROBADO, y tres contradicciones que creó el propio despliegue
 
 El `revisor` del nonce había muerto a mitad por el límite de sesión de la cuenta. Relanzado, devolvió

@@ -898,6 +898,39 @@ un céntimo**. Recién con eso verde, decidí si se conecta la cuenta real.
 
 ### 5.b Sincronizar la app en Inngest — el paso que faltaba acá
 
+> ## 🔴 ESTE PASO HAY QUE REPETIRLO EN CADA DESPLIEGUE QUE AÑADA O CAMBIE UNA FUNCIÓN
+>
+> **No es opcional y no es automático.** El `PUT` manda a Inngest un **manifiesto** —la lista de
+> funciones tal como estaba en ese momento—, y ahí se queda. Un despliegue posterior que registre una
+> función nueva en `server.ts` la deja corriendo en el proceso y **desconocida para Inngest**: el
+> proceso la lista en `/_health`, el panel no, y nadie avisa.
+>
+> **Medido el 2026-09-28, y costó siete semanas de silencio.** La app se sincronizó el **2026-08-07**,
+> cuando había **una** función nuestra (`research`; el panel mostraba 2 porque Inngest cuenta el
+> `onFailure` aparte). Desde entonces se registraron seis más y **ninguna se sincronizó**:
+>
+> | Función | Registrada en `server.ts` | ¿Llegó a Inngest? |
+> | --- | --- | --- |
+> | `research` | 2026-07-14 | ✅ (el sync del 08-07) |
+> | `barrido` | 2026-08-07 | ❌ |
+> | `polling-resenas-google` | 2026-08-14 | ❌ |
+> | `publicar-resena` | 2026-08-23 | ❌ |
+> | `vincular-telegram` | 2026-08-24 | ❌ |
+> | `decision` (aprobar → publicar) | 2026-08-27 | ❌ |
+> | `publicar-post` | 2026-09-03 | ❌ |
+>
+> Cómo se destapó: el módulo de reseñas tenía **un cliente conectado** en producción y **cero
+> reseñas**, cuando el provider mock devuelve dos para cualquier ficha. Se descartó uno por uno el
+> proceso (vivo), el modo (`mock`), el provider, la función SQL y el registro en base — y lo único
+> que quedaba era que el cron no existiera en Inngest. **Ningún test puede cazar esto**: los siete
+> registros están bien en el código, y el código es lo único que los tests ven.
+>
+> **La comprobación que lo caza, y que hay que hacer tras cada despliegue:** comparar el
+> `funciones: N` de `/_health` contra lo que lista el panel de Inngest. Tienen que cuadrar —
+> recordando que el panel suma un `onFailure` por cada función que declare uno. Si `/_health` dice
+> más que el panel, falta el `PUT`.
+
+
 Registrar las funciones es un `PUT` **a tu propio servicio**: el SDK se introspecciona y **envía** el
 manifiesto a la API de Inngest, autenticándose con `INNGEST_SIGNING_KEY`.
 
