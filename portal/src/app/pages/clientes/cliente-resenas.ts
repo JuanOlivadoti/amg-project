@@ -7,6 +7,7 @@ import { ClientesService } from '../../services/clientes';
 import { MembresiaService } from '../../services/membresia';
 import type { ResenaGoogle } from '../../core/models';
 import { Vigencia } from '../../core/vigencia';
+import { esLocationIdInvalido, type ApiError } from '../../core/api-core';
 
 /**
  * Tab `/clientes/:id/resenas`: las reseñas de Google del cliente, en el orden que ya fija el SQL de
@@ -60,6 +61,34 @@ import { Vigencia } from '../../core/vigencia';
             Este cliente todavía no conectó su Google Business Profile.
           </p>
           @if (membresia.esEquipo()) {
+            <!--
+              Campo OPCIONAL: vacío = que el backend descubra la ficha solo (el camino por defecto,
+              y el único que vuelve a funcionar cuando Google conceda la cuota). El texto de ayuda
+              existe porque la consola de Google MUESTRA el id suelto, y la API v4 direcciona por el
+              nombre de recurso completo: quien copia lo primero que ve pega el valor equivocado.
+            -->
+            <div class="mx-auto mt-4 max-w-md text-left">
+              <label for="ficha-google" class="block text-xs font-medium text-texto">
+                Nombre de recurso de la ficha (opcional)
+              </label>
+              <input
+                id="ficha-google"
+                type="text"
+                class="mt-1 w-full rounded-md border border-borde bg-fondo p-2 text-sm text-texto"
+                placeholder="accounts/123456789/locations/987654321"
+                [value]="ficha()"
+                (input)="ficha.set($any($event.target).value)"
+              />
+              <p class="mt-1 text-xs text-texto-tenue">
+                Se copia de la consola de Google Business Profile, y es el nombre COMPLETO
+                <code class="text-texto-medio">accounts/&lt;id&gt;/locations/&lt;id&gt;</code>, no el
+                id suelto que se ve en pantalla. Si se deja vacío, se intenta descubrir la ficha
+                automáticamente.
+              </p>
+              @if (errorFicha()) {
+                <p class="mt-2 text-xs text-error">{{ errorFicha() }}</p>
+              }
+            </div>
             <button
               type="button"
               (click)="conectar()"
@@ -165,6 +194,22 @@ export class ClienteResenasPage implements OnInit, OnDestroy {
   readonly error = signal('');
 
   /**
+   * El nombre de recurso de la ficha de Google, pegado a mano. Vacío = descubrimiento automático.
+   *
+   * Existe porque las dos APIs de Google que hacen falta para descubrir la ficha están en **cuota 0**
+   * con un trámite sin fecha, así que el descubrimiento automático hoy devuelve 429 siempre. No
+   * reemplaza al automático: lo puentea mientras tanto.
+   */
+  readonly ficha = signal('');
+
+  /**
+   * El error del FORMULARIO de la ficha, separado de `error()` a propósito. El motivo largo está en
+   * el docblock de `conectar()`; el corto: `error()` se lleva puesto el CTA, y este error hay que
+   * poder corregirlo sin perder el botón ni lo escrito.
+   */
+  readonly errorFicha = signal('');
+
+  /**
    * `true` si el cliente conectó su Google Business Profile — leído DIRECTO de lo que ya cargó la
    * ficha, sin ningún pedido propio. Ver el docblock de la clase.
    */
@@ -185,6 +230,11 @@ export class ClienteResenasPage implements OnInit, OnDestroy {
       this.resenas.set([]);
       this.ediciones.set({});
       this.error.set('');
+      // La ficha es del cliente que se está mirando, no de la pantalla: arrastrarla al siguiente
+      // conectaría la ficha EQUIVOCADA, y el backend no tendría cómo saberlo — el valor sería
+      // exactamente el que le pidieron.
+      this.ficha.set('');
+      this.errorFicha.set('');
       void this.cargar(id);
     });
   }
@@ -234,13 +284,32 @@ export class ClienteResenasPage implements OnInit, OnDestroy {
    * rechazando hasta que cambie la configuración del despliegue, así que dejar el botón invitaría a
    * pulsarlo en vano—, pero no es lo que uno espera de un "mostrá el error" genérico. Lo señaló el
    * `revisor`.
+   *
+   * **Y por eso el 400 NO va al mismo lado.** Desde que existe el campo de ficha, este endpoint
+   * puede responder **400** cuando el nombre de recurso pegado no tiene la forma
+   * `accounts/<id>/locations/<id>`. Ese error es de otra naturaleza que el 409: no es una decisión
+   * del despliegue que la persona no puede cambiar, es **un valor que acaba de escribir y puede
+   * corregir ahí mismo**. Mandarlo a `error()` le borraría el CTA y el campo —incluido lo que
+   * escribió—, y la única salida sería cambiar de cliente y volver. Va a `errorFicha()`, que la
+   * plantilla pinta DENTRO del formulario, sin tocar las ramas excluyentes.
+   *
+   * Se ramifica por el **código** (`esLocationIdInvalido`), no por el texto ni por el status, que es
+   * la regla de `core/codigos.ts`: el mensaje se corrige el día que a alguien le molesta una tilde, y
+   * el status lo comparte con cualquier otro 400 que este endpoint gane después — confundirlos
+   * mandaría a corregir la ficha cuando lo que está mal es otra cosa.
    */
   async conectar(): Promise<void> {
+    this.errorFicha.set('');
     try {
-      const { url } = await this.api.conectarGoogle(this.clienteId());
+      const { url } = await this.api.conectarGoogle(this.clienteId(), this.ficha());
       window.location.href = url;
     } catch (e) {
-      this.error.set((e as Error).message);
+      const err = e as ApiError;
+      if (esLocationIdInvalido(err)) {
+        this.errorFicha.set(err.message);
+        return;
+      }
+      this.error.set(err.message);
     }
   }
 

@@ -20,8 +20,23 @@ export interface GoogleOAuthProvider {
    * viaja firmada dentro del `state`. Pasarlo acá además sería una segunda fuente de la misma verdad.
    */
   urlDeConsentimiento(state: string, callbackBaseUrl: string): string;
-  /** Intercambia el `code` del callback por un refresh token. */
-  intercambiarCode(code: string): Promise<{ refreshToken: string; locationId: string }>;
+  /**
+   * Intercambia el `code` del callback por un refresh token.
+   *
+   * `locationIdManual` es el nombre de recurso (`accounts/<id>/locations/<id>`) que un humano pegó al
+   * conectar. **Si llega, se devuelve tal cual y NO se intenta descubrir la ficha en absoluto** — ni
+   * "por si acaso" antes: las APIs de descubrimiento están en cuota 0 y el 429 volvería igual, con lo
+   * que el camino manual no serviría de nada. Su formato lo validó el endpoint que firmó el `state`.
+   *
+   * "Si llega" significa `!== undefined`, y el código lo IMPONE: una cadena vacía **lanza** en vez de
+   * caer al descubrimiento en silencio. Es la diferencia entre una garantía y una intención — esta
+   * interfaz es pública, con dos implementaciones, y la promesa de arriba vale para cualquiera que la
+   * llame, no sólo para el handler que hoy ya rechaza el vacío con un 400.
+   */
+  intercambiarCode(
+    code: string,
+    locationIdManual?: string,
+  ): Promise<{ refreshToken: string; locationId: string }>;
 }
 
 /**
@@ -39,8 +54,28 @@ export class MockGoogleOAuthProvider implements GoogleOAuthProvider {
     return `${callbackBaseUrl}/google/callback?${params.toString()}`;
   }
 
-  async intercambiarCode(code: string): Promise<{ refreshToken: string; locationId: string }> {
+  async intercambiarCode(
+    code: string,
+    locationIdManual?: string,
+  ): Promise<{ refreshToken: string; locationId: string }> {
     if (!code) throw new Error("intercambiarCode: code vacío");
+    // Misma regla que en live, y por eso está acá y no solo allá: lo pegado gana sobre lo descubierto.
+    // Si el mock ignorara `locationIdManual`, el flujo de dev conectaría una ficha distinta de la que
+    // conectaría producción con el mismo body — y eso se descubre en producción. El rechazo del vacío
+    // también se copia: un mock más permisivo que el live deja pasar en dev lo que rompe en prod.
+    /*
+     * `!== undefined` y no truthiness: el docblock de la interfaz promete "si llega, no se descubre",
+     * y con una guardia truthy un `""` se colaría al descubrimiento — la promesa valdría para
+     * todos los valores menos uno, que es justo como se rompen estas cosas. Lanzar y no descubrir:
+     * quien pasó una cadena vacía tiene un bug, y el descubrimiento devolvería un 429 de cuota que
+     * no le diría a nadie dónde está.
+     */
+    if (locationIdManual !== undefined) {
+      if (!locationIdManual.trim()) {
+        throw new Error("intercambiarCode: locationIdManual vacío. Para descubrir la ficha, no lo pases.");
+      }
+      return { refreshToken: `mock-refresh-${code}`, locationId: locationIdManual };
+    }
     return { refreshToken: `mock-refresh-${code}`, locationId: `mock-location-${code}` };
   }
 }

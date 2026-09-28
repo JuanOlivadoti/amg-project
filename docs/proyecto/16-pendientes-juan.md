@@ -94,6 +94,27 @@ Fuente: `15-plan-plataforma.md § Bloque F`, línea ~1336.
 > una decisión abierta, no una recomendación cerrada: con pocos clientes el campo manual gana, con
 > muchos gana el descubrimiento automático.
 >
+> ### ✅ 2026-09-28 — la alternativa manual está IMPLEMENTADA: el módulo ya no depende del trámite
+>
+> El campo existe y funciona de punta a punta. **Con el nombre de recurso pegado a mano, conectar un
+> cliente en modo `live` no toca ninguna de las dos APIs en cuota 0**, así que el trámite deja de
+> bloquear el módulo y pasa a ser una mejora de comodidad.
+>
+> - En el portal, la pantalla de reseñas tiene un campo **opcional** junto a «Conectar Google», con la
+>   forma esperada a la vista. Vacío = camino de antes (descubrir automáticamente).
+> - La API valida el formato en el momento en que se pega —no diez minutos después, en el callback—,
+>   y el valor viaja **dentro del `state` firmado**, no como query param.
+> - El descubrimiento automático **no se borró**: vuelve a ser el camino por defecto en cuanto Google
+>   conceda la cuota, sin tocar código.
+>
+> **Lo que sigue necesitando el trámite** (o sea: pedir cuota para `mybusinessaccountmanagement` y
+> `mybusinessbusinessinformation` sigue valiendo la pena, pero ya no es urgente): que el alta de un
+> cliente no exija que alguien busque y copie el nombre de recurso a mano.
+>
+> ⚠️ **Y ojo, que esto NO destraba el módulo entero.** Sigue haciendo falta lo de la sección de abajo:
+> la app OAuth está en estado «Prueba», y ahí los refresh tokens **caducan a los 7 días**. Con el
+> `locationId` a mano se puede conectar un cliente hoy, pero se desconectaría solo en una semana.
+>
 > ### ❌ El bloqueo REAL: la app OAuth está sin configurar
 >
 > Revisado en la consola (solo lectura) el 2026-09-22. Las dos mitades están en estados opuestos: la

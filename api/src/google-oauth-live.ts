@@ -22,6 +22,11 @@ const TIMEOUT_MS = 10_000;
  * - **Descubrir la ficha del negocio NO funciona hoy**: exige la Account Management API, que en el
  *   proyecto `amg-automation` está en **cuota 0** (medido el 2026-09-22). La v4 tenía `accounts.list`
  *   pero Google la deprecó justamente en favor de esa API, así que no hay camino alternativo.
+ *
+ * Por eso `intercambiarCode` acepta un `locationIdManual`: mientras la cuota siga en 0, la única
+ * forma de conectar un cliente es que un humano pegue el nombre de recurso. El descubrimiento NO se
+ * borra —vuelve a ser el camino por defecto en cuanto Google conceda la cuota—, simplemente no se
+ * ejecuta cuando ya hay un valor pegado.
  */
 export class LiveGoogleOAuthProvider implements GoogleOAuthProvider {
   constructor(
@@ -60,7 +65,10 @@ export class LiveGoogleOAuthProvider implements GoogleOAuthProvider {
     return `${AUTH_URL}?${params.toString()}`;
   }
 
-  async intercambiarCode(code: string): Promise<{ refreshToken: string; locationId: string }> {
+  async intercambiarCode(
+    code: string,
+    locationIdManual?: string,
+  ): Promise<{ refreshToken: string; locationId: string }> {
     if (!code.trim()) throw new Error("intercambiarCode: code vacío");
 
     const res = await fetch(TOKEN_URL, {
@@ -98,6 +106,27 @@ export class LiveGoogleOAuthProvider implements GoogleOAuthProvider {
         "intercambiarCode: Google no devolvió refresh_token. Suele pasar en un segundo " +
           "consentimiento sin `prompt=consent`, o si el cliente ya tenía la app autorizada.",
       );
+    }
+
+    /*
+     * El atajo manual, y va ANTES de exigir el access_token a propósito: con la ficha pegada no hay
+     * ninguna llamada que autenticar. Cortar acá es el punto entero del camino manual — intentar el
+     * descubrimiento "primero, por si acaso" devolvería el 429 de la cuota 0 y dejaría todo igual de
+     * roto que antes. Lo que se pegó ya vino validado por `POST /clients/:id/google/conectar`, que
+     * usa la MISMA regex que el orquestador para leer la columna (`esNombreDeUbicacionGoogle`, `db/`).
+     */
+    /*
+     * `!== undefined` y no truthiness: el docblock de la interfaz promete "si llega, no se descubre",
+     * y con una guardia truthy un `""` se colaría al descubrimiento — la promesa valdría para
+     * todos los valores menos uno, que es justo como se rompen estas cosas. Lanzar y no descubrir:
+     * quien pasó una cadena vacía tiene un bug, y el descubrimiento devolvería un 429 de cuota que
+     * no le diría a nadie dónde está.
+     */
+    if (locationIdManual !== undefined) {
+      if (!locationIdManual.trim()) {
+        throw new Error("intercambiarCode: locationIdManual vacío. Para descubrir la ficha, no lo pases.");
+      }
+      return { refreshToken, locationId: locationIdManual };
     }
 
     const accessToken =

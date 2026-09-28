@@ -48,7 +48,7 @@ export type {
   ResultadoCambioEstado,
 } from "./ideas.js";
 
-export { PgResenas } from "./resenas.js";
+export { PgResenas, NOMBRE_DE_UBICACION_GOOGLE, esNombreDeUbicacionGoogle } from "./resenas.js";
 export type { ResenaGoogle } from "./resenas.js";
 
 export { PgComparativasSeguros } from "./comparativas-seguros.js";

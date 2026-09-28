@@ -44,6 +44,29 @@
 > del error, aunque el mensaje de `refrescarToken` ya conserva el `invalid_grant` de Google para
 > quien la escriba.
 >
+> 🔓 **Nuevo (2026-09-28): el módulo de reseñas DEJA DE DEPENDER del trámite de cuota con Google.**
+> Era el bloqueo real: conectar un cliente en modo `live` exigía descubrir su ficha, y eso necesita
+> dos APIs en **cuota 0** sin fecha. Ahora el nombre de recurso de la ficha
+> (`accounts/<id>/locations/<id>`) se puede **pegar a mano** en la pantalla de reseñas, y con él
+> `intercambiarCode` no llama a ninguna de las dos APIs bloqueadas — ni antes "por si acaso", que
+> devolvería el mismo 429. El descubrimiento automático **no se borró**: vuelve a ser el camino por
+> defecto en cuanto concedan la cuota, sin tocar código.
+>
+> De paso, dos cosas que el cambio ordenó en vez de ensuciar: (1) el formato del nombre de recurso
+> pasó a ser **fuente única en `db/`** (`esNombreDeUbicacionGoogle`), y el orquestador **perdió su
+> copia** de la regex — hasta ahora era la única, pero desde que `api/` también valida habría sido
+> la segunda; (2) el 400 del formato lleva `codigo: LOCATION_ID_INVALIDO`, **el primer 400 con
+> código**, siguiendo la regla que `api/src/codigos.ts` ya declaraba: sin él el portal ramificaba por
+> `status === 400` y el día que ese endpoint gane otro 400 lo pintaría como error del campo de ficha.
+>
+> Verificado en navegador **contra la API real**, que es donde estaba el agujero: un dev-server de dos
+> días atrás (`tsx` sin `--watch` no recarga) validaba con código viejo y dejaba pasar un
+> `locationId` inválido sin 400. Reiniciado, el ciclo completo — 400 dentro del formulario sin
+> llevarse el CTA ni lo escrito, corrección, reintento sin recargar, conexión y redirect.
+>
+> ⚠️ **Lo que esto NO destraba:** la app OAuth sigue en estado «Prueba», donde los refresh tokens
+> **caducan a los 7 días**. Se puede conectar un cliente hoy; se desconectaría solo en una semana.
+>
 > 🧰 **Nuevo (2026-09-26): el arnés podía reportar verde sin haber verificado nada — ARREGLADO.**
 > Dos trampas encontradas al cerrar el Bloque F, las dos del mismo tipo. (1) **`npm run verificar` no
 > corría en Windows**: `"verificar": "./scripts/verificar.sh"` lo lanza `cmd.exe`, que responde

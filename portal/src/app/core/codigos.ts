@@ -32,5 +32,22 @@ export const TRANSICION_INVALIDA = 'TRANSICION_INVALIDA';
 /** `POST /runs/:id/approve` con `destino: 'crear_posts'` — el sub-proyecto 3 todavía no lo implementa. */
 export const NO_IMPLEMENTADO = 'NO_IMPLEMENTADO';
 
+/**
+ * `POST /clients/:id/google/conectar` — el nombre de recurso de la ficha que se pegó a mano no
+ * tiene la forma `accounts/<id>/locations/<id>`.
+ *
+ * Lleva código —y es el primer 400 que lo lleva— porque el portal **ramifica**: este error se pinta
+ * DENTRO del formulario, dejando el CTA y lo que la persona escribió en su lugar, mientras que
+ * cualquier otro error de este endpoint reemplaza la pantalla. Sin el código la pantalla tendría que
+ * mirar el status, y el día que este endpoint devuelva un segundo 400 lo pintaría como un error del
+ * campo de ficha.
+ */
+export const LOCATION_ID_INVALIDO = 'LOCATION_ID_INVALIDO';
+
 /** Todos los códigos, para el test que ata esta copia a la de la API. */
-export const CODIGOS = { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA, NO_IMPLEMENTADO } as const;
+export const CODIGOS = {
+  SIN_PAGINAS_APROBADAS,
+  TRANSICION_INVALIDA,
+  NO_IMPLEMENTADO,
+  LOCATION_ID_INVALIDO,
+} as const;

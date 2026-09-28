@@ -38,3 +38,15 @@ test("🔴 getGoogleOAuthProvider('live') lanza nombrando la credencial que falt
   assert.throws(() => getGoogleOAuthProvider("live", "i", "  ", "u"), /GOOGLE_CLIENT_SECRET/);
   assert.throws(() => getGoogleOAuthProvider("live", "i", "s", undefined), /GOOGLE_REDIRECT_URI/);
 });
+
+test("🔴 mock: con locationId manual devuelve el pegado, no el derivado del code", async () => {
+  // Misma regla que en live, y por eso está probada en los dos: el valor que un humano pega gana
+  // sobre el descubrimiento. Sin esto, el mock y el live harían cosas distintas con el mismo body.
+  const p = new MockGoogleOAuthProvider();
+  const r = await p.intercambiarCode("abc123", "accounts/777/locations/888");
+  assert.equal(r.refreshToken, "mock-refresh-abc123");
+  assert.equal(r.locationId, "accounts/777/locations/888");
+
+  const sinManual = await p.intercambiarCode("abc123");
+  assert.equal(sinManual.locationId, "mock-location-abc123", "sin nada pegado, el camino por defecto sigue igual");
+});

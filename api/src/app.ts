@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { renderReport } from "contrato";
-import { esEstadoIdea, ESTADOS_IDEA } from "db";
+import { esEstadoIdea, ESTADOS_IDEA, esNombreDeUbicacionGoogle } from "db";
 import type {
   PgStore,
   CambiosPagina,
@@ -22,7 +22,7 @@ import type { GoogleOAuthProvider } from "./google-oauth.js";
 import { firmarEstado, verificarEstado, type EstadoOAuth } from "./oauth-state.js";
 import { nombreArchivo } from "./informe-nombre.js";
 import { briefDelEntregable } from "./entregable.js";
-import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from "./codigos.js";
+import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA, LOCATION_ID_INVALIDO } from "./codigos.js";
 import type { LlmComparativaProvider } from "./comparativas/provider.js";
 import { parsearCsv, validarFilas } from "./comparativas/filas.js";
 import { bajarSheet, type FetchLike } from "./comparativas/sheet.js";
@@ -256,7 +256,15 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     // del middleware de auth y nunca lo va a tener. Lo que autoriza la escritura sigue siendo RLS
     // (`conectarGoogle`, ADR-20) — este `ctx` es solo la identidad que el state trajo verificada.
     const ctx = { tenantId: estado.tenantId, userId: estado.userId };
-    const { refreshToken, locationId } = await deps.googleOAuth.intercambiarCode(code);
+    /*
+     * `estado.locationId` (si el humano lo pegó al conectar) le dice al provider que NO descubra la
+     * ficha. Acá NO se revalida el formato, y es deliberado: el `state` lo firmó este mismo proceso
+     * con HMAC, y el único punto de entrada de ese campo es `POST /clients/:id/google/conectar`, que
+     * ya lo validó. Revalidarlo acá sería una segunda fuente de la misma verdad, con el modo de
+     * fallo peor: un rechazo en una respuesta que es un redirect a una pantalla, sin nadie a quien
+     * mostrarle el error de formulario.
+     */
+    const { refreshToken, locationId } = await deps.googleOAuth.intercambiarCode(code, estado.locationId);
 
     const ok = await deps.resenas.conectarGoogle(ctx, clientId, { refreshToken, locationId });
     if (!ok) return c.json({ error: "Cliente no encontrado o sin permiso para conectar." }, 404);
@@ -969,7 +977,18 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
    *     ya probados en `app.test.ts`. Este handler no sabe qué rol es quien llama.
    */
 
-  /** POST /clients/:id/google/conectar — arma la URL de consentimiento (mock: apunta al propio callback). */
+  /**
+   * POST /clients/:id/google/conectar — arma la URL de consentimiento (mock: apunta al propio callback).
+   *
+   * Body JSON **opcional** `{ locationId?: string }`: el nombre de recurso de la ficha de Google,
+   * pegado a mano. Sin él (que es lo que manda el portal hoy) el provider descubre la ficha solo; el
+   * camino manual existe porque las dos APIs de descubrimiento están en cuota 0 y hoy siempre dan 429.
+   *
+   * **El formato se valida acá y no en el callback**, que es diez minutos después y le responde a un
+   * navegador con un redirect: quien puede corregir un valor mal pegado es la persona que lo está
+   * escribiendo, y sólo la tenemos delante en este request. No es autorización —es una allowlist de
+   * forma sobre un valor de un body—; a quién le deja escribir la columna lo sigue decidiendo RLS.
+   */
   app.post("/clients/:id/google/conectar", async (c) => {
     // ANTES de `firmarEstado`: no se acuña un `state` que no se va a poder usar. Un state es una
     // credencial de 10 minutos —lleva tenantId/userId firmados—, y emitir credenciales para una
@@ -979,6 +998,54 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
     }
     const ctx = c.get("ctx");
     const clientId = c.req.param("id");
+
+    /*
+     * Body opcional, con una distinción que NO es cosmética: "no mandaron nada" y "mandaron algo que
+     * no se puede leer" tienen que terminar distinto.
+     *
+     * Tratar los dos como el camino por defecto —que es lo que hacía un `json().catch(() => null)`—
+     * se traga en silencio un valor pegado cuando el body es un JSON roto, o un JSON válido que no es
+     * objeto (una cadena suelta, un array). El endpoint respondía 200 con un state SIN `locationId`, y
+     * el fallo aparecía diez minutos después, en el callback, como el 429 de la cuota 0: exactamente
+     * el error que todo este camino manual existe para evitar. En modo `mock` era peor todavía,
+     * porque conectaba una ficha inventada sin quejarse de nada. Lo encontró el `revisor`.
+     *
+     * Se lee como texto y no con `c.req.json()` porque es la única forma de distinguir los dos casos:
+     * `json()` lanza igual ante un cuerpo vacío que ante uno corrupto.
+     */
+    const crudo = await c.req.text().catch(() => "");
+    let body: unknown = null;
+    if (crudo.trim()) {
+      try {
+        body = JSON.parse(crudo);
+      } catch {
+        return c.json({ error: "El body tiene que ser JSON válido, o no mandarse." }, 400);
+      }
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        return c.json({ error: "El body tiene que ser un objeto JSON, o no mandarse." }, 400);
+      }
+    }
+    const locationIdCrudo =
+      body !== null ? (body as { locationId?: unknown }).locationId : undefined;
+    if (locationIdCrudo !== undefined) {
+      if (typeof locationIdCrudo !== "string" || !esNombreDeUbicacionGoogle(locationIdCrudo)) {
+        // El mensaje MUESTRA la forma: quien lo copia de la consola de Google no tiene por qué saber
+        // que la v4 direcciona por nombre de recurso completo y no por el id suelto que ve en pantalla.
+        return c.json(
+          {
+            error:
+              "locationId inválido: hace falta el nombre de recurso completo de la ficha, " +
+              "con la forma accounts/<id>/locations/<id>.",
+            // El mensaje es para el humano; el código, para el portal, que lo pinta dentro del
+            // formulario en vez de reemplazar la pantalla. Ver `codigos.ts`.
+            codigo: LOCATION_ID_INVALIDO,
+          },
+          400,
+        );
+      }
+    }
+    const locationId = typeof locationIdCrudo === "string" ? locationIdCrudo : undefined;
+
     const estado: EstadoOAuth = {
       clientId,
       tenantId: ctx.tenantId,
@@ -987,6 +1054,9 @@ export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
       userId: ctx.userId ?? "",
       nonce: crypto.randomUUID(),
       emitidoEn: Date.now(),
+      // Spread condicional y no `locationId,`: ausente significa "descubrila vos", y un `undefined`
+      // explícito ensuciaría el JSON firmado sin cambiar el significado.
+      ...(locationId !== undefined ? { locationId } : {}),
     };
     const state = firmarEstado(estado, deps.oauthStateSecret);
     // El origen de ESTA request, no un valor fijo: en dev la API vive en :3000, en producción en su

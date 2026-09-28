@@ -11,6 +11,72 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-28 — El `locationId` a mano: el módulo de reseñas deja de esperar a Google
+
+`current.md` daba esto por bloqueado ("esperando a AMG"). **No lo estaba**, y verificarlo antes de
+contestar fue la mitad del trabajo: lo que AMG tiene que decidir es cuál camino *prefiere*, no si el
+manual se puede construir. Y como el descubrimiento automático está en cuota 0 con trámite sin fecha,
+el manual es el único que funciona hoy — y no cierra ninguna puerta, porque el código del
+descubrimiento ya estaba escrito y sigue ahí.
+
+**El invariante que sostiene el cambio, y que es fácil de implementar mal:** con la ficha pegada,
+`intercambiarCode` no puede llamar a las APIs de descubrimiento **en absoluto**. La versión ingenua
+—descubrir primero y caer al manual en el `catch`— se come el mismo 429 y deja todo igual de roto.
+El test lo afirma sobre **las URLs que se pidieron**, no sobre el resultado, que es lo que hace que
+cace esa variante; se comprobó mutándolo a esa forma exacta.
+
+Dos cosas que el cambio **ordenó en vez de ensuciar**:
+
+1. **La regex del nombre de recurso pasó a fuente única en `db/`.** Vivía sólo en el orquestador, que
+   es el lado que LEE la columna; desde que `api/` también valida (el lado que ESCRIBE) habría habido
+   dos copias en dos paquetes, divergiendo sin que nada avise. La dueña del formato es la columna
+   `clients.google_location_id`, así que el export vive donde vive la columna, y los dos paquetes que
+   dependen de `db` la importan. El orquestador **perdió** su copia. Verificado por mutación:
+   neutralizar el predicado en `db/` tumba exactamente el test de formato del orquestador.
+2. **El 400 del formato ganó `codigo: LOCATION_ID_INVALIDO`** — el primer 400 del proyecto que lleva
+   código. Lo levantó el agente de `front`: sin él la pantalla tiene que ramificar por
+   `status === 400`, que es justo lo que `core/codigos.ts` desaconseja, y el día que ese endpoint gane
+   un segundo 400 lo pintaría como "corregí la ficha" sobre algo que no está mal. La regla para
+   agregarlo ya estaba escrita en `api/src/codigos.ts` ("el criterio es si el portal RAMIFICA"), y el
+   mismo archivo decía que ningún 400 llevaba código — quedó actualizado en vez de quedar mintiendo.
+
+**Y la lección de entorno, que es la más cara de la jornada.** El agente de `front` no pudo cerrar la
+verificación en navegador y lo dijo en vez de disimularlo: **el dev-server de la API llevaba dos días
+corriendo** (`tsx` sin `--watch` no recarga), así que servía código anterior a la validación. Su
+primera prueba en navegador **conectó un cliente con un `locationId` inválido y sin 400** — o sea que
+una verificación en navegador contra un proceso viejo no sólo no prueba nada: prueba lo contrario de
+lo que pasa. Reiniciado el proceso, el ciclo completo salió bien: 400 pintado dentro del formulario
+sin llevarse el CTA ni lo escrito, corrección, reintento sin recargar, conexión y redirect. Más el
+`state` decodificado a mano para ver el `locationId` firmado adentro.
+
+Tres manos y un contrato fijado antes de repartir: `datos` (db + api), `front` (portal) y la sesión
+principal (el swap del orquestador y el código de error), en serie porque comparten contrato — y
+porque dos suites de PGlite a la vez degradan esta máquina de 2,5 s a 250 s por test, cosa que el
+agente de `datos` volvió a comprobar sin querer.
+
+**La revisión interna salió `APROBADO` con 0 bloqueantes y 4 menores, y tres de los cuatro se
+arreglaron antes de commitear.** Los dos que más valían son del mismo género que el resto de la
+jornada: (1) el docblock de `GoogleOAuthProvider` prometía "si llega el locationId, no se descubre" y
+la guardia era truthy, así que la promesa valía para todos los valores menos uno — ahora es
+`!== undefined` y una cadena vacía **lanza**, porque la interfaz es pública y la garantía vale para
+cualquiera que la llame; (2) un body ilegible —JSON roto, o válido pero no objeto— **se tragaba el
+valor pegado en silencio** y devolvía 200 con un state sin ficha, con el fallo apareciendo diez
+minutos después en el callback como el 429 de la cuota 0: el error que todo esto existe para evitar.
+El tercero era la regex del formato copiada a mano en el spec de Karma, o sea una tercera copia justo
+después de haber eliminado la segunda; se ató el placeholder a `db/` leyendo el archivo, el camino
+que `codigos.test.ts` ya había abierto. El cuarto era un informe desactualizado en
+`progress/informes/`, que no se versiona.
+
+`bash ./scripts/verificar.sh --con-portal` en verde: **2155 tests del monorepo** (sube de 2138) +
+**364 del portal** (`node:test`) + **310 de Karma** aparte, typecheck limpio, sin secretos entre 746
+archivos versionados.
+
+⚠️ **Esto no destraba el módulo entero.** La app OAuth sigue en estado «Prueba», donde los refresh
+tokens caducan a los **7 días**: se puede conectar un cliente hoy y se desconectaría solo en una
+semana. Sigue siendo lo que hay que resolver con AMG.
+
+---
+
 ## 2026-09-26 — La compuerta que no compuertaba: dos trampas del arnés
 
 Con el módulo de reseñas cerrado y el árbol limpio, lo accionable sin depender de AMG era el paso 1

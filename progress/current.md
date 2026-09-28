@@ -9,8 +9,10 @@
 **Sesión (2026-09-22/26): encender el módulo de reseñas de Google.** Arrancó con "qué le falta a la
 plataforma para responder reseñas" y terminó con **los tres providers `live` escritos** y el
 diagnóstico del proyecto corregido. **Cuatro commits pusheados**, y encima de eso el paso 1 de lo
-accionable: **las dos trampas del arnés, arregladas** y pusheadas en `b77364a`. No
-queda código a medio hacer — lo que falta del módulo espera decisiones de AMG, no trabajo.
+accionable: **las dos trampas del arnés** (pusheadas en `b77364a`) y, el 2026-09-28, **el
+`locationId` a mano**, que saca al módulo de la dependencia del trámite de cuota con Google. Eso
+último `current.md` lo daba por bloqueado y **no lo estaba**: lo que AMG decide es cuál camino
+prefiere, no si el manual se puede construir.
 
 Los cuatro commits, de `git log`: `7a1fc44` (docs, corrige el diagnóstico), `3acae87` (ruta fija del
 callback + credenciales al catálogo), `3040843` (`LiveGoogleReviewsProvider`), `9f406ee`
@@ -51,10 +53,25 @@ para Claude Desktop** (`1371a25`) y su **instalador** (`d6ae22f`).
 
 ## En vuelo (sin commitear)
 
-Nada — `git status --short` vacío y `git log origin/main..HEAD` vacío: todo commiteado y pusheado,
-`origin/main` en `b77364a`.
+**El `locationId` a mano, terminado y verificado, pendiente de commit.** Nada a medio hacer.
 
-### Lo último que entró (`b77364a`, el arreglo del arnés)
+- `db/src/resenas.ts` — `NOMBRE_DE_UBICACION_GOOGLE` + `esNombreDeUbicacionGoogle`, la **fuente
+  única** del formato; `orchestrator/src/google/live-provider.ts` **perdió su copia** de la regex y
+  la importa.
+- `api/src/google-oauth-live.ts` — el corte del camino manual, ANTES de cualquier fetch de
+  descubrimiento. Es el invariante del cambio entero.
+- `api/src/app.ts` — `POST .../google/conectar` con body `{ locationId? }` validado, y el callback
+  pasándolo.
+- `api/src/codigos.ts` + `portal/src/app/core/codigos.ts` — `LOCATION_ID_INVALIDO`, el primer 400
+  con código.
+- `portal/src/app/pages/clientes/cliente-resenas.ts` — el campo y el 400 pintado dentro del
+  formulario.
+- `portal/src/app/pages/clientes/cliente-resenas-placeholder.test.ts` (nuevo) — ata el placeholder
+  a la regex de `db/` leyendo el archivo (el camino de `codigos.test.ts`), para que el ejemplo que
+  ve el humano no quede mostrando una forma que la API rechaza.
+- Docs: `09`, `15` § Bloque F, `16-pendientes-juan.md` § 2, `history.md`.
+
+### Lo anterior (`b77364a`, el arreglo del arnés, ya pusheado)
 
 - `package.json:18` — `"verificar": "bash ./scripts/verificar.sh"`. Sin el `bash`, npm lo lanza por
   `cmd.exe` y el comando obligatorio del ritual no corría en Windows.
@@ -174,9 +191,52 @@ continuar.
   `node` ausente o `node_modules` ausente sin romper la máquina. El test del veredicto **sí** corre
   el código real (lo saca con `sed` y lo ejecuta), que es donde está el comportamiento.
 
+- **(2026-09-28) El `locationId` a mano NO espera a AMG.** `current.md` lo listaba bajo "Bloqueado",
+  y era una lectura equivocada de la pregunta: AMG decide cuál camino *prefiere*, no si el manual se
+  puede construir. Como el descubrimiento está en cuota 0 sin fecha, el manual es el único que
+  funciona hoy, y no cierra ninguna puerta porque el código del descubrimiento ya estaba escrito.
+- **(2026-09-28) Con la ficha pegada, `intercambiarCode` NO llama a las APIs de descubrimiento en
+  absoluto** — ni "primero, por si acaso". Descartada la variante de descubrir y caer al manual en el
+  `catch`: se come el mismo 429 y deja todo igual de roto. El test lo afirma sobre **las URLs que se
+  pidieron**, no sobre el resultado, que es lo único que caza esa variante.
+- **(2026-09-28) El formato del nombre de recurso vive en `db/`, no en quien lo usa.** La dueña es la
+  columna `clients.google_location_id`, y hay dos lados manipulándola (`api/` escribe, `orchestrator/`
+  lee). Descartado dejar una copia en cada paquete atada por un test de texto: los dos dependen de
+  `db`, así que se puede tener una sola de verdad.
+- **(2026-09-28) El 400 del formato lleva `codigo`, y es el primer 400 que lo lleva.** La regla ya
+  estaba escrita en `api/src/codigos.ts` ("el criterio es si el portal RAMIFICA"). Sin código la
+  pantalla ramifica por `status === 400` y un segundo 400 del mismo endpoint se pintaría como error
+  del campo de ficha. Lo levantó el agente de `front`.
+- **(2026-09-28) `locationId: ""` es formato inválido (400), NO "ausente".** Descartado tratarlo como
+  ausente: caería al descubrimiento y devolvería un 429 sobre cuota, que no le dice a nadie qué hacer;
+  el 400 muestra la forma esperada. **Consecuencia para cualquier cliente del endpoint:** con el campo
+  vacío hay que **omitir la clave**, no mandarla vacía. El portal lo hace y tiene test.
+
+- **(2026-09-28) La promesa "si llega el locationId, no se descubre" la IMPONE el código, no el
+  comentario.** Guardia `!== undefined` y lanzar ante una cadena vacía, en vez de truthiness: con
+  truthiness la garantía valía para todos los valores menos uno, y `GoogleOAuthProvider` es una
+  interfaz pública con dos implementaciones. Lo levantó el `revisor` citando la lección del proyecto.
+- **(2026-09-28) "No mandaron body" y "mandaron algo ilegible" terminan distinto.** Un JSON roto, o
+  uno válido que no sea objeto, ahora da 400. Antes los dos caían al camino por defecto y el valor
+  pegado desaparecía en silencio: 200 con un state sin ficha, y el fallo diez minutos después en el
+  callback como el 429 de la cuota 0 — el error que este cambio existe para evitar. Se lee el body
+  con `c.req.text()` y no con `c.req.json()` porque `json()` lanza igual ante un cuerpo vacío que
+  ante uno corrupto, y la distinción es justamente ésa.
+
 ## Callejones sin salida
 
 *(Se añaden, no se borran.)*
+
+- **(2026-09-28) Una verificación en navegador contra un dev-server viejo prueba lo CONTRARIO de lo
+  que pasa.** `npm run dev:server -w api` usa `tsx` **sin `--watch`**: no recarga. Uno que llevaba
+  dos días corriendo servía código anterior a la validación, y la primera prueba **conectó un cliente
+  con un `locationId` inválido y sin 400**. **Reiniciar el proceso antes de creerle a cualquier
+  prueba de navegador.**
+- **(2026-09-28) Un `replace` de `
+` sobre un archivo CRLF no muta nada, y una mutación que no se
+  aplica parece un test que no sirve.** Dos mutaciones "sobrevivieron" hasta que se comprobó que el
+  script ni había tocado el archivo. **Toda mutación tiene que fallar ruidosamente si no encontró lo
+  que buscaba**, y el worktree de este repo es CRLF (`core.autocrlf=true`, índice en LF).
 
 - **Dos sesiones trabajando en paralelo sobre el mismo repo, en checkouts distintos, tienen que
   coordinar el merge de `progress/current.md` a mano** (2026-09-15/16): las dos prependían su propia
@@ -213,7 +273,14 @@ continuar.
 
 ## Archivos calientes
 
-Del arreglo del arnés, sin commitear:
+Del `locationId` a mano, sin commitear:
+
+- `api/src/google-oauth-live.ts` — el corte del camino manual. Si alguien lo mueve después del fetch
+  de descubrimiento, el cambio entero deja de servir y vuelve el 429.
+- `db/src/resenas.ts` — la fuente única del formato. Agregar una copia en otro paquete es el
+  regreso del problema.
+
+Del arreglo del arnés, ya pusheado:
 
 - `package.json:18` y `scripts/verificar.sh:35` — el intérprete y `veredicto()`. Los dos los fija
   `scripts/arnes.test.mts`.
@@ -233,6 +300,25 @@ Y esto es lo que hay que leer para retomar el módulo de reseñas:
 
 ## Verificaciones
 
+- **`bash ./scripts/verificar.sh --con-portal` (2026-09-28, con el `locationId` a mano y los menores
+  del `revisor` ya resueltos): VERDE entero.** **2155 tests** del monorepo (sube de 2138), **364** del
+  portal (`node:test`) y **310** de Karma corridos aparte; typecheck limpio en 8 paquetes + el
+  portal, sin secretos entre 746 archivos.
+- **Revisión interna: `APROBADO`, 0 bloqueantes, 4 menores** (`progress/informes/revision-location-id-manual.md`).
+  Tres se arreglaron en el mismo cambio —la garantía del docblock impuesta por el código, el body
+  ilegible que se tragaba el valor pegado, y la regex copiada a mano en el spec de Karma—, cada uno
+  con su test y su mutación. El cuarto era un informe desactualizado en `progress/informes/`, que no
+  se versiona.
+- **Del `locationId`, mutaciones confirmadas:** 6 del agente `datos` (incluida la que cambia el corte
+  manual por "descubrir y caer al catch", que tumba los dos tests del camino manual), 5 del agente
+  `front`, y 4 de la sesión principal — neutralizar el predicado en `db/` tumba exactamente el test
+  de formato del orquestador (prueba de que la importación es real); quitar el `codigo` del 400 tumba
+  sólo su test; ramificar por `status` en vez de por el código tumba sólo el test de contraste;
+  sacar `LOCATION_ID_INVALIDO` de una de las dos copias tumba el test que las ata.
+- **Navegador contra la API real (2026-09-28), el paso que ningún test da:** valor mal escrito → 400
+  dentro del formulario, CTA y texto intactos; corregido y reintentado **sin recargar** → conecta,
+  redirige y queda `google_conectado_en`. El `state` decodificado a mano, con el `locationId`
+  firmado adentro. Consola sin más error que el 400 esperado.
 - **`bash ./scripts/verificar.sh` (2026-09-26, con el arreglo del arnés): VERDE entero.** **2138
   tests** en el monorepo (sube de 2135: los tres nuevos), typecheck limpio en 8 paquetes, sin
   secretos entre los 745 archivos versionados. Portal sin cambios.

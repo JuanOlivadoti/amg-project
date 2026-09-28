@@ -6,6 +6,7 @@ import { ClienteResenasPage } from './cliente-resenas';
 import { ApiService } from '../../services/api';
 import { ClientesService } from '../../services/clientes';
 import { MembresiaService } from '../../services/membresia';
+import { LOCATION_ID_INVALIDO } from '../../core/codigos';
 import type { ClienteAgencia, ResenaGoogle } from '../../core/models';
 
 /**
@@ -175,7 +176,127 @@ describe('ClienteResenasPage', () => {
     expect(boton).withContext('no encontré el botón de conectar').toBeTruthy();
 
     boton!.click();
-    expect(conectarGoogleSpy).toHaveBeenCalledWith('c1');
+    // El segundo argumento es lo pegado en el campo de ficha, vacío mientras nadie escriba nada.
+    // Que salga `''` y no la clave `locationId` en el body lo fija `api-core.test.ts`: el backend
+    // trata `""` como formato inválido, así que el cliente HTTP tiene que OMITIR la clave.
+    expect(conectarGoogleSpy).toHaveBeenCalledWith('c1', '');
+  });
+
+  it('sin conectar + esEquipo: lo pegado en el campo de ficha viaja con el pedido de conectar', async () => {
+    /*
+     * El camino manual existe porque las dos APIs de descubrimiento de la ficha están en cuota 0 y
+     * hoy devuelven 429 siempre. El automático NO se borró: es lo que pasa con el campo vacío.
+     */
+    const conectarGoogleSpy = jasmine.createSpy('conectarGoogle').and.callFake(() => new Promise(() => {}));
+    const { fixture } = crear({
+      cliente: clienteDePrueba({ google_conectado_en: null }),
+      esEquipo: true,
+      conectarGoogle: conectarGoogleSpy,
+    });
+    const el = await estabilizar(fixture);
+
+    const input = el.querySelector('input[type="text"]') as HTMLInputElement | null;
+    expect(input).withContext('no encontré el campo para pegar el nombre de recurso de la ficha').toBeTruthy();
+    // Que el placeholder MUESTRE la forma importa (quien copia de la consola de Google ve un id
+    // suelto y no sabe que la v4 direcciona por nombre completo), pero la FORMA no se afirma acá
+    // con una regex copiada a mano: eso la volvía una tercera copia que deriva sola. La ata
+    // `cliente-resenas-placeholder.test.ts` contra `db/`, que es la fuente única.
+    expect(input!.placeholder)
+      .withContext('el campo tiene que traer un ejemplo, no estar vacío')
+      .toBeTruthy();
+
+    input!.value = 'accounts/111/locations/222';
+    input!.dispatchEvent(new Event('input'));
+    await estabilizar(fixture);
+
+    const boton = Array.from(el.querySelectorAll('button')).find((b) =>
+      b.textContent!.includes('Conectar Google'),
+    );
+    boton!.click();
+    expect(conectarGoogleSpy).toHaveBeenCalledWith('c1', 'accounts/111/locations/222');
+  });
+
+  it('🔴 el 400 de formato se pinta SIN llevarse el CTA ni el campo: es un valor corregible', async () => {
+    /*
+     * La diferencia con el 409 del guardarraíl de mock es el motivo, no el color. El 409 depende de
+     * la configuración del despliegue: va a seguir rechazando pulses lo que pulses, así que borrar
+     * el CTA es honesto. El 400 es un valor MAL ESCRITO por la persona que está mirando la pantalla:
+     * si el error se lleva el CTA y el campo, la única salida es cambiar de cliente y volver, y el
+     * texto que acaba de pegar se pierde. Por eso va a un signal aparte y no a `error()`.
+     */
+    const MENSAJE =
+      'locationId inválido: hace falta el nombre de recurso completo de la ficha, ' +
+      'con la forma accounts/<id>/locations/<id>.';
+    // El `codigo` es lo que la pantalla mira; el `status` va porque el error real lo trae, pero
+    // ramificar por él es justo lo que `core/codigos.ts` prohíbe (ver el test de abajo, que lo fija).
+    const err = new Error(MENSAJE) as Error & { status: number; codigo: string };
+    err.status = 400;
+    err.codigo = LOCATION_ID_INVALIDO;
+    const conectarGoogleSpy = jasmine.createSpy('conectarGoogle').and.rejectWith(err);
+    const { fixture } = crear({
+      cliente: clienteDePrueba({ google_conectado_en: null }),
+      esEquipo: true,
+      conectarGoogle: conectarGoogleSpy,
+    });
+    const el = await estabilizar(fixture);
+
+    const input = el.querySelector('input[type="text"]') as HTMLInputElement;
+    input.value = 'locations/222';
+    input.dispatchEvent(new Event('input'));
+    await estabilizar(fixture);
+
+    Array.from(el.querySelectorAll('button'))
+      .find((b) => b.textContent!.includes('Conectar Google'))!
+      .click();
+    const despues = await estabilizar(fixture);
+
+    expect(despues.textContent).toContain(MENSAJE);
+    expect(Array.from(despues.querySelectorAll('button')).find((b) => b.textContent!.includes('Conectar Google')))
+      .withContext('el 400 NO puede llevarse el CTA: hay que poder corregir y reintentar ahí mismo')
+      .toBeTruthy();
+    const inputDespues = despues.querySelector('input[type="text"]') as HTMLInputElement | null;
+    expect(inputDespues).withContext('el campo tiene que seguir en pantalla').toBeTruthy();
+    expect(inputDespues!.value)
+      .withContext('lo que la persona escribió tiene que seguir ahí para poder corregirlo')
+      .toBe('locations/222');
+  });
+
+  it('🔴 al cambiar de cliente, la ficha pegada y el error de formulario se limpian', async () => {
+    /*
+     * El campo es del cliente que se está mirando, no de la pantalla. Arrastrar el nombre de recurso
+     * del cliente A al formulario del cliente B es peor que un campo vacío: conectaría la ficha
+     * EQUIVOCADA, y el backend no tiene cómo saberlo — el valor es exactamente el que le pidieron.
+     */
+    const err = new Error('locationId inválido') as Error & { status: number; codigo: string };
+    err.status = 400;
+    err.codigo = LOCATION_ID_INVALIDO;
+    const conectarGoogleSpy = jasmine.createSpy('conectarGoogle').and.rejectWith(err);
+    const params = new BehaviorSubject(convertToParamMap({ id: 'c1' }));
+    const { fixture } = crear({
+      cliente: clienteDePrueba({ google_conectado_en: null }),
+      esEquipo: true,
+      conectarGoogle: conectarGoogleSpy,
+      params,
+    });
+    const el = await estabilizar(fixture);
+
+    const input = el.querySelector('input[type="text"]') as HTMLInputElement;
+    input.value = 'accounts/111/locations/222';
+    input.dispatchEvent(new Event('input'));
+    await estabilizar(fixture);
+    Array.from(el.querySelectorAll('button'))
+      .find((b) => b.textContent!.includes('Conectar Google'))!
+      .click();
+    let despues = await estabilizar(fixture);
+    expect(despues.textContent).toContain('locationId inválido');
+
+    params.next(convertToParamMap({ id: 'c2' }));
+    despues = await estabilizar(fixture);
+
+    expect((despues.querySelector('input[type="text"]') as HTMLInputElement).value)
+      .withContext('la ficha del cliente anterior no puede quedar escrita en el formulario del siguiente')
+      .toBe('');
+    expect(despues.textContent).not.toContain('locationId inválido');
   });
 
   it('🔴 si conectar falla (409 del guardarraíl de mock), el motivo se PINTA — no falla en silencio', async () => {
@@ -205,10 +326,16 @@ describe('ClienteResenasPage', () => {
     boton!.click();
     const despues = await estabilizar(fixture);
 
-    expect(conectarGoogleSpy).toHaveBeenCalledWith('c1');
+    expect(conectarGoogleSpy).toHaveBeenCalledWith('c1', '');
     expect(despues.textContent)
       .withContext('el mensaje del 409 tiene que llegar a la pantalla')
       .toContain(MENSAJE);
+    // La otra mitad del contrato, y el contraste con el 400 de formato: este error SÍ se lleva el
+    // CTA, a propósito. El 409 depende de la configuración del despliegue y va a seguir rechazando
+    // hasta que ésta cambie, así que dejar el botón invitaría a pulsarlo en vano.
+    expect(Array.from(despues.querySelectorAll('button')).find((b) => b.textContent!.includes('Conectar Google')))
+      .withContext('el 409 no es corregible desde la pantalla: el CTA se va')
+      .toBeUndefined();
   });
 
   it('conectado sin esEquipo: no se ve el botón "Desconectar Google"', async () => {
@@ -523,5 +650,36 @@ describe('ClienteResenasPage', () => {
     )
       .withContext('publicar es una acción de staff: el rol cliente no la ve, mismo criterio que Guardar')
       .toBeFalse();
+  });
+
+  /*
+   * El contraste que hace que el código sirva para algo: un 400 de OTRA cosa —este endpoint puede
+   * ganar uno cualquier día, otro campo del body— NO puede pintarse como un error del campo de ficha,
+   * porque mandaría a corregir un valor que está bien. Si la pantalla ramificara por `status`, este
+   * test pasaría igual y la distinción no existiría.
+   */
+  it('🔴 un 400 SIN el código de ficha NO se pinta en el formulario: se trata como error de pantalla', async () => {
+    const err = new Error('otro 400 cualquiera') as Error & { status: number };
+    err.status = 400; // sin `codigo`: es otro 400 del mismo endpoint, no el del campo
+    const conectarGoogleSpy = jasmine.createSpy('conectarGoogle').and.rejectWith(err);
+    const { fixture } = crear({
+      cliente: clienteDePrueba({ google_conectado_en: null }),
+      esEquipo: true,
+      conectarGoogle: conectarGoogleSpy,
+    });
+    const el = await estabilizar(fixture);
+
+    Array.from(el.querySelectorAll('button'))
+      .find((b) => b.textContent!.includes('Conectar Google'))!
+      .click();
+    const despues = await estabilizar(fixture);
+
+    // Va por el camino de `error()`, que es excluyente y se lleva el CTA. Lo que se fija acá no es
+    // ese comportamiento —ya lo fija el test del 409— sino que este 400 NO se confundió con el del
+    // campo: si la pantalla ramificara por status, el CTA seguiría en pantalla y esto caería.
+    expect(Array.from(despues.querySelectorAll('button')).find((b) => b.textContent!.includes('Conectar Google')))
+      .withContext('un 400 ajeno al campo no puede tratarse como un valor corregible del formulario')
+      .toBeFalsy();
+    expect(despues.textContent).toContain('otro 400 cualquiera');
   });
 });

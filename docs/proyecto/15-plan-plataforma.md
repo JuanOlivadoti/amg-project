@@ -1203,6 +1203,40 @@ el `> 🧭` más arriba en esta sección. Ya no se escriben a mano en `business_
 
 ## Bloque F — módulo 3: respondedor de reseñas de Google
 
+> ### ✅ 2026-09-28 — el `locationId` a mano: el módulo deja de depender del trámite de cuota
+>
+> **El problema:** conectar un cliente en modo `live` exigía descubrir su ficha, y eso necesita dos
+> APIs de Google que están en **cuota 0** con trámite sin fecha. O sea que el módulo estaba encendido
+> pero no podía conectar a nadie.
+>
+> **La salida, ya implementada:** un campo **opcional** en la pantalla de reseñas donde se pega el
+> nombre de recurso de la ficha (`accounts/<id>/locations/<id>`). Con ese valor, `intercambiarCode`
+> devuelve la ficha tal cual y **no llama a ninguna de las dos APIs bloqueadas** — ni "por si acaso"
+> antes, que es lo que devolvería el 429 y dejaría todo igual de roto. Vacío = camino de antes.
+>
+> El descubrimiento automático **no se borró**: vuelve a ser el camino por defecto en cuanto concedan
+> la cuota, sin tocar código.
+>
+> | Dónde | Qué |
+> | --- | --- |
+> | `db/src/resenas.ts` | `NOMBRE_DE_UBICACION_GOOGLE` + `esNombreDeUbicacionGoogle`, **fuente única** del formato. La dueña es la columna `clients.google_location_id`, y ahora hay dos lados manipulándola: `api/` escribe, `orchestrator/` lee. El orquestador **perdió su copia** de la regex y la importa (verificado por mutación: neutralizar el predicado en `db/` tumba exactamente el test de formato del orquestador) |
+> | `api/src/oauth-state.ts` | `EstadoOAuth.locationId?` — viaja **dentro del `state` firmado**, no como query param: decide a qué ficha se le publican respuestas |
+> | `api/src/app.ts` | `POST .../google/conectar` acepta `{ locationId? }` y valida el formato **en el momento en que se pega**, no en el callback diez minutos después, que le responde a un navegador con un redirect y no tiene a quién mostrarle un error de formulario |
+> | `api/src/codigos.ts` | `LOCATION_ID_INVALIDO` — **el primer 400 que lleva código**, siguiendo la regla que el propio archivo declara ("si el portal ramifica"). Sin él la pantalla mira el status, y el día que ese endpoint gane un segundo 400 lo pintaría como error del campo de ficha |
+> | `portal/` | el campo, con la forma esperada a la vista, y el 400 pintado **dentro del formulario**: a diferencia del 409 del guardarraíl de mock, esto es un valor que la persona puede corregir ahí mismo, así que no se lleva el CTA ni lo que escribió |
+>
+> **Verificado en navegador contra la API real** (el paso que ningún test da): valor mal escrito → 400
+> dentro del formulario con CTA y texto intactos; corregido y reintentado sin recargar → conecta,
+> redirige y queda `google_conectado_en`. Y el `state` decodificado a mano, con el `locationId`
+> adentro. ⚠️ Trampa que costó una verificación: **el dev-server de la API no recarga solo** (`tsx`
+> sin `--watch`), así que uno de dos días atrás valida con código viejo y deja pasar lo que debería
+> rechazar. Reiniciarlo antes de creerle a una prueba de navegador.
+>
+> ⚠️ **Esto NO destraba el módulo entero**: la app OAuth sigue en estado «Prueba», donde los refresh
+> tokens **caducan a los 7 días**. Se puede conectar un cliente hoy; se desconectaría solo en una
+> semana. Ver `16-pendientes-juan.md § 2`.
+
+
 **Fase 1 (monitoreo + alerta): ✅ COMPLETA el 2026-08-15.** El PRD describe cuatro módulos; están
 hechos el 1, el 2 y ahora la primera fase del 3 (el "Gestor de Reseñas" — RF-016 a RF-018). El
 calendario de redes y el gestor de tareas quedaron en **línea futura**, fuera del presupuesto inicial

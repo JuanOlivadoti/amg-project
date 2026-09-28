@@ -4,6 +4,7 @@ import {
   crearApi,
   esSinPaginasAprobadas,
   esTransicionInvalida,
+  esLocationIdInvalido,
   nombreDeDescarga,
   type ApiError,
 } from './api-core';
@@ -943,6 +944,76 @@ test('conectarGoogle postea a /clients/:id/google/conectar y devuelve { url }', 
   assert.deepEqual(res, { url: 'https://accounts.google.test/consent?state=abc' });
 });
 
+test('conectarGoogle con un nombre de ubicación pegado a mano lo manda en el body', async () => {
+  const { fn, capturado } = fakeFetch({ body: { url: 'https://accounts.google.test/consent?state=abc' } });
+  await crearApi(opts(fn)).conectarGoogle('c1', 'accounts/123/locations/456');
+  assert.equal(capturado.method, 'POST');
+  assert.equal(capturado.url, 'http://api.test/clients/c1/google/conectar');
+  assert.deepEqual(JSON.parse(capturado.body!), { locationId: 'accounts/123/locations/456' });
+});
+
+test('🔴 conectarGoogle con el campo VACÍO no manda la clave locationId (ni el body)', async () => {
+  /*
+   * El backend trata `""` y `"   "` como FORMATO INVÁLIDO → 400, NO como "ausente": su guardia es
+   * `if (locationIdCrudo !== undefined)`, así que la clave presente y vacía cae en el 400. Mandarla
+   * con el campo en blanco rompería el camino POR DEFECTO —que el backend descubra la ficha solo—,
+   * que es el único que puede usar quien no tiene el nombre de recurso a mano. Y ese camino es el
+   * que usa todo el mundo hoy: el formulario es opcional.
+   *
+   * Por eso la afirmación es sobre la AUSENCIA de la clave, no sobre su valor.
+   */
+  for (const vacio of ['', '   ', '\n\t ']) {
+    const { fn, capturado } = fakeFetch({ body: { url: 'https://accounts.google.test/consent' } });
+    await crearApi(opts(fn)).conectarGoogle('c1', vacio);
+    assert.equal(capturado.body, undefined, `con ${JSON.stringify(vacio)} no debe salir body`);
+    assert.equal(
+      capturado.headers!['content-type'],
+      undefined,
+      'sin body tampoco va el content-type: la request tiene que ser IDÉNTICA a la de antes del campo',
+    );
+  }
+});
+
+test('conectarGoogle sin argumento se comporta igual que antes del campo manual: sin body', async () => {
+  // El default de producción: el portal llamaba `conectarGoogle(id)` a secas y tiene que seguir
+  // saliendo la MISMA request. Un test que solo pasara la cadena vacía no fijaría este caso.
+  const { fn, capturado } = fakeFetch({ body: { url: 'https://accounts.google.test/consent' } });
+  await crearApi(opts(fn)).conectarGoogle('c1');
+  assert.equal(capturado.body, undefined);
+});
+
+test('conectarGoogle recorta los espacios de alrededor del valor pegado', async () => {
+  // Copiar de la consola de Google arrastra un salto de línea con muchísima facilidad, y el regex
+  // del backend (`[^/\s]+`) lo rechaza. Recortar no puede volver inválido nada que fuera válido.
+  const { fn, capturado } = fakeFetch({ body: { url: 'https://accounts.google.test/consent' } });
+  await crearApi(opts(fn)).conectarGoogle('c1', '  accounts/123/locations/456\n');
+  assert.deepEqual(JSON.parse(capturado.body!), { locationId: 'accounts/123/locations/456' });
+});
+
+test('🔴 conectarGoogle propaga el 400 de formato con su status, para que la pantalla lo distinga del 409', async () => {
+  /*
+   * La pantalla ramifica por `status`: el 400 es un valor mal escrito que se corrige y se reintenta
+   * ahí mismo (el CTA tiene que sobrevivir), el 409 es una configuración del despliegue que no
+   * cambia pulsando el botón. Si `status` no llegara, las dos irían al mismo lado.
+   */
+  const { fn } = fakeFetch({
+    status: 400,
+    body: {
+      error:
+        'locationId inválido: hace falta el nombre de recurso completo de la ficha, ' +
+        'con la forma accounts/<id>/locations/<id>.',
+    },
+  });
+  await assert.rejects(
+    () => crearApi(opts(fn)).conectarGoogle('c1', 'locations/456'),
+    (err: unknown) => {
+      assert.equal((err as ApiError).status, 400);
+      assert.match((err as Error).message, /nombre de recurso completo/);
+      return true;
+    },
+  );
+});
+
 test('desconectarGoogle postea a /clients/:id/google/desconectar', async () => {
   const { fn, capturado } = fakeFetch({ body: { ok: true } });
   await crearApi(opts(fn)).desconectarGoogle('c1');
@@ -1121,4 +1192,13 @@ test('revisarComparativa postea a POST /clients/:id/comparativas-seguros/:cid/re
   await crearApi(opts(fn)).revisarComparativa('c1', 'cmp1');
   assert.equal(capturado.method, 'POST');
   assert.equal(capturado.url, 'http://api.test/clients/c1/comparativas-seguros/cmp1/revisar');
+});
+
+test('🔴 esLocationIdInvalido mira el código y NO el status', () => {
+  // Un 400 de otro endpoint (o un segundo 400 de éste) no puede confundirse con el del campo.
+  assert.equal(esLocationIdInvalido({ status: 400, codigo: 'LOCATION_ID_INVALIDO' }), true);
+  assert.equal(esLocationIdInvalido({ status: 400 }), false, 'un 400 sin código no es éste');
+  assert.equal(esLocationIdInvalido({ status: 400, codigo: 'OTRA_COSA' }), false);
+  assert.equal(esLocationIdInvalido(null), false);
+  assert.equal(esLocationIdInvalido('LOCATION_ID_INVALIDO'), false, 'una cadena suelta no es un ApiError');
 });

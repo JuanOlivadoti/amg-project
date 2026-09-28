@@ -1,6 +1,29 @@
 import type { DbPool, Tx } from "./pool.js";
 import type { TenantContext } from "./store.js";
 
+/**
+ * El formato de `clients.google_location_id`: la v4 de reseñas direcciona por **nombre de recurso
+ * completo** (`accounts/<id>/locations/<id>`), no por un id suelto.
+ *
+ * Vive acá, y no en quien la usa, porque la dueña del formato es la COLUMNA. Hay dos lados que lo
+ * manipulan —`api/` lo ESCRIBE (un humano puede pegarlo a mano al conectar, porque las APIs de
+ * descubrimiento de Google están en cuota 0) y `orchestrator/` lo LEE para armar la URL—, y dos
+ * copias de la misma regex en dos paquetes divergen sin que nada avise.
+ *
+ * Con un id suelto la petición a Google saldría igual y volvería un 404 genérico, mucho más difícil
+ * de diagnosticar que un rechazo en el momento en que alguien pega el valor.
+ */
+export const NOMBRE_DE_UBICACION_GOOGLE = /^accounts\/[^/\s]+\/locations\/[^/\s]+$/;
+
+/**
+ * El predicado es la superficie que se usa; la regex se exporta solo para poder aseverar sobre ella.
+ * Sin `/g` a propósito: un regex global arrastra `lastIndex` entre llamadas, y con él dos
+ * validaciones seguidas del MISMO valor válido darían resultados distintos.
+ */
+export function esNombreDeUbicacionGoogle(valor: string): boolean {
+  return NOMBRE_DE_UBICACION_GOOGLE.test(valor);
+}
+
 /** Una fila de `resenas_google`, tal como la ve el portal. */
 export interface ResenaGoogle {
   id: string;

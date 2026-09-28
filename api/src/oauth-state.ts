@@ -23,6 +23,20 @@ export interface EstadoOAuth {
   nonce: string;
   /** epoch ms de cuándo se firmó. El callback rechaza un state más viejo que VENTANA_MS. */
   emitidoEn: number;
+  /**
+   * El nombre de recurso de la ficha de Google (`accounts/<id>/locations/<id>`) que un humano pegó a
+   * mano al conectar. Opcional: **ausente es el camino por defecto**, y significa "descubrila vos".
+   *
+   * Existe porque las dos APIs de descubrimiento (Account Management y Business Information) están
+   * en cuota 0 en el proyecto de Google, con trámite sin fecha: sin pegarlo, `intercambiarCode`
+   * siempre se come un 429 y ningún cliente puede conectarse en modo `live`.
+   *
+   * Viaja DENTRO del state firmado y no como query param del callback por el mismo motivo que
+   * `clientId`: lo que cruza una URL pública sin firma es un dato que cualquiera puede cambiar, y
+   * éste decide a qué ficha de Google se le van a publicar respuestas. El FORMATO ya lo validó
+   * `POST /clients/:id/google/conectar` antes de firmar — el callback no revalida.
+   */
+  locationId?: string;
 }
 
 /** 10 minutos: tiempo de sobra para completar un consentimiento real de Google, corto para que un

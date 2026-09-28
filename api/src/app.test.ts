@@ -2798,3 +2798,156 @@ test("POST .../revisar sobre una comparativa inexistente → 404", async () => {
   });
   assert.equal(res.status, 404);
 });
+
+// ------------------- locationId pegado a mano al conectar Google (las APIs de descubrimiento, en cuota 0)
+
+/*
+ * El descubrimiento automático de la ficha exige dos APIs de Google que en `amg-automation` están en
+ * cuota 0, con trámite sin fecha: hoy `LiveGoogleOAuthProvider` siempre tira 429 ahí, así que NINGÚN
+ * cliente puede conectarse en modo live. La salida es dejar que un humano pegue el nombre de recurso.
+ *
+ * Dos decisiones que estos tests fijan y que no son obvias:
+ *  - la validación del FORMATO ocurre acá, al pegarlo, y no en el callback diez minutos después:
+ *    quien puede corregir el valor es la persona que lo está escribiendo, y en el callback ya no hay
+ *    a quién devolverle un error de formulario (la respuesta es un redirect al portal);
+ *  - el callback NO revalida, y es correcto: el `state` viene firmado por este mismo proceso y el
+ *    único punto de entrada de ese campo es el handler autenticado de abajo.
+ */
+
+const LOCATION_PEGADA = "accounts/111222333/locations/444555666";
+
+test("POST .../google/conectar sin body se comporta como siempre (el portal hoy no manda nada)", async () => {
+  const state = await obtenerStateFirmado(clientA1, equipoA, tenantA);
+  const res = await req("GET", `/google/callback?code=sinbody&state=${state}`, {});
+  assert.equal(res.status, 302);
+
+  const [fila] = await sql<{ google_location_id: string | null }>(
+    "select google_location_id from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(fila!.google_location_id, "mock-location-sinbody", "sin nada pegado, gana el descubrimiento");
+});
+
+test("🔴 el locationId pegado viaja en el state y es el que queda en la fila (no el del descubrimiento)", async () => {
+  const conectar = await req("POST", `/clients/${clientA1}/google/conectar`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { locationId: LOCATION_PEGADA },
+  });
+  assert.equal(conectar.status, 200);
+  const { url } = (await conectar.json()) as { url: string };
+  const state = new URL(url).searchParams.get("state")!;
+
+  const res = await req("GET", `/google/callback?code=pegado&state=${state}`, {});
+  assert.equal(res.status, 302);
+
+  const [fila] = await sql<{ google_location_id: string | null }>(
+    "select google_location_id from clients where id = $1",
+    [clientA1],
+  );
+  assert.equal(
+    fila!.google_location_id,
+    LOCATION_PEGADA,
+    "el valor pegado tiene que ganarle al `mock-location-pegado` del descubrimiento",
+  );
+});
+
+test("🔴 un locationId con formato inválido da 400 Y NO acuña ningún state", async () => {
+  for (const malo of ["444555666", "locations/444", "accounts/111/locations/444/reviews/1", "", "  "]) {
+    const res = await req("POST", `/clients/${clientA1}/google/conectar`, {
+      user: equipoA,
+      tenant: tenantA,
+      body: { locationId: malo },
+    });
+    assert.equal(res.status, 400, `"${malo}" tiene que ser rechazado`);
+    const body = (await res.json()) as { error?: string; url?: string };
+    assert.equal(body.url, undefined, "un 400 no puede venir con una URL de consentimiento utilizable");
+    // El mensaje MUESTRA la forma esperada: quien pega esto lo saca de la consola de Google y no
+    // tiene por qué saber que hace falta el nombre de recurso completo.
+    assert.ok(
+      body.error?.includes("accounts/<id>/locations/<id>"),
+      `el error tiene que mostrar la forma esperada, y dijo: ${body.error}`,
+    );
+  }
+});
+
+test("🔴 un locationId que no es string da 400 (no se coacciona a texto)", async () => {
+  for (const malo of [123, true, null, { name: "accounts/1/locations/2" }, ["accounts/1/locations/2"]]) {
+    const res = await req("POST", `/clients/${clientA1}/google/conectar`, {
+      user: equipoA,
+      tenant: tenantA,
+      body: { locationId: malo },
+    });
+    assert.equal(res.status, 400, `${JSON.stringify(malo)} no es un locationId`);
+  }
+});
+
+test("un body sin `locationId` es el camino por defecto, no un error", async () => {
+  const res = await req("POST", `/clients/${clientA1}/google/conectar`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: {},
+  });
+  assert.equal(res.status, 200);
+  const { url } = (await res.json()) as { url: string };
+  assert.ok(new URL(url).searchParams.get("state"), "acuñó el state igual que sin body");
+});
+
+/*
+ * El 400 del locationId lleva CÓDIGO, y no es simetría: el portal RAMIFICA sobre él (pinta el error
+ * dentro del formulario en vez de reemplazar la pantalla, que es lo que hace con los demás errores).
+ * Ése es exactamente el criterio que `api/src/codigos.ts` declara para llevar código — "si el portal
+ * ramifica" —, y sin él la pantalla tiene que mirar el status, así que el día que este endpoint
+ * devuelva un SEGUNDO 400 lo pintaría como un error del campo de ficha.
+ */
+test("🔴 el 400 del locationId lleva codigo LOCATION_ID_INVALIDO, para que el portal no ramifique por status", async () => {
+  const res = await req("POST", `/clients/${clientA1}/google/conectar`, {
+    user: equipoA,
+    tenant: tenantA,
+    body: { locationId: "444555666" },
+  });
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as { error?: string; codigo?: string };
+  assert.equal(body.codigo, "LOCATION_ID_INVALIDO");
+  // El mensaje sigue siendo para el humano: el código no lo reemplaza.
+  assert.ok(body.error?.includes("accounts/<id>/locations/<id>"));
+});
+
+/*
+ * Menor 3 del `revisor`: "no mandaron body" y "mandaron algo ilegible" NO pueden terminar igual.
+ * Cuando terminaban igual, un body con JSON roto —o un JSON válido que no fuera objeto— se tragaba el
+ * `locationId` pegado, respondía 200 con un state sin ficha, y el fallo aparecía diez minutos después
+ * en el callback como el 429 de la cuota 0: justo el error que el camino manual existe para evitar.
+ * En modo mock era peor, porque conectaba una ficha inventada sin quejarse de nada.
+ *
+ * Se usa `app.request` crudo y no el helper `req`, porque lo que hay que mandar es un cuerpo que
+ * `JSON.stringify` no produciría nunca.
+ */
+test("🔴 un body ilegible es 400, no el camino por defecto: tragarlo escondería el locationId pegado", async () => {
+  const ilegibles: Array<{ que: string; cuerpo: string }> = [
+    { que: "JSON roto", cuerpo: '{"locationId": "accounts/1/locations/2"' },
+    { que: "una cadena JSON suelta", cuerpo: '"accounts/1/locations/2"' },
+    { que: "un array", cuerpo: '["accounts/1/locations/2"]' },
+    { que: "un número", cuerpo: "42" },
+  ];
+  for (const { que, cuerpo } of ilegibles) {
+    const res = await app.request(`/clients/${clientA1}/google/conectar`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer valid:${equipoA}`,
+        "x-amg-tenant": tenantA,
+        "content-type": "application/json",
+      },
+      body: cuerpo,
+    });
+    assert.equal(res.status, 400, `${que} tiene que dar 400 y no acuñar un state`);
+    const body = (await res.json()) as { url?: string };
+    assert.equal(body.url, undefined, `${que} no puede devolver una URL de consentimiento`);
+  }
+});
+
+test("un body VACÍO sigue siendo el camino por defecto (es lo que manda el portal sin ficha)", async () => {
+  // El contraste que impide que el arreglo de arriba se pase de rosca: sin body no hay nada ilegible.
+  const res = await req("POST", `/clients/${clientA1}/google/conectar`, { user: equipoA, tenant: tenantA });
+  assert.equal(res.status, 200);
+});

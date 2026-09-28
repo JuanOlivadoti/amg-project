@@ -20,12 +20,13 @@ import type {
   ResenaGoogle,
   RunSummary,
 } from './models';
-import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA } from './codigos';
+import { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA, LOCATION_ID_INVALIDO } from './codigos';
 
 /**
  * Error de la API con el status HTTP, para que la UI distinga 401 (relogin) de 403/409/500.
  *
- * `codigo` es opcional porque **solo los 409 lo llevan** (`api/src/codigos.ts` lo dice y acota el
+ * `codigo` es opcional porque lo llevan solo los errores sobre los que esta app RAMIFICA — los 409
+ * documentados y, desde el campo de ficha de Google, un 400 (`api/src/codigos.ts` lo dice y acota el
  * alcance): los 400/403/404 que ya existían responden `{ error }` a secas y el portal no ramifica
  * sobre ellos. Ausente significa ausente — no se rellena con el status ni con una cadena vacía, o
  * dejaría de poder distinguirse «este 409 es aquel caso» de «este 409 es cualquier otro».
@@ -68,6 +69,22 @@ export function esSinPaginasAprobadas(e: unknown): boolean {
  */
 export function esTransicionInvalida(e: unknown): boolean {
   return typeof e === 'object' && e !== null && (e as ApiError).codigo === TRANSICION_INVALIDA;
+}
+
+/**
+ * ¿Este error es el 400 de «el nombre de recurso de la ficha de Google está mal escrito»?
+ *
+ * `POST /clients/:id/google/conectar` lo devuelve cuando lo que se pegó en el campo no tiene la forma
+ * `accounts/<id>/locations/<id>`. La pantalla de reseñas lo trata distinto de cualquier otro error del
+ * endpoint: lo pinta DENTRO del formulario, sin tocar el CTA ni lo que la persona escribió, porque es
+ * lo único que puede corregir ahí mismo.
+ *
+ * Mismo criterio que los dos de arriba, y acá importa especialmente: el **código**, nunca el status.
+ * Este endpoint puede ganar un segundo 400 (otro campo del body) y ramificar por status lo pintaría
+ * como un error del campo de ficha, mandando a corregir algo que no está mal.
+ */
+export function esLocationIdInvalido(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as ApiError).codigo === LOCATION_ID_INVALIDO;
 }
 
 /** Un archivo bajado de la API: el contenido y con qué nombre guardarlo. */
@@ -308,8 +325,16 @@ export interface ClienteApi {
   /**
    * Arma la URL de consentimiento de Google para este cliente. Quien llama navega ahí de verdad
    * (`window.location.href`), no es un `fetch` que se quede esperando una respuesta JSON del OAuth.
+   *
+   * `locationId` es el nombre de recurso COMPLETO de la ficha (`accounts/<id>/locations/<id>`),
+   * pegado a mano por una persona. Es **opcional** y su ausencia es el camino por defecto: el
+   * backend descubre la ficha solo. El camino manual existe porque las dos APIs de descubrimiento
+   * están en cuota 0 y hoy devuelven 429 siempre; el automático vuelve a funcionar solo el día que
+   * Google conceda la cuota, así que no se borra ninguno de los dos.
+   *
+   * **Vacío NO es "lo mando vacío"**: ver el cuerpo de la implementación.
    */
-  conectarGoogle(clientId: string): Promise<{ url: string }>;
+  conectarGoogle(clientId: string, locationId?: string): Promise<{ url: string }>;
   /** Desconecta la cuenta de Google del cliente: limpia las tres columnas en `clients`. */
   desconectarGoogle(clientId: string): Promise<void>;
 
@@ -660,8 +685,27 @@ export function crearApi(opts: ApiOpts): ClienteApi {
         { publicar: true },
       );
     },
-    async conectarGoogle(clientId) {
-      return pedir<{ url: string }>('POST', `/clients/${encodeURIComponent(clientId)}/google/conectar`);
+    async conectarGoogle(clientId, locationId) {
+      /*
+       * El backend trata `""` y `"   "` como FORMATO INVÁLIDO → 400, NO como "ausente": su guardia
+       * es `if (locationIdCrudo !== undefined)`, de modo que la clave presente y en blanco cae en el
+       * 400. Por eso acá la clave se OMITE del body cuando no hay nada pegado, en vez de mandarse
+       * vacía: mandarla rompería el camino por defecto —que el backend descubra la ficha solo— y
+       * nadie podría conectar sin tener el nombre de recurso a mano.
+       *
+       * Y sin nada que mandar no se manda body en absoluto, para que la request sea idéntica a la
+       * que salía antes de que existiera este campo.
+       *
+       * El `trim` es aparte: copiar de la consola de Google arrastra un salto de línea con facilidad
+       * y el regex del backend (`[^/\s]+`) lo rechaza. Recortar no puede volver inválido un valor
+       * que era válido.
+       */
+      const pegado = locationId?.trim() ?? '';
+      return pedir<{ url: string }>(
+        'POST',
+        `/clients/${encodeURIComponent(clientId)}/google/conectar`,
+        pegado ? { locationId: pegado } : undefined,
+      );
     },
     async desconectarGoogle(clientId) {
       await pedir('POST', `/clients/${encodeURIComponent(clientId)}/google/desconectar`);

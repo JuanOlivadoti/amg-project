@@ -1,3 +1,4 @@
+import { esNombreDeUbicacionGoogle } from "db";
 import type { GoogleReviewsProvider, ReseñaCruda } from "./provider.js";
 
 /**
@@ -34,13 +35,14 @@ const ESTRELLAS: Readonly<Record<string, number>> = {
   FIVE: 5,
 };
 
-/**
- * La v4 direcciona por NOMBRE DE RECURSO completo (`accounts/<id>/locations/<id>`), no por un id
- * suelto, así que eso es lo que `clients.google_location_id` tiene que guardar en modo `live`. Se
- * valida antes de armar ninguna URL: con un id suelto la petición saldría igual y volvería un 404
- * genérico, mucho más difícil de diagnosticar que este error.
+/*
+ * El formato del nombre de recurso (`accounts/<id>/locations/<id>`) se importa de `db` y NO se
+ * redeclara acá: la dueña es la columna `clients.google_location_id`, y desde que `api/` también lo
+ * valida —un humano puede pegarlo a mano al conectar, porque las APIs de descubrimiento de Google
+ * están en cuota 0— hay dos lados manipulando el mismo formato. Dos copias de la misma regex en dos
+ * paquetes divergen sin que nada avise. Acá se valida antes de armar ninguna URL: con un id suelto
+ * la petición saldría igual y volvería un 404 genérico, más difícil de diagnosticar que este error.
  */
-const NOMBRE_DE_UBICACION = /^accounts\/[^/\s]+\/locations\/[^/\s]+$/;
 
 /** El `error` de un fallo de OAuth (`invalid_grant`, `invalid_client`…), si viene con la forma documentada. */
 function motivoOAuth(body: unknown): string {
@@ -100,7 +102,7 @@ export class LiveGoogleReviewsProvider implements GoogleReviewsProvider {
   }
 
   async listarResenas(accessToken: string, locationId: string): Promise<ReseñaCruda[]> {
-    if (!NOMBRE_DE_UBICACION.test(locationId)) {
+    if (!esNombreDeUbicacionGoogle(locationId)) {
       throw new Error(
         `listarResenas: se esperaba un nombre de recurso "accounts/<id>/locations/<id>" y llegó "${locationId}". ` +
           "En modo live, clients.google_location_id guarda el nombre completo.",
@@ -147,7 +149,7 @@ export class LiveGoogleReviewsProvider implements GoogleReviewsProvider {
     googleReviewId: string,
     texto: string,
   ): Promise<void> {
-    if (!NOMBRE_DE_UBICACION.test(locationId)) {
+    if (!esNombreDeUbicacionGoogle(locationId)) {
       throw new Error(`publicarRespuesta: locationId no es un nombre de recurso v4: "${locationId}"`);
     }
     // Publicar una respuesta vacía en la ficha pública de un cliente es peor que no publicar nada,

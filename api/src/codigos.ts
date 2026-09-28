@@ -29,8 +29,10 @@
  * El 409 del guardarraíl de «Conectar Google» (`CONECTAR_GOOGLE_BLOQUEADO`, en `app.ts`) tampoco
  * lleva código, por el mismo criterio: el portal solo muestra su mensaje, no decide nada con él.
  *
- * Los 400/403/404 siguen respondiendo `{ error }` a secas. Cuando alguno necesite que el portal
- * ramifique, se agrega ahí — y en las dos copias a la vez.
+ * Los 403/404 siguen respondiendo `{ error }` a secas, y **casi todos los 400 también**. La única
+ * excepción es `LOCATION_ID_INVALIDO` (2026-09-28), que se agregó siguiendo la regla de la primera
+ * línea: el portal ramifica sobre él para pintarlo dentro del formulario en vez de reemplazar la
+ * pantalla. Cuando otro lo necesite, se agrega igual — y en las dos copias a la vez.
  *
  * Los valores son `SCREAMING_SNAKE` y **estables**: son parte del contrato HTTP, así que renombrar
  * uno rompe al portal aunque `tsc` no diga nada (el portal no importa este archivo — está fuera del
@@ -51,5 +53,22 @@ export const TRANSICION_INVALIDA = "TRANSICION_INVALIDA";
 /** `POST /runs/:id/approve` con `destino: 'crear_posts'` — el sub-proyecto 3 todavía no lo implementa. */
 export const NO_IMPLEMENTADO = "NO_IMPLEMENTADO";
 
+/**
+ * `POST /clients/:id/google/conectar` — el nombre de recurso de la ficha que se pegó a mano no
+ * tiene la forma `accounts/<id>/locations/<id>`.
+ *
+ * Lleva código —y es el primer 400 que lo lleva— porque el portal **ramifica**: este error se pinta
+ * DENTRO del formulario, dejando el CTA y lo que la persona escribió en su lugar, mientras que
+ * cualquier otro error de este endpoint reemplaza la pantalla. Sin el código la pantalla tendría que
+ * mirar el status, y el día que este endpoint devuelva un segundo 400 lo pintaría como un error del
+ * campo de ficha.
+ */
+export const LOCATION_ID_INVALIDO = "LOCATION_ID_INVALIDO";
+
 /** Todos los códigos, para el test que los ata a la copia del portal. */
-export const CODIGOS = { SIN_PAGINAS_APROBADAS, TRANSICION_INVALIDA, NO_IMPLEMENTADO } as const;
+export const CODIGOS = {
+  SIN_PAGINAS_APROBADAS,
+  TRANSICION_INVALIDA,
+  NO_IMPLEMENTADO,
+  LOCATION_ID_INVALIDO,
+} as const;

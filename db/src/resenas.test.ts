@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { TestDb, seed } from "./testdb.js";
 import type { Seed } from "./testdb.js";
 import { PglitePool } from "./pool.js";
-import { PgResenas } from "./resenas.js";
+import { PgResenas, NOMBRE_DE_UBICACION_GOOGLE, esNombreDeUbicacionGoogle } from "./resenas.js";
 
 /**
  * Módulo de RESEÑAS de Google (Bloque F, fase 1) — la mitad "normal" (migración 0021): la tabla
@@ -652,4 +652,43 @@ test("🔴 solicitarPublicacion con rol 'cliente' devuelve false (ADR-20: el cli
     [id],
   );
   assert.equal(row?.respuesta_solicitada_en, null, "el rol cliente no pudo escribir nada");
+});
+
+// ------------------------------------------------- el formato del nombre de recurso de Google
+
+/*
+ * Estos cuatro no tocan la base: fijan el FORMATO de `clients.google_location_id`, que es un
+ * contrato entre los dos lados que manipulan esa columna — la API la ESCRIBE (un humano pega el
+ * nombre al conectar) y el orquestador la LEE para armar la URL de la v4. Viven en `db/` porque la
+ * columna es de `db/`: es la única forma de que no haya dos regex distintas divergiendo en silencio.
+ */
+
+test("esNombreDeUbicacionGoogle acepta el nombre de recurso completo de la v4", () => {
+  assert.equal(esNombreDeUbicacionGoogle("accounts/123456789/locations/987654321"), true);
+  assert.equal(esNombreDeUbicacionGoogle("accounts/abc-DEF_9/locations/xyz"), true);
+});
+
+test("🔴 esNombreDeUbicacionGoogle rechaza un id suelto: con eso la v4 devuelve un 404 genérico", () => {
+  assert.equal(esNombreDeUbicacionGoogle("987654321"), false);
+  assert.equal(esNombreDeUbicacionGoogle("locations/987654321"), false);
+  assert.equal(esNombreDeUbicacionGoogle("accounts/123"), false);
+});
+
+test("🔴 esNombreDeUbicacionGoogle rechaza espacios, vacíos y segmentos de más", () => {
+  assert.equal(esNombreDeUbicacionGoogle(""), false);
+  assert.equal(esNombreDeUbicacionGoogle("   "), false);
+  assert.equal(esNombreDeUbicacionGoogle("accounts/1 2/locations/3"), false);
+  assert.equal(esNombreDeUbicacionGoogle("accounts//locations/3"), false);
+  assert.equal(esNombreDeUbicacionGoogle("accounts/1/locations/3/reviews/4"), false);
+  // Sin anclas la regex matchearía en medio de cualquier cosa; con ellas, no.
+  assert.equal(esNombreDeUbicacionGoogle("basura accounts/1/locations/2"), false);
+  assert.equal(esNombreDeUbicacionGoogle("accounts/1/locations/2 basura"), false);
+});
+
+test("NOMBRE_DE_UBICACION_GOOGLE no es global: un regex con /g arrastra lastIndex entre llamadas", () => {
+  assert.equal(NOMBRE_DE_UBICACION_GOOGLE.global, false);
+  // La consecuencia concreta, y por eso el predicado existe en vez de exponer solo la regex:
+  // con /g, dos `test()` seguidos sobre el MISMO valor válido darían true y después false.
+  assert.equal(esNombreDeUbicacionGoogle("accounts/1/locations/2"), true);
+  assert.equal(esNombreDeUbicacionGoogle("accounts/1/locations/2"), true);
 });
