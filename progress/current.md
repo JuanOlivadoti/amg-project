@@ -111,7 +111,13 @@ De antes, `9f406ee` y los tres commits anteriores: el módulo de reseñas.
    `api/src/oauth-state.ts:30`). Exige migración (la próxima libre es la **0034**; la última es
    `db/migrations/0033_comparativas_seguros.sql`). **Conviene juntarla con la migración de la
    detección de revocación** para no hacer dos.
-3. **Comprobación que no es de código y sigue abierta:** si hay algún cliente con conexión de Google
+3. ~~**Comprobación que no es de código**~~ — **hecha el 2026-09-28** con el MCP de Supabase ya
+   autorizado. Resultado: hay **1 cliente conectado** en producción (`Big Balls Proteins`) pero con
+   una conexión de **mock** (`google_location_id = "mock-location-mock-code"`), y **0 reseñas**. El
+   riesgo anotado no se materializó, pero por un motivo distinto del esperado: **el polling nunca
+   corrió** (ver `history.md` § 2026-09-28 tarde para la cadena de descarte). Queda pendiente
+   desconectar esa fila antes de encender `live`, y mirar en el panel de Inngest si la app está
+   sincronizada. Texto original del punto: si hay algún cliente con conexión de Google
    en producción, el polling en mock le siembra reseñas falsas y dispara alertas de Telegram reales
    en cada ciclo. Necesita el MCP de Supabase autorizado (`/mcp` en sesión interactiva) o que Juan lo
    mire en el panel. Ver `docs/proyecto/16-pendientes-juan.md` § 2.

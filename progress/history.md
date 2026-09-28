@@ -11,6 +11,54 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-28 (tarde) — Producción: la 0034 aplicada, y el polling de reseñas NO está corriendo
+
+El usuario corrió `npm run migrate:deploy -w db` y pidió revisarlo. Con el MCP de Supabase (que esta
+sesión tenía sin autorizar hasta ahora) se comprobó **la forma real, no sólo el registro**:
+`0033` y `0034` aplicadas a las **14:40:11 UTC**; `oauth_nonces_usados` con `primary key (nonce)`,
+FK a `tenants` con cascade, RLS **enable + force**, las dos políticas con sus predicados exactos, y
+grants de `app_user` = `DELETE, INSERT` **sin `SELECT`**. La garantía de que la API no puede enumerar
+nonces se sostiene en producción, no sólo contra PGlite. De paso quedó contestada una pregunta abierta
+en los docs: la `0033` **también** estaba pendiente y entró en la misma corrida.
+
+**Hallazgo 1 — una conexión de MOCK guardada en producción.** `Big Balls Proteins` figura conectado
+desde el **2026-08-18** con `google_location_id = "mock-location-mock-code"` y un token de 22
+caracteres (exactamente `mock-refresh-mock-code`). No es un dato roto: es el rastro de haber probado
+el flujo en mock contra la base real. **Si se enciende `live` con esa fila como está, ese cliente
+falla** — el provider rechaza el id por formato. Es el guardarraíl funcionando, pero es ruido en el
+primer ciclo real. Hay que desconectarlo antes. **No se tocó**: el `UPDATE` sobre producción lo frenó
+el clasificador de permisos, y está bien que lo frene.
+
+**Hallazgo 2, y es el importante — el polling de reseñas nunca corrió en producción.** Se llegó por
+descarte, y conviene dejar la cadena escrita porque cada eslabón se comprobó:
+
+1. El orquestador **está vivo**: `/_health` responde `funciones: 7`, `modo: cloud`, 48 min de uptime.
+   La función `polling-resenas-google` está registrada, con `cron: */30 * * * *`, sin condicionales.
+2. El modo de reseñas es **`mock`** (default fijo cuando `GOOGLE_REVIEWS_MODO` no está declarada).
+3. `MockGoogleReviewsProvider.listarResenas` devuelve **2 fixtures para CUALQUIER `locationId`**, y su
+   `refrescarToken` sólo falla con un token vacío — el de mock no lo es.
+4. `app.clientes_conectados_google()` en producción devuelve las 5 columnas (incluida `nombre`, que
+   agregó la 0026) y es de `app_resenas`: devolvería ese cliente.
+5. `app.registrar_resena_google` inserta con `on conflict do nothing` y devuelve `row_count > 0`: sin
+   ninguna compuerta que pudiera devolver `false` siempre.
+
+O sea: **si el cron se hubiera disparado una sola vez, habría 2 filas en `resenas_google`. Hay 0.**
+Lo que queda fuera del alcance de esta sesión es Inngest Cloud: registrar las funciones en el handler
+servido es necesario pero **no suficiente** — la app tiene que estar sincronizada allí para que los
+crons se programen. Eso se mira en el panel de Inngest (Apps → ¿sincronizada?; Functions →
+`polling-resenas-google` → historial de ejecuciones), y no hay credencial para hacerlo desde acá.
+
+**La buena noticia del mismo hallazgo:** el riesgo que los docs venían anotando —"el polling en mock
+le siembra reseñas falsas a un cliente real y dispara alertas de Telegram reales en cada ciclo"— **no
+se materializó nunca**. Queda cerrado como comprobación, aunque por un motivo distinto del esperado.
+
+**Deuda que este hallazgo destapa:** `/_health` del orquestador reporta cinco modos (`pipeline`,
+`publicacion`, `prosa`, `borrador`, `postBlog`) y **no reporta `GOOGLE_REVIEWS_MODO`**. Es
+justamente el que hacía falta para diagnosticar esto sin leer el código, y el que va a hacer falta
+para confirmar el día que se encienda `live`.
+
+---
+
 ## 2026-09-28 — La tabla de cobertura llevaba seis semanas mintiendo un 55 %
 
 Deuda anotada dos días antes y resuelta hoy. `docs/proyecto/08-testing-calidad.md` declaraba **1395
