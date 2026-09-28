@@ -53,8 +53,11 @@ para Claude Desktop** (`1371a25`) y su **instalador** (`d6ae22f`).
 
 ## En vuelo (sin commitear)
 
-**El nonce de un solo uso (migración `0034`), terminado y verificado, pendiente de commit.** Nada a
-medio hacer. Cierra la deuda del Bloque F fase 1: un `state` filtrado ya no se puede reproducir.
+Nada — todo commiteado y pusheado. Lo último de esta tanda fue el nonce de un solo uso (`9c740b7`),
+que cierra la deuda del Bloque F fase 1: un `state` filtrado ya no se puede reproducir. Su migración
+`0034` **ya está desplegada** (14:40:11 UTC del 2026-09-28).
+
+### Lo que entró en esta tanda, ya pusheado
 
 - `db/migrations/0034_oauth_nonce_un_solo_uso.sql` (nuevo) — tabla `oauth_nonces_usados`, RLS
   enable + force, grants `insert, delete` **sin `select`**, y las dos políticas (`nonce_quemar`,
@@ -103,14 +106,12 @@ De antes, `9f406ee` y los tres commits anteriores: el módulo de reseñas.
 (esperan decisiones de AMG, ver § Bloqueado). Lo accionable sin depender de nadie, en orden:
 
 1. ~~Arreglar las dos trampas del arnés~~ — **hecho el 2026-09-26** (`b77364a`).
-2. ~~**Deuda del nonce del `state`**~~ — **hecha el 2026-09-28**, migración `0034`. Queda pendiente
-   **desplegarla** (`npm run migrate:deploy -w db`, fuera de Claude Code), y **antes** que el código
-   de la API. El texto viejo de este punto, para referencia:, abierta desde el Bloque F fase 1: `EstadoOAuth.nonce`
-   (`api/src/oauth-state.ts:23`) se genera pero **nunca se invalida tras el primer uso**, así que la
-   única defensa contra un `state` filtrado es la ventana de 10 min (`VENTANA_ESTADO_MS`,
-   `api/src/oauth-state.ts:30`). Exige migración (la próxima libre es la **0034**; la última es
-   `db/migrations/0033_comparativas_seguros.sql`). **Conviene juntarla con la migración de la
-   detección de revocación** para no hacer dos.
+2. ~~**Deuda del nonce del `state`**~~ — **cerrada el 2026-09-28** (`9c740b7`). Era: el `nonce`
+   se firmaba y nunca se invalidaba, así que un `state` filtrado se podía reproducir durante sus 10
+   minutos de ventana. Resuelta con la migración `0034` (`oauth_nonces_usados`, la `primary key` es
+   la garantía), `PgResenas.consumirNonceOAuth` y el corte en el callback **antes** de
+   `intercambiarCode`. **Ya desplegada** a producción (14:40:11 UTC del mismo día). Revisada por
+   `revisor`: APROBADO, 0 bloqueantes. **La próxima migración libre es la `0035`.**
 3. ~~**Comprobación que no es de código**~~ — **hecha el 2026-09-28** con el MCP de Supabase ya
    autorizado. Resultado: hay **1 cliente conectado** en producción (`Big Balls Proteins`) pero con
    una conexión de **mock** (`google_location_id = "mock-location-mock-code"`), y **0 reseñas**. El

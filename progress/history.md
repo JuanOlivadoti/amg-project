@@ -11,6 +11,49 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-28 (noche) — La revisión del nonce: APROBADO, y tres contradicciones que creó el propio despliegue
+
+El `revisor` del nonce había muerto a mitad por el límite de sesión de la cuenta. Relanzado, devolvió
+**APROBADO con 0 bloqueantes y 4 menores**, y encontró algo que no estaba en el código: **tres de los
+cuatro menores los había creado la secuencia de los hechos.** El commit del nonce (13:48 UTC) decía
+"la 0034 NO está desplegada", y era verdad al escribirlo; el despliegue ocurrió a las 14:40. A partir
+de ahí el `09` —que es la fuente de verdad del estado— contradecía a `history.md`. Corregido en el
+`09` y en el `15`, con la fecha y la hora reales.
+
+El cuarto documental es del mismo género y más vergonzoso: la fila **Tests** del `09` seguía diciendo
+**2105** cuando el monorepo tiene **2164**. El commit que remidió la tabla de cobertura actualizó la
+fila *Migraciones* de esa misma tabla y se olvidó de la de al lado — exactamente el descuido que la
+remedición venía a cerrar. Queda corregida y con la nota de por qué.
+
+**Los dos menores técnicos, arreglados:**
+
+1. **El `catch` del `23505` ahora exige también el nombre de la constraint.** Hoy no puede llegar por
+   otra cosa (un único índice único, ningún trigger, y la FK da 23503), pero el `try` envuelve un
+   BLOQUE y no una sentencia: agregar un segundo `tx.query` ahí adentro ensancharía el catch en
+   silencio y un choque ajeno se leería como "replay". Atarlo a `oauth_nonces_usados_pkey` hace que
+   ese ensanche falle ruidosamente en vez de mentir. Que el nombre sea el correcto lo prueba la suite:
+   si no coincidiera, el método relanzaría y el test del replay caería.
+2. **El test de la desigualdad ventana/retención dejó de copiar el número a mano.** Tenía un
+   `RETENCION_NONCES_MS = 60 * 60 * 1000` escrito al lado, así que cubría **un solo lado**: si una
+   migración futura REDUJERA el intervalo por debajo de la ventana, el test seguía verde y el replay
+   quedaba reabierto en silencio. Ahora **lee las migraciones** y se queda con la última que define
+   `nonce_purga`, que es justo el escenario que importa. Tres mutaciones: acortar la política a 5
+   minutos lo tumba, renombrar la política lo tumba (un test que no puede medir **no** puede dar
+   verde), y sin mutar queda verde.
+
+La observación que el `revisor` decidió NO convertir en hallazgo, y comparto: imponer la validación
+dentro de `firmarEstado` para proteger a un segundo firmante que hoy no existe le daría a
+`oauth-state.ts` responsabilidades que no tiene. Queda como deuda anotada, no como cambio.
+
+**Nota de proceso:** la revisión que había muerto **sí se había escrito entera** antes de caerse. El
+segundo `revisor` no la usó como insumo y la preservó aparte en vez de pisarla. Coinciden en el
+veredicto y en tres de los cuatro menores; los dos documentales sobre despliegue y cifras son nuevos
+porque el mundo cambió entre una y otra.
+
+`bash ./scripts/verificar.sh` en verde: **2164 tests**, typecheck limpio, sin secretos.
+
+---
+
 ## 2026-09-28 (tarde) — Producción: la 0034 aplicada, y el polling de reseñas NO está corriendo
 
 El usuario corrió `npm run migrate:deploy -w db` y pidió revisarlo. Con el MCP de Supabase (que esta

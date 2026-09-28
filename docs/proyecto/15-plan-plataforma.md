@@ -1295,7 +1295,7 @@ defensa contra un `state` filtrado es la ventana de 10 minutos; invalidarlo tras
 una migración (una tabla o columna de nonces usados).~~ **CERRADA el 2026-09-28**: migración
 `0034_oauth_nonce_un_solo_uso.sql` (tabla `oauth_nonces_usados`; la `primary key` es la garantía, no
 un `select` previo) + `PgResenas.consumirNonceOAuth` + el corte en el callback **antes** de
-`intercambiarCode`. Pendiente de desplegar a producción. Las migraciones `0021`/`0022` **desplegadas a
+`intercambiarCode`. **Desplegada a producción el 2026-09-28 a las 14:40:11 UTC** (verificada ahí la forma real: PK, FK, RLS `force`, las dos políticas y los grants `DELETE, INSERT` **sin `SELECT`**), en el mismo lote que la `0033`. Las migraciones `0021`/`0022` **desplegadas a
 producción el 2026-08-18** (confirmado en `app.migraciones_aplicadas`).
 
 **Fase 2, primera pieza (borrador de respuesta con IA para 4-5★): ✅ COMPLETA el 2026-08-21.** Spec

@@ -244,8 +244,16 @@ export class PgResenas {
       });
       return true;
     } catch (e) {
-      // 23505 = unique_violation. Es el ÚNICO código que no es un fallo: es el replay.
-      if ((e as { code?: string }).code === "23505") return false;
+      /*
+       * 23505 = unique_violation, y se exige ADEMÁS el nombre de la constraint. Hoy la tabla tiene un
+       * único índice único y ningún trigger, así que el código solo puede venir del nonce — pero el
+       * `try` envuelve un BLOQUE, no una sentencia: agregar un segundo `tx.query` ahí adentro
+       * ensancharía este catch en silencio, y un choque ajeno se leería como "replay" y devolvería
+       * `false`. Atarlo a la constraint hace que ese ensanche falle ruidosamente en vez de mentir.
+       * Lo pidió el `revisor` (menor 1a, 2026-09-28).
+       */
+      const err = e as { code?: string; constraint?: string };
+      if (err.code === "23505" && err.constraint === "oauth_nonces_usados_pkey") return false;
       throw e;
     }
   }
