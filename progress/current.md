@@ -102,20 +102,21 @@ De antes, `9f406ee` y los tres commits anteriores: el módulo de reseñas.
 
 ## Próximo paso
 
-### 🔴 Bloqueado en acciones de producción que esta sesión no puede hacer
+### ✅ Hecho el 2026-09-28 (cierre)
 
-En este orden, y el orden importa:
+1. ~~Desconectar `Big Balls Proteins`~~ — lo corrió el usuario en el SQL Editor. Verificado:
+   **0 clientes conectados**, ficha intacta y sin archivar.
+2. ~~Sincronizar la app en Inngest~~ — `{"message":"Successfully registered","modified":true}`.
+   El `modified: true` confirma que el manifiesto **cambió**: Inngest tenía otra lista.
 
-1. **Desconectar `Big Balls Proteins`** (`8bea9a42-d6fc-4faf-bc32-1a1e0b2853cc`): tiene una conexión
-   de **mock** (`google_location_id = "mock-location-mock-code"`) guardada en producción desde el
-   2026-08-18. Desde el portal con «Desconectar Google» (la API vive en `https://api.dinamicseo.es`,
-   comprobada viva), o por SQL poniendo a `null` las tres columnas. **El clasificador de permisos
-   frena la escritura desde acá.**
-2. **Sincronizar la app en Inngest**: `curl -X PUT https://amg-orchestrator-production.up.railway.app/api/inngest`.
-   Va DESPUÉS del paso 1: en cuanto haya crons vivos, el polling entra con ese cliente y siembra dos
-   reseñas falsas (una de 2★, que dispara alerta).
-3. **Comprobar que cuadran** el `funciones: N` de `/_health` y lo que lista el panel de Inngest,
-   contando que el panel suma un `onFailure` por función que lo declare.
+### 🔵 Lo que falta para cerrar la verificación
+
+3. **La dirección ENTRANTE sigue sin probar.** El `PUT` sólo acredita la saliente (runbook §5.b). La
+   prueba es el **§6.3**: lanzar un research desde el portal —`pipeline: mock`, no cuesta nada— y ver
+   el run pasar de `running` a `pending_approval` con su informe. **No se puede verificar desde la
+   base**: con 0 clientes conectados ningún cron deja rastro.
+4. **Comprobar que cuadran** el `funciones: 7` de `/_health` y lo que lista el panel de Inngest
+   (que suma un `onFailure` por función que lo declare).
 
 Para el encendido REAL de reseñas (`GOOGLE_REVIEWS_MODO=live`) falta además sacar la app OAuth del
 estado «Prueba» — ahí los refresh tokens caducan a los 7 días — y cargar

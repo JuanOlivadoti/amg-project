@@ -11,6 +11,43 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-09-28 (cierre) — Sincronizada la app de Inngest: los crons existen por primera vez
+
+El usuario desconectó el cliente de mock desde el SQL Editor de Supabase (la escritura a producción la
+frena el clasificador de permisos de Claude Code, y está bien que la frene). Comprobado: las tres
+columnas de conexión a `null`, **0 clientes conectados**, la ficha del cliente intacta y sin archivar.
+
+Con eso, y sólo con eso —el orden importaba: al revés, el primer ciclo del polling habría sembrado dos
+reseñas falsas en un cliente real y disparado la alerta de la 2★—, se lanzó la sincronización:
+
+```
+curl -X PUT https://amg-orchestrator-production.up.railway.app/api/inngest
+{"message":"Successfully registered","modified":true}
+```
+
+**`modified: true` es la confirmación definitiva del diagnóstico:** el manifiesto CAMBIÓ, o sea que
+Inngest tenía otra lista de funciones. Si el sync hubiera estado al día, habría devuelto `false`.
+
+**Un susto que resultó no serlo, y la lección que deja.** `/_health` reportaba ya el campo `resenas`
+—añadido en el commit anterior— con un uptime de casi cuatro horas, o sea sin reinicio aparente.
+Contradicción, hasta cruzar las horas: el proceso arrancó a las **18:21:11** y el commit fue a las
+**18:19:52**, 79 segundos antes. **Railway despliega solo en cada push a `main`.** No es un detalle
+menor y conviene tenerlo presente: en este repo, pushear ES desplegar.
+
+**Lo que este cierre NO prueba, y está dicho en el runbook:** el `PUT` sólo acredita la dirección
+**saliente** (orquestador → Inngest, o sea que la signing key vale). La **entrante** —la que Inngest
+usa para invocar las funciones, y la que ya estuvo rota una vez— sólo la prueba el §6.3: lanzar un
+research desde el portal en modo mock y ver el run pasar de `running` a `pending_approval` con su
+informe. Queda pendiente y no cuesta dinero (`/_health`: `pipeline: mock`).
+
+Se buscó una forma de verificarlo desde la base y **no existe**: con 0 clientes conectados el polling
+no deja rastro, el barrido sólo escribe si encuentra un run colgado (no hay) y el offset de Telegram
+sólo avanza si llegan mensajes. Los crons pueden estar corriendo perfectamente y no dejar una sola
+fila. Vale la pena anotarlo porque invita a confundir "sin rastro" con "no funciona" — que es
+exactamente el error que casi se comete al principio de esta investigación, sólo que al revés.
+
+---
+
 ## 2026-09-28 (noche) — Seis de las siete funciones de Inngest nunca existieron en producción
 
 El hallazgo más consecuente de la jornada, y no salió de leer código sino de no aceptar un cero.
