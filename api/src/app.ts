@@ -148,11 +148,15 @@ export const CONECTAR_GOOGLE_BLOQUEADO =
   "El módulo de reseñas está en modo mock (GOOGLE_REVIEWS_MODO=mock) y este despliegue es de " +
   "producción: conectar sembraría reseñas INVENTADAS en la base real, dispararía alertas de " +
   "Telegram al CM y gastaría llamadas a OpenAI generando borradores para clientes que no existen. " +
-  "Esto es lo esperado hoy, no un fallo del despliegue: el acceso a la Business Profile API de " +
-  "Google está en trámite (en pausa desde el 2026-09-10) y el provider `live` TODAVÍA NO EXISTE. " +
-  "NO pongas GOOGLE_REVIEWS_MODO=live para desbloquearlo: `getGoogleOAuthProvider` lanza con ese " +
-  "valor y la API no arrancaría. Hasta que Google apruebe el acceso y se implemente el provider, " +
-  "el módulo de reseñas es una demo y conectar está bloqueado a propósito.";
+  "Para encenderlo de verdad, EN ESTE ORDEN: (1) cargá GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET y " +
+  "GOOGLE_REDIRECT_URI en este servicio (el orquestador necesita las dos primeras); " +
+  "(2) recién entonces poné GOOGLE_REVIEWS_MODO=live. Al revés NO funciona: sin las credenciales, " +
+  "ese modo hace que la API no arranque, porque el provider se construye al iniciar el proceso. " +
+  "GOOGLE_REDIRECT_URI tiene que coincidir EXACTO con el URI registrado en la consola de Google y " +
+  "apuntar a la ruta fija /google/callback de ESTE servicio. " +
+  "⚠️ Y antes de conectar a nadie: la app OAuth no puede seguir en estado «Prueba», porque ahí " +
+  "Google caduca los refresh tokens a los 7 días y el cliente se desconecta solo. " +
+  "Ver docs/proyecto/16-pendientes-juan.md § 2.";
 
 export function createApp(deps: ApiDeps): Hono<{ Variables: Variables }> {
   const app = new Hono<{ Variables: Variables }>();

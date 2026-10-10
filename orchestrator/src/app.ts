@@ -7,6 +7,7 @@ import type {
   ModoPipeline,
   ModoPostBlog,
   ModoResenasGoogle,
+  ModoTelegram,
 } from "./config.js";
 import type { Salud } from "./salud.js";
 
@@ -103,6 +104,15 @@ export interface OpcionesServidor {
    */
   resenas: ModoResenasGoogle;
   /**
+   * En que modo esta Telegram (`TELEGRAM_MODO`).
+   *
+   * Mismo motivo que `resenas`, y lo pidio un caso real: con un 0,21 % de error en
+   * `vincular-telegram` en el panel de Inngest no habia forma de saber desde fuera si este proceso
+   * hablaba con Telegram de verdad o con el mock. `TELEGRAM_MODO` tambien cae a `mock` cuando
+   * nadie la declara, asi que el silencio y "esta en mock" se parecen demasiado.
+   */
+  telegram: ModoTelegram;
+  /**
    * Con qué se genera el post de blog con IA (sub-proyecto 3). Mismo motivo que `borrador`: es un
    * tercer eje que puede facturar sin que `pipeline`/`publicacion`/`prosa` lo digan.
    */
@@ -120,7 +130,7 @@ export interface OpcionesServidor {
 const ARRANQUE = Date.now();
 
 export function crearServidor(opciones: OpcionesServidor): Server {
-  const { manejadorInngest, funciones, modo, pipeline, publicacion, prosa, borrador, postBlog, resenas, sonda } =
+  const { manejadorInngest, funciones, modo, pipeline, publicacion, prosa, borrador, postBlog, resenas, telegram, sonda } =
     opciones;
 
   return createServer((req, res) => {
@@ -160,6 +170,7 @@ export function crearServidor(opciones: OpcionesServidor): Server {
           prosa,
           borrador,
           resenas,
+          telegram,
           postBlog,
           uptimeSegundos: Math.round((Date.now() - ARRANQUE) / 1000),
           // Ausente cuando todo responde. Un `degradado: []` obligaría a leer el array para saber

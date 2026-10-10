@@ -53,6 +53,14 @@ para Claude Desktop** (`1371a25`) y su **instalador** (`d6ae22f`).
 
 ## En vuelo (sin commitear)
 
+**(2026-10-10)** El 409 de «Conectar Google» decía lo contrario de lo que hay que hacer para encender
+el módulo —"NO pongas GOOGLE_REVIEWS_MODO=live"— además de afirmar que el provider `live` no existía
+y que el acceso seguía en trámite. Reescrito con el procedimiento correcto y en orden (credenciales
+primero, modo después), con dos tests que atan el texto al código y dos mutaciones confirmadas. Y
+`/_health` del orquestador reporta ahora `telegram`, cerrando el mismo punto ciego que `resenas`.
+
+### Lo de antes
+
 Nada — todo commiteado y pusheado. Lo último de esta tanda fue el nonce de un solo uso (`9c740b7`),
 que cierra la deuda del Bloque F fase 1: un `state` filtrado ya no se puede reproducir. Su migración
 `0034` **ya está desplegada** (14:40:11 UTC del 2026-09-28).
@@ -101,6 +109,15 @@ que cierra la deuda del Bloque F fase 1: un `state` filtrado ya no se puede repr
 De antes, `9f406ee` y los tres commits anteriores: el módulo de reseñas.
 
 ## Próximo paso
+
+### 🔵 Lo que puede hacer una sesión de Claude Code
+
+- **El documento de tareas paso a paso para Juan**, pedido el 2026-09-30 y no entregado todavía: qué
+  configurar en la consola de Google, con el `redirect_uri` exacto
+  (`<origen público de la API>/google/callback`, ruta FIJA), el scope
+  (`https://www.googleapis.com/auth/business.manage`) y qué variable va a qué servicio y **en qué
+  orden** (credenciales antes que el modo, o la API no arranca). Casi todo verificado ya contra el
+  código.
 
 ### ✅ Hecho el 2026-09-28 (cierre)
 

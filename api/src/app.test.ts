@@ -13,6 +13,7 @@ import {
 } from "db";
 import type { TenantContext } from "db";
 import { createApp, CONECTAR_GOOGLE_BLOQUEADO } from "./app.js";
+import { LiveGoogleOAuthProvider } from "./google-oauth-live.js";
 import { solicitarResearch, type EmisorEventos } from "./solicitar.js";
 import { NO_DISPONIBLE, type VerificadorToken } from "./auth.js";
 import { TRANSICION_INVALIDA } from "./codigos.js";
@@ -2185,10 +2186,27 @@ test("🔴 el mensaje del 409 NO puede prescribir un modo que `getGoogleOAuthPro
   } catch {
     liveConstruye = false;
   }
+  /*
+   * ⚠️ **La promesa de "se cura solo" de arriba resultó FALSA, y vale la pena dejarlo escrito.**
+   * El provider `live` se implementó el 2026-09-26 y `liveConstruye` siguió siendo `false`: no
+   * bastaba con que existiera, porque `getGoogleOAuthProvider("live")` también exige las tres
+   * credenciales y en un test no hay ninguna. O sea que la condición que el test esperaba que se
+   * cumpliera sola nunca se iba a cumplir, y el mensaje se quedó prohibiendo lo correcto durante dos
+   * semanas, justo mientras alguien intentaba encender el módulo.
+   *
+   * La invariante real no es "¿arranca con lo que hay en el entorno del test?" sino **"¿el mensaje
+   * dice todo lo que hace falta para que arranque?"**. Prescribir `live` está bien si además nombra
+   * las tres credenciales sin las cuales ese modo tira la API al iniciar — que es el fallo original
+   * que este test vino a impedir, y lo sigue impidiendo.
+   */
+  const nombraLasTres = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"].every((v) =>
+    CONECTAR_GOOGLE_BLOQUEADO.includes(v),
+  );
   assert.ok(
-    !prescribeLive || liveConstruye,
-    "el 409 le dice al operador que ponga GOOGLE_REVIEWS_MODO=live, pero con ese valor " +
-      "`getGoogleOAuthProvider` lanza y la API no arranca: el mensaje prescribe romper producción",
+    !prescribeLive || liveConstruye || nombraLasTres,
+    "el 409 le dice al operador que ponga GOOGLE_REVIEWS_MODO=live sin nombrar las credenciales que " +
+      "ese modo exige: con ese valor y sin ellas `getGoogleOAuthProvider` lanza, la API no arranca, " +
+      "y el mensaje está prescribiendo romper producción",
   );
   // Control de no-vacuidad: sin esto el test pasaría feliz si el mensaje quedara vacío o si alguien
   // renombrara la constante a otra cosa que nadie lee.
@@ -3035,4 +3053,38 @@ test("un body VACÍO sigue siendo el camino por defecto (es lo que manda el port
   // El contraste que impide que el arreglo de arriba se pase de rosca: sin body no hay nada ilegible.
   const res = await req("POST", `/clients/${clientA1}/google/conectar`, { user: equipoA, tenant: tenantA });
   assert.equal(res.status, 200);
+});
+
+/*
+ * El otro lado del guardarraíl de arriba, y el que faltaba.
+ *
+ * Aquel test impide que el mensaje PRESCRIBA algo que rompe producción. Éste impide que AFIRME algo
+ * que es falso — que es el mismo defecto con el signo cambiado, y el que de verdad ocurrió: el texto
+ * siguió diciendo "el provider `live` TODAVÍA NO EXISTE" y "el acceso está en trámite" durante dos
+ * semanas DESPUÉS de que el provider se implementara y de que se comprobara que el acceso estaba
+ * concedido. Un operador que leyera ese 409 para encender el módulo recibía la instrucción contraria
+ * a la correcta.
+ *
+ * Se ata al código y no a una fecha: mientras `LiveGoogleOAuthProvider` sea construible, el mensaje
+ * no puede decir que no existe. Si algún día se retirara el provider, el test deja de exigir nada.
+ */
+test("🔴 el 409 no puede afirmar que el provider `live` no existe, si existe", () => {
+  /*
+   * La detección va ANCLADA al sujeto ("el provider", "el acceso"), no a un "no existe" suelto.
+   * La primera versión de este test usaba `/no existe/` a secas y daba FALSO POSITIVO contra la
+   * frase legítima "borradores para clientes que no existen" — que habla de los clientes inventados
+   * del mock, no del provider. Un test que falla por una coincidencia de subcadena enseña a
+   * ignorarlo, que es peor que no tenerlo.
+   */
+  const afirmaQueNoExiste =
+    /provider[^.]{0,30}no existe|no existe[^.]{0,30}provider/i.test(CONECTAR_GOOGLE_BLOQUEADO) ||
+    /(?:todav[ií]a|a[úu]n)\s+no\s+(?:est[áa]\s+implementado|se\s+implement)/i.test(CONECTAR_GOOGLE_BLOQUEADO) ||
+    /sin implementar/i.test(CONECTAR_GOOGLE_BLOQUEADO) ||
+    /acceso[^.]{0,40}en tr[áa]mite/i.test(CONECTAR_GOOGLE_BLOQUEADO);
+  const existe = typeof LiveGoogleOAuthProvider === "function";
+  assert.ok(
+    !(afirmaQueNoExiste && existe),
+    "el 409 dice que el provider `live` no existe o no está implementado, y `LiveGoogleOAuthProvider` " +
+      "sí existe: el mensaje que lee un operador para encender el módulo está mintiendo",
+  );
 });

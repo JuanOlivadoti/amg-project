@@ -79,6 +79,8 @@ const borrador = config.borradorResenas;
 // `process.env`: si fueran dos lecturas, `/_health` podria decir `mock` mientras el polling pega
 // contra Google de verdad -- la forma exacta en que la clave de firma de Inngest ya nos mordio.
 const resenas = config.resenasGoogle;
+// Idem: del mismo objeto de config, no de una relectura del entorno.
+const telegram = config.telegram;
 const postBlog = config.postBlog;
 
 const server = crearServidor({
@@ -95,6 +97,7 @@ const server = crearServidor({
   borrador,
   postBlog,
   resenas,
+  telegram,
   // La sonda va por el STORE, no por el pool: así recorre el mismo `set local role app_service` que
   // hace el trabajo real, y no solo el TCP. Ver `salud.ts` y `PgStore.comprobarAcceso`.
   sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso() }),

@@ -11,6 +11,49 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-10-10 — El mensaje que le decía al operador lo contrario de lo que había que hacer
+
+El 409 de «Conectar Google» (`CONECTAR_GOOGLE_BLOQUEADO`) es lo que lee un operador **justo cuando
+intenta encender el módulo**. Llevaba dos semanas diciendo tres cosas falsas: que el provider `live`
+"TODAVÍA NO EXISTE" (se implementó el 2026-09-26), que el acceso a la Business Profile API "está en
+trámite, en pausa desde el 2026-09-10" (se comprobó concedido el 2026-09-22) y, la peor,
+**"NO pongas GOOGLE_REVIEWS_MODO=live para desbloquearlo"** — exactamente lo contrario de lo correcto.
+
+Reescrito con el procedimiento real y **en orden**: primero las tres credenciales en el servicio,
+después el modo. Al revés no funciona, y no por capricho: sin credenciales ese modo hace que la API
+**no arranque**, porque el provider se construye al iniciar el proceso. El texto nombra además el
+requisito del `redirect_uri` exacto contra la ruta fija y el aviso de que la app OAuth no puede
+seguir en «Prueba» (refresh tokens que caducan a los 7 días).
+
+**Lo que de verdad enseña este arreglo son los dos tests.**
+
+1. **Una promesa de test que resultó falsa.** Ya existía un test que impedía que el mensaje
+   prescribiera un modo que rompe producción, y su comentario decía que **"se cura solo"** el día que
+   se implementara el provider `live`. No se curó: `getGoogleOAuthProvider("live")` también exige las
+   tres credenciales, y en un test no hay ninguna, así que `liveConstruye` seguía `false` y el
+   mensaje se quedó prohibiendo lo correcto. La invariante estaba mal planteada: no es "¿arranca con
+   lo que hay en el entorno del test?" sino **"¿el mensaje dice todo lo que hace falta para que
+   arranque?"**. Corregida, y el porqué queda escrito en el propio test para que nadie vuelva a
+   confiar en que se curará solo.
+2. **Un test nuevo para el defecto con el signo cambiado.** Aquel impedía PRESCRIBIR algo falso; no
+   impedía AFIRMAR algo falso, que es lo que pasó. Ahora, mientras `LiveGoogleOAuthProvider` sea
+   construible, el mensaje no puede decir que no existe. **Y su primera versión tuvo un falso
+   positivo:** buscaba `/no existe/` a secas y matcheaba la frase legítima "borradores para clientes
+   que no existen", que habla de los clientes inventados del mock. Acotado al sujeto. Un test que
+   falla por una coincidencia de subcadena enseña a ignorarlo, que es peor que no tenerlo.
+
+Dos mutaciones, cada una tumbando exactamente su test.
+
+**Y de paso, `/_health` del orquestador reporta ahora `telegram`** (`TELEGRAM_MODO`). Mismo punto
+ciego que `resenas`, una casilla más allá, y lo pidió un caso real: con un 0,21 % de error en
+`vincular-telegram` en el panel de Inngest no había forma de saber desde fuera si ese proceso hablaba
+con Telegram de verdad o con el mock — y esa variable **también** cae a `mock` cuando nadie la
+declara, así que el silencio y "está en mock" se parecen demasiado. Rojo primero y mutación
+confirmada; el typecheck obligó a declararlo en los ocho sitios de test, el compilador imponiendo el
+contrato otra vez.
+
+---
+
 ## 2026-09-28 (cierre) — Sincronizada la app de Inngest: los crons existen por primera vez
 
 El usuario desconectó el cliente de mock desde el SQL Editor de Supabase (la escritura a producción la

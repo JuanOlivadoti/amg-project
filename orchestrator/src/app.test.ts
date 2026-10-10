@@ -106,6 +106,7 @@ test("🔴 /_health con la base CAÍDA: 200 por fuera, `degradado` por dentro", 
     borrador: "mock",
     postBlog: "mock",
     resenas: "mock",
+    telegram: "mock",
     sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso(), log: () => {} }),
   });
 
@@ -148,6 +149,7 @@ test("🔴 /_health con la base sana: NI RASTRO del campo `degradado`", async ()
     borrador: "mock",
     postBlog: "mock",
     resenas: "mock",
+    telegram: "mock",
     sonda: crearSonda({ comprobar: async () => undefined }),
   });
 
@@ -195,6 +197,7 @@ test("/_health incluye postBlog", async () => {
     borrador: "mock",
     postBlog: "openai",
     resenas: "mock",
+    telegram: "mock",
   });
 
   await conServidor(server, async (base) => {
@@ -243,7 +246,7 @@ test("🔴 /_health no pasa por el manejador de Inngest", async () => {
     invocaciones += 1;
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock", telegram: "mock" });
 
   await conServidor(server, async (base) => {
     const r = await fetch(`${base}/_health`);
@@ -263,7 +266,7 @@ test("/api/inngest sigue delegando en el manejador del SDK", async () => {
     invocaciones += 1;
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock", telegram: "mock" });
 
   await conServidor(server, async (base) => {
     const r = await fetch(`${base}/api/inngest`);
@@ -318,7 +321,7 @@ async function pedirFirmado(conClaveValidada: boolean): Promise<number> {
     const manejadorInngest = serve(
       opcionesDeServe(conClaveValidada ? { inngestSigningKey: LIMPIA } : {}, cliente, [fn]),
     );
-    const server = crearServidor({ manejadorInngest, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock" });
+    const server = crearServidor({ manejadorInngest, funciones: 1, modo: "cloud", pipeline: "live", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock", telegram: "mock" });
 
     return await conServidor(server, async (base) => {
       const ts = Math.floor(Date.now() / 1000).toString(); // el SDK lo lee en SEGUNDOS
@@ -360,7 +363,7 @@ test("cualquier otra ruta sigue siendo 404", async () => {
   const espia = (_req: IncomingMessage, res: ServerResponse) => {
     res.writeHead(200).end("inngest");
   };
-  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock" });
+  const server = crearServidor({ manejadorInngest: espia, funciones: 1, modo: "dev", pipeline: "mock", publicacion: "mock", prosa: "mock", borrador: "mock", postBlog: "mock", resenas: "mock", telegram: "mock" });
 
   await conServidor(server, async (base) => {
     assert.equal((await fetch(`${base}/`)).status, 404);
@@ -388,6 +391,7 @@ test("🔴 /_health dice en qué modo están las reseñas de Google", async () =
     borrador: "mock",
     postBlog: "mock",
     resenas: "live",
+    telegram: "mock",
     sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso(), log: () => {} }),
   });
 
@@ -398,6 +402,41 @@ test("🔴 /_health dice en qué modo están las reseñas de Google", async () =
       cuerpo["resenas"],
       "live",
       "sin este campo, confirmar el encendido de reseñas exige leer el código del despliegue",
+    );
+  });
+});
+
+/*
+ * `/_health` reporta también en qué modo está Telegram. Mismo motivo que `resenas`, y lo pidió un
+ * caso real: el 2026-09-30 el panel de Inngest mostraba un 0,21 % de error en `vincular-telegram` y
+ * no había forma de saber desde fuera si ese proceso hablaba con Telegram de verdad o con el mock —
+ * el endpoint informaba de seis modos y justo de éste no. `TELEGRAM_MODO` cae a `mock` cuando nadie
+ * la declara, igual que `GOOGLE_REVIEWS_MODO`, así que el silencio y "está en mock" se parecen
+ * demasiado.
+ */
+test("🔴 /_health dice en qué modo está Telegram", async () => {
+  const deps = depsSobreBaseCaida();
+  const server = crearServidor({
+    manejadorInngest: () => {},
+    funciones: 1,
+    modo: "dev",
+    pipeline: "mock",
+    publicacion: "mock",
+    prosa: "mock",
+    borrador: "mock",
+    postBlog: "mock",
+    resenas: "mock",
+    telegram: "live",
+    sonda: crearSonda({ comprobar: () => deps.store.comprobarAcceso(), log: () => {} }),
+  });
+
+  await conServidor(server, async (base) => {
+    const r = await fetch(`${base}/_health`);
+    const cuerpo = (await r.json()) as Record<string, unknown>;
+    assert.equal(
+      cuerpo["telegram"],
+      "live",
+      "sin este campo no se puede saber desde fuera si el proceso habla con Telegram o con el mock",
     );
   });
 });
