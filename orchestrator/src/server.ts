@@ -49,7 +49,7 @@ import { crearSonda } from "./salud.js";
 const config = leerConfig({ obtenerModoPublicacion: modoPublicacion });
 
 const cx = await crearConexiones(config);
-const deps = crearDeps(cx);
+const deps = crearDeps(cx, config.esProduccion);
 // Siete: el workflow del research, el workflow de la decisión (aprobar y bifurcar por destino), el
 // barrido programado, el polling de reseñas de Google, la publicación de la respuesta de vuelta en
 // Google (Bloque F, fase 2, segunda pieza), la vinculación de Telegram (Bloque F, fase 2, alertas) y

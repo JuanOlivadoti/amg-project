@@ -146,7 +146,20 @@ function retencionDeNoncesMs(): number {
   return Number(m[1]) * (unidades[m[2]!.toLowerCase()] as number);
 }
 
-test("🔴 la ventana del state cabe dentro de la retención de nonces que fija la migración", () => {
+/*
+ * ⚠️ ALCANCE DE ESTE TEST, Y LO QUE NO CUBRE (17ª review externa, hallazgo H4).
+ *
+ * Mide la retención DECLARADA en el `create policy` de las migraciones. Codex demostró que eso deja
+ * un hueco: una migración posterior con `alter policy` —que es la forma NATURAL de cambiar una
+ * política— acortaría la retención efectiva sin que esta lectura de texto se entere, y este test
+ * seguiría verde con el replay reabierto. Comprobado aplicando esa mutación exacta: este test pasó
+ * 10/10 mientras el de comportamiento caía.
+ *
+ * Se conserva porque sigue teniendo valor barato: falla ruidosamente si la política se renombra o
+ * desaparece. **La garantía de verdad está en `db/src/resenas.test.ts`**, que no lee SQL sino que le
+ * pregunta a la base si un nonce más joven que la ventana sobrevive a la purga.
+ */
+test("la retención DECLARADA en el create policy es mayor que la ventana del state (ver el alcance arriba)", () => {
   /*
    * Las dos duraciones viven en archivos distintos de paquetes distintos, y tienen que mantener un
    * orden: si `VENTANA_ESTADO_MS` superara la retención —o si la retención se acortara por debajo de

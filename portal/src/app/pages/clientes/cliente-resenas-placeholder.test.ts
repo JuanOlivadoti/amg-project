@@ -45,11 +45,29 @@ test('el placeholder del campo de ficha es un ejemplo VÁLIDO según la fuente �
   );
 
   const fuente = readFileSync(RUTA_COMPONENTE, 'utf8');
-  const encontrado = fuente.match(/placeholder="([^"]+)"/);
+
+  /*
+   * Se ancla al elemento `id="ficha-google"`, NO a la primera aparición de `placeholder=` del
+   * archivo. La primera versión usaba `fuente.match(/placeholder="([^"]+)"/)` y acertaba por ORDEN
+   * CASUAL: el componente tiene dos placeholders (el de la ficha y el del textarea del borrador), y
+   * bastaba reordenar la plantilla —o agregar un input antes— para que el test validara el
+   * equivocado mientras el ejemplo visible era inválido. Lo encontró la 17ª review externa.
+   */
+  const inicio = fuente.indexOf('id="ficha-google"');
+  assert.ok(
+    inicio >= 0,
+    'no encontré ningún elemento con id="ficha-google" en cliente-resenas.ts: si el campo se ' +
+      'renombró, este test tiene que seguirlo en vez de validar otro input cualquiera',
+  );
+  const fin = fuente.indexOf('/>', inicio);
+  assert.ok(fin > inicio, 'el elemento id="ficha-google" no cierra: no puedo acotar dónde mirar');
+  const bloqueDelCampo = fuente.slice(inicio, fin);
+
+  const encontrado = bloqueDelCampo.match(/placeholder="([^"]+)"/);
   assert.ok(
     encontrado,
-    'no encontré ningún `placeholder="..."` en cliente-resenas.ts: si el campo se renombró o se ' +
-      'movió, este test tiene que seguirlo en vez de desaparecer en silencio',
+    'el elemento id="ficha-google" no tiene `placeholder`: el campo perdió el ejemplo que es lo ' +
+      'único que le dice a un humano qué forma pegar',
   );
 
   assert.match(

@@ -118,19 +118,39 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
   fail "esto no es un repositorio git: NO pude comprobar si hay secretos versionados"
   SALIDA=1
 else
-  PROHIBIDAS=$( { git ls-files; git diff --cached --name-only; } 2>/dev/null | sort -u \
-                | node --import tsx scripts/secretos.mts 2>"$LOG_SECRETOS" )
-  CODIGO=$?
-  if [ -n "$PROHIBIDAS" ]; then
-    fail "hay rutas prohibidas en git (trackeadas o en el índice):"
-    echo "$PROHIBIDAS" | sed 's/^/          /'
-    SALIDA=1
-  elif [ $CODIGO -ne 0 ]; then
-    fail "el detector de secretos no pudo correr (exit $CODIGO):"
-    tail -5 "$LOG_SECRETOS" | sed 's/^/          /'
+  # `git ls-files` y `git diff --cached` se corren y se comprueban POR SEPARADO, nunca agrupados en
+  # `{ ...; ...; }`. Un grupo devuelve el estado del ÚLTIMO comando, y `set -o pipefail` sólo mira
+  # los eslabones de la tubería, no los comandos de adentro del grupo: con el grupo, un `git
+  # ls-files` que fallara dejaba pasar una corrida que había mirado SÓLO el índice y la reportaba
+  # LIMPIA. Falso verde en la única comprobación automática de la regla más dura del proyecto.
+  # Reproducido así, y por eso no alcanzaba con el pipefail que se agregó el 2026-09-26:
+  #     $ bash -c 'set -o pipefail; S=$( { false; echo x; } | sort -u ); echo $?'  →  0
+  # Lo encontró la 17ª review externa (Codex, 2026-10-14).
+  TRACKEADOS=$(git ls-files 2>/dev/null)
+  CODIGO_LS=$?
+  INDICE=$(git diff --cached --name-only 2>/dev/null)
+  CODIGO_IDX=$?
+
+  if [ $CODIGO_LS -ne 0 ] || [ $CODIGO_IDX -ne 0 ]; then
+    fail "no pude enumerar los archivos de git (ls-files=$CODIGO_LS, diff --cached=$CODIGO_IDX): NO pude comprobar si hay secretos versionados"
     SALIDA=1
   else
-    ok "sin secretos entre los $(git ls-files | wc -l | tr -d ' ') archivos versionados ni en el índice"
+    PROHIBIDAS=$(printf '%s\n%s\n' "$TRACKEADOS" "$INDICE" | sort -u \
+                 | node --import tsx scripts/secretos.mts 2>"$LOG_SECRETOS")
+    CODIGO=$?
+    if [ -n "$PROHIBIDAS" ]; then
+      fail "hay rutas prohibidas en git (trackeadas o en el índice):"
+      echo "$PROHIBIDAS" | sed 's/^/          /'
+      SALIDA=1
+    elif [ $CODIGO -ne 0 ]; then
+      fail "el detector de secretos no pudo correr (exit $CODIGO):"
+      tail -5 "$LOG_SECRETOS" | sed 's/^/          /'
+      SALIDA=1
+    else
+      # El conteo sale de lo YA enumerado, no de un `git ls-files` nuevo: repetirlo sería una tercera
+      # llamada cuyo fallo volvería a pasar inadvertido, justo lo que este bloque viene a cerrar.
+      ok "sin secretos entre los $(printf '%s\n' "$TRACKEADOS" | wc -l | tr -d ' ') archivos versionados ni en el índice"
+    fi
   fi
 fi
 

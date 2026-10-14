@@ -1,4 +1,5 @@
 import { test, before, after } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { TestDb, seed } from "./testdb.js";
 import type { Seed } from "./testdb.js";
@@ -838,4 +839,53 @@ test("🔴 el nonce es único GLOBALMENTE, no por tenant: otro tenant tampoco pu
   const nonce = crypto.randomUUID();
   assert.equal(await resenas.consumirNonceOAuth(ctxA(), nonce), true);
   assert.equal(await resenas.consumirNonceOAuth(ctxB(), nonce), false, "un nonce quemado lo está para todos");
+});
+
+/*
+ * La RETENCIÓN EFECTIVA, no la escrita. (17ª review externa, hallazgo H4.)
+ *
+ * `api/src/oauth-state.test.ts` ata la desigualdad `VENTANA_ESTADO_MS < retención` leyendo el
+ * `interval` del `create policy nonce_purga` en las migraciones. Codex señaló el hueco: una migración
+ * posterior con `alter policy` —que es la forma NATURAL de cambiar una política— acortaría la
+ * retención sin que esa regex se enterara, y el test seguiría verde con el replay reabierto.
+ *
+ * Este test no lee SQL: le pregunta a la base. Un nonce más joven que la ventana del state todavía
+ * pertenece a un state VÁLIDO, o sea reproducible, así que tiene que seguir quemado después de una
+ * purga. Da igual si la política la puso un `create` o un `alter`: lo que se mide es lo que la
+ * política HACE.
+ *
+ * Se mide por comportamiento (el nonce sigue rechazado) y no contando filas, igual que sus vecinos.
+ */
+test("🔴 un nonce más joven que la ventana del state SOBREVIVE a la purga (retención efectiva)", async () => {
+  // La ventana se lee del paquete que la define, en runtime y por ruta: `db` no puede importar `api`
+  // (la dependencia va al revés), pero sí leer su archivo — mismo camino que `cartera-portal.test.ts`
+  // abrió para el portal (ADR-21). Duplicar el número acá lo desincronizaría del que corre.
+  const rutaApi = fileURLToPath(new URL("../../api/src/oauth-state.ts", import.meta.url));
+  const { VENTANA_ESTADO_MS } = (await import(pathToFileURL(rutaApi).href)) as { VENTANA_ESTADO_MS: number };
+  assert.ok(
+    typeof VENTANA_ESTADO_MS === "number" && VENTANA_ESTADO_MS > 0,
+    "no pude leer VENTANA_ESTADO_MS de api/src/oauth-state.ts: sin ese número este test no mide nada",
+  );
+
+  const joven = crypto.randomUUID();
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), joven), true);
+
+  // Envejecerlo hasta JUSTO DENTRO de la ventana (30 s de margen): a esta edad su `state` todavía
+  // pasa `verificarEstado`, así que alguien podría reproducirlo y el nonce tiene que seguir quemado.
+  const segundosDentro = Math.floor(VENTANA_ESTADO_MS / 1000) - 30;
+  await db.asService(
+    `update oauth_nonces_usados set usado_en = now() - make_interval(secs => $2) where nonce = $1`,
+    [joven, segundosDentro],
+  );
+
+  // Un consumo cualquiera dispara la purga de paso.
+  assert.equal(await resenas.consumirNonceOAuth(ctxA(), crypto.randomUUID()), true);
+
+  assert.equal(
+    await resenas.consumirNonceOAuth(ctxA(), joven),
+    false,
+    `la purga se llevó un nonce de ${segundosDentro}s, más joven que la ventana del state ` +
+      `(${VENTANA_ESTADO_MS}ms): ese state todavía es válido, así que su nonce acaba de volver a ser ` +
+      `reproducible. La retención de la política quedó por debajo de la ventana.`,
+  );
 });

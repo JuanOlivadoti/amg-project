@@ -14,6 +14,7 @@ import {
   vincularTelegramPendientes,
 } from "./functions.js";
 import type { Deps } from "./workflow.js";
+import { MockGoogleReviewsProvider } from "./google/mock-provider.js";
 
 /**
  * `pollearResenas` — mismo criterio de test que `barrerRunsColgados` en `config.test.ts`: la lógica
@@ -924,4 +925,101 @@ test("🔴 crearFuncionPublicarPost: la fábrica produce una función con id pro
 
   assert.match(fn.id(), /publicar/);
   assert.match(fn.id(), /post/i);
+});
+
+// ------------------------------------------- el guardarraíl de mock en producción (17ª review, H1)
+
+/*
+ * El hueco que encontró Codex: `conectarGoogleBloqueado` vive SÓLO en la API y sólo frena conexiones
+ * NUEVAS. Si alguien pone la API en `live` y deja el orquestador en `mock` —o simplemente no declara
+ * `GOOGLE_REVIEWS_MODO`, que cae a `mock` por default—, el polling procesa clientes REALMENTE
+ * conectados con `MockGoogleReviewsProvider` y les siembra sus dos reseñas fijas: la de 2★ entra al
+ * camino de alerta de Telegram y la de 5★ al de borrador con OpenAI. Reseñas inventadas, alertas
+ * reales y gasto real, sobre un cliente real.
+ *
+ * El guardarraíl va acá y no en el arranque, y la diferencia importa: abortar al arrancar tiraría el
+ * despliegue de producción de HOY, que corre en `mock` a propósito mientras la app OAuth sigue en
+ * «Prueba» (verificado contra /_health: `modo: cloud`, `resenas: mock`). El daño no es arrancar en
+ * mock: es ESCRIBIR. Así que se bloquea la escritura, no el proceso — mismo criterio que el 409 de
+ * la API.
+ *
+ * Se usa el `MockGoogleReviewsProvider` REAL y no un doble: lo que hay que reconocer es el objeto que
+ * de verdad va a correr en producción, no una bandera de configuración que puede desincronizarse de
+ * él. Un `esProduccion && modo === "mock"` leído del entorno sería una segunda fuente de la misma
+ * verdad, que es el defecto que este proyecto ya pagó con la clave de firma de Inngest.
+ */
+test("🔴 en producción con el provider MOCK y un cliente conectado, el polling ABORTA y no escribe", async () => {
+  let intentosDeEscritura = 0;
+  const deps = {
+    store: {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "accounts/1/locations/2", "rt-1")],
+      registrarResenaGoogle: async () => {
+        intentosDeEscritura += 1;
+        return true;
+      },
+      guardarBorradorResena: async () => true,
+      resenasPendientesAlertaTelegram: async () => [],
+      telegramDelAsignado: async () => null,
+      marcarAlertaTelegramEnviada: async () => true,
+    },
+    resenasProvider: new MockGoogleReviewsProvider(),
+    borradorProvider: { generar: async () => "b" },
+    telegramProvider: { enviarMensaje: async () => {} },
+    esProduccion: true,
+  } as unknown as DepsDePolling;
+
+  await assert.rejects(
+    () => pollearResenas(deps),
+    /mock/i,
+    "con clientes reales conectados y el provider mock, producción no puede seguir adelante",
+  );
+  assert.equal(intentosDeEscritura, 0, "no puede haber escrito ni una reseña inventada");
+});
+
+test("en producción con el provider MOCK y CERO clientes conectados, el polling no se queja", async () => {
+  // El contraste que impide que el guardarraíl se pase de rosca: es el estado de producción HOY, y
+  // tiene que seguir corriendo sin ruido. Si esto fallara, el arreglo habría tirado el despliegue.
+  const deps = {
+    store: {
+      clientesConectadosGoogle: async () => [],
+      registrarResenaGoogle: async () => true,
+      guardarBorradorResena: async () => true,
+      resenasPendientesAlertaTelegram: async () => [],
+      telegramDelAsignado: async () => null,
+      marcarAlertaTelegramEnviada: async () => true,
+    },
+    resenasProvider: new MockGoogleReviewsProvider(),
+    borradorProvider: { generar: async () => "b" },
+    telegramProvider: { enviarMensaje: async () => {} },
+    esProduccion: true,
+  } as unknown as DepsDePolling;
+
+  const r = await pollearResenas(deps);
+  assert.equal(r.clientesRecorridos, 0);
+});
+
+test("FUERA de producción, el provider mock con un cliente conectado sigue sembrando (es el flujo de dev)", async () => {
+  // El otro contraste: en dev, sembrar fixtures es exactamente lo que se quiere. Si el guardarraíl
+  // mirara sólo el provider y no el entorno, rompería el desarrollo local.
+  let escritas = 0;
+  const deps = {
+    store: {
+      clientesConectadosGoogle: async () => [cliente("c1", "t1", "accounts/1/locations/2", "rt-1")],
+      registrarResenaGoogle: async () => {
+        escritas += 1;
+        return true;
+      },
+      guardarBorradorResena: async () => true,
+      resenasPendientesAlertaTelegram: async () => [],
+      telegramDelAsignado: async () => null,
+      marcarAlertaTelegramEnviada: async () => true,
+    },
+    resenasProvider: new MockGoogleReviewsProvider(),
+    borradorProvider: { generar: async () => "b" },
+    telegramProvider: { enviarMensaje: async () => {} },
+    esProduccion: false,
+  } as unknown as DepsDePolling;
+
+  await pollearResenas(deps);
+  assert.ok(escritas > 0, "en dev el mock tiene que seguir sembrando sus fixtures");
 });

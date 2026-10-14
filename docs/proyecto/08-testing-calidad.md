@@ -675,6 +675,36 @@ queda" y omite eso miente por omisión. Es el bloque **J**.
 > ciegas, por el lado contrario al habitual: no por los falsos positivos, sino porque medir el terreno
 > encuentra cosas que el revisor externo no podía ver.
 
+### Tanda 23 — 17ª review: tres garantías cuya razón declarada había caducado, y un falso verde en la casilla de secretos ✅
+
+Ronda de código sobre la etapa de reseñas de Google ya cerrada y pusheada (`9f406ee..281495f`, 10
+commits, 35 archivos). Veredicto **NO LISTO**, **5 hallazgos** (4 Major, 1 Minor): **4 verificados y
+corregidos**, **1 parcialmente refutado**. Reporte completo y clasificación en
+`progress/informes/codex-resenas-produccion.md` (no versionado).
+
+| Hallazgo | Cómo terminó |
+|---|---|
+| **[Major] El orquestador permite reseñas ficticias en producción** | **Verificado, y peor de lo que el reporte decía.** `conectarGoogleBloqueado` vive sólo en la API y sólo frena conexiones NUEVAS: con la API en `live` y el orquestador en `mock` —o sin declarar `GOOGLE_REVIEWS_MODO`, que cae a `mock`—, el polling siembra las dos reseñas fijas del mock sobre clientes REALES, la de 2★ dispara alerta de Telegram y la de 5★ gasta OpenAI. Lo que Codex no podía ver: el comentario de `config.ts` que JUSTIFICA el default permisivo decía *"acá no hay nada real que `live` pueda hacer todavía"*, premisa **caducada el 2026-09-26** al implementarse el provider real. **Su arreglo se refutó con evidencia**: abortar al arrancar tiraba el despliegue de hoy (verificado contra `/_health`: `modo: cloud`, `resenas: mock`). Implementada una contrapropuesta aprobada por el usuario: el guardarraíl vive en `pollearResenas` y bloquea **la escritura**, no el arranque — el daño no es arrancar en mock, es escribir. Pregunta por el OBJETO (`instanceof MockGoogleReviewsProvider`), no por una variable releída. 3 tests (el caso dañino + dos contrastes), 2 mutaciones: desactivarlo tumba el principal; quitarle la condición de entorno tumba el contraste de dev. Se CAMBIÓ el contrato declarado en `config.test.ts`, con OK explícito del usuario. |
+| **[Major] `pipefail` no detecta el fallo de `git ls-files`** | **Verificado, y es el hallazgo más grave de la ronda.** Un grupo `{ a; b; }` devuelve el estado del ÚLTIMO comando, y `set -o pipefail` sólo mira los eslabones de la tubería, no los de dentro del grupo: si `git ls-files` fallaba, la casilla de higiene examinaba sólo el índice y **reportaba limpio**. Falso verde en la única comprobación automática de la regla más dura del proyecto — y el `pipefail` añadido el 2026-09-26 daba la falsa sensación de haberlo cubierto. Arreglado corriendo y comprobando cada comando por separado. Mutación con un shim de `git` que falla sólo en `ls-files`: código viejo → `[OK] sin secretos` + `RESULTADO=VERDE`; código nuevo → `RESULTADO=FALLA` nombrando qué comando falló. |
+| **[Major] El test de retención ignora `ALTER POLICY`** | **Verificado.** El test leía el `interval` del `create policy nonce_purga` en las migraciones; una migración posterior con `alter policy` —la forma natural de cambiar una política— acortaría la retención efectiva sin que la regex se enterara, reabriendo el replay en verde. Notable: ese test se había reescrito dos días antes precisamente porque "cubría un solo lado", y el arreglo cerró el lado correcto dejando abierta la forma natural de hacer el cambio. Añadido un test de COMPORTAMIENTO en `db/src/resenas.test.ts` que no lee SQL: envejece un nonce hasta justo dentro de la ventana del state y exige que sobreviva a la purga. Aplicada la mutación exacta propuesta (`alter policy` a 5 minutos): **el test de texto pasó 10/10, el de comportamiento cayó**. El de texto se conserva (caza el renombrado o el borrado de la política) con su alcance declarado. |
+| **[Major] El arnés no corre en el entorno Windows declarado** | **PARCIALMENTE REFUTADO.** El titular no se sostiene: `where bash` resuelve al binario que trae Git for Windows, y `npm run verificar -- --rapido` corre en verde en la máquina del proyecto — lo que falló fue el sandbox de Codex, sin `bash` en `PATH`. **El fondo se aceptó y es bueno:** comprobar que el script empieza por `bash ` no prueba que pueda arrancar (probar la implementación, no el contrato), y un `spawnSync ENOENT` es un fallo de infraestructura disfrazado de test roto. Ahora el test resuelve el intérprete declarado y falla diciendo qué instalar. Limitación declarada: no se pudo ejercitar la rama «el intérprete no se resuelve», porque en esa máquina `bash` y `sh` existen los dos. |
+| **[Minor] El test del placeholder valida "el primero"** | **Verificado**: el componente tiene **dos** `placeholder=` (la ficha y el textarea del borrador) y `match()` sin `/g` devuelve el primero — acertaba por orden casual. Anclado al bloque de `id="ficha-google"` por `indexOf`, sin regex. Mutación exacta de Codex (input inocuo antes con placeholder válido + el de la ficha inválido) → el test cae. |
+
+**El patrón que forman tres de los cinco, y que vale más que los hallazgos sueltos:** H1, H4 y —la
+semana anterior— el mensaje del 409 son el mismo defecto: *una garantía cuya razón declarada caducó
+sin que nada lo notara*. Los tres textos eran ciertos el día que se escribieron; ninguno tenía algo
+que lo atara a seguir siéndolo. Es la versión temporal de la lección de siempre: una garantía en un
+comentario es una intención.
+
+Los ángulos que salieron limpios, y que por tanto no hace falta volver a revisar: el camino manual
+del `locationId` (el corte ocurre antes de pedir el access token y antes de `descubrirUbicacion()`),
+el `catch` del `23505` atado al nombre de la constraint, la purga por `DELETE` sin `SELECT`, la
+imposibilidad de ENUMERAR nonces, el único firmante del `state`, las dos copias de `codigos.ts` en
+ambas direcciones, y los invariantes de ADR dentro del diff.
+
+Verificación tras los arreglos: **2171 tests del monorepo** (sube de 2167), typecheck limpio en 8
+paquetes + el portal, **364 `node:test`** del portal, sin secretos entre 749 archivos versionados.
+
 ### Tanda 22 — 16ª review: la carrera de un componente Angular reusado entre clientes, y una posición JSON-LD que no era global ✅
 
 Ronda de código sobre la implementación ya cerrada y mergeada del sub-proyecto 1 (multi-vertical de

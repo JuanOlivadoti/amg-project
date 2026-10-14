@@ -11,6 +11,51 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-10-14 — La 17ª review: tres garantías que habían caducado y un falso verde en la casilla de secretos
+
+Codex revisó la etapa de reseñas (`9f406ee..281495f`) y devolvió **NO LISTO** con cinco hallazgos.
+Cuatro verificados y corregidos, uno parcialmente refutado. La contabilidad de la ronda está en
+`docs/proyecto/08-testing-calidad.md` § Tanda 23; acá va por qué la jornada terminó como terminó.
+
+**El hallazgo más grave no era el que Codex puso primero.** El falso verde de `git ls-files` lo listó
+tercero, y es el peor: un grupo `{ a; b; }` devuelve el estado del ÚLTIMO comando, así que si
+`git ls-files` fallaba, la casilla de higiene miraba sólo el índice y **reportaba limpio**. La única
+comprobación automática de la regla más dura del proyecto podía dar verde sin haber enumerado nada.
+Y lo que lo vuelve instructivo es que el `set -o pipefail` que se había añadido el 2026-09-26 para
+endurecer justamente ese bloque **daba la falsa sensación de haberlo cubierto**: `pipefail` mira los
+eslabones de la tubería, no los comandos de dentro del grupo. Arreglar algo a medias y creerlo
+cerrado es peor que no haberlo tocado.
+
+**Lo que une a tres de los cinco, y es la lección de la ronda.** El guardarraíl ausente del
+orquestador, el test de retención ciego al `ALTER POLICY` y —la semana anterior— el mensaje del 409
+son **el mismo defecto**: una garantía cuya razón declarada caducó sin que nada lo notara. El
+comentario de `config.ts` decía *"no hay nada real que `live` pueda hacer todavía"*; el test de
+retención prometía en su comentario que *"se cura solo"*; el 409 afirmaba que el provider no existía.
+Los tres eran ciertos el día que se escribieron y ninguno tenía algo que lo atara a seguir siéndolo.
+Es la versión temporal de la lección de siempre: una garantía en un comentario es una intención.
+
+**Y una refutación con evidencia, que es tan parte del rigor como aceptar.** Codex pidió que el
+orquestador abortara al arrancar si estaba en producción con el provider mock. Se comprobó contra
+`/_health` que producción corre hoy en `modo: cloud` con `resenas: mock` —a propósito, mientras la
+app OAuth sigue en «Prueba»—, así que ese arreglo **habría tirado el despliegue en el siguiente
+push**. Se propuso al usuario una alternativa, la aprobó, y el guardarraíl quedó donde está el daño:
+bloquea la ESCRITURA, no el arranque. El criterio es el mismo que el del 409 de la API.
+
+Del segundo Major, el del arnés en Windows, el titular **no se sostiene**: en la máquina del proyecto
+`bash` se resuelve y el arnés corre en verde; lo que falló fue el sandbox de Codex. Pero el fondo sí
+valía: comprobar que el script empieza por `bash ` prueba la implementación, no el contrato. Se
+aceptó esa mitad.
+
+Nota de método que conviene no perder: el reporte se guardó **íntegro y sin resumir** en
+`progress/informes/` antes de clasificar nada, y la clasificación se escribió debajo, en el mismo
+archivo. Con cinco hallazgos y dos de ellos con matices, la alternativa era clasificar contra el
+recuerdo del reporte.
+
+`bash ./scripts/verificar.sh --con-portal` en verde: **2171 tests del monorepo** (sube de 2167),
+**364 del portal**, typecheck limpio en 8 paquetes, sin secretos entre 749 archivos versionados.
+
+---
+
 ## 2026-10-10 — El mensaje que le decía al operador lo contrario de lo que había que hacer
 
 El 409 de «Conectar Google» (`CONECTAR_GOOGLE_BLOQUEADO`) es lo que lee un operador **justo cuando

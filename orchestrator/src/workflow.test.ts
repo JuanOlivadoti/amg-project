@@ -230,6 +230,7 @@ const briefFalso = (paginas: ProposedPage[]): BriefDelPipeline => ({
 interface Espia {
   deps: Deps;
   /** El store REAL del orquestador (`app_service`), que además anota el orden de sus escrituras. */
+  esProduccion: false,
   store: StoreQueAnota;
   publicadas: string[][];
   researchCorrido: number;
@@ -249,6 +250,7 @@ interface Espia {
 
 function depsFalsas(paginas: ProposedPage[]): Espia {
   const espia: Espia = {
+    esProduccion: false,
     store: new StoreQueAnota(pool),
     publicadas: [],
     researchCorrido: 0,
@@ -260,6 +262,7 @@ function depsFalsas(paginas: ProposedPage[]): Espia {
   };
 
   espia.deps = {
+    esProduccion: false,
     store: espia.store,
     research: async ({ onKeywords }) => {
       espia.researchCorrido++;

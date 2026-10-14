@@ -53,78 +53,35 @@ para Claude Desktop** (`1371a25`) y su **instalador** (`d6ae22f`).
 
 ## En vuelo (sin commitear)
 
-**(2026-10-14) Dos revisiones externas de Codex en marcha, la 17ª y la 18ª.**
+Nada — todo commiteado y pusheado.
 
-- **17ª — el código** de la etapa de reseñas (`9f406ee..281495f`). Prompt en
-  `docs/private/reviews/codex-2026-10-14-resenas-produccion.md`. Lanzada por el usuario.
-- **18ª — el diseño** del ADR-25. El documento a revisar es
-  `docs/superpowers/specs/2026-10-14-credenciales-terceros-multitenant-design.md` (versionado);
-  el prompt, `docs/private/reviews/codex-2026-10-14-adr25-credenciales.md`.
+### Lo último: la 17ª review externa (Codex), procesada
 
-**El ADR-25 nace de un cambio de premisa, no de un capricho.** La `0021` puso la credencial en
-`clients`, una por ficha, bajo la premisa escrita en el comentario de la columna: *"la cuenta de
-Google DEL CLIENTE"*. Resultó falsa en dos escalones — AMG gestiona las fichas desde su propia
-cuenta, y la plataforma se va a vender a otras agencias, así que el patrón se repite por cada alta.
-La propuesta mueve la credencial a una tabla de conexiones por tenant.
+**NO LISTO → 5 hallazgos: 4 corregidos, 1 parcialmente refutado.** Contabilidad en
+`docs/proyecto/08-testing-calidad.md` § Tanda 23; el porqué, en `progress/history.md` § 2026-10-14;
+el reporte íntegro y la clasificación, en `progress/informes/codex-resenas-produccion.md`.
 
-⚠️ **La suposición más frágil está declarada en el propio documento**: que una agencia puede tener
-fichas consentidas desde VARIAS cuentas de Google. Si siempre es una, la tabla sobra y basta una
-columna en `tenants`. **Esa pregunta sigue sin contestar** y es la primera que se le pide a Codex.
+- **El falso verde de la casilla de secretos** (`scripts/verificar.sh`) es el más grave y Codex lo
+  puso tercero: un grupo `{ git ls-files; git diff --cached; }` devuelve el estado del ÚLTIMO
+  comando, así que un `ls-files` roto dejaba la higiene en verde habiendo mirado sólo el índice.
+- **El guardarraíl del orquestador** (`pollearResenas`): con la API en `live` y el orquestador en
+  `mock`, el polling sembraba reseñas inventadas sobre clientes reales. Se refutó con evidencia el
+  arreglo propuesto —abortar al arrancar habría tirado producción, que corre en `mock` a propósito— y
+  se implementó una contrapropuesta aprobada por el usuario: bloquear la escritura, no el arranque.
+- **La retención del nonce** se mide ahora por comportamiento contra PGlite, no leyendo el texto de
+  las migraciones: un `alter policy` posterior era invisible para la versión anterior.
 
-**(2026-10-10)** El 409 de «Conectar Google» decía lo contrario de lo que hay que hacer para encender
-el módulo —"NO pongas GOOGLE_REVIEWS_MODO=live"— además de afirmar que el provider `live` no existía
-y que el acceso seguía en trámite. Reescrito con el procedimiento correcto y en orden (credenciales
-primero, modo después), con dos tests que atan el texto al código y dos mutaciones confirmadas. Y
-`/_health` del orquestador reporta ahora `telegram`, cerrando el mismo punto ciego que `resenas`.
+⚠️ **Se cambió un contrato declarado**, con OK explícito del usuario: `config.test.ts` afirmaba que en
+producción, sin `GOOGLE_REVIEWS_MODO`, el orquestador arranca igual. Sigue arrancando; lo que ya no
+puede es escribir sobre clientes conectados estando en mock.
 
-### Lo de antes
+### Pendiente de esta tanda
 
-Nada — todo commiteado y pusheado. Lo último de esta tanda fue el nonce de un solo uso (`9c740b7`),
-que cierra la deuda del Bloque F fase 1: un `state` filtrado ya no se puede reproducir. Su migración
-`0034` **ya está desplegada** (14:40:11 UTC del 2026-09-28).
-
-### Lo que entró en esta tanda, ya pusheado
-
-- `db/migrations/0034_oauth_nonce_un_solo_uso.sql` (nuevo) — tabla `oauth_nonces_usados`, RLS
-  enable + force, grants `insert, delete` **sin `select`**, y las dos políticas (`nonce_quemar`,
-  `nonce_purga`). ⚠️ **NO desplegada**: espera `migrate:deploy` fuera de Claude Code, y va **antes**
-  que el código de la API o el callback da 500.
-- `db/src/resenas.ts` — `consumirNonceOAuth`; el replay se detecta por el `23505`, no por un
-  `returning` (que exigiría privilegio de lectura sobre la tabla).
-- `api/src/app.ts` — el corte en `GET /google/callback`, **antes** de `intercambiarCode`.
-
-### Lo anterior de esta tanda: el `locationId` a mano, ya pusheado (`62ea374`)
-
-- `db/src/resenas.ts` — `NOMBRE_DE_UBICACION_GOOGLE` + `esNombreDeUbicacionGoogle`, la **fuente
-  única** del formato; `orchestrator/src/google/live-provider.ts` **perdió su copia** de la regex y
-  la importa.
-- `api/src/google-oauth-live.ts` — el corte del camino manual, ANTES de cualquier fetch de
-  descubrimiento. Es el invariante del cambio entero.
-- `api/src/app.ts` — `POST .../google/conectar` con body `{ locationId? }` validado, y el callback
-  pasándolo.
-- `api/src/codigos.ts` + `portal/src/app/core/codigos.ts` — `LOCATION_ID_INVALIDO`, el primer 400
-  con código.
-- `portal/src/app/pages/clientes/cliente-resenas.ts` — el campo y el 400 pintado dentro del
-  formulario.
-- `portal/src/app/pages/clientes/cliente-resenas-placeholder.test.ts` (nuevo) — ata el placeholder
-  a la regex de `db/` leyendo el archivo (el camino de `codigos.test.ts`), para que el ejemplo que
-  ve el humano no quede mostrando una forma que la API rechaza.
-- Docs: `09`, `15` § Bloque F, `16-pendientes-juan.md` § 2, `history.md`.
-
-### Y antes (`b77364a`, el arreglo del arnés, ya pusheado)
-
-- `package.json:18` — `"verificar": "bash ./scripts/verificar.sh"`. Sin el `bash`, npm lo lanza por
-  `cmd.exe` y el comando obligatorio del ritual no corría en Windows.
-- `scripts/verificar.sh:35` — `veredicto()`, que imprime `RESULTADO=VERDE (exit 0)` /
-  `RESULTADO=FALLA (exit N)`. Se la llama antes de **cada** `exit`, los cinco cortes tempranos
-  incluidos. Y `set -o pipefail` en la línea 22.
-- `scripts/arnes.test.mts` (nuevo, 3 tests) — el intérprete del script (:28), el veredicto corrido
-  de verdad sacándolo con `sed` (:38), y el barrido que exige que ningún `exit` salga sin él (:51).
-- `AGENTS.md`, `CHECKPOINTS.md` § C1, `docs/proyecto/09-estado-y-roadmap.md`,
-  `docs/proyecto/15-plan-plataforma.md` § Bloque I, `progress/history.md` — el veredicto se lee en
-  la última línea, no en el exit code.
-
-De antes, `9f406ee` y los tres commits anteriores: el módulo de reseñas.
+- **La 18ª review (diseño del ADR-25)** no se ha lanzado todavía. Documento:
+  `docs/superpowers/specs/2026-10-14-credenciales-terceros-multitenant-design.md`. Prompt:
+  `docs/private/reviews/codex-2026-10-14-adr25-credenciales.md`.
+- **La pregunta que decide ese diseño sigue sin contestar:** ¿una agencia conecta UNA cuenta de
+  Google o varias? Si siempre es una, la tabla de conexiones sobra y basta una columna en `tenants`.
 
 ## Próximo paso
 

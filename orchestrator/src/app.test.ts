@@ -62,6 +62,7 @@ const poolCaido: DbPool = {
 
 function depsSobreBaseCaida(): Deps {
   return {
+    esProduccion: false,
     store: new PgStore(poolCaido, "app_service"),
     research: () => Promise.reject(new Error("un health check no investiga")),
     publicar: () => Promise.reject(new Error("un health check no publica")),

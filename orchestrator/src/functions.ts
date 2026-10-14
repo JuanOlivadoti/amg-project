@@ -1,6 +1,7 @@
 import { Inngest } from "inngest";
 import type { GetStepTools } from "inngest";
 import { PLAZO_RUN_COLGADO } from "db";
+import { MockGoogleReviewsProvider } from "./google/mock-provider.js";
 import type { TenantContext } from "db";
 import type { Eventos } from "./events.js";
 import type { Deps, Pasos } from "./workflow.js";
@@ -232,10 +233,45 @@ function truncar(texto: string, maximo: number): string {
 }
 
 export async function pollearResenas(
-  deps: Pick<Deps, "store" | "resenasProvider" | "borradorProvider" | "telegramProvider">,
+  deps: Pick<Deps, "store" | "resenasProvider" | "borradorProvider" | "telegramProvider" | "esProduccion">,
   log: (msg: string) => void = () => {},
 ): Promise<{ clientesRecorridos: number; resenasNuevas: number; fallidos: number }> {
   const clientes = await deps.store.clientesConectadosGoogle();
+
+  /*
+   * GUARDARRAÍL: en producción, el provider mock no puede tocar clientes REALES.
+   *
+   * `conectarGoogleBloqueado` (api/src/deps.ts) sólo frena conexiones NUEVAS desde la API. No protege
+   * a un cliente YA conectado, y ése es justo el que más daño recibe: `MockGoogleReviewsProvider`
+   * devuelve dos reseñas fijas para cualquier ficha, la de 2★ dispara la alerta de Telegram al CM y
+   * la de 5★ gasta una llamada a OpenAI generando un borrador. Reseñas inventadas en la base real,
+   * alertas reales y gasto real. Lo encontró la 17ª review externa (Codex, 2026-10-14).
+   *
+   * Va ACÁ y no en el arranque, y la diferencia no es de estilo: abortar al arrancar tiraría el
+   * despliegue de producción de hoy, que corre en `mock` a propósito mientras la app OAuth sigue en
+   * «Prueba». El daño no es arrancar en mock, es ESCRIBIR — así que se bloquea la escritura. Mismo
+   * criterio que el 409 de la API.
+   *
+   * Se pregunta por el OBJETO (`instanceof`) y no por una variable de entorno releída: el provider
+   * que importa es el que de verdad se construyó. Una bandera de config puede desincronizarse de él,
+   * y ese defecto —lo validado y lo usado siendo dos lecturas distintas— ya se pagó una vez con la
+   * clave de firma de Inngest.
+   *
+   * Lanza en vez de devolver: esto corre dentro de un step de Inngest, así que un throw queda como
+   * run fallido VISIBLE en el panel. Devolver un contador en cero se vería idéntico a "no había
+   * nada que hacer", que es exactamente el fallo mudo que esta semana costó cuatro horas de
+   * diagnóstico.
+   */
+  if (deps.esProduccion && deps.resenasProvider instanceof MockGoogleReviewsProvider && clientes.length > 0) {
+    throw new Error(
+      `El polling de reseñas está en modo MOCK y este despliegue es de producción, pero hay ` +
+        `${clientes.length} cliente(s) REALMENTE conectado(s). Seguir sembraría reseñas INVENTADAS ` +
+        `en la base real, dispararía alertas de Telegram al CM y gastaría llamadas a OpenAI. ` +
+        `Poné GOOGLE_REVIEWS_MODO=live en el orquestador (con GOOGLE_CLIENT_ID y ` +
+        `GOOGLE_CLIENT_SECRET), o desconectá esos clientes desde el portal.`,
+    );
+  }
+
 
   let resenasNuevas = 0;
   let fallidos = 0;

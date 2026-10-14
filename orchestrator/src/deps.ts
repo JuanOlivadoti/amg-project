@@ -99,7 +99,13 @@ export async function crearConexiones(
   };
 }
 
-export function crearDeps(cx: Conexiones): Deps {
+/**
+ * `esProduccion` viaja como ARGUMENTO y no se relee de `process.env` acá: lo valida `leerConfig()`
+ * y lo usa el guardarraíl de `pollearResenas`. Si fueran dos lecturas, lo comprobado al arrancar y
+ * lo que decide si se escribe podrían discrepar — el mismo defecto que ya nos mordió con la clave de
+ * firma de Inngest.
+ */
+export function crearDeps(cx: Conexiones, esProduccion: boolean): Deps {
   // El orquestador asume `app_service`. Su login NO puede asumir `app_user` — ni al revés.
   const store = new PgStore(cx.orquestador, "app_service");
 
@@ -117,6 +123,7 @@ export function crearDeps(cx: Conexiones): Deps {
   const cache = new CacheRouter(cx.cache);
 
   return {
+    esProduccion,
     store,
 
     research: async ({ prompt, market, maxCostMicros, maxPages, onKeywords }) => {

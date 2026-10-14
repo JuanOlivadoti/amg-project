@@ -745,7 +745,7 @@ test("🔴 crearDeps ata el store a app_service, el único rol que su login pued
   };
 
   const { crearDeps } = await import("./deps.js");
-  const deps = crearDeps({ orquestador: espia, cache: espia, cerrar: async () => {} });
+  const deps = crearDeps({ orquestador: espia, cache: espia, cerrar: async () => {} }, false);
 
   // Cualquier operación sirve: `withTenant` aplica el rol antes de tocar los datos.
   await deps.store.getRun({ tenantId: "11111111-1111-4111-8111-111111111111" }, "22222222-2222-4222-8222-222222222222");

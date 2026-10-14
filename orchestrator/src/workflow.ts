@@ -40,6 +40,12 @@ export interface Pasos {
 /** Todo lo externo, inyectado: así el test corre el workflow real contra una base real y sin red. */
 export interface Deps {
   store: PgStore;
+  /**
+   * Si este proceso corre en producción. Lo usa el guardarraíl de `pollearResenas`, que impide que
+   * el provider mock escriba sobre clientes reales. Viaja como dato y no se relee del entorno: lo
+   * validado y lo usado tienen que ser la misma lectura.
+   */
+  esProduccion: boolean;
   /** El pipeline del M2. Devuelve el brief; el dataset pago se persiste por el checkpoint. */
   research: (args: {
     prompt: string;

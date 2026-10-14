@@ -25,21 +25,52 @@ const rutaScript = join(raiz, "scripts", "verificar.sh");
 const script = readFileSync(rutaScript, "utf8");
 const pkg = JSON.parse(readFileSync(join(raiz, "package.json"), "utf8"));
 
-test("`npm run verificar` nombra el intérprete en vez de confiar en el shebang", () => {
+/**
+ * El intérprete que el script de npm declara, y **que de verdad se resuelve en esta máquina**.
+ *
+ * La primera versión de este test sólo comprobaba que la cadena empezara por `bash `, y la 17ª review
+ * externa señaló —con razón— que eso prueba la implementación y no el contrato: una cadena con el
+ * prefijo correcto no demuestra que el comando pueda arrancar. De hecho el sandbox de esa revisión no
+ * tenía `bash` en el `PATH`, y lo único que vio fue un `spawnSync bash ENOENT` en mitad de otro test
+ * — un fallo de infraestructura disfrazado de test roto, sin una línea que dijera qué faltaba.
+ *
+ * Así que acá se hacen las dos cosas: se lee el intérprete declarado y se comprueba que EXISTE. Si no
+ * está, el test falla diciendo exactamente qué instalar, que es lo que un ENOENT no dice.
+ */
+function interpreteDeclarado(): string {
   const declarado: string = pkg.scripts?.verificar ?? "";
-  assert.match(
-    declarado,
-    /^(bash|sh) /,
+  const primera = declarado.trim().split(/\s+/)[0] ?? "";
+  assert.ok(
+    primera === "bash" || primera === "sh",
     `el script "verificar" es ${JSON.stringify(declarado)}: npm lo lanza por cmd.exe en Windows y ` +
       `falla con "'.' no se reconoce como un comando". Tiene que empezar por "bash "`,
   );
+  return primera;
+}
+
+test("`npm run verificar` nombra un intérprete que EXISTE en esta máquina", () => {
+  const interprete = interpreteDeclarado();
+  try {
+    execFileSync(interprete, ["--version"], { stdio: "ignore" });
+  } catch (e) {
+    const codigo = (e as { code?: string }).code;
+    assert.fail(
+      `el script "verificar" declara \`${interprete}\`, pero no se resuelve en el PATH de esta ` +
+        `máquina (${codigo ?? "error al ejecutarlo"}). El arnés NO puede correr acá, y eso no es un ` +
+        `test roto: es el entorno. En Windows, instalá Git for Windows y asegurate de que su ` +
+        `directorio \`usr/bin\` (o \`bin\`) esté en el PATH; en Linux/macOS, instalá \`${interprete}\`.`,
+    );
+  }
 });
 
 test("el veredicto viaja en la salida, con el exit code adentro", () => {
-  // Se saca la función del script y se la corre: esto verifica el código real, no una copia.
+  // Se saca la función del script y se la corre: esto verifica el código real, no una copia. Y se usa
+  // el intérprete DECLARADO, no un "bash" escrito a mano acá: si el package.json cambiara a `sh`,
+  // este test seguiría probando otra cosa.
+  const interprete = interpreteDeclarado();
   const correr = (salida: string) =>
     execFileSync(
-      "bash",
+      interprete,
       ["-c", `source <(sed -n '/^veredicto()/,/^}/p' "$1"); veredicto ${salida}`, "_", rutaScript],
       { encoding: "utf8" },
     ).trim();
