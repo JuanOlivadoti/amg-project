@@ -53,6 +53,24 @@ para Claude Desktop** (`1371a25`) y su **instalador** (`d6ae22f`).
 
 ## En vuelo (sin commitear)
 
+**(2026-10-14) Dos revisiones externas de Codex en marcha, la 17ª y la 18ª.**
+
+- **17ª — el código** de la etapa de reseñas (`9f406ee..281495f`). Prompt en
+  `docs/private/reviews/codex-2026-10-14-resenas-produccion.md`. Lanzada por el usuario.
+- **18ª — el diseño** del ADR-25. El documento a revisar es
+  `docs/superpowers/specs/2026-10-14-credenciales-terceros-multitenant-design.md` (versionado);
+  el prompt, `docs/private/reviews/codex-2026-10-14-adr25-credenciales.md`.
+
+**El ADR-25 nace de un cambio de premisa, no de un capricho.** La `0021` puso la credencial en
+`clients`, una por ficha, bajo la premisa escrita en el comentario de la columna: *"la cuenta de
+Google DEL CLIENTE"*. Resultó falsa en dos escalones — AMG gestiona las fichas desde su propia
+cuenta, y la plataforma se va a vender a otras agencias, así que el patrón se repite por cada alta.
+La propuesta mueve la credencial a una tabla de conexiones por tenant.
+
+⚠️ **La suposición más frágil está declarada en el propio documento**: que una agencia puede tener
+fichas consentidas desde VARIAS cuentas de Google. Si siempre es una, la tabla sobra y basta una
+columna en `tenants`. **Esa pregunta sigue sin contestar** y es la primera que se le pide a Codex.
+
 **(2026-10-10)** El 409 de «Conectar Google» decía lo contrario de lo que hay que hacer para encender
 el módulo —"NO pongas GOOGLE_REVIEWS_MODO=live"— además de afirmar que el provider `live` no existía
 y que el acceso seguía en trámite. Reescrito con el procedimiento correcto y en orden (credenciales
