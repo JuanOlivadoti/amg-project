@@ -292,6 +292,102 @@ importante, no menos.
 > el entorno es producción — misma doctrina que `verificarPublicacion()` ya aplica con `PIPELINE_MODO`:
 > un modo que miente no debería poder arrancar en producción.
 
+### ✅ La lista operativa, paso a paso (actualizada el 2026-10-15)
+
+> **Esta versión CORRIGE la que se dio en el chat el 2026-09-30.** Aquella presentaba una app
+> **Internal** como "camino corto" y daba por hecho que la verificación de Google era opcional. Las
+> dos cosas dejaron de ser ciertas cuando se supo que **la plataforma se va a vender a otras
+> agencias**: una app Internal sólo admite cuentas de la MISMA organización de Workspace, así que los
+> clientes externos no podrían consentir nunca. Si alguien sigue aquella lista, contrata un Workspace
+> que no resuelve el problema.
+
+**Lo que ya NO hace falta:** el trámite de cuota con Google para `mybusinessaccountmanagement` y
+`mybusinessbusinessinformation`. Con el `locationId` pegado a mano, conectar un cliente no toca
+ninguna de las dos. Sigue siendo una mejora de comodidad para el alta, no un bloqueo.
+
+#### A. Páginas legales en `amgmadrid.com` — bloquea todo lo demás
+
+Google no deja publicar la app sin una política de privacidad que **cargue**. Verificado el
+2026-09-22: el sitio tiene 20 páginas y ninguna es política de privacidad, aviso legal, cookies ni
+condiciones; las ocho rutas típicas de WordPress dan 404.
+
+Hay que crear **política de privacidad** y **condiciones del servicio**, publicarlas y confirmar que
+las URLs cargan en abierto. **No es trabajo nuestro redactarlas**, y hace falta igual aunque no
+existiera Google: la web tiene formularios de newsletter y de "diagnóstico gratuito", o sea que
+recoge datos personales (RGPD y LSSI-CE).
+
+#### B. Verificar el dominio en Search Console
+
+Para usar `amgmadrid.com` en la pantalla de consentimiento hay que añadirlo como **dominio
+autorizado**, y Google exige que los autorizados estén verificados en Search Console **por un
+propietario del proyecto**. Hoy los autorizados son `n8n.cloud` y `srv1068745.hstgr.cloud`.
+
+Entrar en Search Console con la cuenta propietaria de `amg-automation`
+(`argentinosporespana@gmail.com`), verificar el dominio, y añadirlo a dominios autorizados.
+
+#### C. Configurar la app OAuth
+
+1. **Declarar el scope**, exactamente uno: `https://www.googleapis.com/auth/business.manage`. Hoy no
+   hay ninguno declarado.
+2. **Registrar el `redirect_uri` real**: `https://api.dinamicseo.es/google/callback`. Hoy el único
+   registrado apunta al OAuth Playground.
+
+Tres cosas del `redirect_uri` que no son negociables: Google exige coincidencia **carácter por
+carácter** (sin barra final, sin query); la ruta es **fija**, sin el id del cliente, porque Google no
+admite comodines de path y por eso se rediseñó así; y tiene que ser **idéntica** al valor de
+`GOOGLE_REDIRECT_URI` del bloque E, o el fallo aparece recién en el navegador como
+`redirect_uri_mismatch`.
+
+#### D. Publicar a Producción — y la verificación
+
+Publicar **elimina la caducidad de 7 días** de los refresh tokens, que es el bloqueo real del módulo.
+
+- **Para AMG sola**, una app publicada **sin verificar** alcanza: muestra una pantalla de "app no
+  verificada" que ve una persona una vez, y tiene tope de 100 usuarios, irrelevante cuando sólo
+  consiente una cuenta.
+- **Para vender la plataforma**, la verificación pasa a hacer falta: cada agencia cliente vería esa
+  pantalla al conectar, y el tope empieza a contar. Es una cola de revisión de Google, no una tarde:
+  **conviene arrancarla pronto y en paralelo**, no al final.
+
+#### E. Variables en Railway — el orden importa, y romperlo tira la API
+
+**Primero el servicio `api`:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `GOOGLE_REDIRECT_URI`.
+Guardar, esperar el redespliegue y comprobar que sigue viva (`GET https://api.dinamicseo.es/health`).
+
+**Sólo entonces**, añadir `GOOGLE_REVIEWS_MODO=live` al mismo servicio. El provider se construye al
+arrancar el proceso: con `live` y sin las tres credenciales, **la API no levanta**. La vuelta atrás
+es quitar esa variable y esperar el redespliegue.
+
+**Después el servicio `orchestrator`**, en el mismo momento: `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET` y `GOOGLE_REVIEWS_MODO=live`. No necesita `GOOGLE_REDIRECT_URI` (no hace el
+flujo de consentimiento).
+
+> ℹ️ **Dejar la API en `live` y el orquestador en `mock` ya no siembra reseñas falsas en silencio.**
+> Desde la 17ª review, `pollearResenas` aborta con un error explícito —visible como run fallido en
+> Inngest— si corre en producción con el provider mock y hay clientes conectados. Aun así, cambiá los
+> dos a la vez: el guardarraíl convierte un fallo mudo en uno ruidoso, no en uno inexistente.
+
+Confirmar el encendido: `GET https://amg-orchestrator-production.up.railway.app/_health` tiene que
+decir `"resenas":"live"`.
+
+#### F. Conectar el primer cliente
+
+1. Conseguir el **nombre de recurso** de su ficha, con la forma exacta `accounts/<id>/locations/<id>`
+   — no el id suelto. Lo tiene AMG en su Business Profile.
+2. Portal → pestaña **Reseñas** del cliente → pegar el valor → **Conectar Google**. Un formato
+   inválido devuelve un 400 **dentro del formulario**, sin perder lo escrito.
+3. El polling lo recoge en el siguiente ciclo de 30 minutos.
+
+#### Verificaciones sueltas que siguen abiertas
+
+- **Lanzar un research** desde el portal: es lo único que prueba la dirección **entrante** de Inngest
+  por el camino de evento (los crons ya la probaron con cientos de invocaciones). `pipeline: mock`,
+  no cuesta nada.
+- **Mirar un fallo de `vincular-telegram`** en el panel de Inngest, para saber qué es ese 0,21 % de
+  error. Desde la 17ª review, `/_health` reporta `telegram`, así que el modo ya se puede confirmar
+  desde fuera.
+
+
 ---
 
 ## 3. ~~Bot de Telegram real para las alertas~~ — RESUELTO (ya estaba, desde 2026-08-24)

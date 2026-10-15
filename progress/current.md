@@ -87,12 +87,15 @@ puede es escribir sobre clientes conectados estando en mock.
 
 ### 🔵 Lo que puede hacer una sesión de Claude Code
 
-- **El documento de tareas paso a paso para Juan**, pedido el 2026-09-30 y no entregado todavía: qué
-  configurar en la consola de Google, con el `redirect_uri` exacto
-  (`<origen público de la API>/google/callback`, ruta FIJA), el scope
-  (`https://www.googleapis.com/auth/business.manage`) y qué variable va a qué servicio y **en qué
-  orden** (credenciales antes que el modo, o la API no arranca). Casi todo verificado ya contra el
-  código.
+- ~~El documento de tareas paso a paso para Juan~~ — **hecho el 2026-10-15**, y vive en el repo:
+  `docs/proyecto/16-pendientes-juan.md` § 2, subsección «La lista operativa, paso a paso».
+  **CORRIGE la versión que se dio en el chat el 2026-09-30**, que presentaba una app *Internal* como
+  camino corto: eso dejó de ser válido al saberse que la plataforma se vende a otras agencias, porque
+  Internal sólo admite cuentas de la misma organización de Workspace. Seguir aquella lista significaba
+  contratar un Workspace que no resuelve el problema.
+
+- **Ya no queda nada accionable por una sesión de Claude Code en el módulo de reseñas.** Lo que falta
+  es consola de Google, panel de Railway, portal y la 18ª review — todo del usuario.
 
 ### ✅ Hecho el 2026-09-28 (cierre)
 
