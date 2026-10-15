@@ -1,8 +1,10 @@
 # Dónde viven las credenciales de terceros en un sistema multi-tenant — diseño para ADR-25
 
-> **Estado: PROPUESTA, no aceptada.** Este documento existe para ser revisado antes de escribir una
-> línea de código. Si sobrevive a la revisión, su sección «Decisión» se convierte en el ADR-25 de
-> `docs/decisiones-arquitectura.md` y este archivo queda como el razonamiento largo.
+> **Estado: ACEPTADA el 2026-10-15 — es el [ADR-25](../../decisiones-arquitectura.md).** Sobrevivió a
+> la 18ª review externa (Codex, NO LISTO con 6 hallazgos, todos resueltos en la revisión 3 de este
+> documento). El ADR registra la decisión; este archivo queda como el razonamiento largo, las
+> alternativas descartadas y el plan. **La decisión está aceptada; la implementación NO está hecha** —
+> va después del primer ciclo real del módulo en producción y antes del segundo tenant.
 
 ## El problema
 

@@ -11,6 +11,54 @@ haciendo ahora mismo: [`current.md`](current.md).
 
 ---
 
+## 2026-10-15 — La 18ª review y el ADR-25: el peor hallazgo del diseño lo había metido yo
+
+Codex revisó el diseño de dónde viven las credenciales de terceros y devolvió **NO LISTO** con seis
+hallazgos. Los seis quedaron resueltos, el usuario tomó las dos decisiones que faltaban, y la
+decisión es ya el **ADR-25**. Clasificación completa en
+`progress/informes/codex-adr25-credenciales.md`; el razonamiento largo, en el documento de diseño.
+
+**El hallazgo más grave fue una regresión mía, y de la víspera.** El diseño no especificaba RLS en
+ningún sitio — `grep -i "rls"` sobre el documento devolvía cero. La **revisión 1** sí lo decía ("RLS
+enable + force, con el molde de tenant"). Cuando el usuario contestó que cada agencia conecta una
+sola cuenta, simplifiqué el diseño, reescribí la sección «Decisión» entera y **borré la condición de
+seguridad más importante del documento** — en el mismo archivo donde había escrito que la asimetría
+de la `0021` "no se relaja". Es exactamente el defecto que este proyecto persigue, cometido mientras
+se creía estar mejorando algo: **una simplificación no es una simplificación si pierde una garantía
+sin decirlo.**
+
+Al restituirla apareció la pieza que faltaba y que cerró otro hallazgo de paso: **la asimetría es por
+COLUMNA, no por tabla.** `grant select (tenant_id, cuenta_email, conectada_en)` sin `refresh_token`,
+el mismo patrón de la `0021`. Con eso el portal puede saber que hay conexión y con qué cuenta —lo que
+hace falta para avisar de un cambio de cuenta— sin que nadie con login lea la credencial.
+
+**Y Codex encontró algo que yo no había visto:** hay **dos** lectores del token, no uno. Además de
+`clientes_conectados_google()` (`0022`), la `0025` tiene `resena_para_publicar()`, también
+`security definer`, que lee `c.google_refresh_token` con un join a `clients` — **y es la que escribe
+de vuelta en Google**. El documento decía "la pieza delicada" en singular.
+
+**El plan de migración se cayó entero y acabó más simple.** Proponía copiar el token "de cualquiera"
+de los clientes conectados del tenant, que era una suposición injustificada: compartir usuario de
+Google no implica compartir vigencia, y promover el token equivocado a credencial de toda la agencia
+convertiría una conexión parcialmente operativa en una caída total. Ahora **no se copia nada**: cada
+agencia reconsiente una vez. Y hoy sale gratis, porque hay cero clientes conectados en producción.
+
+Las dos decisiones del usuario: **reactivación automática** al reconectar la agencia —la credencial y
+la vinculación son hechos distintos, desconectar no significa "olvidá qué ficha es de quién"— y
+**`cuenta_email` como identidad real** del `id_token`, no etiqueta escrita a mano. Sobre la segunda
+se añadió una condición propia: reconectar con otra cuenta no puede ser mudo, porque a partir de ahí
+se publica en todas las fichas de la agencia como esa otra cuenta.
+
+Sobre la evidencia, un matiz que se deja escrito: **el tope de 100 refresh tokens por cuenta y
+cliente OAuth lo confirmó Codex contra la documentación oficial; no lo verificó esta sesión.** Queda
+anotado como confirmación de tercero. Que la acción fuera la misma con o sin ese número es lo que
+permitió aceptar el hallazgo igual.
+
+El ADR queda **aceptado, no implementado**: el cambio va después del primer ciclo real del módulo en
+producción y antes del segundo tenant.
+
+---
+
 ## 2026-10-14 — La 17ª review: tres garantías que habían caducado y un falso verde en la casilla de secretos
 
 Codex revisó la etapa de reseñas (`9f406ee..281495f`) y devolvió **NO LISTO** con cinco hallazgos.

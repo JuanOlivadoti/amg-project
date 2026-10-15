@@ -92,8 +92,9 @@ vuelta en Google.
 Decisiones del usuario que cerraron el diseño: **reactivación automática** al reconectar la agencia,
 y **`cuenta_email` como identidad real** obtenida del `id_token` (scopes `openid`+`email`).
 
-**Pendiente:** convertir la sección «Decisión» en el **ADR-25** de `docs/decisiones-arquitectura.md`.
-Esperando el OK, que es lo que pedía el prompt de la revisión.
+~~**Pendiente:** convertirlo en ADR-25~~ — **hecho el 2026-10-15**. Es el **ADR-25**, aceptado.
+Queda **aceptado pero NO implementado**: el cambio va después del primer ciclo real del módulo en
+producción y antes del segundo tenant.
 
 ### Pendiente de esta tanda
 

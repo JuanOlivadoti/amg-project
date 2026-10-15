@@ -132,7 +132,7 @@ workspaces (`db`, `kr-service`, `web-builder`, `orchestrator`, `api`, `renderer`
 (Postgres real en WASM). Nombres de dominio en español.
 
 Leé primero, en este orden: `AGENTS.md` (los invariantes), `docs/decisiones-arquitectura.md`
-(ADR-01..24) y `docs/proyecto/09-estado-y-roadmap.md` (qué hay y qué falta).
+(ADR-01..25) y `docs/proyecto/09-estado-y-roadmap.md` (qué hay y qué falta).
 </contexto_proyecto>
 
 <alcance>

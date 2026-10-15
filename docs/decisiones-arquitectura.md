@@ -31,6 +31,7 @@
 | ADR-22 | **La API en Hono**: comandos compuestos (fila bajo RLS → después el evento), auth = JWT + RLS | Aceptada (implementa 5.1) |
 | ADR-23 | La API verifica identidad contra el **JWKS del emisor**, no contra un secreto compartido | Aceptada (endurece ADR-22) |
 | ADR-24 | Las **membresías se escriben desde `app_user` bajo RLS**, no con service-role (enmienda la `0001`) | **Aceptada** (2026-08-02) · desbloquea la pieza 2 del portal |
+| ADR-25 | La **credencial de Google vive en una conexión por tenant**, no en la fila del cliente | **Aceptada** (2026-10-15) · desbloquea vender a varias agencias |
 | OBS-01 | Solapamiento de alcance entre los dos documentos (Frank ≈ Franco) | ✅ **CERRADA** (2026-07-19) — manda `docs/historia/contexto-proyecto-frank.md`; el PRD queda como visión |
 | OBS-02 | El rol y el `client_id` los declara el caller, no `memberships` | ✅ **CERRADA** por ADR-15 |
 | OBS-03 | Nadie publica la web del cliente: ADR-16 quitó Next y no puso nada en su lugar | ✅ **CERRADA** por ADR-19 |
@@ -1562,3 +1563,92 @@ escrita como vigente es peor que no tenerla escrita: el próximo que la lea va a
 **Lo que NO cambia.** El alta de usuarios sigue fuera: crear una cuenta es de Supabase Auth, y la
 pieza 2 gestiona membresías de usuarios que ya existen. Esta decisión no le da a la API ninguna
 capacidad sobre `auth.users` más allá de la lectura acotada que su propio plan define.
+
+---
+
+## ADR-25 — La credencial de Google vive en una conexión por tenant, no en la fila del cliente
+
+> **Aceptada el 2026-10-15.** Desbloquea vender la plataforma a varias agencias: el modelo anterior
+> multiplicaba la credencial por ficha, y ese coste se repetía en cada cliente nuevo. Razonamiento
+> largo, alternativas y plan en
+> [`2026-10-14-credenciales-terceros-multitenant-design.md`](superpowers/specs/2026-10-14-credenciales-terceros-multitenant-design.md),
+> revisado por Codex (18ª review).
+>
+> **Alcance: la conexión de Google.** Storyblok queda FUERA a propósito: sus dos tokens son por
+> cliente y no por agencia (ADR-04; ADR-19 distingue el público del de preview y exige un space por
+> cliente), así que la cardinalidad de este ADR no les aplica.
+
+**Contexto.** La migración `0021` puso la credencial en tres columnas de `clients`, una fila por
+ficha, y lo hizo bien para la premisa que tenía delante — escrita en el comentario de la columna:
+
+> *"Credencial OAuth de acceso continuo a la cuenta de Google **del cliente**."*
+
+Es decir: cada restaurante conecta su propia cuenta. **Esa premisa resultó falsa en dos escalones.**
+Primero, AMG gestiona las fichas de sus clientes desde **su** propia cuenta, como suele trabajar una
+agencia: una cuenta, N fichas. Segundo, y es lo que obliga a decidir: la plataforma **se vende a
+otras agencias**, así que el patrón se repite en cada alta, para siempre.
+
+El modelo actual funciona —la misma cuenta consiente N veces y `prompt=consent` garantiza un refresh
+token nuevo cada vez— con cuatro costes que crecen por agencia: N consentimientos en cada alta, el
+tope de refresh tokens por par (cliente OAuth, usuario) que Google revoca en silencio al pasarse,
+reconectar como N operaciones, y la detección de revocación disparándose N veces por un solo hecho.
+
+**Decisión.** La credencial vive en `google_conexiones`, con `tenant_id` **como clave primaria** —
+así "exactamente una conexión por agencia" lo impide Postgres y no lo recuerda quien escriba el
+próximo endpoint. `clients` conserva su `google_location_id` y deja de guardar el token. Ninguna de
+estas condiciones es opcional:
+
+1. **RLS `enable` + `force`, con políticas POR OPERACIÓN** sobre el molde de `client_write`
+   (`0001_init.sql`). El `with check` del `update` no es simetría: es lo que hace **inmutable el
+   `tenant_id`** — sin él, actualizar una conexión y moverla a otro tenant serían la misma operación.
+2. **La asimetría del token es POR COLUMNA, no por tabla.** `app_user` recibe
+   `grant select (tenant_id, cuenta_email, conectada_en)` y **nunca** `refresh_token`, igual que la
+   `0021` hizo con `clients`. El único lector de la credencial es `app_resenas`, por función
+   `security definer`, y ningún login asume ese rol (ADR-17).
+3. **"Conectado" es una conjunción** —el tenant tiene conexión **y** la ficha tiene
+   `google_location_id`— y se **proyecta en la consulta**, no en TypeScript. El rol `cliente` la
+   sigue viendo; el token no.
+4. **Desvincular una ficha no toca la tabla de conexiones.** Con eso, "desconectar un cliente deja
+   sin credencial a los demás" deja de ser una regla que recordar y pasa a ser inexpresable.
+5. **Reconectar la agencia reactiva sus fichas automáticamente.** La credencial y la vinculación son
+   hechos distintos: desconectar dice "ya no tengo acceso", no "olvidá qué ficha es de quién".
+6. **Reconectar con una cuenta distinta no puede pasar en silencio.** No se bloquea —sería fricción
+   contra el caso normal—, pero el portal lo dice: a partir de ahí se publican respuestas en todas
+   las fichas de la agencia **como esa otra cuenta**.
+7. **`cuenta_email` es identidad real**, obtenida del `id_token` (scopes `openid` + `email`), no una
+   etiqueta escrita a mano. Ese campo existe para que alguien sepa con qué cuenta reconectar el día
+   que algo falle — meses después, quizá cuando quien lo escribió ya no esté. Una etiqueta a mano
+   falla exactamente entonces, y además dejaría cojo el punto 6.
+8. **No se copia ningún token al migrar.** Compartir usuario de Google no implica compartir vigencia,
+   y promover el token equivocado a credencial de toda la agencia convertiría una conexión
+   parcialmente operativa en una caída total. Cada agencia reconsiente una vez.
+
+**Por qué no las alternativas.**
+
+- **Tres columnas en `tenants`.** La alternativa obvia con una sola cuenta por agencia, y se descarta
+  por una razón verificada, no estética: la `0001` concede `grant select on tenants` **a nivel de
+  tabla** a `app_user`, y la `0002` a `app_service`. Una columna que nadie debe leer obligaría a
+  revocar y reconceder **columna por columna, para dos roles**, en la tabla más leída del esquema —
+  el mismo trabajo invasivo que la `0021` hizo en `clients`, repetido en un sitio más delicado. Una
+  tabla aparte tiene grants triviales porque no existe para nada más.
+- **Una tabla de conexiones N-por-tenant.** Fue la primera propuesta y se descartó al confirmarse que
+  cada agencia conecta una cuenta. Diseñar para N cuando el dominio dice una es pagar complejidad por
+  una hipótesis. Si algún día hicieran falta dos, se quita la restricción; no se rediseña.
+- **Una credencial global de la plataforma.** Rompe el aislamiento entre tenants de raíz. La pregunta
+  de ADR-19 —*si me lo toman, ¿qué se llevan?*— se respondería "todo".
+
+**Lo que esto NO mejora, y conviene no leerlo de más.** Consolidar **no reduce** el alcance
+cross-tenant del orquestador ni el alcance OAuth. `app_service` sigue obteniendo, por función
+autorizada, las credenciales de todos los tenants con fichas activas; y bajo la premisa fijada, cada
+token antiguo **ya** autorizaba la cuenta entera de la agencia, no sólo la ficha donde estaba
+guardado. Lo que mejora es la duplicación y el modelo.
+
+**Cuándo.** Después de que el módulo complete un ciclo real en producción con un cliente, y antes de
+dar de alta al segundo tenant. Antes es depurar dos incógnitas a la vez sobre un módulo que nunca
+funcionó de punta a punta; después es migrar datos de varias agencias en vez de ninguna.
+
+**Dos cosas que este ADR deja abiertas a propósito**, porque son de implementación y de trámite, no
+de decisión: si se verifica la firma del `id_token` o se parsea sin verificar (hay que decidirlo y
+dejarlo escrito, no omitirlo), y confirmar que añadir los scopes `openid`/`email` no altera la
+verificación de la app — **conviene hacerlo ANTES de publicarla**, porque tocar scopes después sale
+caro.
