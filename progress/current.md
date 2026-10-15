@@ -75,6 +75,26 @@ el reporte íntegro y la clasificación, en `progress/informes/codex-resenas-pro
 producción, sin `GOOGLE_REVIEWS_MODO`, el orquestador arranca igual. Sigue arrancando; lo que ya no
 puede es escribir sobre clientes conectados estando en mock.
 
+### La 18ª review (diseño del ADR-25), procesada
+
+**NO LISTO → 6 hallazgos** (5 Major, 1 Minor), todos resueltos en la **revisión 3** del documento.
+Reporte íntegro y clasificación en `progress/informes/codex-adr25-credenciales.md`.
+
+⚠️ **El hallazgo más grave lo introduje yo.** El diseño no especificaba RLS: la revisión 1 sí lo
+decía, y al simplificarlo el 2026-10-15 reescribí la sección entera y **borré la condición de
+seguridad más importante**. Restituida y ampliada como condición 1, con la aclaración que faltaba:
+la asimetría es **por columna**, no por tabla.
+
+Y Codex encontró algo que yo no había visto: **hay DOS lectores del token**, no uno —
+`clientes_conectados_google()` (0022) y `resena_para_publicar()` (0025), que es la que escribe de
+vuelta en Google.
+
+Decisiones del usuario que cerraron el diseño: **reactivación automática** al reconectar la agencia,
+y **`cuenta_email` como identidad real** obtenida del `id_token` (scopes `openid`+`email`).
+
+**Pendiente:** convertir la sección «Decisión» en el **ADR-25** de `docs/decisiones-arquitectura.md`.
+Esperando el OK, que es lo que pedía el prompt de la revisión.
+
 ### Pendiente de esta tanda
 
 - **La 18ª review (diseño del ADR-25)** no se ha lanzado todavía. Documento:

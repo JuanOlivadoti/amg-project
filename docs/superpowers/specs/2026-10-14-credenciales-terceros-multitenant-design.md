@@ -67,108 +67,173 @@ cuatro costes de arriba.
 
 ## Decisión propuesta
 
-> **Simplificada el 2026-10-15**, al contestarse la pregunta abierta que sostenía todo el diseño:
-> **cada agencia conecta UNA cuenta de Google**. La versión anterior proponía una tabla de conexiones
-> N-por-tenant con una FK compuesta desde `clients`. Con una sola cuenta por agencia eso era
-> ceremonia, y el propio documento lo advertía. Lo que sigue es lo que queda cuando se quita.
+> **Revisión 3 (2026-10-15), tras la 18ª review externa.** La revisión 2 simplificó el modelo al
+> saberse que cada agencia conecta una sola cuenta; ésta cierra los seis hallazgos de Codex, de los
+> cuales **el más grave fue una regresión introducida al simplificar**: la revisión 2 perdió la
+> condición de RLS que sí traía la revisión 1. Está restituida abajo como condición 1.
+>
+> **Alcance acotado a la conexión de Google por agencia.** Storyblok queda explícitamente FUERA: sus
+> dos tokens son por cliente y no por agencia (ADR-04, ADR-19 distingue público de preview y exige un
+> space por cliente), así que la cardinalidad de este documento no les aplica.
 
 **La credencial deja de vivir en la fila del cliente y pasa a una tabla con UNA fila por tenant.**
 
 ```
 google_conexiones
   tenant_id      uuid primary key references tenants(id) on delete cascade
-  refresh_token  text not null          -- la credencial; nadie con login la lee
-  cuenta_email   text not null          -- QUÉ cuenta consintió
+  refresh_token  text not null          -- la credencial. NADIE con login la lee
+  cuenta_email   text not null          -- la cuenta que consintió, obtenida del id_token
   conectada_en   timestamptz not null
   creada_por     uuid
 
 clients
-  google_location_id   text             -- se queda donde está. NULL = esta ficha no está conectada
-  (google_refresh_token: se retira)
+  google_location_id   text             -- se queda. NULL = esta ficha no está vinculada
+  (google_refresh_token: se retira en una migración posterior)
 ```
 
-**`tenant_id` ES la clave primaria.** No es un detalle de implementación: es la forma de decir
-"exactamente una conexión por agencia" de modo que Postgres lo impida, en vez de que lo recuerde
-quien escriba el próximo endpoint. Si algún día una agencia necesitara dos cuentas, el cambio es
-quitar esa restricción y agregar un id propio — no rediseñar.
+`tenant_id` **es** la clave primaria: así "exactamente una conexión por agencia" lo impide Postgres y
+no lo recuerda quien escriba el próximo endpoint. Si algún día hicieran falta dos cuentas, se quita
+esa restricción; no se rediseña.
 
-Ninguna de estas condiciones es opcional:
+### Condiciones, ninguna opcional
 
-1. **La asimetría del grant sobrevive intacta.** `app_user` puede escribir la conexión y **no tiene
-   `select` sobre `refresh_token`**. El único lector sigue siendo `app_resenas` por función
-   `security definer`. Es la propiedad que estableció la `0021` y este rediseño no la relaja.
-2. **"Conectado" pasa a ser una conjunción:** el tenant tiene conexión **y** el cliente tiene
-   `google_location_id`. Desconectar una ficha es poner su `location_id` en `null`; desconectar la
-   agencia entera es borrar su fila de `google_conexiones`.
-3. **Desvincular un cliente NO puede dejar sin credencial a los demás** — y con esta forma deja de
-   ser una regla que haya que recordar: desconectar una ficha ni siquiera toca la tabla de
-   conexiones. La versión anterior necesitaba una condición explícita para esto; acá el error es
-   inexpresable.
-4. **`cuenta_email` no es decorativo.** Sin él, "reconectá" es una instrucción incompleta: nadie sabe
-   con qué cuenta hay que volver a consentir.
-5. **`clients.google_refresh_token` se marca obsoleta y se retira en una migración POSTERIOR**, no en
-   la misma que mueve los datos. Una columna que ya nadie lee pero sigue existiendo invita a que
-   alguien la vuelva a usar; retirarla en el mismo cambio mezcla dos riesgos.
+**1. RLS forzada y políticas POR OPERACIÓN.** *(Restituida tras el hallazgo H1: la revisión anterior
+de este documento se la había comido.)*
+
+- `enable row level security` **y** `force row level security`.
+- `app_user`, con el molde de `client_write` (`0001_init.sql:432-435`):
+  - **insert**: `with check (tenant_id = app.current_tenant_id() and app.puede_escribir())`
+  - **update**: `using (...)` **y** `with check (...)`, las dos. Sólo `using` autoriza a leer la fila
+    para escribirla, no filtra el valor nuevo — es lo que **hace inmutable el `tenant_id`**: sin el
+    `with check`, actualizar una conexión y moverla a otro tenant serían la misma operación.
+  - **delete**: `using (tenant_id = app.current_tenant_id() and app.puede_escribir())`
+- **La asimetría es POR COLUMNA, no por tabla**, y esto resuelve también el H4:
+  `grant select (tenant_id, cuenta_email, conectada_en) on google_conexiones to app_user` —
+  `refresh_token` deliberadamente afuera, igual que la `0021` hizo con `clients`. Así el portal puede
+  saber que hay conexión y con qué cuenta, sin que nadie con login pueda leer la credencial.
+- `app_resenas` conserva el acceso cross-tenant, **sólo** por función `security definer` con
+  `search_path` fijo, y **ningún login lo asume** (ADR-17).
+- Tests obligatorios, en la forma que ya usa `db/`: el tenant A no puede insertar una conexión para
+  B, ni mover la suya a B, ni borrar la de B; y un usuario con rol `cliente` no puede ninguna de las
+  tres **en su propio tenant**.
+
+**2. "Conectado" es una conjunción, y se proyecta en la consulta, no en TypeScript.**
+Una ficha está conectada si su tenant tiene conexión **y** ella tiene `google_location_id`. La
+consulta que arma el cliente hace el join y devuelve ese booleano ya resuelto; el portal deja de
+derivarlo de `google_conectado_en`. El rol `cliente` tiene que seguir viéndolo (hoy
+`db/src/clientes.ts` expone `google_conectado_en` sin enmascarar justamente por eso), y sigue sin ver
+el token.
+
+**3. Desvincular una ficha no toca la tabla de conexiones.** Es `google_location_id = null` y nada
+más. El error de "desconectar un cliente deja sin credencial a los demás" deja de ser una regla que
+haya que recordar y pasa a ser **inexpresable**.
+
+**4. Reconectar la agencia REACTIVA automáticamente sus fichas** *(decisión del usuario, 2026-10-15)*.
+La credencial y la vinculación son dos hechos distintos: desconectar dice "ya no tengo acceso", no
+"olvidá qué ficha es de quién". Obligar a revincular N fichas sería tirar información que nadie pidió
+borrar. Esto cubre también el caso de un consentimiento abierto antes de una desconexión y terminado
+después: recrea la conexión, que es justo lo que se decidió que pase.
+
+**5. Reconectar con una cuenta DISTINTA no puede pasar en silencio.** Si el `cuenta_email` del nuevo
+consentimiento difiere del guardado, el portal lo dice. No se bloquea —sería fricción contra el caso
+normal—, pero deja de ser un cambio mudo: a partir de ese momento el sistema publica respuestas en
+todas las fichas de la agencia **como esa otra cuenta**. Esta condición **depende de la 6**: sólo
+sirve si el email es fiable.
+
+**6. `cuenta_email` es identidad REAL, obtenida del consentimiento** *(decisión del usuario,
+2026-10-15)*. Se añaden los scopes `openid` y `email`, Google devuelve un `id_token` junto al refresh
+token, y el `email` sale de ahí. **No es una etiqueta escrita a mano**, y la diferencia importa: ese
+campo existe para que alguien sepa con qué cuenta reconectar el día que algo falle — meses después,
+quizá cuando quien lo escribió ya no esté.
+
+- `intercambiarCode` pasa a devolver un tercer campo. Hoy devuelve `{ refreshToken, locationId }`
+  (`api/src/google-oauth-live.ts:68-71`).
+- **A decidir al implementar, y hay que dejarlo escrito:** si se verifica la firma del `id_token` o
+  se parsea el payload sin verificar. El token llega por TLS directo del endpoint de Google como
+  respuesta a una petición nuestra autenticada, y el campo es informativo, así que parsear es
+  defendible; verificar es cinturón y tirantes. Lo que no vale es no decidirlo.
+- ⚠️ **Momento:** tocar la lista de scopes es barato AHORA, que se están configurando de todos modos,
+  y caro después de publicar la app. Confirmar en la consola que añadir `openid`/`email` —scopes no
+  sensibles— no altera el trámite de verificación. **No verificado**, sólo esperado.
+
+**7. `clients.google_refresh_token` se retira en una migración POSTERIOR**, no en la misma que crea la
+tabla. Una columna que ya nadie lee pero sigue ahí invita a que alguien la vuelva a usar; retirarla en
+el mismo cambio mezcla dos riesgos.
 
 ## Por qué no las alternativas
 
-- **Tres columnas en `tenants`.** Es la alternativa obvia una vez que hay una sola cuenta por
-  agencia, y se descarta por una razón **verificada, no estética**: la `0001` concede
-  `grant select on tenants, memberships to app_user` **a nivel de tabla**, y la `0002` hace lo mismo
-  para `app_service`. Meter ahí una columna que nadie debe leer obliga a revocar ese grant y
-  reconcederlo **columna por columna, para dos roles**, sobre la tabla más leída del esquema — el
-  mismo trabajo invasivo que la `0021` tuvo que hacer en `clients`, repetido en un sitio más
-  delicado. Una tabla aparte tiene grants triviales porque no existe para nada más.
-- **Una tabla de conexiones N-por-tenant** (la versión anterior de este documento). Descartada al
-  contestarse la pregunta abierta: cada agencia conecta una cuenta. Diseñar la tabla para N cuando el
-  dominio dice una es pagar complejidad por una hipótesis.
-- **Dejarlo como está, una credencial por ficha.** Funciona hoy, y el coste de aplazar es bajo porque
-  los refresh tokens son desechables. Pero el coste no desaparece: se multiplica por cada agencia que
-  se dé de alta, y el momento barato para cambiarlo es antes del segundo tenant.
-- **Una credencial global de la plataforma.** Rompe el aislamiento entre tenants de raíz. Pregunta de
-  ADR-19 —*si me lo toman, ¿qué se llevan?*— la respuesta sería "todo". Descartada sin discusión.
+- **Tres columnas en `tenants`.** La alternativa obvia con una sola cuenta por agencia. Se descarta
+  por una razón **verificada**: la `0001` concede `grant select on tenants` a nivel de TABLA a
+  `app_user` (`:412`) y la `0002` a `app_service` (`:92`). Meter ahí una columna que nadie debe leer
+  obliga a revocar y reconceder **columna por columna, para dos roles**, en la tabla más leída del
+  esquema. Una tabla aparte tiene grants triviales porque no existe para nada más. *(Codex confirmó
+  el argumento y añadió el matiz de que revocar el privilegio de una columna no elimina el de tabla.)*
+- **Una tabla de conexiones N-por-tenant** (revisión 1 de este documento). Descartada al confirmarse
+  que cada agencia conecta una cuenta. Diseñar para N cuando el dominio dice una es pagar complejidad
+  por una hipótesis.
+- **Dejarlo como está, una credencial por ficha.** Funciona hoy, y aplazar cuesta poco porque los
+  refresh tokens son desechables. Pero el coste se multiplica por cada agencia, y el momento barato
+  es antes del segundo tenant.
+- **Una credencial global de la plataforma.** Rompe el aislamiento entre tenants. Descartada.
 
 ## Qué cuesta, medido
 
 `google_refresh_token` / `google_location_id` aparecen en **seis migraciones** (`0021`, `0022`,
-`0025`, `0026`, `0031`, `0034`) y **seis archivos de código** fuera de tests (`db/src/clientes.ts`,
-`db/src/resenas.ts`, `api/src/app.ts`, `api/src/google-oauth-live.ts`, `api/src/oauth-state.ts`,
-`orchestrator/src/google/live-provider.ts`), más el portal y sus tests.
+`0025`, `0026`, `0031`, `0034`) y **seis archivos de código** fuera de tests.
 
-La pieza delicada sigue siendo **`app.clientes_conectados_google()`** (migración `0022`), la función
-`security definer` que el polling usa para recorrer todos los tenants. Con el modelo nuevo hace un
-join entre `clients` y `google_conexiones` y tiene que seguir devolviendo **exactamente los mismos
-campos**: ni uno más de lo que `app_resenas` ya puede ver.
+⚠️ **Hay DOS lectores del token, no uno** — lo encontró Codex y la revisión anterior de este documento
+decía "la pieza delicada" en singular:
+
+1. `app.clientes_conectados_google()` (`0022`), que usa el polling.
+2. `app.resena_para_publicar()` (`0025:93-96`), que lee `c.google_location_id, c.google_refresh_token`
+   con un join a `clients` — **y es la que escribe de vuelta en Google**.
+
+Las dos son `security definer`, las dos hacen el join nuevo, y las dos tienen que seguir devolviendo
+**exactamente los mismos campos**: ni uno más de lo que `app_resenas` ya ve. El contrato vigente de la
+primera son **cinco** campos, incluido `nombre`, desde `0026:356-366`.
+
+## Qué NO mejora, para que nadie lo lea de más
+
+Consolidar **no reduce** el alcance cross-tenant del orquestador ni el alcance OAuth. Hoy
+`app_service` obtiene, por función autorizada, los tokens de todos los clientes activos; con el join
+seguirá obteniendo las conexiones de todos los tenants con fichas activas. Y bajo la premisa fijada,
+cada token antiguo **ya** autorizaba la cuenta entera de la agencia, no sólo la ficha donde estaba
+guardado. Lo que mejora es la duplicación y el modelo; la respuesta a *"si me lo toman, ¿qué se
+llevan?"* es la misma. *(Observación de Codex, incorporada.)*
 
 ## Cuándo
 
 **Después** de que el módulo complete un ciclo real en producción con un cliente, y **antes** de dar
-de alta al segundo tenant. Hacerlo antes es depurar dos incógnitas a la vez sobre un módulo que
-todavía no funcionó nunca de punta a punta; hacerlo después es migrar datos de varias agencias.
+de alta al segundo tenant.
 
-## Plan de migración
+## Plan de migración — no se copia ningún token
 
-Los refresh tokens son **desechables**: no hay histórico que preservar, y eso simplifica todo.
+*(Reescrito tras el hallazgo H5.)* La versión anterior copiaba el token "de cualquiera" de los
+clientes conectados del tenant. **Eso era una suposición injustificada**: compartir usuario de Google
+no implica compartir vigencia, y Google invalida refresh tokens antiguos sin aviso al emitir nuevos
+(Codex lo confirmó contra la documentación oficial —tope de 100 por cuenta y cliente OAuth—; **no
+verificado por mí**, se anota como confirmación de tercero). Copiar el equivocado convertiría una
+conexión parcialmente operativa en una caída de todas las fichas.
 
-1. Migración que crea `google_conexiones` y no toca nada más.
-2. Por cada tenant con al menos un cliente conectado: crear **una** fila tomando el `refresh_token` de
-   cualquiera de sus clientes conectados. Con una cuenta por agencia, todos son tokens del mismo
-   usuario de Google, así que cuál se elija es indistinto — y el primer reconsentimiento los sustituye.
-3. `cuenta_email` queda vacío en las filas migradas: no sabemos con qué cuenta se consintió, e
-   **inventarlo sería peor que dejarlo vacío**. Admite `null` sólo para ese caso, con el comentario
-   que lo explique, y el endpoint lo exige para las conexiones nuevas.
+Y hay un atajo que lo vuelve irrelevante: **hoy no hay ningún cliente conectado en producción**
+(verificado el 2026-09-28; la única conexión que había era de mock y se desconectó). Así que:
+
+1. Migración que crea `google_conexiones` con su RLS, políticas y grants. No copia nada.
+2. Cada agencia **reconsiente una vez**. Con el modelo nuevo eso es un solo consentimiento por
+   agencia, no uno por ficha — es justamente lo que el cambio viene a conseguir.
+3. Si al implementarlo hubiera clientes conectados, **no se copia igual**: se pide reconsentimiento.
+   Un token que no se puede demostrar operativo no se promueve a credencial de toda la agencia.
 4. Migración posterior, aparte: retirar `clients.google_refresh_token`.
 
 ## Preguntas abiertas
 
-1. ~~¿Una agencia conecta UNA cuenta de Google o varias?~~ — **Contestada el 2026-10-15: una.** Es lo
-   que simplificó el diseño entero.
-2. **El tope de refresh tokens por par (cliente OAuth, usuario)**, que el modelo actual multiplica.
-   Era el argumento cuantitativo a favor del cambio y **sigue sin verificar**. Conviene confirmarlo en
-   la documentación de Google antes de usarlo como justificación — aunque con el modelo nuevo deja de
-   importar, porque se acuña un token por agencia y no uno por ficha.
-3. **¿Esto es sólo Google?** `clients` también guarda `storyblok_public_token` /
-   `storyblok_preview_token` (ADR-04, migración `0007`): credenciales de tercero con el mismo patrón,
-   pero **por cliente y no por agencia**, así que el modelo de arriba no les aplica tal cual. Si el
-   ADR-25 va a titularse "dónde viven las credenciales de terceros", o las cubre con su propia
-   respuesta o acota el título a Google y lo dice.
+1. ~~¿Una agencia conecta una cuenta o varias?~~ — **una** (2026-10-15).
+2. ~~El tope de refresh tokens~~ — confirmado por Codex contra la documentación oficial: 100 por
+   cuenta y cliente OAuth, con invalidación silenciosa del más antiguo. Con el modelo nuevo deja de
+   importar (un token por agencia, no uno por ficha), pero sostiene el cambio del plan de migración.
+3. ~~¿El ADR cubre Storyblok?~~ — **no**: acotado a Google. ADR-19 distingue token público de preview
+   y exige un space por cliente, así que la cardinalidad "una por agencia" no les aplica.
+4. **Abierta, y es de implementación:** si se verifica la firma del `id_token` o se parsea sin
+   verificar (ver condición 6).
+5. **Abierta, y es de trámite:** confirmar que añadir los scopes `openid`/`email` no altera la
+   verificación de la app. Conviene hacerlo ANTES de publicar.
