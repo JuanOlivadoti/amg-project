@@ -80,8 +80,13 @@ puede es escribir sobre clientes conectados estando en mock.
 - **La 18ª review (diseño del ADR-25)** no se ha lanzado todavía. Documento:
   `docs/superpowers/specs/2026-10-14-credenciales-terceros-multitenant-design.md`. Prompt:
   `docs/private/reviews/codex-2026-10-14-adr25-credenciales.md`.
-- **La pregunta que decide ese diseño sigue sin contestar:** ¿una agencia conecta UNA cuenta de
-  Google o varias? Si siempre es una, la tabla de conexiones sobra y basta una columna en `tenants`.
+- ~~La pregunta que decide ese diseño~~ — **contestada el 2026-10-15: cada agencia conecta UNA
+  cuenta de Google.** El diseño se simplificó en consecuencia y el prompt de la 18ª se actualizó:
+  ya no se revisa una tabla N-por-tenant con FK compuesta, sino una tabla con `tenant_id` COMO CLAVE
+  PRIMARIA y `clients` sin FK. Se descartó la alternativa obvia —tres columnas en `tenants`— por una
+  razón verificada: la `0001` concede `grant select on tenants` a nivel de TABLA a `app_user` y la
+  `0002` a `app_service`, así que una columna ilegible obligaría a revocar y reconceder columna por
+  columna en la tabla más leída del esquema.
 
 ## Próximo paso
 
